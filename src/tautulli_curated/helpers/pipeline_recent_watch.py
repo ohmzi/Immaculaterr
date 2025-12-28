@@ -56,15 +56,27 @@ def run_pipeline(movie_name, media_type, ctx=None):
         logger.info(f"Skipping: media_type={media_type} title={movie_name!r}")
         return
 
-    cfg = load_config()
+    config = load_config()
 
-    plex = PlexServer(cfg.plex.url, cfg.plex.token)
+    # Connect to Plex with timeout and retry logic
+    from tautulli_curated.helpers.retry_utils import retry_with_backoff
+    
+    def _connect_plex():
+        return PlexServer(config.plex.url, config.plex.token, timeout=30)
+    
+    plex, success = retry_with_backoff(
+        _connect_plex,
+        max_retries=3,
+        logger_instance=logger,
+        operation_name="Plex connection",
+        raise_on_final_failure=True,  # Can't continue without Plex
+    )
 
     # Config loader now provides full paths, so use them directly
-    tmdb_cache_path = Path(cfg.files.tmdb_cache_file).resolve()
-    tmdb_cache = TMDbCache(cfg.tmdb.api_key, str(tmdb_cache_path))
+    tmdb_cache_path = Path(config.files.tmdb_cache_file).resolve()
+    tmdb_cache = TMDbCache(config.tmdb.api_key, str(tmdb_cache_path))
 
-    points_path = Path(cfg.files.points_file).resolve()
+    points_path = Path(config.files.points_file).resolve()
     points_data = load_points(points_path, logger)
     logger.info(f"Loaded points entries={len(points_data)} from {points_path}")
 
@@ -82,7 +94,7 @@ def run_pipeline(movie_name, media_type, ctx=None):
     with ctx.step(logger, "plex_lookup", count=len(recs)):
         total = len(recs)
         for i, title in enumerate(recs, 1):
-            movie = find_plex_movie(plex, title)
+            movie = find_plex_movie(plex, title, library_name=config.plex.movie_library_name, logger=logger)
             if movie:
                 plex_movies.append(movie)
             else:
@@ -98,20 +110,22 @@ def run_pipeline(movie_name, media_type, ctx=None):
     # --- Radarr for missing
     if missing_titles:
         with ctx.step(logger, "radarr_missing", missing=len(missing_titles)):
-            radarr_result = radarr_utils.radarr_add_or_monitor_missing(cfg, missing_titles) or {}
+            radarr_result = radarr_utils.radarr_add_or_monitor_missing(config, missing_titles) or {}
 
         pipeline_stats["radarr_added"] += radarr_result.get("added", 0)
         pipeline_stats["radarr_monitored"] += radarr_result.get("monitored", 0)
-        pipeline_stats["radarr_already_monitored"] += radarr_result.get("already_monitored", 0)
         pipeline_stats["radarr_failed"] += radarr_result.get("failed", 0)
+        
+        if radarr_result.get("failed", 0) > 0:
+            logger.warning(f"  ⚠ {radarr_result.get('failed', 0)} movies failed to add to Radarr (connection/timeout issues)")
 
     # --- Update points and clean up (deferred Plex collection update)
     with ctx.step(logger, "points_update", found=len(plex_movies)):
         # Get existing collection items to build final list
-        section = plex.library.section(cfg.plex.movie_library_name)
+        section = plex.library.section(config.plex.movie_library_name)
         existing_items = []
         try:
-            collection = section.collection(cfg.plex.collection_name)
+            collection = section.collection(config.plex.collection_name)
             existing_items = collection.items()
         except NotFound:
             # Collection doesn't exist yet, that's fine

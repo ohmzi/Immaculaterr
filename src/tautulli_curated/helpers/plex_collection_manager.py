@@ -1,7 +1,10 @@
 import random
 import json
 import time
+import os
+from pathlib import Path
 from plexapi.exceptions import NotFound, BadRequest
+from tautulli_curated.helpers.retry_utils import retry_with_backoff, safe_execute
 
 def _get_points(points_data, key: str) -> int:
     v = points_data.get(key, 0)
@@ -41,6 +44,142 @@ def _fetch_by_rating_key(section, rating_key: str):
     except Exception:
         return None
 
+
+def _get_artwork_paths(collection_name: str, base_dir: Path = None):
+    """
+    Get the file paths for collection artwork (poster and background).
+    
+    Args:
+        collection_name: Name of the collection
+        base_dir: Base directory of the project (defaults to finding project root)
+    
+    Returns:
+        Tuple of (poster_path, background_path) or (None, None) if not found
+    """
+    # Map collection names to artwork file names
+    collection_artwork_map = {
+        "Inspired by your Immaculate Taste": "immaculate_taste_collection",
+        "Based on your recently watched movie": "recently_watched_collection",
+        "Change of Taste": "change_of_taste_collection",
+    }
+    
+    # Get base directory if not provided
+    if base_dir is None:
+        # Try to find project root by looking for config/ directory
+        current = Path(__file__).resolve()
+        for parent in current.parents:
+            if (parent / "config" / "config.yaml").exists():
+                base_dir = parent
+                break
+        else:
+            # Fallback: assume we're in src/tautulli_curated/helpers/
+            base_dir = current.parent.parent.parent
+    
+    # Get artwork file name
+    artwork_name = collection_artwork_map.get(collection_name)
+    if not artwork_name:
+        return None, None
+    
+    # Build paths
+    assets_dir = base_dir / "assets" / "collection_artwork"
+    poster_path = assets_dir / "posters" / f"{artwork_name}.png"
+    background_path = assets_dir / "backgrounds" / f"{artwork_name}.png"
+    
+    # Also check for .jpg files
+    if not poster_path.exists():
+        poster_path_jpg = assets_dir / "posters" / f"{artwork_name}.jpg"
+        if poster_path_jpg.exists():
+            poster_path = poster_path_jpg
+        else:
+            poster_path = None
+    
+    if not background_path.exists():
+        background_path_jpg = assets_dir / "backgrounds" / f"{artwork_name}.jpg"
+        if background_path_jpg.exists():
+            background_path = background_path_jpg
+        else:
+            background_path = None
+    
+    return poster_path, background_path
+
+
+def _set_collection_artwork(collection, collection_name: str, base_dir: Path = None, logger=None):
+    """
+    Set poster and background artwork for a Plex collection.
+    
+    Args:
+        collection: Plex Collection object
+        collection_name: Name of the collection
+        base_dir: Base directory of the project
+        logger: Optional logger instance
+    
+    Returns:
+        Tuple of (poster_set, background_set) indicating success
+    """
+    poster_path, background_path = _get_artwork_paths(collection_name, base_dir)
+    
+    poster_set = False
+    background_set = False
+    
+    # Set poster
+    if poster_path and poster_path.exists():
+        try:
+            def _upload_poster():
+                collection.uploadPoster(filepath=str(poster_path))
+            
+            success = retry_with_backoff(
+                _upload_poster,
+                max_retries=3,
+                logger_instance=logger,
+                operation_name=f"Upload poster for '{collection_name}'",
+                raise_on_final_failure=False,
+            )[1]
+            
+            if success:
+                poster_set = True
+                if logger:
+                    logger.info(f"  ✓ Set collection poster: {poster_path.name}")
+            else:
+                if logger:
+                    logger.warning(f"  ⚠ Failed to set collection poster: {poster_path.name}")
+        except Exception as e:
+            if logger:
+                logger.warning(f"  ⚠ Error setting collection poster: {e}")
+    else:
+        if logger:
+            logger.debug(f"  No poster artwork found for '{collection_name}'")
+    
+    # Set background
+    if background_path and background_path.exists():
+        try:
+            def _upload_background():
+                collection.uploadArt(filepath=str(background_path))
+            
+            success = retry_with_backoff(
+                _upload_background,
+                max_retries=3,
+                logger_instance=logger,
+                operation_name=f"Upload background for '{collection_name}'",
+                raise_on_final_failure=False,
+            )[1]
+            
+            if success:
+                background_set = True
+                if logger:
+                    logger.info(f"  ✓ Set collection background: {background_path.name}")
+            else:
+                if logger:
+                    logger.warning(f"  ⚠ Failed to set collection background: {background_path.name}")
+        except Exception as e:
+            if logger:
+                logger.warning(f"  ⚠ Error setting collection background: {e}")
+    else:
+        if logger:
+            logger.debug(f"  No background artwork found for '{collection_name}'")
+    
+    return poster_set, background_set
+
+
 def refresh_collection_with_points(
     plex,
     library_name: str,
@@ -52,6 +191,7 @@ def refresh_collection_with_points(
     max_points: int = 50,
     logger=None,
     randomize: bool = False,
+    base_dir: Path = None,
 ):
     if logger:
         logger.info(f"collection_refresh: loading library section={library_name!r}")
@@ -107,21 +247,61 @@ def refresh_collection_with_points(
             f"(current={len(current)} desired={len(final_items)})"
         )
 
-    # remove only what’s needed
+    # remove only what's needed
     if to_remove:
         if logger:
             logger.info("collection_refresh: removing items from collection...")
-        collection.removeItems(to_remove)
+        
+        def _remove_items():
+            collection.removeItems(to_remove)
+            return True
+        
+        _, success = retry_with_backoff(
+            _remove_items,
+            max_retries=3,
+            logger_instance=logger,
+            operation_name=f"Remove {len(to_remove)} items from collection",
+            raise_on_final_failure=False,
+        )
+        
         if logger:
-            logger.info("collection_refresh: remove done")
+            if success:
+                logger.info("collection_refresh: remove done")
+            else:
+                logger.warning("collection_refresh: remove failed, continuing anyway...")
 
-    # add only what’s needed
+    # add only what's needed
     if to_add:
         if logger:
             logger.info("collection_refresh: adding items to collection...")
-        collection.addItems(to_add)
+        
+        def _add_items():
+            collection.addItems(to_add)
+            return True
+        
+        _, success = retry_with_backoff(
+            _add_items,
+            max_retries=3,
+            logger_instance=logger,
+            operation_name=f"Add {len(to_add)} items to collection",
+            raise_on_final_failure=False,
+        )
+        
         if logger:
-            logger.info("collection_refresh: add done")
+            if success:
+                logger.info("collection_refresh: add done")
+            else:
+                logger.warning("collection_refresh: add failed, continuing anyway...")
+    
+    # Set collection artwork if available (only if collection exists)
+    if collection:
+        try:
+            if logger:
+                logger.info(f"collection_refresh: setting collection artwork...")
+            _set_collection_artwork(collection, collection_name, base_dir, logger)
+        except Exception as e:
+            if logger:
+                logger.warning(f"collection_refresh: failed to set artwork (non-critical): {e}")
 
     # optional: custom random order (can be heavy)
     if randomize:
@@ -390,11 +570,13 @@ def apply_collection_state_to_plex(
     collection_name: str,
     collection_state: dict,
     logger=None,
+    base_dir: Path = None,
 ):
     """
     Applies the collection state to Plex by:
     1. Removing all existing items from the collection
     2. Adding all items from the collection_state in order
+    3. Setting collection artwork (poster and background) if available
     
     This is designed to run during off-peak hours to avoid overwhelming Plex.
     
@@ -404,6 +586,7 @@ def apply_collection_state_to_plex(
         collection_name: Name of the collection
         collection_state: Dictionary with "rating_keys" and "items" keys
         logger: Optional logger instance
+        base_dir: Base directory of the project (for finding artwork files)
     """
     if logger:
         logger.info(f"apply_collection: loading library section={library_name!r}")
@@ -489,16 +672,24 @@ def apply_collection_state_to_plex(
         if logger:
             logger.info(f"apply_collection: removing all {len(existing_items)} existing items...")
             logger.info("  This may take a while for large collections. Please wait...")
-        try:
-            start_time = time.time()
+        def _remove_items():
             collection.removeItems(existing_items)
-            elapsed = time.time() - start_time
+            return True
+        
+        _, success = retry_with_backoff(
+            _remove_items,
+            max_retries=3,
+            logger_instance=logger,
+            operation_name=f"Remove {len(existing_items)} items from collection",
+            raise_on_final_failure=False,
+        )
+        
+        if success:
             if logger:
-                logger.info(f"apply_collection: remove completed in {elapsed:.1f} seconds")
-        except Exception as e:
+                logger.info(f"apply_collection: remove completed successfully")
+        else:
             if logger:
-                logger.error(f"apply_collection: ERROR removing items: {type(e).__name__}: {e}")
-            raise
+                logger.warning(f"apply_collection: failed to remove some items, continuing anyway...")
     
     # Add all desired items
     if desired_items:
@@ -506,51 +697,62 @@ def apply_collection_state_to_plex(
             # Create collection if it doesn't exist
             if logger:
                 logger.info(f"apply_collection: creating collection with {len(desired_items)} items...")
-            try:
-                start_time = time.time()
+            def _create_collection():
                 section.createCollection(collection_name, items=desired_items)
-                collection = section.collection(collection_name)
-                elapsed = time.time() - start_time
+                return section.collection(collection_name)
+            
+            collection, success = retry_with_backoff(
+                _create_collection,
+                max_retries=3,
+                logger_instance=logger,
+                operation_name=f"Create collection '{collection_name}'",
+                raise_on_final_failure=False,
+            )
+            
+            if not success or collection is None:
                 if logger:
-                    logger.info(f"apply_collection: collection created in {elapsed:.1f} seconds")
-            except Exception as e:
-                if logger:
-                    logger.error(f"apply_collection: ERROR creating collection: {type(e).__name__}: {e}")
-                raise
+                    logger.error(f"apply_collection: ERROR creating collection - failed after retries")
+                raise RuntimeError(f"Failed to create collection '{collection_name}' after retries")
+            
+            if logger:
+                logger.info(f"apply_collection: collection created successfully")
+            
+            # Set collection artwork if available
+            if collection:
+                try:
+                    if logger:
+                        logger.info(f"apply_collection: setting collection artwork...")
+                    _set_collection_artwork(collection, collection_name, base_dir, logger)
+                except Exception as e:
+                    if logger:
+                        logger.warning(f"apply_collection: failed to set artwork (non-critical): {e}")
         else:
             if logger:
                 logger.info(f"apply_collection: adding {len(desired_items)} items...")
                 logger.info("  This may take a while for large collections. Please wait...")
-            try:
-                start_time = time.time()
+            def _add_items():
                 collection.addItems(desired_items)
-                elapsed = time.time() - start_time
+                return True
+            
+            _, success = retry_with_backoff(
+                _add_items,
+                max_retries=3,
+                logger_instance=logger,
+                operation_name=f"Add {len(desired_items)} items to collection",
+                raise_on_final_failure=False,
+            )
+            
+            if success:
                 if logger:
-                    logger.info(f"apply_collection: add completed in {elapsed:.1f} seconds")
-            except Exception as e:
-                error_type = type(e).__name__
-                error_msg = str(e)
+                    logger.info(f"apply_collection: add completed successfully")
+            else:
                 if logger:
-                    logger.error(f"apply_collection: ERROR adding items: {error_type}: {error_msg}")
-                    # Check for specific Plex API errors
-                    if "mix media types" in error_msg.lower() or "badrequest" in error_type.lower():
-                        logger.error("  This error means non-movie items were included in the collection")
-                        logger.error("  The script should have filtered these out - this is a bug")
-                        logger.error(f"  Items being added: {len(desired_items)}")
-                        # Try to identify problematic items
-                        if desired_items:
-                            item_types = {}
-                            for item in desired_items[:20]:  # Check first 20
-                                item_type = getattr(item, 'type', 'unknown')
-                                item_types[item_type] = item_types.get(item_type, 0) + 1
-                            logger.error(f"  Item types found: {item_types}")
-                    elif "timeout" in error_msg.lower():
-                        logger.error("  Plex server timed out - it may be overloaded")
-                        logger.error("  Try running the script again later")
-                    elif "connection" in error_msg.lower():
-                        logger.error("  Connection to Plex was lost")
-                        logger.error("  Check if Plex server is still running")
-                raise
+                    logger.error(f"apply_collection: ERROR adding items - failed after retries")
+                    logger.error("  This may be due to:")
+                    logger.error("    - Plex server timeout or overload")
+                    logger.error("    - Connection issues")
+                    logger.error("    - Non-movie items in the list (should be filtered)")
+                    logger.warning("  Continuing with reordering anyway...")
     
     # Apply custom order (randomized order from JSON)
     if desired_items:
@@ -575,6 +777,16 @@ def apply_collection_state_to_plex(
                     logger.warning(f"  Plex rejected some reorder requests (this is common with large collections)")
                 logger.debug(f"  Full error: {error_msg[:200]}")
             # Don't raise - collection is still updated, just ordering may be incomplete
+    
+    # Set collection artwork if available (only if collection exists)
+    if collection:
+        try:
+            if logger:
+                logger.info(f"apply_collection: setting collection artwork...")
+            _set_collection_artwork(collection, collection_name, base_dir, logger)
+        except Exception as e:
+            if logger:
+                logger.warning(f"apply_collection: failed to set artwork (non-critical): {e}")
     
     return {
         "existing_items": len(existing_items),

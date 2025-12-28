@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Immaculate Taste Collection Refresher Runner
+# Recently Watched Collections Refresher Runner
 #
-# This script runs the Immaculate_taste_collection_refresher.py script with proper
-# environment setup and error handling.
+# This script refreshes the "Based on your recently watched movie" and "Change of Taste"
+# Plex collections by randomizing their order and updating them in Plex.
 #
 # Usage:
-#   ./run_Immaculate_taste_collection_refresher.sh [options]
+#   ./run_recently_watched_collections_refresher.sh [options]
 #
 # Options:
 #   --dry-run       Run in dry-run mode (no Plex changes)
@@ -86,9 +86,9 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Check if the Python script exists
-REFRESHER_SCRIPT="$PROJECT_ROOT/src/tautulli_curated/refresher.py"
+REFRESHER_SCRIPT="$PROJECT_ROOT/src/tautulli_curated/helpers/recently_watched_collections_refresher.py"
 if [[ ! -f "$REFRESHER_SCRIPT" ]]; then
-    echo -e "${RED}Error: refresher.py not found at: $REFRESHER_SCRIPT${NC}"
+    echo -e "${RED}Error: recently_watched_collections_refresher.py not found at: $REFRESHER_SCRIPT${NC}"
     exit 1
 fi
 
@@ -102,7 +102,7 @@ fi
 LOG_PATH=""
 if [[ -n "$LOG_FILE" ]]; then
     TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    LOG_PATH="$PROJECT_ROOT/data/logs/Immaculate_taste_collection_refresher_${TIMESTAMP}.log"
+    LOG_PATH="$PROJECT_ROOT/data/logs/recently_watched_collections_refresher_${TIMESTAMP}.log"
     mkdir -p "$PROJECT_ROOT/data/logs"
     echo "Log file: $LOG_PATH"
 fi
@@ -139,7 +139,7 @@ fi
 
 # Print header
 output_color "${BLUE}========================================${NC}"
-output_color "${BLUE}Immaculate Taste Collection Refresher${NC}"
+output_color "${BLUE}Recently Watched Collections Refresher${NC}"
 output_color "${BLUE}========================================${NC}"
 output ""
 output_color "Script: ${GREEN}$REFRESHER_SCRIPT${NC}"
@@ -163,7 +163,6 @@ output ""
 EXIT_CODE=0
 if [[ -n "$LOG_PATH" ]]; then
     # Run with both terminal output and log file
-    # Capture exit code from the command, not from tee
     set +o pipefail  # Allow pipe to continue even if command fails
     $CMD 2>&1 | tee -a "$LOG_PATH"
     EXIT_CODE=${PIPESTATUS[0]}  # Get exit code from the command, not tee

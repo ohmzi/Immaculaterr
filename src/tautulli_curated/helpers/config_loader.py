@@ -55,7 +55,10 @@ class FilesConfig:
 class ScriptsRunConfig:
     run_plex_duplicate_cleaner: bool = True
     run_radarr_monitor_confirm_plex: bool = True
-    run_collection_refresher: bool = False
+    run_collection_refresher: bool = True  # Immaculate Taste Collection Refresher (mandatory - adds movies to Plex)
+    run_recently_watched_collection: bool = True  # Recently Watched Collection script
+    run_immaculate_taste_collection: bool = True  # Immaculate Taste Collection script
+    run_recently_watched_refresher: bool = True  # Recently Watched Collection Refresher (mandatory - adds movies to Plex)
 
 
 @dataclass(frozen=True)
@@ -141,7 +144,10 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     scripts_run = ScriptsRunConfig(
         run_plex_duplicate_cleaner=bool(data.get("scripts_run", {}).get("run_plex_duplicate_cleaner", True)),
         run_radarr_monitor_confirm_plex=bool(data.get("scripts_run", {}).get("run_radarr_monitor_confirm_plex", True)),
-        run_collection_refresher=bool(data.get("scripts_run", {}).get("run_collection_refresher", False)),
+        run_collection_refresher=bool(data.get("scripts_run", {}).get("run_collection_refresher", True)),  # Default: True (mandatory)
+        run_recently_watched_collection=bool(data.get("scripts_run", {}).get("run_recently_watched_collection", True)),
+        run_immaculate_taste_collection=bool(data.get("scripts_run", {}).get("run_immaculate_taste_collection", True)),
+        run_recently_watched_refresher=bool(data.get("scripts_run", {}).get("run_recently_watched_refresher", True)),  # Default: True (mandatory)
     )
 
     return AppConfig(
