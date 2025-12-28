@@ -8,14 +8,14 @@ logger = setup_logger("recommender")
 
 
 def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None) -> list[str]:
-    cfg = load_config()
+    config = load_config()
 
     # 1) OpenAI first
     recs = get_related_movies(
         movie_name,
-        api_key=cfg.openai.api_key,
-        model=getattr(cfg.openai, "model", "gpt-5.2"),
-        limit=cfg.openai.recommendation_count,
+        api_key=config.openai.api_key,
+        model=getattr(config.openai, "model", "gpt-5.2"),
+        limit=config.openai.recommendation_count,
     )
     cleaned = [r.split("(")[0].strip() for r in recs if r and r.strip()]
 
@@ -31,10 +31,10 @@ def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None) -> list[
         return []
 
     tmdb_titles = get_tmdb_recommendations_advanced(
-        api_key=cfg.tmdb.api_key,
+        api_key=config.tmdb.api_key,
         seed_title=movie_name,
         tmdb_cache=tmdb_cache,
-        limit=cfg.tmdb.recommendation_count,  # ✅ config-driven
+        limit=config.tmdb.recommendation_count,  # ✅ config-driven
         plex=plex,                            # ✅ filter out already-in-Plex
     )
 

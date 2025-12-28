@@ -133,14 +133,14 @@ if __name__ == "__main__":
 
     movie = sys.argv[1] if len(sys.argv) > 1 else "Inception"
 
-    cfg = load_config()
+    config = load_config()
 
     print(f"\nTesting OpenAI recommendations for: {movie}\n")
 
     recs = get_related_movies(
         movie,
-        api_key=cfg.openai.api_key,               # ✅ pulled from config.yaml
-        limit=cfg.openai.recommendation_count,
+        api_key=config.openai.api_key,               # ✅ pulled from config.yaml
+        limit=config.openai.recommendation_count,
     )
 
     print(f"Returned {len(recs)} recommendations:\n")

@@ -1,33 +1,105 @@
-plex:
-  url: "http://localhost:32400"
-  token: "PLEX_TOKEN"     # Replace with your Plex Token key
-  movie_library_name: "Movies"
-  collection_name: "Inspired by your Immaculate Taste"  # Name of the Plex collection
-  delete_preference: "largest_file"  # Options: smallest_file, oldest, newest
-  preserve_quality: [] # Files with these keywords won't be deleted
+# ============================================================================
+# TAUTULLI CURATED PLEX COLLECTION - CONFIGURATION FILE
+# ============================================================================
+# This configuration file controls all aspects of the Tautulli Curated Collection
+# automation system. Update the values below with your actual credentials and
+# preferences.
+# ============================================================================
 
-openai:
-  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"  # Replace with your OPENAI API key
-  recommendation_count: 50 # Replace with Number of Movies you want to be recommended and added in single run.
-
-radarr:
-  url: "http://localhost:7878"
-  api_key: "RADARR_API_KEY"     # Replace with your Radarr API key
-  root_folder: "/folder/to/you/Movies"
-  tag_name: "RADARR_TAG_NAME"
-
-tmdb:
-  api_key: "TMDB_API_KEY"  # Replace with your TMDB API key
-
-files:
-  points_file: "recommendation_points.json"
-  tmdb_cache_file: "tmdb_cache.json"
-
-overseerr:
-  url: "http://localhost:5055"
-  api_key: ""  # Add your Overseerr API key here
-
+# ============================================================================
+# SCRIPT EXECUTION CONTROL
+# ============================================================================
+# Control which scripts run when the main script is triggered by Tautulli.
+# Set to 'true' to enable, 'false' to disable.
+# ============================================================================
 scripts_run:
-  run_plex_duplicate_cleaner: false # Change to true if you want to Run Plex Duplicate Cleaner
-  run_radarr_plex_monitor: false # Change to true if you want to Run Radarr Plex Monitor
-  run_collection_refresher: false # Change to true if you want to run Immaculate Taste Collection Refresher as part of main script. If false, run it independently via run_Immaculate_taste_collection_refresher.sh
+  # Step 1: Recently Watched Collection
+  # Generates recommendations for "Based on your recently watched movie" 
+  # and "Change of Taste" collections (runs first, smaller/quicker)
+  run_recently_watched_collection: true
+  
+  # Step 2: Plex Duplicate Cleaner
+  # Scans Plex library for duplicate movies and removes lower quality versions
+  # (runs second, after Recently Watched Collection)
+  run_plex_duplicate_cleaner: true
+  
+  # Step 3: Radarr Monitor Confirm
+  # Checks monitored movies in Radarr and unmonitors those already in Plex
+  # (runs third, before main pipeline)
+  run_radarr_monitor_confirm_plex: true
+  
+  # Step 4: Immaculate Taste Collection
+  # Main recommendation pipeline with points system
+  # (runs fourth, main pipeline)
+  run_immaculate_taste_collection: true
+  
+  # Collection Refreshers (MANDATORY by default - these actually add movies to Plex!)
+  # These scripts read the JSON files created by the main scripts and:
+  # 1. Remove all existing items from the Plex collections
+  # 2. Add all movies from JSON files to Plex collections in randomized order
+  # 
+  # IMPORTANT: Without these refreshers, movies are saved to JSON but NEVER added to Plex!
+  # Set to 'true' to run automatically at the end of main script (recommended)
+  # Set to 'false' to run independently during off-peak hours via bash scripts:
+  #   - Recently Watched: ./src/scripts/run_recently_watched_collections_refresher.sh
+  #   - Immaculate Taste: ./src/scripts/run_immaculate_taste_refresher.sh
+  run_recently_watched_refresher: true   # Recently Watched Collection Refresher (MANDATORY)
+  run_collection_refresher: true         # Immaculate Taste Collection Refresher (MANDATORY)
+
+# ============================================================================
+# PLEX CONFIGURATION
+# ============================================================================
+plex:
+  url: "http://localhost:32400"                    # Your Plex server URL
+  token: "PLEX_TOKEN"                                # Replace with your Plex Token key
+  movie_library_name: "Movies"                       # Name of your Plex movie library
+  collection_name: "Inspired by your Immaculate Taste"  # Name of the main Plex collection
+  
+  # Duplicate Cleaner Settings
+  delete_preference: "smallest_file"  # Which file to delete when duplicates found
+                                     # Options: smallest_file, largest_file, newest, oldest
+  preserve_quality: []               # Files with these keywords won't be deleted
+                                     # Example: ["4K", "1080p"] to preserve high quality
+
+# ============================================================================
+# OPENAI CONFIGURATION
+# ============================================================================
+openai:
+  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"  # Replace with your OpenAI API key
+  recommendation_count: 50                 # Number of movies to recommend per run
+
+# ============================================================================
+# RADARR CONFIGURATION
+# ============================================================================
+radarr:
+  url: "http://localhost:7878"                      # Your Radarr server URL
+  api_key: "RADARR_API_KEY"                         # Replace with your Radarr API key
+  root_folder: "/folder/to/you/Movies"              # Root folder for movie downloads
+  tag_name: "RADARR_TAG_NAME"                       # Tag to apply to added movies
+  quality_profile_id: 1                             # Quality profile ID (default: 1)
+
+# ============================================================================
+# TMDB CONFIGURATION
+# ============================================================================
+tmdb:
+  api_key: "TMDB_API_KEY"              # Replace with your TMDB API key
+  recommendation_count: 50             # Number of recommendations from TMDB
+
+# ============================================================================
+# FILE PATHS
+# ============================================================================
+# These files are automatically stored in the 'data/' directory.
+# You typically don't need to change these unless you want custom locations.
+# ============================================================================
+files:
+  points_file: "recommendation_points.json"      # Points system data
+  tmdb_cache_file: "tmdb_cache.json"              # TMDB API cache
+
+# ============================================================================
+# OVERSEERR CONFIGURATION (Optional)
+# ============================================================================
+# Overseerr integration is optional. Leave api_key empty if not using Overseerr.
+# ============================================================================
+overseerr:
+  url: "http://localhost:5055"         # Your Overseerr URL
+  api_key: "OVERSEERR_API_KEY"                          # Add your Overseerr API key here (optional)

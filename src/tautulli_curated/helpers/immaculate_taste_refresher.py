@@ -12,7 +12,7 @@ without overwhelming the server. It:
 This should be scheduled to run via cron or systemd timer at a time when the server is idle.
 
 Usage:
-    python3 Immaculate_taste_collection_refresher.py [--dry-run] [--verbose]
+    python3 immaculate_taste_refresher.py [--dry-run] [--verbose]
 
 Options:
     --dry-run    Show what would be done without actually updating Plex
@@ -30,8 +30,8 @@ from requests.exceptions import Timeout, ConnectionError as RequestsConnectionEr
 from urllib3.exceptions import ReadTimeoutError, ConnectTimeoutError
 
 # Add project root to path for standalone execution
-# Go up from refresher.py -> tautulli_curated/ -> src/ -> project root
-project_root = Path(__file__).resolve().parents[2]
+# Go up from immaculate_taste_refresher.py -> helpers/ -> tautulli_curated/ -> src/ -> project root
+project_root = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(project_root / "src"))
 
 from tautulli_curated.helpers.logger import setup_logger
@@ -43,7 +43,7 @@ from tautulli_curated.helpers.plex_collection_manager import (
 from plexapi.server import PlexServer
 from plexapi.exceptions import NotFound
 
-logger = setup_logger("Immaculate_taste_collection_refresher")
+logger = setup_logger("immaculate_taste_refresher")
 
 
 def load_points(path, logger):
@@ -104,15 +104,15 @@ def main():
     try:
         # Load configuration
         logger.info("Step 1: Loading configuration...")
-        cfg = load_config()
-        logger.info(f"  ✓ Config loaded from: {cfg.base_dir / 'config' / 'config.yaml'}")
-        logger.info(f"  ✓ Plex URL: {cfg.plex.url}")
-        logger.info(f"  ✓ Library: {cfg.plex.movie_library_name}")
-        logger.info(f"  ✓ Collection: {cfg.plex.collection_name}")
+        config = load_config()
+        logger.info(f"  ✓ Config loaded from: {config.base_dir / 'config' / 'config.yaml'}")
+        logger.info(f"  ✓ Plex URL: {config.plex.url}")
+        logger.info(f"  ✓ Library: {config.plex.movie_library_name}")
+        logger.info(f"  ✓ Collection: {config.plex.collection_name}")
         
         # Load points from recommendation_points.json
         logger.info("Step 2: Loading points data...")
-        points_path = Path(cfg.files.points_file).resolve()
+        points_path = Path(config.files.points_file).resolve()
         logger.info(f"  Points file: {points_path}")
         
         if not points_path.exists():
@@ -146,19 +146,19 @@ def main():
         
         # Connect to Plex
         logger.info("Step 4: Connecting to Plex...")
-        logger.info(f"  Connecting to: {cfg.plex.url}")
+        logger.info(f"  Connecting to: {config.plex.url}")
         logger.info("  Please wait, this may take a few seconds...")
         
         plex = None
         try:
             start_time = time.time()
             # Set timeout to 30 seconds for connection
-            plex = PlexServer(cfg.plex.url, cfg.plex.token, timeout=30)
+            plex = PlexServer(config.plex.url, config.plex.token, timeout=30)
             elapsed = time.time() - start_time
             logger.info(f"  ✓ Connected to Plex server: {plex.friendlyName} (took {elapsed:.1f}s)")
         except Timeout as e:
             logger.error(f"  ✗ Connection TIMEOUT: Plex server did not respond within 30 seconds")
-            logger.error(f"     URL: {cfg.plex.url}")
+            logger.error(f"     URL: {config.plex.url}")
             logger.error(f"     This usually means:")
             logger.error(f"     - Plex server is down or not responding")
             logger.error(f"     - Network connectivity issues")
@@ -166,7 +166,7 @@ def main():
             raise
         except RequestsConnectionError as e:
             logger.error(f"  ✗ Connection ERROR: Could not reach Plex server")
-            logger.error(f"     URL: {cfg.plex.url}")
+            logger.error(f"     URL: {config.plex.url}")
             logger.error(f"     Error: {e}")
             logger.error(f"     This usually means:")
             logger.error(f"     - Plex server is not running")
@@ -179,13 +179,13 @@ def main():
             raise
         except ConnectTimeoutError as e:
             logger.error(f"  ✗ Connect TIMEOUT: Could not establish connection to Plex")
-            logger.error(f"     URL: {cfg.plex.url}")
+            logger.error(f"     URL: {config.plex.url}")
             logger.error(f"     Check if Plex server is running and accessible")
             raise
         except Exception as e:
             error_type = type(e).__name__
             logger.error(f"  ✗ Failed to connect to Plex: {error_type}: {e}")
-            logger.error(f"     URL: {cfg.plex.url}")
+            logger.error(f"     URL: {config.plex.url}")
             if "401" in str(e) or "unauthorized" in str(e).lower():
                 logger.error(f"     This looks like an authentication error - check your Plex token")
             elif "404" in str(e) or "not found" in str(e).lower():
@@ -194,24 +194,24 @@ def main():
         
         # Load library section
         try:
-            logger.info(f"  Loading library section: {cfg.plex.movie_library_name}...")
+            logger.info(f"  Loading library section: {config.plex.movie_library_name}...")
             start_time = time.time()
-            section = plex.library.section(cfg.plex.movie_library_name)
+            section = plex.library.section(config.plex.movie_library_name)
             elapsed = time.time() - start_time
             logger.info(f"  ✓ Library section loaded: {section.title} (took {elapsed:.1f}s)")
         except Timeout as e:
             logger.error(f"  ✗ TIMEOUT loading library section")
-            logger.error(f"     Library name: {cfg.plex.movie_library_name}")
+            logger.error(f"     Library name: {config.plex.movie_library_name}")
             logger.error(f"     Plex server may be slow or overloaded")
             raise
         except NotFound as e:
-            logger.error(f"  ✗ Library section not found: {cfg.plex.movie_library_name}")
+            logger.error(f"  ✗ Library section not found: {config.plex.movie_library_name}")
             logger.error(f"     Available libraries: {[lib.title for lib in plex.library.sections()]}")
             raise
         except Exception as e:
             error_type = type(e).__name__
             logger.error(f"  ✗ Failed to load library section: {error_type}: {e}")
-            logger.error(f"     Library name: {cfg.plex.movie_library_name}")
+            logger.error(f"     Library name: {config.plex.movie_library_name}")
             raise
         
         # Fetch items and build collection state
@@ -296,10 +296,11 @@ def main():
             logger.info(f"  This may take a while for large collections...")
             stats = apply_collection_state_to_plex(
                 plex=plex,
-                library_name=cfg.plex.movie_library_name,
-                collection_name=cfg.plex.collection_name,
+                library_name=config.plex.movie_library_name,
+                collection_name=config.plex.collection_name,
                 collection_state=collection_state,
                 logger=logger,
+                base_dir=config.base_dir,
             )
             logger.info(f"  ✓ Collection update complete")
             logger.debug(f"  Stats: {stats}")
