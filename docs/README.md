@@ -1,6 +1,6 @@
 # Tautulli Curated Plex Collection
 
-**Version:** 4.0.0
+**Version:** 4.1.0
 
 **Table of Contents**  
 - [Overview](#overview)  
@@ -50,6 +50,8 @@ The main script `src/tautulli_curated/main.py` (or `tautulli_immaculate_taste_co
 - Movie title (from Tautulli)
 - Media type (should be "movie")
 
+**Note:** The script automatically skips execution if the media type is not "movie" (e.g., episodes or shows). When an episode is watched, the script will log a skip message and exit immediately without running any sub-scripts.
+
 ### Execution Pipeline
 
 The script executes in the following order (each step can be enabled/disabled via config):
@@ -94,6 +96,7 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
   - Randomizes movie order
   - Removes all items from both Plex collections
   - Adds all movies back in randomized order
+  - **Applies custom order** to ensure randomized order is displayed in Plex
   - Filters out non-movie items (clips, shows, etc.)
 
 - **Immaculate Taste Collection Refresher:**
@@ -245,7 +248,7 @@ radarr:
   url: "http://localhost:7878"
   api_key: "YOUR_RADARR_API_KEY"
   root_folder: "/path/to/Movies"
-  tag_name: "recommended"
+  tag_name: "recommended"  # Single tag, or use ["tag1", "tag2"] for multiple tags
   quality_profile_id: 1
 
 # ============================================================================
@@ -375,7 +378,10 @@ All scripts can be enabled/disabled individually:
 - `url`: Your Radarr server URL
 - `api_key`: Your Radarr API key
 - `root_folder`: Root folder for movie downloads
-- `tag_name`: Tag to apply to added movies
+- `tag_name`: Tag(s) to apply to added movies
+  - **Single tag:** `tag_name: "recommended"` (string)
+  - **Multiple tags:** `tag_name: ["movies", "curated"]` (list of strings)
+  - Both formats are supported for backward compatibility
 - `quality_profile_id`: Quality profile ID (default: 1)
 
 **Optional: Overseerr Integration**
@@ -994,33 +1000,31 @@ If bash scripts don't work directly, create a PowerShell wrapper:
 
 ## Version History
 
-### Version 4.2.0 (Current)
+### Version 4.1.0 (Current)
+
+**JSON Collection Logic Enhancement:**
+- **Save All Recommendations:** Both "Recently Watched" and "Change of Taste" collections now save ALL recommendations to JSON (including movies not yet in Plex)
+- **Future-Proof Collections:** Movies missing in Plex are saved with `rating_key: None` and will be automatically added when downloaded
+- **Smart Refresher:** Refresher scripts gracefully skip movies not in Plex yet and continue processing others
+- **Automatic Addition:** When a movie is downloaded, it will be automatically added to the collection on the next nightly refresh
 
 **Performance Improvements:**
-- **Rating Key Optimization:** Recently Watched and Change of Taste collections now use rating keys for faster Plex lookups
-- **Consistent Logic:** Both refresher scripts now use the same efficient rating key lookup method
+- **Rating Key Optimization:** Recently Watched and Change of Taste collections use rating keys for faster Plex lookups
+- **Consistent Logic:** Both refresher scripts use the same efficient rating key lookup method
 - **Faster Collection Updates:** Direct Plex API calls using rating keys instead of slower title searches
-- **Better Progress Tracking:** Improved progress logging every 100 items (similar to Immaculate Taste refresher)
-
-**JSON Structure Enhancements:**
-- **Rating Keys in JSON:** All collection JSON files now include rating keys for faster lookups
-- **Backward Compatible:** Refresher scripts still support old JSON format (title-only) with automatic fallback
-- **Improved Reliability:** Rating keys provide unique identifiers, reducing false matches
+- **Better Progress Tracking:** Improved progress logging every 100 items
 
 **File Organization:**
 - **Scripts Moved to Helpers:** Collection scripts moved to `src/tautulli_curated/helpers/` for better organization:
   - `immaculate_taste_refresher.py` → `helpers/immaculate_taste_refresher.py`
   - `recently_watched_collection.py` → `helpers/recently_watched_collection.py`
   - `recently_watched_collections_refresher.py` → `helpers/recently_watched_collections_refresher.py`
-- **Updated Imports:** All Python imports updated to reflect new file locations
-- **Updated Bash Scripts:** All shell scripts updated with correct file paths
+- **Updated Imports:** All Python imports and bash scripts updated with correct file paths
 
 **Code Improvements:**
-- **Shared Helper Functions:** Refresher scripts now use shared `_fetch_by_rating_key` from `plex_collection_manager.py`
+- **Shared Helper Functions:** Refresher scripts use shared `_fetch_by_rating_key` from `plex_collection_manager.py`
 - **Better Error Handling:** Improved logging for failed/filtered items with rating key information
 - **Consistent Patterns:** Both refreshers follow the same code patterns for maintainability
-
-### Version 4.1.0
 
 **New Standalone Script:**
 - **`run_radarr_monitor_confirm.sh`:** New standalone script for bulk Radarr/Plex synchronization
@@ -1028,31 +1032,11 @@ If bash scripts don't work directly, create a PowerShell wrapper:
   - Unmonitors movies that already exist in Plex
   - Supports `--dry-run` mode for testing
   - Can be scheduled for routine maintenance
-  - Provides detailed summary statistics
 
 **Script Improvements:**
 - **Removed `run_unmonitor_radarr.sh`:** Consolidated functionality into the main pipeline
-  - The underlying Python helper (`unmonitor_radarr_after_download.py`) remains available for internal use
-  - Bulk synchronization is now handled by `run_radarr_monitor_confirm.sh`
-- **Enhanced Script Pause Functionality:** All standalone scripts now pause at the end by default
-  - Users can review logs before terminal closes
-  - `--no-pause` option available for automated runs
-  - Better user experience for manual execution
-
-**Documentation Enhancements:**
-- **Plex Home Screen Setup Guide:** New comprehensive section with step-by-step instructions
-  - How to make collections visible on home and library views
-  - How to manage collection order in Plex Settings → Library → Manage Recommendations
-  - Recommended collection order for best user experience
-  - Troubleshooting tips for common issues
-- **Overseerr Fork Documentation:** Enhanced documentation about the modified Overseerr fork
-  - Added to multiple sections (Features, Requirements, Configuration Options)
-  - Clear explanation of why the fork is needed (admin self-approval limitation)
-  - Direct links to the fork repository: [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr)
-- **Standalone Scripts Documentation:** Updated documentation for all standalone scripts
-  - Complete usage examples and options
-  - Scheduling instructions for cron and Windows Task Scheduler
-  - Clear explanations of when and why to use each script
+- **Enhanced Logging:** Improved logging in `run_radarr_search_monitored.sh` with timestamps, progress indicators, and better error messages
+- **Log File Support:** Added `--log-file` option to save output to timestamped log files
 
 **Improvements:**
 - Better error handling and logging across all scripts
@@ -1077,57 +1061,24 @@ If bash scripts don't work directly, create a PowerShell wrapper:
 - **Plex Duplicate Cleaner:** Integrated duplicate detection and removal
 - **Radarr Monitor Confirm:** Automatic synchronization of Radarr monitoring with Plex library
 - **Custom Collection Artwork:** Automatic upload of custom posters and backgrounds for collections
-- **Standalone Scripts:** Four independent bash scripts for scheduled execution:
-  - `run_recently_watched_collections_refresher.sh` - Refresh Recently Watched collections
-  - `run_immaculate_taste_refresher.sh` - Refresh Immaculate Taste collection
-  - `run_radarr_monitor_confirm.sh` - Sync Radarr monitoring with Plex library
-  - `run_radarr_search_monitored.sh` - Trigger Radarr search for all monitored movies
+- **Standalone Scripts:** Four independent bash scripts for scheduled execution
+- **Enhanced Script Pause Functionality:** All standalone scripts pause at the end by default with `--no-pause` option
 
 **Error Handling & Reliability:**
 - **Retry Logic:** Comprehensive retry mechanism with exponential backoff (`retry_utils.py`)
-- **HTTPError Detection:** Improved error handling for HTTP 400/500 errors
-  - 400 Bad Request errors correctly identified as non-retryable
-  - 5xx server errors retried with exponential backoff
-  - Network/timeout errors automatically retried
+- **HTTPError Detection:** Improved error handling for HTTP 400/500 errors (400 non-retryable, 5xx retried)
 - **Connection Resilience:** All Plex and Radarr API calls use retry logic
 - **Error Recovery:** Scripts continue execution even if individual operations fail
+
+**Documentation:**
+- **Plex Home Screen Setup Guide:** Comprehensive section with step-by-step instructions
+- **Overseerr Fork Documentation:** Enhanced documentation with links to [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr)
+- **Standalone Scripts Documentation:** Complete usage examples and scheduling instructions
 
 **Configuration:**
 - User-friendly config file structure with script execution control at the top
 - All scripts can be enabled/disabled individually
 - Mandatory refreshers by default (they add movies to Plex!)
-- Clear documentation and examples
-
-**Logging & Debugging:**
-- Enhanced logging across all scripts for better troubleshooting
-- Improved error messages with context
-- Standardized logger names for easier log filtering
-- Better progress indicators for long-running operations
-
-**Scripts:**
-- Recently Watched Collection script (Step 1)
-- Plex Duplicate Cleaner (Step 2)
-- Radarr Monitor Confirm (Step 3)
-- Immaculate Taste Collection script (Step 4)
-- Collection Refreshers (Step 5 - MANDATORY)
-
-**Documentation:**
-- Comprehensive section on standalone scripts
-- Scheduling instructions for Ubuntu/Linux (cron) and Windows Task Scheduler
-- Complete version history
-
-**New Feature - Custom Collection Artwork:**
-- **Automatic Artwork Upload:** Collections can now have custom posters and backgrounds
-- **Artwork Location:** Images stored in `assets/collection_artwork/` directory
-- **Supported Collections:** All three collections support custom artwork
-- **Automatic Application:** Artwork is uploaded when collections are created or updated
-- **Non-Critical:** Artwork upload failures don't stop collection updates
-
-**Bug Fixes:**
-- Fixed `NameError: name 'cfg' is not defined` in `recently_watched_collections_refresher.py`
-- Fixed unnecessary retries for HTTP 400 errors in Radarr operations
-- Improved collection update error handling
-- Better handling of non-movie items (clips, shows) in collections
 
 ### Version 3.0.0
 
@@ -1263,6 +1214,15 @@ If bash scripts don't work directly, create a PowerShell wrapper:
 - Fixed `NameError: name 'cfg' is not defined` in `recently_watched_collections_refresher.py`
 - Fixed unnecessary retries for HTTP 400 errors in Radarr operations
 - Improved collection update error handling
+- Fixed custom order application in recently_watched_collections_refresher (randomized order now properly applied in Plex)
+
+**New Features:**
+- **Multiple Radarr Tags Support:** `tag_name` now accepts both single tag (string) and multiple tags (list)
+  - Example: `tag_name: "recommended"` or `tag_name: ["movies", "curated"]`
+  - Backward compatible with existing single tag configurations
+- **Early Exit for Non-Movie Media:** Script automatically skips execution when episodes/shows are watched
+  - Prevents unnecessary processing and API calls
+  - Logs clear skip message for debugging
 
 **Documentation:**
 - Added comprehensive section on standalone scripts

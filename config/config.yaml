@@ -75,7 +75,14 @@ radarr:
   url: "http://localhost:7878"                      # Your Radarr server URL
   api_key: "RADARR_API_KEY"                         # Replace with your Radarr API key
   root_folder: "/folder/to/you/Movies"              # Root folder for movie downloads
-  tag_name: "RADARR_TAG_NAME"                       # Tag to apply to added movies
+  
+  # Tag(s) to apply to added movies
+  # Option 1: Single tag (string)
+  tag_name: "recommended"
+  # Option 2: Multiple tags (list) - uncomment and use this format instead:
+  # tag_name: ["movies", "curated"]
+  # Both formats are supported - choose the one that fits your needs
+  
   quality_profile_id: 1                             # Quality profile ID (default: 1)
 
 # ============================================================================

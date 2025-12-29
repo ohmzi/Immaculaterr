@@ -24,6 +24,15 @@ def main():
     logger.info(f"Media type: {media_type}")
     logger.info("")
 
+    # Early exit if media type is not "movie"
+    if media_type not in ("movie",):
+        logger.info(f"This script only processes movies. Detected media type: '{media_type}' (episode/show)")
+        logger.info("Skipping entire script - no actions will be performed.")
+        logger.info("=" * 60)
+        logger.info("TAUTULLI CURATED COLLECTION SCRIPTS END (skipped - not a movie)")
+        logger.info("=" * 60)
+        return 0
+
     try:
         # Load configuration
         logger.info("Loading configuration...")

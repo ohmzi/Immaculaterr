@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Recently Watched Collections Refresher
@@ -40,6 +41,7 @@ from tautulli_curated.helpers.retry_utils import retry_with_backoff, safe_execut
 from tautulli_curated.helpers.plex_collection_manager import (
     _set_collection_artwork,
     _fetch_by_rating_key,
+    _apply_custom_order,
 )
 from plexapi.server import PlexServer
 from plexapi.exceptions import NotFound, BadRequest
@@ -192,7 +194,8 @@ def apply_collection_to_plex(
                 'rating_key': rating_key,
             })
             # Only log individual failures at debug level to reduce noise
-            logger.debug(f"    Could not find movie: {title} (rating_key: {rating_key})")
+            # These are movies that aren't in Plex yet - they'll be added when downloaded
+            logger.debug(f"    Movie not in Plex yet: {title} (will be added when downloaded)")
     
     if filtered_non_movies:
         logger.info(f"  ⚠ Filtered out {len(filtered_non_movies)} non-movie items (clips, shows, etc.)")
@@ -205,12 +208,12 @@ def apply_collection_to_plex(
                 logger.debug(f"    ... and {len(filtered_non_movies) - 5} more")
     
     if failed_movies:
-        logger.info(f"  ⚠ {len(failed_movies)} movies not found in Plex (they may have been removed)")
-        # Log a sample of failed items at debug level if verbose
+        logger.info(f"  ⚠ {len(failed_movies)} movies not found in Plex yet (will be skipped - they'll be added when downloaded)")
+        # Log a sample of missing movies at debug level if verbose
         if len(failed_movies) > 0:
             sample = failed_movies[:5]
-            failed_sample = [f"{f.get('title', 'Unknown')} (rating_key: {f.get('rating_key', 'N/A')})" for f in sample]
-            logger.debug(f"  Sample of failed movies (first 5): {failed_sample}")
+            failed_sample = [f"{f.get('title', 'Unknown')}" for f in sample]
+            logger.debug(f"  Sample of movies not yet in Plex (first 5): {failed_sample}")
             if len(failed_movies) > 5:
                 logger.debug(f"    ... and {len(failed_movies) - 5} more")
     
@@ -370,6 +373,27 @@ def apply_collection_to_plex(
     except Exception as e:
         logger.error(f"  ERROR adding items: {type(e).__name__}: {e}")
         failed_count = len(valid_movies) - added_count
+    
+    # Apply custom order (randomized order from JSON) - only if items were successfully added
+    if collection and valid_movies and added_count > 0 and not dry_run:
+        try:
+            logger.info(f"  Applying custom order to {len(valid_movies)} items...")
+            logger.info("    Reordering items. This may take several minutes for large collections...")
+            logger.info("    Note: Some items may fail to reorder, but the script will continue...")
+            start_time = time.time()
+            _apply_custom_order(plex, collection, valid_movies, logger=logger)
+            elapsed = time.time() - start_time
+            logger.info(f"  Custom order completed in {elapsed:.1f} seconds")
+        except (BadRequest, Exception) as e:
+            error_type = type(e).__name__
+            error_msg = str(e)
+            logger.warning(f"  ⚠ Some errors occurred during custom ordering: {error_type}")
+            logger.warning(f"    The collection has been updated, but ordering may be incomplete")
+            logger.warning(f"    This is usually not critical - items are still in the collection")
+            if isinstance(e, BadRequest) or "bad_request" in error_msg.lower() or "400" in error_msg:
+                logger.warning(f"    Plex rejected some reorder requests (this is common with large collections)")
+            logger.debug(f"    Full error: {error_msg[:200]}")
+            # Don't raise - collection is still updated, just ordering may be incomplete
     
     # Set collection artwork if available (only if collection exists and items were added)
     if collection and (added_count > 0 or existing_items):

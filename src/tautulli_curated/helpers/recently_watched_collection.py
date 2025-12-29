@@ -86,34 +86,47 @@ def run_recently_watched_playlist(movie_name, config):
                     })
                 else:
                     logger.debug(f"  Missing in Plex: {title}")
+                    # Still add to collection_movies (without rating_key) so it can be added later if downloaded
+                    collection_movies.append({
+                        "title": title.strip(),
+                        "rating_key": None,
+                        "year": None,
+                    })
                     key = title.strip().lower()
                     if key and key not in missing_seen:
                         missing_seen.add(key)
                         missing_in_plex.append(title.strip())
             except Exception as e:
                 logger.warning(f"  Error checking '{title}' in Plex: {e}")
+                # Still add to collection_movies (without rating_key) so it can be added later if downloaded
+                collection_movies.append({
+                    "title": title.strip(),
+                    "rating_key": None,
+                    "year": None,
+                })
                 # Continue processing other movies
                 key = title.strip().lower()
                 if key and key not in missing_seen:
                     missing_seen.add(key)
                     missing_in_plex.append(title.strip())
 
-        logger.info(f"  ✓ Found {len(collection_movies)} movies in Plex")
-        logger.info(f"  ✓ {len(missing_in_plex)} movies missing in Plex")
+        logger.info(f"  ✓ Found {len(collection_movies) - len(missing_in_plex)} movies in Plex")
+        logger.info(f"  ✓ {len(missing_in_plex)} movies missing in Plex (will be added to JSON for future refresh)")
 
-        # Save to JSON (will be applied to Plex by midnight script)
+        # Save to JSON (ALL recommendations - found and missing)
+        # The refresher will skip missing movies and add them when they become available
         saved_to_json = False
         if collection_movies:
             try:
                 save_collection_to_json(collection_movies, JSON_FILE, config)
-                logger.info(f"Step 3: Saved {len(collection_movies)} movies to {JSON_FILE}")
-                logger.info(f"  ✓ Collection state saved (will be applied by midnight refresher)")
+                logger.info(f"Step 3: Saved {len(collection_movies)} movies to {JSON_FILE} (including {len(missing_in_plex)} not yet in Plex)")
+                logger.info(f"  ✓ Collection state saved (will be applied by refresher - missing movies will be skipped until downloaded)")
                 saved_to_json = True
             except Exception as e:
                 logger.error(f"  ✗ Failed to save collection to JSON: {e}")
                 raise
         else:
-            logger.warning(f"Step 3: No movies found in Plex to save to collection")
+            logger.warning(f"Step 3: No recommendations to save to collection")
 
         # Radarr processing for missing titles
         sent_to_radarr = 0
