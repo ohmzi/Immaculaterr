@@ -151,9 +151,14 @@ def radarr_add_and_search(cfg, title: str) -> Tuple[bool, str]:
     """
     tag_ids = []
     if cfg.radarr.tag_name:
-        tag_id = get_or_create_tag(cfg, cfg.radarr.tag_name)
-        if tag_id:
-            tag_ids = [tag_id]
+        # Handle both single tag (string) and multiple tags (list) for backward compatibility
+        tag_names = cfg.radarr.tag_name if isinstance(cfg.radarr.tag_name, list) else [cfg.radarr.tag_name]
+        
+        for tag_name in tag_names:
+            if tag_name:  # Skip empty strings
+                tag_id = get_or_create_tag(cfg, tag_name)
+                if tag_id:
+                    tag_ids.append(tag_id)
 
     looked_up = radarr_lookup_movie(cfg, title)
     if not looked_up or not looked_up.get("tmdbId"):

@@ -41,7 +41,7 @@ class RadarrConfig:
     url: str
     api_key: str
     root_folder: str
-    tag_name: str
+    tag_name: str | list[str]  # Can be a single tag (string) or multiple tags (list)
     quality_profile_id: int = 1
 
 
