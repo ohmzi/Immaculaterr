@@ -24,6 +24,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Ensure HOME is set (important for cron which may not have it)
+if [[ -z "${HOME:-}" ]]; then
+    # Try to get HOME from /etc/passwd or use a default
+    export HOME=$(getent passwd "$(whoami)" | cut -d: -f6)
+    if [[ -z "$HOME" ]]; then
+        export HOME="/home/$(whoami)"
+    fi
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -80,8 +89,13 @@ fi
 
 # Build command with unbuffered output
 export PYTHONUNBUFFERED=1
+# Ensure Python can find user-installed packages (important for cron)
+export PYTHONUSERBASE="${HOME}/.local"
+# Get user site-packages path dynamically using Python
+USER_SITE_PACKAGES=$(python3 -c "import site; print(site.getusersitepackages())" 2>/dev/null || echo "${HOME}/.local/lib/python3.12/site-packages")
 # Add src to PYTHONPATH so imports work (handle case where PYTHONPATH is unset)
-export PYTHONPATH="$PROJECT_ROOT/src:${PYTHONPATH:-}"
+# Add user site-packages first so user-installed packages take precedence
+export PYTHONPATH="${USER_SITE_PACKAGES}:$PROJECT_ROOT/src:${PYTHONPATH:-}"
 
 # Create a temporary Python script file
 TEMP_SCRIPT=$(mktemp)

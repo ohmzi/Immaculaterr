@@ -25,6 +25,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Ensure HOME is set (important for cron which may not have it)
+if [[ -z "${HOME:-}" ]]; then
+    # Try to get HOME from /etc/passwd or use a default
+    export HOME=$(getent passwd "$(whoami)" | cut -d: -f6)
+    if [[ -z "$HOME" ]]; then
+        export HOME="/home/$(whoami)"
+    fi
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -110,8 +119,17 @@ if [[ -n "$LOG_FILE" ]]; then
     mkdir -p "$PROJECT_ROOT/data/logs"
     echo "Log file: $LOG_PATH"
     # Redirect all output to both terminal and log file
-    exec > >(tee -a "$LOG_PATH") 2>&1
+    # Strip ANSI color codes for log file while preserving colors in terminal
+    # Use unbuffered sed to strip colors in real-time (handles both actual escapes and literal strings)
+    exec > >(tee >(stdbuf -o0 -e0 sed -u -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g' -e 's/\\x1b\[[0-9;]*m//g' >> "$LOG_PATH")) 2>&1
 fi
+
+# Ensure Python can find user-installed packages (important for cron)
+export PYTHONUSERBASE="${HOME}/.local"
+# Get user site-packages path dynamically using Python
+USER_SITE_PACKAGES=$(python3 -c "import site; print(site.getusersitepackages())" 2>/dev/null || echo "${HOME}/.local/lib/python3.12/site-packages")
+# Add user site-packages to Python path if not already there
+export PYTHONPATH="${USER_SITE_PACKAGES}:${PYTHONPATH:-}"
 
 # Print header
 echo -e "${BLUE}============================================================${NC}"
