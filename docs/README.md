@@ -2,52 +2,592 @@
 
 **Version:** 5.1.0
 
-**Table of Contents**  
-- [Overview](#overview)  
-- [Architecture & Flow](#architecture--flow)
-- [Features](#features)  
-- [Requirements](#requirements)  
-- [Installation & Setup](#installation--setup)  
-  - [1. Prerequisites](#1-prerequisites)  
-  - [2. Install Python Dependencies](#2-install-python-dependencies)
-  - [3. Prepare Your `config.yaml`](#3-prepare-your-configyaml)
-  - [4. Configure Script Execution](#4-configure-script-execution)
-  - [5. Build the Docker Image (Optional)](#5-build-the-docker-image-optional)  
-  - [6. Set Up Tautulli Automation](#6-set-up-tautulli-automation)
-- [Standalone Scripts](#standalone-scripts)
-  - [Available Scripts](#available-scripts)
-  - [Scheduling Scripts](#scheduling-scripts)
-    - [Ubuntu/Linux (Cron)](#ubuntulinux-cron)
-    - [Windows Task Scheduler](#windows-task-scheduler)
-- [Configuration Options](#configuration-options)
-- [Logging & Monitoring](#logging--monitoring)
-- [Expected Results](#expected-results)
-- [Displaying Collections on Plex Home Screen](#displaying-collections-on-plex-home-screen)
-- [Project Structure](#project-structure)
-- [Version History](#version-history)
+Python automation system that creates and maintains dynamic Plex collections based on your viewing habits. When you finish watching a movie, the system automatically generates intelligent recommendations, adds missing movies to Radarr, maintains multiple curated collections, and keeps your library synchronized.
+
+![Plex Collections](../sample_run_pictures/plex_pc_screenshot.png)
+
+## What Does It Do?
+
+Tautulli Curated Plex Collection puts you in control of your media library by automatically creating and maintaining custom collections that make discovering your next favorite movie effortless. With intelligent AI-powered recommendations, automatic Radarr integration, and smart library management, you'll never run out of great content to watch.
+
+When you finish watching a movie, the system:
+
+- 🤖 **Generates intelligent recommendations** using OpenAI GPT (with TMDb fallback)
+- 📚 **Maintains multiple Plex collections:**
+  - "Based on your recently watched movie" - Similar recommendations
+  - "Change of Taste" - Contrasting recommendations (palate cleanser)
+  - "Inspired by your Immaculate Taste" - Curated collection with points system
+- ⬇️ **Adds missing movies to Radarr** for automatic download
+- 🧹 **Cleans up duplicates** in your Plex library
+- 🔄 **Synchronizes Radarr/Sonarr** monitoring with Plex library status
+- 🎨 **Refreshes collections** by randomizing order for fresh presentation
+
+![Plex Mobile App](../sample_run_pictures/plex_mobile_app_screenshot.jpg)
+
+![Plex Mobile App 2](../sample_run_pictures/plex_mobile_app_screenshot2.png)
+
+## Quick Start
+
+### Prerequisites
+
+- **Plex Media Server** - Your media server
+- **Tautulli** - For watching activity tracking
+- **Radarr** - For automatic movie downloads
+- **Sonarr** (Optional) - For TV show management
+- **Python 3.8+** - Required runtime
+- **OpenAI API Key** - For intelligent recommendations
+- **TMDb API Key** - For movie metadata and fallback recommendations
+
+### Installation
+
+1. **Clone or download this repository:**
+   ```bash
+   git clone https://github.com/yourusername/Tautulli_Curated_Plex_Collection.git
+   cd Tautulli_Curated_Plex_Collection
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt --user
+   ```
+   
+   Or for system-wide installation:
+   ```bash
+   pip install -r requirements.txt --break-system-packages
+   ```
+
+3. **Configure your settings:**
+   
+   Edit `config/config.yaml` with your credentials:
+   ```yaml
+   plex:
+     url: "http://localhost:32400"
+     token: "YOUR_PLEX_TOKEN"
+     movie_library_name: "Movies"
+   
+   openai:
+     api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"
+   
+   radarr:
+     url: "http://localhost:7878"
+     api_key: "YOUR_RADARR_API_KEY"
+     root_folder: "/path/to/Movies"
+   
+   tmdb:
+     api_key: "YOUR_TMDB_API_KEY"
+   ```
+
+4. **Set up Tautulli automation:**
+   - Open Tautulli → Settings → Notification Agents
+   - Add a new **Script** notification agent
+   - **Script File:** `src/tautulli_curated/main.py`
+   - **Trigger:** Watched
+   - **Arguments:** `"{title}" "{media_type}"`
+
+5. **Enable scripts in config:**
+   
+   Edit `config/config.yaml` to enable/disable scripts:
+   ```yaml
+   scripts_run:
+     run_recently_watched_collection: true
+     run_plex_duplicate_cleaner: true
+     run_radarr_monitor_confirm_plex: true
+     run_immaculate_taste_collection: true
+     run_recently_watched_refresher: true  # MANDATORY - adds to Plex
+     run_collection_refresher: true        # MANDATORY - adds to Plex
+   ```
+
+That's it! The system will now automatically run whenever you finish watching a movie.
+
+## Step-by-Step Guides
+
+If you're new to Python, Tautulli automation, or this project, we've got detailed guides to help you get started:
+
+### Local Installation Walkthrough
+
+For users running the script directly on Windows, macOS, or Linux:
+
+1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
+2. **Install dependencies** (see Quick Start above)
+3. **Configure `config/config.yaml`** with your API keys and service URLs
+4. **Set up Tautulli notification** (see Quick Start above)
+5. **Test the script** by watching a movie or manually triggering it
+
+### Docker Installation Walkthrough
+
+For users running in Docker containers:
+
+1. **Build the custom Tautulli image:**
+   ```bash
+   docker build -f docker/custom-tautulli/Dockerfile -t tautulli_recommendations .
+   ```
+
+2. **Update your Tautulli container** to use this image
+
+3. **Mount volumes** for `config/` and `data/` directories
+
+4. **Configure** `config/config.yaml` in the mounted volume
+
+5. **Set up Tautulli notification** pointing to the script in the container
+
+See the [Docker Configuration](#docker-configuration) section for more details.
+
+## Example Usage
+
+Tautulli Curated Plex Collection gives you powerful automation that works behind the scenes. Here's what you can expect:
+
+### Automatic Collection Management
+
+After watching a movie, your collections are automatically updated:
+
+- **"Based on your recently watched movie"** - Gets 15 similar recommendations
+- **"Change of Taste"** - Gets 15 contrasting recommendations (try something different!)
+- **"Inspired by your Immaculate Taste"** - Gets up to 50 curated recommendations with intelligent points system
+
+### Smart Library Management
+
+- **Duplicate Detection:** Automatically finds and removes duplicate movies, keeping the best quality
+- **Radarr Sync:** Unmonitors movies already in Plex to prevent unnecessary downloads
+- **Sonarr Sync:** Unmonitors episodes/seasons already in Plex (TV shows)
+
+### Automatic Downloads
+
+Missing movies are automatically added to Radarr with:
+- Proper quality profiles
+- Custom tags
+- Automatic search triggered
+
+![Overseerr Integration](../sample_run_pictures/Overseerr_approval_request.png)
+
+**Optional Overseerr Integration:** For manual approval workflow, use the modified fork [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr) which allows admins to approve their own requests.
+
+## Features
+
+### 🤖 AI-Powered Recommendations
+
+- **OpenAI GPT Integration:** Generates intelligent, contextual movie recommendations
+- **TMDb Fallback:** Automatic fallback if OpenAI is unavailable
+- **Diverse Recommendations:** Mix of mainstream, indie, international, and arthouse films
+- **Configurable Counts:** Adjust recommendation numbers per collection
+
+### 📚 Multiple Collection Types
+
+- **Recently Watched Collections:**
+  - Similar movies to what you just watched
+  - Contrasting movies for a change of pace
+- **Immaculate Taste Collection:**
+  - Curated collection with intelligent points system
+  - Maintains relevance over time
+  - Prioritizes high-quality recommendations
+
+### 🔄 Automatic Synchronization
+
+- **Radarr Integration:** Adds missing movies automatically
+- **Monitor Sync:** Keeps Radarr monitoring in sync with Plex
+- **Sonarr Support:** Full TV show episode/season management
+- **Duplicate Cleanup:** Removes duplicates, keeps best quality
+
+### 🎨 Collection Management
+
+- **Automatic Refresh:** Collections randomized on each update
+- **Custom Artwork:** Automatic poster and background images
+- **Smart Filtering:** Automatically filters out non-movie items
+- **Performance Optimized:** Uses rating keys for fast Plex lookups
+
+### 🛠️ Standalone Scripts
+
+Run maintenance tasks independently:
+
+- Collection refreshers (for large collections)
+- Radarr/Sonarr monitor confirmation
+- Duplicate cleaners
+- Search triggers
+
+See [Standalone Scripts](#standalone-scripts) section for details.
+
+## Configuration
+
+All configuration is done through `config/config.yaml`. Here are the key sections:
+
+### Script Execution Control
+
+Enable or disable individual scripts:
+
+```yaml
+scripts_run:
+  run_recently_watched_collection: true    # Step 1: Recently Watched
+  run_plex_duplicate_cleaner: true         # Step 2: Duplicate Cleaner
+  run_radarr_monitor_confirm_plex: true    # Step 3: Radarr Sync
+  run_immaculate_taste_collection: true    # Step 4: Main Collection
+  run_recently_watched_refresher: true     # Step 5a: Apply to Plex (MANDATORY)
+  run_collection_refresher: true           # Step 5b: Apply to Plex (MANDATORY)
+```
+
+### Plex Configuration
+
+```yaml
+plex:
+  url: "http://localhost:32400"
+  token: "YOUR_PLEX_TOKEN"
+  movie_library_name: "Movies"
+  tv_library_name: "TV Shows"
+  collection_name: "Inspired by your Immaculate Taste"
+  delete_preference: "largest_file"  # Options: smallest_file, largest_file, newest, oldest
+  preserve_quality: []                # Example: ["4K", "1080p"]
+```
+
+### OpenAI Configuration
+
+```yaml
+openai:
+  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"
+  recommendation_count: 50
+```
+
+### Radarr Configuration
+
+```yaml
+radarr:
+  url: "http://localhost:7878"
+  api_key: "YOUR_RADARR_API_KEY"
+  root_folder: "/path/to/Movies"
+  tag_name: "recommended"  # Or ["tag1", "tag2"] for multiple tags
+  quality_profile_id: 1
+```
+
+### Sonarr Configuration
+
+```yaml
+sonarr:
+  url: "http://localhost:8989"
+  api_key: "YOUR_SONARR_API_KEY"
+```
+
+### TMDb Configuration
+
+```yaml
+tmdb:
+  api_key: "YOUR_TMDB_API_KEY"
+  recommendation_count: 50
+```
+
+See [Configuration Options](#configuration-options) section for complete details.
+
+## Standalone Scripts
+
+The project includes several standalone bash scripts that can be run independently of the main Tautulli-triggered workflow. These are perfect for:
+
+- Running collection refreshers during off-peak hours
+- Periodic maintenance tasks
+- Manual synchronization
+- Scheduled automation via cron
+
+### Available Scripts
+
+#### Collection Refreshers
+
+- **`run_recently_watched_collections_refresher.sh`** - Refreshes "Recently Watched" and "Change of Taste" collections
+- **`run_immaculate_taste_refresher.sh`** - Refreshes "Immaculate Taste" collection
+
+#### Maintenance Scripts
+
+- **`run_radarr_monitor_confirm.sh`** - Syncs Radarr monitoring with Plex
+- **`run_sonarr_monitor_confirm.sh`** - Syncs Sonarr monitoring with Plex
+- **`run_radarr_search_monitored.sh`** - Triggers search for monitored movies
+- **`run_sonarr_search_monitored.sh`** - Triggers search for monitored episodes
+
+#### Cleanup Scripts
+
+- **`run_sonarr_duplicate_cleaner.sh`** - Removes duplicate TV episodes
+
+### Script Options
+
+All scripts support these options:
+
+- `--dry-run` - Show what would be done without making changes
+- `--verbose` - Enable debug-level logging
+- `--no-pause` - Don't pause at the end (for automated runs)
+- `--log-file` - Save output to timestamped log file
+- `--help` - Show help message
+
+### Scheduling Scripts
+
+#### Ubuntu/Linux (Cron)
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add entries (example: run refreshers daily at 2 AM and 3 AM)
+0 2 * * * /path/to/project/src/scripts/run_recently_watched_collections_refresher.sh --no-pause --log-file
+0 3 * * * /path/to/project/src/scripts/run_immaculate_taste_refresher.sh --no-pause --log-file
+```
+
+#### Windows Task Scheduler
+
+1. Open Task Scheduler (`Win + R` → `taskschd.msc`)
+2. Create Basic Task
+3. Set trigger (e.g., Daily at 2:00 AM)
+4. Set action to run your script
+5. Configure for automated execution
+
+See [Scheduling Scripts](#scheduling-scripts) section for detailed instructions.
+
+## Architecture & Flow
+
+### Entry Point
+
+The main script `src/tautulli_curated/main.py` is triggered by Tautulli when a movie is watched. It accepts:
+- Movie title (from Tautulli)
+- Media type (should be "movie")
+
+**Note:** The script automatically skips execution if media type is not "movie" (e.g., episodes or shows).
+
+### Execution Pipeline
+
+The script executes in the following order (each step can be enabled/disabled via config):
+
+1. **Recently Watched Collection** - Generates similar and contrasting recommendations
+2. **Plex Duplicate Cleaner** - Removes duplicate movies
+3. **Radarr Monitor Confirm** - Syncs Radarr with Plex
+4. **Immaculate Taste Collection** - Main recommendation pipeline with points system
+5. **Collection Refreshers** - **MANDATORY** - These actually add movies to Plex!
+
+### How It Works
+
+1. **Tautulli detects** you finished watching a movie
+2. **Script is triggered** with movie title and media type
+3. **Recommendations generated** using OpenAI GPT (with TMDb fallback)
+4. **Plex library checked** for existing recommendations
+5. **Missing movies added** to Radarr automatically
+6. **Collections updated** in Plex with randomized order
+7. **Library synchronized** (duplicates cleaned, monitoring synced)
+
+See [Architecture & Flow](#architecture--flow) section for complete details.
+
+## Logging & Monitoring
+
+All script executions are automatically logged for debugging and monitoring.
+
+### Automatic Logging
+
+**Tautulli Main Script:**
+- Automatically creates log file for every execution
+- Log files: `tautulli_main_YYYYMMDD_HHMMSS.log`
+- Location: `data/logs/`
+- Contains complete execution details
+
+**Standalone Scripts:**
+- Use `--log-file` option to enable logging
+- Creates timestamped logs: `script_name_YYYYMMDD_HHMMSS.log`
+- Stored in `data/logs/`
+
+### Viewing Logs
+
+```bash
+# View latest Tautulli execution log
+ls -t data/logs/tautulli_main_*.log | head -1 | xargs cat
+
+# View all logs from today
+ls data/logs/*$(date +%Y%m%d)*.log
+
+# Monitor logs in real-time
+tail -f data/logs/tautulli_main_*.log
+```
+
+See [Logging & Monitoring](#logging--monitoring) section for complete details.
+
+## Displaying Collections on Plex Home Screen
+
+To make your curated collections visible on the Plex home screen:
+
+1. **Navigate to your Movies library** → Collections view
+2. **For each collection**, click the three-dot menu (⋯) → **"Visible On"**
+3. **Check both:**
+   - ✅ **Home** - Makes collection appear on home screen
+   - ✅ **Library** - Makes collection visible in library view
+4. **Manage order** in Settings → Library → Manage Recommendations
+5. **Drag collections to top** for priority placement
+
+**Recommended Order:**
+1. "Based on your recently watched movie" (most dynamic)
+2. "Change of Taste" (complementary)
+3. "Inspired by your Immaculate Taste" (curated collection)
+
+See [Displaying Collections on Plex Home Screen](#displaying-collections-on-plex-home-screen) section for detailed instructions.
+
+## Project Structure
+
+```
+Tautulli_Curated_Plex_Collection/
+├── assets/
+│   └── collection_artwork/          # Custom collection artwork
+├── config/
+│   └── config.yaml                  # Configuration file
+├── data/                            # Generated data files
+│   ├── recommendation_points.json
+│   ├── recently_watched_collection.json
+│   ├── change_of_taste_collection.json
+│   ├── tmdb_cache.json
+│   └── logs/                        # Execution logs
+├── src/
+│   ├── tautulli_curated/            # Main Python package
+│   │   ├── main.py                  # Main entry point
+│   │   └── helpers/                 # Helper modules
+│   └── scripts/                     # Executable bash scripts
+├── docker/
+│   └── custom-tautulli/             # Docker configuration
+├── docs/
+│   └── README.md                    # This file
+└── sample_run_pictures/              # Screenshots and examples
+```
+
+See [Project Structure](#project-structure) section for complete details.
+
+## Requirements
+
+### Core Services
+
+- **Plex Media Server** - Your media server
+- **Tautulli** - For watching activity tracking
+- **Radarr** - For automatic movie downloads
+- **Sonarr** (Optional) - For TV show management
+- **Overseerr** (Optional) - For manual approval workflow ([modified fork](https://github.com/ohmzi/overseerr) required)
+
+### APIs
+
+- **OpenAI API Key** - Required for recommendations
+- **TMDb API Key** - Required for movie lookups and fallback
+
+### Python Dependencies
+
+All dependencies are listed in `requirements.txt`:
+
+- `requests` - API calls
+- `PyYAML` - Configuration
+- `plexapi` - Plex integration
+- `openai` - GPT recommendations
+- `tmdbv3api` - TMDb integration
+- `arrapi` - Radarr/Sonarr integration
+
+Install with:
+```bash
+pip install -r requirements.txt --user
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Script not running from Tautulli:**
+- Check Tautulli logs for errors
+- Verify script path is correct
+- Ensure Python is in PATH
+- Check file permissions
+
+**Collections not updating:**
+- Ensure refresher scripts are enabled (`run_recently_watched_refresher: true`, `run_collection_refresher: true`)
+- Check logs in `data/logs/`
+- Verify Plex token is valid
+- Check collection names match config
+
+**Movies not being added to Radarr:**
+- Verify Radarr API key and URL
+- Check root folder path is correct
+- Ensure quality profile ID exists
+- Check Radarr logs
+
+**Import errors in cron:**
+- Install dependencies with `--user` flag
+- Scripts automatically detect user-installed packages
+- Check cron environment variables
+
+### Getting Help
+
+1. **Check the logs** in `data/logs/` for detailed error messages
+2. **Review configuration** in `config/config.yaml`
+3. **Test scripts manually** before scheduling
+4. **Check Tautulli logs** for notification agent errors
+
+## Version History
+
+### Version 5.1.0 (Current)
+
+**Cron Execution Fixes & Logging Improvements:**
+- Fixed Python import errors in cron environments
+- Robust HOME detection for cron
+- Comprehensive timestamped logging
+- Enhanced script robustness
+
+### Version 5.0.0
+
+**Sonarr TV Show Support:**
+- Sonarr duplicate cleaner
+- Sonarr monitor confirm
+- Season-level unmonitoring
+- Enhanced unmonitor script
+
+### Version 4.1.0
+
+**JSON Collection Logic & Performance:**
+- Rating key optimization
+- Script organization improvements
+- New maintenance scripts
+
+### Version 4.0.0
+
+**Major System Overhaul:**
+- Unified project with 3 Plex collections
+- Script orchestration
+- Comprehensive error handling
+
+See [Version History](#version-history) section for complete changelog.
+
+## Contributing
+
+Pull requests are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## License
+
+This project is provided "as is" without warranty of any kind. You are free to use, modify, and distribute this code as per the [MIT License](https://opensource.org/licenses/MIT).
 
 ---
 
-## Overview
+## Detailed Documentation
 
-This automation system creates and maintains multiple dynamic Plex collections based on your viewing habits. When you finish watching a movie, the system:
+For more detailed information, see the sections below:
 
-1. **Generates movie recommendations** using OpenAI GPT (with TMDb fallback)
-2. **Checks your Plex library** for existing recommendations
-3. **Adds missing movies to Radarr** for automatic download
-4. **Maintains multiple Plex collections:**
-   - **"Based on your recently watched movie"** - Similar recommendations
-   - **"Change of Taste"** - Contrasting recommendations  
-   - **"Inspired by your Immaculate Taste"** - Curated collection with points system
-5. **Cleans up duplicates** in your Plex library
-6. **Synchronizes Radarr monitoring** with Plex library status
-7. **Refreshes collections** by randomizing order and applying updates to Plex
+- [Architecture & Flow](#architecture--flow) - How the system works
+- [Features](#features) - Complete feature list
+- [Installation & Setup](#installation--setup) - Detailed setup instructions
+- [Standalone Scripts](#standalone-scripts) - All available scripts
+- [Configuration Options](#configuration-options) - Complete configuration reference
+- [Logging & Monitoring](#logging--monitoring) - Logging details
+- [Expected Results](#expected-results) - What to expect after setup
+- [Displaying Collections on Plex Home Screen](#displaying-collections-on-plex-home-screen) - Plex setup guide
+- [Project Structure](#project-structure) - File organization
+- [Version History](#version-history) - Complete changelog
+
+---
+
+**Now whenever Tautulli detects that a user has finished watching a movie, it will trigger your script with the movie's title. The system will generate recommendations, update collections, clean duplicates, sync Radarr, and refresh your Plex collections automatically.**
+
+**Tip: Add the collections to your Home screen and position them at the very top—right beneath the Continue Watching list.**
+
+**Enjoy using this script! I hope it enhances your movie selection. If you encounter any issues or have ideas for enhancements, feel free to open an issue or submit a pull request.**
 
 ---
 
 ## Architecture & Flow
 
 ### Entry Point
+
 The main script `src/tautulli_curated/main.py` (or `tautulli_immaculate_taste_collection.py` for backward compatibility) is triggered by Tautulli when a movie is watched. It accepts two arguments:
 - Movie title (from Tautulli)
 - Media type (should be "movie")
@@ -182,37 +722,6 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 
 ---
 
-## Requirements
-
-1. **Core Services:**
-   - Plex Media Server
-   - Tautulli
-   - Radarr (for automatic movie downloads)
-   - **Overseerr (Optional):** For manual approval workflow before movies are downloaded. Use the modified fork: [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr) - The original Overseerr doesn't allow admins to approve their own requests.
-
-2. **APIs:**
-   - OpenAI API Key (required for recommendations)
-   - TMDb API Key (required, used as fallback and for movie lookups)
-
-3. **Python Dependencies:**
-   - `requests` (for API calls)
-   - `PyYAML` (for configuration)
-   - `plexapi` (for Plex integration)
-   - `openai` (for GPT recommendations)
-   - `tmdbv3api` (for TMDb integration)
-   - `arrapi` (for Radarr/Sonarr integration)
-   
-   **Note:** All dependencies are listed in `requirements.txt` at the project root. Install them using:
-   ```bash
-   pip install -r requirements.txt --break-system-packages
-   ```
-   Or for user installation:
-   ```bash
-   pip install -r requirements.txt --user
-   ```
-
----
-
 ## Installation & Setup
 
 ### 1. Prerequisites
@@ -289,13 +798,6 @@ radarr:
 tmdb:
   api_key: "YOUR_TMDB_API_KEY"
   recommendation_count: 50
-
-# ============================================================================
-# FILE PATHS
-# ============================================================================
-files:
-  points_file: "recommendation_points.json"
-  tmdb_cache_file: "tmdb_cache.json"
 ```
 
 2. Make sure `config/config.yaml` is accessible to your scripts (either in the project directory or mounted as a volume in Docker).
