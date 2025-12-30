@@ -1,6 +1,6 @@
 # Tautulli Curated Plex Collection
 
-**Version:** 5.0.0
+**Version:** 5.1.0
 
 **Table of Contents**  
 - [Overview](#overview)  
@@ -9,16 +9,18 @@
 - [Requirements](#requirements)  
 - [Installation & Setup](#installation--setup)  
   - [1. Prerequisites](#1-prerequisites)  
-  - [2. Prepare Your `config.yaml`](#2-prepare-your-configyaml)  
-  - [3. Configure Script Execution](#3-configure-script-execution)
-  - [4. Build the Docker Image (Optional)](#4-build-the-docker-image-optional)  
-  - [5. Set Up Tautulli Automation](#5-set-up-tautulli-automation)
+  - [2. Install Python Dependencies](#2-install-python-dependencies)
+  - [3. Prepare Your `config.yaml`](#3-prepare-your-configyaml)
+  - [4. Configure Script Execution](#4-configure-script-execution)
+  - [5. Build the Docker Image (Optional)](#5-build-the-docker-image-optional)  
+  - [6. Set Up Tautulli Automation](#6-set-up-tautulli-automation)
 - [Standalone Scripts](#standalone-scripts)
   - [Available Scripts](#available-scripts)
   - [Scheduling Scripts](#scheduling-scripts)
     - [Ubuntu/Linux (Cron)](#ubuntulinux-cron)
     - [Windows Task Scheduler](#windows-task-scheduler)
 - [Configuration Options](#configuration-options)
+- [Logging & Monitoring](#logging--monitoring)
 - [Expected Results](#expected-results)
 - [Displaying Collections on Plex Home Screen](#displaying-collections-on-plex-home-screen)
 - [Project Structure](#project-structure)
@@ -197,6 +199,17 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
    - `PyYAML` (for configuration)
    - `plexapi` (for Plex integration)
    - `openai` (for GPT recommendations)
+   - `tmdbv3api` (for TMDb integration)
+   - `arrapi` (for Radarr/Sonarr integration)
+   
+   **Note:** All dependencies are listed in `requirements.txt` at the project root. Install them using:
+   ```bash
+   pip install -r requirements.txt --break-system-packages
+   ```
+   Or for user installation:
+   ```bash
+   pip install -r requirements.txt --user
+   ```
 
 ---
 
@@ -206,8 +219,26 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 
 - **Plex, Tautulli, and Radarr** must already be installed and working.
 - You'll need valid credentials for each service (tokens, API keys, etc.).
+- **Python 3.8+** must be installed.
 
-### 2. Prepare Your `config.yaml`
+### 2. Install Python Dependencies
+
+Install all required Python packages:
+
+```bash
+cd /path/to/tautulli_immaculate_taste_collection
+pip install -r requirements.txt --break-system-packages
+```
+
+Or for user installation (recommended for cron environments):
+
+```bash
+pip install -r requirements.txt --user
+```
+
+**Important for Cron:** The scripts automatically detect and use user-installed packages (in `~/.local/lib/python3.x/site-packages`), so user installation works perfectly with cron jobs.
+
+### 3. Prepare Your `config.yaml`
 
 1. Create or edit `config/config.yaml` in the project with your real credentials:
 
@@ -269,7 +300,7 @@ files:
 
 2. Make sure `config/config.yaml` is accessible to your scripts (either in the project directory or mounted as a volume in Docker).
 
-### 3. Configure Script Execution
+### 4. Configure Script Execution
 
 All scripts can be enabled or disabled via the `scripts_run` section in `config/config.yaml`. The execution order is:
 
@@ -308,10 +339,17 @@ All scripts can be enabled or disabled via the `scripts_run` section in `config/
 - `--dry-run`: Show what would be done without actually updating Plex
 - `--verbose`: Enable debug-level logging
 - `--no-pause`: Don't pause at the end (for automated runs)
-- `--log-file`: Also save output to a log file with timestamp
+- `--log-file`: Also save output to a timestamped log file in `data/logs/`
 - `--help`: Show help message
 
-### 4. Build the Docker Image (Optional)
+**Logging:**
+- All scripts with `--log-file` create timestamped logs: `script_name_YYYYMMDD_HHMMSS.log`
+- Logs are stored in `data/logs/` directory
+- Each execution creates a unique log file (no overwrites)
+- Logs are clean and readable (ANSI color codes are automatically stripped)
+- The main Tautulli script (`tautulli_immaculate_taste_collection.py`) automatically creates logs for every execution
+
+### 5. Build the Docker Image (Optional)
 
 If you're using Docker, build the custom Tautulli image:
 
@@ -321,7 +359,7 @@ docker build -f docker/custom-tautulli/Dockerfile -t tautulli_recommendations .
 
 Then update your Tautulli container to use this image. Ensure `config/config.yaml` and `data/` directory are mounted as volumes.
 
-### 5. Set Up Tautulli Automation
+### 6. Set Up Tautulli Automation
 
 #### Main Script Setup
 
@@ -342,6 +380,7 @@ To have Tautulli automatically call your script whenever someone finishes watchi
    Click Test → select your script → provide `"Inception (2010)"` as the first argument and `movie` as the second argument.
 9. **Verify**:  
    Check Tautulli's logs to see if the script ran successfully and view the output.
+   **Note:** The script automatically creates detailed logs in `data/logs/tautulli_main_YYYYMMDD_HHMMSS.log` for each execution, making it easy to track what happened during each movie watch event.
 
 ---
 
@@ -395,6 +434,78 @@ All scripts can be enabled/disabled individually:
 
 - `api_key`: Your TMDb API key
 - `recommendation_count`: Number of recommendations from TMDb (default: 50)
+
+---
+
+## Logging & Monitoring
+
+All script executions are automatically logged for debugging and monitoring purposes.
+
+### Automatic Logging
+
+**Tautulli Main Script:**
+- The main entry point (`tautulli_immaculate_taste_collection.py`) automatically creates a log file for every execution
+- Log files are named: `tautulli_main_YYYYMMDD_HHMMSS.log`
+- Located in: `data/logs/`
+- Contains complete execution details including all sub-script outputs
+
+**Standalone Scripts:**
+- Use the `--log-file` option to enable logging:
+  ```bash
+  ./src/scripts/run_immaculate_taste_refresher.sh --no-pause --log-file
+  ```
+- Creates timestamped logs: `script_name_YYYYMMDD_HHMMSS.log`
+- Example log files:
+  - `immaculate_taste_refresher_20251230_020001.log`
+  - `recently_watched_collections_refresher_20251230_010001.log`
+  - `sonarr_duplicate_cleaner_20251230_030001.log`
+
+### Log File Features
+
+- **Unique Timestamps:** Each execution creates a new log file (no overwrites)
+- **Clean Format:** ANSI color codes are automatically stripped for readability
+- **Complete Output:** Captures both stdout and stderr
+- **Error Tracking:** Full tracebacks and error messages are logged
+- **Execution Details:** Includes timestamps, arguments, and exit codes
+
+### Log File Location
+
+All logs are stored in: `data/logs/`
+
+```
+data/
+└── logs/
+    ├── tautulli_main_20251230_120000.log
+    ├── immaculate_taste_refresher_20251230_020001.log
+    ├── recently_watched_collections_refresher_20251230_010001.log
+    ├── sonarr_duplicate_cleaner_20251230_030001.log
+    └── ...
+```
+
+### Viewing Logs
+
+```bash
+# View latest Tautulli execution log
+ls -t data/logs/tautulli_main_*.log | head -1 | xargs cat
+
+# View all logs from today
+ls data/logs/*$(date +%Y%m%d)*.log
+
+# Monitor logs in real-time (if script is running)
+tail -f data/logs/tautulli_main_*.log
+```
+
+### Cron Job Logging
+
+When using cron, always include `--log-file` in your cron entries:
+
+```bash
+# Example cron entries with logging
+0 1 * * * /path/to/script/run_recently_watched_collections_refresher.sh --no-pause --log-file
+0 2 * * * /path/to/script/run_immaculate_taste_refresher.sh --no-pause --log-file
+```
+
+This ensures you have a complete record of all automated executions for troubleshooting and monitoring.
 
 ---
 
@@ -476,7 +587,7 @@ All data is stored in the `data/` directory:
 - `recently_watched_collection.json` - Recently Watched collection data (list of dicts with `title`, `rating_key`, and `year`)
 - `change_of_taste_collection.json` - Change of Taste collection data (list of dicts with `title`, `rating_key`, and `year`)
 - `tmdb_cache.json` - TMDb API cache (reduces API calls)
-- `logs/` - Optional log files from bash scripts
+- `logs/` - Execution log files (automatically created, timestamped)
 
 **JSON Structure Examples:**
 - **Recently Watched/Change of Taste collections:**
@@ -609,7 +720,13 @@ Tautulli_Curated_Plex_Collection/
 │   ├── recently_watched_collection.json     # Recently Watched collection data
 │   ├── change_of_taste_collection.json     # Change of Taste collection data
 │   ├── tmdb_cache.json                      # TMDb API cache
-│   └── logs/                                # Log files (optional)
+│   └── logs/                                # Execution log files (timestamped)
+│       ├── tautulli_main_YYYYMMDD_HHMMSS.log        # Tautulli-triggered executions
+│       ├── immaculate_taste_refresher_YYYYMMDD_HHMMSS.log
+│       ├── recently_watched_collections_refresher_YYYYMMDD_HHMMSS.log
+│       ├── sonarr_duplicate_cleaner_YYYYMMDD_HHMMSS.log
+│       └── ... (other script logs)
+├── requirements.txt                         # Python dependencies
 ├── src/
 │   ├── tautulli_curated/                   # Main Python package
 │   │   ├── __init__.py
@@ -962,6 +1079,8 @@ Here are example cron entries for each script:
 - The `--no-pause` flag prevents scripts from waiting for user input
 - The `--log-file` flag saves output to timestamped log files in `data/logs/`
 - `>> /dev/null 2>&1` suppresses email notifications (remove if you want email alerts)
+- **Python Dependencies:** Scripts automatically detect and use user-installed packages (`~/.local/lib/python3.x/site-packages`), so install dependencies with `pip install -r requirements.txt --user` for best cron compatibility
+- **Log Files:** Each execution creates a unique timestamped log file in `data/logs/` - check these logs if scripts fail in cron
 
 **Cron Schedule Format:**
 ```
@@ -1116,7 +1235,27 @@ If bash scripts don't work directly, create a PowerShell wrapper:
 
 ## Version History
 
-### Version 5.0.0 (Current)
+### Version 5.1.0 (Current)
+
+**Cron Execution Fixes & Logging Improvements:**
+- **Fixed Python Import Errors:** Resolved `ModuleNotFoundError` for `plexapi` and other user-installed packages in cron environments
+- **Robust HOME Detection:** Scripts now automatically detect correct user home directory even when cron runs as root
+- **Dynamic Python Path Configuration:** All scripts now properly configure Python paths to find user-installed packages
+- **Comprehensive Logging:** Added timestamped log files for all script executions
+  - Main Tautulli script creates `tautulli_main_YYYYMMDD_HHMMSS.log` for each execution
+  - All shell scripts support `--log-file` option for timestamped logs
+  - Logs are stored in `data/logs/` with unique filenames (no overwrites)
+- **Color Code Stripping:** All log files are clean and readable (ANSI escape sequences removed)
+- **Requirements File:** Added `requirements.txt` at project root for easy dependency management
+- **Enhanced Script Robustness:** All shell scripts updated with improved error handling and environment detection
+
+**Technical Improvements:**
+- Uses `site.addsitedir()` for proper Python package path configuration
+- Wrapper scripts ensure user site-packages are available before imports
+- Improved HOME variable detection with fallback to `ohmz` user
+- Better handling of cron's minimal environment variables
+
+### Version 5.0.0
 
 **Sonarr TV Show Support:**
 - **Sonarr Duplicate Cleaner:** New script to identify and remove duplicate TV episodes, keeping best quality
