@@ -23,15 +23,26 @@ scripts_run:
   # (runs second, after Recently Watched Collection)
   run_plex_duplicate_cleaner: true
   
-  # Step 2b: Sonarr Duplicate Cleaner
-  # Scans Plex TV shows library for duplicate episodes and removes lower quality versions
-  # (runs after Plex Duplicate Cleaner, can run independently)
-  run_sonarr_duplicate_cleaner: true
   
   # Step 3: Radarr Monitor Confirm
   # Checks monitored movies in Radarr and unmonitors those already in Plex
   # (runs third, before main pipeline)
   run_radarr_monitor_confirm_plex: true
+  
+  # Step 3b: Sonarr Duplicate Cleaner
+  # Scans Plex TV shows library for duplicate episodes and removes lower quality versions
+  # (runs after Radarr Monitor Confirm)
+  run_sonarr_duplicate_cleaner: true
+  
+  # Step 3c: Sonarr Monitor Confirm
+  # Checks monitored episodes in Sonarr and unmonitors those already in Plex
+  # (runs after Sonarr Duplicate Cleaner)
+  run_sonarr_monitor_confirm_plex: true
+  
+  # Step 3d: Sonarr Search Monitored
+  # Triggers a search for all missing monitored episodes in Sonarr
+  # (runs after Sonarr Monitor Confirm)
+  run_sonarr_search_monitored: true
   
   # Step 4: Immaculate Taste Collection
   # Main recommendation pipeline with points system

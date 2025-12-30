@@ -326,3 +326,41 @@ def unmonitor_sonarr_episode_if_monitored(episode: dict, config, log) -> bool:
                    episode.get("seasonNumber", 0), episode.get("episodeNumber", 0), e)
         return False
 
+
+def sonarr_search_monitored_episodes(cfg) -> bool:
+    """
+    Trigger a search for all missing monitored episodes in Sonarr.
+    
+    Returns:
+        bool: True if the search command was successfully queued, False otherwise
+    """
+    def _trigger_search():
+        r = requests.post(
+            f"{_base(cfg)}/api/v3/command",
+            json={
+                "name": "MissingEpisodeSearch",
+                "filterKey": "monitored",
+                "filterValue": "true"
+            },
+            headers=_headers(cfg),
+            timeout=SONARR_TIMEOUT_SHORT,
+        )
+        r.raise_for_status()
+        return True
+    
+    logger.info("Triggering search for all missing monitored episodes in Sonarr...")
+    _, success = retry_with_backoff(
+        _trigger_search,
+        max_retries=3,
+        logger_instance=logger,
+        operation_name="Sonarr search monitored episodes",
+        raise_on_final_failure=False,
+    )
+    
+    if success:
+        logger.info("Search command successfully queued in Sonarr")
+    else:
+        logger.warning("Failed to trigger search command in Sonarr")
+    
+    return success
+
