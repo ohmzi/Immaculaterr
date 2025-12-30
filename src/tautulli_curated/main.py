@@ -44,6 +44,9 @@ def main():
         run_recently_watched = config.scripts_run.run_recently_watched_collection
         run_duplicate_cleaner = config.scripts_run.run_plex_duplicate_cleaner
         run_radarr_confirm = config.scripts_run.run_radarr_monitor_confirm_plex
+        run_sonarr_duplicate_cleaner = config.scripts_run.run_sonarr_duplicate_cleaner
+        run_sonarr_confirm = config.scripts_run.run_sonarr_monitor_confirm_plex
+        run_sonarr_search = config.scripts_run.run_sonarr_search_monitored
         run_immaculate_taste = config.scripts_run.run_immaculate_taste_collection
         run_immaculate_refresher = config.scripts_run.run_collection_refresher
         run_recently_watched_refresher = config.scripts_run.run_recently_watched_refresher
@@ -52,6 +55,9 @@ def main():
         logger.info(f"  {'✓' if run_recently_watched else '✗'} Recently Watched Collection: {'ENABLED' if run_recently_watched else 'DISABLED'}")
         logger.info(f"  {'✓' if run_duplicate_cleaner else '✗'} Plex Duplicate Cleaner: {'ENABLED' if run_duplicate_cleaner else 'DISABLED'}")
         logger.info(f"  {'✓' if run_radarr_confirm else '✗'} Radarr Monitor Confirm: {'ENABLED' if run_radarr_confirm else 'DISABLED'}")
+        logger.info(f"  {'✓' if run_sonarr_duplicate_cleaner else '✗'} Sonarr Duplicate Cleaner: {'ENABLED' if run_sonarr_duplicate_cleaner else 'DISABLED'}")
+        logger.info(f"  {'✓' if run_sonarr_confirm else '✗'} Sonarr Monitor Confirm: {'ENABLED' if run_sonarr_confirm else 'DISABLED'}")
+        logger.info(f"  {'✓' if run_sonarr_search else '✗'} Sonarr Search Monitored: {'ENABLED' if run_sonarr_search else 'DISABLED'}")
         logger.info(f"  {'✓' if run_immaculate_taste else '✗'} Immaculate Taste Collection: {'ENABLED' if run_immaculate_taste else 'DISABLED'}")
         logger.info(f"  {'✓' if run_recently_watched_refresher else '✗'} Recently Watched Refresher: {'ENABLED' if run_recently_watched_refresher else 'DISABLED'}")
         logger.info(f"  {'✓' if run_immaculate_refresher else '✗'} Immaculate Taste Refresher: {'ENABLED' if run_immaculate_refresher else 'DISABLED'}")
@@ -60,9 +66,12 @@ def main():
         logger.info("  1. Recently Watched Collection (if enabled)")
         logger.info("  2. Plex Duplicate Cleaner (if enabled)")
         logger.info("  3. Radarr Monitor Confirm (if enabled)")
-        logger.info("  4. Immaculate Taste Collection (if enabled)")
-        logger.info("  5a. Recently Watched Collection Refresher (if enabled - smaller/quicker)")
-        logger.info("  5b. Immaculate Taste Collection Refresher (if enabled - larger/takes longer)")
+        logger.info("  4. Sonarr Duplicate Cleaner (if enabled)")
+        logger.info("  5. Sonarr Monitor Confirm (if enabled)")
+        logger.info("  6. Sonarr Search Monitored (if enabled)")
+        logger.info("  7. Immaculate Taste Collection (if enabled)")
+        logger.info("  8a. Recently Watched Collection Refresher (if enabled - smaller/quicker)")
+        logger.info("  8b. Immaculate Taste Collection Refresher (if enabled - larger/takes longer)")
         logger.info("")
         
         # Run Recently Watched Collection script first (smaller/quicker)
@@ -179,6 +188,112 @@ def main():
             logger.info("Radarr Monitor Confirm skipped (disabled in config)")
             logger.info("")
         
+        # Run Sonarr Duplicate Cleaner
+        if run_sonarr_duplicate_cleaner:
+            logger.info("=" * 60)
+            logger.info("RUNNING SONARR DUPLICATE CLEANER")
+            logger.info("=" * 60)
+            logger.info("This script will:")
+            logger.info("  - Scan Plex TV shows library for duplicate episodes")
+            logger.info("  - Delete lower quality duplicates based on preferences")
+            logger.info("  - Unmonitor episodes in Sonarr after deletion")
+            logger.info("")
+            
+            try:
+                from tautulli_curated.helpers.sonarr_duplicate_cleaner import run_sonarr_duplicate_cleaner
+                
+                dup_found, dup_removed = run_sonarr_duplicate_cleaner(config=config, log_parent=logger)
+                
+                if dup_found > 0:
+                    logger.info("")
+                    logger.info(f"  ✓ Sonarr Duplicate Cleaner completed: Found {dup_found} duplicates, Removed {dup_removed}")
+                else:
+                    logger.info("")
+                    logger.info("  ✓ Sonarr Duplicate Cleaner completed: No duplicates found")
+            except KeyboardInterrupt:
+                logger.warning("")
+                logger.warning("  ⚠ Sonarr Duplicate Cleaner interrupted by user")
+                exit_code = 130
+            except Exception as e:
+                logger.error("")
+                logger.error(f"  ✗ Sonarr Duplicate Cleaner failed: {type(e).__name__}: {e}")
+                logger.error("  Continuing with next script...")
+                exit_code = max(exit_code, 1)
+        else:
+            logger.info("Sonarr Duplicate Cleaner skipped (disabled in config)")
+            logger.info("")
+        
+        # Run Sonarr Monitor Confirm
+        if run_sonarr_confirm:
+            logger.info("=" * 60)
+            logger.info("RUNNING SONARR MONITOR CONFIRM")
+            logger.info("=" * 60)
+            logger.info("This script will:")
+            logger.info("  - Check all monitored series and episodes in Sonarr")
+            logger.info("  - Unmonitor episodes that already exist in Plex")
+            logger.info("")
+            
+            try:
+                from tautulli_curated.helpers.sonarr_monitor_confirm import run_sonarr_monitor_confirm
+                
+                total_series, episodes_checked, episodes_in_plex, episodes_unmonitored, series_with_missing = run_sonarr_monitor_confirm(
+                    config=config, dry_run=False, log_parent=logger
+                )
+                
+                logger.info("")
+                logger.info(f"  ✓ Sonarr Monitor Confirm completed:")
+                logger.info(f"    - Total monitored series: {total_series}")
+                logger.info(f"    - Total episodes checked: {episodes_checked}")
+                logger.info(f"    - Episodes found in Plex: {episodes_in_plex}")
+                logger.info(f"    - Episodes unmonitored: {episodes_unmonitored}")
+                logger.info(f"    - Series with missing episodes (kept monitored): {series_with_missing}")
+            except KeyboardInterrupt:
+                logger.warning("")
+                logger.warning("  ⚠ Sonarr Monitor Confirm interrupted by user")
+                exit_code = 130
+            except Exception as e:
+                logger.error("")
+                logger.error(f"  ✗ Sonarr Monitor Confirm failed: {type(e).__name__}: {e}")
+                logger.error("  Continuing with next script...")
+                exit_code = max(exit_code, 1)
+        else:
+            logger.info("Sonarr Monitor Confirm skipped (disabled in config)")
+            logger.info("")
+        
+        # Run Sonarr Search Monitored
+        if run_sonarr_search:
+            logger.info("=" * 60)
+            logger.info("RUNNING SONARR SEARCH MONITORED")
+            logger.info("=" * 60)
+            logger.info("This script will:")
+            logger.info("  - Trigger a search for all missing monitored episodes in Sonarr")
+            logger.info("")
+            
+            try:
+                from tautulli_curated.helpers.sonarr_utils import sonarr_search_monitored_episodes
+                
+                success = sonarr_search_monitored_episodes(config)
+                
+                if success:
+                    logger.info("")
+                    logger.info("  ✓ Sonarr Search Monitored completed: Search command queued successfully")
+                else:
+                    logger.warning("")
+                    logger.warning("  ⚠ Sonarr Search Monitored completed with warnings: Failed to queue search command")
+                    exit_code = max(exit_code, 1)
+            except KeyboardInterrupt:
+                logger.warning("")
+                logger.warning("  ⚠ Sonarr Search Monitored interrupted by user")
+                exit_code = 130
+            except Exception as e:
+                logger.error("")
+                logger.error(f"  ✗ Sonarr Search Monitored failed: {type(e).__name__}: {e}")
+                logger.error("  Continuing with next script...")
+                exit_code = max(exit_code, 1)
+        else:
+            logger.info("Sonarr Search Monitored skipped (disabled in config)")
+            logger.info("")
+        
         # Run Immaculate Taste Collection script (main pipeline)
         if run_immaculate_taste:
             logger.info("=" * 60)
@@ -289,6 +404,9 @@ def main():
         logger.info(f"  - Recently Watched Collection: {'✓ Completed' if run_recently_watched else '✗ Skipped'}")
         logger.info(f"  - Plex Duplicate Cleaner: {'✓ Completed' if run_duplicate_cleaner else '✗ Skipped'}")
         logger.info(f"  - Radarr Monitor Confirm: {'✓ Completed' if run_radarr_confirm else '✗ Skipped'}")
+        logger.info(f"  - Sonarr Duplicate Cleaner: {'✓ Completed' if run_sonarr_duplicate_cleaner else '✗ Skipped'}")
+        logger.info(f"  - Sonarr Monitor Confirm: {'✓ Completed' if run_sonarr_confirm else '✗ Skipped'}")
+        logger.info(f"  - Sonarr Search Monitored: {'✓ Completed' if run_sonarr_search else '✗ Skipped'}")
         logger.info(f"  - Immaculate Taste Collection: {'✓ Completed' if run_immaculate_taste else '✗ Skipped'}")
         logger.info(f"  - Collection Refreshers: {'✓ Completed' if (run_immaculate_refresher or run_recently_watched_refresher) else '✗ Skipped'}")
         logger.info("")
