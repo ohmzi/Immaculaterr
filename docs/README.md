@@ -742,7 +742,7 @@ Tautulli_Curated_Plex_Collection/
 │   │       ├── change_of_taste_collection.py # Change of Taste collection logic
 │   │       ├── plex_duplicate_cleaner.py    # Duplicate cleaner
 │   │       ├── radarr_monitor_confirm.py     # Radarr monitor confirmation
-│   │       ├── unmonitor_radarr_after_download.py  # Unmonitor helper
+│   │       ├── unmonitor_media_after_download.py  # Unmonitor helper (Radarr & Sonarr)
 │   │       ├── plex_collection_manager.py    # Collection management
 │   │       ├── plex_search.py               # Plex movie search
 │   │       ├── radarr_utils.py              # Radarr integration

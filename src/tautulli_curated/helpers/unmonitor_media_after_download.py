@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Unmonitor Radarr After Download Helper
+Unmonitor Media After Download Helper
 
-Unmonitors a movie in Radarr and removes it from Plex watchlist after it's been downloaded.
+Unmonitors movies in Radarr or episodes/seasons in Sonarr and removes movies from Plex watchlist after they've been downloaded.
 """
 
 import sys
 from pathlib import Path
 
 # Add project root to path for standalone execution
-# Go up from unmonitor_radarr_after_download.py -> helpers/ -> tautulli_curated/ -> src/ -> project root
+# Go up from unmonitor_media_after_download.py -> helpers/ -> tautulli_curated/ -> src/ -> project root
 project_root = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(project_root / "src"))
 
@@ -22,7 +22,7 @@ from plexapi.myplex import MyPlexAccount
 from tautulli_curated.helpers.logger import setup_logger
 from tautulli_curated.helpers.config_loader import load_config
 
-logger = setup_logger("unmonitor_radarr_after_download")
+logger = setup_logger("unmonitor_media_after_download")
 
 
 def fetch_radarr_movies(api_url, api_key, log):
@@ -366,6 +366,97 @@ def remove_from_plex_watchlist_with_retry(config, movie_title: str, log,
     return False
 
 
+def remove_show_from_plex_watchlist_with_retry(config, series_title: str, log,
+                                               retries: int = 5, delay: int = 3) -> bool:
+    """Remove TV show from Plex watchlist with retry logic."""
+    from tautulli_curated.helpers.retry_utils import retry_with_backoff
+    
+    log.info("  Connecting to Plex...")
+    def _connect_plex():
+        return PlexServer(config.plex.url, config.plex.token, timeout=30)
+    
+    plex, success = retry_with_backoff(
+        _connect_plex,
+        max_retries=3,
+        logger_instance=log,
+        operation_name="Plex connection for watchlist",
+        raise_on_final_failure=False,
+    )
+    
+    if not success or plex is None:
+        log.warning("  ✗ Failed to connect to Plex, skipping watchlist removal")
+        return False
+    
+    log.info("  ✓ Connected to Plex")
+
+    log.info("  Accessing Plex account...")
+    # Plex changed watchlist backend; force plexapi to use DISCOVER instead of METADATA
+    MyPlexAccount.METADATA = MyPlexAccount.DISCOVER
+
+    try:
+        account = plex.myPlexAccount()
+        log.info("  ✓ Plex account accessed")
+    except Exception as e:
+        log.warning(f"  ✗ Failed to access Plex account: {e}")
+        return False
+
+    def norm(s: str) -> str:
+        return "".join(ch.lower() for ch in s if ch.isalnum())
+
+    wanted_norm = norm(series_title)
+    log.info("  Searching watchlist for TV show...")
+
+    for attempt in range(1, retries + 1):
+        try:
+            wl = account.watchlist(libtype="show")
+        except Exception as e:
+            log.warning(f"  ⚠ Failed to fetch watchlist (attempt {attempt}/{retries}): {e}")
+            if attempt < retries:
+                time.sleep(delay)
+            continue
+
+        if not wl:
+            log.info("  ⚠ Watchlist is empty or unavailable")
+            return False
+
+        log.info(f"  ✓ Watchlist loaded ({len(wl)} items)")
+
+        candidates = []
+        for item in wl:
+            t = getattr(item, "title", "") or ""
+            if norm(t) == wanted_norm:
+                candidates.append(item)
+
+        if not candidates:
+            titles = [getattr(i, "title", "") or "" for i in wl]
+            close = difflib.get_close_matches(series_title, titles, n=1, cutoff=0.80)
+            if close:
+                picked = close[0]
+                candidates = [i for i in wl if (getattr(i, "title", "") or "") == picked]
+
+        if not candidates:
+            log.info(f"  ⚠ TV show not found in watchlist (attempt {attempt}/{retries})")
+            if attempt < retries:
+                time.sleep(delay)
+            continue
+
+        log.info(f"  ✓ Found {len(candidates)} matching item(s) in watchlist")
+        removed_any = False
+        for item in candidates:
+            try:
+                account.removeFromWatchlist(item)
+                item_title = getattr(item, "title", None) or series_title
+                log.info(f"  ✓ Removed from watchlist: {item_title}")
+                removed_any = True
+            except Exception as e:
+                log.warning(f"  ✗ Failed to remove item from watchlist: {e}")
+
+        return removed_any
+
+    log.warning(f"  ✗ Failed to remove TV show from watchlist after {retries} attempts")
+    return False
+
+
 def unmonitor_season_in_sonarr(season_title: str, config, log) -> bool:
     """
     Unmonitor an entire season in Sonarr.
@@ -596,16 +687,18 @@ def unmonitor_episode_in_sonarr(episode_title: str, config, log) -> bool:
         return False
 
 
-def run_unmonitor_radarr_after_download(movie_title: str, media_type: str = "movie", config=None, log_parent=None):
+def run_unmonitor_media_after_download(movie_title: str, media_type: str = "movie", config=None, log_parent=None):
     """
-    Main function to unmonitor movie in Radarr or episode in Sonarr and remove from watchlist.
-    Returns (radarr_unmonitored, watchlist_removed) for movies or (sonarr_unmonitored, False) for episodes
+    Main function to unmonitor movie in Radarr or episode/season in Sonarr and remove from watchlist.
+    Returns (radarr_unmonitored, watchlist_removed) for movies, 
+            (sonarr_unmonitored, watchlist_removed) for seasons, 
+            or (sonarr_unmonitored, False) for episodes
     """
     log = log_parent or logger
     config = config or load_config()
 
     log.info("=" * 60)
-    log.info("UNMONITOR RADARR AFTER DOWNLOAD START")
+    log.info("UNMONITOR MEDIA AFTER DOWNLOAD START")
     log.info("=" * 60)
     log.info(f"Title: {movie_title}")
     log.info(f"Media type: {media_type}")
@@ -640,14 +733,30 @@ def run_unmonitor_radarr_after_download(movie_title: str, media_type: str = "mov
             log.warning(f"  ✗ Season not found in Sonarr or already unmonitored")
         
         log.info("")
+        log.info("Step 2: Removing TV show from Plex watchlist...")
+        # Extract series name from season title (format: "Series Name - Season X")
+        series_name = movie_title.split(" - Season ")[0].strip() if " - Season " in movie_title else movie_title
+        watchlist_removed = remove_show_from_plex_watchlist_with_retry(
+            config,
+            series_name,
+            log
+        )
+        
+        if watchlist_removed:
+            log.info(f"  ✓ TV show successfully removed from Plex watchlist")
+        else:
+            log.info(f"  ⚠ TV show was not in watchlist or could not be removed (non-critical)")
+        
+        log.info("")
         log.info("=" * 60)
         log.info("UNMONITOR SONARR AFTER DOWNLOAD SUMMARY")
         log.info("=" * 60)
         log.info(f"Season: {movie_title}")
         log.info(f"Sonarr Unmonitored: {'✓ Yes' if sonarr_unmonitored else '✗ No (already unmonitored or not found)'}")
+        log.info(f"Watchlist Removed: {'✓ Yes' if watchlist_removed else '✗ No (not in watchlist or already removed)'}")
         log.info("=" * 60)
         
-        return sonarr_unmonitored, False  # No watchlist removal for seasons
+        return sonarr_unmonitored, watchlist_removed
     
     # Movie processing (existing logic)
     log.info("Step 1: Unmonitoring movie in Radarr...")
@@ -676,7 +785,7 @@ def run_unmonitor_radarr_after_download(movie_title: str, media_type: str = "mov
 
     log.info("")
     log.info("=" * 60)
-    log.info("UNMONITOR RADARR AFTER DOWNLOAD SUMMARY")
+    log.info("UNMONITOR MEDIA AFTER DOWNLOAD SUMMARY")
     log.info("=" * 60)
     log.info(f"Movie: {movie_title}")
     log.info(f"Radarr Unmonitored: {'✓ Yes' if radarr_unmonitored else '✗ No (already unmonitored or not found)'}")
@@ -690,19 +799,19 @@ def main():
     """Main entry point for standalone script execution."""
     # Check command line arguments
     if len(sys.argv) < 2:
-        print('Usage: python3 unmonitor_radarr_after_download.py "Title" [media_type]')
+        print('Usage: python3 unmonitor_media_after_download.py "Title" [media_type]')
         print('  Title: Movie title, "Series Name - Episode Title" for episodes, or "Series Name - Season X" for seasons')
         print('  media_type: "movie", "episode", or "season" (default: "movie")')
         print('  Examples:')
-        print('    python3 unmonitor_radarr_after_download.py "Supernatural - Unity" episode')
-        print('    python3 unmonitor_radarr_after_download.py "Last Week Tonight with John Oliver - Season 4" season')
+        print('    python3 unmonitor_media_after_download.py "Supernatural - Unity" episode')
+        print('    python3 unmonitor_media_after_download.py "Last Week Tonight with John Oliver - Season 4" season')
         return 1
     
     movie_title = sys.argv[1]
     media_type = sys.argv[2].lower().strip() if len(sys.argv) > 2 else "movie"
     
     logger.info("=" * 60)
-    logger.info("UNMONITOR RADARR AFTER DOWNLOAD SCRIPT")
+    logger.info("UNMONITOR MEDIA AFTER DOWNLOAD SCRIPT")
     logger.info("=" * 60)
     logger.info(f"Title: {movie_title}")
     logger.info(f"Media type: {media_type}")
@@ -714,13 +823,13 @@ def main():
         logger.info("  Note: Only 'movie', 'episode', and 'season' media types are currently supported")
         logger.info("")
         logger.info("=" * 60)
-        logger.info("UNMONITOR RADARR AFTER DOWNLOAD END (skipped)")
+        logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (skipped)")
         logger.info("=" * 60)
         return 0
     
     try:
         config = load_config()
-        radarr_unmonitored, watchlist_removed = run_unmonitor_radarr_after_download(
+        radarr_unmonitored, watchlist_removed = run_unmonitor_media_after_download(
             movie_title=movie_title,
             media_type=media_type,
             config=config
@@ -728,16 +837,21 @@ def main():
         
         logger.info("")
         logger.info("=" * 60)
-        if media_type in ("episode", "season"):
+        if media_type == "episode":
             if radarr_unmonitored:
-                logger.info("UNMONITOR SONARR AFTER DOWNLOAD END OK")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END OK (Sonarr - Episode)")
             else:
-                logger.info("UNMONITOR SONARR AFTER DOWNLOAD END (no changes needed)")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (no changes needed - Sonarr - Episode)")
+        elif media_type == "season":
+            if radarr_unmonitored or watchlist_removed:
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END OK (Sonarr - Season)")
+            else:
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (no changes needed - Sonarr - Season)")
         else:
             if radarr_unmonitored or watchlist_removed:
-                logger.info("UNMONITOR RADARR AFTER DOWNLOAD END OK")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END OK (Radarr)")
             else:
-                logger.info("UNMONITOR RADARR AFTER DOWNLOAD END (no changes needed)")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (no changes needed - Radarr)")
         logger.info("=" * 60)
         
         return 0
@@ -745,13 +859,13 @@ def main():
         logger.warning("")
         logger.warning("Script interrupted by user")
         logger.info("=" * 60)
-        logger.info("UNMONITOR RADARR AFTER DOWNLOAD END (interrupted)")
+        logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (interrupted)")
         logger.info("=" * 60)
         return 130
     except Exception as e:
         logger.exception("")
         logger.error("=" * 60)
-        logger.error("UNMONITOR RADARR AFTER DOWNLOAD END FAIL")
+        logger.error("UNMONITOR MEDIA AFTER DOWNLOAD END FAIL")
         logger.error("=" * 60)
         return 1
 
