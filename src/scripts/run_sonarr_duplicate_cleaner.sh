@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Immaculate Taste Collection Refresher Runner
+# Sonarr Duplicate Episode Cleaner Runner
 #
-# This script refreshes the "Inspired by your Immaculate Taste" Plex collection
-# by randomizing the order of movies and updating them in Plex.
+# This script runs the Sonarr duplicate episode cleaner to identify and remove
+# duplicate episodes in Plex, keeping only the best quality version.
 #
 # Usage:
-#   ./run_immaculate_taste_refresher.sh [options]
+#   ./run_sonarr_duplicate_cleaner.sh [options]
 #
 # Options:
 #   --dry-run       Run in dry-run mode (no Plex changes)
@@ -86,9 +86,9 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Check if the Python script exists
-REFRESHER_SCRIPT="$PROJECT_ROOT/src/tautulli_curated/helpers/immaculate_taste_refresher.py"
-if [[ ! -f "$REFRESHER_SCRIPT" ]]; then
-    echo -e "${RED}Error: immaculate_taste_refresher.py not found at: $REFRESHER_SCRIPT${NC}"
+CLEANER_SCRIPT="$PROJECT_ROOT/src/tautulli_curated/helpers/sonarr_duplicate_cleaner.py"
+if [[ ! -f "$CLEANER_SCRIPT" ]]; then
+    echo -e "${RED}Error: sonarr_duplicate_cleaner.py not found at: $CLEANER_SCRIPT${NC}"
     exit 1
 fi
 
@@ -102,7 +102,7 @@ fi
 LOG_PATH=""
 if [[ -n "$LOG_FILE" ]]; then
     TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    LOG_PATH="$PROJECT_ROOT/data/logs/immaculate_taste_refresher_${TIMESTAMP}.log"
+    LOG_PATH="$PROJECT_ROOT/data/logs/sonarr_duplicate_cleaner_${TIMESTAMP}.log"
     mkdir -p "$PROJECT_ROOT/data/logs"
     echo "Log file: $LOG_PATH"
 fi
@@ -129,7 +129,7 @@ output_color() {
 export PYTHONUNBUFFERED=1
 # Add src to PYTHONPATH so imports work (handle case where PYTHONPATH is unset)
 export PYTHONPATH="$PROJECT_ROOT/src:${PYTHONPATH:-}"
-CMD="$PYTHON_CMD -u $REFRESHER_SCRIPT"
+CMD="$PYTHON_CMD -u $CLEANER_SCRIPT"
 if [[ -n "$DRY_RUN" ]]; then
     CMD="$CMD $DRY_RUN"
 fi
@@ -139,10 +139,10 @@ fi
 
 # Print header
 output_color "${BLUE}========================================${NC}"
-output_color "${BLUE}Immaculate Taste Collection Refresher${NC}"
+output_color "${BLUE}Sonarr Duplicate Episode Cleaner${NC}"
 output_color "${BLUE}========================================${NC}"
 output ""
-output_color "Script: ${GREEN}$REFRESHER_SCRIPT${NC}"
+output_color "Script: ${GREEN}$CLEANER_SCRIPT${NC}"
 output_color "Working directory: ${GREEN}$PROJECT_ROOT${NC}"
 output_color "Python: ${GREEN}$(python3 --version)${NC}"
 if [[ -n "$DRY_RUN" ]]; then
@@ -157,13 +157,18 @@ fi
 output ""
 
 # Run the script and capture output
-output_color "${BLUE}Starting refresher...${NC}"
+output_color "${BLUE}Starting duplicate episode cleaner...${NC}"
+output ""
+output_color "${YELLOW}This script will:${NC}"
+output_color "${YELLOW}  - Scan Plex TV shows library for duplicate episodes${NC}"
+output_color "${YELLOW}  - Identify episodes with multiple copies${NC}"
+output_color "${YELLOW}  - Delete worst quality versions (by resolution)${NC}"
+output_color "${YELLOW}  - Unmonitor episodes in Sonarr after deletion${NC}"
 output ""
 
 EXIT_CODE=0
 if [[ -n "$LOG_PATH" ]]; then
     # Run with both terminal output and log file
-    # Capture exit code from the command, not from tee
     set +o pipefail  # Allow pipe to continue even if command fails
     $CMD 2>&1 | tee -a "$LOG_PATH"
     EXIT_CODE=${PIPESTATUS[0]}  # Get exit code from the command, not tee

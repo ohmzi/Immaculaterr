@@ -23,6 +23,11 @@ scripts_run:
   # (runs second, after Recently Watched Collection)
   run_plex_duplicate_cleaner: true
   
+  # Step 2b: Sonarr Duplicate Cleaner
+  # Scans Plex TV shows library for duplicate episodes and removes lower quality versions
+  # (runs after Plex Duplicate Cleaner, can run independently)
+  run_sonarr_duplicate_cleaner: true
+  
   # Step 3: Radarr Monitor Confirm
   # Checks monitored movies in Radarr and unmonitors those already in Plex
   # (runs third, before main pipeline)
@@ -53,6 +58,7 @@ plex:
   url: "http://localhost:32400"                    # Your Plex server URL
   token: "PLEX_TOKEN"                                # Replace with your Plex Token key
   movie_library_name: "Movies"                       # Name of your Plex movie library
+  tv_library_name: "TV Shows"                        # Name of your Plex TV shows library (can be customized, e.g., "Shows", "Television", etc.)
   collection_name: "Inspired by your Immaculate Taste"  # Name of the main Plex collection
   
   # Duplicate Cleaner Settings
@@ -81,6 +87,23 @@ radarr:
   tag_name: "recommended"
   # Option 2: Multiple tags (list) - uncomment and use this format instead:
   # tag_name: ["movies", "curated"]
+  # Both formats are supported - choose the one that fits your needs
+  
+  quality_profile_id: 1                             # Quality profile ID (default: 1)
+
+# ============================================================================
+# SONARR CONFIGURATION
+# ============================================================================
+sonarr:
+  url: "http://localhost:8989"                      # Your Sonarr server URL
+  api_key: "SONARR_API_KEY"                         # Replace with your Sonarr API key
+  root_folder: "/folder/to/you/TV Shows"            # Root folder for TV show downloads
+  
+  # Tag(s) to apply to added series (for future curated collection features)
+  # Option 1: Single tag (string)
+  tag_name: "recommended"
+  # Option 2: Multiple tags (list) - uncomment and use this format instead:
+  # tag_name: ["tv", "curated"]
   # Both formats are supported - choose the one that fits your needs
   
   quality_profile_id: 1                             # Quality profile ID (default: 1)

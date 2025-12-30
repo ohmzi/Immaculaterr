@@ -17,6 +17,7 @@ class PlexConfig:
     url: str
     token: str
     movie_library_name: str
+    tv_library_name: str
     collection_name: str
     delete_preference: str = "smallest_file"
     preserve_quality: list[str] = None
@@ -46,6 +47,15 @@ class RadarrConfig:
 
 
 @dataclass(frozen=True)
+class SonarrConfig:
+    url: str
+    api_key: str
+    root_folder: str
+    tag_name: str | list[str]  # Can be a single tag (string) or multiple tags (list)
+    quality_profile_id: int = 1
+
+
+@dataclass(frozen=True)
 class FilesConfig:
     points_file: str = "recommendation_points.json"
     tmdb_cache_file: str = "tmdb_cache.json"
@@ -54,6 +64,7 @@ class FilesConfig:
 @dataclass(frozen=True)
 class ScriptsRunConfig:
     run_plex_duplicate_cleaner: bool = True
+    run_sonarr_duplicate_cleaner: bool = True
     run_radarr_monitor_confirm_plex: bool = True
     run_collection_refresher: bool = True  # Immaculate Taste Collection Refresher (mandatory - adds movies to Plex)
     run_recently_watched_collection: bool = True  # Recently Watched Collection script
@@ -68,6 +79,7 @@ class AppConfig:
     openai: OpenAIConfig
     tmdb: TMDbConfig
     radarr: RadarrConfig
+    sonarr: SonarrConfig
     files: FilesConfig
     scripts_run: ScriptsRunConfig
     raw: Dict[str, Any]
@@ -100,6 +112,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         url=_require(data, "plex.url"),
         token=_require(data, "plex.token"),
         movie_library_name=_require(data, "plex.movie_library_name"),
+        tv_library_name=_require(data, "plex.tv_library_name"),
         collection_name=_require(data, "plex.collection_name"),
         delete_preference=data.get("plex", {}).get("delete_preference", "smallest_file"),
         preserve_quality=data.get("plex", {}).get("preserve_quality", []) or [],
@@ -125,6 +138,14 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         quality_profile_id=int(data.get("radarr", {}).get("quality_profile_id", 1)),
     )
 
+    sonarr = SonarrConfig(
+        url=_require(data, "sonarr.url"),
+        api_key=_require(data, "sonarr.api_key"),
+        root_folder=_require(data, "sonarr.root_folder"),
+        tag_name=_require(data, "sonarr.tag_name"),
+        quality_profile_id=int(data.get("sonarr", {}).get("quality_profile_id", 1)),
+    )
+
     # Data files are now in data/ directory, but config may still reference just filenames
     # We'll resolve them relative to data/ directory
     points_file_name = data.get("files", {}).get("points_file", "recommendation_points.json")
@@ -143,6 +164,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 
     scripts_run = ScriptsRunConfig(
         run_plex_duplicate_cleaner=bool(data.get("scripts_run", {}).get("run_plex_duplicate_cleaner", True)),
+        run_sonarr_duplicate_cleaner=bool(data.get("scripts_run", {}).get("run_sonarr_duplicate_cleaner", True)),
         run_radarr_monitor_confirm_plex=bool(data.get("scripts_run", {}).get("run_radarr_monitor_confirm_plex", True)),
         run_collection_refresher=bool(data.get("scripts_run", {}).get("run_collection_refresher", True)),  # Default: True (mandatory)
         run_recently_watched_collection=bool(data.get("scripts_run", {}).get("run_recently_watched_collection", True)),
@@ -156,6 +178,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         openai=openai,
         tmdb=tmdb,
         radarr=radarr,
+        sonarr=sonarr,
         files=files,
         scripts_run=scripts_run,
         raw=data,
