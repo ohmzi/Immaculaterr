@@ -457,6 +457,130 @@ def remove_show_from_plex_watchlist_with_retry(config, series_title: str, log,
     return False
 
 
+def verify_all_season_episodes_in_plex(series_name: str, season_num: int, config, log) -> tuple[bool, str | None]:
+    """
+    Verify that ALL episodes in a season are in Plex.
+    
+    Returns:
+        (all_present: bool, series_title_in_plex: str | None)
+        - all_present: True if all episodes are in Plex, False otherwise
+        - series_title_in_plex: The title of the series in Plex if found, None otherwise
+    """
+    from tautulli_curated.helpers import sonarr_utils
+    from tautulli_curated.helpers.sonarr_utils import (
+        _sonarr_get_all_series,
+        sonarr_get_episodes_by_series,
+    )
+    from tautulli_curated.helpers.sonarr_monitor_confirm import (
+        get_plex_tv_shows,
+        get_tvdb_id_from_plex_series,
+        get_plex_episodes_set,
+    )
+    from plexapi.server import PlexServer
+    from tautulli_curated.helpers.retry_utils import retry_with_backoff
+    import difflib
+    
+    # Get all series from Sonarr
+    all_series = _sonarr_get_all_series(config)
+    if not all_series:
+        log.warning(f"  ✗ Failed to fetch series from Sonarr")
+        return False, None
+    
+    # Find series by title (exact or fuzzy match)
+    series = None
+    for s in all_series:
+        if s.get('title', '').lower() == series_name.lower():
+            series = s
+            break
+    
+    if not series:
+        # Try fuzzy match
+        titles = [s.get('title', '') for s in all_series]
+        close_matches = difflib.get_close_matches(series_name, titles, n=1, cutoff=0.7)
+        if close_matches:
+            for s in all_series:
+                if s.get('title') == close_matches[0]:
+                    series = s
+                    break
+    
+    if not series:
+        log.warning(f"  ✗ Series not found in Sonarr: '{series_name}'")
+        return False, None
+    
+    tvdb_id = series.get('tvdbId')
+    if not tvdb_id:
+        log.warning(f"  ✗ Cannot verify episodes: Series '{series.get('title')}' has no TVDB ID")
+        return False, None
+    
+    # Get Plex TV shows and find the series
+    def _get_plex_shows():
+        plex = PlexServer(config.plex.url, config.plex.token, timeout=30)
+        return plex.library.section(config.plex.tv_library_name).all()
+    
+    plex_shows, success = retry_with_backoff(
+        _get_plex_shows,
+        max_retries=3,
+        logger_instance=log,
+        operation_name="Get Plex TV shows for verification",
+        raise_on_final_failure=False,
+    )
+    
+    if not success or not plex_shows:
+        log.warning(f"  ✗ Failed to get Plex TV shows - cannot verify episodes")
+        return False, None
+    
+    # Find series in Plex by TVDB ID
+    plex_series = None
+    for show in plex_shows:
+        plex_tvdb_id = get_tvdb_id_from_plex_series(show)
+        if plex_tvdb_id == tvdb_id:
+            plex_series = show
+            break
+    
+    if not plex_series:
+        log.warning(f"  ✗ Series not found in Plex (TVDB: {tvdb_id})")
+        return False, None
+    
+    # Get all episodes from Plex for this series
+    plex_episodes_set = get_plex_episodes_set(plex_series)
+    if not plex_episodes_set:
+        log.warning(f"  ✗ Series found in Plex but has no episodes")
+        return False, None
+    
+    # Get all episodes for this series from Sonarr
+    episodes = sonarr_get_episodes_by_series(config, series.get('id'))
+    if not episodes:
+        log.warning(f"  ✗ No episodes found for series '{series.get('title')}'")
+        return False, None
+    
+    # Filter episodes for this season
+    season_episodes = [ep for ep in episodes if ep.get('seasonNumber') == season_num]
+    if not season_episodes:
+        log.warning(f"  ✗ No episodes found for Season {season_num}")
+        return False, None
+    
+    # Check if ALL season episodes are in Plex
+    sonarr_season_episodes_set = set()
+    for ep in season_episodes:
+        season_num_ep = ep.get('seasonNumber')
+        episode_num = ep.get('episodeNumber')
+        if season_num_ep is not None and episode_num is not None:
+            sonarr_season_episodes_set.add((int(season_num_ep), int(episode_num)))
+    
+    # Find missing episodes
+    missing_episodes = sonarr_season_episodes_set - plex_episodes_set
+    
+    if missing_episodes:
+        missing_list = sorted(missing_episodes)
+        log.warning(f"  ✗ NOT ALL episodes in Season {season_num} are in Plex!")
+        log.warning(f"  Missing episodes: {missing_list}")
+        log.warning(f"  Only {len(sonarr_season_episodes_set) - len(missing_episodes)}/{len(sonarr_season_episodes_set)} episodes in Plex")
+        return False, plex_series.title
+    
+    log.info(f"  ✓ All {len(sonarr_season_episodes_set)} episodes in Season {season_num} are confirmed in Plex")
+    return True, plex_series.title
+
+
 def unmonitor_season_in_sonarr(season_title: str, config, log) -> bool:
     """
     Unmonitor an entire season in Sonarr.
@@ -538,6 +662,16 @@ def unmonitor_season_in_sonarr(season_title: str, config, log) -> bool:
         return False
     
     log.info(f"  ✓ Found {len(season_episodes)} episodes in Season {season_num}")
+    
+    # SAFETY CHECK: Verify ALL episodes in this season are in Plex before unmonitoring
+    log.info("  Checking if all episodes in this season are in Plex...")
+    all_episodes_present, plex_series_title = verify_all_season_episodes_in_plex(
+        series_name, season_num, config, log
+    )
+    
+    if not all_episodes_present:
+        log.warning(f"  ⚠ SKIPPING season unmonitor for safety (not all episodes in Plex)")
+        return False
     
     # Check if any episodes are monitored
     monitored_episodes = [ep for ep in season_episodes if ep.get('monitored', False)]
@@ -734,18 +868,44 @@ def run_unmonitor_media_after_download(movie_title: str, media_type: str = "movi
         
         log.info("")
         log.info("Step 2: Removing TV show from Plex watchlist...")
-        # Extract series name from season title (format: "Series Name - Season X")
-        series_name = movie_title.split(" - Season ")[0].strip() if " - Season " in movie_title else movie_title
-        watchlist_removed = remove_show_from_plex_watchlist_with_retry(
-            config,
-            series_name,
-            log
-        )
+        # Extract series name and season number from season title (format: "Series Name - Season X")
+        if " - Season " in movie_title:
+            series_name = movie_title.split(" - Season ")[0].strip()
+            import re
+            season_part = movie_title.split(" - Season ", 1)[1].strip()
+            season_match = re.search(r'(\d+)', season_part)
+            season_num = int(season_match.group(1)) if season_match else None
+        else:
+            series_name = movie_title
+            season_num = None
+        
+        # SAFETY CHECK: Verify ALL episodes in this season are in Plex before removing from watchlist
+        if season_num is not None:
+            log.info("  Verifying all episodes are in Plex before removing from watchlist...")
+            all_episodes_present, plex_series_title = verify_all_season_episodes_in_plex(
+                series_name, season_num, config, log
+            )
+            
+            if not all_episodes_present:
+                log.warning(f"  ✗ NOT ALL episodes in Season {season_num} are in Plex!")
+                log.warning(f"  ⚠ SKIPPING watchlist removal for safety (not all episodes downloaded)")
+                watchlist_removed = False
+            else:
+                log.info(f"  ✓ All episodes confirmed in Plex - proceeding with watchlist removal")
+                watchlist_removed = remove_show_from_plex_watchlist_with_retry(
+                    config,
+                    series_name,
+                    log
+                )
+        else:
+            # Fallback: if we can't parse season number, skip watchlist removal for safety
+            log.warning(f"  ⚠ Could not parse season number from '{movie_title}' - skipping watchlist removal for safety")
+            watchlist_removed = False
         
         if watchlist_removed:
             log.info(f"  ✓ TV show successfully removed from Plex watchlist")
         else:
-            log.info(f"  ⚠ TV show was not in watchlist or could not be removed (non-critical)")
+            log.info(f"  ⚠ TV show was not removed from watchlist (not all episodes in Plex or not in watchlist)")
         
         log.info("")
         log.info("=" * 60)
