@@ -1,6 +1,6 @@
 # Tautulli Curated Plex Collection
 
-**Version:** 4.1.0
+**Version:** 5.0.0
 
 **Table of Contents**  
 - [Overview](#overview)  
@@ -230,6 +230,7 @@ plex:
   url: "http://localhost:32400"
   token: "YOUR_PLEX_TOKEN"
   movie_library_name: "Movies"
+  tv_library_name: "TV Shows"         # Required for Sonarr scripts
   collection_name: "Inspired by your Immaculate Taste"
   delete_preference: "largest_file"  # Options: smallest_file, largest_file, newest, oldest
   preserve_quality: []                # Example: ["4K", "1080p"] to preserve high quality
@@ -364,6 +365,7 @@ All scripts can be enabled/disabled individually:
 - `url`: Your Plex server URL (e.g., `http://localhost:32400`)
 - `token`: Your Plex authentication token
 - `movie_library_name`: Name of your Plex movie library
+- `tv_library_name`: Name of your Plex TV library (required for Sonarr scripts)
 - `collection_name`: Name of the main collection ("Inspired by your Immaculate Taste")
 - `delete_preference`: Which duplicate file to delete (`smallest_file`, `largest_file`, `newest`, `oldest`)
 - `preserve_quality`: List of quality keywords to preserve (e.g., `["4K", "1080p"]`)
@@ -636,7 +638,10 @@ Tautulli_Curated_Plex_Collection/
 │       ├── run_immaculate_taste_refresher.sh         # Immaculate Taste Refresher runner
 │       ├── run_recently_watched_collections_refresher.sh  # Recently Watched Collections Refresher runner
 │       ├── run_radarr_monitor_confirm.sh    # Radarr Monitor Confirm runner
-│       └── run_radarr_search_monitored.sh   # Trigger Radarr search for monitored movies
+│       ├── run_radarr_search_monitored.sh   # Trigger Radarr search for monitored movies
+│       ├── run_sonarr_duplicate_cleaner.sh   # Sonarr duplicate episode cleaner
+│       ├── run_sonarr_monitor_confirm.sh    # Sonarr Monitor Confirm runner
+│       └── run_sonarr_search_monitored.sh   # Trigger Sonarr search for monitored episodes
 ├── docker/
 │   └── custom-tautulli/                    # Docker configuration
 │       ├── Dockerfile                       # Custom Tautulli image
@@ -807,6 +812,117 @@ The project includes several standalone bash scripts that can be run independent
 ```
 
 **Note:** This script reads Radarr configuration from `config/config.yaml`. Make sure your Radarr URL and API key are correctly configured.
+
+---
+
+#### 5. `run_sonarr_duplicate_cleaner.sh`
+**Purpose:** Identifies and removes duplicate TV episodes in Plex, keeping only the best quality version.
+
+**What it does:**
+- Scans Plex TV library for duplicate episodes (by TVDB ID and episode number)
+- Compares file sizes and qualities
+- Removes lower quality duplicates based on your preferences
+- Preserves high-quality files (configurable)
+
+**When to use:**
+- Periodically clean up duplicate TV episodes
+- After bulk imports or library reorganizations
+- Schedule via cron for routine maintenance
+
+**Usage:**
+```bash
+./src/scripts/run_sonarr_duplicate_cleaner.sh [options]
+```
+
+**Options:**
+- `--dry-run`: Show what would be done without actually deleting files
+- `--verbose`: Enable debug-level logging
+- `--no-pause`: Don't pause at the end (for automated runs)
+- `--log-file`: Save output to a timestamped log file in `data/logs/`
+- `--help`: Show help message
+
+**Requirements:**
+- `tv_library_name` must be configured in `config/config.yaml`
+
+---
+
+#### 6. `run_sonarr_monitor_confirm.sh`
+**Purpose:** Checks all monitored series and episodes in Sonarr and unmonitors those that already exist in your Plex library.
+
+**What it does:**
+- Gets all monitored series from Sonarr
+- Compares every episode with your Plex TV library
+- Unmonitors individual episodes if they exist in Plex
+- Unmonitors entire seasons if all episodes are in Plex
+- Unmonitors entire series if all seasons are complete
+- Provides detailed logging showing per-series and per-season status
+
+**When to use:**
+- Run periodically to keep Sonarr and Plex synchronized
+- Schedule via cron for routine maintenance
+- After bulk imports to Plex
+
+**Usage:**
+```bash
+./src/scripts/run_sonarr_monitor_confirm.sh [options]
+```
+
+**Options:**
+- `--dry-run`: Show what would be done without actually unmonitoring
+- `--no-pause`: Don't pause at the end (for automated runs)
+- `--help`: Show help message
+
+**Example:**
+```bash
+# Normal run (will actually unmonitor)
+./src/scripts/run_sonarr_monitor_confirm.sh
+
+# Dry run (see what would happen)
+./src/scripts/run_sonarr_monitor_confirm.sh --dry-run
+
+# For automated/scheduled runs
+./src/scripts/run_sonarr_monitor_confirm.sh --no-pause
+```
+
+---
+
+#### 7. `run_sonarr_search_monitored.sh`
+**Purpose:** Triggers a search for all missing monitored episodes in Sonarr.
+
+**What it does:**
+- Connects to Sonarr using credentials from `config/config.yaml`
+- Sends a command to Sonarr to search for all missing monitored episodes
+- Useful for forcing Sonarr to check for available releases
+
+**When to use:**
+- Periodically trigger searches for monitored episodes that haven't been downloaded yet
+- After adding new series to Sonarr
+- As part of a maintenance routine to ensure Sonarr is actively searching
+
+**Usage:**
+```bash
+./src/scripts/run_sonarr_search_monitored.sh [options]
+```
+
+**Options:**
+- `--verbose`: Show detailed output
+- `--no-pause`: Don't pause at the end (for automated runs)
+- `--log-file`: Also save output to a log file
+- `--help`: Show help message
+
+**Requirements:**
+- `yq` must be installed (for reading YAML config)
+  - Ubuntu/Debian: `sudo apt-get install yq`
+  - macOS: `brew install yq`
+- `curl` must be installed (usually pre-installed)
+
+**Example:**
+```bash
+# Trigger search for all missing monitored episodes
+./src/scripts/run_sonarr_search_monitored.sh --no-pause --log-file
+```
+
+**Note:** This script reads Sonarr configuration from `config/config.yaml`. Make sure your Sonarr URL and API key are correctly configured.
 
 ---
 
@@ -1000,234 +1116,59 @@ If bash scripts don't work directly, create a PowerShell wrapper:
 
 ## Version History
 
-### Version 4.1.0 (Current)
+### Version 5.0.0 (Current)
 
-**JSON Collection Logic Enhancement:**
-- **Save All Recommendations:** Both "Recently Watched" and "Change of Taste" collections now save ALL recommendations to JSON (including movies not yet in Plex)
-- **Future-Proof Collections:** Movies missing in Plex are saved with `rating_key: None` and will be automatically added when downloaded
-- **Smart Refresher:** Refresher scripts gracefully skip movies not in Plex yet and continue processing others
-- **Automatic Addition:** When a movie is downloaded, it will be automatically added to the collection on the next nightly refresh
+**Sonarr TV Show Support:**
+- **Sonarr Duplicate Cleaner:** New script to identify and remove duplicate TV episodes, keeping best quality
+- **Sonarr Monitor Confirm:** Granular unmonitoring system - unmonitors episodes, seasons, and series based on Plex availability
+- **Season-Level Unmonitoring:** When entire seasons are added to Plex, automatically unmonitors the season in Sonarr
+- **Enhanced Unmonitor Script:** Extended to handle episodes and seasons when content is added to Plex via Tautulli
+- **Sonarr Search Script:** New script to trigger searches for all missing monitored episodes in Sonarr
 
-**Performance Improvements:**
-- **Rating Key Optimization:** Recently Watched and Change of Taste collections use rating keys for faster Plex lookups
-- **Consistent Logic:** Both refresher scripts use the same efficient rating key lookup method
-- **Faster Collection Updates:** Direct Plex API calls using rating keys instead of slower title searches
-- **Better Progress Tracking:** Improved progress logging every 100 items
+**Granular Unmonitoring Logic:**
+- Episode-level: Unmonitors individual episodes if they exist in Plex
+- Season-level: Unmonitors entire seasons when all episodes are in Plex
+- Series-level: Unmonitors series when all seasons are complete
+- Detailed logging shows per-season breakdown and completion status
 
-**File Organization:**
-- **Scripts Moved to Helpers:** Collection scripts moved to `src/tautulli_curated/helpers/` for better organization:
-  - `immaculate_taste_refresher.py` → `helpers/immaculate_taste_refresher.py`
-  - `recently_watched_collection.py` → `helpers/recently_watched_collection.py`
-  - `recently_watched_collections_refresher.py` → `helpers/recently_watched_collections_refresher.py`
-- **Updated Imports:** All Python imports and bash scripts updated with correct file paths
+**Configuration & Scripts:**
+- Added `tv_library_name` to Plex configuration
+- Fixed PYTHONPATH issues in all shell scripts
+- New standalone scripts: `run_sonarr_duplicate_cleaner.sh`, `run_sonarr_monitor_confirm.sh`, `run_sonarr_search_monitored.sh`
+- Enhanced logging with detailed episode/season tracking
 
-**Code Improvements:**
-- **Shared Helper Functions:** Refresher scripts use shared `_fetch_by_rating_key` from `plex_collection_manager.py`
-- **Better Error Handling:** Improved logging for failed/filtered items with rating key information
-- **Consistent Patterns:** Both refreshers follow the same code patterns for maintainability
+### Version 4.1.0
 
-**New Standalone Script:**
-- **`run_radarr_monitor_confirm.sh`:** New standalone script for bulk Radarr/Plex synchronization
-  - Checks all monitored movies in Radarr against Plex library
-  - Unmonitors movies that already exist in Plex
-  - Supports `--dry-run` mode for testing
-  - Can be scheduled for routine maintenance
-
-**Script Improvements:**
-- **Removed `run_unmonitor_radarr.sh`:** Consolidated functionality into the main pipeline
-- **Enhanced Logging:** Improved logging in `run_radarr_search_monitored.sh` with timestamps, progress indicators, and better error messages
-- **Log File Support:** Added `--log-file` option to save output to timestamped log files
-
-**Improvements:**
-- Better error handling and logging across all scripts
-- Improved script usability with pause functionality
-- More comprehensive documentation for setup and configuration
+**JSON Collection Logic:** Save all recommendations including movies not yet in Plex, future-proof collections
+- **Performance:** Rating key optimization for faster Plex lookups, consistent logic across refreshers
+- **Organization:** Scripts moved to helpers directory, shared helper functions
+- **New Scripts:** `run_radarr_monitor_confirm.sh` for bulk Radarr/Plex synchronization
+- **Improvements:** Enhanced logging, log file support, better error handling
 
 ### Version 4.0.0
 
-**Major System Overhaul:**
-- **Unified Project:** Merged Recently Watched Collection and Immaculate Taste Collection into a single, cohesive system
-- **Multi-Collection Support:** Maintains 3 Plex collections simultaneously:
-  - "Based on your recently watched movie" - Similar recommendations
-  - "Change of Taste" - Contrasting recommendations
-  - "Inspired by your Immaculate Taste" - Curated collection with points system
-- **Script Orchestration:** Main script (`main.py`) orchestrates all sub-scripts in proper execution order
-- **Comprehensive Error Handling:** Added retry logic with exponential backoff for all API calls
-- **Improved Reliability:** Better handling of network issues, timeouts, and API errors
-
-**New Features:**
-- **Recently Watched Collections:** Two new collections based on recently watched movies
-- **Change of Taste Collection:** Palate cleanser recommendations (contrasting genres/themes)
-- **Plex Duplicate Cleaner:** Integrated duplicate detection and removal
-- **Radarr Monitor Confirm:** Automatic synchronization of Radarr monitoring with Plex library
-- **Custom Collection Artwork:** Automatic upload of custom posters and backgrounds for collections
-- **Standalone Scripts:** Four independent bash scripts for scheduled execution
-- **Enhanced Script Pause Functionality:** All standalone scripts pause at the end by default with `--no-pause` option
-
-**Error Handling & Reliability:**
-- **Retry Logic:** Comprehensive retry mechanism with exponential backoff (`retry_utils.py`)
-- **HTTPError Detection:** Improved error handling for HTTP 400/500 errors (400 non-retryable, 5xx retried)
-- **Connection Resilience:** All Plex and Radarr API calls use retry logic
-- **Error Recovery:** Scripts continue execution even if individual operations fail
-
-**Documentation:**
-- **Plex Home Screen Setup Guide:** Comprehensive section with step-by-step instructions
-- **Overseerr Fork Documentation:** Enhanced documentation with links to [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr)
-- **Standalone Scripts Documentation:** Complete usage examples and scheduling instructions
-
-**Configuration:**
-- User-friendly config file structure with script execution control at the top
-- All scripts can be enabled/disabled individually
-- Mandatory refreshers by default (they add movies to Plex!)
+**Major System Overhaul:** Unified project with 3 Plex collections, script orchestration, comprehensive error handling
+- **New Features:** Recently Watched Collections, Change of Taste, Plex Duplicate Cleaner, Radarr Monitor Confirm
+- **Reliability:** Retry logic with exponential backoff, connection resilience, error recovery
+- **Documentation:** Plex Home Screen setup guide, standalone scripts documentation
 
 ### Version 3.0.0
 
-**Professional Project Structure:**
-- Reorganized into `src/`, `config/`, `data/`, `docker/`, and `docs/` directories
-- Proper Python package structure with `tautulli_curated` package
-- All imports updated to use package structure
-- Better separation of concerns
-
-**New Features:**
-- **Collection Refresher:** Independent script (`immaculate_taste_refresher.py`) for randomizing and refreshing collection order
-- **Bash Script Wrapper:** `src/scripts/run_immaculate_taste_refresher.sh` with options for:
-  - Dry-run mode
-  - Verbose logging
-  - Log file output
-  - No-pause mode for automated runs
-
-**Configuration:**
-- Added `run_collection_refresher` configuration option
-- Collection refresher can run as part of main script or independently
-- Enhanced logging throughout scripts
-
-**Improvements:**
-- Enhanced logging with clear start/end markers
-- Better error handling and connection timeout management
-- Improved decision explanations in logs
-- TMDb fallback recommendations
-- Points system for collection management
-
-**Code Quality:**
-- Modular helper structure
-- Type-safe configuration with dataclasses
-- Better code organization and maintainability
+**Professional Structure:** Reorganized into proper directories, Python package structure, better separation of concerns
+- **New Features:** Collection refresher script, bash wrapper with options
+- **Improvements:** Enhanced logging, better error handling, TMDb fallback, points system
 
 ### Version 2.0.0
 
-**Major Refactoring:**
-- **Modular Architecture:** Split monolithic script into organized helper modules
-- **Professional Structure:** Introduced `helpers/` directory with specialized modules:
-  - `config_loader.py` - YAML configuration loader with dataclasses
-  - `logger.py` - Structured logging setup
-  - `pipeline_recent_watch.py` - Main pipeline orchestration
-  - `recommender.py` - Recommendation orchestrator
-  - `chatgpt_utils.py` - OpenAI integration
-  - `tmdb_recommender.py` - TMDb recommendation engine
-  - `tmdb_cache.py` - TMDb caching layer
-  - `tmdb_client.py` - Basic TMDb API client
-  - `plex_search.py` - Plex movie search
-  - `plex_collection_manager.py` - Collection management
-  - `radarr_utils.py` - Radarr integration
-  - `run_context.py` - Step tracking context
-
-**New Features:**
-- **TMDb Fallback:** Advanced TMDb recommendation system as fallback when OpenAI fails
-- **Structured Logging:** Step-based logging with timing information
-- **Type-Safe Configuration:** Configuration loaded into dataclasses for better validation
-- **Better Error Handling:** Improved error messages and recovery
-
-**Improvements:**
-- Better code organization and maintainability
-- Reduced code duplication
-- More testable code structure
-- Enhanced documentation
-
-**Removed:**
-- Removed `plex_duplicate_cleaner.py` (moved to separate project)
-- Removed `radarr_plex_monitor.py` (integrated into main pipeline)
+**Modular Architecture:** Split into organized helper modules, professional structure with specialized modules
+- **New Features:** TMDb fallback system, structured logging, type-safe configuration
+- **Improvements:** Better organization, reduced duplication, more testable code
 
 ### Version 1.0.0
 
-**Initial Release:**
-- **Core Functionality:** Single script (`tautulli_watched_movies.py`) with all features
-- **OpenAI Recommendations:** GPT-based movie recommendations (up to 50 movies)
-- **Plex Integration:** 
-  - Search Plex library for recommended movies
-  - Maintain dynamic collection ("Inspired by your Immaculate Taste")
-  - Duplicate detection and cleanup
-- **Radarr Automation:**
-  - Add missing movies to Radarr
-  - Unmonitor movies already in Plex
-  - Configurable root folder, quality profile, and tags
-- **Overseerr Support:**
-  - Submit recommendations for manual approval
-  - Configurable root folders and quality profiles
-  - **Note:** The original Overseerr doesn't allow admins to approve their own requests. For proper approval workflow, use the modified fork: [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr)
-- **Points System:**
-  - New recommendations: +10 points
-  - Existing items: -1 point per run
-  - Movies need ≥5 points OR TMDb rating >8 to remain in collection
-  - Points persisted in JSON file
-- **TMDb Integration:**
-  - TMDb API for movie lookups
-  - Caching of TMDb IDs and ratings
-  - Rating-based collection filtering
-- **YAML Configuration:** All settings in `config.yaml`
-- **Docker Support:** Custom Tautulli Docker image with dependencies
-- **Basic Logging:** Simple logging setup
-
-**Key Features:**
-- Episode detection (prevents running on TV shows)
-- Cache clearing functionality
-- Configurable permissions for cleaner and unmonitor operations
-- Basic error handling
-
-**Limitations:**
-- Monolithic code structure (all in one file)
-- No fallback if OpenAI fails
-- Basic error handling
-- Limited logging and debugging capabilities
-
-**Error Handling & Reliability Improvements:**
-- **Retry Logic:** Added comprehensive retry mechanism with exponential backoff (`retry_utils.py`)
-- **HTTPError Detection:** Improved error handling for HTTP 400/500 errors
-  - 400 Bad Request errors are now correctly identified as non-retryable
-  - 5xx server errors are retried with exponential backoff
-  - Network/timeout errors are automatically retried
-- **Connection Resilience:** All Plex and Radarr API calls now use retry logic
-- **Error Recovery:** Scripts continue execution even if individual operations fail
-
-**New Standalone Script:**
-- **`run_radarr_search_monitored.sh`:** Triggers search for all monitored movies in Radarr
-  - Useful for periodic maintenance
-  - Reads configuration from `config/config.yaml`
-  - Requires `yq` and `curl`
-
-**Logging & Debugging:**
-- Enhanced logging across all scripts for better troubleshooting
-- Improved error messages with context
-- Standardized logger names for easier log filtering
-- Better progress indicators for long-running operations
-
-**Bug Fixes:**
-- Fixed `NameError: name 'cfg' is not defined` in `recently_watched_collections_refresher.py`
-- Fixed unnecessary retries for HTTP 400 errors in Radarr operations
-- Improved collection update error handling
-- Fixed custom order application in recently_watched_collections_refresher (randomized order now properly applied in Plex)
-
-**New Features:**
-- **Multiple Radarr Tags Support:** `tag_name` now accepts both single tag (string) and multiple tags (list)
-  - Example: `tag_name: "recommended"` or `tag_name: ["movies", "curated"]`
-  - Backward compatible with existing single tag configurations
-- **Early Exit for Non-Movie Media:** Script automatically skips execution when episodes/shows are watched
-  - Prevents unnecessary processing and API calls
-  - Logs clear skip message for debugging
-
-**Documentation:**
-- Added comprehensive section on standalone scripts
-- Added scheduling instructions for Ubuntu/Linux (cron) and Windows Task Scheduler
-- Updated project structure documentation
+**Initial Release:** Core functionality with OpenAI recommendations, Plex integration, Radarr automation
+- **Features:** Points system, TMDb integration, YAML configuration, Docker support
+- **Limitations:** Monolithic structure, basic error handling, no fallback system
 
 ---
 

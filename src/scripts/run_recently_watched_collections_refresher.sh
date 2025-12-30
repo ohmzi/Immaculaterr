@@ -127,8 +127,8 @@ output_color() {
 
 # Build command with unbuffered output
 export PYTHONUNBUFFERED=1
-# Add src to PYTHONPATH so imports work
-export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+# Add src to PYTHONPATH so imports work (handle case where PYTHONPATH is unset)
+export PYTHONPATH="$PROJECT_ROOT/src:${PYTHONPATH:-}"
 CMD="$PYTHON_CMD -u $REFRESHER_SCRIPT"
 if [[ -n "$DRY_RUN" ]]; then
     CMD="$CMD $DRY_RUN"
