@@ -22,7 +22,7 @@ When you finish watching a movie, the system:
 - 🔄 **Synchronizes Radarr/Sonarr** monitoring with Plex library status
 - 🎨 **Refreshes collections** by randomizing order for fresh presentation
 
-![Plex Mobile App](../sample_run_pictures/plex_mobile_app_screenshot.jpg)
+![Plex Mobile App](../sample_run_pictures/plex_mobile_app_screenshot.png)
 
 ![Plex Mobile App 2](../sample_run_pictures/plex_mobile_app_screenshot2.png)
 
