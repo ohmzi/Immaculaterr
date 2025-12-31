@@ -6,6 +6,27 @@ from pathlib import Path
 from plexapi.exceptions import NotFound, BadRequest
 from tautulli_curated.helpers.retry_utils import retry_with_backoff, safe_execute
 
+#
+# Plex "Manage Recommendations" (Home/Library rows) Notes
+# ------------------------------------------------------
+# The "Visible on → Home/Library/Friends' Home" toggles are NOT collection metadata.
+# Plex stores these as "hubs" per-library. Kometa manages this using:
+#   POST /hubs/sections/{sectionKey}/manage?metadataItemId={collectionRatingKey}
+#     &promotedToRecommended={0|1|2...}
+#     &promotedToOwnHome={0|1|2...}
+#     &promotedToSharedHome={0|1|2...}
+#
+# We mirror that behavior here so our collections can appear as rows on Home/Library
+# and be ordered at the top.
+#
+
+CURATED_RECOMMENDATION_COLLECTION_ORDER = [
+    # User-requested order (top to bottom)
+    "Based on your recently watched movie",
+    "Inspired by your Immaculate Taste",
+    "Change of Taste",
+]
+
 def _get_points(points_data, key: str) -> int:
     v = points_data.get(key, 0)
     if isinstance(v, dict):
@@ -178,6 +199,194 @@ def _set_collection_artwork(collection, collection_name: str, base_dir: Path = N
             logger.debug(f"  No background artwork found for '{collection_name}'")
     
     return poster_set, background_set
+
+
+def _collection_visibility_update_via_hubs(
+    plex,
+    *,
+    section_key: str,
+    collection_rating_key: str,
+    promoted_to_recommended: int,
+    promoted_to_own_home: int,
+    promoted_to_shared_home: int = 0,
+    logger=None,
+) -> bool:
+    """
+    Update a collection's "Visible on" / recommendation-row settings.
+
+    This uses the same endpoint Kometa uses:
+      POST /hubs/sections/{sectionKey}/manage?metadataItemId={collectionRatingKey}
+           &promotedToRecommended=...
+           &promotedToOwnHome=...
+           &promotedToSharedHome=...
+    """
+    key = f"/hubs/sections/{section_key}/manage?metadataItemId={collection_rating_key}"
+    key += f"&promotedToRecommended={int(promoted_to_recommended)}"
+    key += f"&promotedToOwnHome={int(promoted_to_own_home)}"
+    key += f"&promotedToSharedHome={int(promoted_to_shared_home)}"
+
+    def _do():
+        # IMPORTANT: Plex expects POST here (Kometa does post=True)
+        plex.query(key, method=plex._session.post)
+        return True
+
+    _, success = retry_with_backoff(
+        _do,
+        max_retries=3,
+        logger_instance=logger,
+        operation_name=f"Set hub visibility/order for collection ratingKey={collection_rating_key}",
+        raise_on_final_failure=False,
+    )
+    return bool(success)
+
+
+def _collection_hub_identifier(plex, *, section_key: str, collection_rating_key: str, logger=None) -> str | None:
+    """
+    Returns the hub identifier for a collection inside a library's Manage Recommendations list.
+    Kometa reads this via:
+      GET /hubs/sections/{sectionKey}/manage?metadataItemId={collectionRatingKey}
+    and uses the first element's `identifier`.
+    """
+    try:
+        root = plex.query(f"/hubs/sections/{section_key}/manage?metadataItemId={collection_rating_key}")
+        if len(root) < 1:
+            return None
+        return root[0].attrib.get("identifier")
+    except Exception as e:
+        if logger:
+            logger.debug(
+                f"hub_id: failed section_key={section_key} ratingKey={collection_rating_key}: {type(e).__name__}: {e}"
+            )
+        return None
+
+
+def _hub_move_row(plex, *, section_key: str, identifier: str, after: str | None = None, logger=None) -> bool:
+    """
+    Reorder a row in Plex's Manage Recommendations list.
+
+    Discovered endpoint (works in practice):
+      PUT /hubs/sections/{sectionKey}/manage/{identifier}/move
+      PUT /hubs/sections/{sectionKey}/manage/{identifier}/move?after={afterIdentifier}
+    """
+    if not identifier:
+        return False
+
+    path = f"/hubs/sections/{section_key}/manage/{identifier}/move"
+    if after:
+        path += f"?after={after}"
+
+    def _do():
+        plex.query(path, method=plex._session.put)
+        return True
+
+    _, success = retry_with_backoff(
+        _do,
+        max_retries=3,
+        logger_instance=logger,
+        operation_name=f"Move hub row identifier={identifier}",
+        raise_on_final_failure=False,
+    )
+    return bool(success)
+
+
+def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
+    """
+    Ensure the curated collections are:
+    - Visible on Library Recommended + Home (as rows)
+    - Ordered at the top in CURATED_RECOMMENDATION_COLLECTION_ORDER order
+
+    Returns a small stats dict for logging/testing.
+    """
+    stats = {
+        "requested": len(CURATED_RECOMMENDATION_COLLECTION_ORDER),
+        "found": 0,
+        "updated": 0,
+        "missing": 0,
+        "failed": 0,
+    }
+
+    section_key = getattr(section, "key", None)
+    if section_key is None:
+        if logger:
+            logger.warning("hub_pin: section has no key attribute; cannot manage recommendations")
+        return stats
+
+    for order_idx, collection_name in enumerate(CURATED_RECOMMENDATION_COLLECTION_ORDER, start=1):
+        try:
+            collection = section.collection(collection_name)
+        except NotFound:
+            stats["missing"] += 1
+            if logger:
+                logger.debug(f"hub_pin: collection missing: {collection_name!r} (skipping)")
+            continue
+        except Exception as e:
+            stats["failed"] += 1
+            if logger:
+                logger.warning(f"hub_pin: failed loading collection={collection_name!r}: {type(e).__name__}: {e}")
+            continue
+
+        stats["found"] += 1
+        rk = str(getattr(collection, "ratingKey", ""))
+        if not rk:
+            stats["failed"] += 1
+            if logger:
+                logger.warning(f"hub_pin: collection has no ratingKey: {collection_name!r}")
+            continue
+
+        # Visibility flags are effectively boolean (0/1). Ordering is handled separately via hub move calls.
+        ok = _collection_visibility_update_via_hubs(
+            plex,
+            section_key=str(section_key),
+            collection_rating_key=rk,
+            promoted_to_recommended=1,
+            promoted_to_own_home=1,
+            promoted_to_shared_home=0,
+            logger=logger,
+        )
+        if ok:
+            stats["updated"] += 1
+            if logger:
+                logger.info(
+                    f"hub_pin: ✓ set visible_on(library,home)=ON collection={collection_name!r}"
+                )
+        else:
+            stats["failed"] += 1
+            if logger:
+                logger.warning(f"hub_pin: ✗ failed updating hub settings for collection={collection_name!r}")
+
+    # Now reorder the hubs so they appear as top 1/2/3 rows (same as dragging in Plex UI).
+    # We do this via the discovered /move endpoint using hub identifiers.
+    try:
+        identifiers_in_order: list[str] = []
+        for collection_name in CURATED_RECOMMENDATION_COLLECTION_ORDER:
+            try:
+                collection = section.collection(collection_name)
+            except Exception:
+                continue
+            rk = str(getattr(collection, "ratingKey", ""))
+            if not rk:
+                continue
+            ident = _collection_hub_identifier(
+                plex, section_key=str(section_key), collection_rating_key=rk, logger=logger
+            )
+            if ident:
+                identifiers_in_order.append(ident)
+
+        if identifiers_in_order:
+            # Move first to the top, then chain "after=" for the rest.
+            first = identifiers_in_order[0]
+            _hub_move_row(plex, section_key=str(section_key), identifier=first, after=None, logger=logger)
+            prev = first
+            for ident in identifiers_in_order[1:]:
+                _hub_move_row(plex, section_key=str(section_key), identifier=ident, after=prev, logger=logger)
+                prev = ident
+            if logger:
+                logger.info(f"hub_pin: reordered top identifiers={identifiers_in_order}")
+    except Exception as e:
+        if logger:
+            logger.warning(f"hub_pin: reorder failed (non-critical): {type(e).__name__}: {e}")
+
+    return stats
 
 
 def refresh_collection_with_points(
@@ -787,6 +996,16 @@ def apply_collection_state_to_plex(
         except Exception as e:
             if logger:
                 logger.warning(f"apply_collection: failed to set artwork (non-critical): {e}")
+
+    # Ensure curated collections are visible + pinned at top (Manage Recommendations)
+    if collection:
+        try:
+            pin_stats = _pin_curated_collection_hubs(plex, section, logger=logger)
+            if logger:
+                logger.info(f"hub_pin: done stats={pin_stats}")
+        except Exception as e:
+            if logger:
+                logger.warning(f"hub_pin: failed (non-critical): {type(e).__name__}: {e}")
     
     return {
         "existing_items": len(existing_items),

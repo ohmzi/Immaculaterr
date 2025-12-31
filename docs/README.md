@@ -399,20 +399,16 @@ See [Logging & Monitoring](#logging--monitoring) section for complete details.
 
 ## Displaying Collections on Plex Home Screen
 
-To make your curated collections visible on the Plex home screen:
+These scripts **automatically** publish the curated collections as recommendation rows on both **Home** and the library **Recommended** tab, and pin them to the **very top** of your Movies library in this order:
 
-1. **Navigate to your Movies library** → Collections view
-2. **For each collection**, click the three-dot menu (⋯) → **"Visible On"**
-3. **Check both:**
-   - ✅ **Home** - Makes collection appear on home screen
-   - ✅ **Library** - Makes collection visible in library view
-4. **Manage order** in Settings → Library → Manage Recommendations
-5. **Drag collections to top** for priority placement
+1. "Based on your recently watched movie"
+2. "Inspired by your Immaculate Taste"
+3. "Change of Taste"
 
-**Recommended Order:**
-1. "Based on your recently watched movie" (most dynamic)
-2. "Change of Taste" (complementary)
-3. "Inspired by your Immaculate Taste" (curated collection)
+**Notes:**
+- **No manual Plex UI steps required** (no need to click “Visible on” or drag rows).
+- **Friends’ Home** is left disabled by default.
+- Plex clients may take a minute to refresh; if you don’t see changes immediately, refresh the client or wait briefly.
 
 See [Displaying Collections on Plex Home Screen](#displaying-collections-on-plex-home-screen) section for detailed instructions.
 
@@ -1137,66 +1133,23 @@ See `assets/collection_artwork/README.md` for detailed information.
 
 ## Displaying Collections on Plex Home Screen
 
-To make your curated collections visible on the Plex home screen and control their display order, follow these steps:
+The scripts handle Plex “Manage Recommendations” for you. When the collections are created/updated, they are automatically:
 
-#### Step 1: Make Collections Visible on Home
+- **Enabled as rows** on:
+  - **Home**
+  - The Movies library **Recommended** tab
+- **Pinned to the top** (same as dragging rows in Plex Settings) in this exact order:
+  1. "Based on your recently watched movie"
+  2. "Inspired by your Immaculate Taste"
+  3. "Change of Taste"
 
-For each collection you want to display:
-
-1. **Navigate to your Movies library** in Plex
-2. **Go to the Collections view** (click "Collections" in the library navigation)
-3. **Find your collection** (e.g., "Inspired by your Immaculate Taste", "Based on your recently watched movie", or "Change of Taste")
-4. **Hover over the collection** and click the **three-dot menu** (⋯)
-5. **Select "Visible On"** from the menu
-6. **Check both options:**
-   - ✅ **Home** - Makes the collection appear on your home screen
-   - ✅ **Library** - Makes the collection visible in the library view
-
-Repeat this process for all three collections you want to display.
-
-#### Step 2: Make Collections Visible in Library
-
-While you're in the Collections view:
-
-1. For each collection, click the **three-dot menu** (⋯) again
-2. Select **"Visible On"**
-3. Ensure **"Library"** is checked (you may have already done this in Step 1)
-
-#### Step 3: Manage Collection Order in Recommendations
-
-To control the order in which collections appear on your home screen:
-
-1. **Open Plex Settings** (click your profile icon → Settings)
-2. **Navigate to "Library"** in the left sidebar (under "Manage")
-3. **Scroll down** and find the **"Manage Recommendations"** section
-4. **Click the dropdown** to expand "Manage Recommendations"
-5. **Find your three collections** in the list:
-   - "Inspired by your Immaculate Taste"
-   - "Based on your recently watched movie"
-   - "Change of Taste"
-6. **Drag and drop** each collection to move them to the **top of the list**
-   - Collections at the top appear first on your home screen
-   - Collections at the bottom appear later or may require scrolling
-
-**Recommended Order:**
-1. "Based on your recently watched movie" (most dynamic, changes frequently)
-2. "Change of Taste" (complementary to recently watched)
-3. "Inspired by your Immaculate Taste" (curated collection, larger and more stable)
-
-#### Step 4: Verify on Home Screen
-
-1. **Navigate to your Plex Home screen**
-2. **Scroll down** to find your collections
-3. Collections should appear as rows with their custom artwork (if you've added artwork)
-4. Collections will update automatically as the scripts run
-
-**Note:** It may take a few moments for changes to appear. If collections don't show up immediately, try refreshing your Plex client or waiting a minute for the changes to propagate.
+**Defaults:**
+- **Friends’ Home** is left disabled.
 
 **Troubleshooting:**
-- If collections don't appear, ensure they have at least one movie in them
-- Check that "Visible On → Home" is enabled for each collection
-- Verify the collection order in Settings → Library → Manage Recommendations
-- Make sure you're viewing the correct Plex server (if you have multiple servers)
+- Ensure each collection has at least 1 item (Plex won’t surface empty collections).
+- Refresh the Plex client or wait briefly for the UI to update.
+- If you manually change the row order in Plex, the next run may re-apply the configured top order.
 
 ---
 

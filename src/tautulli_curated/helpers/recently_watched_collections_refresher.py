@@ -42,6 +42,7 @@ from tautulli_curated.helpers.plex_collection_manager import (
     _set_collection_artwork,
     _fetch_by_rating_key,
     _apply_custom_order,
+    _pin_curated_collection_hubs,
 )
 from plexapi.server import PlexServer
 from plexapi.exceptions import NotFound, BadRequest
@@ -402,6 +403,14 @@ def apply_collection_to_plex(
             _set_collection_artwork(collection, collection_name, base_dir, logger)
         except Exception as e:
             logger.warning(f"  ⚠ Failed to set artwork (non-critical): {e}")
+
+    # Ensure curated collections are visible + pinned at top (Manage Recommendations)
+    if collection and (added_count > 0 or existing_items) and not dry_run:
+        try:
+            pin_stats = _pin_curated_collection_hubs(plex, section, logger=logger)
+            logger.info(f"  hub_pin: done stats={pin_stats}")
+        except Exception as e:
+            logger.warning(f"  hub_pin: failed (non-critical): {type(e).__name__}: {e}")
     
     return {
         "added": added_count,
