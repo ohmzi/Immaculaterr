@@ -47,7 +47,119 @@ def _set_points(points_data, key: str, new_points: int):
         v["points"] = int(new_points)
         points_data[key] = v
     else:
-        points_data[key] = int(new_points)
+        # Prefer dict shape for new entries (keeps recommendation_points.json consistent)
+        points_data[key] = {"ratingKey": str(key), "points": int(new_points)}
+
+
+def update_points_data_for_run(
+    *,
+    points_data: dict,
+    suggested_movies: list,
+    max_points: int = 50,
+    logger=None,
+) -> dict:
+    """
+    Update points in-place with a simple decay model:
+    - Any movie suggested in this run is set to max_points (new or existing)
+    - Any movie NOT suggested in this run decays by 1 point
+    - Movies that reach 0 are removed from points_data
+
+    This is O(n) over the number of items in points_data.
+    """
+    max_points = int(max_points or 50)
+    if max_points < 1:
+        max_points = 1
+
+    # Build suggested key -> plex item map (for metadata updates)
+    suggested_by_key: dict[str, object] = {}
+    for m in (suggested_movies or []):
+        try:
+            k = str(getattr(m, "ratingKey", "")).strip()
+            if not k:
+                continue
+            suggested_by_key[k] = m
+        except Exception:
+            continue
+
+    suggested_keys = set(suggested_by_key.keys())
+
+    removed = 0
+    decayed = 0
+    reset_to_max = 0
+
+    # Decay or reset existing entries
+    keys_to_delete: list[str] = []
+    for k in list(points_data.keys()):
+        ks = str(k)
+        if ks in suggested_keys:
+            _set_points(points_data, ks, max_points)
+            reset_to_max += 1
+            # Update basic metadata if we have it
+            try:
+                entry = points_data.get(ks)
+                item = suggested_by_key.get(ks)
+                if isinstance(entry, dict) and item is not None:
+                    entry.setdefault("ratingKey", ks)
+                    title = getattr(item, "title", None)
+                    if title and not entry.get("title"):
+                        entry["title"] = str(title)
+                    points_data[ks] = entry
+            except Exception:
+                pass
+            continue
+
+        p = _get_points(points_data, ks)
+        p2 = p - 1
+        if p2 <= 0:
+            keys_to_delete.append(ks)
+        else:
+            _set_points(points_data, ks, p2)
+            decayed += 1
+
+    for k in keys_to_delete:
+        try:
+            del points_data[k]
+            removed += 1
+        except Exception:
+            pass
+
+    # Add brand new suggested entries not already present
+    added = 0
+    for k, item in suggested_by_key.items():
+        if k in points_data:
+            continue
+        # create a richer default dict
+        entry = {"ratingKey": k, "points": max_points}
+        try:
+            title = getattr(item, "title", None)
+            if title:
+                entry["title"] = str(title)
+        except Exception:
+            pass
+        points_data[k] = entry
+        added += 1
+
+    stats = {
+        "max_points": max_points,
+        "suggested_now": len(suggested_keys),
+        "reset_to_max": reset_to_max,
+        "decayed": decayed,
+        "removed": removed,
+        "added": added,
+        "total": len(points_data),
+    }
+    if logger:
+        logger.info(
+            "points_algo: suggested_now=%d reset_to_max=%d decayed=%d removed=%d added=%d total=%d max_points=%d",
+            stats["suggested_now"],
+            stats["reset_to_max"],
+            stats["decayed"],
+            stats["removed"],
+            stats["added"],
+            stats["total"],
+            stats["max_points"],
+        )
+    return stats
 
 
 def _get_or_create_collection(section, collection_name: str, seed_items):

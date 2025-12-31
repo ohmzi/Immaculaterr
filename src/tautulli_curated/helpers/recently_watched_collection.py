@@ -2,12 +2,13 @@ import sys
 import json
 import time
 from pathlib import Path
-from tautulli_curated.helpers.chatgpt_utils import get_related_movies
 from tautulli_curated.helpers.radarr_utils import radarr_add_or_monitor_missing
 from tautulli_curated.helpers.plex_search import find_plex_movie
 from tautulli_curated.helpers.logger import setup_logger
 from tautulli_curated.helpers.config_loader import load_config
 from tautulli_curated.helpers.change_of_taste_collection import run_change_of_taste_collection
+from tautulli_curated.helpers.recommender import get_recommendations
+from tautulli_curated.helpers.tmdb_cache import TMDbCache
 from plexapi.server import PlexServer
 
 logger = setup_logger("recently_watched_collection")
@@ -59,14 +60,16 @@ def run_recently_watched_playlist(movie_name, config):
         if not success:
             raise ConnectionError("Failed to connect to Plex after retries")
         
-        # Get recommendations from ChatGPT
-        logger.info("Step 1: Getting recommendations from ChatGPT...")
-        recommendations = get_related_movies(
-            movie_name,
-            api_key=config.openai.api_key,
-            limit=15
-        )
-        logger.info(f"  ✓ ChatGPT returned {len(recommendations)} recommendations")
+        # Get recommendations (Google→OpenAI if configured, else TMDb fallback)
+        logger.info("Step 1: Getting recommendations (Google/OpenAI optional, TMDb fallback)...")
+        # Build TMDb cache (required for TMDb advanced fallback)
+        try:
+            tmdb_cache_path = Path(config.files.tmdb_cache_file).resolve()
+            tmdb_cache = TMDbCache(config.tmdb.api_key, str(tmdb_cache_path))
+        except Exception:
+            tmdb_cache = None
+        recommendations = get_recommendations(movie_name, plex=plex, tmdb_cache=tmdb_cache, media_type="movie")[:15]
+        logger.info(f"  ✓ Returned {len(recommendations)} recommendations")
         
         collection_movies = []
         missing_in_plex = []

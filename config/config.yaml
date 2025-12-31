@@ -63,11 +63,25 @@ scripts_run:
   run_collection_refresher: true         # Immaculate Taste Collection Refresher (MANDATORY)
 
 # ============================================================================
+# TMDB CONFIGURATION (MANDATORY)
+# ============================================================================
+# TMDb is REQUIRED for:
+# - Movie metadata lookups
+# - Recommendation fallback when OpenAI is disabled/fails
+#
+# Even if you do NOT configure OpenAI/Google, the script still needs TMDb.
+#
+# Cost: TMDb is free to use (you just need to create an account to get an API key).
+# ============================================================================
+tmdb:
+  api_key: "TMDB_API_KEY"              # Replace with your TMDB API key (REQUIRED)
+
+# ============================================================================
 # PLEX CONFIGURATION
 # ============================================================================
 plex:
   url: "http://localhost:32400"                    # Your Plex server URL
-  token: "PLEX_TOKEN"                                # Replace with your Plex Token key
+  token: "PLEX_TOKEN"                                # Replace with your Plex Token
   movie_library_name: "Movies"                       # Name of your Plex movie library
   tv_library_name: "TV Shows"                        # Name of your Plex TV shows library (can be customized, e.g., "Shows", "Television", etc.)
   collection_name: "Inspired by your Immaculate Taste"  # Name of the main Plex collection
@@ -82,8 +96,33 @@ plex:
 # OPENAI CONFIGURATION
 # ============================================================================
 openai:
-  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"  # Replace with your OpenAI API key
-  recommendation_count: 50                 # Number of movies to recommend per run
+  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"  # Optional (placeholder/blank disables OpenAI)
+  # model: "gpt-5.2-chat-latest"           # Optional (default: gpt-5.2-chat-latest)
+
+# ============================================================================
+# RECOMMENDATION SETTINGS (Overall)
+# ============================================================================
+# This controls how many total suggestions the scripts generate per run.
+# It is used by both OpenAI (if enabled) and the TMDb fallback.
+# ============================================================================
+recommendations:
+  count: 50
+
+# ============================================================================
+# GOOGLE CUSTOM SEARCH (Optional)
+# ============================================================================
+# If configured AND OpenAI is configured, the script will run a Google web search
+# first and feed the top snippets into the OpenAI prompt as extra context.
+#
+# Notes:
+# - This is used only to enrich the OpenAI prompt (not used by TMDb fallback).
+# - If Google fails, the script will proceed with OpenAI without web context.
+# - If OpenAI is disabled/missing, Google is skipped.
+# ============================================================================
+google:
+  api_key: "GOOGLE_API_KEY"                # Optional (used only if OpenAI is enabled)
+  search_engine_id: "GOOGLE_CSE_ID"        # Optional (Google Programmable Search Engine ID / cx)
+  num_results: 10                          # Optional (default: 5; max: 10)
 
 # ============================================================================
 # RADARR CONFIGURATION
@@ -91,16 +130,16 @@ openai:
 radarr:
   url: "http://localhost:7878"                      # Your Radarr server URL
   api_key: "RADARR_API_KEY"                         # Replace with your Radarr API key
-  root_folder: "/folder/to/you/Movies"              # Root folder for movie downloads
-  
+  root_folder: "/path/to/Movies"                    # Root folder for movie downloads
+
   # Tag(s) to apply to added movies
   # Option 1: Single tag (string)
-  tag_name: "recommended"
+  tag_name: ["movies", "curated"]
   # Option 2: Multiple tags (list) - uncomment and use this format instead:
   # tag_name: ["movies", "curated"]
   # Both formats are supported - choose the one that fits your needs
   
-  quality_profile_id: 1                             # Quality profile ID (default: 1)
+  quality_profile_id: 4                             # Quality profile ID (default: 1)
 
 # ============================================================================
 # SONARR CONFIGURATION
@@ -108,23 +147,16 @@ radarr:
 sonarr:
   url: "http://localhost:8989"                      # Your Sonarr server URL
   api_key: "SONARR_API_KEY"                         # Replace with your Sonarr API key
-  root_folder: "/folder/to/you/TV Shows"            # Root folder for TV show downloads
+  root_folder: "/path/to/TV Shows"                  # Root folder for TV show downloads
   
   # Tag(s) to apply to added series (for future curated collection features)
   # Option 1: Single tag (string)
-  tag_name: "recommended"
+  tag_name: "curated"
   # Option 2: Multiple tags (list) - uncomment and use this format instead:
   # tag_name: ["tv", "curated"]
   # Both formats are supported - choose the one that fits your needs
   
   quality_profile_id: 1                             # Quality profile ID (default: 1)
-
-# ============================================================================
-# TMDB CONFIGURATION
-# ============================================================================
-tmdb:
-  api_key: "TMDB_API_KEY"              # Replace with your TMDB API key
-  recommendation_count: 50             # Number of recommendations from TMDB
 
 # ============================================================================
 # FILE PATHS

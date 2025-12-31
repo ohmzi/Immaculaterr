@@ -12,7 +12,7 @@ Tautulli Curated Plex Collection puts you in control of your media library by au
 
 When you finish watching a movie, the system:
 
-- 🤖 **Generates intelligent recommendations** using OpenAI GPT (with TMDb fallback)
+- 🤖 **Generates intelligent recommendations** using optional OpenAI (with optional Google web-search context) and a mandatory TMDb fallback
 - 📚 **Maintains multiple Plex collections:**
   - "Based on your recently watched movie" - Similar recommendations
   - "Change of Taste" - Contrasting recommendations (palate cleanser)
@@ -35,8 +35,9 @@ When you finish watching a movie, the system:
 - **Radarr** - For automatic movie downloads
 - **Sonarr** (Optional) - For TV show management
 - **Python 3.8+** - Required runtime
-- **OpenAI API Key** - For intelligent recommendations
-- **TMDb API Key** - For movie metadata and fallback recommendations
+- **TMDb API Key** (**Required**) - For movie metadata and fallback recommendations (**free**)
+- **OpenAI API Key** (**Optional**) - For AI-powered recommendations (`gpt-5.2-chat-latest`) (**paid**, but typically costs very little)
+- **Google API Key + Search Engine ID (cx)** (**Optional**) - Adds web search context to OpenAI (upcoming titles); used only when OpenAI is enabled (**free tier available**)
 
 ### Installation
 
@@ -48,12 +49,12 @@ When you finish watching a movie, the system:
 
 2. **Install Python dependencies:**
    ```bash
-   pip install -r requirements.txt --user
+   pip install -r docker/custom-tautulli/requirements.txt --user
    ```
    
    Or for system-wide installation:
    ```bash
-   pip install -r requirements.txt --break-system-packages
+   pip install -r docker/custom-tautulli/requirements.txt --break-system-packages
    ```
 
 3. **Configure your settings:**
@@ -66,7 +67,16 @@ When you finish watching a movie, the system:
      movie_library_name: "Movies"
    
    openai:
-     api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"
+     api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"   # Optional (placeholder/blank disables OpenAI)
+     model: "gpt-5.2-chat-latest"             # Optional (default: gpt-5.2-chat-latest)
+   
+   recommendations:
+     count: 50                                # Optional (default: 50)
+
+   google:
+     api_key: "GOOGLE_API_KEY"                # Optional (used only if OpenAI is enabled)
+     search_engine_id: "GOOGLE_CSE_ID"        # Optional (Google Programmable Search Engine ID / cx)
+     num_results: 5                           # Optional (default: 5)
    
    radarr:
      url: "http://localhost:7878"
@@ -74,8 +84,12 @@ When you finish watching a movie, the system:
      root_folder: "/path/to/Movies"
    
    tmdb:
-     api_key: "YOUR_TMDB_API_KEY"
+     api_key: "YOUR_TMDB_API_KEY"             # REQUIRED (free)
    ```
+
+   **Tip (recommended for public repos):**
+   - Keep `config/config.yaml` as a safe template (no real keys)
+   - Put your real secrets in `config/config.local.yaml` (auto-detected; should NOT be committed)
 
 4. **Set up Tautulli automation:**
    - Open Tautulli → Settings → Notification Agents
@@ -165,10 +179,11 @@ Missing movies are automatically added to Radarr with:
 
 ### 🤖 AI-Powered Recommendations
 
-- **OpenAI GPT Integration:** Generates intelligent, contextual movie recommendations
-- **TMDb Fallback:** Automatic fallback if OpenAI is unavailable
+- **Optional OpenAI:** Generates intelligent, contextual movie recommendations (default model: `gpt-5.2-chat-latest`)
+- **Optional Google Web Context (CSE):** If configured, runs a quick web search first and feeds snippets into the OpenAI prompt (helps surface upcoming titles)
+- **TMDb Required + Fallback:** TMDb is mandatory for metadata and advanced fallback recommendations if OpenAI is disabled/fails
 - **Diverse Recommendations:** Mix of mainstream, indie, international, and arthouse films
-- **Configurable Counts:** Adjust recommendation numbers per collection
+- **Configurable Counts:** Adjust the overall suggestion count (see `recommendations.count` in config)
 
 ### 📚 Multiple Collection Types
 
@@ -240,8 +255,26 @@ plex:
 
 ```yaml
 openai:
-  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"
-  recommendation_count: 50
+  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"     # Optional (blank/placeholder disables OpenAI)
+  model: "gpt-5.2-chat-latest"               # Optional (default: gpt-5.2-chat-latest)
+```
+
+### Recommendations (Overall)
+
+```yaml
+recommendations:
+  count: 50                                  # Optional (default: 50)
+```
+
+### Google Custom Search (Optional)
+
+Google is used only to provide **web-search context** to OpenAI (it is skipped if OpenAI is disabled).
+
+```yaml
+google:
+  api_key: "GOOGLE_API_KEY"                  # Optional (set real key to enable)
+  search_engine_id: "GOOGLE_CSE_ID"          # Optional (Programmable Search Engine ID / cx)
+  num_results: 5                             # Optional (default: 5; max: 10)
 ```
 
 ### Radarr Configuration
@@ -265,10 +298,11 @@ sonarr:
 
 ### TMDb Configuration
 
+TMDb is **mandatory** because it is used for metadata + recommendation fallback (especially when OpenAI/Google are not configured). TMDb is **free** to use (you just need an API key).
+
 ```yaml
 tmdb:
-  api_key: "YOUR_TMDB_API_KEY"
-  recommendation_count: 50
+  api_key: "YOUR_TMDB_API_KEY"               # REQUIRED
 ```
 
 See [Configuration Options](#configuration-options) section for complete details.
@@ -452,12 +486,13 @@ See [Project Structure](#project-structure) section for complete details.
 
 ### APIs
 
-- **OpenAI API Key** - Required for recommendations
-- **TMDb API Key** - Required for movie lookups and fallback
+- **TMDb API Key** - **Required** for movie lookups and fallback recommendations
+- **OpenAI API Key** - Optional (enables AI recommendations)
+- **Google API Key + Search Engine ID (cx)** - Optional (adds web context to OpenAI; used only when OpenAI is enabled)
 
 ### Python Dependencies
 
-All dependencies are listed in `requirements.txt`:
+All dependencies are listed in `docker/custom-tautulli/requirements.txt`:
 
 - `requests` - API calls
 - `PyYAML` - Configuration
@@ -468,7 +503,7 @@ All dependencies are listed in `requirements.txt`:
 
 Install with:
 ```bash
-pip install -r requirements.txt --user
+pip install -r docker/custom-tautulli/requirements.txt --user
 ```
 
 ## Troubleshooting
@@ -732,13 +767,13 @@ Install all required Python packages:
 
 ```bash
 cd /path/to/tautulli_immaculate_taste_collection
-pip install -r requirements.txt --break-system-packages
+pip install -r docker/custom-tautulli/requirements.txt --break-system-packages
 ```
 
 Or for user installation (recommended for cron environments):
 
 ```bash
-pip install -r requirements.txt --user
+pip install -r docker/custom-tautulli/requirements.txt --user
 ```
 
 **Important for Cron:** The scripts automatically detect and use user-installed packages (in `~/.local/lib/python3.x/site-packages`), so user installation works perfectly with cron jobs.
@@ -775,8 +810,23 @@ plex:
 # OPENAI CONFIGURATION
 # ============================================================================
 openai:
-  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"
-  recommendation_count: 50
+  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"     # Optional (blank/placeholder disables OpenAI)
+  model: "gpt-5.2-chat-latest"               # Optional (default: gpt-5.2-chat-latest)
+
+# ============================================================================
+# RECOMMENDATION SETTINGS (Overall)
+# ============================================================================
+recommendations:
+  count: 50                                  # Optional (default: 50)
+
+# ============================================================================
+# GOOGLE CUSTOM SEARCH (Optional)
+# ============================================================================
+# Used only to add web-search context to OpenAI (skipped if OpenAI is disabled).
+google:
+  api_key: "GOOGLE_API_KEY"                  # Optional
+  search_engine_id: "GOOGLE_CSE_ID"          # Optional (cx)
+  num_results: 5                             # Optional (default: 5)
 
 # ============================================================================
 # RADARR CONFIGURATION
@@ -792,8 +842,7 @@ radarr:
 # TMDB CONFIGURATION
 # ============================================================================
 tmdb:
-  api_key: "YOUR_TMDB_API_KEY"
-  recommendation_count: 50
+  api_key: "YOUR_TMDB_API_KEY"               # REQUIRED
 ```
 
 2. Make sure `config/config.yaml` is accessible to your scripts (either in the project directory or mounted as a volume in Docker).
@@ -909,8 +958,20 @@ All scripts can be enabled/disabled individually:
 
 ### OpenAI Configuration
 
-- `api_key`: Your OpenAI API key
-- `recommendation_count`: Number of recommendations per run (default: 50)
+- `api_key`: Optional. If blank/placeholder, OpenAI is disabled and TMDb fallback is used.
+- `model`: Optional (default: `gpt-5.2-chat-latest`)
+  - **Cost note:** OpenAI is paid, but for this use-case it typically costs very little.
+
+### Recommendations (Overall)
+
+- `count`: Number of total suggestions per run (default: 50). Used by both OpenAI (if enabled) and TMDb fallback.
+
+### Google Custom Search (Optional)
+
+- `api_key`: Optional. Google is used only when OpenAI is enabled.
+- `search_engine_id`: Optional. Google Programmable Search Engine ID (cx).
+- `num_results`: Optional (default: 5).
+  - **Cost note:** Google CSE has a free tier (quota limits apply).
 
 ### Radarr Configuration
 
@@ -930,8 +991,7 @@ All scripts can be enabled/disabled individually:
 
 ### TMDb Configuration
 
-- `api_key`: Your TMDb API key
-- `recommendation_count`: Number of recommendations from TMDb (default: 50)
+- `api_key`: **Required (free).** Your TMDb API key (metadata + fallback recommendations). The scripts require TMDb even if OpenAI/Google are not configured.
 
 ---
 
@@ -1181,7 +1241,6 @@ Tautulli_Curated_Plex_Collection/
 │       ├── recently_watched_collections_refresher_YYYYMMDD_HHMMSS.log
 │       ├── sonarr_duplicate_cleaner_YYYYMMDD_HHMMSS.log
 │       └── ... (other script logs)
-├── requirements.txt                         # Python dependencies
 ├── src/
 │   ├── tautulli_curated/                   # Main Python package
 │   │   ├── __init__.py
@@ -1195,6 +1254,7 @@ Tautulli_Curated_Plex_Collection/
 │   │       ├── config_loader.py             # YAML config loader
 │   │       ├── logger.py                    # Logging setup
 │   │       ├── change_of_taste_collection.py # Change of Taste collection logic
+│   │       ├── google_search.py             # Google Custom Search (optional OpenAI context)
 │   │       ├── plex_duplicate_cleaner.py    # Duplicate cleaner
 │   │       ├── radarr_monitor_confirm.py     # Radarr monitor confirmation
 │   │       ├── unmonitor_media_after_download.py  # Unmonitor helper (Radarr & Sonarr)
@@ -1221,7 +1281,6 @@ Tautulli_Curated_Plex_Collection/
 │       └── requirements.txt                 # Python dependencies
 ├── docs/
 │   └── README.md                           # This file
-├── requirements.txt                         # Python dependencies
 ├── tautulli_immaculate_taste_collection.py  # Backward-compatible entry point
 └── sample_run_pictures/                     # Screenshots and examples
 ```
@@ -1534,7 +1593,7 @@ Here are example cron entries for each script:
 - The `--no-pause` flag prevents scripts from waiting for user input
 - The `--log-file` flag saves output to timestamped log files in `data/logs/`
 - `>> /dev/null 2>&1` suppresses email notifications (remove if you want email alerts)
-- **Python Dependencies:** Scripts automatically detect and use user-installed packages (`~/.local/lib/python3.x/site-packages`), so install dependencies with `pip install -r requirements.txt --user` for best cron compatibility
+- **Python Dependencies:** Scripts automatically detect and use user-installed packages (`~/.local/lib/python3.x/site-packages`), so install dependencies with `pip install -r docker/custom-tautulli/requirements.txt --user` for best cron compatibility
 - **Log Files:** Each execution creates a unique timestamped log file in `data/logs/` - check these logs if scripts fail in cron
 
 **Cron Schedule Format:**
