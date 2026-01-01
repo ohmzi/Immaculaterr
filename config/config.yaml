@@ -127,6 +127,28 @@ google:
   #   recommendations.count * recommendations.web_context_fraction
 
 # ============================================================================
+# EMAIL ALERTS (Optional)
+# ============================================================================
+# Used by: `python3 -m tautulli_curated.tools.weekly_health_report --send-email`
+#
+# IMPORTANT:
+# - Put real credentials in config/config.local.yaml (git-ignored), not here.
+# - Gmail requires an App Password (not your normal Gmail password).
+# ============================================================================
+alerts:
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    username: "your@gmail.com"
+    app_password: "GMAIL_APP_PASSWORD"
+    from_email: "your@gmail.com"
+    to_emails:
+      - "your@gmail.com"
+    subject_prefix: "[Tautulli Curated]"
+    send_only_on_problems: false
+
+# ============================================================================
 # RADARR CONFIGURATION
 # ============================================================================
 radarr:
@@ -135,13 +157,14 @@ radarr:
   root_folder: "/path/to/Movies"                    # Root folder for movie downloads
 
   # Tag(s) to apply to added movies
-  # Option 1: Single tag (string)
-  tag_name: ["movies", "curated"]
-  # Option 2: Multiple tags (list) - uncomment and use this format instead:
+  # - Single tag (string):
+  #   tag_name: "recommended"
+  # - Multiple tags (list):
+  #   tag_name: ["movies", "curated"]
+  tag_name: "recommended"
   # tag_name: ["movies", "curated"]
-  # Both formats are supported - choose the one that fits your needs
   
-  quality_profile_id: 4                             # Quality profile ID (default: 1)
+  quality_profile_id: 1                             # Quality profile ID (default: 1)
 
 # ============================================================================
 # SONARR CONFIGURATION
@@ -161,16 +184,6 @@ sonarr:
   quality_profile_id: 1                             # Quality profile ID (default: 1)
 
 # ============================================================================
-# FILE PATHS
-# ============================================================================
-# These files are automatically stored in the 'data/' directory.
-# You typically don't need to change these unless you want custom locations.
-# ============================================================================
-files:
-  points_file: "recommendation_points.json"      # Points system data
-  tmdb_cache_file: "tmdb_cache.json"              # TMDB API cache 
-
-# ============================================================================
 # OVERSEERR CONFIGURATION (Optional)
 # ============================================================================
 # Overseerr integration is optional. Leave api_key empty if not using Overseerr.
@@ -178,4 +191,3 @@ files:
 overseerr:
   url: "http://localhost:5055"         # Your Overseerr URL
   api_key: ""                          # Add your Overseerr API key here (optional)
-  # MTc0MDgwMzUyNTk1NjUyYmI2MmIxLTMxOTAtNGY1MC1iNGQ3LTM2MDBmZWE1N2E3Yw

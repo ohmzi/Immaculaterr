@@ -1,10 +1,52 @@
 import sys
 import time
+from pathlib import Path
+from datetime import datetime, timedelta
 from tautulli_curated.helpers.logger import setup_logger
 from tautulli_curated.helpers.pipeline_recent_watch import run_pipeline
 from tautulli_curated.helpers.config_loader import load_config
 
 logger = setup_logger("main")
+
+
+def cleanup_old_logs(logs_dir: Path, days: int = 15) -> tuple[int, int]:
+    """
+    Remove log files older than specified days.
+    
+    Args:
+        logs_dir: Directory containing log files
+        days: Number of days to keep logs (default: 15)
+    
+    Returns:
+        Tuple of (files_deleted, total_size_freed_bytes)
+    """
+    if not logs_dir.exists() or not logs_dir.is_dir():
+        return 0, 0
+    
+    cutoff_date = datetime.now() - timedelta(days=days)
+    files_deleted = 0
+    total_size = 0
+    
+    try:
+        for log_file in logs_dir.glob("*.log"):
+            try:
+                # Get file modification time
+                mtime = datetime.fromtimestamp(log_file.stat().st_mtime)
+                
+                if mtime < cutoff_date:
+                    file_size = log_file.stat().st_size
+                    log_file.unlink()
+                    files_deleted += 1
+                    total_size += file_size
+                    logger.debug(f"Deleted old log: {log_file.name} (age: {(datetime.now() - mtime).days} days, size: {file_size} bytes)")
+            except (OSError, ValueError) as e:
+                logger.warning(f"Failed to delete log file {log_file.name}: {e}")
+                continue
+    
+    except Exception as e:
+        logger.warning(f"Error during log cleanup: {e}")
+    
+    return files_deleted, total_size
 
 def main():
     # Expect: python3 tautulli_immaculate_taste_collection.py "Title" movie
@@ -39,6 +81,18 @@ def main():
         config = load_config()
         logger.info(f"  ✓ Configuration loaded")
         logger.info("")
+        
+        # Clean up old log files (older than 15 days)
+        logs_dir = config.base_dir / "data" / "logs"
+        if logs_dir.exists():
+            logger.info("Cleaning up old log files (older than 15 days)...")
+            files_deleted, size_freed = cleanup_old_logs(logs_dir, days=15)
+            if files_deleted > 0:
+                size_mb = size_freed / (1024 * 1024)
+                logger.info(f"  ✓ Deleted {files_deleted} old log file(s), freed {size_mb:.2f} MB")
+            else:
+                logger.info(f"  ✓ No old log files to clean up")
+            logger.info("")
         
         # Check which scripts should run
         run_recently_watched = config.scripts_run.run_recently_watched_collection

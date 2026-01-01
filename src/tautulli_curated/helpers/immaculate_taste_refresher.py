@@ -111,9 +111,9 @@ def main():
         logger.info(f"  ✓ Library: {config.plex.movie_library_name}")
         logger.info(f"  ✓ Collection: {config.plex.collection_name}")
         
-        # Load points from recommendation_points.json
+        # Load points from recommendation_points.json (hardcoded filename)
         logger.info("Step 2: Loading points data...")
-        points_path = Path(config.files.points_file).resolve()
+        points_path = config.base_dir / "data" / "recommendation_points.json"
         logger.info(f"  Points file: {points_path}")
         
         if not points_path.exists():
@@ -139,18 +139,14 @@ def main():
         logger.info(f"  ✓ Loaded {len(rating_keys)} items from points file")
         logger.debug(f"  Rating keys: {rating_keys[:5]}..." if len(rating_keys) > 5 else f"  Rating keys: {rating_keys}")
         
-        # Tiered ordering: split into 3 sections by points and pick top3 as 1 random from each tier.
-        logger.info("Step 3: Building tiered collection order (3 sections by points)...")
+        # Tiered ordering:
+        # - Top 3: 1 random pick from each tier (high/mid/low), then shuffled
+        # - Remaining: fully randomized (NOT sorted by points)
+        logger.info("Step 3: Building tiered + randomized collection order (top 3 from tiers, rest shuffled)...")
         max_points = 50
         low_max = max_points // 3          # e.g. 16 for 50
         mid_max = (2 * max_points) // 3    # e.g. 33 for 50
 
-        # Buckets per tier by points for O(n + max_points) ordering.
-        buckets = {
-            "high": [[] for _ in range(max_points + 1)],
-            "mid": [[] for _ in range(max_points + 1)],
-            "low": [[] for _ in range(max_points + 1)],
-        }
         tier_lists = {"high": [], "mid": [], "low": []}
 
         # Filter out any <=0 entries (shouldn't exist, but be safe)
@@ -165,7 +161,6 @@ def main():
                 tier = "high"
             elif p > low_max:
                 tier = "mid"
-            buckets[tier][min(max(p, 0), max_points)].append(str(rk))
             tier_lists[tier].append(str(rk))
 
         if filtered_out:
@@ -180,19 +175,19 @@ def main():
         random.shuffle(top_picks)
 
         used = set(top_picks)
-        ordered_keys = list(top_picks)
-
-        # Append remaining items in 3 sections: high -> mid -> low, points desc within each.
+        remaining = []
         for tier in ("high", "mid", "low"):
-            for p in range(max_points, 0, -1):
-                for rk in buckets[tier][p]:
-                    if rk in used:
-                        continue
-                    ordered_keys.append(rk)
+            for rk in tier_lists[tier]:
+                if rk not in used:
+                    remaining.append(rk)
+        random.shuffle(remaining)
+
+        ordered_keys = list(top_picks) + remaining
 
         logger.info(f"  ✓ Tier thresholds: low=1..{low_max}, mid={low_max+1}..{mid_max}, high={mid_max+1}..{max_points}")
         logger.info(f"  ✓ Top picks (3 tiers): {top_picks}")
-        logger.debug(f"  First 10 rating keys after tiering: {ordered_keys[:10]}")
+        logger.info(f"  ✓ Remaining randomized: {len(remaining)} items")
+        logger.debug(f"  First 10 rating keys after shuffle: {ordered_keys[:10]}")
 
         # Persist the ordered points JSON (same structure, just re-ordered keys)
         try:

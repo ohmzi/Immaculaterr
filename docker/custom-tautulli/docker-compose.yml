@@ -14,7 +14,7 @@ services:
 
     # Volumes for Tautulli config, your scripts, etc.
     volumes:
-      - /absolute/host/path/to/config/Tautalli:/config
+      - /absolute/host/path/to/config/Tautulli:/config
       - /absolute/host/path/to/movies:/Movies
 
 

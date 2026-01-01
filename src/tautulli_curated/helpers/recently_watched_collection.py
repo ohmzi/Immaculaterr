@@ -63,8 +63,9 @@ def run_recently_watched_playlist(movie_name, config):
         # Get recommendations (Google→OpenAI if configured, else TMDb fallback)
         logger.info("Step 1: Getting recommendations (Google/OpenAI optional, TMDb fallback)...")
         # Build TMDb cache (required for TMDb advanced fallback)
+        # TMDb cache file is hardcoded as tmdb_cache.json
         try:
-            tmdb_cache_path = Path(config.files.tmdb_cache_file).resolve()
+            tmdb_cache_path = config.base_dir / "data" / "tmdb_cache.json"
             tmdb_cache = TMDbCache(config.tmdb.api_key, str(tmdb_cache_path))
         except Exception:
             tmdb_cache = None

@@ -1,6 +1,6 @@
 # Tautulli Curated Plex Collection
 
-**Version:** 5.1.0
+**Version:** 5.2.0
 
 Python automation system that creates and maintains dynamic Plex collections based on your viewing habits. When you finish watching a movie, the system automatically generates intelligent recommendations, adds missing movies to Radarr, maintains multiple curated collections, and keeps your library synchronized.
 
@@ -34,7 +34,7 @@ When you finish watching a movie, the system:
 - **Tautulli** - For watching activity tracking
 - **Radarr** - For automatic movie downloads
 - **Sonarr** (Optional) - For TV show management
-- **Python 3.8+** - Required runtime
+- **Python 3.10+** - Required runtime
 - **TMDb API Key** (**Required**) - For movie metadata and fallback recommendations (**free**)
 - **OpenAI API Key** (**Optional**) - For AI-powered recommendations (`gpt-5.2-chat-latest`) (**paid**, but typically costs very little)
 - **Google API Key + Search Engine ID (cx)** (**Optional**) - Adds web search context to OpenAI (upcoming titles); used only when OpenAI is enabled (**free tier available**)
@@ -43,7 +43,7 @@ When you finish watching a movie, the system:
 
 1. **Clone or download this repository:**
    ```bash
-   git clone https://github.com/yourusername/Tautulli_Curated_Plex_Collection.git
+   git clone https://github.com/ohmzi/Tautulli_Curated_Plex_Collection.git
    cd Tautulli_Curated_Plex_Collection
    ```
 
@@ -122,7 +122,7 @@ If you're new to Python, Tautulli automation, or this project, we've got detaile
 
 For users running the script directly on Windows, macOS, or Linux:
 
-1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
+1. **Install Python 3.10+** from [python.org](https://www.python.org/downloads/)
 2. **Install dependencies** (see Quick Start above)
 3. **Configure `config/config.yaml`** with your API keys and service URLs
 4. **Set up Tautulli notification** (see Quick Start above)
@@ -295,6 +295,9 @@ radarr:
 sonarr:
   url: "http://localhost:8989"
   api_key: "YOUR_SONARR_API_KEY"
+  root_folder: "/path/to/TV Shows"
+  tag_name: "recommended"  # Or ["tag1", "tag2"] for multiple tags
+  quality_profile_id: 1
 ```
 
 ### TMDb Configuration
@@ -546,7 +549,11 @@ pip install -r docker/custom-tautulli/requirements.txt --user
 
 Full changelog: [VERSION_HISTORY.md](VERSION_HISTORY.md)
 
-### Version 5.1.0 (Current)
+### Version 5.2.0 (Current)
+- Weekly health monitoring: parses logs, writes `data/health/*.json`, and emails a mobile-friendly weekly report (Gmail App Password).
+- Logging/monitoring improvements: better “what happened” excerpts, expected-script coverage, and missing-run detection.
+
+### Version 5.1.0
 - Cron/runtime hardening + better logging for cron/Tautulli execution.
 - Plex UX + recommendations upgrades (auto-pin curated rows; Google CSE → OpenAI context; config improvements).
 
@@ -586,7 +593,7 @@ Pull requests are welcome! Please:
 
 ## License
 
-This project is provided "as is" without warranty of any kind. You are free to use, modify, and distribute this code as per the [MIT License](https://opensource.org/licenses/MIT).
+This project is provided "as is" without warranty of any kind. You are free to use, modify, and distribute this code under the terms of the [MIT License](../LICENSE).
 
 ---
 
@@ -674,9 +681,10 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 
 - **Immaculate Taste Collection Refresher:**
   - Reads `data/recommendation_points.json`
-  - Randomizes movie order
+  - Builds tiered ordering: Top 3 items are randomly selected (1 from each tier: high/mid/low points) and shuffled
+  - All remaining items are completely randomized (no points-based sorting)
   - Removes all items from the Plex collection
-  - Adds all movies back in randomized order
+  - Adds all movies back in the randomized order
 
 **Note:** These refreshers are **mandatory by default** (`true`) because they apply the collections to Plex. You can set them to `false` to run independently during off-peak hours.
 
@@ -719,6 +727,7 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 - Points persist across runs
 - Collection maintains all movies with their current points
 - Automatic cleanup of items with 0 or negative points
+- **Collection Ordering:** Top 3 items are randomly selected from high/mid/low point tiers and shuffled. All remaining items are completely randomized for fresh presentation on each refresh.
 
 ### **Duplicate Management**
 - Scans entire library for duplicate movies
@@ -759,7 +768,7 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 
 - **Plex, Tautulli, and Radarr** must already be installed and working.
 - You'll need valid credentials for each service (tokens, API keys, etc.).
-- **Python 3.8+** must be installed.
+- **Python 3.10+** must be installed.
 
 ### 2. Install Python Dependencies
 
@@ -784,68 +793,119 @@ pip install -r docker/custom-tautulli/requirements.txt --user
 
 ```yaml
 # ============================================================================
-# SCRIPT EXECUTION CONTROL
+# SCRIPT EXECUTION CONTROL (All Optional - defaults shown)
 # ============================================================================
 scripts_run:
-  run_recently_watched_collection: true    # Step 1: Recently Watched Collection
-  run_plex_duplicate_cleaner: true         # Step 2: Plex Duplicate Cleaner
-  run_radarr_monitor_confirm_plex: true    # Step 3: Radarr Monitor Confirm
-  run_immaculate_taste_collection: true    # Step 4: Immaculate Taste Collection
-  run_recently_watched_refresher: true     # Step 5a: Recently Watched Collections Refresher (MANDATORY)
-  run_collection_refresher: true           # Step 5b: Immaculate Taste Refresher (MANDATORY)
+  run_recently_watched_collection: true    # OPTIONAL: Step 1 - Recently Watched Collection (default: true)
+  run_plex_duplicate_cleaner: true         # OPTIONAL: Step 2 - Plex Duplicate Cleaner (default: true)
+  run_sonarr_duplicate_cleaner: true       # OPTIONAL: Sonarr Duplicate Cleaner (default: true)
+  run_radarr_monitor_confirm_plex: true    # OPTIONAL: Step 3 - Radarr Monitor Confirm (default: true)
+  run_sonarr_monitor_confirm_plex: true    # OPTIONAL: Sonarr Monitor Confirm (default: true)
+  run_sonarr_search_monitored: true        # OPTIONAL: Sonarr Search Monitored (default: true)
+  run_immaculate_taste_collection: true    # OPTIONAL: Step 4 - Immaculate Taste Collection (default: true)
+  run_recently_watched_refresher: true    # OPTIONAL: Step 5a - Recently Watched Refresher (default: true, MANDATORY for collections to appear in Plex)
+  run_collection_refresher: true           # OPTIONAL: Step 5b - Immaculate Taste Refresher (default: true, MANDATORY for collection to appear in Plex)
 
 # ============================================================================
-# PLEX CONFIGURATION
+# PLEX CONFIGURATION (Required fields marked)
 # ============================================================================
 plex:
-  url: "http://localhost:32400"
-  token: "YOUR_PLEX_TOKEN"
-  movie_library_name: "Movies"
-  tv_library_name: "TV Shows"         # Required for Sonarr scripts
-  collection_name: "Inspired by your Immaculate Taste"
-  delete_preference: "largest_file"  # Options: smallest_file, largest_file, newest, oldest
-  preserve_quality: []                # Example: ["4K", "1080p"] to preserve high quality
+  url: "http://localhost:32400"            # REQUIRED: Your Plex server URL
+  token: "YOUR_PLEX_TOKEN"                 # REQUIRED: Your Plex authentication token
+  movie_library_name: "Movies"             # REQUIRED: Name of your Plex movie library
+  tv_library_name: "TV Shows"              # REQUIRED: Name of your Plex TV library (required for Sonarr scripts)
+  collection_name: "Inspired by your Immaculate Taste"  # REQUIRED: Name of the main collection
+  delete_preference: "largest_file"        # OPTIONAL: Which duplicate file to delete (default: "smallest_file")
+                                           #           Options: smallest_file, largest_file, newest, oldest
+  preserve_quality: []                     # OPTIONAL: List of quality keywords to preserve (default: [])
+                                           #           Example: ["4K", "1080p"] to preserve high quality
+  randomize_collection: true               # OPTIONAL: Randomize collection order (default: true)
 
 # ============================================================================
-# OPENAI CONFIGURATION
+# OPENAI CONFIGURATION (All Optional)
 # ============================================================================
+# If api_key is blank/placeholder, OpenAI is disabled and TMDb fallback is used.
 openai:
-  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"     # Optional (blank/placeholder disables OpenAI)
-  model: "gpt-5.2-chat-latest"               # Optional (default: gpt-5.2-chat-latest)
+  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"  # OPTIONAL: OpenAI API key (blank/placeholder disables OpenAI)
+  model: "gpt-5.2-chat-latest"             # OPTIONAL: OpenAI model (default: "gpt-5.2-chat-latest")
+                                           #           Cost note: OpenAI is paid, but typically costs very little for this use-case
 
 # ============================================================================
-# RECOMMENDATION SETTINGS (Overall)
+# RECOMMENDATION SETTINGS (All Optional)
 # ============================================================================
 recommendations:
-  count: 50                                  # Optional (default: 50)
+  count: 50                                 # OPTIONAL: Number of total suggestions per run (default: 50)
+                                           #           Used by both OpenAI (if enabled) and TMDb fallback
+  web_context_fraction: 0.30              # OPTIONAL: Controls how much final recommendations can be influenced by web context (default: 0.30)
+                                           #           - Controls how many Google CSE results are fetched (derived from count * web_context_fraction)
+                                           #           - Max portion of final titles allowed from OpenAI's "upcoming_from_search" list
 
 # ============================================================================
-# GOOGLE CUSTOM SEARCH (Optional)
+# GOOGLE CUSTOM SEARCH (All Optional)
 # ============================================================================
 # Used only to add web-search context to OpenAI (skipped if OpenAI is disabled).
+# Google does NOT use a fixed num_results anymore; it is derived from recommendations.count * recommendations.web_context_fraction
 google:
-  api_key: "GOOGLE_API_KEY"                  # Optional
-  search_engine_id: "GOOGLE_CSE_ID"          # Optional (cx)
-  num_results: 5                             # Optional (default: 5)
+  api_key: "GOOGLE_API_KEY"                # OPTIONAL: Google Custom Search API key (blank/placeholder disables Google)
+  search_engine_id: "GOOGLE_CSE_ID"       # OPTIONAL: Google Programmable Search Engine ID (cx)
+  num_results: 5                          # OPTIONAL: Legacy setting (default: 5, but actual count is derived from web_context_fraction)
+                                           #           Cost note: Google CSE has a free tier (quota limits apply)
 
 # ============================================================================
-# RADARR CONFIGURATION
+# RADARR CONFIGURATION (Required fields marked)
 # ============================================================================
 radarr:
-  url: "http://localhost:7878"
-  api_key: "YOUR_RADARR_API_KEY"
-  root_folder: "/path/to/Movies"
-  tag_name: "recommended"  # Single tag, or use ["tag1", "tag2"] for multiple tags
-  quality_profile_id: 1
+  url: "http://localhost:7878"            # REQUIRED: Your Radarr server URL
+  api_key: "YOUR_RADARR_API_KEY"          # REQUIRED: Your Radarr API key
+  root_folder: "/path/to/Movies"          # REQUIRED: Root folder for movie downloads
+  tag_name: "recommended"                 # REQUIRED: Tag(s) to apply to added movies
+                                           #           Single tag: "recommended" (string)
+                                           #           Multiple tags: ["movies", "curated"] (list of strings)
+  quality_profile_id: 1                   # OPTIONAL: Quality profile ID (default: 1)
 
 # ============================================================================
-# TMDB CONFIGURATION
+# SONARR CONFIGURATION (Required fields marked)
 # ============================================================================
+sonarr:
+  url: "http://localhost:8989"            # REQUIRED: Your Sonarr server URL
+  api_key: "YOUR_SONARR_API_KEY"          # REQUIRED: Your Sonarr API key
+  root_folder: "/path/to/TV Shows"        # REQUIRED: Root folder for TV show downloads
+  tag_name: "recommended"                 # REQUIRED: Tag(s) to apply to added shows
+                                           #           Single tag: "recommended" (string)
+                                           #           Multiple tags: ["shows", "curated"] (list of strings)
+  quality_profile_id: 1                   # OPTIONAL: Quality profile ID (default: 1)
+
+# ============================================================================
+# TMDB CONFIGURATION (Required)
+# ============================================================================
+# TMDb is REQUIRED because it is used for metadata + recommendation fallback
+# (especially when OpenAI/Google are not configured). TMDb is FREE to use.
 tmdb:
-  api_key: "YOUR_TMDB_API_KEY"               # REQUIRED
+  api_key: "YOUR_TMDB_API_KEY"            # REQUIRED: Your TMDb API key (free at https://www.themoviedb.org/settings/api)
+
+# ============================================================================
+# EMAIL ALERTS CONFIGURATION (All Optional)
+# ============================================================================
+# Weekly health report email notifications (Gmail SMTP App Password)
+# If disabled or missing credentials, the weekly health report will not email.
+alerts:
+  email:
+    enabled: false                         # OPTIONAL: Enable email alerts (default: false)
+    smtp_host: "smtp.gmail.com"           # OPTIONAL: SMTP host (default: "smtp.gmail.com")
+    smtp_port: 587                        # OPTIONAL: SMTP port (default: 587)
+    username: ""                          # OPTIONAL: Gmail address (required if enabled)
+    app_password: ""                      # OPTIONAL: Gmail App Password - NOT your normal login password (required if enabled)
+    from_email: ""                        # OPTIONAL: From email address (defaults to username if not set)
+    to_emails: []                         # OPTIONAL: List of recipient email addresses (required if enabled)
+                                           #           Example: ["user1@example.com", "user2@example.com"]
+                                           #           Or comma-separated string: "user1@example.com,user2@example.com"
+    subject_prefix: "[Tautulli Curated]"  # OPTIONAL: Email subject prefix (default: "[Tautulli Curated]")
+    send_only_on_problems: false         # OPTIONAL: Only send emails when there are PARTIAL/FAIL/UNKNOWN runs (default: false)
 ```
 
 2. Make sure `config/config.yaml` is accessible to your scripts (either in the project directory or mounted as a volume in Docker).
+
+**Note:** You can also use `config/config.local.yaml` instead of `config/config.yaml` - the local file takes precedence if it exists. This is useful for keeping your actual credentials out of version control.
 
 ### 4. Configure Script Execution
 
@@ -941,20 +1001,26 @@ All scripts can be enabled/disabled individually:
 |--------|---------|-------------|
 | `run_recently_watched_collection` | `true` | Step 1: Generate recommendations for "Recently Watched" and "Change of Taste" collections |
 | `run_plex_duplicate_cleaner` | `true` | Step 2: Scan and remove duplicate movies from Plex |
+| `run_sonarr_duplicate_cleaner` | `true` | Sonarr Duplicate Cleaner - Remove duplicate TV episodes |
 | `run_radarr_monitor_confirm_plex` | `true` | Step 3: Unmonitor movies in Radarr that are already in Plex |
+| `run_sonarr_monitor_confirm_plex` | `true` | Sonarr Monitor Confirm - Unmonitor shows in Sonarr that are already in Plex |
+| `run_sonarr_search_monitored` | `true` | Sonarr Search Monitored - Trigger search for monitored episodes |
 | `run_immaculate_taste_collection` | `true` | Step 4: Main recommendation pipeline with points system |
 | `run_recently_watched_refresher` | `true` | Step 5a: Apply Recently Watched collections to Plex (MANDATORY) |
 | `run_collection_refresher` | `true` | Step 5b: Apply Immaculate Taste collection to Plex (MANDATORY) |
 
 ### Plex Configuration
 
-- `url`: Your Plex server URL (e.g., `http://localhost:32400`)
-- `token`: Your Plex authentication token
-- `movie_library_name`: Name of your Plex movie library
-- `tv_library_name`: Name of your Plex TV library (required for Sonarr scripts)
-- `collection_name`: Name of the main collection ("Inspired by your Immaculate Taste")
-- `delete_preference`: Which duplicate file to delete (`smallest_file`, `largest_file`, `newest`, `oldest`)
-- `preserve_quality`: List of quality keywords to preserve (e.g., `["4K", "1080p"]`)
+- `url`: **Required.** Your Plex server URL (e.g., `http://localhost:32400`)
+- `token`: **Required.** Your Plex authentication token
+- `movie_library_name`: **Required.** Name of your Plex movie library
+- `tv_library_name`: **Required.** Name of your Plex TV library (required for Sonarr scripts)
+- `collection_name`: **Required.** Name of the main collection ("Inspired by your Immaculate Taste")
+- `delete_preference`: Optional. Which duplicate file to delete (default: `"smallest_file"`)
+  - Options: `smallest_file`, `largest_file`, `newest`, `oldest`
+- `preserve_quality`: Optional. List of quality keywords to preserve (default: `[]`)
+  - Example: `["4K", "1080p"]` to preserve high quality
+- `randomize_collection`: Optional. Randomize collection order (default: `true`)
 
 ### OpenAI Configuration
 
@@ -993,9 +1059,38 @@ All scripts can be enabled/disabled individually:
 - **Important:** Use the modified fork [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr) which allows admins to approve their own requests
 - The original Overseerr doesn't support admin self-approval, so this fork is required for the approval workflow
 
+### Sonarr Configuration
+
+- `url`: Your Sonarr server URL
+- `api_key`: Your Sonarr API key
+- `root_folder`: Root folder for TV show downloads
+- `tag_name`: Tag(s) to apply to added shows
+  - **Single tag:** `tag_name: "recommended"` (string)
+  - **Multiple tags:** `tag_name: ["shows", "curated"]` (list of strings)
+  - Both formats are supported for backward compatibility
+- `quality_profile_id`: Quality profile ID (default: 1)
+
 ### TMDb Configuration
 
 - `api_key`: **Required (free).** Your TMDb API key (metadata + fallback recommendations). The scripts require TMDb even if OpenAI/Google are not configured.
+
+**Note:** Both `recommendation_points.json` and `tmdb_cache.json` are hardcoded in scripts and located in the `data/` directory. They are not configurable.
+
+### Email Alerts Configuration
+
+Weekly health report email notifications (Gmail SMTP App Password). If disabled or missing credentials, the weekly health report will not email.
+
+- `enabled`: Enable email alerts (default: `false`)
+- `smtp_host`: SMTP host (default: `"smtp.gmail.com"`)
+- `smtp_port`: SMTP port (default: `587`)
+- `username`: Gmail address (required if enabled)
+- `app_password`: Gmail App Password - **NOT** your normal login password (required if enabled)
+- `from_email`: From email address (defaults to username if not set)
+- `to_emails`: List of recipient email addresses (required if enabled)
+  - Can be a list: `["user1@example.com", "user2@example.com"]`
+  - Or comma-separated string: `"user1@example.com,user2@example.com"`
+- `subject_prefix`: Email subject prefix (default: `"[Tautulli Curated]"`)
+- `send_only_on_problems`: Only send emails when there are PARTIAL/FAIL/UNKNOWN runs (default: `false`)
 
 ---
 
@@ -1139,16 +1234,16 @@ TAUTULLI CURATED COLLECTION SCRIPTS END OK
 
 - **Recently Watched Collections:** Typically 15-30 movies each (refreshed each run)
 - **Immaculate Taste Collection:** Grows over time, maintains all movies with points > 0
-- Collections are automatically randomized on each refresh for fresh presentation
+- Collections are automatically randomized on each refresh: Top 3 items are randomly selected from high/mid/low point tiers and shuffled, with all remaining items completely randomized for fresh presentation
 
 ### Data Files
 
 All data is stored in the `data/` directory:
 
-- `recommendation_points.json` - Points system for Immaculate Taste collection (dict with rating keys as keys)
+- `recommendation_points.json` - Points system for Immaculate Taste collection (dict with rating keys as keys) - **Hardcoded filename, not configurable**
 - `recently_watched_collection.json` - Recently Watched collection data (list of dicts with `title`, `rating_key`, and `year`)
 - `change_of_taste_collection.json` - Change of Taste collection data (list of dicts with `title`, `rating_key`, and `year`)
-- `tmdb_cache.json` - TMDb API cache (reduces API calls)
+- `tmdb_cache.json` - TMDb API cache (reduces API calls) - **Hardcoded filename, not configurable**
 - `logs/` - Execution log files (automatically created, timestamped)
 
 **JSON Structure Examples:**
@@ -1191,7 +1286,7 @@ Custom posters and backgrounds for collections are stored in `assets/collection_
 - If artwork files are not found, collections will use Plex's default artwork
 - Artwork upload failures are non-critical and won't stop collection updates
 
-See `assets/collection_artwork/README.md` for detailed information.
+Artwork lives in `assets/collection_artwork/` (posters + backgrounds).
 
 ---
 
@@ -1340,9 +1435,10 @@ The project includes several standalone bash scripts that can be run independent
 **What it does:**
 - Reads `data/recommendation_points.json`
 - Uses rating keys for fast, direct Plex API lookups
-- Randomizes the order of movies based on their points
+- Builds tiered ordering: Top 3 items are randomly selected (1 from each tier: high/mid/low points) and shuffled
+- All remaining items are completely randomized (no points-based sorting)
 - Removes all existing items from the Plex collection
-- Adds all movies back in randomized order
+- Adds all movies back in the randomized order
 - Filters out non-movie items automatically
 
 **When to use:**
@@ -1452,7 +1548,52 @@ The project includes several standalone bash scripts that can be run independent
 
 ---
 
-#### 5. `run_sonarr_duplicate_cleaner.sh`
+#### 5. `run_radarr_duplicate_cleaner.sh`
+**Purpose:** Identifies and removes duplicate movies in Plex, keeping only the best quality version. Also unmonitors the movie in Radarr after deletion to prevent re-grabs.
+
+**What it does:**
+- Scans Plex movie library for duplicate movies (by TMDb ID)
+- Compares file sizes and qualities
+- Removes lower quality duplicates based on your preferences (`delete_preference` and `preserve_quality` settings)
+- Preserves high-quality files (configurable)
+- Unmonitors the movie in Radarr after deletion to prevent re-grabs
+
+**When to use:**
+- Periodically clean up duplicate movies
+- After bulk imports or library reorganizations
+- Schedule via cron for routine maintenance
+- When you notice duplicate movies taking up space
+
+**Usage:**
+```bash
+./src/scripts/run_radarr_duplicate_cleaner.sh [options]
+```
+
+**Options:**
+- `--dry-run`: Show what would be done without actually deleting files or unmonitoring in Radarr
+- `--verbose`: Enable debug-level logging
+- `--no-pause`: Don't pause at the end (for automated runs)
+- `--log-file`: Save output to a timestamped log file in `data/logs/`
+- `--help`: Show help message
+
+**Requirements:**
+- `delete_preference` and `preserve_quality` must be configured in `config/config.yaml` (under `plex` section)
+
+**Example:**
+```bash
+# Dry run to see what would be deleted
+./src/scripts/run_radarr_duplicate_cleaner.sh --dry-run
+
+# Normal run (will actually delete duplicates)
+./src/scripts/run_radarr_duplicate_cleaner.sh
+
+# For automated/scheduled runs
+./src/scripts/run_radarr_duplicate_cleaner.sh --no-pause --log-file
+```
+
+---
+
+#### 6. `run_sonarr_duplicate_cleaner.sh`
 **Purpose:** Identifies and removes duplicate TV episodes in Plex, keeping only the best quality version.
 
 **What it does:**
@@ -1483,7 +1624,7 @@ The project includes several standalone bash scripts that can be run independent
 
 ---
 
-#### 6. `run_sonarr_monitor_confirm.sh`
+#### 7. `run_sonarr_monitor_confirm.sh`
 **Purpose:** Checks all monitored series and episodes in Sonarr and unmonitors those that already exist in your Plex library.
 
 **What it does:**
@@ -1507,6 +1648,7 @@ The project includes several standalone bash scripts that can be run independent
 **Options:**
 - `--dry-run`: Show what would be done without actually unmonitoring
 - `--no-pause`: Don't pause at the end (for automated runs)
+- `--log-file`: Save output to a timestamped log file in `data/logs/` (recommended for cron + health reporting)
 - `--help`: Show help message
 
 **Example:**
@@ -1519,11 +1661,14 @@ The project includes several standalone bash scripts that can be run independent
 
 # For automated/scheduled runs
 ./src/scripts/run_sonarr_monitor_confirm.sh --no-pause
+
+# For automated runs + logging (recommended)
+./src/scripts/run_sonarr_monitor_confirm.sh --no-pause --log-file
 ```
 
 ---
 
-#### 7. `run_sonarr_search_monitored.sh`
+#### 8. `run_sonarr_search_monitored.sh`
 **Purpose:** Triggers a search for all missing monitored episodes in Sonarr.
 
 **What it does:**
@@ -1579,6 +1724,52 @@ All standalone logs include a stable final line you can parse for alerts:
 
 See `docs/ERROR_HANDLING.md` for the status values and exit code mapping.
 
+#### Weekly Health Report (Email + Dashboard JSON)
+
+This project includes an optional weekly log auditor that:
+
+- Reads the last 7 days of logs from `data/logs/`
+- Writes normalized health JSON to `data/health/` (for a future dashboard)
+- Optionally emails a weekly summary via **Gmail SMTP App Password** (HTML + plain-text fallback; mobile-friendly)
+- Includes all runner scripts in `src/scripts/run_*.sh` plus the Tautulli trigger logs (`tautulli_main_*`) (shows “no runs” if something didn’t run)
+
+**Example email report:**
+
+![Weekly Health Email Report](../sample_run_pictures/weekly_health_email_report.png)
+
+**How status is determined:**
+
+- Prefer `FINAL_STATUS=<STATUS> FINAL_EXIT_CODE=<CODE>` when present
+- Fallback to parsing “Script completed with exit code: …” and common failure markers (e.g. `Traceback`)
+- If no reliable footer/exit code is found, the run is marked `UNKNOWN`
+
+**Dashboard data outputs:**
+
+- `data/health/health_index.json`: key/value index of parsed logs (keyed by log filename)
+- `data/health/latest.json`: last 7 days of health data (regenerated each run)
+- `data/health/weekly_summary_YYYYMMDD.json`: frozen snapshot for the run day (ideal for archiving weekly reports)
+
+**Run manually (refresh dashboard data anytime):**
+
+```bash
+cd /path/to/Tautulli_Curated_Plex_Collection
+PYTHONPATH=/path/to/Tautulli_Curated_Plex_Collection/src python3 -m tautulli_curated.tools.weekly_health_report --since-days 7
+```
+
+**Email configuration (put secrets in `config/config.local.yaml`, not `config/config.yaml`):**
+
+```yaml
+alerts:
+  email:
+    enabled: true
+    username: "your@gmail.com"
+    app_password: "GMAIL_APP_PASSWORD"   # Gmail App Password (not your normal password)
+    from_email: "your@gmail.com"
+    to_emails:
+      - "your@gmail.com"
+    send_only_on_problems: false         # If true, only emails when PARTIAL/FAIL/UNKNOWN are detected
+```
+
 #### Ubuntu/Linux (Cron)
 
 **Step 1: Open your crontab**
@@ -1599,6 +1790,9 @@ Here are example cron entries for each script:
 
 # Trigger Radarr search for monitored movies every 6 hours
 0 */6 * * * /path/to/Tautulli_Curated_Plex_Collection/src/scripts/run_radarr_search_monitored.sh >> /dev/null 2>&1
+
+# Weekly health email report every Sunday at 5:00 AM (writes data/health/*.json and emails a summary)
+0 5 * * 0 cd /path/to/Tautulli_Curated_Plex_Collection && PYTHONPATH=/path/to/Tautulli_Curated_Plex_Collection/src python3 -m tautulli_curated.tools.weekly_health_report --since-days 7 --send-email >> /dev/null 2>&1
 ```
 
 **Important Notes:**
