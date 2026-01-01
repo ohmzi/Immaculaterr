@@ -1548,7 +1548,52 @@ The project includes several standalone bash scripts that can be run independent
 
 ---
 
-#### 5. `run_sonarr_duplicate_cleaner.sh`
+#### 5. `run_radarr_duplicate_cleaner.sh`
+**Purpose:** Identifies and removes duplicate movies in Plex, keeping only the best quality version. Also unmonitors the movie in Radarr after deletion to prevent re-grabs.
+
+**What it does:**
+- Scans Plex movie library for duplicate movies (by TMDb ID)
+- Compares file sizes and qualities
+- Removes lower quality duplicates based on your preferences (`delete_preference` and `preserve_quality` settings)
+- Preserves high-quality files (configurable)
+- Unmonitors the movie in Radarr after deletion to prevent re-grabs
+
+**When to use:**
+- Periodically clean up duplicate movies
+- After bulk imports or library reorganizations
+- Schedule via cron for routine maintenance
+- When you notice duplicate movies taking up space
+
+**Usage:**
+```bash
+./src/scripts/run_radarr_duplicate_cleaner.sh [options]
+```
+
+**Options:**
+- `--dry-run`: Show what would be done without actually deleting files or unmonitoring in Radarr
+- `--verbose`: Enable debug-level logging
+- `--no-pause`: Don't pause at the end (for automated runs)
+- `--log-file`: Save output to a timestamped log file in `data/logs/`
+- `--help`: Show help message
+
+**Requirements:**
+- `delete_preference` and `preserve_quality` must be configured in `config/config.yaml` (under `plex` section)
+
+**Example:**
+```bash
+# Dry run to see what would be deleted
+./src/scripts/run_radarr_duplicate_cleaner.sh --dry-run
+
+# Normal run (will actually delete duplicates)
+./src/scripts/run_radarr_duplicate_cleaner.sh
+
+# For automated/scheduled runs
+./src/scripts/run_radarr_duplicate_cleaner.sh --no-pause --log-file
+```
+
+---
+
+#### 6. `run_sonarr_duplicate_cleaner.sh`
 **Purpose:** Identifies and removes duplicate TV episodes in Plex, keeping only the best quality version.
 
 **What it does:**
@@ -1579,7 +1624,7 @@ The project includes several standalone bash scripts that can be run independent
 
 ---
 
-#### 6. `run_sonarr_monitor_confirm.sh`
+#### 7. `run_sonarr_monitor_confirm.sh`
 **Purpose:** Checks all monitored series and episodes in Sonarr and unmonitors those that already exist in your Plex library.
 
 **What it does:**
@@ -1623,7 +1668,7 @@ The project includes several standalone bash scripts that can be run independent
 
 ---
 
-#### 7. `run_sonarr_search_monitored.sh`
+#### 8. `run_sonarr_search_monitored.sh`
 **Purpose:** Triggers a search for all missing monitored episodes in Sonarr.
 
 **What it does:**
