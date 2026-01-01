@@ -678,9 +678,10 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 
 - **Immaculate Taste Collection Refresher:**
   - Reads `data/recommendation_points.json`
-  - Randomizes movie order
+  - Builds tiered ordering: Top 3 items are randomly selected (1 from each tier: high/mid/low points) and shuffled
+  - All remaining items are completely randomized (no points-based sorting)
   - Removes all items from the Plex collection
-  - Adds all movies back in randomized order
+  - Adds all movies back in the randomized order
 
 **Note:** These refreshers are **mandatory by default** (`true`) because they apply the collections to Plex. You can set them to `false` to run independently during off-peak hours.
 
@@ -723,6 +724,7 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 - Points persist across runs
 - Collection maintains all movies with their current points
 - Automatic cleanup of items with 0 or negative points
+- **Collection Ordering:** Top 3 items are randomly selected from high/mid/low point tiers and shuffled. All remaining items are completely randomized for fresh presentation on each refresh.
 
 ### **Duplicate Management**
 - Scans entire library for duplicate movies
@@ -1143,7 +1145,7 @@ TAUTULLI CURATED COLLECTION SCRIPTS END OK
 
 - **Recently Watched Collections:** Typically 15-30 movies each (refreshed each run)
 - **Immaculate Taste Collection:** Grows over time, maintains all movies with points > 0
-- Collections are automatically randomized on each refresh for fresh presentation
+- Collections are automatically randomized on each refresh: Top 3 items are randomly selected from high/mid/low point tiers and shuffled, with all remaining items completely randomized for fresh presentation
 
 ### Data Files
 
@@ -1344,9 +1346,10 @@ The project includes several standalone bash scripts that can be run independent
 **What it does:**
 - Reads `data/recommendation_points.json`
 - Uses rating keys for fast, direct Plex API lookups
-- Randomizes the order of movies based on their points
+- Builds tiered ordering: Top 3 items are randomly selected (1 from each tier: high/mid/low points) and shuffled
+- All remaining items are completely randomized (no points-based sorting)
 - Removes all existing items from the Plex collection
-- Adds all movies back in randomized order
+- Adds all movies back in the randomized order
 - Filters out non-movie items automatically
 
 **When to use:**
