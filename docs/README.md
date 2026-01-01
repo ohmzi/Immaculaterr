@@ -1596,6 +1596,10 @@ This project includes an optional weekly log auditor that:
 - Optionally emails a weekly summary via **Gmail SMTP App Password** (HTML + plain-text fallback; mobile-friendly)
 - Includes all runner scripts in `src/scripts/run_*.sh` plus the Tautulli trigger logs (`tautulli_main_*`) (shows “no runs” if something didn’t run)
 
+**Example email report:**
+
+![Weekly Health Email Report](../sample_run_pictures/weekly_health_email_report.png)
+
 **How status is determined:**
 
 - Prefer `FINAL_STATUS=<STATUS> FINAL_EXIT_CODE=<CODE>` when present
