@@ -126,6 +126,14 @@ def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None, media_ty
         if results:
             google_context = format_search_results_for_prompt(results)
             logger.info(f"Google CSE returned {len(results)} results; using web context for OpenAI")
+            # Log Google search result titles
+            logger.info("=" * 60)
+            logger.info("GOOGLE SEARCH RESULTS:")
+            logger.info("=" * 60)
+            for i, result in enumerate(results, 1):
+                logger.info(f"  {i}. {result.title}")
+                logger.info(f"     Snippet: {result.snippet[:100]}..." if len(result.snippet) > 100 else f"     Snippet: {result.snippet}")
+            logger.info("=" * 60)
         else:
             google_failed = True
             logger.warning("Google CSE returned no results or failed; proceeding with OpenAI without web context")

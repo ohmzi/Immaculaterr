@@ -103,6 +103,25 @@ def run_pipeline(movie_name, media_type, ctx=None):
             # progress every 5, and also at the end
             if i % 5 == 0 or i == total:
                 logger.info(f"progress {i}/{total} found={len(plex_movies)} missing={len(missing_titles)}")
+        
+        # Log detailed Plex status
+        logger.info("=" * 60)
+        logger.info("PLEX COLLECTION STATUS:")
+        logger.info("=" * 60)
+        logger.info(f"Already in Plex ({len(plex_movies)} items):")
+        plex_titles = {m.title.lower(): m.title for m in plex_movies}
+        for i, movie in enumerate(plex_movies, 1):
+            logger.info(f"  {i}. {movie.title}")
+        logger.info("")
+        logger.info(f"Missing in Plex ({len(missing_titles)} items):")
+        for i, title in enumerate(missing_titles, 1):
+            logger.info(f"  {i}. {title}")
+        logger.info("")
+        logger.info(f"Final list to add to collection ({len(recs)} total):")
+        for i, title in enumerate(recs, 1):
+            status = "✓ IN PLEX" if title.lower() in plex_titles else "✗ MISSING"
+            logger.info(f"  {i}. {title} [{status}]")
+        logger.info("=" * 60)
 
     pipeline_stats["plex_found"] = len(plex_movies)
     pipeline_stats["plex_missing"] = len(missing_titles)

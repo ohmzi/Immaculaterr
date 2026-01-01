@@ -246,10 +246,51 @@ def get_related_movies(
         text = resp.choices[0].message.content or ""
         primary, upcoming = _try_parse_json_recs(text)
         if primary or upcoming:
+            # Log OpenAI recommendations breakdown
+            logger.info("=" * 60)
+            logger.info("OPENAI RECOMMENDATIONS BREAKDOWN:")
+            logger.info("=" * 60)
+            logger.info(f"Primary Recommendations ({len(primary)} total):")
+            for i, title in enumerate(primary, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("")
+            logger.info(f"Upcoming from Search ({len(upcoming)} total):")
+            for i, title in enumerate(upcoming, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("")
+            logger.info(f"Upcoming cap: {int(limit * frac)} (max {int(frac*100)}% of {limit})")
+            logger.info("=" * 60)
+            
             recs = _merge_primary_and_upcoming(primary, upcoming, limit=limit, upcoming_cap_fraction=frac)
+            
+            # Log merge details
+            logger.info("=" * 60)
+            logger.info("MERGE DETAILS:")
+            logger.info("=" * 60)
+            logger.info(f"Final merged list ({len(recs)} items):")
+            for i, title in enumerate(recs, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("")
+            # Identify what was ignored
+            all_suggested = set(p.lower() for p in primary) | set(u.lower() for u in upcoming)
+            final_set = set(r.lower() for r in recs)
+            ignored = [title for title in (primary + upcoming) if title.lower() not in final_set]
+            if ignored:
+                logger.info(f"Ignored from final list ({len(ignored)} items):")
+                for i, title in enumerate(ignored, 1):
+                    logger.info(f"  {i}. {title}")
+            else:
+                logger.info("No items were ignored (all suggestions included)")
+            logger.info("=" * 60)
         else:
             # fallback: accept plain newline list
             recs = parse_recommendations(text, limit=limit)
+            logger.info("=" * 60)
+            logger.info("OPENAI RECOMMENDATIONS (Fallback Format):")
+            logger.info("=" * 60)
+            for i, title in enumerate(recs, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("=" * 60)
 
         logger.info(f"OpenAI returned {len(recs)} recommendations for '{movie_name}'")
         return recs
