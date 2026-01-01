@@ -2,7 +2,8 @@
 
 This document is the **complete changelog** for Tautulli Curated Plex Collection.
 
-It is generated from **git tags** (`v1.0.0` → `v5.0.0`) plus the **current branch/HEAD** (used for the “5.1.0 Current” section since a `v5.1.0` tag does not exist yet).
+It is generated from **git tags** (`v1.0.0` → `v5.0.0`) plus the **current branch/HEAD** (used for the “5.2.0 (Current)” section).  
+`v5.1.0` was not tagged, so the changelog pins **Version 5.1.0** to commit `edfda4b`.
 
 For each version you’ll find:
 - **Highlights** (what changed and why it matters)
@@ -11,10 +12,77 @@ For each version you’ll find:
 
 ---
 
-## Version 5.1.0 (Current / Unreleased Tag)
+## Version 5.2.0 (Current)
 
-- **Git ref**: `HEAD` (`edfda4b`, 2025-12-31)
-- **Diff base**: `v5.0.0..HEAD`
+- **Git ref**: `HEAD` (`f51c37e`, 2026-01-01)
+- **Diff base**: `edfda4b..HEAD`
+
+### Highlights (since v5.1.0)
+
+- **Weekly health monitoring + email report**: parse `data/logs/` and send a weekly Gmail SMTP email with a clean status breakdown (plus JSON outputs for future dashboards).
+- **Mobile-friendly report formatting**: HTML + plain-text fallback, dark-mode friendly styling, and short “What happened” excerpts for PARTIAL/FAILED runs.
+- **Better cron coverage**: includes all `src/scripts/run_*.sh` runners + Tautulli-triggered `tautulli_main_*` logs, and flags missing runs.
+- **Logging improvements**: ensured key runners reliably emit `FINAL_STATUS=... FINAL_EXIT_CODE=...` (and added missing `--log-file` support where needed).
+
+### Upgrade notes
+
+- To enable weekly emails, configure `alerts.email` in `config/config.local.yaml` and schedule:
+  - `python3 -m tautulli_curated.tools.weekly_health_report --since-days 7 --send-email`
+- For best monitoring results, run cron scripts with `--log-file` so each run produces a timestamped log in `data/logs/`.
+
+<details>
+<summary><strong>Commits (edfda4b..HEAD)</strong></summary>
+
+```text
+f51c37e feat: Add weekly email health report and improve script logging
+ea44577 feat: Improve monitoring, recommendations, and script robustness
+```
+
+</details>
+
+<details>
+<summary><strong>Files changed (edfda4b..HEAD)</strong></summary>
+
+```text
+M	.gitignore
+M	config/config.yaml
+M	docs/ERROR_HANDLING.md
+M	docs/README.md
+A	docs/VERSION_HISTORY.md
+M	src/scripts/run_google_search_test.sh
+M	src/scripts/run_immaculate_taste_refresher.sh
+A	src/scripts/run_radarr_duplicate_cleaner.sh
+M	src/scripts/run_radarr_monitor_confirm.sh
+M	src/scripts/run_radarr_search_monitored.sh
+M	src/scripts/run_recently_watched_collections_refresher.sh
+M	src/scripts/run_sonarr_duplicate_cleaner.sh
+M	src/scripts/run_sonarr_monitor_confirm.sh
+M	src/scripts/run_sonarr_search_monitored.sh
+M	src/tautulli_curated/helpers/chatgpt_utils.py
+M	src/tautulli_curated/helpers/config_loader.py
+M	src/tautulli_curated/helpers/google_search.py
+M	src/tautulli_curated/helpers/immaculate_taste_refresher.py
+A	src/tautulli_curated/helpers/log_health.py
+M	src/tautulli_curated/helpers/plex_collection_manager.py
+M	src/tautulli_curated/helpers/plex_duplicate_cleaner.py
+M	src/tautulli_curated/helpers/radarr_monitor_confirm.py
+M	src/tautulli_curated/helpers/recently_watched_collections_refresher.py
+M	src/tautulli_curated/helpers/recommender.py
+M	src/tautulli_curated/helpers/sonarr_duplicate_cleaner.py
+M	src/tautulli_curated/main.py
+A	src/tautulli_curated/tools/__init__.py
+A	src/tautulli_curated/tools/weekly_health_report.py
+M	tautulli_immaculate_taste_collection.py
+```
+
+</details>
+
+---
+
+## Version 5.1.0
+
+- **Git ref**: `edfda4b` (2025-12-31)
+- **Diff base**: `v5.0.0..edfda4b`
 
 ### Highlights (since v5.0.0)
 
@@ -31,7 +99,7 @@ For each version you’ll find:
   - **Google CSE** is optional (free tier available; used only when OpenAI is enabled).
 
 <details>
-<summary><strong>Commits (v5.0.0..HEAD)</strong></summary>
+<summary><strong>Commits (v5.0.0..edfda4b)</strong></summary>
 
 ```text
 edfda4b feat: Add Google Search context for OpenAI and refactor config
@@ -51,7 +119,7 @@ a8e6ed5 fix: Resolve cron execution issues and improve logging
 </details>
 
 <details>
-<summary><strong>Files changed (v5.0.0..HEAD)</strong></summary>
+<summary><strong>Files changed (v5.0.0..edfda4b)</strong></summary>
 
 ```text
 M	.gitignore

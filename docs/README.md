@@ -1,6 +1,6 @@
 # Tautulli Curated Plex Collection
 
-**Version:** 5.1.0
+**Version:** 5.2.0
 
 Python automation system that creates and maintains dynamic Plex collections based on your viewing habits. When you finish watching a movie, the system automatically generates intelligent recommendations, adds missing movies to Radarr, maintains multiple curated collections, and keeps your library synchronized.
 
@@ -546,7 +546,11 @@ pip install -r docker/custom-tautulli/requirements.txt --user
 
 Full changelog: [VERSION_HISTORY.md](VERSION_HISTORY.md)
 
-### Version 5.1.0 (Current)
+### Version 5.2.0 (Current)
+- Weekly health monitoring: parses logs, writes `data/health/*.json`, and emails a mobile-friendly weekly report (Gmail App Password).
+- Logging/monitoring improvements: better “what happened” excerpts, expected-script coverage, and missing-run detection.
+
+### Version 5.1.0
 - Cron/runtime hardening + better logging for cron/Tautulli execution.
 - Plex UX + recommendations upgrades (auto-pin curated rows; Google CSE → OpenAI context; config improvements).
 

@@ -470,6 +470,7 @@ def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
     # We do this via the discovered /move endpoint using hub identifiers.
     try:
         identifiers_in_order: list[str] = []
+        collections_in_order: list[str] = []
         for collection_name in CURATED_RECOMMENDATION_COLLECTION_ORDER:
             try:
                 collection = section.collection(collection_name)
@@ -483,6 +484,7 @@ def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
             )
             if ident:
                 identifiers_in_order.append(ident)
+                collections_in_order.append(collection_name)
 
         if identifiers_in_order:
             # Move first to the top, then chain "after=" for the rest.
@@ -493,7 +495,9 @@ def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
                 _hub_move_row(plex, section_key=str(section_key), identifier=ident, after=prev, logger=logger)
                 prev = ident
             if logger:
-                logger.info(f"hub_pin: reordered top identifiers={identifiers_in_order}")
+                logger.info(
+                    f"hub_pin: reordered top collections={collections_in_order} identifiers={identifiers_in_order}"
+                )
     except Exception as e:
         if logger:
             logger.warning(f"hub_pin: reorder failed (non-critical): {type(e).__name__}: {e}")
