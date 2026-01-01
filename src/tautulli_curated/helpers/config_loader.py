@@ -95,12 +95,6 @@ class SonarrConfig:
 
 
 @dataclass(frozen=True)
-class FilesConfig:
-    points_file: str = "recommendation_points.json"
-    tmdb_cache_file: str = "tmdb_cache.json"
-
-
-@dataclass(frozen=True)
 class ScriptsRunConfig:
     run_plex_duplicate_cleaner: bool = True
     run_sonarr_duplicate_cleaner: bool = True
@@ -144,7 +138,6 @@ class AppConfig:
     tmdb: TMDbConfig
     radarr: RadarrConfig
     sonarr: SonarrConfig
-    files: FilesConfig
     scripts_run: ScriptsRunConfig
     alerts: AlertsConfig
     raw: Dict[str, Any]
@@ -290,21 +283,10 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         quality_profile_id=int(data.get("sonarr", {}).get("quality_profile_id", 1)),
     )
 
-    # Data files are now in data/ directory, but config may still reference just filenames
-    # We'll resolve them relative to data/ directory
-    points_file_name = data.get("files", {}).get("points_file", "recommendation_points.json")
-    tmdb_cache_file_name = data.get("files", {}).get("tmdb_cache_file", "tmdb_cache.json")
-    
-    # If paths are relative, assume they're in data/ directory
-    if not Path(points_file_name).is_absolute():
-        points_file_name = str(base_dir / "data" / points_file_name)
-    if not Path(tmdb_cache_file_name).is_absolute():
-        tmdb_cache_file_name = str(base_dir / "data" / tmdb_cache_file_name)
-    
-    files = FilesConfig(
-        points_file=points_file_name,
-        tmdb_cache_file=tmdb_cache_file_name,
-    )
+    # Note: Both points_file and tmdb_cache_file are hardcoded in scripts:
+    # - recommendation_points.json
+    # - tmdb_cache.json
+    # Both are located in data/ directory relative to base_dir
 
     scripts_run = ScriptsRunConfig(
         run_plex_duplicate_cleaner=bool(data.get("scripts_run", {}).get("run_plex_duplicate_cleaner", True)),
@@ -378,7 +360,6 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         tmdb=tmdb,
         radarr=radarr,
         sonarr=sonarr,
-        files=files,
         scripts_run=scripts_run,
         alerts=alerts,
         raw=data,

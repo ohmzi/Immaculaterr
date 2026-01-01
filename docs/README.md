@@ -884,14 +884,6 @@ tmdb:
   api_key: "YOUR_TMDB_API_KEY"            # REQUIRED: Your TMDb API key (free at https://www.themoviedb.org/settings/api)
 
 # ============================================================================
-# FILES CONFIGURATION (All Optional)
-# ============================================================================
-# File paths are relative to the data/ directory by default
-files:
-  points_file: "recommendation_points.json"      # OPTIONAL: Points system file (default: "recommendation_points.json")
-  tmdb_cache_file: "tmdb_cache.json"            # OPTIONAL: TMDb API cache file (default: "tmdb_cache.json")
-
-# ============================================================================
 # EMAIL ALERTS CONFIGURATION (All Optional)
 # ============================================================================
 # Weekly health report email notifications (Gmail SMTP App Password)
@@ -1082,11 +1074,7 @@ All scripts can be enabled/disabled individually:
 
 - `api_key`: **Required (free).** Your TMDb API key (metadata + fallback recommendations). The scripts require TMDb even if OpenAI/Google are not configured.
 
-### Files Configuration
-
-- `points_file`: Points system file (default: `"recommendation_points.json"`)
-- `tmdb_cache_file`: TMDb API cache file (default: `"tmdb_cache.json"`)
-- File paths are relative to the `data/` directory by default
+**Note:** Both `recommendation_points.json` and `tmdb_cache.json` are hardcoded in scripts and located in the `data/` directory. They are not configurable.
 
 ### Email Alerts Configuration
 
@@ -1252,10 +1240,10 @@ TAUTULLI CURATED COLLECTION SCRIPTS END OK
 
 All data is stored in the `data/` directory:
 
-- `recommendation_points.json` - Points system for Immaculate Taste collection (dict with rating keys as keys)
+- `recommendation_points.json` - Points system for Immaculate Taste collection (dict with rating keys as keys) - **Hardcoded filename, not configurable**
 - `recently_watched_collection.json` - Recently Watched collection data (list of dicts with `title`, `rating_key`, and `year`)
 - `change_of_taste_collection.json` - Change of Taste collection data (list of dicts with `title`, `rating_key`, and `year`)
-- `tmdb_cache.json` - TMDb API cache (reduces API calls)
+- `tmdb_cache.json` - TMDb API cache (reduces API calls) - **Hardcoded filename, not configurable**
 - `logs/` - Execution log files (automatically created, timestamped)
 
 **JSON Structure Examples:**

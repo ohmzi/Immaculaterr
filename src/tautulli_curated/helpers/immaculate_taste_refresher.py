@@ -111,9 +111,9 @@ def main():
         logger.info(f"  ✓ Library: {config.plex.movie_library_name}")
         logger.info(f"  ✓ Collection: {config.plex.collection_name}")
         
-        # Load points from recommendation_points.json
+        # Load points from recommendation_points.json (hardcoded filename)
         logger.info("Step 2: Loading points data...")
-        points_path = Path(config.files.points_file).resolve()
+        points_path = config.base_dir / "data" / "recommendation_points.json"
         logger.info(f"  Points file: {points_path}")
         
         if not points_path.exists():

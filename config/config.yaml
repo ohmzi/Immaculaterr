@@ -183,16 +183,6 @@ sonarr:
   quality_profile_id: 1                             # Quality profile ID (default: 1)
 
 # ============================================================================
-# FILE PATHS
-# ============================================================================
-# These files are automatically stored in the 'data/' directory.
-# You typically don't need to change these unless you want custom locations.
-# ============================================================================
-files:
-  points_file: "recommendation_points.json"      # Points system data
-  tmdb_cache_file: "tmdb_cache.json"              # TMDB API cache 
-
-# ============================================================================
 # OVERSEERR CONFIGURATION (Optional)
 # ============================================================================
 # Overseerr integration is optional. Leave api_key empty if not using Overseerr.

@@ -71,11 +71,12 @@ def run_pipeline(movie_name, media_type, ctx=None):
         raise_on_final_failure=True,  # Can't continue without Plex
     )
 
-    # Config loader now provides full paths, so use them directly
-    tmdb_cache_path = Path(config.files.tmdb_cache_file).resolve()
+    # TMDb cache file is hardcoded as tmdb_cache.json
+    tmdb_cache_path = config.base_dir / "data" / "tmdb_cache.json"
     tmdb_cache = TMDbCache(config.tmdb.api_key, str(tmdb_cache_path))
 
-    points_path = Path(config.files.points_file).resolve()
+    # Points file is hardcoded as recommendation_points.json
+    points_path = config.base_dir / "data" / "recommendation_points.json"
     points_data = load_points(points_path, logger)
     logger.info(f"Loaded points entries={len(points_data)} from {points_path}")
 
