@@ -106,7 +106,7 @@ def main():
         # Load configuration
         logger.info("Step 1: Loading configuration...")
         config = load_config()
-        logger.info(f"  ✓ Config loaded from: {config.base_dir / 'config' / 'config.yaml'}")
+        logger.info(f"  ✓ Config loaded from: {config.config_path}")
         logger.info(f"  ✓ Plex URL: {config.plex.url}")
         logger.info(f"  ✓ Library: {config.plex.movie_library_name}")
         logger.info(f"  ✓ Collection: {config.plex.collection_name}")
@@ -331,6 +331,7 @@ def main():
         if not items:
             logger.warning("No valid items found in Plex. Nothing to do.")
             logger.info("IMMACULATE TASTE COLLECTION REFRESHER END (no valid items)")
+            logger.info("FINAL_STATUS=SKIPPED FINAL_EXIT_CODE=0")
             return 0
         
         logger.info(f"  ✓ Found {len(items)} valid items in Plex")
@@ -385,18 +386,42 @@ def main():
         else:
             logger.info(f"Collection updated: (DRY RUN - no changes)")
         logger.info("=" * 60)
-        logger.info("IMMACULATE TASTE COLLECTION REFRESHER END OK")
+
+        # Determine final status + exit code for monitoring/alerting
+        order_failed = 0
+        try:
+            if not args.dry_run and isinstance(stats, dict):
+                order_failed = int((stats.get("order_stats") or {}).get("failed", 0) or 0)
+        except Exception:
+            order_failed = 0
+
+        status = "SUCCESS"
+        exit_code = 0
+        if not args.dry_run:
+            if len(failed_keys) > 0 or order_failed > 0:
+                status = "PARTIAL"
+                exit_code = 10
+
+        logger.info(f"IMMACULATE TASTE COLLECTION REFRESHER END {status}")
+        logger.info(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
         logger.info("=" * 60)
-        return 0
+        return exit_code
         
     except KeyboardInterrupt:
         logger.warning("\nInterrupted by user")
         logger.info("IMMACULATE TASTE COLLECTION REFRESHER END (interrupted)")
+        logger.info("FINAL_STATUS=INTERRUPTED FINAL_EXIT_CODE=130")
         return 130
     except Exception as e:
+        # Categorize dependency failures vs internal failures for monitoring
+        dependency_failed = isinstance(e, (Timeout, RequestsConnectionError, ReadTimeoutError, ConnectTimeoutError))
+        status = "DEPENDENCY_FAILED" if dependency_failed else "FAILED"
+        exit_code = 20 if dependency_failed else 30
+
         logger.exception("IMMACULATE TASTE COLLECTION REFRESHER END FAIL")
         logger.error(f"Error: {type(e).__name__}: {e}")
-        return 1
+        logger.error(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
+        return exit_code
 
 
 if __name__ == "__main__":

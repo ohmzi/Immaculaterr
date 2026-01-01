@@ -1,5 +1,6 @@
 # helpers/recommender.py
 import datetime
+import math
 
 from tautulli_curated.helpers.chatgpt_utils import get_related_movies
 from tautulli_curated.helpers.logger import setup_logger
@@ -71,17 +72,37 @@ def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None, media_ty
     google_context = ""
     google_failed = False
     if google_enabled:
+        frac = float(getattr(config.recommendations, "web_context_fraction", 0.30) or 0.0)
+        if frac < 0:
+            frac = 0.0
+        if frac > 1:
+            frac = 1.0
+
+        desired_google_results = int(math.ceil(config.recommendations.count * frac))
+        if desired_google_results <= 0:
+            logger.info("Google CSE enabled but recommendations.web_context_fraction=0; skipping web search")
+            results = []
+            meta = None
+        else:
+            logger.info(
+                "Google CSE context sizing: total=%d web_context_fraction=%.2f -> num_results=%d",
+                config.recommendations.count,
+                frac,
+                desired_google_results,
+            )
+
         local_year = datetime.date.today().year
         q = _build_google_query(seed_meta, current_year=local_year)
         logger.info(f"Google CSE enabled: query={q!r}")
-        results, meta = google_custom_search_with_meta(
-            api_key=config.google.api_key,
-            search_engine_id=config.google.search_engine_id,
-            query=q,
-            num_results=config.google.num_results,
-        )
+        if desired_google_results > 0:
+            results, meta = google_custom_search_with_meta(
+                api_key=config.google.api_key,
+                search_engine_id=config.google.search_engine_id,
+                query=q,
+                num_results=desired_google_results,
+            )
 
-        if meta.server_year is not None:
+        if meta and meta.server_year is not None:
             logger.info(
                 f"Google server Date header={meta.server_date!r} -> year={meta.server_year} (local_year={local_year})"
             )
@@ -96,7 +117,7 @@ def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None, media_ty
                         api_key=config.google.api_key,
                         search_engine_id=config.google.search_engine_id,
                         query=q2,
-                        num_results=config.google.num_results,
+                        num_results=desired_google_results,
                     )
                     if results2:
                         results, meta = results2, meta2
@@ -111,6 +132,12 @@ def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None, media_ty
 
     # 2) OpenAI (optional)
     if openai_enabled:
+        frac = float(getattr(config.recommendations, "web_context_fraction", 0.30) or 0.0)
+        if frac < 0:
+            frac = 0.0
+        if frac > 1:
+            frac = 1.0
+
         recs = get_related_movies(
             movie_name,
             api_key=config.openai.api_key,
@@ -118,6 +145,7 @@ def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None, media_ty
             limit=config.recommendations.count,
             tmdb_seed_metadata=seed_meta,
             google_search_context=google_context or None,
+            upcoming_cap_fraction=frac,
         )
         cleaned = [r.split("(")[0].strip() for r in recs if r and r.strip()]
         if cleaned:

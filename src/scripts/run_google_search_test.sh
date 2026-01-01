@@ -71,11 +71,20 @@ print("Generated Google query:")
 print(query)
 print("")
 
+frac = float(getattr(cfg.recommendations, "web_context_fraction", 0.30) or 0.0)
+if frac < 0:
+    frac = 0.0
+if frac > 1:
+    frac = 1.0
+desired_google_results = int((cfg.recommendations.count * frac) + 0.999999)  # ceil without importing math
+print(f"Google context sizing: total={cfg.recommendations.count} web_context_fraction={frac:.2f} -> num_results={desired_google_results}")
+print("")
+
 results, meta = google_custom_search_with_meta(
     api_key=cfg.google.api_key,
     search_engine_id=cfg.google.search_engine_id,
     query=query,
-    num_results=cfg.google.num_results,
+    num_results=desired_google_results,
 )
 
 if meta.server_year is not None:

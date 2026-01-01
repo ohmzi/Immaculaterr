@@ -7,9 +7,14 @@ Also unmonitors the movie in Radarr after deletion.
 """
 
 import requests
+import argparse
+import logging
 from plexapi.server import PlexServer
 from pathlib import Path
 from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
+from requests.exceptions import Timeout, ConnectionError as RequestsConnectionError
+from urllib3.exceptions import ReadTimeoutError, ConnectTimeoutError
 from tautulli_curated.helpers.logger import setup_logger
 from tautulli_curated.helpers.config_loader import load_config
 
@@ -33,6 +38,25 @@ def get_plex_movies(config):
     )
     
     return movies if success else []
+
+
+def get_plex_movies_with_status(config, log) -> Tuple[List[Any], bool]:
+    """Get all movies from Plex library with retry logic, returning (movies, success)."""
+    from tautulli_curated.helpers.retry_utils import retry_with_backoff
+
+    def _get_movies():
+        plex = PlexServer(config.plex.url, config.plex.token, timeout=30)
+        return plex.library.section(config.plex.movie_library_name).all()
+
+    movies, success = retry_with_backoff(
+        _get_movies,
+        max_retries=3,
+        logger_instance=log,
+        operation_name="Get Plex movies",
+        raise_on_final_failure=False,
+    )
+
+    return (movies or []), bool(success)
 
 
 def find_duplicates(movies):
@@ -102,7 +126,7 @@ def get_radarr_movie_by_tmdb_id(tmdb_id, config, log):
 
 
 def unmonitor_radarr_movie_if_monitored(movie, config, log) -> bool:
-    """Unmonitor movie in Radarr if it's currently monitored with retry logic."""
+    """Unmonitor movie in Radarr if it's currently monitored (best-effort)."""
     from tautulli_curated.helpers.retry_utils import retry_with_backoff
     
     if not movie:
@@ -113,33 +137,71 @@ def unmonitor_radarr_movie_if_monitored(movie, config, log) -> bool:
         log.info("radarr: already unmonitored (dupe_cleanup) title=%r", movie.get("title"))
         return False
 
-    try:
-        movie["monitored"] = False
-        url = f"{config.radarr.url.rstrip('/')}/api/v3/movie/{movie['id']}"
-        headers = {"X-Api-Key": config.radarr.api_key, "Content-Type": "application/json"}
-        r = requests.put(url, headers=headers, json=movie)
+    # Avoid mutating the original dict Radarr returned
+    updated = dict(movie)
+    updated["monitored"] = False
+    url = f"{config.radarr.url.rstrip('/')}/api/v3/movie/{updated['id']}"
+    headers = {"X-Api-Key": config.radarr.api_key, "Content-Type": "application/json"}
+
+    def _unmonitor():
+        r = requests.put(url, headers=headers, json=updated, timeout=60)
         r.raise_for_status()
-        log.info("radarr: unmonitored (dupe_cleanup) title=%r", movie.get("title"))
         return True
-    except Exception as e:
-        log.warning("radarr: unmonitor failed (dupe_cleanup) title=%r err=%s", movie.get("title"), e)
-        return False
+
+    _, success = retry_with_backoff(
+        _unmonitor,
+        max_retries=3,
+        logger_instance=log,
+        operation_name=f"Unmonitor '{updated.get('title')}' in Radarr (dupe_cleanup)",
+        raise_on_final_failure=False,
+    )
+
+    if success:
+        log.info("radarr: unmonitored (dupe_cleanup) title=%r", updated.get("title"))
+        return True
+
+    log.warning("radarr: unmonitor failed (dupe_cleanup) title=%r", updated.get("title"))
+    return False
 
 
-def process_duplicates(duplicates, config, log) -> int:
-    """Process and delete duplicate files."""
+def process_duplicates(duplicates, config, log, *, dry_run: bool = False, stats: Optional[dict] = None) -> int:
+    """Process and delete duplicate files. If dry_run=True, no changes are made."""
     deleted_files = 0
+    if stats is None:
+        stats = {}
+    stats.setdefault("radarr_movie_not_found", 0)
+    stats.setdefault("radarr_unmonitor_failed", 0)
+    stats.setdefault("radarr_unmonitor_ok", 0)
+    stats.setdefault("delete_failed", 0)
+    stats.setdefault("would_delete", 0)
+    stats.setdefault("would_unmonitor", 0)
 
     for tmdb_id, files in duplicates.items():
-        # Stop Radarr from re-grabbing this title
+        # Stop Radarr from re-grabbing this title (best-effort)
         tmdb_id_cleaned = ''.join(filter(str.isdigit, str(tmdb_id)))
         radarr_movie = get_radarr_movie_by_tmdb_id(tmdb_id_cleaned, config, log)
-        unmonitor_radarr_movie_if_monitored(radarr_movie, config, log)
+        if not radarr_movie:
+            stats["radarr_movie_not_found"] += 1
+        else:
+            if dry_run:
+                stats["would_unmonitor"] += 1
+                log.info("radarr: dry_run=ON would unmonitor (dupe_cleanup) title=%r", radarr_movie.get("title"))
+            else:
+                ok = bool(unmonitor_radarr_movie_if_monitored(radarr_movie, config, log))
+                if ok:
+                    stats["radarr_unmonitor_ok"] += 1
+                else:
+                    stats["radarr_unmonitor_failed"] += 1
 
         sorted_files = sort_files(files, config)
         to_delete = sorted_files[-1]
 
         log.info("dupe: found tmdb=%s candidates=%d", tmdb_id, len(sorted_files))
+
+        if dry_run:
+            stats["would_delete"] += 1
+            log.info("dupe: dry_run=ON would delete file=%r", Path(to_delete['file']).name)
+            continue
 
         try:
             media = to_delete['movie'].media[0]
@@ -153,6 +215,7 @@ def process_duplicates(duplicates, config, log) -> int:
                 deleted_files += 1
                 log.info("dupe: deleted via filesystem file=%r", to_delete['file'])
             except Exception as fs_e:
+                stats["delete_failed"] += 1
                 log.error("dupe: filesystem deletion failed err=%s", fs_e)
 
     return deleted_files
@@ -183,4 +246,92 @@ def run_plex_duplicate_cleaner(config=None, log_parent=None):
         log.info("dupe_scan: done found=0 deleted=0")
 
     return found, deleted
+
+
+def run_plex_duplicate_cleaner_with_stats(config=None, log_parent=None, *, dry_run: bool = False):
+    """
+    Run duplicate cleaner and return extra stats for monitoring.
+
+    Returns:
+        (duplicates_found_count, duplicates_deleted_count, stats_dict)
+    """
+    log = log_parent or logger
+
+    if config is None:
+        config = load_config()
+
+    stats: Dict[str, Any] = {"dry_run": bool(dry_run)}
+
+    log.info("dupe_scan: start library=%r", config.plex.movie_library_name)
+
+    movies, plex_ok = get_plex_movies_with_status(config, log)
+    stats["plex_ok"] = bool(plex_ok)
+    stats["plex_movies_count"] = int(len(movies))
+
+    if not plex_ok:
+        log.error("dupe_scan: failed to fetch movies from Plex (after retries)")
+        return 0, 0, stats
+
+    duplicates = find_duplicates(movies)
+    found = len(duplicates)
+    deleted = 0
+
+    if found:
+        deleted = process_duplicates(duplicates, config, log, dry_run=dry_run, stats=stats)
+        log.info("dupe_scan: done found=%d deleted=%d stats=%s", found, deleted, stats)
+    else:
+        log.info("dupe_scan: done found=0 deleted=0 stats=%s", stats)
+
+    return found, deleted, stats
+
+
+if __name__ == "__main__":
+    def _parse_args():
+        p = argparse.ArgumentParser(
+            description="Radarr/Plex Duplicate Cleaner - deletes lower quality duplicate movies in Plex and unmonitors in Radarr",
+        )
+        p.add_argument("--dry-run", action="store_true", help="Show what would be deleted/unmonitored without making changes")
+        p.add_argument("--verbose", "-v", action="store_true", help="Enable debug-level logging")
+        return p.parse_args()
+
+    def main() -> int:
+        args = _parse_args()
+        if args.verbose:
+            logger.setLevel(logging.DEBUG)
+            logger.debug("Verbose logging enabled")
+
+        try:
+            found, deleted, stats = run_plex_duplicate_cleaner_with_stats(dry_run=bool(args.dry_run))
+
+            if args.dry_run:
+                print(f"Found {found} duplicate movies, would delete {stats.get('would_delete', 0)} files")
+            else:
+                print(f"Found {found} duplicate movies, deleted {deleted} files")
+
+            # Determine status + exit code
+            if not stats.get("plex_ok", True):
+                status = "DEPENDENCY_FAILED"
+                exit_code = 20
+            else:
+                status = "SUCCESS"
+                exit_code = 0
+                if (stats.get("delete_failed", 0) or 0) > 0 or (stats.get("radarr_unmonitor_failed", 0) or 0) > 0:
+                    status = "PARTIAL"
+                    exit_code = 10
+
+            logger.info(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
+            return exit_code
+        except KeyboardInterrupt:
+            logger.warning("Interrupted by user")
+            logger.info("FINAL_STATUS=INTERRUPTED FINAL_EXIT_CODE=130")
+            return 130
+        except Exception as e:
+            dependency_failed = isinstance(e, (Timeout, RequestsConnectionError, ReadTimeoutError, ConnectTimeoutError))
+            status = "DEPENDENCY_FAILED" if dependency_failed else "FAILED"
+            exit_code = 20 if dependency_failed else 30
+            logger.exception(f"Plex duplicate cleaner failed: {type(e).__name__}: {e}")
+            logger.info(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
+            return exit_code
+
+    raise SystemExit(main())
 

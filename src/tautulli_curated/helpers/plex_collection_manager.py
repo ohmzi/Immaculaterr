@@ -657,6 +657,7 @@ def _apply_custom_order(plex, collection, ordered_items, logger=None):
     ordered_items must be in the exact order you want displayed in Plex.
     This function will continue even if some items fail to reorder.
     """
+    total = len(ordered_items)
     try:
         try:
             if logger:
@@ -665,7 +666,12 @@ def _apply_custom_order(plex, collection, ordered_items, logger=None):
         except Exception as e:
             if logger:
                 logger.warning(f"  Could not set collection sort to custom: {e}")
-            return
+            return {
+                "requested": total,
+                "successful": 0,
+                "failed": total,
+                "reason": "set_sort_custom_failed",
+            }
 
         cid = int(collection.ratingKey)
         prev_id = None
@@ -756,6 +762,12 @@ def _apply_custom_order(plex, collection, ordered_items, logger=None):
                     logger.debug(f"    ... and {len(failed_moves) - 5} more")
             else:
                 logger.info(f"  Successfully reordered all {total} items")
+
+        return {
+            "requested": total,
+            "successful": successful_moves,
+            "failed": len(failed_moves),
+        }
     
     except Exception as e:
         # Catch any unexpected exceptions to prevent script failure
@@ -766,6 +778,12 @@ def _apply_custom_order(plex, collection, ordered_items, logger=None):
             logger.warning(f"  Collection items have been added, but ordering may be incomplete")
             logger.debug(f"  Error details: {error_msg[:200]}")
         # Don't re-raise - collection is still functional
+        return {
+            "requested": total,
+            "successful": 0,
+            "failed": total,
+            "reason": f"unexpected_error:{error_type}",
+        }
 
 def build_final_items_with_points(
     section,
@@ -1076,6 +1094,7 @@ def apply_collection_state_to_plex(
                     logger.warning("  Continuing with reordering anyway...")
     
     # Apply custom order (randomized order from JSON)
+    order_stats = None
     if desired_items:
         if logger:
             logger.info(f"apply_collection: applying custom order for {len(desired_items)} items...")
@@ -1083,7 +1102,7 @@ def apply_collection_state_to_plex(
             logger.info("  Note: Some items may fail to reorder, but the script will continue...")
         try:
             start_time = time.time()
-            _apply_custom_order(plex, collection, desired_items, logger=logger)
+            order_stats = _apply_custom_order(plex, collection, desired_items, logger=logger)
             elapsed = time.time() - start_time
             if logger:
                 logger.info(f"apply_collection: custom order completed in {elapsed:.1f} seconds")
@@ -1123,5 +1142,6 @@ def apply_collection_state_to_plex(
         "existing_items": len(existing_items),
         "desired_items": len(desired_items),
         "failed_keys": len(failed_keys),
+        "order_stats": order_stats or {},
     }
 

@@ -107,6 +107,7 @@ openai:
 # ============================================================================
 recommendations:
   count: 50
+  web_context_fraction: 0.30  # Optional (default: 0.30). Higher = more bias toward web/upcoming titles (used for Google context + OpenAI merge)
 
 # ============================================================================
 # GOOGLE CUSTOM SEARCH (Optional)
@@ -122,7 +123,8 @@ recommendations:
 google:
   api_key: "GOOGLE_API_KEY"                # Optional (used only if OpenAI is enabled)
   search_engine_id: "GOOGLE_CSE_ID"        # Optional (Google Programmable Search Engine ID / cx)
-  num_results: 10                          # Optional (default: 5; max: 10)
+  # Note: Google context size is derived from:
+  #   recommendations.count * recommendations.web_context_fraction
 
 # ============================================================================
 # RADARR CONFIGURATION
@@ -166,7 +168,7 @@ sonarr:
 # ============================================================================
 files:
   points_file: "recommendation_points.json"      # Points system data
-  tmdb_cache_file: "tmdb_cache.json"              # TMDB API cache
+  tmdb_cache_file: "tmdb_cache.json"              # TMDB API cache 
 
 # ============================================================================
 # OVERSEERR CONFIGURATION (Optional)
@@ -175,4 +177,5 @@ files:
 # ============================================================================
 overseerr:
   url: "http://localhost:5055"         # Your Overseerr URL
-  api_key: "OVERSEERR_API_KEY"                          # Add your Overseerr API key here (optional)
+  api_key: ""                          # Add your Overseerr API key here (optional)
+  # MTc0MDgwMzUyNTk1NjUyYmI2MmIxLTMxOTAtNGY1MC1iNGQ3LTM2MDBmZWE1N2E3Yw

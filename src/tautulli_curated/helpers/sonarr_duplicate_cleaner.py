@@ -31,6 +31,10 @@ if str(_src_path) not in sys.path:
     sys.path.insert(0, str(_src_path))
 
 import requests
+import argparse
+import logging
+from requests.exceptions import Timeout, ConnectionError as RequestsConnectionError
+from urllib3.exceptions import ReadTimeoutError, ConnectTimeoutError
 from plexapi.server import PlexServer
 from collections import defaultdict
 from typing import Dict, List, Tuple, Optional
@@ -228,7 +232,14 @@ def get_tvdb_id_from_series(series) -> Optional[int]:
     return None
 
 
-def process_duplicate_episodes(duplicates: Dict[str, List[Dict]], config, log) -> int:
+def process_duplicate_episodes(
+    duplicates: Dict[str, List[Dict]],
+    config,
+    log,
+    *,
+    dry_run: bool = False,
+    stats: Optional[dict] = None,
+) -> int:
     """
     Process and delete duplicate episode files.
     
@@ -241,6 +252,13 @@ def process_duplicate_episodes(duplicates: Dict[str, List[Dict]], config, log) -
         int: Number of files deleted
     """
     deleted_files = 0
+    if stats is None:
+        stats = {}
+    stats.setdefault("episodes_skipped_no_tvdb", 0)
+    stats.setdefault("episodes_sonarr_series_not_found", 0)
+    stats.setdefault("episodes_sonarr_episode_not_found", 0)
+    stats.setdefault("delete_failed", 0)
+    stats.setdefault("would_delete", 0)
     
     for episode_key, media_parts in duplicates.items():
         if len(media_parts) < 2:
@@ -254,12 +272,14 @@ def process_duplicate_episodes(duplicates: Dict[str, List[Dict]], config, log) -
         tvdb_id = get_tvdb_id_from_series(series)
         if not tvdb_id:
             log.warning(f"dupe: could not find TVDB ID for series {series.title}, skipping")
+            stats["episodes_skipped_no_tvdb"] += 1
             continue
         
         # Find series in Sonarr
         sonarr_series = sonarr_find_series_by_tvdb_id(config, tvdb_id)
         if not sonarr_series:
             log.debug(f"dupe: series {series.title} not found in Sonarr, skipping unmonitor")
+            stats["episodes_sonarr_series_not_found"] += 1
         
         # Get season and episode numbers
         season = getattr(episode, "seasonNumber", 0) or getattr(episode, "parentIndex", 0)
@@ -272,11 +292,15 @@ def process_duplicate_episodes(duplicates: Dict[str, List[Dict]], config, log) -
                 config, sonarr_series["id"], season, episode_num
             )
         
-        # Unmonitor episode in Sonarr before deletion
+        # Unmonitor episode in Sonarr before deletion (skip in dry-run)
         if sonarr_episode:
-            unmonitor_sonarr_episode_if_monitored(sonarr_episode, config, log)
+            if dry_run:
+                log.info(f"dupe: dry_run=ON would unmonitor S{season:02d}E{episode_num:02d}")
+            else:
+                unmonitor_sonarr_episode_if_monitored(sonarr_episode, config, log)
         else:
             log.debug(f"dupe: episode S{season:02d}E{episode_num:02d} not found in Sonarr, skipping unmonitor")
+            stats["episodes_sonarr_episode_not_found"] += 1
         
         # Sort episodes by quality (worst first)
         sorted_parts = sort_episodes_by_quality(media_parts)
@@ -288,6 +312,13 @@ def process_duplicate_episodes(duplicates: Dict[str, List[Dict]], config, log) -
         log.info(f"dupe: found {series.title} S{season:02d}E{episode_num:02d} candidates={len(media_parts)}")
         
         for part_info in to_delete:
+            if dry_run:
+                stats["would_delete"] += 1
+                log.info(
+                    f"dupe: dry_run=ON would delete file={Path(part_info['file']).name} quality={part_info.get('quality', 'unknown')}"
+                )
+                continue
+
             try:
                 media = part_info['media']
                 media.delete()
@@ -300,17 +331,18 @@ def process_duplicate_episodes(duplicates: Dict[str, List[Dict]], config, log) -
                     deleted_files += 1
                     log.info(f"dupe: deleted via filesystem file={part_info['file']}")
                 except Exception as fs_e:
+                    stats["delete_failed"] += 1
                     log.error(f"dupe: filesystem deletion failed err={fs_e}")
     
     return deleted_files
 
 
-def run_sonarr_duplicate_cleaner(config=None, log_parent=None):
+def run_sonarr_duplicate_cleaner_with_stats(config=None, log_parent=None, *, dry_run: bool = False):
     """
-    Run duplicate episode cleaner.
-    
+    Run duplicate episode cleaner and return extra stats for monitoring.
+
     Returns:
-        Tuple of (duplicates_found_count, duplicates_deleted_count)
+        (duplicates_found_count, duplicates_deleted_count, stats_dict)
     """
     log = log_parent or logger
 
@@ -335,19 +367,72 @@ def run_sonarr_duplicate_cleaner(config=None, log_parent=None):
 
     found = len(all_duplicates)
     deleted = 0
+    stats = {"dry_run": bool(dry_run)}
 
     if found:
         log.info(f"dupe_scan: found {found} duplicate episodes across {len(duplicate_series)} series")
-        deleted = process_duplicate_episodes(all_duplicates, config, log)
-        log.info("dupe_scan: done found=%d deleted=%d", found, deleted)
+        deleted = process_duplicate_episodes(all_duplicates, config, log, dry_run=dry_run, stats=stats)
+        log.info("dupe_scan: done found=%d deleted=%d stats=%s", found, deleted, stats)
     else:
-        log.info("dupe_scan: done found=0 deleted=0")
+        log.info("dupe_scan: done found=0 deleted=0 stats=%s", stats)
 
+    return found, deleted, stats
+
+
+def run_sonarr_duplicate_cleaner(config=None, log_parent=None):
+    """
+    Run duplicate episode cleaner.
+    
+    Returns:
+        Tuple of (duplicates_found_count, duplicates_deleted_count)
+    """
+    found, deleted, _stats = run_sonarr_duplicate_cleaner_with_stats(config=config, log_parent=log_parent, dry_run=False)
     return found, deleted
 
 
 if __name__ == "__main__":
-    # Allow running as standalone script
-    found, deleted = run_sonarr_duplicate_cleaner()
-    print(f"Found {found} duplicate episodes, deleted {deleted} files")
+    def _parse_args():
+        p = argparse.ArgumentParser(
+            description="Sonarr Duplicate Episode Cleaner - deletes lower quality duplicate episodes in Plex and unmonitors in Sonarr",
+        )
+        p.add_argument("--dry-run", action="store_true", help="Show what would be deleted/unmonitored without making changes")
+        p.add_argument("--verbose", "-v", action="store_true", help="Enable debug-level logging")
+        return p.parse_args()
+
+    def main() -> int:
+        args = _parse_args()
+        if args.verbose:
+            logger.setLevel(logging.DEBUG)
+            logger.debug("Verbose logging enabled")
+
+        try:
+            found, deleted, stats = run_sonarr_duplicate_cleaner_with_stats(dry_run=bool(args.dry_run))
+
+            # Machine-friendly + human summary
+            if args.dry_run:
+                print(f"Found {found} duplicate episodes, would delete {stats.get('would_delete', 0)} files")
+            else:
+                print(f"Found {found} duplicate episodes, deleted {deleted} files")
+
+            status = "SUCCESS"
+            exit_code = 0
+            if (stats.get("episodes_skipped_no_tvdb", 0) or 0) > 0 or (stats.get("delete_failed", 0) or 0) > 0:
+                status = "PARTIAL"
+                exit_code = 10
+
+            logger.info(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
+            return exit_code
+        except KeyboardInterrupt:
+            logger.warning("Interrupted by user")
+            logger.info("FINAL_STATUS=INTERRUPTED FINAL_EXIT_CODE=130")
+            return 130
+        except Exception as e:
+            dependency_failed = isinstance(e, (Timeout, RequestsConnectionError, ReadTimeoutError, ConnectTimeoutError))
+            status = "DEPENDENCY_FAILED" if dependency_failed else "FAILED"
+            exit_code = 20 if dependency_failed else 30
+            logger.exception(f"Sonarr duplicate cleaner failed: {type(e).__name__}: {e}")
+            logger.info(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
+            return exit_code
+
+    raise SystemExit(main())
 

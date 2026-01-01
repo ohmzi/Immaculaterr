@@ -176,6 +176,7 @@ def get_related_movies(
     limit: int = 25,
     tmdb_seed_metadata: Optional[dict] = None,
     google_search_context: Optional[str] = None,
+    upcoming_cap_fraction: float = 0.50,
 ) -> List[str]:
     """
     Return a list of related movie titles for a given watched movie.
@@ -202,6 +203,16 @@ def get_related_movies(
             seed_block = ""
 
     web_block = (google_search_context or "").strip()
+    # Cap how many upcoming/web-derived titles can be included in the final list.
+    try:
+        frac = float(upcoming_cap_fraction)
+    except Exception:
+        frac = 0.50
+    if frac < 0:
+        frac = 0.0
+    if frac > 1:
+        frac = 1.0
+    upcoming_cap = max(0, min(limit, int(limit * frac)))
 
     prompt = (
         f"You are a movie recommendation engine.\n\n"
@@ -216,6 +227,7 @@ def get_related_movies(
         "}\n\n"
         "Rules:\n"
         "- primary_recommendations should be mostly released movies similar in tone/themes/style to the seed.\n"
+        f"- upcoming_from_search should include up to {upcoming_cap} items (max {int(frac*100)}% of {limit}).\n"
         "- upcoming_from_search should include upcoming/unreleased movies that are relevant, preferably found in the web snippets.\n"
         "- Avoid duplicates across both lists.\n"
         "- Movie titles only (no years unless needed to disambiguate).\n"
@@ -234,7 +246,7 @@ def get_related_movies(
         text = resp.choices[0].message.content or ""
         primary, upcoming = _try_parse_json_recs(text)
         if primary or upcoming:
-            recs = _merge_primary_and_upcoming(primary, upcoming, limit=limit, upcoming_cap_fraction=0.5)
+            recs = _merge_primary_and_upcoming(primary, upcoming, limit=limit, upcoming_cap_fraction=frac)
         else:
             # fallback: accept plain newline list
             recs = parse_recommendations(text, limit=limit)

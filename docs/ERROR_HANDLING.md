@@ -144,6 +144,37 @@ Radarr lookup 'Inception': retrying in 2.0 seconds...
 Radarr lookup 'Inception': succeeded on attempt 2
 ```
 
+## Log Footer Contract (for Monitoring / Alerts)
+
+All standalone scripts (and the Tautulli entrypoint log) emit a **stable, machine-parseable final line**:
+
+- `FINAL_STATUS=<STATUS> FINAL_EXIT_CODE=<CODE>`
+
+You can reliably grep for `FINAL_STATUS=` in `data/logs/*.log` to determine outcomes for alerting.
+
+### Status Values
+
+- **SUCCESS**: Completed successfully
+- **PARTIAL**: Completed, but some work was skipped/failed (still usable)
+- **DEPENDENCY_FAILED**: Failed due to an external dependency (Plex/Radarr/Sonarr/API/network)
+- **FAILED**: Script/config/internal failure
+- **SKIPPED**: Clean no-op (e.g. Tautulli trigger was not a movie)
+- **INTERRUPTED**: User interrupted (Ctrl+C)
+
+### Exit Code Mapping
+
+- **0**: SUCCESS / SKIPPED
+- **10**: PARTIAL
+- **20**: DEPENDENCY_FAILED
+- **30**: FAILED
+- **130**: INTERRUPTED
+
+### Example (grep)
+
+```bash
+grep -R "FINAL_STATUS=" -n data/logs | tail -50
+```
+
 ## Testing
 
 The retry logic has been tested and verified:

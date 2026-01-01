@@ -72,11 +72,12 @@ When you finish watching a movie, the system:
    
    recommendations:
      count: 50                                # Optional (default: 50)
+     web_context_fraction: 0.30               # Optional (default: 0.30). Bias toward web/upcoming titles (Google context + OpenAI merge)
 
    google:
      api_key: "GOOGLE_API_KEY"                # Optional (used only if OpenAI is enabled)
      search_engine_id: "GOOGLE_CSE_ID"        # Optional (Google Programmable Search Engine ID / cx)
-     num_results: 5                           # Optional (default: 5)
+     # Google context size is derived from: recommendations.count * recommendations.web_context_fraction
    
    radarr:
      url: "http://localhost:7878"
@@ -332,6 +333,7 @@ The project includes several standalone bash scripts that can be run independent
 
 #### Cleanup Scripts
 
+- **`run_radarr_duplicate_cleaner.sh`** - Removes duplicate movies (and unmonitors in Radarr)
 - **`run_sonarr_duplicate_cleaner.sh`** - Removes duplicate TV episodes
 
 ### Script Options
@@ -542,37 +544,35 @@ pip install -r docker/custom-tautulli/requirements.txt --user
 
 ## Version History
 
-### Version 5.1.0 (Current)
+Full changelog: [VERSION_HISTORY.md](VERSION_HISTORY.md)
 
-**Cron Execution Fixes & Logging Improvements:**
-- Fixed Python import errors in cron environments
-- Robust HOME detection for cron
-- Comprehensive timestamped logging
-- Enhanced script robustness
+### Version 5.1.0 (Current)
+- Cron/runtime hardening + better logging for cron/Tautulli execution.
+- Plex UX + recommendations upgrades (auto-pin curated rows; Google CSE → OpenAI context; config improvements).
 
 ### Version 5.0.0
-
-**Sonarr TV Show Support:**
-- Sonarr duplicate cleaner
-- Sonarr monitor confirm
-- Season-level unmonitoring
-- Enhanced unmonitor script
+- Sonarr TV show support: duplicate cleaner, monitor confirm, and “search monitored” automation.
+- Main pipeline orchestration expanded to include Sonarr steps.
 
 ### Version 4.1.0
-
-**JSON Collection Logic & Performance:**
-- Rating key optimization
-- Script organization improvements
-- New maintenance scripts
+- Collection correctness/performance improvements (better ordering + skip non-movie media).
+- Radarr improvements (multiple tags support) + refresher robustness updates.
 
 ### Version 4.0.0
+- Major multi-collection overhaul: Recently Watched + Change of Taste + Immaculate Taste + maintenance steps.
+- Added retry/backoff + error handling improvements; new standalone scripts.
 
-**Major System Overhaul:**
-- Unified project with 3 Plex collections
-- Script orchestration
-- Comprehensive error handling
+### Version 3.0.0
+- Project restructuring into `src/tautulli_curated/` package + standardized folders (`config/`, `data/`, `docs/`, `docker/`).
+- Added standalone runner scripts under `src/scripts/`.
 
-See [Version History](#version-history) section for complete changelog.
+### Version 2.0.0
+- Introduced modular helpers (OpenAI/TMDb/Plex/Radarr) + a proper config loader and logging.
+- Added `tautulli_immaculate_taste_collection.py` as the primary entry point.
+
+### Version 1.0.0
+- Initial public release (early README + initial automation scripts).
+- Foundation for later modular pipeline work.
 
 ## Contributing
 
@@ -603,7 +603,7 @@ For more detailed information, see the sections below:
 - [Expected Results](#expected-results) - What to expect after setup
 - [Displaying Collections on Plex Home Screen](#displaying-collections-on-plex-home-screen) - Plex setup guide
 - [Project Structure](#project-structure) - File organization
-- [Version History](#version-history) - Complete changelog
+- [Version History](VERSION_HISTORY.md) - Complete changelog
 
 ---
 
@@ -965,12 +965,16 @@ All scripts can be enabled/disabled individually:
 ### Recommendations (Overall)
 
 - `count`: Number of total suggestions per run (default: 50). Used by both OpenAI (if enabled) and TMDb fallback.
+- `web_context_fraction`: Controls how much the final recommendations can be influenced by web context (default: `0.30`).
+  - This controls **two things**:
+    - How many Google CSE results are fetched for context (derived from `count * web_context_fraction`)
+    - The max portion of final titles allowed to come from OpenAI’s `upcoming_from_search` list
 
 ### Google Custom Search (Optional)
 
 - `api_key`: Optional. Google is used only when OpenAI is enabled.
 - `search_engine_id`: Optional. Google Programmable Search Engine ID (cx).
-- `num_results`: Optional (default: 5).
+  - Google does **not** use a fixed `num_results` anymore; it is derived from `recommendations.count * recommendations.web_context_fraction`.
   - **Cost note:** Google CSE has a free tier (quota limits apply).
 
 ### Radarr Configuration
@@ -1392,7 +1396,9 @@ The project includes several standalone bash scripts that can be run independent
 
 **Options:**
 - `--dry-run`: Show what would be done without actually unmonitoring
+- `--verbose`: Enable debug-level logging
 - `--no-pause`: Don't pause at the end (for automated runs)
+- `--log-file`: Save output to a timestamped log file in `data/logs/`
 - `--help`: Show help message
 
 **Example:**
@@ -1404,7 +1410,7 @@ The project includes several standalone bash scripts that can be run independent
 ./src/scripts/run_radarr_monitor_confirm.sh --dry-run
 
 # For automated/scheduled runs
-./src/scripts/run_radarr_monitor_confirm.sh --no-pause
+./src/scripts/run_radarr_monitor_confirm.sh --no-pause --log-file
 ```
 
 ---
@@ -1413,7 +1419,7 @@ The project includes several standalone bash scripts that can be run independent
 **Purpose:** Triggers a search for all monitored movies in Radarr.
 
 **What it does:**
-- Connects to Radarr using credentials from `config/config.yaml`
+- Connects to Radarr using credentials from `config/config.local.yaml` (preferred, if present) or `config/config.yaml`
 - Sends a command to Radarr to search for all monitored movies
 - Useful for forcing Radarr to check for available releases
 
@@ -1442,7 +1448,7 @@ The project includes several standalone bash scripts that can be run independent
 ./src/scripts/run_radarr_search_monitored.sh
 ```
 
-**Note:** This script reads Radarr configuration from `config/config.yaml`. Make sure your Radarr URL and API key are correctly configured.
+**Note:** This script reads Radarr configuration from `config/config.local.yaml` (preferred, if present) or `config/config.yaml`. Make sure your Radarr URL and API key are correctly configured.
 
 ---
 
@@ -1521,7 +1527,7 @@ The project includes several standalone bash scripts that can be run independent
 **Purpose:** Triggers a search for all missing monitored episodes in Sonarr.
 
 **What it does:**
-- Connects to Sonarr using credentials from `config/config.yaml`
+- Connects to Sonarr using credentials from `config/config.local.yaml` (preferred, if present) or `config/config.yaml`
 - Sends a command to Sonarr to search for all missing monitored episodes
 - Useful for forcing Sonarr to check for available releases
 
@@ -1553,7 +1559,7 @@ The project includes several standalone bash scripts that can be run independent
 ./src/scripts/run_sonarr_search_monitored.sh --no-pause --log-file
 ```
 
-**Note:** This script reads Sonarr configuration from `config/config.yaml`. Make sure your Sonarr URL and API key are correctly configured.
+**Note:** This script reads Sonarr configuration from `config/config.local.yaml` (preferred, if present) or `config/config.yaml`. Make sure your Sonarr URL and API key are correctly configured.
 
 ---
 
@@ -1564,6 +1570,14 @@ These standalone scripts can be scheduled to run automatically using cron (Linux
 - Running collection refreshers during off-peak hours (midnight, early morning)
 - Periodically triggering Radarr searches
 - Automating maintenance tasks
+
+#### Monitoring / Alerting (Log Footer)
+
+All standalone logs include a stable final line you can parse for alerts:
+
+- `FINAL_STATUS=<STATUS> FINAL_EXIT_CODE=<CODE>`
+
+See `docs/ERROR_HANDLING.md` for the status values and exit code mapping.
 
 #### Ubuntu/Linux (Cron)
 
@@ -1744,95 +1758,3 @@ If bash scripts don't work directly, create a PowerShell wrapper:
 - Check Windows Event Viewer for task execution logs
 - Use `--log-file` flag to save output to files
 - Ensure Python and all dependencies are in PATH
-
----
-
-## Version History
-
-### Version 5.1.0 (Current)
-
-**Cron Execution Fixes & Logging Improvements:**
-- **Fixed Python Import Errors:** Resolved `ModuleNotFoundError` for `plexapi` and other user-installed packages in cron environments
-- **Robust HOME Detection:** Scripts now automatically detect correct user home directory even when cron runs as root
-- **Dynamic Python Path Configuration:** All scripts now properly configure Python paths to find user-installed packages
-- **Comprehensive Logging:** Added timestamped log files for all script executions
-  - Main Tautulli script creates `tautulli_main_YYYYMMDD_HHMMSS.log` for each execution
-  - All shell scripts support `--log-file` option for timestamped logs
-  - Logs are stored in `data/logs/` with unique filenames (no overwrites)
-- **Color Code Stripping:** All log files are clean and readable (ANSI escape sequences removed)
-- **Requirements File:** Added `requirements.txt` at project root for easy dependency management
-- **Enhanced Script Robustness:** All shell scripts updated with improved error handling and environment detection
-
-**Technical Improvements:**
-- Uses `site.addsitedir()` for proper Python package path configuration
-- Wrapper scripts ensure user site-packages are available before imports
-- Improved HOME variable detection with fallback to `ohmz` user
-- Better handling of cron's minimal environment variables
-
-### Version 5.0.0
-
-**Sonarr TV Show Support:**
-- **Sonarr Duplicate Cleaner:** New script to identify and remove duplicate TV episodes, keeping best quality
-- **Sonarr Monitor Confirm:** Granular unmonitoring system - unmonitors episodes, seasons, and series based on Plex availability
-- **Season-Level Unmonitoring:** When entire seasons are added to Plex, automatically unmonitors the season in Sonarr
-- **Enhanced Unmonitor Script:** Extended to handle episodes and seasons when content is added to Plex via Tautulli
-- **Sonarr Search Script:** New script to trigger searches for all missing monitored episodes in Sonarr
-
-**Granular Unmonitoring Logic:**
-- Episode-level: Unmonitors individual episodes if they exist in Plex
-- Season-level: Unmonitors entire seasons when all episodes are in Plex
-- Series-level: Unmonitors series when all seasons are complete
-- Detailed logging shows per-season breakdown and completion status
-
-**Configuration & Scripts:**
-- Added `tv_library_name` to Plex configuration
-- Fixed PYTHONPATH issues in all shell scripts
-- New standalone scripts: `run_sonarr_duplicate_cleaner.sh`, `run_sonarr_monitor_confirm.sh`, `run_sonarr_search_monitored.sh`
-- Enhanced logging with detailed episode/season tracking
-
-### Version 4.1.0
-
-**JSON Collection Logic:** Save all recommendations including movies not yet in Plex, future-proof collections
-- **Performance:** Rating key optimization for faster Plex lookups, consistent logic across refreshers
-- **Organization:** Scripts moved to helpers directory, shared helper functions
-- **New Scripts:** `run_radarr_monitor_confirm.sh` for bulk Radarr/Plex synchronization
-- **Improvements:** Enhanced logging, log file support, better error handling
-
-### Version 4.0.0
-
-**Major System Overhaul:** Unified project with 3 Plex collections, script orchestration, comprehensive error handling
-- **New Features:** Recently Watched Collections, Change of Taste, Plex Duplicate Cleaner, Radarr Monitor Confirm
-- **Reliability:** Retry logic with exponential backoff, connection resilience, error recovery
-- **Documentation:** Plex Home Screen setup guide, standalone scripts documentation
-
-### Version 3.0.0
-
-**Professional Structure:** Reorganized into proper directories, Python package structure, better separation of concerns
-- **New Features:** Collection refresher script, bash wrapper with options
-- **Improvements:** Enhanced logging, better error handling, TMDb fallback, points system
-
-### Version 2.0.0
-
-**Modular Architecture:** Split into organized helper modules, professional structure with specialized modules
-- **New Features:** TMDb fallback system, structured logging, type-safe configuration
-- **Improvements:** Better organization, reduced duplication, more testable code
-
-### Version 1.0.0
-
-**Initial Release:** Core functionality with OpenAI recommendations, Plex integration, Radarr automation
-- **Features:** Points system, TMDb integration, YAML configuration, Docker support
-- **Limitations:** Monolithic structure, basic error handling, no fallback system
-
----
-
-**Now whenever Tautulli detects that a user has finished watching a movie, it will trigger your script with the movie's title. The system will generate recommendations, update collections, clean duplicates, sync Radarr, and refresh your Plex collections automatically.**
-
-**Tip: Add the collections to your Home screen and position them at the very top—right beneath the Continue Watching list.**
-
-**Enjoy using this script! I hope it enhances your movie selection. If you encounter any issues or have ideas for enhancements, feel free to open an issue or submit a pull request.**
-
----
-
-## License
-
-This project is provided "as is" without warranty of any kind. You are free to use, modify, and distribute this code as per the [MIT License](https://opensource.org/licenses/MIT).

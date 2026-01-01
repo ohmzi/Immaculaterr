@@ -1,15 +1,16 @@
 #!/bin/bash
 #
-# Recently Watched Collections Refresher Runner
+# Radarr Duplicate Movie Cleaner Runner
 #
-# This script refreshes the "Based on your recently watched movie" and "Change of Taste"
-# Plex collections by randomizing their order and updating them in Plex.
+# This script runs the Plex duplicate movie cleaner to identify and remove
+# duplicate movies in Plex, keeping only the preferred copy. It also unmonitors
+# the movie in Radarr after deletion to prevent re-grabs.
 #
 # Usage:
-#   ./run_recently_watched_collections_refresher.sh [options]
+#   ./run_radarr_duplicate_cleaner.sh [options]
 #
 # Options:
-#   --dry-run       Run in dry-run mode (no Plex changes)
+#   --dry-run       Run in dry-run mode (no Plex/Radarr changes)
 #   --verbose       Enable verbose logging
 #   --no-pause      Don't pause at the end (for automated runs)
 #   --log-file      Also save output to a log file
@@ -99,7 +100,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  --dry-run       Run in dry-run mode (no Plex changes)"
+            echo "  --dry-run       Run in dry-run mode (no Plex/Radarr changes)"
             echo "  --verbose       Enable verbose logging"
             echo "  --no-pause      Don't pause at the end (for automated runs)"
             echo "  --log-file      Also save output to a log file"
@@ -122,9 +123,9 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Check if the Python script exists
-REFRESHER_SCRIPT="$PROJECT_ROOT/src/tautulli_curated/helpers/recently_watched_collections_refresher.py"
-if [[ ! -f "$REFRESHER_SCRIPT" ]]; then
-    echo -e "${RED}Error: recently_watched_collections_refresher.py not found at: $REFRESHER_SCRIPT${NC}"
+CLEANER_SCRIPT="$PROJECT_ROOT/src/tautulli_curated/helpers/plex_duplicate_cleaner.py"
+if [[ ! -f "$CLEANER_SCRIPT" ]]; then
+    echo -e "${RED}Error: plex_duplicate_cleaner.py not found at: $CLEANER_SCRIPT${NC}"
     exit 1
 fi
 
@@ -138,7 +139,7 @@ fi
 LOG_PATH=""
 if [[ -n "$LOG_FILE" ]]; then
     TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    LOG_PATH="$PROJECT_ROOT/data/logs/recently_watched_collections_refresher_${TIMESTAMP}.log"
+    LOG_PATH="$PROJECT_ROOT/data/logs/radarr_duplicate_cleaner_${TIMESTAMP}.log"
     mkdir -p "$PROJECT_ROOT/data/logs"
     echo "Log file: $LOG_PATH"
 fi
@@ -152,7 +153,6 @@ strip_colors() {
 output() {
     echo "$@"
     if [[ -n "$LOG_PATH" ]]; then
-        # Strip color codes for log file
         echo "$@" | strip_colors >> "$LOG_PATH"
     fi
 }
@@ -161,7 +161,6 @@ output() {
 output_color() {
     echo -e "$@"
     if [[ -n "$LOG_PATH" ]]; then
-        # Strip color codes for log file - handle both \x1b and \033 formats
         echo -e "$@" | strip_colors >> "$LOG_PATH"
     fi
 }
@@ -186,12 +185,9 @@ import os
 import site
 
 # Enable user site-packages explicitly (important for cron)
-# This ensures user-installed packages are available
 user_site = "${USER_SITE_PACKAGES}"
 if user_site and os.path.exists(user_site):
-    # Use site.addsitedir to properly enable the directory
     site.addsitedir(user_site)
-    # Also add to sys.path as backup
     if user_site not in sys.path:
         sys.path.insert(0, user_site)
 
@@ -212,9 +208,9 @@ except ImportError as e:
 
 # Now import and execute the actual script
 import importlib.util
-spec = importlib.util.spec_from_file_location("__main__", "${REFRESHER_SCRIPT}")
+spec = importlib.util.spec_from_file_location("__main__", "${CLEANER_SCRIPT}")
 module = importlib.util.module_from_spec(spec)
-sys.argv = ["${REFRESHER_SCRIPT}"]
+sys.argv = ["${CLEANER_SCRIPT}"]
 PYTHON_EOF
 
 # Add command-line arguments to the wrapper
@@ -242,10 +238,10 @@ fi
 
 # Print header
 output_color "${BLUE}========================================${NC}"
-output_color "${BLUE}Recently Watched Collections Refresher${NC}"
+output_color "${BLUE}Radarr Duplicate Movie Cleaner${NC}"
 output_color "${BLUE}========================================${NC}"
 output ""
-output_color "Script: ${GREEN}$REFRESHER_SCRIPT${NC}"
+output_color "Script: ${GREEN}$CLEANER_SCRIPT${NC}"
 output_color "Working directory: ${GREEN}$PROJECT_ROOT${NC}"
 output_color "Python: ${GREEN}$(python3 --version)${NC}"
 if [[ -n "$DRY_RUN" ]]; then
@@ -260,19 +256,20 @@ fi
 output ""
 
 # Run the script and capture output
-output_color "${BLUE}Starting refresher...${NC}"
+output_color "${BLUE}Starting duplicate movie cleaner...${NC}"
+output ""
+output_color "${YELLOW}This script will:${NC}"
+output_color "${YELLOW}  - Scan Plex movie library for duplicate movies (TMDb ID)${NC}"
+output_color "${YELLOW}  - Delete the preferred duplicate copy (based on config.plex.delete_preference)${NC}"
+output_color "${YELLOW}  - Unmonitor the movie in Radarr after deletion (to prevent re-grab)${NC}"
 output ""
 
 EXIT_CODE=0
 if [[ -n "$LOG_PATH" ]]; then
-    # Run with both terminal output and log file
-    # Strip ANSI color codes for log file while preserving colors in terminal
-    set +o pipefail  # Allow pipe to continue even if command fails
-    # Use unbuffered sed to strip colors in real-time (handles both actual escapes and literal strings)
+    set +o pipefail
     $CMD 2>&1 | tee >(stdbuf -o0 -e0 sed -u -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g' -e 's/\\x1b\[[0-9;]*m//g' >> "$LOG_PATH")
-    EXIT_CODE=${PIPESTATUS[0]}  # Get exit code from the command, not tee
+    EXIT_CODE=${PIPESTATUS[0]}
 else
-    # Run normally
     $CMD
     EXIT_CODE=$?
 fi
@@ -307,7 +304,6 @@ else
     output_color "${RED}========================================${NC}"
 fi
 
-
 # Pause at the end unless --no-pause is specified
 if [[ -z "$NO_PAUSE" ]]; then
     output ""
@@ -329,4 +325,5 @@ fi
 output "FINAL_STATUS=${FINAL_STATUS} FINAL_EXIT_CODE=${EXIT_CODE}"
 
 exit $EXIT_CODE
+
 

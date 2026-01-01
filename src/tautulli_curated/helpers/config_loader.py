@@ -60,7 +60,9 @@ class OpenAIConfig:
 class GoogleConfig:
     api_key: str = ""
     search_engine_id: str = ""  # Google Programmable Search Engine ID (cx)
-    num_results: int = 5
+    # Legacy: older configs may set google.num_results, but current logic derives
+    # Google context sizing from recommendations.count * recommendations.web_context_fraction.
+    num_results: int = 0
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,7 @@ class TMDbConfig:
 @dataclass(frozen=True)
 class RecommendationsConfig:
     count: int = 50
+    web_context_fraction: float = 0.30
 
 
 @dataclass(frozen=True)
@@ -113,6 +116,7 @@ class ScriptsRunConfig:
 @dataclass(frozen=True)
 class AppConfig:
     base_dir: Path
+    config_path: Path
     plex: PlexConfig
     openai: OpenAIConfig
     google: GoogleConfig
@@ -202,7 +206,20 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     except Exception:
         overall_count = 50
 
-    recommendations = RecommendationsConfig(count=overall_count)
+    # How much "web context / upcoming-from-web" to bias toward.
+    # 0.30 means up to ~30% of the final recommendation list can be sourced from web context.
+    raw_web_frac = recs_data.get("web_context_fraction", recs_data.get("web_bias_fraction", 0.30))
+    try:
+        web_frac = float(raw_web_frac)
+    except Exception:
+        web_frac = 0.30
+    # Clamp to sane range
+    if web_frac < 0:
+        web_frac = 0.0
+    if web_frac > 1:
+        web_frac = 1.0
+
+    recommendations = RecommendationsConfig(count=overall_count, web_context_fraction=web_frac)
 
     # Optional: OpenAI (disabled if missing/placeholder)
     raw_openai_key = _normalize_str(openai_data.get("api_key", ""))
@@ -282,6 +299,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 
     return AppConfig(
         base_dir=base_dir,
+        config_path=cfg_path,
         plex=plex,
         openai=openai,
         google=google,
