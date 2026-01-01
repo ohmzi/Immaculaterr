@@ -82,13 +82,35 @@ log_fp.flush()
 # Import and run the main function
 from tautulli_curated.main import main
 
+def _status_from_exit_code(exit_code: int, argv: list[str]) -> str:
+    """Map numeric exit codes to a stable status string for log monitoring."""
+    try:
+        code = int(exit_code)
+    except Exception:
+        code = 30
+
+    if code == 0:
+        # Special-case: this script only processes movies; non-movie triggers are a clean skip
+        if len(argv) >= 3 and str(argv[2]).lower().strip() != "movie":
+            return "SKIPPED"
+        return "SUCCESS"
+    if code == 10:
+        return "PARTIAL"
+    if code == 20:
+        return "DEPENDENCY_FAILED"
+    if code == 130:
+        return "INTERRUPTED"
+    return "FAILED"
+
 if __name__ == "__main__":
     try:
         exit_code = main()
+        status = _status_from_exit_code(exit_code, sys.argv)
         
         # Write footer to log file
         log_fp.write("\n" + "=" * 60 + "\n")
         log_fp.write(f"Script completed with exit code: {exit_code}\n")
+        log_fp.write(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}\n")
         log_fp.write(f"End time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         log_fp.write("=" * 60 + "\n")
         log_fp.flush()
@@ -109,8 +131,11 @@ if __name__ == "__main__":
     except Exception as e:
         # Write error to log file
         import traceback
+        exit_code = 30
+        status = _status_from_exit_code(exit_code, sys.argv)
         log_fp.write("\n" + "=" * 60 + "\n")
         log_fp.write(f"FATAL ERROR: {type(e).__name__}: {e}\n")
+        log_fp.write(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}\n")
         log_fp.write("Traceback:\n")
         log_fp.write(traceback.format_exc())
         log_fp.write("=" * 60 + "\n")
@@ -121,5 +146,4 @@ if __name__ == "__main__":
         sys.stderr = original_stderr
         log_fp.close()
         
-        # Re-raise the exception
-        raise
+        raise SystemExit(exit_code)

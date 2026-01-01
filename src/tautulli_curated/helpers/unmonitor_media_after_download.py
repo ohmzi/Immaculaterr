@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Unmonitor Radarr After Download Helper
+Unmonitor Media After Download Helper
 
-Unmonitors a movie in Radarr and removes it from Plex watchlist after it's been downloaded.
+Unmonitors movies in Radarr or episodes/seasons in Sonarr and removes movies from Plex watchlist after they've been downloaded.
 """
 
 import sys
 from pathlib import Path
 
 # Add project root to path for standalone execution
-# Go up from unmonitor_radarr_after_download.py -> helpers/ -> tautulli_curated/ -> src/ -> project root
+# Go up from unmonitor_media_after_download.py -> helpers/ -> tautulli_curated/ -> src/ -> project root
 project_root = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(project_root / "src"))
 
@@ -22,7 +22,7 @@ from plexapi.myplex import MyPlexAccount
 from tautulli_curated.helpers.logger import setup_logger
 from tautulli_curated.helpers.config_loader import load_config
 
-logger = setup_logger("unmonitor_radarr_after_download")
+logger = setup_logger("unmonitor_media_after_download")
 
 
 def fetch_radarr_movies(api_url, api_key, log):
@@ -366,6 +366,221 @@ def remove_from_plex_watchlist_with_retry(config, movie_title: str, log,
     return False
 
 
+def remove_show_from_plex_watchlist_with_retry(config, series_title: str, log,
+                                               retries: int = 5, delay: int = 3) -> bool:
+    """Remove TV show from Plex watchlist with retry logic."""
+    from tautulli_curated.helpers.retry_utils import retry_with_backoff
+    
+    log.info("  Connecting to Plex...")
+    def _connect_plex():
+        return PlexServer(config.plex.url, config.plex.token, timeout=30)
+    
+    plex, success = retry_with_backoff(
+        _connect_plex,
+        max_retries=3,
+        logger_instance=log,
+        operation_name="Plex connection for watchlist",
+        raise_on_final_failure=False,
+    )
+    
+    if not success or plex is None:
+        log.warning("  ✗ Failed to connect to Plex, skipping watchlist removal")
+        return False
+    
+    log.info("  ✓ Connected to Plex")
+
+    log.info("  Accessing Plex account...")
+    # Plex changed watchlist backend; force plexapi to use DISCOVER instead of METADATA
+    MyPlexAccount.METADATA = MyPlexAccount.DISCOVER
+
+    try:
+        account = plex.myPlexAccount()
+        log.info("  ✓ Plex account accessed")
+    except Exception as e:
+        log.warning(f"  ✗ Failed to access Plex account: {e}")
+        return False
+
+    def norm(s: str) -> str:
+        return "".join(ch.lower() for ch in s if ch.isalnum())
+
+    wanted_norm = norm(series_title)
+    log.info("  Searching watchlist for TV show...")
+
+    for attempt in range(1, retries + 1):
+        try:
+            wl = account.watchlist(libtype="show")
+        except Exception as e:
+            log.warning(f"  ⚠ Failed to fetch watchlist (attempt {attempt}/{retries}): {e}")
+            if attempt < retries:
+                time.sleep(delay)
+            continue
+
+        if not wl:
+            log.info("  ⚠ Watchlist is empty or unavailable")
+            return False
+
+        log.info(f"  ✓ Watchlist loaded ({len(wl)} items)")
+
+        candidates = []
+        for item in wl:
+            t = getattr(item, "title", "") or ""
+            if norm(t) == wanted_norm:
+                candidates.append(item)
+
+        if not candidates:
+            titles = [getattr(i, "title", "") or "" for i in wl]
+            close = difflib.get_close_matches(series_title, titles, n=1, cutoff=0.80)
+            if close:
+                picked = close[0]
+                candidates = [i for i in wl if (getattr(i, "title", "") or "") == picked]
+
+        if not candidates:
+            log.info(f"  ⚠ TV show not found in watchlist (attempt {attempt}/{retries})")
+            if attempt < retries:
+                time.sleep(delay)
+            continue
+
+        log.info(f"  ✓ Found {len(candidates)} matching item(s) in watchlist")
+        removed_any = False
+        for item in candidates:
+            try:
+                account.removeFromWatchlist(item)
+                item_title = getattr(item, "title", None) or series_title
+                log.info(f"  ✓ Removed from watchlist: {item_title}")
+                removed_any = True
+            except Exception as e:
+                log.warning(f"  ✗ Failed to remove item from watchlist: {e}")
+
+        return removed_any
+
+    log.warning(f"  ✗ Failed to remove TV show from watchlist after {retries} attempts")
+    return False
+
+
+def verify_all_season_episodes_in_plex(series_name: str, season_num: int, config, log) -> tuple[bool, str | None]:
+    """
+    Verify that ALL episodes in a season are in Plex.
+    
+    Returns:
+        (all_present: bool, series_title_in_plex: str | None)
+        - all_present: True if all episodes are in Plex, False otherwise
+        - series_title_in_plex: The title of the series in Plex if found, None otherwise
+    """
+    from tautulli_curated.helpers import sonarr_utils
+    from tautulli_curated.helpers.sonarr_utils import (
+        _sonarr_get_all_series,
+        sonarr_get_episodes_by_series,
+    )
+    from tautulli_curated.helpers.sonarr_monitor_confirm import (
+        get_plex_tv_shows,
+        get_tvdb_id_from_plex_series,
+        get_plex_episodes_set,
+    )
+    from plexapi.server import PlexServer
+    from tautulli_curated.helpers.retry_utils import retry_with_backoff
+    import difflib
+    
+    # Get all series from Sonarr
+    all_series = _sonarr_get_all_series(config)
+    if not all_series:
+        log.warning(f"  ✗ Failed to fetch series from Sonarr")
+        return False, None
+    
+    # Find series by title (exact or fuzzy match)
+    series = None
+    for s in all_series:
+        if s.get('title', '').lower() == series_name.lower():
+            series = s
+            break
+    
+    if not series:
+        # Try fuzzy match
+        titles = [s.get('title', '') for s in all_series]
+        close_matches = difflib.get_close_matches(series_name, titles, n=1, cutoff=0.7)
+        if close_matches:
+            for s in all_series:
+                if s.get('title') == close_matches[0]:
+                    series = s
+                    break
+    
+    if not series:
+        log.warning(f"  ✗ Series not found in Sonarr: '{series_name}'")
+        return False, None
+    
+    tvdb_id = series.get('tvdbId')
+    if not tvdb_id:
+        log.warning(f"  ✗ Cannot verify episodes: Series '{series.get('title')}' has no TVDB ID")
+        return False, None
+    
+    # Get Plex TV shows and find the series
+    def _get_plex_shows():
+        plex = PlexServer(config.plex.url, config.plex.token, timeout=30)
+        return plex.library.section(config.plex.tv_library_name).all()
+    
+    plex_shows, success = retry_with_backoff(
+        _get_plex_shows,
+        max_retries=3,
+        logger_instance=log,
+        operation_name="Get Plex TV shows for verification",
+        raise_on_final_failure=False,
+    )
+    
+    if not success or not plex_shows:
+        log.warning(f"  ✗ Failed to get Plex TV shows - cannot verify episodes")
+        return False, None
+    
+    # Find series in Plex by TVDB ID
+    plex_series = None
+    for show in plex_shows:
+        plex_tvdb_id = get_tvdb_id_from_plex_series(show)
+        if plex_tvdb_id == tvdb_id:
+            plex_series = show
+            break
+    
+    if not plex_series:
+        log.warning(f"  ✗ Series not found in Plex (TVDB: {tvdb_id})")
+        return False, None
+    
+    # Get all episodes from Plex for this series
+    plex_episodes_set = get_plex_episodes_set(plex_series)
+    if not plex_episodes_set:
+        log.warning(f"  ✗ Series found in Plex but has no episodes")
+        return False, None
+    
+    # Get all episodes for this series from Sonarr
+    episodes = sonarr_get_episodes_by_series(config, series.get('id'))
+    if not episodes:
+        log.warning(f"  ✗ No episodes found for series '{series.get('title')}'")
+        return False, None
+    
+    # Filter episodes for this season
+    season_episodes = [ep for ep in episodes if ep.get('seasonNumber') == season_num]
+    if not season_episodes:
+        log.warning(f"  ✗ No episodes found for Season {season_num}")
+        return False, None
+    
+    # Check if ALL season episodes are in Plex
+    sonarr_season_episodes_set = set()
+    for ep in season_episodes:
+        season_num_ep = ep.get('seasonNumber')
+        episode_num = ep.get('episodeNumber')
+        if season_num_ep is not None and episode_num is not None:
+            sonarr_season_episodes_set.add((int(season_num_ep), int(episode_num)))
+    
+    # Find missing episodes
+    missing_episodes = sonarr_season_episodes_set - plex_episodes_set
+    
+    if missing_episodes:
+        missing_list = sorted(missing_episodes)
+        log.warning(f"  ✗ NOT ALL episodes in Season {season_num} are in Plex!")
+        log.warning(f"  Missing episodes: {missing_list}")
+        log.warning(f"  Only {len(sonarr_season_episodes_set) - len(missing_episodes)}/{len(sonarr_season_episodes_set)} episodes in Plex")
+        return False, plex_series.title
+    
+    log.info(f"  ✓ All {len(sonarr_season_episodes_set)} episodes in Season {season_num} are confirmed in Plex")
+    return True, plex_series.title
+
+
 def unmonitor_season_in_sonarr(season_title: str, config, log) -> bool:
     """
     Unmonitor an entire season in Sonarr.
@@ -448,6 +663,16 @@ def unmonitor_season_in_sonarr(season_title: str, config, log) -> bool:
     
     log.info(f"  ✓ Found {len(season_episodes)} episodes in Season {season_num}")
     
+    # SAFETY CHECK: Verify ALL episodes in this season are in Plex before unmonitoring
+    log.info("  Checking if all episodes in this season are in Plex...")
+    all_episodes_present, plex_series_title = verify_all_season_episodes_in_plex(
+        series_name, season_num, config, log
+    )
+    
+    if not all_episodes_present:
+        log.warning(f"  ⚠ SKIPPING season unmonitor for safety (not all episodes in Plex)")
+        return False
+    
     # Check if any episodes are monitored
     monitored_episodes = [ep for ep in season_episodes if ep.get('monitored', False)]
     if not monitored_episodes:
@@ -480,6 +705,69 @@ def unmonitor_season_in_sonarr(season_title: str, config, log) -> bool:
     else:
         log.warning(f"  ⚠ Season {season_num} unmonitoring had issues, but episodes were unmonitored")
         return unmonitored_count > 0
+
+
+def unmonitor_show_in_sonarr(show_title: str, config, log) -> bool:
+    """
+    Unmonitor an entire show (all seasons and episodes) in Sonarr.
+    Returns True if show was unmonitored, False otherwise.
+    """
+    from tautulli_curated.helpers import sonarr_utils
+    from tautulli_curated.helpers.sonarr_utils import (
+        _sonarr_get_all_series,
+        sonarr_set_monitored,
+    )
+    import difflib
+    
+    log.info(f"  Parsed: Show='{show_title}'")
+    
+    # Get all series from Sonarr
+    log.info("  Connecting to Sonarr...")
+    all_series = _sonarr_get_all_series(config)
+    if not all_series:
+        log.error("  ✗ Failed to fetch series from Sonarr")
+        return False
+    log.info(f"  ✓ Connected to Sonarr (found {len(all_series)} series)")
+    
+    # Find series by title (exact or fuzzy match)
+    series = None
+    for s in all_series:
+        if s.get('title', '').lower() == show_title.lower():
+            series = s
+            break
+    
+    if not series:
+        # Try fuzzy match
+        titles = [s.get('title', '') for s in all_series]
+        close_matches = difflib.get_close_matches(show_title, titles, n=1, cutoff=0.7)
+        if close_matches:
+            for s in all_series:
+                if s.get('title') == close_matches[0]:
+                    series = s
+                    log.info(f"  ✓ Found series by fuzzy match: '{series.get('title')}'")
+                    break
+    
+    if not series:
+        log.warning(f"  ✗ Show not found in Sonarr: '{show_title}'")
+        return False
+    
+    log.info(f"  ✓ Found show in Sonarr: '{series.get('title')}' (ID: {series.get('id')})")
+    
+    # Check if already unmonitored
+    if not series.get('monitored', False):
+        log.info(f"  ⚠ Show '{series.get('title')}' is already unmonitored in Sonarr")
+        return False
+    
+    # Unmonitor the entire show
+    log.info(f"  Unmonitoring entire show '{series.get('title')}' in Sonarr...")
+    success = sonarr_set_monitored(config, series, monitored=False)
+    
+    if success:
+        log.info(f"  ✓ Successfully unmonitored show '{series.get('title')}' in Sonarr")
+        return True
+    else:
+        log.warning(f"  ✗ Failed to unmonitor show '{series.get('title')}' in Sonarr")
+        return False
 
 
 def unmonitor_episode_in_sonarr(episode_title: str, config, log) -> bool:
@@ -596,16 +884,18 @@ def unmonitor_episode_in_sonarr(episode_title: str, config, log) -> bool:
         return False
 
 
-def run_unmonitor_radarr_after_download(movie_title: str, media_type: str = "movie", config=None, log_parent=None):
+def run_unmonitor_media_after_download(movie_title: str, media_type: str = "movie", config=None, log_parent=None):
     """
-    Main function to unmonitor movie in Radarr or episode in Sonarr and remove from watchlist.
-    Returns (radarr_unmonitored, watchlist_removed) for movies or (sonarr_unmonitored, False) for episodes
+    Main function to unmonitor movie in Radarr or episode/season/show in Sonarr and remove from watchlist.
+    Returns (radarr_unmonitored, watchlist_removed) for movies, 
+            (sonarr_unmonitored, watchlist_removed) for seasons and shows, 
+            or (sonarr_unmonitored, False) for episodes
     """
     log = log_parent or logger
     config = config or load_config()
 
     log.info("=" * 60)
-    log.info("UNMONITOR RADARR AFTER DOWNLOAD START")
+    log.info("UNMONITOR MEDIA AFTER DOWNLOAD START")
     log.info("=" * 60)
     log.info(f"Title: {movie_title}")
     log.info(f"Media type: {media_type}")
@@ -640,14 +930,89 @@ def run_unmonitor_radarr_after_download(movie_title: str, media_type: str = "mov
             log.warning(f"  ✗ Season not found in Sonarr or already unmonitored")
         
         log.info("")
+        log.info("Step 2: Removing TV show from Plex watchlist...")
+        # Extract series name and season number from season title (format: "Series Name - Season X")
+        if " - Season " in movie_title:
+            series_name = movie_title.split(" - Season ")[0].strip()
+            import re
+            season_part = movie_title.split(" - Season ", 1)[1].strip()
+            season_match = re.search(r'(\d+)', season_part)
+            season_num = int(season_match.group(1)) if season_match else None
+        else:
+            series_name = movie_title
+            season_num = None
+        
+        # SAFETY CHECK: Verify ALL episodes in this season are in Plex before removing from watchlist
+        if season_num is not None:
+            log.info("  Verifying all episodes are in Plex before removing from watchlist...")
+            all_episodes_present, plex_series_title = verify_all_season_episodes_in_plex(
+                series_name, season_num, config, log
+            )
+            
+            if not all_episodes_present:
+                log.warning(f"  ✗ NOT ALL episodes in Season {season_num} are in Plex!")
+                log.warning(f"  ⚠ SKIPPING watchlist removal for safety (not all episodes downloaded)")
+                watchlist_removed = False
+            else:
+                log.info(f"  ✓ All episodes confirmed in Plex - proceeding with watchlist removal")
+                watchlist_removed = remove_show_from_plex_watchlist_with_retry(
+                    config,
+                    series_name,
+                    log
+                )
+        else:
+            # Fallback: if we can't parse season number, skip watchlist removal for safety
+            log.warning(f"  ⚠ Could not parse season number from '{movie_title}' - skipping watchlist removal for safety")
+            watchlist_removed = False
+        
+        if watchlist_removed:
+            log.info(f"  ✓ TV show successfully removed from Plex watchlist")
+        else:
+            log.info(f"  ⚠ TV show was not removed from watchlist (not all episodes in Plex or not in watchlist)")
+        
+        log.info("")
         log.info("=" * 60)
         log.info("UNMONITOR SONARR AFTER DOWNLOAD SUMMARY")
         log.info("=" * 60)
         log.info(f"Season: {movie_title}")
         log.info(f"Sonarr Unmonitored: {'✓ Yes' if sonarr_unmonitored else '✗ No (already unmonitored or not found)'}")
+        log.info(f"Watchlist Removed: {'✓ Yes' if watchlist_removed else '✗ No (not in watchlist or already removed)'}")
         log.info("=" * 60)
         
-        return sonarr_unmonitored, False  # No watchlist removal for seasons
+        return sonarr_unmonitored, watchlist_removed
+    
+    if media_type.lower() == "show":
+        log.info("Step 1: Unmonitoring entire show in Sonarr...")
+        sonarr_unmonitored = unmonitor_show_in_sonarr(movie_title, config, log)
+        
+        if sonarr_unmonitored:
+            log.info(f"  ✓ Show successfully unmonitored in Sonarr")
+        else:
+            log.warning(f"  ✗ Show not found in Sonarr or already unmonitored")
+        
+        log.info("")
+        log.info("Step 2: Removing TV show from Plex watchlist...")
+        watchlist_removed = remove_show_from_plex_watchlist_with_retry(
+            config,
+            movie_title,
+            log
+        )
+        
+        if watchlist_removed:
+            log.info(f"  ✓ TV show successfully removed from Plex watchlist")
+        else:
+            log.info(f"  ⚠ TV show was not in watchlist or could not be removed (non-critical)")
+        
+        log.info("")
+        log.info("=" * 60)
+        log.info("UNMONITOR SONARR AFTER DOWNLOAD SUMMARY")
+        log.info("=" * 60)
+        log.info(f"Show: {movie_title}")
+        log.info(f"Sonarr Unmonitored: {'✓ Yes' if sonarr_unmonitored else '✗ No (already unmonitored or not found)'}")
+        log.info(f"Watchlist Removed: {'✓ Yes' if watchlist_removed else '✗ No (not in watchlist or already removed)'}")
+        log.info("=" * 60)
+        
+        return sonarr_unmonitored, watchlist_removed
     
     # Movie processing (existing logic)
     log.info("Step 1: Unmonitoring movie in Radarr...")
@@ -676,7 +1041,7 @@ def run_unmonitor_radarr_after_download(movie_title: str, media_type: str = "mov
 
     log.info("")
     log.info("=" * 60)
-    log.info("UNMONITOR RADARR AFTER DOWNLOAD SUMMARY")
+    log.info("UNMONITOR MEDIA AFTER DOWNLOAD SUMMARY")
     log.info("=" * 60)
     log.info(f"Movie: {movie_title}")
     log.info(f"Radarr Unmonitored: {'✓ Yes' if radarr_unmonitored else '✗ No (already unmonitored or not found)'}")
@@ -690,37 +1055,38 @@ def main():
     """Main entry point for standalone script execution."""
     # Check command line arguments
     if len(sys.argv) < 2:
-        print('Usage: python3 unmonitor_radarr_after_download.py "Title" [media_type]')
-        print('  Title: Movie title, "Series Name - Episode Title" for episodes, or "Series Name - Season X" for seasons')
-        print('  media_type: "movie", "episode", or "season" (default: "movie")')
+        print('Usage: python3 unmonitor_media_after_download.py "Title" [media_type]')
+        print('  Title: Movie title, "Series Name - Episode Title" for episodes, "Series Name - Season X" for seasons, or "Series Name" for shows')
+        print('  media_type: "movie", "episode", "season", or "show" (default: "movie")')
         print('  Examples:')
-        print('    python3 unmonitor_radarr_after_download.py "Supernatural - Unity" episode')
-        print('    python3 unmonitor_radarr_after_download.py "Last Week Tonight with John Oliver - Season 4" season')
+        print('    python3 unmonitor_media_after_download.py "Supernatural - Unity" episode')
+        print('    python3 unmonitor_media_after_download.py "Last Week Tonight with John Oliver - Season 4" season')
+        print('    python3 unmonitor_media_after_download.py "Detention Adventure" show')
         return 1
     
     movie_title = sys.argv[1]
     media_type = sys.argv[2].lower().strip() if len(sys.argv) > 2 else "movie"
     
     logger.info("=" * 60)
-    logger.info("UNMONITOR RADARR AFTER DOWNLOAD SCRIPT")
+    logger.info("UNMONITOR MEDIA AFTER DOWNLOAD SCRIPT")
     logger.info("=" * 60)
     logger.info(f"Title: {movie_title}")
     logger.info(f"Media type: {media_type}")
     logger.info("")
     
-    # Check if media type is supported (movie, episode, or season)
-    if media_type not in ("movie", "episode", "season"):
-        logger.info(f"Media type '{media_type}' is not 'movie', 'episode', or 'season' - skipping processing")
-        logger.info("  Note: Only 'movie', 'episode', and 'season' media types are currently supported")
+    # Check if media type is supported (movie, episode, season, or show)
+    if media_type not in ("movie", "episode", "season", "show"):
+        logger.info(f"Media type '{media_type}' is not 'movie', 'episode', 'season', or 'show' - skipping processing")
+        logger.info("  Note: Only 'movie', 'episode', 'season', and 'show' media types are currently supported")
         logger.info("")
         logger.info("=" * 60)
-        logger.info("UNMONITOR RADARR AFTER DOWNLOAD END (skipped)")
+        logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (skipped)")
         logger.info("=" * 60)
         return 0
     
     try:
         config = load_config()
-        radarr_unmonitored, watchlist_removed = run_unmonitor_radarr_after_download(
+        radarr_unmonitored, watchlist_removed = run_unmonitor_media_after_download(
             movie_title=movie_title,
             media_type=media_type,
             config=config
@@ -728,16 +1094,26 @@ def main():
         
         logger.info("")
         logger.info("=" * 60)
-        if media_type in ("episode", "season"):
+        if media_type == "episode":
             if radarr_unmonitored:
-                logger.info("UNMONITOR SONARR AFTER DOWNLOAD END OK")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END OK (Sonarr - Episode)")
             else:
-                logger.info("UNMONITOR SONARR AFTER DOWNLOAD END (no changes needed)")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (no changes needed - Sonarr - Episode)")
+        elif media_type == "season":
+            if radarr_unmonitored or watchlist_removed:
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END OK (Sonarr - Season)")
+            else:
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (no changes needed - Sonarr - Season)")
+        elif media_type == "show":
+            if radarr_unmonitored or watchlist_removed:
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END OK (Sonarr - Show)")
+            else:
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (no changes needed - Sonarr - Show)")
         else:
             if radarr_unmonitored or watchlist_removed:
-                logger.info("UNMONITOR RADARR AFTER DOWNLOAD END OK")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END OK (Radarr)")
             else:
-                logger.info("UNMONITOR RADARR AFTER DOWNLOAD END (no changes needed)")
+                logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (no changes needed - Radarr)")
         logger.info("=" * 60)
         
         return 0
@@ -745,13 +1121,13 @@ def main():
         logger.warning("")
         logger.warning("Script interrupted by user")
         logger.info("=" * 60)
-        logger.info("UNMONITOR RADARR AFTER DOWNLOAD END (interrupted)")
+        logger.info("UNMONITOR MEDIA AFTER DOWNLOAD END (interrupted)")
         logger.info("=" * 60)
         return 130
     except Exception as e:
         logger.exception("")
         logger.error("=" * 60)
-        logger.error("UNMONITOR RADARR AFTER DOWNLOAD END FAIL")
+        logger.error("UNMONITOR MEDIA AFTER DOWNLOAD END FAIL")
         logger.error("=" * 60)
         return 1
 

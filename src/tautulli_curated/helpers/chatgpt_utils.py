@@ -10,6 +10,7 @@ if __name__ == "__main__":
 
 import os
 import re
+import json
 from typing import List, Optional
 
 from tautulli_curated.helpers.logger import setup_logger
@@ -72,12 +73,110 @@ def parse_recommendations(text: str, limit: int = 50) -> List[str]:
     return out
 
 
+def _try_parse_json_recs(text: str) -> tuple[list[str], list[str]]:
+    """
+    Attempt to parse a JSON response of the form:
+      {"primary_recommendations": [...], "upcoming_from_search": [...]}
+    Returns (primary, upcoming). Falls back to ([], []) on failure.
+    """
+    if not text:
+        return [], []
+    t = text.strip()
+
+    # Common model behavior: wrap JSON in ```json fences
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", t).strip()
+        t = re.sub(r"\s*```$", "", t).strip()
+
+    try:
+        obj = json.loads(t)
+    except Exception:
+        return [], []
+
+    if not isinstance(obj, dict):
+        return [], []
+
+    primary = obj.get("primary_recommendations") or []
+    upcoming = obj.get("upcoming_from_search") or []
+
+    def _clean_list(v) -> list[str]:
+        if not isinstance(v, list):
+            return []
+        out: list[str] = []
+        seen = set()
+        for item in v:
+            if not isinstance(item, str):
+                continue
+            title = _clean_title(item) or ""
+            if not title:
+                continue
+            key = title.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(title)
+        return out
+
+    return _clean_list(primary), _clean_list(upcoming)
+
+
+def _merge_primary_and_upcoming(
+    primary: list[str],
+    upcoming: list[str],
+    *,
+    limit: int,
+    upcoming_cap_fraction: float = 0.5,
+) -> list[str]:
+    """
+    Merge lists with a cap on the number of upcoming titles (default: up to 50%).
+    """
+    if limit <= 0:
+        return []
+
+    cap = int(limit * upcoming_cap_fraction)
+    cap = max(0, min(cap, limit))
+
+    out: list[str] = []
+    seen = set()
+
+    def add(t: str):
+        key = t.lower()
+        if not t or key in seen:
+            return
+        seen.add(key)
+        out.append(t)
+
+    # First add upcoming titles not already in primary (up to cap)
+    for t in upcoming:
+        if len([x for x in out if x]) >= cap:
+            break
+        add(t)
+
+    # Fill remainder with primary
+    for t in primary:
+        if len(out) >= limit:
+            break
+        add(t)
+
+    # If still short (e.g. primary empty), backfill with more upcoming
+    if len(out) < limit:
+        for t in upcoming:
+            if len(out) >= limit:
+                break
+            add(t)
+
+    return out[:limit]
+
+
 def get_related_movies(
     movie_name: str,
     *,
     api_key: Optional[str] = None,
-    model: str = "gpt-5.2",
+    model: str = "gpt-5.2-chat-latest",
     limit: int = 25,
+    tmdb_seed_metadata: Optional[dict] = None,
+    google_search_context: Optional[str] = None,
+    upcoming_cap_fraction: float = 0.50,
 ) -> List[str]:
     """
     Return a list of related movie titles for a given watched movie.
@@ -87,44 +186,76 @@ def get_related_movies(
     """
     api_key = api_key or os.getenv("OPENAI_API_KEY")
     if OpenAI is None:
-        logger.error("OpenAI SDK not available (openai import failed).")
+        logger.warning("OpenAI SDK not available (openai import failed).")
         return []
 
     if not api_key:
-        logger.error("OPENAI_API_KEY not set; cannot fetch recommendations.")
+        logger.info("OpenAI disabled (missing API key); skipping OpenAI recommendations.")
         return []
 
     client = OpenAI(api_key=api_key)
+
+    seed_block = ""
+    if isinstance(tmdb_seed_metadata, dict) and tmdb_seed_metadata:
+        try:
+            seed_block = json.dumps(tmdb_seed_metadata, ensure_ascii=False)
+        except Exception:
+            seed_block = ""
+
+    web_block = (google_search_context or "").strip()
+    # Cap how many upcoming/web-derived titles can be included in the final list.
+    try:
+        frac = float(upcoming_cap_fraction)
+    except Exception:
+        frac = 0.50
+    if frac < 0:
+        frac = 0.0
+    if frac > 1:
+        frac = 1.0
+    upcoming_cap = max(0, min(limit, int(limit * frac)))
+
     prompt = (
-        f"Recommend {limit} movies similar in tone, themes, atmosphere, or cinematic style to '{movie_name}'. "
-        "About 80% of the movies should already be released and about 20% should be upcoming or unreleased. "
-        "Roughly 40–50% should be well-known or mainstream films, "
-        "30–40% should be lesser-known indie or international films, "
-        "and 10–20% should be niche, arthouse, or film-festival favorites "
-        "(e.g., Cannes, Venice, Sundance, TIFF, Berlinale) that are highly regarded among film enthusiasts. "
-        "Avoid low-effort or generic franchise entries unless they are genuinely relevant to the recommendation. "
-        "Return ONLY a plain newline-separated list of movie titles (no extra text, no numbering). "
-        "Do not include years unless necessary to disambiguate titles."
+        f"You are a movie recommendation engine.\n\n"
+        f"Seed title: {movie_name}\n"
+        f"Desired count: {limit}\n\n"
+        f"TMDb seed metadata (JSON):\n{seed_block or '{}'}\n\n"
+        f"Web search snippets (may include upcoming releases):\n{web_block or '(none)'}\n\n"
+        "Return STRICT JSON only (no markdown, no prose) with this schema:\n"
+        "{\n"
+        '  \"primary_recommendations\": [\"Title 1\", \"Title 2\", ...],\n'
+        '  \"upcoming_from_search\": [\"Upcoming Title A\", \"Upcoming Title B\", ...]\n'
+        "}\n\n"
+        "Rules:\n"
+        "- primary_recommendations should be mostly released movies similar in tone/themes/style to the seed.\n"
+        f"- upcoming_from_search should include up to {upcoming_cap} items (max {int(frac*100)}% of {limit}).\n"
+        "- upcoming_from_search should include upcoming/unreleased movies that are relevant, preferably found in the web snippets.\n"
+        "- Avoid duplicates across both lists.\n"
+        "- Movie titles only (no years unless needed to disambiguate).\n"
     )
 
     try:
+        # Note: some newer chat-latest models only support the default temperature.
         resp = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a movie recommendation engine."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.7,
         )
 
         text = resp.choices[0].message.content or ""
-        recs = parse_recommendations(text, limit=limit)
+        primary, upcoming = _try_parse_json_recs(text)
+        if primary or upcoming:
+            recs = _merge_primary_and_upcoming(primary, upcoming, limit=limit, upcoming_cap_fraction=frac)
+        else:
+            # fallback: accept plain newline list
+            recs = parse_recommendations(text, limit=limit)
 
         logger.info(f"OpenAI returned {len(recs)} recommendations for '{movie_name}'")
         return recs
 
-    except Exception:
-        logger.exception("OpenAI call failed in get_related_movies()")
+    except Exception as e:
+        logger.warning(f"OpenAI call failed (non-fatal): {type(e).__name__}: {e}")
         return []
         
 
@@ -140,7 +271,7 @@ if __name__ == "__main__":
     recs = get_related_movies(
         movie,
         api_key=config.openai.api_key,               # ✅ pulled from config.yaml
-        limit=config.openai.recommendation_count,
+        limit=config.recommendations.count,
     )
 
     print(f"Returned {len(recs)} recommendations:\n")

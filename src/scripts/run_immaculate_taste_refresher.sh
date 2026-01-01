@@ -276,15 +276,34 @@ fi
 
 output ""
 
-if [[ $EXIT_CODE -eq 0 ]]; then
+FINAL_STATUS="FAILED"
+case "$EXIT_CODE" in
+    0) FINAL_STATUS="SUCCESS" ;;
+    10) FINAL_STATUS="PARTIAL" ;;
+    20) FINAL_STATUS="DEPENDENCY_FAILED" ;;
+    30) FINAL_STATUS="FAILED" ;;
+    130) FINAL_STATUS="INTERRUPTED" ;;
+    *) FINAL_STATUS="FAILED" ;;
+esac
+
+if [[ "$FINAL_STATUS" == "SUCCESS" ]]; then
     output_color "${GREEN}========================================${NC}"
     output_color "${GREEN}Script completed successfully!${NC}"
     output_color "${GREEN}========================================${NC}"
+elif [[ "$FINAL_STATUS" == "PARTIAL" ]]; then
+    output_color "${YELLOW}========================================${NC}"
+    output_color "${YELLOW}Script completed with warnings (PARTIAL) - exit code: $EXIT_CODE${NC}"
+    output_color "${YELLOW}========================================${NC}"
+elif [[ "$FINAL_STATUS" == "INTERRUPTED" ]]; then
+    output_color "${YELLOW}========================================${NC}"
+    output_color "${YELLOW}Script interrupted (exit code: $EXIT_CODE)${NC}"
+    output_color "${YELLOW}========================================${NC}"
 else
     output_color "${RED}========================================${NC}"
-    output_color "${RED}Script failed with exit code: $EXIT_CODE${NC}"
+    output_color "${RED}Script failed (${FINAL_STATUS}) with exit code: $EXIT_CODE${NC}"
     output_color "${RED}========================================${NC}"
 fi
+
 
 # Pause at the end unless --no-pause is specified
 if [[ -z "$NO_PAUSE" ]]; then
@@ -302,6 +321,9 @@ fi
 if [[ -n "${TEMP_WRAPPER:-}" ]] && [[ -f "$TEMP_WRAPPER" ]]; then
     rm -f "$TEMP_WRAPPER" 2>/dev/null
 fi
+
+# Stable final line for monitoring
+output "FINAL_STATUS=${FINAL_STATUS} FINAL_EXIT_CODE=${EXIT_CODE}"
 
 exit $EXIT_CODE
 

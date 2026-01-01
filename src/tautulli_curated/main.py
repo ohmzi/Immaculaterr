@@ -10,7 +10,7 @@ def main():
     # Expect: python3 tautulli_immaculate_taste_collection.py "Title" movie
     if len(sys.argv) < 3:
         print('Usage: python3 tautulli_immaculate_taste_collection.py "Movie Title" movie')
-        return 1
+        return 30
 
     movie_name = sys.argv[1]
     media_type = sys.argv[2].lower().strip()
@@ -115,7 +115,7 @@ def main():
                 logger.error("")
                 logger.error(f"  ✗ Recently Watched Collection script failed: {type(e).__name__}: {e}")
                 logger.error("  Continuing with Immaculate Taste Collection script...")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         else:
             logger.info("Recently Watched Collection script skipped (disabled in config)")
             logger.info("")
@@ -150,7 +150,7 @@ def main():
                 logger.error("")
                 logger.error(f"  ✗ Duplicate Cleaner failed: {type(e).__name__}: {e}")
                 logger.error("  Continuing with next script...")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         else:
             logger.info("Plex Duplicate Cleaner skipped (disabled in config)")
             logger.info("")
@@ -183,7 +183,7 @@ def main():
                 logger.error("")
                 logger.error(f"  ✗ Radarr Monitor Confirm failed: {type(e).__name__}: {e}")
                 logger.error("  Continuing with next script...")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         else:
             logger.info("Radarr Monitor Confirm skipped (disabled in config)")
             logger.info("")
@@ -218,7 +218,7 @@ def main():
                 logger.error("")
                 logger.error(f"  ✗ Sonarr Duplicate Cleaner failed: {type(e).__name__}: {e}")
                 logger.error("  Continuing with next script...")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         else:
             logger.info("Sonarr Duplicate Cleaner skipped (disabled in config)")
             logger.info("")
@@ -255,7 +255,7 @@ def main():
                 logger.error("")
                 logger.error(f"  ✗ Sonarr Monitor Confirm failed: {type(e).__name__}: {e}")
                 logger.error("  Continuing with next script...")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         else:
             logger.info("Sonarr Monitor Confirm skipped (disabled in config)")
             logger.info("")
@@ -280,7 +280,7 @@ def main():
                 else:
                     logger.warning("")
                     logger.warning("  ⚠ Sonarr Search Monitored completed with warnings: Failed to queue search command")
-                    exit_code = max(exit_code, 1)
+                    exit_code = max(exit_code, 20)
             except KeyboardInterrupt:
                 logger.warning("")
                 logger.warning("  ⚠ Sonarr Search Monitored interrupted by user")
@@ -289,7 +289,7 @@ def main():
                 logger.error("")
                 logger.error(f"  ✗ Sonarr Search Monitored failed: {type(e).__name__}: {e}")
                 logger.error("  Continuing with next script...")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         else:
             logger.info("Sonarr Search Monitored skipped (disabled in config)")
             logger.info("")
@@ -310,7 +310,7 @@ def main():
                 logger.error("")
                 logger.error(f"  ✗ Main pipeline failed: {type(e).__name__}: {e}")
                 logger.exception("Full traceback:")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         else:
             logger.info("Immaculate Taste Collection script skipped (disabled in config)")
             logger.info("")
@@ -354,7 +354,7 @@ def main():
             except Exception as e:
                 logger.error("")
                 logger.error(f"  ✗ Recently Watched Collection Refresher failed: {type(e).__name__}: {e}")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
 
         if run_immaculate_refresher:
             logger.info("=" * 60)
@@ -392,7 +392,7 @@ def main():
             except Exception as e:
                 logger.error("")
                 logger.error(f"  ✗ Immaculate Taste Collection Refresher failed: {type(e).__name__}: {e}")
-                exit_code = max(exit_code, 1)
+                exit_code = max(exit_code, 30)
         
         # Final summary
         elapsed_time = time.time() - script_start_time
@@ -415,6 +415,8 @@ def main():
         
         if exit_code == 0:
             logger.info("TAUTULLI CURATED COLLECTION SCRIPTS END OK")
+        elif exit_code == 10:
+            logger.warning("TAUTULLI CURATED COLLECTION SCRIPTS END PARTIAL")
         else:
             logger.error("TAUTULLI CURATED COLLECTION SCRIPTS END WITH ERRORS")
         logger.info("=" * 60)
@@ -431,7 +433,7 @@ def main():
         logger.error("=" * 60)
         logger.error("IMMACULATE TASTE COLLECTION SCRIPT END FAIL")
         logger.error("=" * 60)
-        return 2
+        return 30
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -6,8 +6,7 @@ from tautulli_curated.helpers.tmdb_cache import TMDbCache
 from tautulli_curated.helpers.recommender import get_recommendations
 from tautulli_curated.helpers.plex_search import find_plex_movie
 from tautulli_curated.helpers.plex_collection_manager import (
-    build_final_items_with_points,
-    _get_points,
+    update_points_data_for_run,
 )
 from plexapi.server import PlexServer
 from plexapi.exceptions import NotFound
@@ -121,43 +120,20 @@ def run_pipeline(movie_name, media_type, ctx=None):
 
     # --- Update points and clean up (deferred Plex collection update)
     with ctx.step(logger, "points_update", found=len(plex_movies)):
-        # Get existing collection items to build final list
-        section = plex.library.section(config.plex.movie_library_name)
-        existing_items = []
-        try:
-            collection = section.collection(config.plex.collection_name)
-            existing_items = collection.items()
-        except NotFound:
-            # Collection doesn't exist yet, that's fine
-            pass
-        
-        # Build final items list and update points (same logic as before)
-        final_items, suggested_now_keys = build_final_items_with_points(
-            section=section,
-            existing_items=existing_items,
-            plex_movies_this_run=plex_movies,
-            tmdb_cache=tmdb_cache,
+        algo_stats = update_points_data_for_run(
             points_data=points_data,
+            suggested_movies=plex_movies,
             max_points=50,
+            logger=logger,
         )
-        
-        # Remove items with points <= 0 (cleanup)
-        keys_to_remove = [
-            key for key in points_data.keys()
-            if _get_points(points_data, key) <= 0
-        ]
-        for key in keys_to_remove:
-            del points_data[key]
-        
-        if keys_to_remove:
-            logger.info(f"points_update: removed {len(keys_to_remove)} items with points <= 0")
-        
+
         collection_stats = {
-            "existing_seeded": len(existing_items),
-            "suggested_now": len(suggested_now_keys),
-            "kept_in_collection": len(final_items),
-            "points_total": len(points_data),
-            "removed_low_points": len(keys_to_remove),
+            "suggested_now": algo_stats.get("suggested_now", 0),
+            "reset_to_max": algo_stats.get("reset_to_max", 0),
+            "decayed": algo_stats.get("decayed", 0),
+            "removed_zero": algo_stats.get("removed", 0),
+            "added_new": algo_stats.get("added", 0),
+            "points_total": algo_stats.get("total", len(points_data)),
         }
         logger.info(f"points_update stats={collection_stats}")
         logger.info(f"Points updated in {points_path} (will be applied to Plex by Immaculate Taste Collection Refresher)")

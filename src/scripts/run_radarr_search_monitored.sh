@@ -47,6 +47,32 @@ VERBOSE=""
 NO_PAUSE=""
 LOG_FILE=""
 
+# Standardized exit codes for monitoring:
+#  0  = SUCCESS
+#  10 = PARTIAL
+#  20 = DEPENDENCY_FAILED (Radarr/API/network)
+#  30 = FAILED (config/deps/script)
+status_from_exit_code() {
+    local code="${1:-30}"
+    case "$code" in
+        0) echo "SUCCESS" ;;
+        10) echo "PARTIAL" ;;
+        20) echo "DEPENDENCY_FAILED" ;;
+        30) echo "FAILED" ;;
+        130) echo "INTERRUPTED" ;;
+        *) echo "FAILED" ;;
+    esac
+}
+
+on_exit() {
+    local code=$?
+    local status
+    status=$(status_from_exit_code "$code")
+    echo ""
+    echo "FINAL_STATUS=${status} FINAL_EXIT_CODE=${code}"
+}
+trap on_exit EXIT
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -117,7 +143,6 @@ if [[ -n "$LOG_FILE" ]]; then
     TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
     LOG_PATH="$PROJECT_ROOT/data/logs/radarr_search_monitored_${TIMESTAMP}.log"
     mkdir -p "$PROJECT_ROOT/data/logs"
-    echo "Log file: $LOG_PATH"
     # Redirect all output to both terminal and log file
     # Strip ANSI color codes for log file while preserving colors in terminal
     # Use unbuffered sed to strip colors in real-time (handles both actual escapes and literal strings)
@@ -131,10 +156,16 @@ USER_SITE_PACKAGES=$(python3 -c "import site; print(site.getusersitepackages())"
 # Add user site-packages to Python path if not already there
 export PYTHONPATH="${USER_SITE_PACKAGES}:${PYTHONPATH:-}"
 
-# Print header
-echo -e "${BLUE}============================================================${NC}"
+# Print header (match other runner scripts)
+echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}Radarr Search Monitored Movies${NC}"
-echo -e "${BLUE}============================================================${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo ""
+echo -e "Script: ${GREEN}$SCRIPT_DIR/$(basename "$0")${NC}"
+echo -e "Working directory: ${GREEN}$PROJECT_ROOT${NC}"
+if [[ -n "$LOG_PATH" ]]; then
+    echo -e "Log file: ${GREEN}$LOG_PATH${NC}"
+fi
 echo ""
 
 log INFO "Starting script..."
@@ -148,32 +179,74 @@ if ! command -v yq &> /dev/null; then
     echo "Please install yq to use this script."
     echo "On Ubuntu/Debian: sudo apt-get install yq"
     echo "On macOS: brew install yq"
-    exit 1
+    exit 30
 fi
 log SUCCESS "yq is available"
 
 # Check if curl is available
 if ! command -v curl &> /dev/null; then
     log ERROR "curl is not installed or not in PATH"
-    exit 1
+    exit 30
 fi
 log SUCCESS "curl is available"
 
-# Check if config.yaml exists
-CONFIG_FILE="$PROJECT_ROOT/config/config.yaml"
+# Pick config file (prefer config.local.* for secrets)
 log INFO "Checking configuration file..."
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    log ERROR "config.yaml not found at: $CONFIG_FILE"
-    exit 1
+CONFIG_FILE=""
+for candidate in \
+    "$PROJECT_ROOT/config/config.local.yaml" \
+    "$PROJECT_ROOT/config/config.local.yml" \
+    "$PROJECT_ROOT/config/config.yaml" \
+    "$PROJECT_ROOT/config/config.yml"; do
+    if [[ -f "$candidate" ]]; then
+        CONFIG_FILE="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$CONFIG_FILE" ]]; then
+    log ERROR "No config file found in: $PROJECT_ROOT/config/"
+    log ERROR "Expected one of: config.local.yaml, config.local.yml, config.yaml, config.yml"
+    exit 30
 fi
 log SUCCESS "Configuration file found: $CONFIG_FILE"
 
-# Read configuration from config.yaml
-log INFO "Reading configuration from config.yaml..."
-RADARR_URL=$(yq '.radarr.url' < "$CONFIG_FILE" | tr -d '"')
-API_KEY=$(yq '.radarr.api_key' < "$CONFIG_FILE" | tr -d '"')
-ROOT_FOLDER=$(yq '.radarr.root_folder' < "$CONFIG_FILE" | tr -d '"')
-TAG_NAME=$(yq '.radarr.tag_name' < "$CONFIG_FILE" | tr -d '"')
+# Helper to read YAML values safely
+yq_get() {
+    local expr="$1"
+    local v
+    v=$(yq "$expr" < "$CONFIG_FILE" 2>/dev/null | tr -d '"')
+    # Normalize common null output
+    if [[ "$v" == "null" || "$v" == "NULL" || "$v" == "Null" ]]; then
+        v=""
+    fi
+    echo "$v"
+}
+
+# Detect placeholder keys so we fail fast with a clear message (instead of 401)
+is_placeholder_key() {
+    local key="${1:-}"
+    local key_upper
+    key_upper=$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')
+
+    if [[ -z "$key" ]]; then
+        return 0
+    fi
+    if [[ "$key_upper" == "RADARR_API_KEY" || "$key_upper" == "YOUR_RADARR_API_KEY" ]]; then
+        return 0
+    fi
+    if [[ "$key" =~ [Xx]{8,} ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Read configuration from config file
+log INFO "Reading configuration from $(basename "$CONFIG_FILE")..."
+RADARR_URL=$(yq_get '.radarr.url')
+API_KEY=$(yq_get '.radarr.api_key')
+ROOT_FOLDER=$(yq_get '.radarr.root_folder')
+TAG_NAME=$(yq_get '.radarr.tag_name')
 
 log DEBUG "Radarr URL: ${RADARR_URL:0:20}..." # Only show first 20 chars for security
 log DEBUG "API Key: ${API_KEY:0:10}..." # Only show first 10 chars for security
@@ -181,9 +254,14 @@ log DEBUG "Root Folder: ${ROOT_FOLDER:-N/A}"
 log DEBUG "Tag Name: ${TAG_NAME:-N/A}"
 
 # Validate required configuration
-if [[ -z "$RADARR_URL" || -z "$API_KEY" ]]; then
-    log ERROR "Radarr URL or API Key missing in config.yaml"
-    exit 1
+if [[ -z "$RADARR_URL" ]]; then
+    log ERROR "Radarr URL missing in $(basename "$CONFIG_FILE")"
+    exit 30
+fi
+if is_placeholder_key "$API_KEY"; then
+    log ERROR "Radarr API Key missing/placeholder in $(basename "$CONFIG_FILE")"
+    log ERROR "Set radarr.api_key in config/config.local.yaml (recommended) or config/config.yaml"
+    exit 30
 fi
 log SUCCESS "Configuration loaded successfully"
 
@@ -242,7 +320,7 @@ if [[ $CURL_EXIT_CODE -ne 0 ]]; then
         echo -e "${YELLOW}Press Enter to exit...${NC}"
         read
     fi
-    exit 1
+    exit 20
 fi
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
@@ -337,6 +415,6 @@ else
         echo -e "${YELLOW}Press Enter to exit...${NC}"
         read
     fi
-    exit 1
+    exit 20
 fi
 

@@ -42,6 +42,7 @@ from tautulli_curated.helpers.plex_collection_manager import (
     _set_collection_artwork,
     _fetch_by_rating_key,
     _apply_custom_order,
+    _pin_curated_collection_hubs,
 )
 from plexapi.server import PlexServer
 from plexapi.exceptions import NotFound, BadRequest
@@ -375,13 +376,14 @@ def apply_collection_to_plex(
         failed_count = len(valid_movies) - added_count
     
     # Apply custom order (randomized order from JSON) - only if items were successfully added
+    order_stats = {}
     if collection and valid_movies and added_count > 0 and not dry_run:
         try:
             logger.info(f"  Applying custom order to {len(valid_movies)} items...")
             logger.info("    Reordering items. This may take several minutes for large collections...")
             logger.info("    Note: Some items may fail to reorder, but the script will continue...")
             start_time = time.time()
-            _apply_custom_order(plex, collection, valid_movies, logger=logger)
+            order_stats = _apply_custom_order(plex, collection, valid_movies, logger=logger) or {}
             elapsed = time.time() - start_time
             logger.info(f"  Custom order completed in {elapsed:.1f} seconds")
         except (BadRequest, Exception) as e:
@@ -402,11 +404,20 @@ def apply_collection_to_plex(
             _set_collection_artwork(collection, collection_name, base_dir, logger)
         except Exception as e:
             logger.warning(f"  ⚠ Failed to set artwork (non-critical): {e}")
+
+    # Ensure curated collections are visible + pinned at top (Manage Recommendations)
+    if collection and (added_count > 0 or existing_items) and not dry_run:
+        try:
+            pin_stats = _pin_curated_collection_hubs(plex, section, logger=logger)
+            logger.info(f"  hub_pin: done stats={pin_stats}")
+        except Exception as e:
+            logger.warning(f"  hub_pin: failed (non-critical): {type(e).__name__}: {e}")
     
     return {
         "added": added_count,
         "failed": failed_count + len(failed_movies),
         "filtered": len(filtered_non_movies),
+        "order_stats": order_stats,
     }
 
 
@@ -449,7 +460,7 @@ def main():
         # Load configuration
         logger.info("Step 1: Loading configuration...")
         config = load_config()
-        logger.info(f"  ✓ Config loaded from: {config.base_dir / 'config' / 'config.yaml'}")
+        logger.info(f"  ✓ Config loaded from: {config.config_path}")
         logger.info(f"  ✓ Plex URL: {config.plex.url}")
         logger.info(f"  ✓ Library: {config.plex.movie_library_name}")
         
@@ -515,6 +526,7 @@ def main():
             "total_added": 0,
             "total_failed": 0,
             "total_filtered": 0,
+            "total_reorder_failed": 0,
         }
         
         for collection_config in COLLECTIONS:
@@ -566,6 +578,7 @@ def main():
             total_stats["total_added"] += stats["added"]
             total_stats["total_failed"] += stats["failed"]
             total_stats["total_filtered"] += stats["filtered"]
+            total_stats["total_reorder_failed"] += int((stats.get("order_stats") or {}).get("failed", 0) or 0)
             
             logger.info(f"  ✓ Collection update complete: {stats}")
         
@@ -577,23 +590,41 @@ def main():
         logger.info(f"Total movies added: {total_stats['total_added']}")
         logger.info(f"Total movies failed: {total_stats['total_failed']}")
         logger.info(f"Total non-movies filtered: {total_stats['total_filtered']}")
+        logger.info(f"Total reorder failures: {total_stats['total_reorder_failed']}")
         if not args.dry_run:
             logger.info(f"Collections updated: ✓")
         else:
             logger.info(f"Collections updated: (DRY RUN - no changes)")
         logger.info("=" * 60)
-        logger.info("RECENTLY WATCHED COLLECTIONS REFRESHER END OK")
+
+        # Determine final status + exit code for monitoring/alerting
+        status = "SUCCESS"
+        exit_code = 0
+        if not args.dry_run:
+            if total_stats["total_failed"] > 0 or total_stats["total_reorder_failed"] > 0:
+                status = "PARTIAL"
+                exit_code = 10
+
+        logger.info(f"RECENTLY WATCHED COLLECTIONS REFRESHER END {status}")
+        logger.info(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
         logger.info("=" * 60)
-        return 0
+        return exit_code
         
     except KeyboardInterrupt:
         logger.warning("\nInterrupted by user")
         logger.info("RECENTLY WATCHED COLLECTIONS REFRESHER END (interrupted)")
+        logger.info("FINAL_STATUS=INTERRUPTED FINAL_EXIT_CODE=130")
         return 130
     except Exception as e:
+        # Categorize dependency failures vs internal failures for monitoring
+        dependency_failed = isinstance(e, (Timeout, RequestsConnectionError, ReadTimeoutError, ConnectTimeoutError))
+        status = "DEPENDENCY_FAILED" if dependency_failed else "FAILED"
+        exit_code = 20 if dependency_failed else 30
+
         logger.exception("RECENTLY WATCHED COLLECTIONS REFRESHER END FAIL")
         logger.error(f"Error: {type(e).__name__}: {e}")
-        return 1
+        logger.error(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
+        return exit_code
 
 
 if __name__ == "__main__":

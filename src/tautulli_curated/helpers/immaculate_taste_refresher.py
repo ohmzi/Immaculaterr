@@ -39,6 +39,7 @@ from tautulli_curated.helpers.config_loader import load_config
 from tautulli_curated.helpers.plex_collection_manager import (
     apply_collection_state_to_plex,
     _fetch_by_rating_key,
+    _get_points,
 )
 from plexapi.server import PlexServer
 from plexapi.exceptions import NotFound
@@ -105,7 +106,7 @@ def main():
         # Load configuration
         logger.info("Step 1: Loading configuration...")
         config = load_config()
-        logger.info(f"  ✓ Config loaded from: {config.base_dir / 'config' / 'config.yaml'}")
+        logger.info(f"  ✓ Config loaded from: {config.config_path}")
         logger.info(f"  ✓ Plex URL: {config.plex.url}")
         logger.info(f"  ✓ Library: {config.plex.movie_library_name}")
         logger.info(f"  ✓ Collection: {config.plex.collection_name}")
@@ -138,11 +139,76 @@ def main():
         logger.info(f"  ✓ Loaded {len(rating_keys)} items from points file")
         logger.debug(f"  Rating keys: {rating_keys[:5]}..." if len(rating_keys) > 5 else f"  Rating keys: {rating_keys}")
         
-        # Randomize the order
-        logger.info("Step 3: Randomizing collection order...")
-        random.shuffle(rating_keys)
-        logger.info(f"  ✓ Order randomized")
-        logger.debug(f"  First 10 rating keys after shuffle: {rating_keys[:10]}")
+        # Tiered ordering: split into 3 sections by points and pick top3 as 1 random from each tier.
+        logger.info("Step 3: Building tiered collection order (3 sections by points)...")
+        max_points = 50
+        low_max = max_points // 3          # e.g. 16 for 50
+        mid_max = (2 * max_points) // 3    # e.g. 33 for 50
+
+        # Buckets per tier by points for O(n + max_points) ordering.
+        buckets = {
+            "high": [[] for _ in range(max_points + 1)],
+            "mid": [[] for _ in range(max_points + 1)],
+            "low": [[] for _ in range(max_points + 1)],
+        }
+        tier_lists = {"high": [], "mid": [], "low": []}
+
+        # Filter out any <=0 entries (shouldn't exist, but be safe)
+        filtered_out = 0
+        for rk in rating_keys:
+            p = _get_points(points_data, str(rk))
+            if p <= 0:
+                filtered_out += 1
+                continue
+            tier = "low"
+            if p > mid_max:
+                tier = "high"
+            elif p > low_max:
+                tier = "mid"
+            buckets[tier][min(max(p, 0), max_points)].append(str(rk))
+            tier_lists[tier].append(str(rk))
+
+        if filtered_out:
+            logger.warning(f"  ⚠ Filtered out {filtered_out} entries with points <= 0 from ordering (consider cleaning points file)")
+
+        # Pick 1 random from each tier for the top 3 (where possible)
+        top_picks = []
+        for tier in ("high", "mid", "low"):
+            if tier_lists[tier]:
+                top_picks.append(random.choice(tier_lists[tier]))
+        # Randomize the top-3 display order as well
+        random.shuffle(top_picks)
+
+        used = set(top_picks)
+        ordered_keys = list(top_picks)
+
+        # Append remaining items in 3 sections: high -> mid -> low, points desc within each.
+        for tier in ("high", "mid", "low"):
+            for p in range(max_points, 0, -1):
+                for rk in buckets[tier][p]:
+                    if rk in used:
+                        continue
+                    ordered_keys.append(rk)
+
+        logger.info(f"  ✓ Tier thresholds: low=1..{low_max}, mid={low_max+1}..{mid_max}, high={mid_max+1}..{max_points}")
+        logger.info(f"  ✓ Top picks (3 tiers): {top_picks}")
+        logger.debug(f"  First 10 rating keys after tiering: {ordered_keys[:10]}")
+
+        # Persist the ordered points JSON (same structure, just re-ordered keys)
+        try:
+            ordered_points_data = {k: points_data[k] for k in ordered_keys if k in points_data}
+            if len(ordered_points_data) == len(points_data):
+                with open(str(points_path), "w", encoding="utf-8") as f:
+                    json.dump(ordered_points_data, f, indent=2, ensure_ascii=False)
+                points_data = ordered_points_data
+                logger.info("  ✓ Saved tiered/sorted order back to points JSON")
+            else:
+                logger.warning("  ⚠ Did not rewrite points JSON (key mismatch while ordering)")
+        except Exception as e:
+            logger.warning(f"  ⚠ Failed to persist ordered points JSON (non-fatal): {type(e).__name__}: {e}")
+
+        # Use ordered keys for the collection application
+        rating_keys = ordered_keys
         
         # Connect to Plex
         logger.info("Step 4: Connecting to Plex...")
@@ -265,6 +331,7 @@ def main():
         if not items:
             logger.warning("No valid items found in Plex. Nothing to do.")
             logger.info("IMMACULATE TASTE COLLECTION REFRESHER END (no valid items)")
+            logger.info("FINAL_STATUS=SKIPPED FINAL_EXIT_CODE=0")
             return 0
         
         logger.info(f"  ✓ Found {len(items)} valid items in Plex")
@@ -319,18 +386,42 @@ def main():
         else:
             logger.info(f"Collection updated: (DRY RUN - no changes)")
         logger.info("=" * 60)
-        logger.info("IMMACULATE TASTE COLLECTION REFRESHER END OK")
+
+        # Determine final status + exit code for monitoring/alerting
+        order_failed = 0
+        try:
+            if not args.dry_run and isinstance(stats, dict):
+                order_failed = int((stats.get("order_stats") or {}).get("failed", 0) or 0)
+        except Exception:
+            order_failed = 0
+
+        status = "SUCCESS"
+        exit_code = 0
+        if not args.dry_run:
+            if len(failed_keys) > 0 or order_failed > 0:
+                status = "PARTIAL"
+                exit_code = 10
+
+        logger.info(f"IMMACULATE TASTE COLLECTION REFRESHER END {status}")
+        logger.info(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
         logger.info("=" * 60)
-        return 0
+        return exit_code
         
     except KeyboardInterrupt:
         logger.warning("\nInterrupted by user")
         logger.info("IMMACULATE TASTE COLLECTION REFRESHER END (interrupted)")
+        logger.info("FINAL_STATUS=INTERRUPTED FINAL_EXIT_CODE=130")
         return 130
     except Exception as e:
+        # Categorize dependency failures vs internal failures for monitoring
+        dependency_failed = isinstance(e, (Timeout, RequestsConnectionError, ReadTimeoutError, ConnectTimeoutError))
+        status = "DEPENDENCY_FAILED" if dependency_failed else "FAILED"
+        exit_code = 20 if dependency_failed else 30
+
         logger.exception("IMMACULATE TASTE COLLECTION REFRESHER END FAIL")
         logger.error(f"Error: {type(e).__name__}: {e}")
-        return 1
+        logger.error(f"FINAL_STATUS={status} FINAL_EXIT_CODE={exit_code}")
+        return exit_code
 
 
 if __name__ == "__main__":

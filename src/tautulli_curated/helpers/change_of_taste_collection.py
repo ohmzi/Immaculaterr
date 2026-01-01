@@ -36,11 +36,18 @@ def get_contrast_movies(movie_name: str, api_key: str, max_results: int = 15):
     Get contrast movies (different genre/style) using OpenAI.
     Uses a custom prompt to get movies that are opposite in tone/genre.
     """
-    from openai import OpenAI
+    try:
+        from openai import OpenAI
+    except Exception:
+        OpenAI = None  # type: ignore
     from tautulli_curated.helpers.chatgpt_utils import parse_recommendations
     
     if not api_key:
-        logger.error("OpenAI API key not provided; cannot fetch contrast recommendations.")
+        logger.info("OpenAI disabled (missing/placeholder key); skipping contrast recommendations.")
+        return []
+
+    if OpenAI is None:
+        logger.warning("OpenAI SDK not available (openai import failed); skipping contrast recommendations.")
         return []
     
     client = OpenAI(api_key=api_key)
@@ -55,13 +62,13 @@ def get_contrast_movies(movie_name: str, api_key: str, max_results: int = 15):
     )
     
     try:
+        # Note: some newer chat-latest models only support the default temperature.
         resp = client.chat.completions.create(
-            model="gpt-5.2",
+            model="gpt-5.2-chat-latest",
             messages=[
                 {"role": "system", "content": "You are a movie recommendation engine."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.8,
         )
         
         text = resp.choices[0].message.content or ""
