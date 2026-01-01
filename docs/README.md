@@ -295,6 +295,9 @@ radarr:
 sonarr:
   url: "http://localhost:8989"
   api_key: "YOUR_SONARR_API_KEY"
+  root_folder: "/path/to/TV Shows"
+  tag_name: "recommended"  # Or ["tag1", "tag2"] for multiple tags
+  quality_profile_id: 1
 ```
 
 ### TMDb Configuration
@@ -790,68 +793,127 @@ pip install -r docker/custom-tautulli/requirements.txt --user
 
 ```yaml
 # ============================================================================
-# SCRIPT EXECUTION CONTROL
+# SCRIPT EXECUTION CONTROL (All Optional - defaults shown)
 # ============================================================================
 scripts_run:
-  run_recently_watched_collection: true    # Step 1: Recently Watched Collection
-  run_plex_duplicate_cleaner: true         # Step 2: Plex Duplicate Cleaner
-  run_radarr_monitor_confirm_plex: true    # Step 3: Radarr Monitor Confirm
-  run_immaculate_taste_collection: true    # Step 4: Immaculate Taste Collection
-  run_recently_watched_refresher: true     # Step 5a: Recently Watched Collections Refresher (MANDATORY)
-  run_collection_refresher: true           # Step 5b: Immaculate Taste Refresher (MANDATORY)
+  run_recently_watched_collection: true    # OPTIONAL: Step 1 - Recently Watched Collection (default: true)
+  run_plex_duplicate_cleaner: true         # OPTIONAL: Step 2 - Plex Duplicate Cleaner (default: true)
+  run_sonarr_duplicate_cleaner: true       # OPTIONAL: Sonarr Duplicate Cleaner (default: true)
+  run_radarr_monitor_confirm_plex: true    # OPTIONAL: Step 3 - Radarr Monitor Confirm (default: true)
+  run_sonarr_monitor_confirm_plex: true    # OPTIONAL: Sonarr Monitor Confirm (default: true)
+  run_sonarr_search_monitored: true        # OPTIONAL: Sonarr Search Monitored (default: true)
+  run_immaculate_taste_collection: true    # OPTIONAL: Step 4 - Immaculate Taste Collection (default: true)
+  run_recently_watched_refresher: true    # OPTIONAL: Step 5a - Recently Watched Refresher (default: true, MANDATORY for collections to appear in Plex)
+  run_collection_refresher: true           # OPTIONAL: Step 5b - Immaculate Taste Refresher (default: true, MANDATORY for collection to appear in Plex)
 
 # ============================================================================
-# PLEX CONFIGURATION
+# PLEX CONFIGURATION (Required fields marked)
 # ============================================================================
 plex:
-  url: "http://localhost:32400"
-  token: "YOUR_PLEX_TOKEN"
-  movie_library_name: "Movies"
-  tv_library_name: "TV Shows"         # Required for Sonarr scripts
-  collection_name: "Inspired by your Immaculate Taste"
-  delete_preference: "largest_file"  # Options: smallest_file, largest_file, newest, oldest
-  preserve_quality: []                # Example: ["4K", "1080p"] to preserve high quality
+  url: "http://localhost:32400"            # REQUIRED: Your Plex server URL
+  token: "YOUR_PLEX_TOKEN"                 # REQUIRED: Your Plex authentication token
+  movie_library_name: "Movies"             # REQUIRED: Name of your Plex movie library
+  tv_library_name: "TV Shows"              # REQUIRED: Name of your Plex TV library (required for Sonarr scripts)
+  collection_name: "Inspired by your Immaculate Taste"  # REQUIRED: Name of the main collection
+  delete_preference: "largest_file"        # OPTIONAL: Which duplicate file to delete (default: "smallest_file")
+                                           #           Options: smallest_file, largest_file, newest, oldest
+  preserve_quality: []                     # OPTIONAL: List of quality keywords to preserve (default: [])
+                                           #           Example: ["4K", "1080p"] to preserve high quality
+  randomize_collection: true               # OPTIONAL: Randomize collection order (default: true)
 
 # ============================================================================
-# OPENAI CONFIGURATION
+# OPENAI CONFIGURATION (All Optional)
 # ============================================================================
+# If api_key is blank/placeholder, OpenAI is disabled and TMDb fallback is used.
 openai:
-  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"     # Optional (blank/placeholder disables OpenAI)
-  model: "gpt-5.2-chat-latest"               # Optional (default: gpt-5.2-chat-latest)
+  api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"  # OPTIONAL: OpenAI API key (blank/placeholder disables OpenAI)
+  model: "gpt-5.2-chat-latest"             # OPTIONAL: OpenAI model (default: "gpt-5.2-chat-latest")
+                                           #           Cost note: OpenAI is paid, but typically costs very little for this use-case
 
 # ============================================================================
-# RECOMMENDATION SETTINGS (Overall)
+# RECOMMENDATION SETTINGS (All Optional)
 # ============================================================================
 recommendations:
-  count: 50                                  # Optional (default: 50)
+  count: 50                                 # OPTIONAL: Number of total suggestions per run (default: 50)
+                                           #           Used by both OpenAI (if enabled) and TMDb fallback
+  web_context_fraction: 0.30              # OPTIONAL: Controls how much final recommendations can be influenced by web context (default: 0.30)
+                                           #           - Controls how many Google CSE results are fetched (derived from count * web_context_fraction)
+                                           #           - Max portion of final titles allowed from OpenAI's "upcoming_from_search" list
 
 # ============================================================================
-# GOOGLE CUSTOM SEARCH (Optional)
+# GOOGLE CUSTOM SEARCH (All Optional)
 # ============================================================================
 # Used only to add web-search context to OpenAI (skipped if OpenAI is disabled).
+# Google does NOT use a fixed num_results anymore; it is derived from recommendations.count * recommendations.web_context_fraction
 google:
-  api_key: "GOOGLE_API_KEY"                  # Optional
-  search_engine_id: "GOOGLE_CSE_ID"          # Optional (cx)
-  num_results: 5                             # Optional (default: 5)
+  api_key: "GOOGLE_API_KEY"                # OPTIONAL: Google Custom Search API key (blank/placeholder disables Google)
+  search_engine_id: "GOOGLE_CSE_ID"       # OPTIONAL: Google Programmable Search Engine ID (cx)
+  num_results: 5                          # OPTIONAL: Legacy setting (default: 5, but actual count is derived from web_context_fraction)
+                                           #           Cost note: Google CSE has a free tier (quota limits apply)
 
 # ============================================================================
-# RADARR CONFIGURATION
+# RADARR CONFIGURATION (Required fields marked)
 # ============================================================================
 radarr:
-  url: "http://localhost:7878"
-  api_key: "YOUR_RADARR_API_KEY"
-  root_folder: "/path/to/Movies"
-  tag_name: "recommended"  # Single tag, or use ["tag1", "tag2"] for multiple tags
-  quality_profile_id: 1
+  url: "http://localhost:7878"            # REQUIRED: Your Radarr server URL
+  api_key: "YOUR_RADARR_API_KEY"          # REQUIRED: Your Radarr API key
+  root_folder: "/path/to/Movies"          # REQUIRED: Root folder for movie downloads
+  tag_name: "recommended"                 # REQUIRED: Tag(s) to apply to added movies
+                                           #           Single tag: "recommended" (string)
+                                           #           Multiple tags: ["movies", "curated"] (list of strings)
+  quality_profile_id: 1                   # OPTIONAL: Quality profile ID (default: 1)
 
 # ============================================================================
-# TMDB CONFIGURATION
+# SONARR CONFIGURATION (Required fields marked)
 # ============================================================================
+sonarr:
+  url: "http://localhost:8989"            # REQUIRED: Your Sonarr server URL
+  api_key: "YOUR_SONARR_API_KEY"          # REQUIRED: Your Sonarr API key
+  root_folder: "/path/to/TV Shows"        # REQUIRED: Root folder for TV show downloads
+  tag_name: "recommended"                 # REQUIRED: Tag(s) to apply to added shows
+                                           #           Single tag: "recommended" (string)
+                                           #           Multiple tags: ["shows", "curated"] (list of strings)
+  quality_profile_id: 1                   # OPTIONAL: Quality profile ID (default: 1)
+
+# ============================================================================
+# TMDB CONFIGURATION (Required)
+# ============================================================================
+# TMDb is REQUIRED because it is used for metadata + recommendation fallback
+# (especially when OpenAI/Google are not configured). TMDb is FREE to use.
 tmdb:
-  api_key: "YOUR_TMDB_API_KEY"               # REQUIRED
+  api_key: "YOUR_TMDB_API_KEY"            # REQUIRED: Your TMDb API key (free at https://www.themoviedb.org/settings/api)
+
+# ============================================================================
+# FILES CONFIGURATION (All Optional)
+# ============================================================================
+# File paths are relative to the data/ directory by default
+files:
+  points_file: "recommendation_points.json"      # OPTIONAL: Points system file (default: "recommendation_points.json")
+  tmdb_cache_file: "tmdb_cache.json"            # OPTIONAL: TMDb API cache file (default: "tmdb_cache.json")
+
+# ============================================================================
+# EMAIL ALERTS CONFIGURATION (All Optional)
+# ============================================================================
+# Weekly health report email notifications (Gmail SMTP App Password)
+# If disabled or missing credentials, the weekly health report will not email.
+alerts:
+  email:
+    enabled: false                         # OPTIONAL: Enable email alerts (default: false)
+    smtp_host: "smtp.gmail.com"           # OPTIONAL: SMTP host (default: "smtp.gmail.com")
+    smtp_port: 587                        # OPTIONAL: SMTP port (default: 587)
+    username: ""                          # OPTIONAL: Gmail address (required if enabled)
+    app_password: ""                      # OPTIONAL: Gmail App Password - NOT your normal login password (required if enabled)
+    from_email: ""                        # OPTIONAL: From email address (defaults to username if not set)
+    to_emails: []                         # OPTIONAL: List of recipient email addresses (required if enabled)
+                                           #           Example: ["user1@example.com", "user2@example.com"]
+                                           #           Or comma-separated string: "user1@example.com,user2@example.com"
+    subject_prefix: "[Tautulli Curated]"  # OPTIONAL: Email subject prefix (default: "[Tautulli Curated]")
+    send_only_on_problems: false         # OPTIONAL: Only send emails when there are PARTIAL/FAIL/UNKNOWN runs (default: false)
 ```
 
 2. Make sure `config/config.yaml` is accessible to your scripts (either in the project directory or mounted as a volume in Docker).
+
+**Note:** You can also use `config/config.local.yaml` instead of `config/config.yaml` - the local file takes precedence if it exists. This is useful for keeping your actual credentials out of version control.
 
 ### 4. Configure Script Execution
 
@@ -947,20 +1009,26 @@ All scripts can be enabled/disabled individually:
 |--------|---------|-------------|
 | `run_recently_watched_collection` | `true` | Step 1: Generate recommendations for "Recently Watched" and "Change of Taste" collections |
 | `run_plex_duplicate_cleaner` | `true` | Step 2: Scan and remove duplicate movies from Plex |
+| `run_sonarr_duplicate_cleaner` | `true` | Sonarr Duplicate Cleaner - Remove duplicate TV episodes |
 | `run_radarr_monitor_confirm_plex` | `true` | Step 3: Unmonitor movies in Radarr that are already in Plex |
+| `run_sonarr_monitor_confirm_plex` | `true` | Sonarr Monitor Confirm - Unmonitor shows in Sonarr that are already in Plex |
+| `run_sonarr_search_monitored` | `true` | Sonarr Search Monitored - Trigger search for monitored episodes |
 | `run_immaculate_taste_collection` | `true` | Step 4: Main recommendation pipeline with points system |
 | `run_recently_watched_refresher` | `true` | Step 5a: Apply Recently Watched collections to Plex (MANDATORY) |
 | `run_collection_refresher` | `true` | Step 5b: Apply Immaculate Taste collection to Plex (MANDATORY) |
 
 ### Plex Configuration
 
-- `url`: Your Plex server URL (e.g., `http://localhost:32400`)
-- `token`: Your Plex authentication token
-- `movie_library_name`: Name of your Plex movie library
-- `tv_library_name`: Name of your Plex TV library (required for Sonarr scripts)
-- `collection_name`: Name of the main collection ("Inspired by your Immaculate Taste")
-- `delete_preference`: Which duplicate file to delete (`smallest_file`, `largest_file`, `newest`, `oldest`)
-- `preserve_quality`: List of quality keywords to preserve (e.g., `["4K", "1080p"]`)
+- `url`: **Required.** Your Plex server URL (e.g., `http://localhost:32400`)
+- `token`: **Required.** Your Plex authentication token
+- `movie_library_name`: **Required.** Name of your Plex movie library
+- `tv_library_name`: **Required.** Name of your Plex TV library (required for Sonarr scripts)
+- `collection_name`: **Required.** Name of the main collection ("Inspired by your Immaculate Taste")
+- `delete_preference`: Optional. Which duplicate file to delete (default: `"smallest_file"`)
+  - Options: `smallest_file`, `largest_file`, `newest`, `oldest`
+- `preserve_quality`: Optional. List of quality keywords to preserve (default: `[]`)
+  - Example: `["4K", "1080p"]` to preserve high quality
+- `randomize_collection`: Optional. Randomize collection order (default: `true`)
 
 ### OpenAI Configuration
 
@@ -999,9 +1067,42 @@ All scripts can be enabled/disabled individually:
 - **Important:** Use the modified fork [https://github.com/ohmzi/overseerr](https://github.com/ohmzi/overseerr) which allows admins to approve their own requests
 - The original Overseerr doesn't support admin self-approval, so this fork is required for the approval workflow
 
+### Sonarr Configuration
+
+- `url`: Your Sonarr server URL
+- `api_key`: Your Sonarr API key
+- `root_folder`: Root folder for TV show downloads
+- `tag_name`: Tag(s) to apply to added shows
+  - **Single tag:** `tag_name: "recommended"` (string)
+  - **Multiple tags:** `tag_name: ["shows", "curated"]` (list of strings)
+  - Both formats are supported for backward compatibility
+- `quality_profile_id`: Quality profile ID (default: 1)
+
 ### TMDb Configuration
 
 - `api_key`: **Required (free).** Your TMDb API key (metadata + fallback recommendations). The scripts require TMDb even if OpenAI/Google are not configured.
+
+### Files Configuration
+
+- `points_file`: Points system file (default: `"recommendation_points.json"`)
+- `tmdb_cache_file`: TMDb API cache file (default: `"tmdb_cache.json"`)
+- File paths are relative to the `data/` directory by default
+
+### Email Alerts Configuration
+
+Weekly health report email notifications (Gmail SMTP App Password). If disabled or missing credentials, the weekly health report will not email.
+
+- `enabled`: Enable email alerts (default: `false`)
+- `smtp_host`: SMTP host (default: `"smtp.gmail.com"`)
+- `smtp_port`: SMTP port (default: `587`)
+- `username`: Gmail address (required if enabled)
+- `app_password`: Gmail App Password - **NOT** your normal login password (required if enabled)
+- `from_email`: From email address (defaults to username if not set)
+- `to_emails`: List of recipient email addresses (required if enabled)
+  - Can be a list: `["user1@example.com", "user2@example.com"]`
+  - Or comma-separated string: `"user1@example.com,user2@example.com"`
+- `subject_prefix`: Email subject prefix (default: `"[Tautulli Curated]"`)
+- `send_only_on_problems`: Only send emails when there are PARTIAL/FAIL/UNKNOWN runs (default: `false`)
 
 ---
 
