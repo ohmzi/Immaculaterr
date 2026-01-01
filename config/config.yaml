@@ -157,13 +157,14 @@ radarr:
   root_folder: "/path/to/Movies"                    # Root folder for movie downloads
 
   # Tag(s) to apply to added movies
-  # Option 1: Single tag (string)
-  tag_name: ["movies", "curated"]
-  # Option 2: Multiple tags (list) - uncomment and use this format instead:
+  # - Single tag (string):
+  #   tag_name: "recommended"
+  # - Multiple tags (list):
+  #   tag_name: ["movies", "curated"]
+  tag_name: "recommended"
   # tag_name: ["movies", "curated"]
-  # Both formats are supported - choose the one that fits your needs
   
-  quality_profile_id: 4                             # Quality profile ID (default: 1)
+  quality_profile_id: 1                             # Quality profile ID (default: 1)
 
 # ============================================================================
 # SONARR CONFIGURATION
@@ -190,4 +191,3 @@ sonarr:
 overseerr:
   url: "http://localhost:5055"         # Your Overseerr URL
   api_key: ""                          # Add your Overseerr API key here (optional)
-  # MTc0MDgwMzUyNTk1NjUyYmI2MmIxLTMxOTAtNGY1MC1iNGQ3LTM2MDBmZWE1N2E3Yw

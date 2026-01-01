@@ -34,7 +34,7 @@ When you finish watching a movie, the system:
 - **Tautulli** - For watching activity tracking
 - **Radarr** - For automatic movie downloads
 - **Sonarr** (Optional) - For TV show management
-- **Python 3.8+** - Required runtime
+- **Python 3.10+** - Required runtime
 - **TMDb API Key** (**Required**) - For movie metadata and fallback recommendations (**free**)
 - **OpenAI API Key** (**Optional**) - For AI-powered recommendations (`gpt-5.2-chat-latest`) (**paid**, but typically costs very little)
 - **Google API Key + Search Engine ID (cx)** (**Optional**) - Adds web search context to OpenAI (upcoming titles); used only when OpenAI is enabled (**free tier available**)
@@ -43,7 +43,7 @@ When you finish watching a movie, the system:
 
 1. **Clone or download this repository:**
    ```bash
-   git clone https://github.com/yourusername/Tautulli_Curated_Plex_Collection.git
+   git clone https://github.com/ohmzi/Tautulli_Curated_Plex_Collection.git
    cd Tautulli_Curated_Plex_Collection
    ```
 
@@ -122,7 +122,7 @@ If you're new to Python, Tautulli automation, or this project, we've got detaile
 
 For users running the script directly on Windows, macOS, or Linux:
 
-1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
+1. **Install Python 3.10+** from [python.org](https://www.python.org/downloads/)
 2. **Install dependencies** (see Quick Start above)
 3. **Configure `config/config.yaml`** with your API keys and service URLs
 4. **Set up Tautulli notification** (see Quick Start above)
@@ -593,7 +593,7 @@ Pull requests are welcome! Please:
 
 ## License
 
-This project is provided "as is" without warranty of any kind. You are free to use, modify, and distribute this code as per the [MIT License](https://opensource.org/licenses/MIT).
+This project is provided "as is" without warranty of any kind. You are free to use, modify, and distribute this code under the terms of the [MIT License](../LICENSE).
 
 ---
 
@@ -768,7 +768,7 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
 
 - **Plex, Tautulli, and Radarr** must already be installed and working.
 - You'll need valid credentials for each service (tokens, API keys, etc.).
-- **Python 3.8+** must be installed.
+- **Python 3.10+** must be installed.
 
 ### 2. Install Python Dependencies
 
@@ -1286,7 +1286,7 @@ Custom posters and backgrounds for collections are stored in `assets/collection_
 - If artwork files are not found, collections will use Plex's default artwork
 - Artwork upload failures are non-critical and won't stop collection updates
 
-See `assets/collection_artwork/README.md` for detailed information.
+Artwork lives in `assets/collection_artwork/` (posters + backgrounds).
 
 ---
 

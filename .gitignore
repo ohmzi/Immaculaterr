@@ -1,8 +1,16 @@
- .github/copilot-instructions.md
-helpers/__pycache__/plex_collection_manager.cpython-312.pyc
-helpers/__pycache__/logger.cpython-312.pyc
-helpers/__pycache__/config_loader.cpython-312.pyc
-
 # Local-only config (contains real API keys/tokens/paths) - do NOT commit
 config/config.local.yaml
 config/config.local.yml
+
+# IDE/editor
+.idea/
+.cursor/
+.vscode/
+
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+
+# Runtime outputs (can contain sensitive info and are machine-specific)
+data/*
+!data/.gitkeep

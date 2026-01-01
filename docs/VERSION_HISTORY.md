@@ -23,6 +23,7 @@ For each version you’ll find:
 - **Mobile-friendly report formatting**: HTML + plain-text fallback, dark-mode friendly styling, and short “What happened” excerpts for PARTIAL/FAILED runs.
 - **Better cron coverage**: includes all `src/scripts/run_*.sh` runners + Tautulli-triggered `tautulli_main_*` logs, and flags missing runs.
 - **Logging improvements**: ensured key runners reliably emit `FINAL_STATUS=... FINAL_EXIT_CODE=...` (and added missing `--log-file` support where needed).
+- **Release polish**: aligned internal package versioning, scrubbed config template placeholders, and tightened gitignore rules to avoid committing runtime/IDE artifacts.
 
 ### Upgrade notes
 
