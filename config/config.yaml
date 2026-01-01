@@ -127,6 +127,28 @@ google:
   #   recommendations.count * recommendations.web_context_fraction
 
 # ============================================================================
+# EMAIL ALERTS (Optional)
+# ============================================================================
+# Used by: `python3 -m tautulli_curated.tools.weekly_health_report --send-email`
+#
+# IMPORTANT:
+# - Put real credentials in config/config.local.yaml (git-ignored), not here.
+# - Gmail requires an App Password (not your normal Gmail password).
+# ============================================================================
+alerts:
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    username: "your@gmail.com"
+    app_password: "GMAIL_APP_PASSWORD"
+    from_email: "your@gmail.com"
+    to_emails:
+      - "your@gmail.com"
+    subject_prefix: "[Tautulli Curated]"
+    send_only_on_problems: false
+
+# ============================================================================
 # RADARR CONFIGURATION
 # ============================================================================
 radarr:

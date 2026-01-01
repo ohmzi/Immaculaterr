@@ -1507,6 +1507,7 @@ The project includes several standalone bash scripts that can be run independent
 **Options:**
 - `--dry-run`: Show what would be done without actually unmonitoring
 - `--no-pause`: Don't pause at the end (for automated runs)
+- `--log-file`: Save output to a timestamped log file in `data/logs/` (recommended for cron + health reporting)
 - `--help`: Show help message
 
 **Example:**
@@ -1519,6 +1520,9 @@ The project includes several standalone bash scripts that can be run independent
 
 # For automated/scheduled runs
 ./src/scripts/run_sonarr_monitor_confirm.sh --no-pause
+
+# For automated runs + logging (recommended)
+./src/scripts/run_sonarr_monitor_confirm.sh --no-pause --log-file
 ```
 
 ---
@@ -1579,6 +1583,48 @@ All standalone logs include a stable final line you can parse for alerts:
 
 See `docs/ERROR_HANDLING.md` for the status values and exit code mapping.
 
+#### Weekly Health Report (Email + Dashboard JSON)
+
+This project includes an optional weekly log auditor that:
+
+- Reads the last 7 days of logs from `data/logs/`
+- Writes normalized health JSON to `data/health/` (for a future dashboard)
+- Optionally emails a weekly summary via **Gmail SMTP App Password** (HTML + plain-text fallback; mobile-friendly)
+- Includes all runner scripts in `src/scripts/run_*.sh` plus the Tautulli trigger logs (`tautulli_main_*`) (shows “no runs” if something didn’t run)
+
+**How status is determined:**
+
+- Prefer `FINAL_STATUS=<STATUS> FINAL_EXIT_CODE=<CODE>` when present
+- Fallback to parsing “Script completed with exit code: …” and common failure markers (e.g. `Traceback`)
+- If no reliable footer/exit code is found, the run is marked `UNKNOWN`
+
+**Dashboard data outputs:**
+
+- `data/health/health_index.json`: key/value index of parsed logs (keyed by log filename)
+- `data/health/latest.json`: last 7 days of health data (regenerated each run)
+- `data/health/weekly_summary_YYYYMMDD.json`: frozen snapshot for the run day (ideal for archiving weekly reports)
+
+**Run manually (refresh dashboard data anytime):**
+
+```bash
+cd /path/to/Tautulli_Curated_Plex_Collection
+PYTHONPATH=/path/to/Tautulli_Curated_Plex_Collection/src python3 -m tautulli_curated.tools.weekly_health_report --since-days 7
+```
+
+**Email configuration (put secrets in `config/config.local.yaml`, not `config/config.yaml`):**
+
+```yaml
+alerts:
+  email:
+    enabled: true
+    username: "your@gmail.com"
+    app_password: "GMAIL_APP_PASSWORD"   # Gmail App Password (not your normal password)
+    from_email: "your@gmail.com"
+    to_emails:
+      - "your@gmail.com"
+    send_only_on_problems: false         # If true, only emails when PARTIAL/FAIL/UNKNOWN are detected
+```
+
 #### Ubuntu/Linux (Cron)
 
 **Step 1: Open your crontab**
@@ -1599,6 +1645,9 @@ Here are example cron entries for each script:
 
 # Trigger Radarr search for monitored movies every 6 hours
 0 */6 * * * /path/to/Tautulli_Curated_Plex_Collection/src/scripts/run_radarr_search_monitored.sh >> /dev/null 2>&1
+
+# Weekly health email report every Sunday at 5:00 AM (writes data/health/*.json and emails a summary)
+0 5 * * 0 cd /path/to/Tautulli_Curated_Plex_Collection && PYTHONPATH=/path/to/Tautulli_Curated_Plex_Collection/src python3 -m tautulli_curated.tools.weekly_health_report --since-days 7 --send-email >> /dev/null 2>&1
 ```
 
 **Important Notes:**

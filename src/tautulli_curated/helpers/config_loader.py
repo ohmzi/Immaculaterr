@@ -1,7 +1,7 @@
 # tautulli_curated/helpers/config_loader.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 from typing import Any, Dict, Optional
@@ -114,6 +114,26 @@ class ScriptsRunConfig:
 
 
 @dataclass(frozen=True)
+class EmailAlertsConfig:
+    # If disabled (or missing credentials), the weekly health report will not email.
+    enabled: bool = False
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    username: str = ""  # Gmail address
+    app_password: str = ""  # Gmail App Password (NOT your normal login password)
+    from_email: str = ""
+    to_emails: list[str] = field(default_factory=list)
+    subject_prefix: str = "[Tautulli Curated]"
+    # If true, only send emails when there are PARTIAL/FAIL/UNKNOWN runs.
+    send_only_on_problems: bool = False
+
+
+@dataclass(frozen=True)
+class AlertsConfig:
+    email: EmailAlertsConfig = field(default_factory=EmailAlertsConfig)
+
+
+@dataclass(frozen=True)
 class AppConfig:
     base_dir: Path
     config_path: Path
@@ -126,6 +146,7 @@ class AppConfig:
     sonarr: SonarrConfig
     files: FilesConfig
     scripts_run: ScriptsRunConfig
+    alerts: AlertsConfig
     raw: Dict[str, Any]
 
 
@@ -297,6 +318,56 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         run_recently_watched_refresher=bool(data.get("scripts_run", {}).get("run_recently_watched_refresher", True)),  # Default: True (mandatory)
     )
 
+    # Optional: Email alerts (Gmail SMTP App Password)
+    alerts_data = data.get("alerts", {}) or {}
+    email_data = alerts_data.get("email", {}) or {}
+    raw_enabled = bool(email_data.get("enabled", False))
+    smtp_host = _normalize_str(email_data.get("smtp_host", EmailAlertsConfig.smtp_host)) or EmailAlertsConfig.smtp_host
+    try:
+        smtp_port = int(email_data.get("smtp_port", EmailAlertsConfig.smtp_port) or EmailAlertsConfig.smtp_port)
+    except Exception:
+        smtp_port = EmailAlertsConfig.smtp_port
+
+    username = _normalize_str(email_data.get("username", email_data.get("smtp_username", "")))
+    raw_app_pw = _normalize_str(
+        email_data.get(
+            "app_password",
+            email_data.get("smtp_app_password", email_data.get("password", email_data.get("smtp_password", ""))),
+        )
+    )
+    app_password = (
+        ""
+        if _is_disabled_key(raw_app_pw, disabled_literals_upper={"GMAIL_APP_PASSWORD", "EMAIL_APP_PASSWORD", "APP_PASSWORD"})
+        else raw_app_pw
+    )
+    from_email = _normalize_str(email_data.get("from_email", "")) or username
+    subject_prefix = _normalize_str(email_data.get("subject_prefix", EmailAlertsConfig.subject_prefix)) or EmailAlertsConfig.subject_prefix
+
+    to_raw = email_data.get("to_emails", email_data.get("to_email", []))
+    to_emails: list[str] = []
+    if isinstance(to_raw, list):
+        to_emails = [_normalize_str(x) for x in to_raw if _normalize_str(x)]
+    else:
+        # Allow a comma-separated string
+        to_emails = [s for s in (_normalize_str(to_raw).split(",") if _normalize_str(to_raw) else []) if s.strip()]
+
+    send_only_on_problems = bool(email_data.get("send_only_on_problems", False))
+
+    email_enabled = bool(raw_enabled and username and app_password and to_emails)
+    alerts = AlertsConfig(
+        email=EmailAlertsConfig(
+            enabled=email_enabled,
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            username=username,
+            app_password=app_password,
+            from_email=from_email,
+            to_emails=to_emails,
+            subject_prefix=subject_prefix,
+            send_only_on_problems=send_only_on_problems,
+        )
+    )
+
     return AppConfig(
         base_dir=base_dir,
         config_path=cfg_path,
@@ -309,6 +380,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         sonarr=sonarr,
         files=files,
         scripts_run=scripts_run,
+        alerts=alerts,
         raw=data,
     )
 
