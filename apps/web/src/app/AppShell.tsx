@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { Navigation } from '@/components/Navigation';
+import { Navigation, MobileNavigation } from '@/components/Navigation';
 import { InternalNavigation } from '@/components/InternalNavigation';
-import { MobileNavigation } from '@/components/Navigation'; // Re-export MobileNav from Navigation file or move it
 import { getMe, logout } from '@/api/auth';
 import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';

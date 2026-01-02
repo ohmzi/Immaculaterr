@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Search, Home, PlugZap, Layers, ListChecks, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { cn } from '@/lib/utils';
 
 interface NavItem {
   label: string;
@@ -129,6 +130,50 @@ export function Navigation() {
               </Link>
             </div>
           </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// Mobile bottom navigation
+export function MobileNavigation() {
+  const location = useLocation();
+
+  const mobileItems = [
+    { to: '/', icon: Home, label: 'Home' },
+    { to: '/collections', icon: Layers, label: 'Library' },
+    { to: '/jobs', icon: ListChecks, label: 'Jobs' },
+    { to: '/runs', icon: History, label: 'Runs' },
+    { to: '/connections', icon: PlugZap, label: 'Connect' },
+  ];
+
+  const isActive = (to: string) => {
+    if (to === '/') return location.pathname === '/';
+    return location.pathname.startsWith(to);
+  };
+
+  return (
+    <nav className="fixed bottom-6 left-4 right-4 z-50 lg:hidden">
+      <div className="mx-auto max-w-md bg-[#1a1a1c]/90 backdrop-blur-xl rounded-full p-2 shadow-2xl border border-white/10">
+        <div className="flex items-center justify-around">
+          {mobileItems.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.to);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  "flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all duration-200",
+                  active ? "text-white bg-white/10" : "text-white/60 hover:text-white hover:bg-white/5"
+                )}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-[10px] font-medium">{item.label}</span>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </nav>
