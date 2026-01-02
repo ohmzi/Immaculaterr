@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from '@/app/AppShell';
@@ -11,15 +12,19 @@ import { JobsPage } from '@/pages/JobsPage';
 import { RunsPage } from '@/pages/RunsPage';
 import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
-import { clearOnboarding } from '@/lib/onboarding';
+
+const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
 export default function App() {
-  // One-time cleanup: stop using legacy localStorage onboarding/secrets.
-  try {
-    clearOnboarding();
-  } catch {
-    // ignore
-  }
+  useEffect(() => {
+    // One-time cleanup: stop using legacy localStorage onboarding/secrets.
+    // Note: we only remove the legacy key; we never store secrets in browser storage.
+    try {
+      localStorage.removeItem(LEGACY_ONBOARDING_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   return (
     <AuthGate>
