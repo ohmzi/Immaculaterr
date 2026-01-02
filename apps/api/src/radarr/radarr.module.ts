@@ -5,6 +5,7 @@ import { RadarrService } from './radarr.service';
 @Module({
   controllers: [RadarrController],
   providers: [RadarrService],
+  exports: [RadarrService],
 })
 export class RadarrModule {}
 

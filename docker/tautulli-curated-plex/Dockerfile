@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/api/prisma apps/api/prisma
 RUN npm ci
 
 # 2) Build
@@ -26,6 +27,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/api/prisma apps/api/prisma
 RUN npm ci --omit=dev
 
 # Copy built artifacts
@@ -34,6 +36,6 @@ COPY --from=builder /app/apps/web/dist /app/apps/web/dist
 
 EXPOSE 3210
 
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["sh", "-c", "npm -w apps/api run db:migrate && node apps/api/dist/main.js"]
 
 

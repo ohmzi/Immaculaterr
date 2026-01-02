@@ -5,6 +5,7 @@ import { OverseerrService } from './overseerr.service';
 @Module({
   controllers: [OverseerrController],
   providers: [OverseerrService],
+  exports: [OverseerrService],
 })
 export class OverseerrModule {}
 

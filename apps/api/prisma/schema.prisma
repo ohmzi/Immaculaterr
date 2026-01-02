@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  encrypted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions Session[]
+  settings UserSettings?
+  secrets  UserSecrets?
+}
+
+model Session {
+  id         String   @id
+  userId     String
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserSettings {
+  userId    String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserSecrets {
+  userId    String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum JobRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum JobRunTrigger {
+  manual
+  schedule
+}
+
+model JobSchedule {
+  jobId     String   @id
+  cron      String
+  enabled   Boolean  @default(true)
+  timezone  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JobRun {
+  id           String        @id @default(cuid())
+  jobId        String
+  userId       String?
+  trigger      JobRunTrigger
+  dryRun       Boolean       @default(false)
+  status       JobRunStatus
+  startedAt    DateTime      @default(now())
+  finishedAt   DateTime?
+  summary      Json?
+  errorMessage String?
+
+  logs JobLogLine[]
+
+  @@index([jobId, startedAt])
+  @@index([userId, startedAt])
+}
+
+model JobLogLine {
+  id      Int      @id @default(autoincrement())
+  runId   String
+  time    DateTime @default(now())
+  level   String
+  message String
+  context Json?
+
+  run JobRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, time])
+}
+
+model CuratedCollection {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CuratedCollectionItem[]
+}
+
+model CuratedCollectionItem {
+  id           Int    @id @default(autoincrement())
+  collectionId String
+  ratingKey    String
+  title        String
+
+  collection CuratedCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, ratingKey])
+  @@index([collectionId])
+}
+
+

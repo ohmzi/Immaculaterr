@@ -11,7 +11,9 @@
   "scripts": {
     "dev:api": "npm -w apps/api run start:dev",
     "dev:web": "npm -w apps/web run dev",
-    "dev": "concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:preflight": "node scripts/dev-preflight.mjs",
+    "dev": "npm run dev:preflight && concurrently --kill-others-on-fail -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "gen:openapi": "npm -w apps/api run openapi:generate && npm -w apps/web run openapi:types",
     "docker:up": "docker compose -f docker/tautulli-curated-plex/docker-compose.yml up --build",
     "docker:down": "docker compose -f docker/tautulli-curated-plex/docker-compose.yml down",
     "build": "npm --workspaces --if-present run build",

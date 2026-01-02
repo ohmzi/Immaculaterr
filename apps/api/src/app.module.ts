@@ -12,6 +12,14 @@ import { GoogleModule } from './google/google.module';
 import { TmdbModule } from './tmdb/tmdb.module';
 import { OpenAiModule } from './openai/openai.module';
 import { OverseerrModule } from './overseerr/overseerr.module';
+import { CryptoModule } from './crypto/crypto.module';
+import { SettingsModule } from './settings/settings.module';
+import { JobsModule } from './jobs/jobs.module';
+import { AuthModule } from './auth/auth.module';
+import { APP_GUARD } from '@nestjs/core';
+import { AuthGuard } from './auth/auth.guard';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { CollectionsModule } from './collections/collections.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -27,6 +35,12 @@ const staticImports = existsSync(webDistPath)
 @Module({
   imports: [
     ...staticImports,
+    CryptoModule,
+    AuthModule,
+    SettingsModule,
+    IntegrationsModule,
+    CollectionsModule,
+    JobsModule,
     PlexModule,
     WebhooksModule,
     RadarrModule,
@@ -37,6 +51,12 @@ const staticImports = existsSync(webDistPath)
     OverseerrModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useExisting: AuthGuard,
+    },
+  ],
 })
 export class AppModule {}
