@@ -1,13 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Menu, ChevronDown, LogOut, RotateCcw, Settings2, Moon, Sun, Sparkles } from 'lucide-react';
+import {
+  Menu,
+  X,
+  ChevronDown,
+  LogOut,
+  RotateCcw,
+  Moon,
+  Sun,
+  Home,
+  Settings2,
+  PlugZap,
+  Layers,
+  ListChecks,
+  History,
+} from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { navItems, navSections } from '@/app/nav';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,51 +32,31 @@ import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
 import { getInitialTheme, setTheme, type Theme } from '@/app/theme';
 
-function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
-  return (
-    <nav className="grid gap-6 p-4">
-      {navSections.map((section, sectionIndex) => (
-        <div key={section.label} className="space-y-2">
-          <div className="px-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-            {section.label}
-          </div>
-          <div className="grid gap-1">
-            {section.items.map((item, itemIndex) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    cn(
-                      'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium',
-                      'transition-all duration-200',
-                      'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                      'hover:translate-x-1',
-                      isActive && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
-                    )
-                  }
-                  style={{ animationDelay: `${sectionIndex * 50 + itemIndex * 30}ms` }}
-                >
-                  <Icon className="h-4 w-4 transition-transform group-hover:scale-110" />
-                  {item.label}
-                </NavLink>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </nav>
-  );
-}
+// Mobile bottom nav items
+const mobileNavItems = [
+  { to: '/', icon: Home, label: 'Home' },
+  { to: '/connections', icon: PlugZap, label: 'Connect' },
+  { to: '/collections', icon: Layers, label: 'Collections' },
+  { to: '/jobs', icon: ListChecks, label: 'Jobs' },
+  { to: '/runs', icon: History, label: 'Runs' },
+];
+
+// Full nav for sidebar/mobile menu
+const navItems = [
+  { to: '/', icon: Home, label: 'Dashboard' },
+  { to: '/setup', icon: Settings2, label: 'Setup' },
+  { to: '/connections', icon: PlugZap, label: 'Connections' },
+  { to: '/collections', icon: Layers, label: 'Collections' },
+  { to: '/jobs', icon: ListChecks, label: 'Jobs' },
+  { to: '/runs', icon: History, label: 'Runs' },
+];
 
 export function AppShell() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [theme, setThemeState] = useState<Theme>(() => getInitialTheme());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [theme, setThemeState] = useState<Theme>(() => getInitialTheme());
 
   const meQuery = useQuery({
     queryKey: ['auth', 'me'],
@@ -93,6 +84,11 @@ export function AppShell() {
     if (!onboardingCompleted) setWizardOpen(true);
   }, [settingsQuery.isLoading, settingsQuery.error, onboardingCompleted]);
 
+  // Close mobile menu on navigation
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
@@ -110,218 +106,256 @@ export function AppShell() {
     },
   });
 
-  const title = useMemo(() => {
-    const path = location.pathname.replace(/\/+$/, '');
-    const match = navItems.find((n) => (n.to === '/' ? path === '' || path === '/' : path.startsWith(n.to)));
-    return match?.label ?? 'Dashboard';
-  }, [location.pathname]);
-
-  const bottomNavItems = useMemo(() => {
-    const wanted = new Set(['/', '/connections', '/collections', '/jobs', '/runs']);
-    return navItems.filter((n) => wanted.has(n.to));
-  }, []);
+  const toggleTheme = () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    setThemeState(next);
+    setTheme(next);
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex min-h-screen">
-        {/* Desktop sidebar */}
-        <aside className="hidden w-72 shrink-0 border-r border-border/50 bg-card/30 backdrop-blur-xl lg:flex lg:flex-col">
-          {/* Logo */}
-          <div className="flex h-16 items-center px-6">
-            <Link to="/" className="group flex items-center gap-3 font-semibold tracking-tight">
-              <div className="relative">
-                <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25 transition-transform group-hover:scale-105">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <div className="absolute -inset-1 -z-10 rounded-xl bg-primary/20 blur-lg opacity-0 transition-opacity group-hover:opacity-100" />
+      {/* Top Header - Minimal, floating style */}
+      <header className="fixed left-0 right-0 top-0 z-50">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <nav
+            className={cn(
+              'flex items-center justify-between rounded-2xl px-4 py-3',
+              'border bg-background/80 backdrop-blur-xl',
+              'shadow-lg shadow-black/5 dark:shadow-black/20',
+            )}
+          >
+            {/* Logo */}
+            <Link
+              to="/"
+              className="group flex items-center gap-3 font-bold tracking-tight"
+            >
+              <div
+                className={cn(
+                  'flex h-10 w-10 items-center justify-center rounded-xl',
+                  'bg-gradient-to-br from-primary to-primary/80',
+                  'text-primary-foreground shadow-md shadow-primary/25',
+                  'transition-transform group-hover:scale-105',
+                )}
+              >
+                TC
               </div>
-              <div className="leading-tight">
-                <div className="font-bold">Tautulli Curated</div>
-                <div className="text-xs font-normal text-muted-foreground">Plex Collection Manager</div>
-              </div>
+              <span className="hidden text-lg sm:inline">Tautulli Curated</span>
             </Link>
-          </div>
-          
-          <Separator className="opacity-50" />
-          
-          <div className="flex-1 overflow-auto py-2">
-            <SidebarNav />
-          </div>
-          
-          <div className="border-t border-border/50 px-6 py-4">
-            <div className="text-xs text-muted-foreground/70">
-              Running locally • Port <span className="font-mono">5173</span>
-            </div>
-          </div>
-        </aside>
 
-        {/* Main content */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          {/* Header */}
-          <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-            <div className="flex h-16 items-center gap-4 px-4 lg:px-8">
-              {/* Mobile menu trigger */}
-              <div className="lg:hidden">
-                <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-                  <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="Open navigation">
-                      <Menu className="h-5 w-5" />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="left" className="w-72 p-0">
-                    <div className="flex h-16 items-center px-6">
-                      <Link 
-                        to="/" 
-                        className="flex items-center gap-3 font-semibold tracking-tight"
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
-                        <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25">
-                          <Sparkles className="h-5 w-5" />
-                        </div>
-                        <div className="leading-tight">
-                          <div className="font-bold">Tautulli Curated</div>
-                          <div className="text-xs font-normal text-muted-foreground">
-                            Plex Collection Manager
-                          </div>
-                        </div>
-                      </Link>
-                    </div>
-                    <Separator className="opacity-50" />
-                    <SidebarNav onNavigate={() => setMobileMenuOpen(false)} />
-                  </SheetContent>
-                </Sheet>
-              </div>
-
-              {/* Page title */}
-              <div className="flex-1">
-                <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="hidden gap-2 sm:flex"
-                  onClick={() => setWizardOpen(true)}
-                  aria-label="Open setup wizard"
-                >
-                  <Settings2 className="h-4 w-4" />
-                  <span className="hidden md:inline">Setup</span>
-                </Button>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-2">
-                      <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary text-xs font-semibold">
-                        {(meQuery.data?.user?.username ?? 'A')[0].toUpperCase()}
-                      </div>
-                      <span className="hidden sm:inline">{meQuery.data?.user?.username ?? 'Admin'}</span>
-                      <ChevronDown className="h-4 w-4 opacity-50" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium">{meQuery.data?.user?.username ?? 'Admin'}</p>
-                        <p className="text-xs text-muted-foreground">Local administrator</p>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => {
-                        const next: Theme = theme === 'dark' ? 'light' : 'dark';
-                        setThemeState(next);
-                        setTheme(next);
-                      }}
-                      className="gap-2"
-                    >
-                      {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                      Switch to {theme === 'dark' ? 'Light' : 'Dark'}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setWizardOpen(true)}
-                      className="gap-2 sm:hidden"
-                    >
-                      <Settings2 className="h-4 w-4" />
-                      Setup
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => logoutMutation.mutate()}
-                      disabled={logoutMutation.isPending}
-                      className="gap-2 text-destructive focus:text-destructive"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Sign out
-                    </DropdownMenuItem>
-                    {import.meta.env.DEV && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => {
-                            const ok = window.confirm(
-                              'DEV RESET: This wipes the database (users, secrets, runs). Continue?',
-                            );
-                            if (!ok) return;
-                            resetMutation.mutate();
-                          }}
-                          disabled={resetMutation.isPending}
-                          className="gap-2 text-amber-600 focus:text-amber-600"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          Reset Database (Dev)
-                        </DropdownMenuItem>
-                      </>
+            {/* Desktop Nav - Hidden on mobile */}
+            <div className="hidden items-center gap-1 lg:flex">
+              {navItems.slice(0, 5).map((item) => {
+                const isActive =
+                  item.to === '/'
+                    ? location.pathname === '/'
+                    : location.pathname.startsWith(item.to);
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={cn(
+                      'rounded-xl px-4 py-2 text-sm font-medium transition-all',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                     )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+                  >
+                    {item.label}
+                  </NavLink>
+                );
+              })}
             </div>
-          </header>
 
-          {/* Main content area */}
-          <main className="flex-1 px-4 py-6 pb-28 lg:px-8 lg:py-8 lg:pb-8">
-            <Outlet />
-          </main>
+            {/* Right side actions */}
+            <div className="flex items-center gap-2">
+              {/* Theme toggle */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                className="rounded-xl"
+              >
+                {theme === 'dark' ? (
+                  <Sun className="h-5 w-5" />
+                ) : (
+                  <Moon className="h-5 w-5" />
+                )}
+              </Button>
+
+              {/* User menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-2 rounded-xl">
+                    <div
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-lg',
+                        'bg-primary/10 text-sm font-bold text-primary',
+                      )}
+                    >
+                      {(meQuery.data?.user?.username ?? 'A')[0].toUpperCase()}
+                    </div>
+                    <ChevronDown className="hidden h-4 w-4 opacity-50 sm:inline" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 rounded-xl">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col">
+                      <span className="font-semibold">
+                        {meQuery.data?.user?.username ?? 'Admin'}
+                      </span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        Local Administrator
+                      </span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setWizardOpen(true)} className="gap-2">
+                    <Settings2 className="h-4 w-4" />
+                    Setup Wizard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={toggleTheme} className="gap-2">
+                    {theme === 'dark' ? (
+                      <Sun className="h-4 w-4" />
+                    ) : (
+                      <Moon className="h-4 w-4" />
+                    )}
+                    {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => logoutMutation.mutate()}
+                    disabled={logoutMutation.isPending}
+                    className="gap-2 text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </DropdownMenuItem>
+                  {import.meta.env.DEV && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              'DEV: This wipes the database. Continue?',
+                            )
+                          ) {
+                            resetMutation.mutate();
+                          }
+                        }}
+                        disabled={resetMutation.isPending}
+                        className="gap-2 text-amber-600"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        Reset (Dev)
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Mobile menu button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-xl lg:hidden"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Menu className="h-5 w-5" />
+                )}
+              </Button>
+            </div>
+          </nav>
         </div>
-      </div>
+      </header>
 
-      {/* Mobile bottom navigation - Floating pill style like CoLabs */}
-      <div className="fixed bottom-6 left-4 right-4 z-50 lg:hidden">
-        <nav className="mx-auto flex max-w-md items-center justify-around rounded-2xl border border-border/50 bg-card/90 p-2 shadow-2xl shadow-black/20 backdrop-blur-xl">
-          {bottomNavItems.map((item) => {
+      {/* Mobile Full-Screen Menu */}
+      <div
+        className={cn(
+          'fixed inset-0 z-40 bg-background/95 backdrop-blur-xl transition-all duration-300 lg:hidden',
+          mobileMenuOpen
+            ? 'opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none',
+        )}
+      >
+        <nav className="flex h-full flex-col items-center justify-center gap-4 p-8">
+          {navItems.map((item, index) => {
             const Icon = item.icon;
-            const isActive = item.to === '/'
-              ? location.pathname === '/'
-              : location.pathname.startsWith(item.to);
-
+            const isActive =
+              item.to === '/'
+                ? location.pathname === '/'
+                : location.pathname.startsWith(item.to);
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  'group flex flex-col items-center gap-1 rounded-xl px-3 py-2 text-xs font-medium',
-                  'transition-all duration-200',
-                  'text-muted-foreground hover:text-foreground',
-                  isActive && 'bg-primary text-primary-foreground',
+                  'flex w-full max-w-sm items-center gap-4 rounded-2xl px-6 py-4',
+                  'text-xl font-semibold transition-all',
+                  'border',
+                  isActive
+                    ? 'border-primary/30 bg-primary/10 text-primary'
+                    : 'border-transparent hover:border-border hover:bg-accent',
                 )}
+                style={{
+                  animationDelay: `${index * 50}ms`,
+                }}
               >
-                <Icon className={cn(
-                  'h-5 w-5 transition-transform',
-                  isActive ? 'scale-110' : 'group-hover:scale-110',
-                )} />
-                <span className={cn(
-                  'transition-all',
-                  isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100',
-                )}>
-                  {item.label}
-                </span>
+                <Icon className="h-6 w-6" />
+                {item.label}
               </NavLink>
             );
           })}
         </nav>
       </div>
+
+      {/* Main Content */}
+      <main className="min-h-screen pt-24 pb-24 lg:pb-8">
+        <Outlet />
+      </main>
+
+      {/* Mobile Bottom Navigation - Floating pill */}
+      <nav
+        className={cn(
+          'fixed bottom-6 left-4 right-4 z-50 lg:hidden',
+          mobileMenuOpen && 'opacity-0 pointer-events-none',
+        )}
+      >
+        <div
+          className={cn(
+            'mx-auto flex max-w-md items-center justify-around',
+            'rounded-2xl border bg-background/90 p-2 backdrop-blur-xl',
+            'shadow-xl shadow-black/10 dark:shadow-black/30',
+          )}
+        >
+          {mobileNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              item.to === '/'
+                ? location.pathname === '/'
+                : location.pathname.startsWith(item.to);
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  'flex flex-col items-center gap-1 rounded-xl px-3 py-2',
+                  'text-xs font-medium transition-all',
+                  isActive
+                    ? 'bg-primary text-primary-foreground scale-105'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Icon className={cn('h-5 w-5', isActive && 'animate-pulse')} />
+                <span className={cn(!isActive && 'opacity-70')}>{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </div>
+      </nav>
 
       <SetupWizardModal
         open={wizardOpen || !onboardingCompleted}
