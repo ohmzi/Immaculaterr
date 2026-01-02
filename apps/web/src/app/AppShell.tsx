@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Menu, ChevronDown, LogOut, RotateCcw, Settings2, Moon, Sun } from 'lucide-react';
+import { Menu, ChevronDown, LogOut, RotateCcw, Settings2, Moon, Sun, Sparkles } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { navItems, navSections } from '@/app/nav';
@@ -23,14 +23,14 @@ import { getInitialTheme, setTheme, type Theme } from '@/app/theme';
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <nav className="grid gap-4 p-2">
-      {navSections.map((section) => (
-        <div key={section.label} className="space-y-1">
-          <div className="px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <nav className="grid gap-6 p-4">
+      {navSections.map((section, sectionIndex) => (
+        <div key={section.label} className="space-y-2">
+          <div className="px-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
             {section.label}
           </div>
           <div className="grid gap-1">
-            {section.items.map((item) => {
+            {section.items.map((item, itemIndex) => {
               const Icon = item.icon;
               return (
                 <NavLink
@@ -39,13 +39,16 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium',
+                      'transition-all duration-200',
                       'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                      isActive && 'bg-accent text-accent-foreground',
+                      'hover:translate-x-1',
+                      isActive && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
                     )
                   }
+                  style={{ animationDelay: `${sectionIndex * 50 + itemIndex * 30}ms` }}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4 transition-transform group-hover:scale-110" />
                   {item.label}
                 </NavLink>
               );
@@ -62,6 +65,7 @@ export function AppShell() {
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [theme, setThemeState] = useState<Theme>(() => getInitialTheme());
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const meQuery = useQuery({
     queryKey: ['auth', 'me'],
@@ -121,81 +125,108 @@ export function AppShell() {
     <div className="min-h-screen bg-background">
       <div className="flex min-h-screen">
         {/* Desktop sidebar */}
-        <aside className="hidden w-72 shrink-0 border-r bg-card/30 backdrop-blur lg:flex lg:flex-col">
-          <div className="flex h-14 items-center px-4">
-            <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-              <div className="grid h-9 w-9 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-                TC
+        <aside className="hidden w-72 shrink-0 border-r border-border/50 bg-card/30 backdrop-blur-xl lg:flex lg:flex-col">
+          {/* Logo */}
+          <div className="flex h-16 items-center px-6">
+            <Link to="/" className="group flex items-center gap-3 font-semibold tracking-tight">
+              <div className="relative">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25 transition-transform group-hover:scale-105">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div className="absolute -inset-1 -z-10 rounded-xl bg-primary/20 blur-lg opacity-0 transition-opacity group-hover:opacity-100" />
               </div>
               <div className="leading-tight">
-                <div>Tautulli Curated Plex</div>
-                <div className="text-xs font-normal text-muted-foreground">Local dashboard</div>
+                <div className="font-bold">Tautulli Curated</div>
+                <div className="text-xs font-normal text-muted-foreground">Plex Collection Manager</div>
               </div>
             </Link>
           </div>
-          <Separator />
-          <SidebarNav />
-          <div className="mt-auto px-4 py-3 text-xs text-muted-foreground">
-            Runs on your server. Access on LAN via <span className="font-mono">:5173</span> (dev).
+          
+          <Separator className="opacity-50" />
+          
+          <div className="flex-1 overflow-auto py-2">
+            <SidebarNav />
+          </div>
+          
+          <div className="border-t border-border/50 px-6 py-4">
+            <div className="text-xs text-muted-foreground/70">
+              Running locally • Port <span className="font-mono">5173</span>
+            </div>
           </div>
         </aside>
 
-        {/* Main */}
+        {/* Main content */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex h-14 items-center gap-2 px-3 lg:px-6">
-              {/* Mobile menu */}
+          {/* Header */}
+          <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+            <div className="flex h-16 items-center gap-4 px-4 lg:px-8">
+              {/* Mobile menu trigger */}
               <div className="lg:hidden">
-                <Sheet>
+                <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                   <SheetTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="Open navigation">
-                      <Menu className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" aria-label="Open navigation">
+                      <Menu className="h-5 w-5" />
                     </Button>
                   </SheetTrigger>
-                  <SheetContent side="left" className="p-0">
-                    <div className="flex h-14 items-center px-4">
-                      <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-                        <div className="grid h-9 w-9 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-                          TC
+                  <SheetContent side="left" className="w-72 p-0">
+                    <div className="flex h-16 items-center px-6">
+                      <Link 
+                        to="/" 
+                        className="flex items-center gap-3 font-semibold tracking-tight"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25">
+                          <Sparkles className="h-5 w-5" />
                         </div>
                         <div className="leading-tight">
-                          <div>Tautulli Curated Plex</div>
+                          <div className="font-bold">Tautulli Curated</div>
                           <div className="text-xs font-normal text-muted-foreground">
-                            Local dashboard
+                            Plex Collection Manager
                           </div>
                         </div>
                       </Link>
                     </div>
-                    <Separator />
-                    <SidebarNav />
+                    <Separator className="opacity-50" />
+                    <SidebarNav onNavigate={() => setMobileMenuOpen(false)} />
                   </SheetContent>
                 </Sheet>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="font-semibold tracking-tight">{title}</div>
+              {/* Page title */}
+              <div className="flex-1">
+                <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
               </div>
 
-              <div className="ml-auto flex items-center gap-2">
+              {/* Actions */}
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  className="gap-2"
+                  size="sm"
+                  className="hidden gap-2 sm:flex"
                   onClick={() => setWizardOpen(true)}
                   aria-label="Open setup wizard"
                 >
                   <Settings2 className="h-4 w-4" />
-                  Setup
+                  <span className="hidden md:inline">Setup</span>
                 </Button>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-1">
-                      {meQuery.data?.user?.username ?? 'Admin'}
-                      <ChevronDown className="h-4 w-4 opacity-70" />
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary text-xs font-semibold">
+                        {(meQuery.data?.user?.username ?? 'A')[0].toUpperCase()}
+                      </div>
+                      <span className="hidden sm:inline">{meQuery.data?.user?.username ?? 'Admin'}</span>
+                      <ChevronDown className="h-4 w-4 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>Account</DropdownMenuLabel>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium">{meQuery.data?.user?.username ?? 'Admin'}</p>
+                        <p className="text-xs text-muted-foreground">Local administrator</p>
+                      </div>
+                    </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => {
@@ -206,17 +237,25 @@ export function AppShell() {
                       className="gap-2"
                     >
                       {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                      Theme: {theme === 'dark' ? 'Dark' : 'Light'}
+                      Switch to {theme === 'dark' ? 'Light' : 'Dark'}
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setWizardOpen(true)}
+                      className="gap-2 sm:hidden"
+                    >
+                      <Settings2 className="h-4 w-4" />
+                      Setup
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => logoutMutation.mutate()}
                       disabled={logoutMutation.isPending}
-                      className="gap-2"
+                      className="gap-2 text-destructive focus:text-destructive"
                     >
                       <LogOut className="h-4 w-4" />
-                      Logout
+                      Sign out
                     </DropdownMenuItem>
-                    {import.meta.env.DEV ? (
+                    {import.meta.env.DEV && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -228,50 +267,60 @@ export function AppShell() {
                             resetMutation.mutate();
                           }}
                           disabled={resetMutation.isPending}
-                          className="gap-2 text-destructive focus:text-destructive"
+                          className="gap-2 text-amber-600 focus:text-amber-600"
                         >
                           <RotateCcw className="h-4 w-4" />
-                          Reset (dev)
+                          Reset Database (Dev)
                         </DropdownMenuItem>
                       </>
-                    ) : null}
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             </div>
           </header>
 
-          <main className="container flex-1 py-6 pb-24 lg:pb-6">
+          {/* Main content area */}
+          <main className="flex-1 px-4 py-6 pb-28 lg:px-8 lg:py-8 lg:pb-8">
             <Outlet />
           </main>
         </div>
       </div>
 
-      {/* Mobile bottom navigation (app-like) */}
-      <div className="fixed bottom-4 left-0 right-0 z-50 lg:hidden">
-        <div className="mx-auto w-fit rounded-full border bg-background/75 p-1 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <nav className="flex items-center gap-1">
-            {bottomNavItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    cn(
-                      'flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-colors',
-                      'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                      isActive && 'bg-primary text-primary-foreground hover:bg-primary',
-                    )
-                  }
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="hidden sm:inline">{item.label}</span>
-                </NavLink>
-              );
-            })}
-          </nav>
-        </div>
+      {/* Mobile bottom navigation - Floating pill style like CoLabs */}
+      <div className="fixed bottom-6 left-4 right-4 z-50 lg:hidden">
+        <nav className="mx-auto flex max-w-md items-center justify-around rounded-2xl border border-border/50 bg-card/90 p-2 shadow-2xl shadow-black/20 backdrop-blur-xl">
+          {bottomNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.to === '/'
+              ? location.pathname === '/'
+              : location.pathname.startsWith(item.to);
+
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  'group flex flex-col items-center gap-1 rounded-xl px-3 py-2 text-xs font-medium',
+                  'transition-all duration-200',
+                  'text-muted-foreground hover:text-foreground',
+                  isActive && 'bg-primary text-primary-foreground',
+                )}
+              >
+                <Icon className={cn(
+                  'h-5 w-5 transition-transform',
+                  isActive ? 'scale-110' : 'group-hover:scale-110',
+                )} />
+                <span className={cn(
+                  'transition-all',
+                  isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100',
+                )}>
+                  {item.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </nav>
       </div>
 
       <SetupWizardModal
@@ -283,5 +332,3 @@ export function AppShell() {
     </div>
   );
 }
-
-
