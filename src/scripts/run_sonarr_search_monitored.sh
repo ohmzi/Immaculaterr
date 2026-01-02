@@ -137,18 +137,14 @@ log() {
     esac
 }
 
-# Set up log file if requested
-LOG_PATH=""
-if [[ -n "$LOG_FILE" ]]; then
-    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    LOG_PATH="$PROJECT_ROOT/data/logs/sonarr_search_monitored_${TIMESTAMP}.log"
-    mkdir -p "$PROJECT_ROOT/data/logs"
-    echo "Log file: $LOG_PATH"
-    # Redirect all output to both terminal and log file
-    # Strip ANSI color codes for log file while preserving colors in terminal
-    # Use unbuffered sed to strip colors in real-time (handles both actual escapes and literal strings)
-    exec > >(tee >(stdbuf -o0 -e0 sed -u -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g' -e 's/\\x1b\[[0-9;]*m//g' >> "$LOG_PATH")) 2>&1
-fi
+# Always set up log file for monitoring
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_PATH="$PROJECT_ROOT/data/logs/sonarr_search_monitored_${TIMESTAMP}.log"
+mkdir -p "$PROJECT_ROOT/data/logs"
+# Redirect all output to both terminal and log file
+# Strip ANSI color codes for log file while preserving colors in terminal
+# Use unbuffered sed to strip colors in real-time (handles both actual escapes and literal strings)
+exec > >(tee >(stdbuf -o0 -e0 sed -u -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g' -e 's/\\x1b\[[0-9;]*m//g' >> "$LOG_PATH")) 2>&1
 
 # Ensure Python can find user-installed packages (important for cron)
 export PYTHONUSERBASE="${HOME}/.local"
@@ -352,10 +348,8 @@ if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
     echo -e "      You can monitor the search progress in Sonarr's Activity tab."
     echo ""
     
-    if [[ -n "$LOG_PATH" ]]; then
-        echo -e "${CYAN}Log file saved to: $LOG_PATH${NC}"
-        echo ""
-    fi
+    echo -e "${CYAN}Log file saved to: $LOG_PATH${NC}"
+    echo ""
     
     if [[ -z "$NO_PAUSE" ]]; then
         echo -e "${YELLOW}Press Enter to exit...${NC}"
@@ -403,10 +397,8 @@ else
     esac
     echo ""
     
-    if [[ -n "$LOG_PATH" ]]; then
-        echo -e "${CYAN}Log file saved to: $LOG_PATH${NC}"
-        echo ""
-    fi
+    echo -e "${CYAN}Log file saved to: $LOG_PATH${NC}"
+    echo ""
     
     if [[ -z "$NO_PAUSE" ]]; then
         echo -e "${YELLOW}Press Enter to exit...${NC}"

@@ -149,7 +149,7 @@ def get_recommendations(movie_name: str, *, plex=None, tmdb_cache=None, media_ty
         recs = get_related_movies(
             movie_name,
             api_key=config.openai.api_key,
-            model=getattr(config.openai, "model", "gpt-5.2-chat-latest"),
+            model=config.openai.model,
             limit=config.recommendations.count,
             tmdb_seed_metadata=seed_meta,
             google_search_context=google_context or None,

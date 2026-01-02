@@ -55,6 +55,76 @@ def _discover_expected_scripts(base_dir: Path) -> set[str]:
     return out
 
 
+def _analyze_error_patterns(excerpt: list[str], status: str) -> list[str]:
+    """
+    Analyze log excerpt to provide human-readable explanations for common error patterns.
+    Returns a list of friendly explanations.
+    """
+    if not excerpt:
+        return []
+    
+    full_text = " ".join(str(e).upper() for e in excerpt)
+    explanations = []
+    
+    # PARTIAL status patterns
+    if status == "PARTIAL":
+        # Plex collection reordering failures
+        if "REORDERING COMPLETED" in full_text and "FAILED" in full_text:
+            if "BADREQUEST" in full_text:
+                explanations.append("Some Plex collection items failed to reorder (Plex API limitation - non-critical)")
+            else:
+                explanations.append("Some Plex collection items failed to reorder (non-critical)")
+        
+        # Missing items in Plex (expected behavior)
+        if "NOT FOUND IN PLEX YET" in full_text or "SKIPPED" in full_text:
+            explanations.append("Some recommended items not yet in Plex (will be added when downloaded)")
+        
+        # Sonarr duplicate cleaner patterns
+        if "EPISODES_SKIPPED_NO_TVDB" in full_text:
+            explanations.append("Some episodes skipped (missing TVDB ID - may need manual matching)")
+        if "SONARR_SERIES_NOT_FOUND" in full_text:
+            explanations.append("Some series not found in Sonarr (may need to be added manually)")
+        if "SONARR_EPISODE_NOT_FOUND" in full_text:
+            explanations.append("Some episodes not found in Sonarr (may be unmonitored)")
+        
+        # Connection errors that were retried
+        if "CONNECTIONERROR" in full_text and "ATTEMPT" in full_text:
+            explanations.append("Transient connection issues (retried automatically)")
+        
+        # Radarr/Sonarr connection timeouts
+        if "TIMEOUT" in full_text and ("RADARR" in full_text or "SONARR" in full_text):
+            explanations.append("Some items failed to add to Radarr/Sonarr (connection timeout - may retry later)")
+        
+        # Plex artwork upload failures (non-critical)
+        if "UPLOAD BACKGROUND" in full_text and "FAILED" in full_text:
+            explanations.append("Collection artwork upload failed (cosmetic issue - collection still functional)")
+        
+        # Default explanation if no specific pattern found
+        if not explanations:
+            explanations.append("Completed with minor warnings (check log for details)")
+    
+    # FAILED/DEPENDENCY_FAILED status patterns
+    elif status in {"FAIL", "DEPENDENCY_FAILED"}:
+        # Extract actual error messages
+        error_lines = []
+        for line in excerpt:
+            line_str = str(line).strip()
+            line_upper = line_str.upper()
+            if any(keyword in line_upper for keyword in ["ERROR:", "TRACEBACK", "EXCEPTION", "FAILED", "CRITICAL"]):
+                # Skip boilerplate
+                if "FINAL_STATUS" not in line_upper and "SCRIPT COMPLETED" not in line_upper:
+                    error_lines.append(line_str)
+        
+        if error_lines:
+            # Take most relevant error lines
+            for line in error_lines[:3]:
+                explanations.append(line[:200] + ("…" if len(line) > 200 else ""))
+        else:
+            explanations.append("Script failed - check log file for details")
+    
+    return explanations if explanations else []
+
+
 def _format_email_body(
     *,
     since: datetime,
@@ -120,6 +190,7 @@ def _format_email_body(
     health_icon = _health_emoji(health)
 
     # Build script buckets
+    # Only include scripts that have logs (except tautulli_main which is mandatory)
     success_scripts: list[str] = []
     partial_scripts: list[str] = []
     fail_scripts: list[str] = []
@@ -128,8 +199,17 @@ def _format_email_body(
 
     for name, s in sorted((per_script or {}).items(), key=lambda kv: kv[0]):
         cls = _classify_script(s or {})
+        # Check if script has a log file (has a "last" entry with a path)
+        has_log = bool((s or {}).get("last", {}).get("path", ""))
+        
+        # Only include scripts with logs, OR tautulli_main (mandatory)
+        if not has_log and name != "tautulli_main":
+            continue  # Skip scripts without logs (except main)
+        
         if cls == "NO_RUNS":
-            zero_runs.append(name)
+            # Only track "no runs" for tautulli_main (mandatory)
+            if name == "tautulli_main":
+                zero_runs.append(name)
         elif cls == "SUCCESS":
             success_scripts.append(name)
         elif cls == "PARTIAL":
@@ -147,6 +227,11 @@ def _format_email_body(
         return f" ({runs} runs)" if runs > 1 else ""
 
     def _last_for(script_name: str) -> dict:
+        """
+        Get the latest log entry for a script.
+        The 'last' field in per_script contains the most recent log (by timestamp)
+        as determined by summarize_events() - older logs are ignored.
+        """
         return (per_script.get(script_name, {}) or {}).get("last", {}) or {}
 
     def _log_name(last: dict) -> str:
@@ -187,15 +272,98 @@ def _format_email_body(
             out.append(f"{prev} (x{count})" if count > 1 else prev)
         return out
 
-    def _extract_details(last: dict, *, max_lines: int = 4) -> list[str]:
+    def _analyze_error_patterns(excerpt: list[str], status: str) -> list[str]:
+        """
+        Analyze log excerpt to provide human-readable explanations for common error patterns.
+        Returns a list of friendly explanations.
+        """
+        if not excerpt:
+            return []
+        
+        full_text = " ".join(str(e).upper() for e in excerpt)
+        explanations = []
+        
+        # PARTIAL status patterns
+        if status == "PARTIAL":
+            # Plex collection reordering failures
+            if "REORDERING COMPLETED" in full_text and "FAILED" in full_text:
+                if "BADREQUEST" in full_text:
+                    explanations.append("Some Plex collection items failed to reorder (Plex API limitation - non-critical)")
+                else:
+                    explanations.append("Some Plex collection items failed to reorder (non-critical)")
+            
+            # Missing items in Plex (expected behavior)
+            if "NOT FOUND IN PLEX YET" in full_text or "SKIPPED" in full_text:
+                explanations.append("Some recommended items not yet in Plex (will be added when downloaded)")
+            
+            # Sonarr duplicate cleaner patterns
+            if "EPISODES_SKIPPED_NO_TVDB" in full_text:
+                explanations.append("Some episodes skipped (missing TVDB ID - may need manual matching)")
+            if "SONARR_SERIES_NOT_FOUND" in full_text:
+                explanations.append("Some series not found in Sonarr (may need to be added manually)")
+            if "SONARR_EPISODE_NOT_FOUND" in full_text:
+                explanations.append("Some episodes not found in Sonarr (may be unmonitored)")
+            
+            # Connection errors that were retried
+            if "CONNECTIONERROR" in full_text and "ATTEMPT" in full_text:
+                explanations.append("Transient connection issues (retried automatically)")
+            
+            # Radarr/Sonarr connection timeouts
+            if "TIMEOUT" in full_text and ("RADARR" in full_text or "SONARR" in full_text):
+                explanations.append("Some items failed to add to Radarr/Sonarr (connection timeout - may retry later)")
+            
+            # Plex artwork upload failures (non-critical)
+            if "UPLOAD BACKGROUND" in full_text and "FAILED" in full_text:
+                explanations.append("Collection artwork upload failed (cosmetic issue - collection still functional)")
+            
+            # Default explanation if no specific pattern found
+            if not explanations:
+                explanations.append("Completed with minor warnings (check log for details)")
+        
+        # FAILED/DEPENDENCY_FAILED status patterns
+        elif status in {"FAIL", "DEPENDENCY_FAILED"}:
+            # Extract actual error messages
+            error_lines = []
+            for line in excerpt:
+                line_str = str(line).strip()
+                line_upper = line_str.upper()
+                if any(keyword in line_upper for keyword in ["ERROR:", "TRACEBACK", "EXCEPTION", "FAILED", "CRITICAL"]):
+                    # Skip boilerplate
+                    if "FINAL_STATUS" not in line_upper and "SCRIPT COMPLETED" not in line_upper:
+                        error_lines.append(line_str)
+            
+            if error_lines:
+                # Take most relevant error lines
+                for line in error_lines[:3]:
+                    explanations.append(line[:200] + ("…" if len(line) > 200 else ""))
+            else:
+                explanations.append("Script failed - check log file for details")
+        
+        return explanations if explanations else []
+
+    def _extract_details(last: dict, *, max_lines: int = 6, status: str = "") -> list[str]:
         """
         Pull a small, human-friendly explanation from the log excerpt.
-        Prefer the most recent ERROR/TRACEBACK/WARNING lines and strip noisy footers.
+        For PARTIAL: provides friendly explanations based on common patterns.
+        For FAILED: extracts actual error logs.
         """
         excerpt = list(last.get("excerpt", None) or [])
         if not excerpt:
             return []
 
+        # For PARTIAL status, use pattern analysis
+        if status == "PARTIAL":
+            explanations = _analyze_error_patterns(excerpt, "PARTIAL")
+            if explanations:
+                return explanations[:max_lines]
+        
+        # For FAILED/DEPENDENCY_FAILED, extract actual errors
+        elif status in {"FAIL", "DEPENDENCY_FAILED"}:
+            explanations = _analyze_error_patterns(excerpt, status)
+            if explanations:
+                return explanations[:max_lines]
+
+        # Fallback: original extraction logic
         cleaned: list[str] = []
         for raw in excerpt:
             line = _shorten_log_line(str(raw)).strip()
@@ -283,7 +451,7 @@ def _format_email_body(
             last = _last_for(name)
             lines.append(f"• {name}")
             lines.append("  • Status: PARTIAL")
-            details = _extract_details(last)
+            details = _extract_details(last, status="PARTIAL")
             if details:
                 lines.append("  • What happened:")
                 for d in details:
@@ -299,10 +467,13 @@ def _format_email_body(
         for name in fail_scripts:
             last = _last_for(name)
             lines.append(f"• {name}")
-            lines.append("  • Status: FAIL")
-            details = _extract_details(last)
+            # Determine if it's DEPENDENCY_FAILED or FAIL
+            exit_code = last.get("exit_code", 0)
+            status_label = "DEPENDENCY_FAILED" if exit_code == 20 else "FAIL"
+            lines.append(f"  • Status: {status_label}")
+            details = _extract_details(last, status=status_label)
             if details:
-                lines.append("  • What happened:")
+                lines.append("  • Error details:")
                 for d in details:
                     lines.append(f"    - {d}")
             ln = _log_name(last)
@@ -328,8 +499,9 @@ def _format_email_body(
         lines.append("• No critical failures detected.")
     else:
         lines.append("• ❌ Critical failures detected — review FAILED JOBS above.")
-    if zero_runs:
-        lines.append("• ⏳ No runs detected: " + ", ".join(zero_runs))
+    # Only mention "no runs" for tautulli_main (mandatory script)
+    if zero_runs and "tautulli_main" in zero_runs:
+        lines.append("• ⏳ Main script (tautulli_main) did not run — check Tautulli automation configuration.")
 
     # Call out scripts that had 0 runs (common cron failure signal).
     return "\n".join(lines).rstrip() + "\n"
@@ -371,11 +543,21 @@ def _format_email_body_html(
     health_icon = status_emoji({"OK": "SUCCESS", "WARN": "PARTIAL", "FAIL": "FAIL"}.get(health, "UNKNOWN"))
 
     # Buckets
+    # Only include scripts that have logs (except tautulli_main which is mandatory)
     success, partial, fail, unknown, zero = [], [], [], [], []
     for name, s in sorted((per_script or {}).items(), key=lambda kv: kv[0]):
         cls = classify(s or {})
+        # Check if script has a log file (has a "last" entry with a path)
+        has_log = bool((s or {}).get("last", {}).get("path", ""))
+        
+        # Only include scripts with logs, OR tautulli_main (mandatory)
+        if not has_log and name != "tautulli_main":
+            continue  # Skip scripts without logs (except main)
+        
         if cls == "NO_RUNS":
-            zero.append(name)
+            # Only track "no runs" for tautulli_main (mandatory)
+            if name == "tautulli_main":
+                zero.append(name)
         elif cls == "SUCCESS":
             success.append(name)
         elif cls == "PARTIAL":
@@ -393,6 +575,11 @@ def _format_email_body_html(
         return f" ({runs} runs)" if runs > 1 else ""
 
     def last(name: str) -> dict:
+        """
+        Get the latest log entry for a script.
+        The 'last' field in per_script contains the most recent log (by timestamp)
+        as determined by summarize_events() - older logs are ignored.
+        """
         return (per_script.get(name, {}) or {}).get("last", {}) or {}
 
     def log_name(last_dict: dict) -> str:
@@ -431,11 +618,24 @@ def _format_email_body_html(
             out.append(f"{prev} (x{count})" if count > 1 else prev)
         return out
 
-    def extract_details(last_dict: dict, *, max_lines: int = 4) -> list[str]:
+    def extract_details(last_dict: dict, *, max_lines: int = 6, status: str = "") -> list[str]:
         excerpt = list(last_dict.get("excerpt", None) or [])
         if not excerpt:
             return []
 
+        # For PARTIAL status, use pattern analysis
+        if status == "PARTIAL":
+            explanations = _analyze_error_patterns(excerpt, "PARTIAL")
+            if explanations:
+                return explanations[:max_lines]
+        
+        # For FAILED/DEPENDENCY_FAILED, extract actual errors
+        elif status in {"FAIL", "DEPENDENCY_FAILED"}:
+            explanations = _analyze_error_patterns(excerpt, status)
+            if explanations:
+                return explanations[:max_lines]
+
+        # Fallback: original extraction logic
         cleaned: list[str] = []
         for raw in excerpt:
             line = shorten_log_line(raw).strip()
@@ -514,18 +714,32 @@ def _format_email_body_html(
         for n in names:
             l = last(n)
             ln = log_name(l)
-            details = extract_details(l)
+            # Determine status for error analysis
+            exit_code = l.get("exit_code", 0)
+            status_for_analysis = label
+            if label == "FAIL" and exit_code == 20:
+                status_for_analysis = "DEPENDENCY_FAILED"
+            details = extract_details(l, status=status_for_analysis)
             sub = ["<ul style='margin:6px 0 10px 20px; padding-left:16px;'>"]
-            sub.append(f"<li>Status: {_html_escape(label)}</li>")
+            # Show appropriate status label
+            if label == "FAIL" and exit_code == 20:
+                sub.append(f"<li>Status: {_html_escape('DEPENDENCY_FAILED')}</li>")
+            else:
+                sub.append(f"<li>Status: {_html_escape(label)}</li>")
             if details:
-                sub.append("<li>What happened:")
+                detail_label = "What happened:" if label == "PARTIAL" else "Error details:"
+                sub.append(f"<li>{detail_label}")
                 sub.append("<ul style='margin:6px 0 0 18px; padding-left:16px;'>")
                 for d in details:
-                    sub.append(
-                        "<li><span style=\"font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; font-size:12px;\">"
-                        + _html_escape(d)
-                        + "</span></li>"
-                    )
+                    # Use monospace for actual errors, normal text for explanations
+                    if label in {"FAIL", "DEPENDENCY_FAILED"}:
+                        sub.append(
+                            "<li><span style=\"font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; font-size:12px;\">"
+                            + _html_escape(d)
+                            + "</span></li>"
+                        )
+                    else:
+                        sub.append(f"<li>{_html_escape(d)}</li>")
                 sub.append("</ul></li>")
             if ln:
                 sub.append(f"<li>Log: {_html_escape(ln)}</li>")
@@ -542,8 +756,9 @@ def _format_email_body_html(
         notes.append("<li>No critical failures detected.</li>")
     else:
         notes.append("<li>❌ Critical failures detected — review FAILED JOBS above.</li>")
-    if zero:
-        notes.append(f"<li>⏳ No runs detected: {_html_escape(', '.join(zero))}</li>")
+    # Only mention "no runs" for tautulli_main (mandatory script)
+    if zero and "tautulli_main" in zero:
+        notes.append("<li>⏳ Main script (tautulli_main) did not run — check Tautulli automation configuration.</li>")
     notes.append("</ul>")
     notes_html = "".join(notes)
 
@@ -679,28 +894,10 @@ def main(argv: list[str] | None = None) -> int:
             icon = "✅"
             health = "OK"
 
-        prefix = (email_cfg.subject_prefix or "").strip()
-        label = prefix
-        if label.startswith("[") and label.endswith("]"):
-            label = label[1:-1].strip()
-        if not label:
-            label = "Plex Weekly Health"
-        elif "health" not in label.lower():
-            label = f"{label} Weekly Health"
-
-        counts: list[str] = []
-        if ok:
-            counts.append(f"✅{ok}")
-        if warn:
-            counts.append(f"⚠️{warn}")
-        if fail:
-            counts.append(f"❌{fail}")
-        if unk:
-            counts.append(f"❔{unk}")
-        counts_str = " ".join(counts) if counts else "no runs"
-
-        # Subject style (match the "Health YYYY-MM-DD: WARN (✅8 ⚠️4)" format)
-        subject = f"Health {now.strftime('%Y-%m-%d')}: {health} ({counts_str})"
+        # Subject format: "Plex Server Health Report 🖥️ [health_emoji] [date]"
+        # Use server emoji (🖥️) with health status emoji (no warning words, just emoji)
+        server_emoji = "🖥️"
+        subject = f"Plex Server Health Report {server_emoji} {icon} {now.strftime('%Y-%m-%d')}"
         body = _format_email_body(since=since, until=now, summary=summary, events=events, written_paths=paths)
         html_body = _format_email_body_html(since=since, until=now, summary=summary)
 

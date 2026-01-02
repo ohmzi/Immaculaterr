@@ -1,6 +1,6 @@
 # Tautulli Curated Plex Collection
 
-**Version:** 5.2.0
+**Version:** 6.0.0
 
 Python automation system that creates and maintains dynamic Plex collections based on your viewing habits. When you finish watching a movie, the system automatically generates intelligent recommendations, adds missing movies to Radarr, maintains multiple curated collections, and keeps your library synchronized.
 
@@ -237,6 +237,10 @@ scripts_run:
   run_immaculate_taste_collection: true    # Step 4: Main Collection
   run_recently_watched_refresher: true     # Step 5a: Apply to Plex (MANDATORY)
   run_collection_refresher: true           # Step 5b: Apply to Plex (MANDATORY)
+
+  # TV Support (episode triggers)
+  run_tv_immaculate_taste_collection: false  # TV Immaculate Taste pipeline (media_type=episode)
+  run_tv_collection_refresher: false         # TV Immaculate Taste refresher (adds shows to Plex)
 ```
 
 ### Plex Configuration
@@ -248,6 +252,7 @@ plex:
   movie_library_name: "Movies"
   tv_library_name: "TV Shows"
   collection_name: "Inspired by your Immaculate Taste"
+  tv_collection_name: "Inspired by your Immaculate Taste (TV)"
   delete_preference: "largest_file"  # Options: smallest_file, largest_file, newest, oldest
   preserve_quality: []                # Example: ["4K", "1080p"]
 ```
@@ -298,6 +303,7 @@ sonarr:
   root_folder: "/path/to/TV Shows"
   tag_name: "recommended"  # Or ["tag1", "tag2"] for multiple tags
   quality_profile_id: 1
+  auto_download_recommendations: false  # Optional: add recommended shows to Sonarr + sync episode monitoring
 ```
 
 ### TMDb Configuration
@@ -326,6 +332,7 @@ The project includes several standalone bash scripts that can be run independent
 
 - **`run_recently_watched_collections_refresher.sh`** - Refreshes "Recently Watched" and "Change of Taste" collections
 - **`run_immaculate_taste_refresher.sh`** - Refreshes "Immaculate Taste" collection
+- **`run_tv_immaculate_taste_refresher.sh`** - Refreshes "Immaculate Taste (TV)" collection
 
 #### Maintenance Scripts
 
@@ -334,6 +341,10 @@ The project includes several standalone bash scripts that can be run independent
 - **`run_radarr_search_monitored.sh`** - Triggers search for monitored movies
 - **`run_sonarr_search_monitored.sh`** - Triggers search for monitored episodes
 
+#### TV Immaculate Taste
+
+- **`run_tv_immaculate_taste_collection.sh`** - Runs the TV recommendation pipeline for a seed show/episode title
+
 #### Cleanup Scripts
 
 - **`run_radarr_duplicate_cleaner.sh`** - Removes duplicate movies (and unmonitors in Radarr)
@@ -341,7 +352,7 @@ The project includes several standalone bash scripts that can be run independent
 
 ### Script Options
 
-All scripts support these options:
+Most scripts support these options (run each script with `--help` to confirm):
 
 - `--dry-run` - Show what would be done without making changes
 - `--verbose` - Enable debug-level logging
@@ -376,11 +387,11 @@ See [Scheduling Scripts](#scheduling-scripts) section for detailed instructions.
 
 ### Entry Point
 
-The main script `src/tautulli_curated/main.py` is triggered by Tautulli when a movie is watched. It accepts:
-- Movie title (from Tautulli)
-- Media type (should be "movie")
+The main script `src/tautulli_curated/main.py` is triggered by Tautulli when media is watched. It accepts:
+- Title (from Tautulli)
+- Media type (`movie` or `episode`)
 
-**Note:** The script automatically skips execution if media type is not "movie" (e.g., episodes or shows).
+**Note:** Other media types are skipped cleanly (exit code 0). For `episode`, the TV pipeline runs only if the TV flags are enabled.
 
 ### Execution Pipeline
 
@@ -549,9 +560,16 @@ pip install -r docker/custom-tautulli/requirements.txt --user
 
 Full changelog: [VERSION_HISTORY.md](VERSION_HISTORY.md)
 
-### Version 5.2.0 (Current)
+### Version 6.0.0 (Current)
+- **TV show support**: Full TV Immaculate Taste collection pipeline with episode-based recommendations, Sonarr integration, and TV collection refresher.
+- **Configurable OpenAI model**: OpenAI model name now configurable in `config.yaml` (default: `gpt-5.2-chat-latest`).
+- **Enhanced email health reports**: Intelligent error pattern analysis with friendly explanations for PARTIAL status and actual error logs for failures.
+- **Improved logging**: All scripts now always log to `data/logs/` for consistent monitoring.
+- **Smarter email reports**: Only shows scripts with logs (except mandatory `tautulli_main`), uses latest log per script, cleaner email subject format.
+
+### Version 5.2.0
 - Weekly health monitoring: parses logs, writes `data/health/*.json`, and emails a mobile-friendly weekly report (Gmail App Password).
-- Logging/monitoring improvements: better “what happened” excerpts, expected-script coverage, and missing-run detection.
+- Logging/monitoring improvements: better "what happened" excerpts, expected-script coverage, and missing-run detection.
 
 ### Version 5.1.0
 - Cron/runtime hardening + better logging for cron/Tautulli execution.
@@ -626,11 +644,16 @@ For more detailed information, see the sections below:
 
 ### Entry Point
 
-The main script `src/tautulli_curated/main.py` (or `tautulli_immaculate_taste_collection.py` for backward compatibility) is triggered by Tautulli when a movie is watched. It accepts two arguments:
-- Movie title (from Tautulli)
-- Media type (should be "movie")
+The main script `src/tautulli_curated/main.py` (or `tautulli_immaculate_taste_collection.py` for backward compatibility) is triggered by Tautulli when media is watched. It accepts two arguments:
+- Title (from Tautulli)
+- Media type (`movie` or `episode`)
 
-**Note:** The script automatically skips execution if the media type is not "movie" (e.g., episodes or shows). When an episode is watched, the script will log a skip message and exit immediately without running any sub-scripts.
+**Dispatch behavior:**
+- `media_type=movie`: runs the existing **movie** pipeline (Recently Watched, Duplicate Cleaner, Radarr/Sonarr housekeeping, Immaculate Taste, refreshers).
+- `media_type=episode`: runs the new **TV** Immaculate Taste pipeline (if enabled) + optional TV refresher (no global Sonarr housekeeping).
+- Any other `media_type`: clean skip (exit code 0).
+
+**Episode title parsing:** for inputs like `"Mayor of Kingstown - The End Begins"`, the TV pipeline uses the left side (`"Mayor of Kingstown"`) as the seed show name.
 
 ### Execution Pipeline
 
@@ -687,6 +710,20 @@ These scripts **actually add movies to Plex collections**. Without them, movies 
   - Adds all movies back in the randomized order
 
 **Note:** These refreshers are **mandatory by default** (`true`) because they apply the collections to Plex. You can set them to `false` to run independently during off-peak hours.
+
+#### **Episode Trigger (TV): Immaculate Taste (TV)** (optional)
+
+When `media_type=episode` (and the TV flags are enabled), the system runs a lightweight TV-only flow:
+
+- **Seed parsing:** `"Show Name - Episode Title"` → `"Show Name"`
+- **TV recommendations:** Google (optional) → OpenAI (optional) → TMDb fallback
+- **Plex TV lookup:** checks `plex.tv_library_name` for each recommended show
+- **TV points file:** writes/updates `data/recommendation_points_tv.json` (can include shows not yet in Plex)
+- **Optional Sonarr automation:** if `sonarr.auto_download_recommendations=true`, it will:
+  - Add the show to Sonarr (or ensure it exists)
+  - If the show exists in Plex, unmonitor episodes already in Plex and monitor only missing episodes
+  - Trigger a targeted Sonarr series search for that show
+- **Optional TV refresher:** if enabled, applies the current TV points file to the Plex TV collection (`plex.tv_collection_name`) and pins it to the top of the TV library recommendations list (best effort).
 
 ---
 

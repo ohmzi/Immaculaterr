@@ -31,7 +31,7 @@ def save_collection_to_json(movies, json_file, config):
         raise
 
 
-def get_contrast_movies(movie_name: str, api_key: str, max_results: int = 15):
+def get_contrast_movies(movie_name: str, api_key: str, model: str = None, max_results: int = 15):
     """
     Get contrast movies (different genre/style) using OpenAI.
     Uses a custom prompt to get movies that are opposite in tone/genre.
@@ -50,6 +50,9 @@ def get_contrast_movies(movie_name: str, api_key: str, max_results: int = 15):
         logger.warning("OpenAI SDK not available (openai import failed); skipping contrast recommendations.")
         return []
     
+    # Use provided model or fallback to default
+    model_name = model or "gpt-5.2-chat-latest"
+    
     client = OpenAI(api_key=api_key)
     prompt = (
         f"Recommend {max_results} movies that offer a deliberate 'change of taste' from '{movie_name}'. "
@@ -64,7 +67,7 @@ def get_contrast_movies(movie_name: str, api_key: str, max_results: int = 15):
     try:
         # Note: some newer chat-latest models only support the default temperature.
         resp = client.chat.completions.create(
-            model="gpt-5.2-chat-latest",
+            model=model_name,
             messages=[
                 {"role": "system", "content": "You are a movie recommendation engine."},
                 {"role": "user", "content": prompt},
@@ -108,7 +111,7 @@ def run_change_of_taste_collection(movie_name: str, config, max_results: int = 1
         
         # Get recommendations from ChatGPT
         logger.info("Step 1: Getting contrast recommendations from ChatGPT...")
-        recommendations = get_contrast_movies(movie_name, config.openai.api_key, max_results=max_results)
+        recommendations = get_contrast_movies(movie_name, config.openai.api_key, model=config.openai.model, max_results=max_results)
         logger.info(f"  ✓ ChatGPT returned {len(recommendations)} contrast recommendations")
 
         collection_movies = []

@@ -12,10 +12,73 @@ For each version you’ll find:
 
 ---
 
-## Version 5.2.0 (Current)
+## Version 6.0.0 (Current)
 
-- **Git ref**: `HEAD` (`f51c37e`, 2026-01-01)
-- **Diff base**: `edfda4b..HEAD`
+- **Git ref**: `HEAD` (2026-01-01)
+- **Diff base**: `f51c37e..HEAD`
+
+### Highlights (since v5.2.0)
+
+- **TV show support**: Complete TV Immaculate Taste collection pipeline with episode-based recommendations, Sonarr integration, and TV collection refresher.
+  - Episode title parsing (e.g., "Mayor of Kingstown - The End Begins" → "Mayor of Kingstown")
+  - TV recommendations using Google CSE, OpenAI, and TMDb (mirroring movie pipeline)
+  - TV points system (`recommendation_points_tv.json`) with decay model
+  - Sonarr auto-download support with granular episode monitoring
+  - TV collection refresher with Plex hub pinning
+- **Configurable OpenAI model**: OpenAI model name now configurable in `config.yaml` (default: `gpt-5.2-chat-latest`), with fallback to default if empty/null.
+- **Enhanced email health reports**: Intelligent error pattern analysis providing friendly explanations for PARTIAL status and actual error logs for failures.
+- **Improved logging**: All scripts now always log to `data/logs/` for consistent monitoring (removed conditional logging).
+- **Smarter email reports**: Only shows scripts with logs (except mandatory `tautulli_main`), uses latest log per script, cleaner email subject format (`Plex Server Health Report 🖥️ [emoji] [date]`).
+- **Configurable TV collection name**: `tv_collection_name` now configurable in `config.yaml` (default: "Inspired by your Immaculate Taste (TV)").
+
+### Upgrade notes
+
+- **TV support is opt-in**: Set `scripts_run.run_tv_immaculate_taste_collection: true` and `scripts_run.run_tv_collection_refresher: true` in `config.yaml` to enable.
+- **Sonarr auto-download**: Set `sonarr.auto_download_recommendations: true` to automatically add recommended shows to Sonarr (default: `false` for safety).
+- **OpenAI model**: You can now customize the OpenAI model in `config.yaml` under `openai.model` (default: `gpt-5.2-chat-latest`).
+- **TV collection name**: Customize the TV collection name in `config.yaml` under `plex.tv_collection_name` (default: "Inspired by your Immaculate Taste (TV)").
+- **Email reports**: Now automatically filter out scripts without logs and only show the latest log per script for cleaner reports.
+
+<details>
+<summary><strong>Files changed (f51c37e..HEAD)</strong></summary>
+
+```text
+M	config/config.yaml
+M	docs/README.md
+M	docs/VERSION_HISTORY.md
+M	src/scripts/run_sonarr_duplicate_cleaner.sh
+M	src/scripts/run_sonarr_monitor_confirm.sh
+M	src/scripts/run_sonarr_search_monitored.sh
+A	src/scripts/run_tv_immaculate_taste_collection.sh
+A	src/scripts/run_tv_immaculate_taste_refresher.sh
+M	src/tautulli_curated/helpers/change_of_taste_collection.py
+M	src/tautulli_curated/helpers/chatgpt_utils.py
+M	src/tautulli_curated/helpers/config_loader.py
+M	src/tautulli_curated/helpers/plex_collection_manager.py
+M	src/tautulli_curated/helpers/plex_search.py
+M	src/tautulli_curated/helpers/recommender.py
+M	src/tautulli_curated/helpers/sonarr_monitor_confirm.py
+M	src/tautulli_curated/helpers/sonarr_utils.py
+M	src/tautulli_curated/helpers/tmdb_client.py
+M	src/tautulli_curated/main.py
+A	src/tautulli_curated/helpers/pipeline_tv_immaculate.py
+A	src/tautulli_curated/helpers/plex_tv_helpers.py
+A	src/tautulli_curated/helpers/tmdb_tv_recommender.py
+A	src/tautulli_curated/helpers/tv_immaculate_taste_collection.py
+A	src/tautulli_curated/helpers/tv_immaculate_taste_refresher.py
+A	src/tautulli_curated/helpers/tv_recommender.py
+M	src/tautulli_curated/tools/weekly_health_report.py
+M	tautulli_immaculate_taste_collection.py
+```
+
+</details>
+
+---
+
+## Version 5.2.0
+
+- **Git ref**: `f51c37e` (2026-01-01)
+- **Diff base**: `edfda4b..f51c37e`
 
 ### Highlights (since v5.1.0)
 

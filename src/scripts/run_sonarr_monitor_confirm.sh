@@ -97,14 +97,10 @@ if [[ ! -f "$PROJECT_ROOT/config/config.yaml" ]]; then
     echo -e "${YELLOW}The script may fail if configuration is missing.${NC}"
 fi
 
-# Set up log file if requested
-LOG_PATH=""
-if [[ -n "$LOG_FILE" ]]; then
-    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    LOG_PATH="$PROJECT_ROOT/data/logs/sonarr_monitor_confirm_${TIMESTAMP}.log"
-    mkdir -p "$PROJECT_ROOT/data/logs"
-    echo "Log file: $LOG_PATH"
-fi
+# Always set up log file for monitoring
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_PATH="$PROJECT_ROOT/data/logs/sonarr_monitor_confirm_${TIMESTAMP}.log"
+mkdir -p "$PROJECT_ROOT/data/logs"
 
 # Function to strip ANSI color codes (handles both actual escape sequences and literal \033 strings)
 strip_colors() {
@@ -114,17 +110,13 @@ strip_colors() {
 # Function to output (both to terminal and log file if enabled)
 output() {
     echo "$@"
-    if [[ -n "$LOG_PATH" ]]; then
-        echo "$@" | strip_colors >> "$LOG_PATH"
-    fi
+    echo "$@" | strip_colors >> "$LOG_PATH"
 }
 
 # Function to output with color (both to terminal and log file if enabled)
 output_color() {
     echo -e "$@"
-    if [[ -n "$LOG_PATH" ]]; then
-        echo -e "$@" | strip_colors >> "$LOG_PATH"
-    fi
+    echo -e "$@" | strip_colors >> "$LOG_PATH"
 }
 
 # Build command with unbuffered output
@@ -206,9 +198,7 @@ output_color "Python: ${GREEN}$(python3 --version)${NC}"
 if [[ -n "$DRY_RUN" ]]; then
     output_color "Mode: ${YELLOW}DRY RUN${NC}"
 fi
-if [[ -n "$LOG_PATH" ]]; then
-    output_color "Log file: ${GREEN}$LOG_PATH${NC}"
-fi
+output_color "Log file: ${GREEN}$LOG_PATH${NC}"
 output ""
 
 # Run the Python script
@@ -216,14 +206,9 @@ output_color "${BLUE}Starting Sonarr monitor confirmation...${NC}"
 output ""
 
 EXIT_CODE=0
-if [[ -n "$LOG_PATH" ]]; then
-    set +o pipefail
-    $PYTHON_CMD -u "$TEMP_SCRIPT" 2>&1 | tee >(stdbuf -o0 -e0 sed -u -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g' -e 's/\\x1b\[[0-9;]*m//g' >> "$LOG_PATH")
-    EXIT_CODE=${PIPESTATUS[0]}
-else
-    $PYTHON_CMD -u "$TEMP_SCRIPT"
-    EXIT_CODE=$?
-fi
+set +o pipefail
+$PYTHON_CMD -u "$TEMP_SCRIPT" 2>&1 | tee >(stdbuf -o0 -e0 sed -u -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g' -e 's/\\x1b\[[0-9;]*m//g' >> "$LOG_PATH")
+EXIT_CODE=${PIPESTATUS[0]}
 
 # Clean up temp script
 rm -f "$TEMP_SCRIPT"
@@ -265,10 +250,8 @@ if [[ -z "$NO_PAUSE" ]]; then
     read -r
 fi
 
-if [[ -n "$LOG_PATH" ]]; then
-    output ""
-    output_color "Full log saved to: ${GREEN}$LOG_PATH${NC}"
-fi
+output ""
+output_color "Full log saved to: ${GREEN}$LOG_PATH${NC}"
 
 # Stable final line for monitoring
 output "FINAL_STATUS=${FINAL_STATUS} FINAL_EXIT_CODE=${EXIT_CODE}"
