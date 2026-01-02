@@ -31,6 +31,12 @@ type ArrTestResponse = {
   status: unknown;
 };
 
+type GoogleTestResponse = {
+  ok: boolean;
+  results: Array<{ title: string; snippet: string; link: string }>;
+  meta: unknown;
+};
+
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +60,14 @@ function App() {
   const [sonarrResult, setSonarrResult] = useState<ArrTestResponse | null>(null);
   const [sonarrError, setSonarrError] = useState<string | null>(null);
   const [sonarrLog, setSonarrLog] = useState<string[]>([]);
+
+  const [googleApiKey, setGoogleApiKey] = useState('');
+  const [googleCseId, setGoogleCseId] = useState('');
+  const [googleNumResults, setGoogleNumResults] = useState(15);
+  const [googleQuery, setGoogleQuery] = useState('imdb the matrix');
+  const [googleResult, setGoogleResult] = useState<GoogleTestResponse | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [googleLog, setGoogleLog] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -263,6 +277,48 @@ function App() {
     }
   }
 
+  async function onTestGoogle() {
+    setGoogleError(null);
+    setGoogleResult(null);
+    setGoogleLog(['Testing Google Programmable Search…']);
+
+    try {
+      if (!googleApiKey.trim()) {
+        setGoogleError('GOOGLE_API_KEY is required');
+        setGoogleLog((prev) => [...prev, 'Google test FAILED.']);
+        return;
+      }
+      if (!googleCseId.trim()) {
+        setGoogleError('GOOGLE_CSE_ID (cx) is required for Google Programmable Search');
+        setGoogleLog((prev) => [...prev, 'Google test FAILED.']);
+        return;
+      }
+
+      const res = await fetch('/api/google/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: googleApiKey,
+          cseId: googleCseId,
+          numResults: googleNumResults,
+          query: googleQuery,
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
+
+      const data = (await res.json()) as GoogleTestResponse;
+      setGoogleResult(data);
+      setGoogleLog((prev) => [...prev, 'Google test OK.']);
+    } catch (err) {
+      setGoogleError(err instanceof Error ? err.message : String(err));
+      setGoogleLog((prev) => [...prev, 'Google test FAILED.']);
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -420,6 +476,74 @@ function App() {
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {sonarrLog.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panelTitle">Google (Programmable Search)</div>
+
+        <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_API_KEY</div>
+            <input
+              value={googleApiKey}
+              onChange={(e) => setGoogleApiKey(e.target.value)}
+              placeholder="Paste Google API key"
+              type="password"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_CSE_ID (cx)</div>
+            <input
+              value={googleCseId}
+              onChange={(e) => setGoogleCseId(e.target.value)}
+              placeholder="Paste Programmable Search Engine ID (cx)"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <label style={{ flex: '0 0 180px' }}>
+              <div className="muted" style={{ marginBottom: 4 }}>num_results</div>
+              <input
+                value={String(googleNumResults)}
+                onChange={(e) => setGoogleNumResults(Number.parseInt(e.target.value || '0', 10))}
+                type="number"
+                min={0}
+                max={50}
+                style={{ width: '100%', padding: 10, borderRadius: 8 }}
+              />
+            </label>
+            <label style={{ flex: '1 1 320px' }}>
+              <div className="muted" style={{ marginBottom: 4 }}>test query</div>
+              <input
+                value={googleQuery}
+                onChange={(e) => setGoogleQuery(e.target.value)}
+                placeholder="e.g. imdb the matrix"
+                style={{ width: '100%', padding: 10, borderRadius: 8 }}
+              />
+            </label>
+          </div>
+
+          <div>
+            <button onClick={onTestGoogle}>Test Google</button>
+          </div>
+        </div>
+
+        {googleError ? <div className="error" style={{ marginTop: 12 }}>Error: {googleError}</div> : null}
+        {googleResult ? (
+          <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(googleResult, null, 2)}</pre>
+        ) : null}
+
+        {googleLog.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {googleLog.map((line, idx) => (
                 <li key={idx}>{line}</li>
               ))}
             </ul>
