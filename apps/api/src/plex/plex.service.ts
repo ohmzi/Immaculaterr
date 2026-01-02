@@ -30,11 +30,19 @@ export class PlexService {
 
     const data = (await res.json()) as PlexPin;
     this.logger.log(`Created Plex PIN id=${data.id}`);
+
+    // Plex OAuth-style page (NOT plex.tv/link which is the 4-character “Link Account” flow).
+    const authUrl = `https://app.plex.tv/auth#?clientID=${encodeURIComponent(
+      this.clientIdentifier,
+    )}&code=${encodeURIComponent(data.code)}&context%5Bdevice%5D%5Bproduct%5D=${encodeURIComponent(
+      'Tautulli Curated Plex',
+    )}`;
+
     return {
       id: data.id,
       code: data.code,
       expiresAt: data.expiresAt ?? null,
-      linkUrl: `https://plex.tv/link?code=${encodeURIComponent(data.code)}`,
+      authUrl,
       clientIdentifier: this.clientIdentifier,
     };
   }

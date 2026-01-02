@@ -10,7 +10,7 @@ type PlexCreatePinResponse = {
   id: number;
   code: string;
   expiresAt: string | null;
-  linkUrl: string;
+  authUrl: string;
   clientIdentifier: string;
 };
 
@@ -143,11 +143,11 @@ function App() {
       setPlexPin(data);
       setPlexLog((prev) => [
         ...prev,
-        `Plex PIN created (id=${data.id}). Opening Plex link page…`,
+        `Plex PIN created (id=${data.id}). Opening Plex authorization page…`,
       ]);
 
       // User-triggered button click -> popup should generally be allowed.
-      window.open(data.linkUrl, '_blank', 'noopener,noreferrer');
+      window.open(data.authUrl, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setPlexError(err instanceof Error ? err.message : String(err));
       setIsConnectingPlex(false);
@@ -179,9 +179,9 @@ function App() {
           <button onClick={onConnectPlex} disabled={isConnectingPlex}>
             {isConnectingPlex ? 'Connecting…' : 'Connect Plex'}
           </button>
-          {plexPin?.linkUrl ? (
-            <a href={plexPin.linkUrl} target="_blank" rel="noreferrer">
-              Open Plex link page
+          {plexPin?.authUrl ? (
+            <a href={plexPin.authUrl} target="_blank" rel="noreferrer">
+              Open Plex authorization page
             </a>
           ) : null}
         </div>
