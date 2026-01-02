@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    /* Light theme - Figma inspired */
+    /* Light theme - Figma Growup style */
     --background: 0 0% 98%;
     --foreground: 0 0% 9%;
 
@@ -16,7 +16,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
 
-    /* Yellow accent - Figma Growup style */
+    /* Yellow accent */
     --primary: 48 96% 53%;
     --primary-foreground: 0 0% 9%;
 
@@ -40,7 +40,7 @@
   }
 
   .dark {
-    /* Dark theme - Figma glassmorphic dark */
+    /* Dark theme */
     --background: 0 0% 7%;
     --foreground: 0 0% 98%;
 
@@ -50,7 +50,6 @@
     --popover: 0 0% 10%;
     --popover-foreground: 0 0% 98%;
 
-    /* Yellow accent */
     --primary: 48 96% 53%;
     --primary-foreground: 0 0% 9%;
 
@@ -91,222 +90,6 @@
 }
 
 /* ============================================
-   FIGMA DESIGN SYSTEM - GLASSMORPHISM
-   ============================================ */
-
-@layer utilities {
-  /* Curved floating nav - exact Figma style */
-  .nav-curved {
-    background: rgba(0, 0, 0, 0.40);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border-radius: 3rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
-    clip-path: ellipse(90% 100% at 50% 0%);
-  }
-
-  /* Nav button hover - glassy effect */
-  .nav-btn {
-    position: relative;
-    padding: 0.625rem 1.25rem;
-    color: rgba(255, 255, 255, 0.9);
-    border-radius: 1rem;
-    transition: all 0.3s ease;
-    overflow: hidden;
-  }
-
-  .nav-btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 1rem;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  .nav-btn:hover::before {
-    opacity: 1;
-  }
-
-  .nav-btn:hover {
-    color: white;
-  }
-
-  /* Glass card - dark variant */
-  .glass-dark {
-    background: linear-gradient(135deg, rgba(17, 17, 17, 0.9) 0%, rgba(10, 10, 10, 0.95) 100%);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 1.5rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  }
-
-  /* Glass card - light variant */
-  .glass-light {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 1rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  }
-
-  /* Yellow gradient background - hero style */
-  .bg-yellow-gradient {
-    background: linear-gradient(135deg, 
-      rgba(250, 204, 21, 0.9) 0%, 
-      rgba(253, 224, 71, 0.8) 50%, 
-      rgba(74, 222, 128, 0.7) 100%
-    );
-  }
-
-  /* Primary button - Figma style */
-  .btn-primary {
-    padding: 1rem 2rem;
-    background: hsl(var(--foreground));
-    color: hsl(var(--background));
-    border-radius: 9999px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-  }
-
-  .btn-primary:hover {
-    background: hsl(var(--foreground) / 0.9);
-    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.3);
-    transform: translateY(-2px);
-  }
-
-  /* Secondary button - outline style */
-  .btn-secondary {
-    padding: 1rem 2rem;
-    background: transparent;
-    border: 2px solid hsl(var(--foreground));
-    color: hsl(var(--foreground));
-    border-radius: 9999px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-  }
-
-  .btn-secondary:hover {
-    background: hsl(var(--foreground));
-    color: hsl(var(--background));
-  }
-
-  /* Yellow pill badge */
-  .badge-yellow {
-    background: hsl(48 96% 53%);
-    color: hsl(0 0% 9%);
-    padding: 1rem 2rem;
-    border-radius: 9999px;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  /* Credit card styling */
-  .credit-card {
-    background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
-    border-radius: 1.5rem;
-    padding: 2rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  /* Quick access card */
-  .quick-card {
-    position: relative;
-    overflow: hidden;
-    border-radius: 1.25rem;
-    padding: 1.25rem;
-    background: hsl(var(--card) / 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid hsl(var(--border) / 0.5);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .quick-card:hover {
-    background: hsl(var(--card) / 0.9);
-    border-color: hsl(var(--primary) / 0.4);
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.3);
-  }
-
-  /* Stat card */
-  .stat-card {
-    position: relative;
-    overflow: hidden;
-    border-radius: 1.5rem;
-    padding: 1.5rem;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    transition: all 0.3s ease;
-  }
-
-  /* Mobile bottom nav - floating pill */
-  .nav-pill-mobile {
-    position: fixed;
-    bottom: 1.5rem;
-    left: 1rem;
-    right: 1rem;
-    z-index: 50;
-    padding: 0.5rem;
-    background: rgba(17, 17, 17, 0.95);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 2rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  }
-
-  /* Active nav item */
-  .nav-item-active {
-    background: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-    border-radius: 1.25rem;
-    box-shadow: 0 4px 15px hsl(var(--primary) / 0.4);
-  }
-
-  /* Icon container */
-  .icon-container {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.75rem;
-    padding: 0.75rem;
-    transition: all 0.3s ease;
-  }
-
-  /* Section title */
-  .section-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    color: hsl(var(--muted-foreground));
-    text-transform: uppercase;
-  }
-
-  /* Logo partners strip */
-  .partners-strip {
-    background: hsl(var(--foreground));
-    padding: 2rem 0;
-  }
-
-  .partners-strip span {
-    color: hsl(var(--muted-foreground));
-    font-weight: 600;
-    font-size: 1.25rem;
-    opacity: 0.4;
-  }
-}
-
-/* ============================================
    SCROLLBAR
    ============================================ */
 
@@ -328,20 +111,13 @@
 }
 
 /* ============================================
-   RESPONSIVE & ACCESSIBILITY
+   RESPONSIVE
    ============================================ */
 
-@media (max-width: 640px) {
-  .quick-card:hover {
-    transform: translateY(-2px);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .quick-card,
-  .btn-primary,
-  .btn-secondary,
-  .nav-btn {
-    transition-duration: 0.01ms;
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

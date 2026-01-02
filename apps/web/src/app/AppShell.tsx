@@ -1,17 +1,16 @@
 import { useMemo, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Navigation, MobileNavigation } from '@/components/Navigation';
-import { getMe, logout, resetDev } from '@/api/auth';
+import { getMe, logout } from '@/api/auth';
 import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
-import { getInitialTheme, setTheme, type Theme } from '@/app/theme';
 
 export function AppShell() {
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<Theme>(() => getInitialTheme());
 
   const meQuery = useQuery({
     queryKey: ['auth', 'me'],
@@ -45,32 +44,20 @@ export function AppShell() {
     },
   });
 
-  const toggleTheme = () => {
-    const next: Theme = currentTheme === 'dark' ? 'light' : 'dark';
-    setCurrentTheme(next);
-    setTheme(next);
-  };
-
-  const handleLogout = () => {
-    logoutMutation.mutate();
-  };
-
-  const username = meQuery.data?.user?.username ?? 'User';
+  // Check if we're on the home page (show Figma design nav) or other pages
+  const isHomePage = location.pathname === '/';
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Desktop Navigation - Curved floating style */}
-      <div className="hidden lg:block">
-        <Navigation
-          theme={currentTheme}
-          onToggleTheme={toggleTheme}
-          onLogout={handleLogout}
-          username={username}
-        />
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Desktop Navigation - Only show on home, other pages have their own header */}
+      {isHomePage && (
+        <div className="hidden lg:block">
+          <Navigation />
+        </div>
+      )}
 
       {/* Main Content */}
-      <main className="min-h-screen pb-24 lg:pb-0">
+      <main className={isHomePage ? '' : 'pt-0 pb-24 lg:pb-0'}>
         <Outlet />
       </main>
 
