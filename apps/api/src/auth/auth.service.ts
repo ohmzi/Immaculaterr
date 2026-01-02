@@ -1,5 +1,11 @@
-import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { randomBytes, createHash } from 'node:crypto';
+import type { Request } from 'express';
 import argon2 from 'argon2';
 import { PrismaService } from '../db/prisma.service';
 import type { AuthUser } from './auth.types';
@@ -20,6 +26,14 @@ export class AuthService {
     return SESSION_COOKIE;
   }
 
+  readSessionIdFromRequest(req: Request): string | null {
+    const cookieName = this.getSessionCookieName();
+    const cookies = (req as unknown as { cookies?: unknown }).cookies;
+    if (!cookies || typeof cookies !== 'object') return null;
+    const v = (cookies as Record<string, unknown>)[cookieName];
+    return typeof v === 'string' && v.trim() ? v : null;
+  }
+
   async hasAnyUser(): Promise<boolean> {
     const count = await this.prisma.user.count();
     return count > 0;
@@ -29,12 +43,15 @@ export class AuthService {
     const { username, password } = params;
     const normalized = username.trim();
     if (!normalized) throw new BadRequestException('username is required');
-    if (normalized.length < 3) throw new BadRequestException('username must be at least 3 chars');
+    if (normalized.length < 3)
+      throw new BadRequestException('username must be at least 3 chars');
     if (!password || password.length < 10) {
       throw new BadRequestException('password must be at least 10 chars');
     }
 
-    const existing = await this.prisma.user.findUnique({ where: { username: normalized } });
+    const existing = await this.prisma.user.findUnique({
+      where: { username: normalized },
+    });
     if (existing) throw new BadRequestException('username already exists');
 
     const any = await this.hasAnyUser();
@@ -57,7 +74,10 @@ export class AuthService {
 
     // Initialize empty settings/secrets rows (per-user)
     await this.prisma.userSettings.create({
-      data: { userId: user.id, value: JSON.stringify({ onboarding: { completed: false } }) },
+      data: {
+        userId: user.id,
+        value: JSON.stringify({ onboarding: { completed: false } }),
+      },
     });
     await this.prisma.userSecrets.create({
       data: { userId: user.id, value: '' },
@@ -70,9 +90,12 @@ export class AuthService {
   async login(params: { username: string; password: string }) {
     const { username, password } = params;
     const normalized = username.trim();
-    if (!normalized || !password) throw new UnauthorizedException('Invalid credentials');
+    if (!normalized || !password)
+      throw new UnauthorizedException('Invalid credentials');
 
-    const user = await this.prisma.user.findUnique({ where: { username: normalized } });
+    const user = await this.prisma.user.findUnique({
+      where: { username: normalized },
+    });
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     const ok = await argon2.verify(user.passwordHash, password);
@@ -83,12 +106,17 @@ export class AuthService {
       data: { id: sha256Hex(sessionId), userId: user.id },
     });
 
-    return { sessionId, user: { id: user.id, username: user.username } satisfies AuthUser };
+    return {
+      sessionId,
+      user: { id: user.id, username: user.username } satisfies AuthUser,
+    };
   }
 
   async logout(sessionId: string) {
     const hashed = sha256Hex(sessionId);
-    await this.prisma.session.delete({ where: { id: hashed } }).catch(() => undefined);
+    await this.prisma.session
+      .delete({ where: { id: hashed } })
+      .catch(() => undefined);
   }
 
   async getUserForSession(sessionId: string): Promise<AuthUser | null> {
@@ -100,7 +128,9 @@ export class AuthService {
     if (!session) return null;
 
     // Touch session
-    await this.prisma.session.update({ where: { id: hashed }, data: {} }).catch(() => undefined);
+    await this.prisma.session
+      .update({ where: { id: hashed }, data: {} })
+      .catch(() => undefined);
 
     return session.user;
   }
@@ -135,5 +165,3 @@ export class AuthService {
     return randomBytes(32).toString('base64url');
   }
 }
-
-

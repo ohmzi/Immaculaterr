@@ -6,7 +6,9 @@ export type SonarrSeries = Record<string, unknown> & {
   title?: string;
   tvdbId?: number;
   monitored?: boolean;
-  seasons?: Array<Record<string, unknown> & { seasonNumber?: number; monitored?: boolean }>;
+  seasons?: Array<
+    Record<string, unknown> & { seasonNumber?: number; monitored?: boolean }
+  >;
 };
 
 export type SonarrEpisode = Record<string, unknown> & {
@@ -58,7 +60,10 @@ export class SonarrService {
     }
   }
 
-  async listSeries(params: { baseUrl: string; apiKey: string }): Promise<SonarrSeries[]> {
+  async listSeries(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<SonarrSeries[]> {
     const { baseUrl, apiKey } = params;
     const url = this.buildApiUrl(baseUrl, 'api/v3/series');
 
@@ -94,7 +99,10 @@ export class SonarrService {
     }
   }
 
-  async listMonitoredSeries(params: { baseUrl: string; apiKey: string }): Promise<SonarrSeries[]> {
+  async listMonitoredSeries(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<SonarrSeries[]> {
     const series = await this.listSeries(params);
     return series.filter((s) => Boolean(s && s.monitored));
   }
@@ -105,7 +113,10 @@ export class SonarrService {
     seriesId: number;
   }): Promise<SonarrEpisode[]> {
     const { baseUrl, apiKey, seriesId } = params;
-    const url = this.buildApiUrl(baseUrl, `api/v3/episode?seriesId=${seriesId}`);
+    const url = this.buildApiUrl(
+      baseUrl,
+      `api/v3/episode?seriesId=${seriesId}`,
+    );
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
@@ -182,7 +193,11 @@ export class SonarrService {
     }
   }
 
-  async updateSeries(params: { baseUrl: string; apiKey: string; series: SonarrSeries }) {
+  async updateSeries(params: {
+    baseUrl: string;
+    apiKey: string;
+    series: SonarrSeries;
+  }) {
     const { baseUrl, apiKey, series } = params;
     const url = this.buildApiUrl(baseUrl, `api/v3/series/${series.id}`);
 
@@ -219,7 +234,10 @@ export class SonarrService {
     }
   }
 
-  async searchMonitoredEpisodes(params: { baseUrl: string; apiKey: string }): Promise<boolean> {
+  async searchMonitoredEpisodes(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<boolean> {
     const { baseUrl, apiKey } = params;
     const url = this.buildApiUrl(baseUrl, 'api/v3/command');
 
@@ -265,5 +283,3 @@ export class SonarrService {
     return new URL(path, normalized).toString();
   }
 }
-
-

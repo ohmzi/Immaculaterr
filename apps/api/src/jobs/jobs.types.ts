@@ -22,7 +22,11 @@ export type JobContext = {
   userId: string;
   dryRun: boolean;
   trigger: JobRunTrigger;
-  log: (level: JobLogLevel, message: string, context?: JsonObject) => Promise<void>;
+  log: (
+    level: JobLogLevel,
+    message: string,
+    context?: JsonObject,
+  ) => Promise<void>;
   debug: (message: string, context?: JsonObject) => Promise<void>;
   info: (message: string, context?: JsonObject) => Promise<void>;
   warn: (message: string, context?: JsonObject) => Promise<void>;
@@ -36,5 +40,3 @@ export type JobDefinition = {
   defaultScheduleCron?: string;
   run: (ctx: JobContext) => Promise<JobRunResult>;
 };
-
-

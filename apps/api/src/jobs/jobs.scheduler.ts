@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import { PrismaService } from '../db/prisma.service';
@@ -39,7 +44,6 @@ export class JobsScheduler implements OnModuleInit {
 
     // Validate cron by constructing a job (won't start)
     try {
-      // eslint-disable-next-line no-new
       new CronJob(cron, () => undefined, null, false, timezone ?? undefined);
     } catch (err) {
       throw new BadRequestException(
@@ -79,7 +83,9 @@ export class JobsScheduler implements OnModuleInit {
               });
               const userId = user?.id;
               if (!userId) {
-                this.logger.warn(`Skipping scheduled run; no admin user exists jobId=${jobId}`);
+                this.logger.warn(
+                  `Skipping scheduled run; no admin user exists jobId=${jobId}`,
+                );
                 return;
               }
               await this.jobsService.runJob({
@@ -101,7 +107,9 @@ export class JobsScheduler implements OnModuleInit {
 
         this.schedulerRegistry.addCronJob(name, job);
         job.start();
-        this.logger.log(`Scheduled ${jobId} cron=${cron} tz=${timezone ?? 'local'}`);
+        this.logger.log(
+          `Scheduled ${jobId} cron=${cron} tz=${timezone ?? 'local'}`,
+        );
       } catch (err) {
         this.logger.error(
           `Failed to schedule jobId=${jobId} cron=${cron}: ${(err as Error)?.message ?? String(err)}`,
@@ -140,5 +148,3 @@ export class JobsScheduler implements OnModuleInit {
     this.logger.log(`Seeded ${toCreate.length} default schedules (disabled).`);
   }
 }
-
-

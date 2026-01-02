@@ -8,5 +8,3 @@ import { SonarrService } from './sonarr.service';
   exports: [SonarrService],
 })
 export class SonarrModule {}
-
-

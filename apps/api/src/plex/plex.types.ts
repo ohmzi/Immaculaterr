@@ -5,5 +5,3 @@ export type PlexPin = {
   expiresIn?: number;
   authToken?: string | null;
 };
-
-

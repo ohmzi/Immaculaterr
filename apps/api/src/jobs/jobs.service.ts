@@ -9,11 +9,37 @@ import { CronTime } from 'cron';
 import { PrismaService } from '../db/prisma.service';
 import { findJobDefinition, JOB_DEFINITIONS } from './job-registry';
 import { JobsHandlers } from './jobs.handlers';
-import type { JobContext, JobLogLevel, JobRunTrigger, JsonObject } from './jobs.types';
+import type {
+  JobContext,
+  JobLogLevel,
+  JobRunTrigger,
+  JsonObject,
+} from './jobs.types';
 
 function errToMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function toIsoString(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return value.trim() ? value.trim() : null;
+  if (!value || typeof value !== 'object') return null;
+
+  const rec = value as Record<string, unknown>;
+  const toISO = rec['toISO'];
+  if (typeof toISO === 'function') {
+    const out = (toISO as () => unknown).call(value);
+    if (typeof out === 'string') return out;
+  }
+
+  const toDate = rec['toDate'];
+  if (typeof toDate === 'function') {
+    const out = (toDate as () => unknown).call(value);
+    if (out instanceof Date) return out.toISOString();
+  }
+
+  return null;
 }
 
 @Injectable()
@@ -44,20 +70,17 @@ export class JobsService {
       schedule: (() => {
         const s = scheduleMap.get(j.id) ?? null;
         if (!s) return null;
-        const nextRunAt =
-          s.enabled
-            ? (() => {
-                try {
-                  const ct = new CronTime(s.cron, s.timezone ?? undefined);
-                  const dt = ct.sendAt();
-                  return typeof (dt as any)?.toISO === 'function'
-                    ? (dt as any).toISO()
-                    : String(dt);
-                } catch {
-                  return null;
-                }
-              })()
-            : null;
+        const nextRunAt = s.enabled
+          ? (() => {
+              try {
+                const ct = new CronTime(s.cron, s.timezone ?? undefined);
+                const dt: unknown = ct.sendAt();
+                return toIsoString(dt);
+              } catch {
+                return null;
+              }
+            })()
+          : null;
         return { ...s, nextRunAt };
       })(),
     }));
@@ -132,7 +155,10 @@ export class JobsService {
     const jobId = ctx.jobId;
 
     try {
-      await ctx.info('run: started', { trigger: ctx.trigger, dryRun: ctx.dryRun });
+      await ctx.info('run: started', {
+        trigger: ctx.trigger,
+        dryRun: ctx.dryRun,
+      });
       const result = await this.handlers.run(jobId, ctx);
       await ctx.info('run: finished');
 
@@ -161,7 +187,12 @@ export class JobsService {
     }
   }
 
-  async listRuns(params: { userId: string; jobId?: string; take: number; skip: number }) {
+  async listRuns(params: {
+    userId: string;
+    jobId?: string;
+    take: number;
+    skip: number;
+  }) {
     const { userId, jobId, take, skip } = params;
     return await this.prisma.jobRun.findMany({
       where: {
@@ -182,7 +213,12 @@ export class JobsService {
     return run;
   }
 
-  async getRunLogs(params: { userId: string; runId: string; take: number; skip: number }) {
+  async getRunLogs(params: {
+    userId: string;
+    runId: string;
+    take: number;
+    skip: number;
+  }) {
     const { userId, runId, take, skip } = params;
     await this.getRun({ userId, runId });
     return await this.prisma.jobLogLine.findMany({
@@ -193,5 +229,3 @@ export class JobsService {
     });
   }
 }
-
-

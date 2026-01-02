@@ -36,9 +36,11 @@ export class OpenAiService {
       }
 
       const data = (await res.json()) as OpenAiModelsResponse;
-      const models = Array.isArray(data.data) ? (data.data as Array<Record<string, unknown>>) : [];
+      const models = Array.isArray(data.data)
+        ? (data.data as Array<Record<string, unknown>>)
+        : [];
       const ids = models
-        .map((m) => (typeof m['id'] === 'string' ? (m['id'] as string) : null))
+        .map((m) => (typeof m['id'] === 'string' ? m['id'] : null))
         .filter((x): x is string => Boolean(x));
 
       return {
@@ -80,5 +82,3 @@ export class OpenAiService {
     }
   }
 }
-
-

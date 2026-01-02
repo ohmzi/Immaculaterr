@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
+import type { AuthUser } from './auth.types';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
 @Injectable()
@@ -23,10 +24,11 @@ export class AuthGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
-    const req = context.switchToHttp().getRequest<Request>();
-    const cookieName = this.authService.getSessionCookieName();
-    const sid = (req as any).cookies?.[cookieName];
-    if (typeof sid !== 'string' || !sid.trim()) {
+    const req = context
+      .switchToHttp()
+      .getRequest<Request & { user?: AuthUser }>();
+    const sid = this.authService.readSessionIdFromRequest(req);
+    if (!sid) {
       throw new UnauthorizedException('Not logged in');
     }
 
@@ -35,9 +37,7 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Session expired');
     }
 
-    (req as any).user = user;
+    req.user = user;
     return true;
   }
 }
-
-

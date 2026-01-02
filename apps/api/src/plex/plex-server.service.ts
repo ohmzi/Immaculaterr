@@ -16,6 +16,16 @@ type PlexMetadata = Record<string, unknown> & {
   type?: string;
 };
 
+type PlexXml = {
+  MediaContainer?: Record<string, unknown>;
+};
+
+type PlexDirectory = Record<string, unknown> & {
+  key?: unknown;
+  title?: unknown;
+  type?: unknown;
+};
+
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '',
@@ -26,6 +36,22 @@ const parser = new XMLParser({
 function asArray<T>(value: T | T[] | undefined | null): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
+}
+
+function asUnknownArray(value: unknown): unknown[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function toStringSafe(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
+  return '';
+}
+
+function asPlexXml(value: unknown): PlexXml {
+  return value && typeof value === 'object' ? (value as PlexXml) : {};
 }
 
 function normalizeBaseUrl(baseUrl: string) {
@@ -60,13 +86,16 @@ function extractIdFromGuid(id: string, kind: 'tmdb' | 'tvdb'): number | null {
   return null;
 }
 
-function extractIdsFromGuids(guidNode: unknown, kind: 'tmdb' | 'tvdb'): number[] {
-  const guids = asArray(guidNode as any);
+function extractIdsFromGuids(
+  guidNode: unknown,
+  kind: 'tmdb' | 'tvdb',
+): number[] {
+  const guids = asUnknownArray(guidNode);
   const ids: number[] = [];
 
   for (const g of guids) {
     if (!g || typeof g !== 'object') continue;
-    const id = (g as any).id;
+    const id = (g as Record<string, unknown>)['id'];
     if (typeof id !== 'string') continue;
     const parsed = extractIdFromGuid(id, kind);
     if (parsed) ids.push(parsed);
@@ -79,13 +108,20 @@ function extractIdsFromGuids(guidNode: unknown, kind: 'tmdb' | 'tvdb'): number[]
 export class PlexServerService {
   private readonly logger = new Logger(PlexServerService.name);
 
-  async getMachineIdentifier(params: { baseUrl: string; token: string }): Promise<string> {
+  async getMachineIdentifier(params: {
+    baseUrl: string;
+    token: string;
+  }): Promise<string> {
     const { baseUrl, token } = params;
     const url = new URL('identity', normalizeBaseUrl(baseUrl)).toString();
-    const xml = await this.fetchXml(url, token, 10000);
-    const machineId = String((xml as any)?.MediaContainer?.machineIdentifier ?? '').trim();
+    const xml = asPlexXml(await this.fetchXml(url, token, 10000));
+    const machineId = toStringSafe(
+      xml.MediaContainer?.machineIdentifier,
+    ).trim();
     if (!machineId) {
-      throw new BadGatewayException('Failed to read Plex machineIdentifier from /identity');
+      throw new BadGatewayException(
+        'Failed to read Plex machineIdentifier from /identity',
+      );
     }
     return machineId;
   }
@@ -105,15 +141,19 @@ export class PlexServerService {
       normalizeBaseUrl(baseUrl),
     ).toString();
 
-    const xml = await this.fetchXml(url, token, 20000);
-    const container = (xml as any)?.MediaContainer;
-    const items = asArray((container?.Metadata ?? []) as any) as PlexMetadata[];
+    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
+    const container = xml.MediaContainer;
+    const items = asArray(
+      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
+    );
 
     if (!items.length) return null;
 
     // Prefer exact title match, fall back to first result.
     const exact = items.find(
-      (m) => typeof m.title === 'string' && m.title.toLowerCase() === q.toLowerCase(),
+      (m) =>
+        typeof m.title === 'string' &&
+        m.title.toLowerCase() === q.toLowerCase(),
     );
     const best = exact ?? items[0];
     const ratingKey = best.ratingKey ? String(best.ratingKey) : '';
@@ -122,19 +162,27 @@ export class PlexServerService {
     return { ratingKey, title: bestTitle };
   }
 
-  async getSections(params: { baseUrl: string; token: string }): Promise<PlexSection[]> {
+  async getSections(params: {
+    baseUrl: string;
+    token: string;
+  }): Promise<PlexSection[]> {
     const { baseUrl, token } = params;
-    const url = new URL('library/sections', normalizeBaseUrl(baseUrl)).toString();
-    const xml = await this.fetchXml(url, token, 20000);
+    const url = new URL(
+      'library/sections',
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
 
-    const container = (xml as any)?.MediaContainer;
-    const dirs = asArray((container?.Directory ?? []) as any);
+    const container = xml.MediaContainer;
+    const dirs = asArray(
+      (container?.Directory ?? []) as PlexDirectory | PlexDirectory[],
+    );
 
     return dirs
       .map((d) => ({
-        key: String((d as any).key ?? ''),
-        title: String((d as any).title ?? ''),
-        type: typeof (d as any).type === 'string' ? (d as any).type : undefined,
+        key: toStringSafe(d.key).trim(),
+        title: toStringSafe(d.title).trim(),
+        type: typeof d.type === 'string' ? d.type.trim() : undefined,
       }))
       .filter((d) => d.key && d.title);
   }
@@ -146,7 +194,9 @@ export class PlexServerService {
   }): Promise<string> {
     const { baseUrl, token, title } = params;
     const sections = await this.getSections({ baseUrl, token });
-    const found = sections.find((s) => s.title.toLowerCase() === title.toLowerCase());
+    const found = sections.find(
+      (s) => s.title.toLowerCase() === title.toLowerCase(),
+    );
     if (!found) {
       throw new BadGatewayException(`Plex library section not found: ${title}`);
     }
@@ -165,11 +215,16 @@ export class PlexServerService {
       title: movieLibraryName,
     });
 
-    const url = new URL(`library/sections/${sectionKey}/all`, normalizeBaseUrl(baseUrl)).toString();
-    const xml = await this.fetchXml(url, token, 60000);
+    const url = new URL(
+      `library/sections/${sectionKey}/all`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
-    const container = (xml as any)?.MediaContainer;
-    const items = asArray((container?.Metadata ?? []) as any) as PlexMetadata[];
+    const container = xml.MediaContainer;
+    const items = asArray(
+      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
+    );
 
     const set = new Set<number>();
     for (const item of items) {
@@ -177,7 +232,9 @@ export class PlexServerService {
       for (const id of ids) set.add(id);
     }
 
-    this.logger.log(`Plex TMDB set size=${set.size} section=${movieLibraryName}`);
+    this.logger.log(
+      `Plex TMDB set size=${set.size} section=${movieLibraryName}`,
+    );
     return set;
   }
 
@@ -193,11 +250,16 @@ export class PlexServerService {
       title: tvLibraryName,
     });
 
-    const url = new URL(`library/sections/${sectionKey}/all`, normalizeBaseUrl(baseUrl)).toString();
-    const xml = await this.fetchXml(url, token, 60000);
+    const url = new URL(
+      `library/sections/${sectionKey}/all`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
-    const container = (xml as any)?.MediaContainer;
-    const items = asArray((container?.Metadata ?? []) as any) as PlexMetadata[];
+    const container = xml.MediaContainer;
+    const items = asArray(
+      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
+    );
 
     const map = new Map<number, string>();
     for (const item of items) {
@@ -224,10 +286,12 @@ export class PlexServerService {
       `library/metadata/${encodeURIComponent(showRatingKey)}/allLeaves`,
       normalizeBaseUrl(baseUrl),
     ).toString();
-    const xml = await this.fetchXml(url, token, 60000);
+    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
-    const container = (xml as any)?.MediaContainer;
-    const items = asArray((container?.Metadata ?? []) as any) as PlexMetadata[];
+    const container = xml.MediaContainer;
+    const items = asArray(
+      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
+    );
 
     const set = new Set<string>();
     for (const item of items) {
@@ -253,9 +317,11 @@ export class PlexServerService {
       normalizeBaseUrl(baseUrl),
     ).toString();
 
-    const xml = await this.fetchXml(url, token, 20000);
-    const container = (xml as any)?.MediaContainer;
-    const items = asArray((container?.Metadata ?? []) as any) as PlexMetadata[];
+    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
+    const container = xml.MediaContainer;
+    const items = asArray(
+      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
+    );
 
     for (const item of items) {
       const title = typeof item.title === 'string' ? item.title : '';
@@ -277,10 +343,12 @@ export class PlexServerService {
       `library/metadata/${encodeURIComponent(collectionRatingKey)}/children`,
       normalizeBaseUrl(baseUrl),
     ).toString();
-    const xml = await this.fetchXml(url, token, 60000);
+    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
-    const container = (xml as any)?.MediaContainer;
-    const items = asArray((container?.Metadata ?? []) as any) as PlexMetadata[];
+    const container = xml.MediaContainer;
+    const items = asArray(
+      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
+    );
     return items
       .map((m) => ({
         ratingKey: m.ratingKey ? String(m.ratingKey) : '',
@@ -296,7 +364,8 @@ export class PlexServerService {
     itemRatingKey: string;
     after?: string | null;
   }) {
-    const { baseUrl, token, collectionRatingKey, itemRatingKey, after } = params;
+    const { baseUrl, token, collectionRatingKey, itemRatingKey, after } =
+      params;
     const path = after
       ? `library/collections/${collectionRatingKey}/items/${itemRatingKey}/move?after=${encodeURIComponent(
           after,
@@ -354,11 +423,17 @@ export class PlexServerService {
     q.set('sectionId', librarySectionKey);
 
     if (initialItemRatingKey) {
-      const uri = this.buildMetadataUri(machineIdentifier, initialItemRatingKey);
+      const uri = this.buildMetadataUri(
+        machineIdentifier,
+        initialItemRatingKey,
+      );
       q.set('uri', uri);
     }
 
-    const url = new URL(`library/collections?${q.toString()}`, normalizeBaseUrl(baseUrl)).toString();
+    const url = new URL(
+      `library/collections?${q.toString()}`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
     await this.fetchNoContent(url, token, 'POST', 30000);
   }
 
@@ -369,7 +444,13 @@ export class PlexServerService {
     collectionRatingKey: string;
     itemRatingKey: string;
   }) {
-    const { baseUrl, token, machineIdentifier, collectionRatingKey, itemRatingKey } = params;
+    const {
+      baseUrl,
+      token,
+      machineIdentifier,
+      collectionRatingKey,
+      itemRatingKey,
+    } = params;
     const uri = this.buildMetadataUri(machineIdentifier, itemRatingKey);
     const url = new URL(
       `library/collections/${encodeURIComponent(collectionRatingKey)}/items?uri=${encodeURIComponent(
@@ -439,7 +520,11 @@ export class PlexServerService {
     }
   }
 
-  private async fetchXml(url: string, token: string, timeoutMs: number) {
+  private async fetchXml(
+    url: string,
+    token: string,
+    timeoutMs: number,
+  ): Promise<unknown> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -461,7 +546,8 @@ export class PlexServerService {
       }
 
       const text = await res.text();
-      return parser.parse(text);
+      const parsed: unknown = parser.parse(text) as unknown;
+      return parsed;
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
@@ -472,5 +558,3 @@ export class PlexServerService {
     }
   }
 }
-
-

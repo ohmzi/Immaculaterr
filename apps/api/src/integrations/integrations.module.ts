@@ -23,5 +23,3 @@ import { IntegrationsController } from './integrations.controller';
   controllers: [IntegrationsController],
 })
 export class IntegrationsModule {}
-
-

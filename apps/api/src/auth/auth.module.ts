@@ -11,5 +11,3 @@ import { AuthService } from './auth.service';
   exports: [AuthService, AuthGuard],
 })
 export class AuthModule {}
-
-

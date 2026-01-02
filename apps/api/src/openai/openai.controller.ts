@@ -16,5 +16,3 @@ export class OpenAiController {
     return this.openAiService.testConnection({ apiKey });
   }
 }
-
-

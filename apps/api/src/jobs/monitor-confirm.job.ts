@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from '../plex/plex-server.service';
-import { RadarrService, type RadarrMovie } from '../radarr/radarr.service';
+import { RadarrService } from '../radarr/radarr.service';
 import {
   SonarrService,
   type SonarrEpisode,
@@ -37,7 +37,9 @@ function requireString(obj: Record<string, unknown>, path: string): string {
 }
 
 function toInt(value: unknown): number | null {
-  const n = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const n = Number.parseInt(value, 10);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -55,7 +57,8 @@ export class MonitorConfirmJob {
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
-    const { settings, secrets } = await this.settingsService.getInternalSettings(ctx.userId);
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(ctx.userId);
 
     const plexBaseUrl =
       pickString(settings, 'plex.baseUrl') ??
@@ -115,19 +118,20 @@ export class MonitorConfirmJob {
       apiKey: radarrApiKey,
     });
 
-    let radarrTotalMonitored = monitoredMovies.length;
+    const radarrTotalMonitored = monitoredMovies.length;
     let radarrAlreadyInPlex = 0;
     let radarrUnmonitored = 0;
     const radarrSample: string[] = [];
 
     for (const movie of monitoredMovies) {
-      const tmdbId = toInt((movie as RadarrMovie).tmdbId);
+      const tmdbId = toInt(movie.tmdbId);
       if (!tmdbId) continue;
 
       if (!plexTmdbIds.has(tmdbId)) continue;
 
       radarrAlreadyInPlex += 1;
-      const title = typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
+      const title =
+        typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
       if (radarrSample.length < 25) radarrSample.push(title);
 
       if (ctx.dryRun) {
@@ -166,7 +170,7 @@ export class MonitorConfirmJob {
       apiKey: sonarrApiKey,
     });
 
-    let sonarrSeriesTotal = monitoredSeries.length;
+    const sonarrSeriesTotal = monitoredSeries.length;
     let sonarrEpisodesChecked = 0;
     let sonarrEpisodesInPlex = 0;
     let sonarrEpisodesUnmonitored = 0;
@@ -175,8 +179,9 @@ export class MonitorConfirmJob {
     let sonarrSeasonsUnmonitored = 0;
 
     for (const series of monitoredSeries) {
-      const tvdbId = toInt((series as SonarrSeries).tvdbId);
-      const title = typeof series.title === 'string' ? series.title : `series#${series.id}`;
+      const tvdbId = toInt(series.tvdbId);
+      const title =
+        typeof series.title === 'string' ? series.title : `series#${series.id}`;
       if (!tvdbId) {
         await ctx.warn('sonarr: series missing tvdbId (skipping)', { title });
         continue;
@@ -184,7 +189,10 @@ export class MonitorConfirmJob {
 
       const showRatingKey = plexTvdbMap.get(tvdbId);
       if (!showRatingKey) {
-        await ctx.info('sonarr: series not found in Plex (keep monitored)', { title, tvdbId });
+        await ctx.info('sonarr: series not found in Plex (keep monitored)', {
+          title,
+          tvdbId,
+        });
         continue;
       }
 
@@ -255,11 +263,15 @@ export class MonitorConfirmJob {
 
       // Season/series unmonitoring (via series update)
       const updatedSeries: SonarrSeries = { ...series };
-      const seasons = Array.isArray(series.seasons) ? series.seasons.map((s) => ({ ...s })) : [];
+      const seasons = Array.isArray(series.seasons)
+        ? series.seasons.map((s) => ({ ...s }))
+        : [];
       let changedSeries = false;
 
       for (const seasonNum of completeSeasons) {
-        const seasonObj = seasons.find((s) => toInt(s.seasonNumber) === seasonNum);
+        const seasonObj = seasons.find(
+          (s) => toInt(s.seasonNumber) === seasonNum,
+        );
         if (seasonObj && seasonObj.monitored) {
           seasonObj.monitored = false;
           sonarrSeasonsUnmonitored += 1;
@@ -267,7 +279,8 @@ export class MonitorConfirmJob {
         }
       }
 
-      const seriesComplete = incompleteSeasons.length === 0 && completeSeasons.length > 0;
+      const seriesComplete =
+        incompleteSeasons.length === 0 && completeSeasons.length > 0;
       if (seriesComplete && updatedSeries.monitored) {
         updatedSeries.monitored = false;
         sonarrSeriesUnmonitored += 1;
@@ -301,7 +314,9 @@ export class MonitorConfirmJob {
         baseUrl: sonarrBaseUrl,
         apiKey: sonarrApiKey,
       });
-      await ctx.info('sonarr: MissingEpisodeSearch queued', { ok: sonarrSearchQueued });
+      await ctx.info('sonarr: MissingEpisodeSearch queued', {
+        ok: sonarrSearchQueued,
+      });
     }
 
     const summary: JsonObject = {
@@ -328,5 +343,3 @@ export class MonitorConfirmJob {
     return { summary };
   }
 }
-
-

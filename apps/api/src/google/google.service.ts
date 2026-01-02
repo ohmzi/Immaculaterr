@@ -39,7 +39,11 @@ export class GoogleService {
     );
 
     if (hardCap === 0) {
-      return { ok: true, results: [] as GoogleSearchResult[], meta: { requested: 0 } };
+      return {
+        ok: true,
+        results: [] as GoogleSearchResult[],
+        meta: { requested: 0 },
+      };
     }
 
     const results: GoogleSearchResult[] = [];
@@ -75,13 +79,16 @@ export class GoogleService {
         }
 
         const data = (await res.json()) as GoogleCseResponse;
-        const items = Array.isArray(data.items) ? (data.items as GoogleCseItem[]) : [];
+        const items = Array.isArray(data.items)
+          ? (data.items as GoogleCseItem[])
+          : [];
         if (!items.length) break;
 
         let added = 0;
         for (const it of items) {
           const title = typeof it.title === 'string' ? it.title.trim() : '';
-          const snippet = typeof it.snippet === 'string' ? it.snippet.trim() : '';
+          const snippet =
+            typeof it.snippet === 'string' ? it.snippet.trim() : '';
           const link = typeof it.link === 'string' ? it.link.trim() : '';
 
           if (!link) continue;
@@ -136,7 +143,12 @@ export class GoogleService {
       const msg = (err as Record<string, unknown>)['message'];
       const errors = (err as Record<string, unknown>)['errors'];
       let reason: unknown = null;
-      if (Array.isArray(errors) && errors.length && errors[0] && typeof errors[0] === 'object') {
+      if (
+        Array.isArray(errors) &&
+        errors.length &&
+        errors[0] &&
+        typeof errors[0] === 'object'
+      ) {
         reason = (errors[0] as Record<string, unknown>)['reason'] ?? null;
       }
 
@@ -151,5 +163,3 @@ export class GoogleService {
     }
   }
 }
-
-

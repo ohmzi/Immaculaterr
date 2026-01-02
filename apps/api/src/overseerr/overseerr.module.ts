@@ -8,5 +8,3 @@ import { OverseerrService } from './overseerr.service';
   exports: [OverseerrService],
 })
 export class OverseerrModule {}
-
-

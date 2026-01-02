@@ -8,5 +8,3 @@ import { TmdbService } from './tmdb.service';
   exports: [TmdbService],
 })
 export class TmdbModule {}
-
-

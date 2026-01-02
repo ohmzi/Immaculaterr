@@ -20,5 +20,3 @@ export async function ensureBootstrapEnv(): Promise<BootstrapEnv> {
 
   return { repoRoot, dataDir, databaseUrl };
 }
-
-

@@ -53,5 +53,3 @@ export class WebhooksController {
     return { ok: true, ...persisted };
   }
 }
-
-

@@ -12,13 +12,16 @@ export class OverseerrController {
 
   @Post('test')
   test(@Body() body: TestOverseerrBody) {
-    const baseUrlRaw = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
+    const baseUrlRaw =
+      typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
     const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
 
     if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
     if (!apiKey) throw new BadRequestException('apiKey is required');
 
-    const baseUrl = /^https?:\/\//i.test(baseUrlRaw) ? baseUrlRaw : `http://${baseUrlRaw}`;
+    const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
+      ? baseUrlRaw
+      : `http://${baseUrlRaw}`;
     try {
       const parsed = new URL(baseUrl);
       if (!/^https?:$/i.test(parsed.protocol)) {
@@ -31,5 +34,3 @@ export class OverseerrController {
     return this.overseerrService.testConnection({ baseUrl, apiKey });
   }
 }
-
-

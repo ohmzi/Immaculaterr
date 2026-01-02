@@ -11,5 +11,3 @@ import { CollectionsService } from './collections.service';
   providers: [CollectionsService],
 })
 export class CollectionsModule {}
-
-

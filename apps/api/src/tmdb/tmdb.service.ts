@@ -37,7 +37,7 @@ export class TmdbService {
       const images = (data['images'] ?? null) as Record<string, unknown> | null;
       const secureBaseUrl =
         images && typeof images['secure_base_url'] === 'string'
-          ? (images['secure_base_url'] as string)
+          ? images['secure_base_url']
           : null;
 
       return {
@@ -57,5 +57,3 @@ export class TmdbService {
     }
   }
 }
-
-

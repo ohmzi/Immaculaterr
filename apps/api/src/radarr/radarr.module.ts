@@ -8,5 +8,3 @@ import { RadarrService } from './radarr.service';
   exports: [RadarrService],
 })
 export class RadarrModule {}
-
-

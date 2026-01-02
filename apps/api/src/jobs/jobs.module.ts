@@ -34,5 +34,3 @@ import { RecentlyWatchedRefresherJob } from './recently-watched-refresher.job';
   exports: [JobsService],
 })
 export class JobsModule {}
-
-

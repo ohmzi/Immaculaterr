@@ -13,7 +13,8 @@ export class RecentlyWatchedRefresherJob {
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
-    const { settings, secrets } = await this.settingsService.getInternalSettings(ctx.userId);
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(ctx.userId);
 
     const plexBaseUrl =
       this.pickString(settings, 'plex.baseUrl') ??
@@ -53,9 +54,12 @@ export class RecentlyWatchedRefresherJob {
     const perCollection: JsonObject[] = [];
 
     if (!collections.length) {
-      await ctx.warn('recentlyWatchedRefresher: no curated collections configured', {
-        hint: 'Create collections + items in the UI (Collections page), then rerun.',
-      });
+      await ctx.warn(
+        'recentlyWatchedRefresher: no curated collections configured',
+        {
+          hint: 'Create collections + items in the UI (Collections page), then rerun.',
+        },
+      );
     }
 
     for (const col of collections) {
@@ -89,8 +93,15 @@ export class RecentlyWatchedRefresherJob {
     collectionId: string;
     collectionName: string;
   }): Promise<JsonObject> {
-    const { ctx, baseUrl, token, machineIdentifier, movieSectionKey, collectionId, collectionName } =
-      params;
+    const {
+      ctx,
+      baseUrl,
+      token,
+      machineIdentifier,
+      movieSectionKey,
+      collectionId,
+      collectionName,
+    } = params;
 
     await ctx.info('collection: start', { collectionName, collectionId });
 
@@ -100,7 +111,9 @@ export class RecentlyWatchedRefresherJob {
     });
 
     if (!items.length) {
-      await ctx.warn('collection: no items in DB (skipping)', { collectionName });
+      await ctx.warn('collection: no items in DB (skipping)', {
+        collectionName,
+      });
       return {
         collectionName,
         dbItems: 0,
@@ -111,7 +124,10 @@ export class RecentlyWatchedRefresherJob {
       };
     }
 
-    const desired = shuffle([...items]).map((i) => ({ ratingKey: i.ratingKey, title: i.title }));
+    const desired = shuffle([...items]).map((i) => ({
+      ratingKey: i.ratingKey,
+      title: i.title,
+    }));
 
     // Ensure Plex collection exists
     let plexCollectionKey = await this.plexServer.findCollectionRatingKey({
@@ -122,7 +138,9 @@ export class RecentlyWatchedRefresherJob {
     });
 
     if (!plexCollectionKey) {
-      await ctx.warn('collection: plex collection not found; creating', { collectionName });
+      await ctx.warn('collection: plex collection not found; creating', {
+        collectionName,
+      });
       const first = desired[0]?.ratingKey ?? null;
       await this.plexServer.createCollection({
         baseUrl,
@@ -143,7 +161,9 @@ export class RecentlyWatchedRefresherJob {
     }
 
     if (!plexCollectionKey) {
-      throw new Error(`Failed to find or create Plex collection: ${collectionName}`);
+      throw new Error(
+        `Failed to find or create Plex collection: ${collectionName}`,
+      );
     }
 
     const currentItems = await this.plexServer.getCollectionItems({
@@ -260,7 +280,10 @@ export class RecentlyWatchedRefresherJob {
     };
   }
 
-  private pickString(obj: Record<string, unknown>, path: string): string | null {
+  private pickString(
+    obj: Record<string, unknown>,
+    path: string,
+  ): string | null {
     const v = this.pick(obj, path);
     if (typeof v !== 'string') return null;
     const s = v.trim();
@@ -277,7 +300,8 @@ export class RecentlyWatchedRefresherJob {
     const parts = path.split('.');
     let cur: unknown = obj;
     for (const part of parts) {
-      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return undefined;
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur))
+        return undefined;
       cur = (cur as Record<string, unknown>)[part];
     }
     return cur;
@@ -291,5 +315,3 @@ function shuffle<T>(items: T[]): T[] {
   }
   return items;
 }
-
-

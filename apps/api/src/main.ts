@@ -14,7 +14,7 @@ async function bootstrap() {
     bootstrapLogger.error(`Unhandled rejection: ${String(reason)}`);
   });
   process.on('uncaughtException', (err) => {
-    bootstrapLogger.error(`Uncaught exception: ${(err as Error)?.stack ?? String(err)}`);
+    bootstrapLogger.error(`Uncaught exception: ${err?.stack ?? String(err)}`);
     process.exit(1);
   });
 
@@ -32,7 +32,8 @@ async function bootstrap() {
 
   // Lightweight request logging (only warnings/errors/slow requests)
   const httpLoggingEnabled =
-    process.env.HTTP_LOGGING === 'true' || process.env.NODE_ENV !== 'production';
+    process.env.HTTP_LOGGING === 'true' ||
+    process.env.NODE_ENV !== 'production';
   if (httpLoggingEnabled) {
     const httpLogger = new Logger('HTTP');
     app.use((req: Request, res: Response, next: NextFunction) => {
@@ -40,7 +41,7 @@ async function bootstrap() {
       res.on('finish', () => {
         const ms = Number(process.hrtime.bigint() - start) / 1e6;
         const status = res.statusCode;
-        const path = (req.originalUrl || req.url) as string;
+        const path = req.originalUrl || req.url;
         const msg = `${req.method} ${path} -> ${status} ${ms.toFixed(0)}ms`;
 
         if (status >= 500) httpLogger.error(msg);
@@ -52,7 +53,8 @@ async function bootstrap() {
   }
 
   const swaggerEnabled =
-    process.env.SWAGGER_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
+    process.env.SWAGGER_ENABLED === 'true' ||
+    process.env.NODE_ENV !== 'production';
   if (swaggerEnabled) {
     const config = new DocumentBuilder()
       .setTitle('Tautulli Curated Plex API')
@@ -87,6 +89,12 @@ async function bootstrap() {
   }
 
   const url = await app.getUrl().catch(() => `http://${host}:${port}`);
-  bootstrapLogger.log(`API listening: ${url}/api (dataDir=${process.env.APP_DATA_DIR ?? 'n/a'})`);
+  bootstrapLogger.log(
+    `API listening: ${url}/api (dataDir=${process.env.APP_DATA_DIR ?? 'n/a'})`,
+  );
 }
-bootstrap();
+void bootstrap().catch((err) => {
+  const logger = new Logger('Bootstrap');
+  logger.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
+  process.exit(1);
+});

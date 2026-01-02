@@ -9,14 +9,21 @@ type ImportResult = {
 const PLACEHOLDER_X_RE = /x{8,}/i;
 
 function normalizeString(value: unknown): string {
-  return (value === null || value === undefined ? '' : String(value)).trim();
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value).trim();
+  return '';
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isDisabledSecret(value: unknown, extraDisabledLiteralsUpper: string[] = []): boolean {
+function isDisabledSecret(
+  value: unknown,
+  extraDisabledLiteralsUpper: string[] = [],
+): boolean {
   const s = normalizeString(value);
   if (!s) return true;
 
@@ -71,9 +78,15 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
   const plexUrl = normalizeString(pick(config, 'plex.url'));
   const plexMovieLib = normalizeString(pick(config, 'plex.movie_library_name'));
   const plexTvLib = normalizeString(pick(config, 'plex.tv_library_name'));
-  const plexCollectionName = normalizeString(pick(config, 'plex.collection_name'));
-  const plexTvCollectionName = normalizeString(pick(config, 'plex.tv_collection_name'));
-  const plexDeletePreference = normalizeString(pick(config, 'plex.delete_preference'));
+  const plexCollectionName = normalizeString(
+    pick(config, 'plex.collection_name'),
+  );
+  const plexTvCollectionName = normalizeString(
+    pick(config, 'plex.tv_collection_name'),
+  );
+  const plexDeletePreference = normalizeString(
+    pick(config, 'plex.delete_preference'),
+  );
   const plexPreserveQuality = pick(config, 'plex.preserve_quality');
 
   const plexTokenRaw = pick(config, 'plex.token');
@@ -84,15 +97,27 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
     warnings.push('Skipped plex.token (looks like a placeholder or blank).');
   }
 
-  if (plexUrl || plexMovieLib || plexTvLib || plexCollectionName || plexTvCollectionName) {
+  if (
+    plexUrl ||
+    plexMovieLib ||
+    plexTvLib ||
+    plexCollectionName ||
+    plexTvCollectionName
+  ) {
     settingsPatch.plex = {
       ...(plexUrl ? { baseUrl: plexUrl } : {}),
       ...(plexMovieLib ? { movieLibraryName: plexMovieLib } : {}),
       ...(plexTvLib ? { tvLibraryName: plexTvLib } : {}),
       ...(plexCollectionName ? { collectionName: plexCollectionName } : {}),
-      ...(plexTvCollectionName ? { tvCollectionName: plexTvCollectionName } : {}),
-      ...(plexDeletePreference ? { deletePreference: plexDeletePreference } : {}),
-      ...(Array.isArray(plexPreserveQuality) ? { preserveQuality: plexPreserveQuality } : {}),
+      ...(plexTvCollectionName
+        ? { tvCollectionName: plexTvCollectionName }
+        : {}),
+      ...(plexDeletePreference
+        ? { deletePreference: plexDeletePreference }
+        : {}),
+      ...(Array.isArray(plexPreserveQuality)
+        ? { preserveQuality: plexPreserveQuality }
+        : {}),
     };
   }
 
@@ -116,15 +141,24 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
   if (!isDisabledSecret(radarrApiKeyRaw, ['RADARR'])) {
     secretsPatch.radarr = { apiKey: radarrApiKey };
   } else if (radarrApiKey) {
-    warnings.push('Skipped radarr.api_key (looks like a placeholder or blank).');
+    warnings.push(
+      'Skipped radarr.api_key (looks like a placeholder or blank).',
+    );
   }
 
-  if (radarrUrl || radarrRootFolder || radarrTagName || radarrQualityProfileId !== undefined) {
+  if (
+    radarrUrl ||
+    radarrRootFolder ||
+    radarrTagName ||
+    radarrQualityProfileId !== undefined
+  ) {
     settingsPatch.radarr = {
       ...(radarrUrl ? { baseUrl: radarrUrl } : {}),
       ...(radarrRootFolder ? { rootFolder: radarrRootFolder } : {}),
       ...(radarrTagName !== undefined ? { tagName: radarrTagName } : {}),
-      ...(radarrQualityProfileId !== undefined ? { qualityProfileId: radarrQualityProfileId } : {}),
+      ...(radarrQualityProfileId !== undefined
+        ? { qualityProfileId: radarrQualityProfileId }
+        : {}),
     };
   }
 
@@ -133,14 +167,19 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
   const sonarrRootFolder = normalizeString(pick(config, 'sonarr.root_folder'));
   const sonarrTagName = pick(config, 'sonarr.tag_name');
   const sonarrQualityProfileId = pick(config, 'sonarr.quality_profile_id');
-  const sonarrAutoDownload = pick(config, 'sonarr.auto_download_recommendations');
+  const sonarrAutoDownload = pick(
+    config,
+    'sonarr.auto_download_recommendations',
+  );
   const sonarrApiKeyRaw = pick(config, 'sonarr.api_key');
   const sonarrApiKey = normalizeString(sonarrApiKeyRaw);
 
   if (!isDisabledSecret(sonarrApiKeyRaw, ['SONARR'])) {
     secretsPatch.sonarr = { apiKey: sonarrApiKey };
   } else if (sonarrApiKey) {
-    warnings.push('Skipped sonarr.api_key (looks like a placeholder or blank).');
+    warnings.push(
+      'Skipped sonarr.api_key (looks like a placeholder or blank).',
+    );
   }
 
   if (
@@ -154,19 +193,27 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
       ...(sonarrUrl ? { baseUrl: sonarrUrl } : {}),
       ...(sonarrRootFolder ? { rootFolder: sonarrRootFolder } : {}),
       ...(sonarrTagName !== undefined ? { tagName: sonarrTagName } : {}),
-      ...(sonarrQualityProfileId !== undefined ? { qualityProfileId: sonarrQualityProfileId } : {}),
-      ...(sonarrAutoDownload !== undefined ? { autoDownloadRecommendations: sonarrAutoDownload } : {}),
+      ...(sonarrQualityProfileId !== undefined
+        ? { qualityProfileId: sonarrQualityProfileId }
+        : {}),
+      ...(sonarrAutoDownload !== undefined
+        ? { autoDownloadRecommendations: sonarrAutoDownload }
+        : {}),
     };
   }
 
   // Google (optional)
   const googleApiKeyRaw = pick(config, 'google.api_key');
   const googleApiKey = normalizeString(googleApiKeyRaw);
-  const googleSearchEngineId = normalizeString(pick(config, 'google.search_engine_id'));
+  const googleSearchEngineId = normalizeString(
+    pick(config, 'google.search_engine_id'),
+  );
   if (!isDisabledSecret(googleApiKeyRaw, ['GOOGLE'])) {
     secretsPatch.google = { apiKey: googleApiKey };
   } else if (googleApiKey) {
-    warnings.push('Skipped google.api_key (looks like a placeholder or blank).');
+    warnings.push(
+      'Skipped google.api_key (looks like a placeholder or blank).',
+    );
   }
   if (googleSearchEngineId) {
     settingsPatch.google = { searchEngineId: googleSearchEngineId };
@@ -179,7 +226,9 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
   if (!isDisabledSecret(openAiApiKeyRaw, ['OPENAI'])) {
     secretsPatch.openai = { apiKey: openAiApiKey };
   } else if (openAiApiKey) {
-    warnings.push('Skipped openai.api_key (looks like a placeholder or blank).');
+    warnings.push(
+      'Skipped openai.api_key (looks like a placeholder or blank).',
+    );
   }
   if (openAiModel) {
     settingsPatch.openai = { model: openAiModel };
@@ -192,7 +241,9 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
   if (!isDisabledSecret(overseerrApiKeyRaw, ['OVERSEERR'])) {
     secretsPatch.overseerr = { apiKey: overseerrApiKey };
   } else if (overseerrApiKey) {
-    warnings.push('Skipped overseerr.api_key (looks like a placeholder or blank).');
+    warnings.push(
+      'Skipped overseerr.api_key (looks like a placeholder or blank).',
+    );
   }
   if (overseerrUrl) {
     settingsPatch.overseerr = { baseUrl: overseerrUrl };
@@ -226,11 +277,11 @@ export function buildPatchesFromLegacyConfig(config: unknown): ImportResult {
     if (!isDisabledSecret(appPasswordRaw, ['PASSWORD'])) {
       secretsPatch.alerts = { emailAppPassword: appPassword };
     } else if (appPassword) {
-      warnings.push('Skipped alerts.email.app_password (looks like a placeholder or blank).');
+      warnings.push(
+        'Skipped alerts.email.app_password (looks like a placeholder or blank).',
+      );
     }
   }
 
   return { settingsPatch, secretsPatch, warnings };
 }
-
-

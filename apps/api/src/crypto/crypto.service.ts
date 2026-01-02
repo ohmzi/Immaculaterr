@@ -17,7 +17,9 @@ function decodeMasterKey(input: string): Buffer {
   // base64 (32 bytes)
   const buf = Buffer.from(raw, 'base64');
   if (buf.length !== 32) {
-    throw new Error('APP_MASTER_KEY must decode to 32 bytes (base64) or be a 64-char hex string.');
+    throw new Error(
+      'APP_MASTER_KEY must decode to 32 bytes (base64) or be a 64-char hex string.',
+    );
   }
   return buf;
 }
@@ -34,11 +36,18 @@ export class CryptoService implements OnModuleInit {
   encryptString(plaintext: string): string {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.masterKey, iv);
-    const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const ciphertext = Buffer.concat([
+      cipher.update(plaintext, 'utf8'),
+      cipher.final(),
+    ]);
     const tag = cipher.getAuthTag();
     return (
       ENCRYPTED_PREFIX +
-      [iv.toString('base64'), tag.toString('base64'), ciphertext.toString('base64')].join(':')
+      [
+        iv.toString('base64'),
+        tag.toString('base64'),
+        ciphertext.toString('base64'),
+      ].join(':')
     );
   }
 
@@ -76,7 +85,9 @@ export class CryptoService implements OnModuleInit {
 
     const dataDir = process.env.APP_DATA_DIR?.trim();
     if (!dataDir) {
-      throw new Error('APP_DATA_DIR must be set before CryptoService initializes.');
+      throw new Error(
+        'APP_DATA_DIR must be set before CryptoService initializes.',
+      );
     }
 
     const keyPath = join(dataDir, 'app-master.key');
@@ -104,5 +115,3 @@ export class CryptoService implements OnModuleInit {
     return key;
   }
 }
-
-

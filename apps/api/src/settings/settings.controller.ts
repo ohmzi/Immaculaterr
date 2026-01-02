@@ -1,8 +1,16 @@
-import { BadRequestException, Body, Controller, Get, Post, Put, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Req,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
 import { SettingsService } from './settings.service';
 import { buildPatchesFromLegacyConfig, parseLegacyYaml } from './yaml-import';
+import type { AuthenticatedRequest } from '../auth/auth.types';
 
 type UpdateSettingsBody = {
   settings?: unknown;
@@ -24,7 +32,11 @@ function collectLeafPaths(
   out: string[] = [],
 ): string[] {
   if (!value) return out;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
     if (prefix) out.push(prefix);
     return out;
   }
@@ -46,15 +58,16 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get()
-  get(@Req() req: Request) {
-    const user = (req as any).user as { id: string } | undefined;
-    return this.settingsService.getPublicSettings(user?.id ?? '');
+  get(@Req() req: AuthenticatedRequest) {
+    return this.settingsService.getPublicSettings(req.user.id);
   }
 
   @Put()
-  async put(@Req() req: Request, @Body() body: UpdateSettingsBody) {
-    const user = (req as any).user as { id: string } | undefined;
-    const userId = user?.id ?? '';
+  async put(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateSettingsBody,
+  ) {
+    const userId = req.user.id;
     const settingsPatch = body?.settings;
     const secretsPatch = body?.secrets;
 
@@ -76,9 +89,11 @@ export class SettingsController {
   }
 
   @Post('import-yaml')
-  async importYaml(@Req() req: Request, @Body() body: ImportYamlBody) {
-    const user = (req as any).user as { id: string } | undefined;
-    const userId = user?.id ?? '';
+  async importYaml(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: ImportYamlBody,
+  ) {
+    const userId = req.user.id;
     const yamlText = typeof body?.yaml === 'string' ? body.yaml : '';
     if (!yamlText.trim()) {
       throw new BadRequestException('yaml is required');
@@ -125,5 +140,3 @@ export class SettingsController {
     };
   }
 }
-
-

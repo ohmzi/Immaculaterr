@@ -17,7 +17,7 @@ function deepMerge(
       continue;
     }
     if (isPlainObject(value) && isPlainObject(target[key])) {
-      target[key] = deepMerge(target[key] as Record<string, unknown>, value);
+      target[key] = deepMerge(target[key], value);
       continue;
     }
     target[key] = value;
@@ -94,23 +94,33 @@ export class SettingsService {
     return Object.fromEntries(Object.entries(merged).map(([k]) => [k, true]));
   }
 
-  private async getSettingsDoc(userId: string): Promise<Record<string, unknown>> {
-    const row = await this.prisma.userSettings.findUnique({ where: { userId } });
+  private async getSettingsDoc(
+    userId: string,
+  ): Promise<Record<string, unknown>> {
+    const row = await this.prisma.userSettings.findUnique({
+      where: { userId },
+    });
     if (!row?.value) return { onboarding: { completed: false } };
     try {
       const parsed = JSON.parse(row.value) as unknown;
-      return isPlainObject(parsed) ? parsed : { onboarding: { completed: false } };
+      return isPlainObject(parsed)
+        ? parsed
+        : { onboarding: { completed: false } };
     } catch {
       return { onboarding: { completed: false } };
     }
   }
 
-  private async getSecretsDoc(userId: string): Promise<Record<string, unknown>> {
+  private async getSecretsDoc(
+    userId: string,
+  ): Promise<Record<string, unknown>> {
     const row = await this.prisma.userSecrets.findUnique({ where: { userId } });
     if (!row?.value) return {};
 
     try {
-      const raw = this.crypto.isEncrypted(row.value) ? this.crypto.decryptString(row.value) : row.value;
+      const raw = this.crypto.isEncrypted(row.value)
+        ? this.crypto.decryptString(row.value)
+        : row.value;
       if (!raw.trim()) return {};
       const parsed = JSON.parse(raw) as unknown;
       return isPlainObject(parsed) ? parsed : {};
@@ -119,5 +129,3 @@ export class SettingsService {
     }
   }
 }
-
-

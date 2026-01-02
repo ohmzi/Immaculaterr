@@ -7,5 +7,3 @@ import { WebhooksService } from './webhooks.service';
   providers: [WebhooksService],
 })
 export class WebhooksModule {}
-
-

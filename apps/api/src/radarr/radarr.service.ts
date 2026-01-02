@@ -50,7 +50,10 @@ export class RadarrService {
     }
   }
 
-  async listMovies(params: { baseUrl: string; apiKey: string }): Promise<RadarrMovie[]> {
+  async listMovies(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<RadarrMovie[]> {
     const { baseUrl, apiKey } = params;
     const url = this.buildApiUrl(baseUrl, 'api/v3/movie');
 
@@ -86,7 +89,10 @@ export class RadarrService {
     }
   }
 
-  async listMonitoredMovies(params: { baseUrl: string; apiKey: string }): Promise<RadarrMovie[]> {
+  async listMonitoredMovies(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<RadarrMovie[]> {
     const movies = await this.listMovies(params);
     return movies.filter((m) => Boolean(m && m.monitored));
   }
@@ -140,5 +146,3 @@ export class RadarrService {
     return new URL(path, normalized).toString();
   }
 }
-
-

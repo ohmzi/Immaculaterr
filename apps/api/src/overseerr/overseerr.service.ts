@@ -16,15 +16,25 @@ export class OverseerrService {
 
     this.logger.log(`Testing Overseerr connection: ${statusUrl}`);
 
-    const status = (await this.getJson(statusUrl, undefined)) as OverseerrStatus;
-    const settings = (await this.getJson(settingsUrl, apiKey)) as OverseerrSettingsMain;
+    const status = (await this.getJson(
+      statusUrl,
+      undefined,
+    )) as OverseerrStatus;
+    const settings = (await this.getJson(
+      settingsUrl,
+      apiKey,
+    )) as OverseerrSettingsMain;
 
     // Return a small subset from settings to avoid dumping everything.
     const summary = {
       applicationTitle:
-        typeof settings['applicationTitle'] === 'string' ? settings['applicationTitle'] : null,
+        typeof settings['applicationTitle'] === 'string'
+          ? settings['applicationTitle']
+          : null,
       applicationUrl:
-        typeof settings['applicationUrl'] === 'string' ? settings['applicationUrl'] : null,
+        typeof settings['applicationUrl'] === 'string'
+          ? settings['applicationUrl']
+          : null,
     };
 
     return { ok: true, status, summary };
@@ -71,5 +81,3 @@ export class OverseerrService {
     return new URL(path, normalized).toString();
   }
 }
-
-

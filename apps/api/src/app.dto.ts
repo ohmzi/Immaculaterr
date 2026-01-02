@@ -7,5 +7,3 @@ export class HealthResponseDto {
   @ApiProperty({ example: '2026-01-02T00:00:00.000Z' })
   time!: string;
 }
-
-

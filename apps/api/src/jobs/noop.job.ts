@@ -9,5 +9,3 @@ export class NoopJob {
     return { summary: { ok: true } };
   }
 }
-
-

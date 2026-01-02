@@ -22,9 +22,12 @@ describe('AppController (e2e)', () => {
       .get('/api/health')
       .expect(200)
       .expect((res) => {
-        if (res.body?.status !== 'ok') {
-          throw new Error('Expected { status: \"ok\" }');
-        }
+        const body = res.body as unknown;
+        const status =
+          body && typeof body === 'object'
+            ? (body as Record<string, unknown>)['status']
+            : null;
+        if (status !== 'ok') throw new Error('Expected { status: "ok" }');
       });
   });
 });

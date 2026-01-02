@@ -34,5 +34,3 @@ export class PlexController {
     return this.plexService.whoami(plexToken);
   }
 }
-
-

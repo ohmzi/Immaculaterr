@@ -27,5 +27,3 @@ export class WebhooksService {
     return process.env.APP_DATA_DIR ?? join(repoRoot, 'data');
   }
 }
-
-

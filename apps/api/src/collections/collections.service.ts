@@ -13,11 +13,30 @@ function normalizeHttpUrl(raw: string): string {
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   try {
     const parsed = new URL(baseUrl);
-    if (!/^https?:$/i.test(parsed.protocol)) throw new Error('Unsupported protocol');
+    if (!/^https?:$/i.test(parsed.protocol))
+      throw new Error('Unsupported protocol');
   } catch {
     throw new BadRequestException('baseUrl must be a valid http(s) URL');
   }
   return baseUrl;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pick(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickString(obj: Record<string, unknown>, path: string): string {
+  return asString(pick(obj, path));
 }
 
 @Injectable()
@@ -63,14 +82,21 @@ export class CollectionsService {
         updatedAt: c.updatedAt.toISOString(),
       };
     } catch (err) {
-      const code = (err as Prisma.PrismaClientKnownRequestError | undefined)?.code;
-      if (code === 'P2002') throw new BadRequestException('A collection with this name already exists');
+      const code = (err as Prisma.PrismaClientKnownRequestError | undefined)
+        ?.code;
+      if (code === 'P2002')
+        throw new BadRequestException(
+          'A collection with this name already exists',
+        );
       throw err;
     }
   }
 
   async seedDefaults() {
-    const defaults = ['Based on your recently watched movie', 'Change of Taste'];
+    const defaults = [
+      'Based on your recently watched movie',
+      'Change of Taste',
+    ];
     for (const name of defaults) {
       await this.prisma.curatedCollection.upsert({
         where: { name },
@@ -86,9 +112,11 @@ export class CollectionsService {
   }
 
   async listItems(collectionId: string) {
-    await this.prisma.curatedCollection.findUnique({ where: { id: collectionId } }).then((c) => {
-      if (!c) throw new BadRequestException('collection not found');
-    });
+    await this.prisma.curatedCollection
+      .findUnique({ where: { id: collectionId } })
+      .then((c) => {
+        if (!c) throw new BadRequestException('collection not found');
+      });
 
     const items = await this.prisma.curatedCollectionItem.findMany({
       where: { collectionId },
@@ -112,9 +140,11 @@ export class CollectionsService {
     const ratingKeyInput = asString(params.ratingKey);
     const titleInput = asString(params.title);
 
-    await this.prisma.curatedCollection.findUnique({ where: { id: collectionId } }).then((c) => {
-      if (!c) throw new BadRequestException('collection not found');
-    });
+    await this.prisma.curatedCollection
+      .findUnique({ where: { id: collectionId } })
+      .then((c) => {
+        if (!c) throw new BadRequestException('collection not found');
+      });
 
     let ratingKey = ratingKeyInput;
     let title = titleInput;
@@ -125,7 +155,8 @@ export class CollectionsService {
       title = resolved.title;
     }
 
-    if (!ratingKey) throw new BadRequestException('ratingKey or title is required');
+    if (!ratingKey)
+      throw new BadRequestException('ratingKey or title is required');
     if (!title) title = ratingKey;
 
     const item = await this.prisma.curatedCollectionItem.upsert({
@@ -150,14 +181,20 @@ export class CollectionsService {
     if (result.count === 0) throw new BadRequestException('item not found');
   }
 
-  async importFromJson(params: { userId: string; collectionId: string; json: string }) {
+  async importFromJson(params: {
+    userId: string;
+    collectionId: string;
+    json: string;
+  }) {
     const { userId, collectionId, json } = params;
     const raw = json.trim();
     if (!raw) throw new BadRequestException('json is required');
 
-    await this.prisma.curatedCollection.findUnique({ where: { id: collectionId } }).then((c) => {
-      if (!c) throw new BadRequestException('collection not found');
-    });
+    await this.prisma.curatedCollection
+      .findUnique({ where: { id: collectionId } })
+      .then((c) => {
+        if (!c) throw new BadRequestException('collection not found');
+      });
 
     let parsed: unknown;
     try {
@@ -169,7 +206,9 @@ export class CollectionsService {
     }
 
     if (!Array.isArray(parsed)) {
-      throw new BadRequestException('Expected JSON array (strings or objects).');
+      throw new BadRequestException(
+        'Expected JSON array (strings or objects).',
+      );
     }
 
     const entries = parsed as unknown[];
@@ -180,7 +219,9 @@ export class CollectionsService {
       if (typeof entry === 'string') {
         const title = entry.trim();
         if (!title) continue;
-        const found = await this.resolveMovieTitle(userId, title).catch(() => null);
+        const found = await this.resolveMovieTitle(userId, title).catch(
+          () => null,
+        );
         if (found) resolved.push(found);
         else skipped += 1;
         continue;
@@ -190,7 +231,8 @@ export class CollectionsService {
         const obj = entry as Record<string, unknown>;
         const titleRaw = obj['title'];
         const title = typeof titleRaw === 'string' ? titleRaw.trim() : '';
-        const ratingKeyRaw = obj['rating_key'] ?? obj['ratingKey'] ?? obj['rating_key'];
+        const ratingKeyRaw =
+          obj['rating_key'] ?? obj['ratingKey'] ?? obj['rating_key'];
         const ratingKey =
           typeof ratingKeyRaw === 'string'
             ? ratingKeyRaw.trim()
@@ -204,7 +246,9 @@ export class CollectionsService {
         }
 
         if (title) {
-          const found = await this.resolveMovieTitle(userId, title).catch(() => null);
+          const found = await this.resolveMovieTitle(userId, title).catch(
+            () => null,
+          );
           if (found) resolved.push(found);
           else skipped += 1;
         }
@@ -250,9 +294,11 @@ export class CollectionsService {
   }
 
   async exportToJson(collectionId: string) {
-    await this.prisma.curatedCollection.findUnique({ where: { id: collectionId } }).then((c) => {
-      if (!c) throw new BadRequestException('collection not found');
-    });
+    await this.prisma.curatedCollection
+      .findUnique({ where: { id: collectionId } })
+      .then((c) => {
+        if (!c) throw new BadRequestException('collection not found');
+      });
 
     const items = await this.prisma.curatedCollectionItem.findMany({
       where: { collectionId },
@@ -263,21 +309,25 @@ export class CollectionsService {
     return items.map((i) => ({ ratingKey: i.ratingKey, title: i.title }));
   }
 
-  private async resolveMovieTitle(userId: string, title: string): Promise<{ ratingKey: string; title: string }> {
-    const { settings, secrets } = await this.settings.getInternalSettings(userId);
+  private async resolveMovieTitle(
+    userId: string,
+    title: string,
+  ): Promise<{ ratingKey: string; title: string }> {
+    const { settings, secrets } =
+      await this.settings.getInternalSettings(userId);
 
     const baseUrlRaw =
-      asString((settings as any)?.plex?.baseUrl) || asString((settings as any)?.plex?.url);
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const token =
-      asString((secrets as any)?.plex?.token) || asString((secrets as any)?.plexToken);
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
 
     if (!baseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
     if (!token) throw new BadRequestException('Plex token is not set');
 
     const baseUrl = normalizeHttpUrl(baseUrlRaw);
     const movieLibraryName =
-      asString((settings as any)?.plex?.movieLibraryName) ||
-      asString((settings as any)?.plex?.movie_library_name) ||
+      pickString(settings, 'plex.movieLibraryName') ||
+      pickString(settings, 'plex.movie_library_name') ||
       'Movies';
 
     const sectionKey = await this.plexServer.findSectionKeyByTitle({
@@ -293,9 +343,10 @@ export class CollectionsService {
       title,
     });
 
-    if (!found) throw new BadRequestException(`Movie not found in Plex library: ${title}`);
+    if (!found)
+      throw new BadRequestException(
+        `Movie not found in Plex library: ${title}`,
+      );
     return found;
   }
 }
-
-
