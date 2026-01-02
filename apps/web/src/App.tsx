@@ -35,6 +35,10 @@ function saveOnboarding(value: OnboardingStored) {
   localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(value));
 }
 
+function clearOnboarding() {
+  localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+}
+
 type HealthResponse = {
   status: 'ok';
   time: string;
@@ -541,11 +545,9 @@ function App() {
     const plexOk = Boolean(plexAuthToken && plexWhoami);
     const radarrOk = Boolean(radarrResult && !radarrError);
     const sonarrOk = Boolean(sonarrResult && !sonarrError);
-    const googleOk = Boolean(googleResult && !googleError);
     const tmdbOk = Boolean(tmdbResult && !tmdbError);
-    const openAiOk = Boolean(openAiResult && !openAiError);
-    const overseerrOk = Boolean(overseerrResult && !overseerrError);
-    return plexOk && radarrOk && sonarrOk && googleOk && tmdbOk && openAiOk && overseerrOk;
+    // Google, OpenAI, and Overseerr are optional (skippable)
+    return plexOk && radarrOk && sonarrOk && tmdbOk;
   }
 
   function completeWizard() {
@@ -592,6 +594,60 @@ function App() {
     setWizardOpen(false);
   }
 
+  function resetWizard() {
+    clearOnboarding();
+    setStored(null);
+    setWizardOpen(true);
+    setWizardStep(0);
+    
+    // Reset all state variables
+    setPlexPin(null);
+    setPlexAuthToken(null);
+    setPlexError(null);
+    setIsConnectingPlex(false);
+    setPlexLog([]);
+    setPlexWhoami(null);
+    setPlexWhoamiError(null);
+    
+    setRadarrBaseUrl('http://localhost:7878');
+    setRadarrApiKey('');
+    setRadarrResult(null);
+    setRadarrError(null);
+    setRadarrLog([]);
+    
+    setSonarrBaseUrl('http://localhost:8989');
+    setSonarrApiKey('');
+    setSonarrResult(null);
+    setSonarrError(null);
+    setSonarrLog([]);
+    
+    setGoogleApiKey('');
+    setGoogleCseId('');
+    setGoogleNumResults(15);
+    setGoogleQuery('imdb the matrix');
+    setGoogleResult(null);
+    setGoogleError(null);
+    setGoogleLog([]);
+    
+    setTmdbApiKey('');
+    setTmdbResult(null);
+    setTmdbError(null);
+    setTmdbLog([]);
+    
+    setOpenAiApiKey('');
+    setOpenAiResult(null);
+    setOpenAiError(null);
+    setOpenAiLog([]);
+    
+    setOverseerrBaseUrl('http://localhost:5055');
+    setOverseerrApiKey('');
+    setOverseerrResult(null);
+    setOverseerrError(null);
+    setOverseerrLog([]);
+    
+    setRememberSecrets(true);
+  }
+
   useEffect(() => {
     // If Plex auth finishes while we're on the Plex step, advance automatically.
     if (!wizardOpen) return;
@@ -602,7 +658,7 @@ function App() {
   }, [wizardOpen, wizardStep, plexAuthToken, plexWhoami]);
 
   async function submitWizardStep(step: number): Promise<boolean> {
-    // Steps: 0 Plex, 1 Radarr, 2 Sonarr, 3 Google, 4 TMDB, 5 OpenAI, 6 Overseerr
+    // Steps: 0 Plex, 1 Radarr, 2 Sonarr, 3 TMDB, 4 Google, 5 OpenAI, 6 Overseerr
     switch (step) {
       case 0: {
         if (plexAuthToken && plexWhoami) return true;
@@ -616,12 +672,24 @@ function App() {
       case 2:
         return await onTestSonarr();
       case 3:
-        return await onTestGoogle();
-      case 4:
         return await onTestTmdb();
+      case 4:
+        // Google is optional - allow skipping if either field is empty
+        if (!googleApiKey.trim() || !googleCseId.trim()) {
+          return true; // Skip if either field is empty
+        }
+        return await onTestGoogle();
       case 5:
+        // OpenAI is optional - allow skipping if field is empty, otherwise test
+        if (!openAiApiKey.trim()) {
+          return true; // Skip if field is empty
+        }
         return await onTestOpenAi();
       case 6:
+        // Overseerr is optional - allow skipping if either field is empty
+        if (!overseerrBaseUrl.trim() || !overseerrApiKey.trim()) {
+          return true; // Skip if either field is empty
+        }
         return await onTestOverseerr();
       default:
         return false;
@@ -637,7 +705,28 @@ function App() {
 
       {stored?.completed ? (
         <section className="panel">
-          <div className="panelTitle">Credential validation</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div className="panelTitle">Credential validation</div>
+            <button
+              onClick={resetWizard}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: '1px solid #ccc',
+                background: '#fff',
+                cursor: 'pointer',
+                fontSize: 14,
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = '#fff';
+              }}
+            >
+              Reset Wizard
+            </button>
+          </div>
           <div className="muted">
             Last completed:{' '}
             {stored.completedAt ? new Date(stored.completedAt).toLocaleString() : 'unknown'}
@@ -1021,7 +1110,7 @@ function App() {
             </div>
 
             <div className="stepper" style={{ marginTop: 12 }}>
-              {['Plex', 'Radarr', 'Sonarr', 'Google', 'TMDB', 'OpenAI', 'Overseerr', 'Finish'].map(
+              {['Plex', 'Radarr', 'Sonarr', 'TMDB', 'Google', 'OpenAI', 'Overseerr', 'Finish'].map(
                 (label, idx) => (
                   <button
                     key={label}
@@ -1136,60 +1225,6 @@ function App() {
 
               {wizardStep === 3 ? (
                 <>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Google Programmable Search</div>
-                  <div className="muted" style={{ marginBottom: 12 }}>
-                    Enter Google details, then click Next to validate.
-                  </div>
-                  <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
-                    <label>
-                      <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_API_KEY</div>
-                      <input
-                        value={googleApiKey}
-                        onChange={(e) => setGoogleApiKey(e.target.value)}
-                        type="password"
-                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
-                      />
-                    </label>
-                    <label>
-                      <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_CSE_ID (cx)</div>
-                      <input
-                        value={googleCseId}
-                        onChange={(e) => setGoogleCseId(e.target.value)}
-                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
-                      />
-                    </label>
-                    <label>
-                      <div className="muted" style={{ marginBottom: 4 }}>num_results</div>
-                      <input
-                        value={String(googleNumResults)}
-                        onChange={(e) =>
-                          setGoogleNumResults(Number.parseInt(e.target.value || '0', 10))
-                        }
-                        type="number"
-                        min={0}
-                        max={50}
-                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
-                      />
-                    </label>
-                    <label>
-                      <div className="muted" style={{ marginBottom: 4 }}>test query</div>
-                      <input
-                        value={googleQuery}
-                        onChange={(e) => setGoogleQuery(e.target.value)}
-                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
-                      />
-                    </label>
-                  </div>
-                  {googleError ? (
-                    <div className="error" style={{ marginTop: 8 }}>
-                      Error: {googleError}
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-
-              {wizardStep === 4 ? (
-                <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>TMDB</div>
                   <div className="muted" style={{ marginBottom: 12 }}>
                     Enter TMDB key, then click Next to validate.
@@ -1211,11 +1246,44 @@ function App() {
                 </>
               ) : null}
 
+              {wizardStep === 4 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Google Programmable Search (Optional)</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Enter Google details to enable, or leave empty and click Next to skip.
+                  </div>
+                  <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_API_KEY</div>
+                      <input
+                        value={googleApiKey}
+                        onChange={(e) => setGoogleApiKey(e.target.value)}
+                        type="password"
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_CSE_ID (cx)</div>
+                      <input
+                        value={googleCseId}
+                        onChange={(e) => setGoogleCseId(e.target.value)}
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                  </div>
+                  {googleError ? (
+                    <div className="error" style={{ marginTop: 8 }}>
+                      Error: {googleError}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
               {wizardStep === 5 ? (
                 <>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>OpenAI</div>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>OpenAI (Optional)</div>
                   <div className="muted" style={{ marginBottom: 12 }}>
-                    Enter OpenAI key, then click Next to validate.
+                    Enter OpenAI key to enable, or leave empty and click Next to skip.
                   </div>
                   <label>
                     <div className="muted" style={{ marginBottom: 4 }}>OPENAI_API_KEY</div>
@@ -1236,9 +1304,9 @@ function App() {
 
               {wizardStep === 6 ? (
                 <>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Overseerr</div>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Overseerr (Optional)</div>
                   <div className="muted" style={{ marginBottom: 12 }}>
-                    Enter Overseerr details, then click Next to validate.
+                    Enter Overseerr details to enable, or leave empty and click Next to skip.
                   </div>
                   <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
                     <label>
@@ -1277,10 +1345,10 @@ function App() {
     plex: Boolean(plexAuthToken && plexWhoami),
     radarr: Boolean(radarrResult && !radarrError),
     sonarr: Boolean(sonarrResult && !sonarrError),
-    google: Boolean(googleResult && !googleError),
     tmdb: Boolean(tmdbResult && !tmdbError),
-    openai: Boolean(openAiResult && !openAiError),
-    overseerr: Boolean(overseerrResult && !overseerrError),
+    google: Boolean(googleResult && !googleError) || (!googleApiKey.trim() && !googleCseId.trim()) ? 'skipped' : false,
+    openai: Boolean(openAiResult && !openAiError) || !openAiApiKey.trim() ? 'skipped' : false,
+    overseerr: Boolean(overseerrResult && !overseerrError) || (!overseerrBaseUrl.trim() && !overseerrApiKey.trim()) ? 'skipped' : false,
   },
   null,
   2,
