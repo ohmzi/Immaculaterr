@@ -1,0 +1,20 @@
+{
+  "name": "tautulli-curated-plex",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev:server": "npm -w apps/server run start:dev",
+    "dev:web": "npm -w apps/web run dev",
+    "build": "npm --workspaces --if-present run build",
+    "lint": "npm --workspaces --if-present run lint",
+    "test": "npm --workspaces --if-present run test"
+  }
+}
+
+
