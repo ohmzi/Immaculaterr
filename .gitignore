@@ -2,11 +2,6 @@
 config/config.local.yaml
 config/config.local.yml
 
-# IDE/editor
-.idea/
-.cursor/
-.vscode/
-
 # Python bytecode/cache
 __pycache__/
 *.py[cod]
@@ -14,3 +9,4 @@ __pycache__/
 # Runtime outputs (can contain sensitive info and are machine-specific)
 data/*
 !data/.gitkeep
+.idea/
