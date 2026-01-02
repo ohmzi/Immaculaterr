@@ -1,6 +1,40 @@
 import { useEffect, useState } from 'react';
 import './App.css';
 
+const ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
+
+type OnboardingStored = {
+  completed: boolean;
+  completedAt?: string;
+  rememberSecrets?: boolean;
+  values?: Record<string, unknown>;
+  results?: Record<string, unknown>;
+};
+
+function loadOnboarding(): OnboardingStored | null {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const obj = parsed as Record<string, unknown>;
+    return {
+      completed: Boolean(obj.completed),
+      completedAt: typeof obj.completedAt === 'string' ? obj.completedAt : undefined,
+      rememberSecrets: Boolean(obj.rememberSecrets),
+      values: typeof obj.values === 'object' && obj.values ? (obj.values as Record<string, unknown>) : undefined,
+      results:
+        typeof obj.results === 'object' && obj.results ? (obj.results as Record<string, unknown>) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveOnboarding(value: OnboardingStored) {
+  localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(value));
+}
+
 type HealthResponse = {
   status: 'ok';
   time: string;
@@ -55,6 +89,8 @@ type OverseerrTestResponse = {
 };
 
 function App() {
+  const stored = loadOnboarding();
+
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,41 +102,70 @@ function App() {
   const [plexWhoami, setPlexWhoami] = useState<PlexWhoamiResponse | null>(null);
   const [plexWhoamiError, setPlexWhoamiError] = useState<string | null>(null);
 
-  const [radarrBaseUrl, setRadarrBaseUrl] = useState('http://localhost:7878');
-  const [radarrApiKey, setRadarrApiKey] = useState('');
+  const [radarrBaseUrl, setRadarrBaseUrl] = useState(
+    (stored?.values?.radarrBaseUrl as string | undefined) ?? 'http://localhost:7878',
+  );
+  const [radarrApiKey, setRadarrApiKey] = useState(
+    (stored?.values?.radarrApiKey as string | undefined) ?? '',
+  );
   const [radarrResult, setRadarrResult] = useState<ArrTestResponse | null>(null);
   const [radarrError, setRadarrError] = useState<string | null>(null);
   const [radarrLog, setRadarrLog] = useState<string[]>([]);
 
-  const [sonarrBaseUrl, setSonarrBaseUrl] = useState('http://localhost:8989');
-  const [sonarrApiKey, setSonarrApiKey] = useState('');
+  const [sonarrBaseUrl, setSonarrBaseUrl] = useState(
+    (stored?.values?.sonarrBaseUrl as string | undefined) ?? 'http://localhost:8989',
+  );
+  const [sonarrApiKey, setSonarrApiKey] = useState(
+    (stored?.values?.sonarrApiKey as string | undefined) ?? '',
+  );
   const [sonarrResult, setSonarrResult] = useState<ArrTestResponse | null>(null);
   const [sonarrError, setSonarrError] = useState<string | null>(null);
   const [sonarrLog, setSonarrLog] = useState<string[]>([]);
 
-  const [googleApiKey, setGoogleApiKey] = useState('');
-  const [googleCseId, setGoogleCseId] = useState('');
-  const [googleNumResults, setGoogleNumResults] = useState(15);
-  const [googleQuery, setGoogleQuery] = useState('imdb the matrix');
+  const [googleApiKey, setGoogleApiKey] = useState(
+    (stored?.values?.googleApiKey as string | undefined) ?? '',
+  );
+  const [googleCseId, setGoogleCseId] = useState(
+    (stored?.values?.googleCseId as string | undefined) ?? '',
+  );
+  const [googleNumResults, setGoogleNumResults] = useState(
+    (stored?.values?.googleNumResults as number | undefined) ?? 15,
+  );
+  const [googleQuery, setGoogleQuery] = useState(
+    (stored?.values?.googleQuery as string | undefined) ?? 'imdb the matrix',
+  );
   const [googleResult, setGoogleResult] = useState<GoogleTestResponse | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [googleLog, setGoogleLog] = useState<string[]>([]);
 
-  const [tmdbApiKey, setTmdbApiKey] = useState('');
+  const [tmdbApiKey, setTmdbApiKey] = useState(
+    (stored?.values?.tmdbApiKey as string | undefined) ?? '',
+  );
   const [tmdbResult, setTmdbResult] = useState<TmdbTestResponse | null>(null);
   const [tmdbError, setTmdbError] = useState<string | null>(null);
   const [tmdbLog, setTmdbLog] = useState<string[]>([]);
 
-  const [openAiApiKey, setOpenAiApiKey] = useState('');
+  const [openAiApiKey, setOpenAiApiKey] = useState(
+    (stored?.values?.openAiApiKey as string | undefined) ?? '',
+  );
   const [openAiResult, setOpenAiResult] = useState<OpenAiTestResponse | null>(null);
   const [openAiError, setOpenAiError] = useState<string | null>(null);
   const [openAiLog, setOpenAiLog] = useState<string[]>([]);
 
-  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
-  const [overseerrApiKey, setOverseerrApiKey] = useState('');
+  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState(
+    (stored?.values?.overseerrBaseUrl as string | undefined) ?? 'http://localhost:5055',
+  );
+  const [overseerrApiKey, setOverseerrApiKey] = useState(
+    (stored?.values?.overseerrApiKey as string | undefined) ?? '',
+  );
   const [overseerrResult, setOverseerrResult] = useState<OverseerrTestResponse | null>(null);
   const [overseerrError, setOverseerrError] = useState<string | null>(null);
   const [overseerrLog, setOverseerrLog] = useState<string[]>([]);
+
+  const [rememberSecrets, setRememberSecrets] = useState(stored?.rememberSecrets ?? true);
+  const [wizardOpen, setWizardOpen] = useState(!stored?.completed);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardError, setWizardError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -460,12 +525,108 @@ function App() {
     }
   }
 
+  function allCredsPassed() {
+    const plexOk = Boolean(plexAuthToken && plexWhoami);
+    const radarrOk = Boolean(radarrResult && !radarrError);
+    const sonarrOk = Boolean(sonarrResult && !sonarrError);
+    const googleOk = Boolean(googleResult && !googleError);
+    const tmdbOk = Boolean(tmdbResult && !tmdbError);
+    const openAiOk = Boolean(openAiResult && !openAiError);
+    const overseerrOk = Boolean(overseerrResult && !overseerrError);
+    return plexOk && radarrOk && sonarrOk && googleOk && tmdbOk && openAiOk && overseerrOk;
+  }
+
+  function completeWizard() {
+    if (!allCredsPassed()) {
+      setWizardError('All integrations must pass before finishing.');
+      return;
+    }
+
+    const values: Record<string, unknown> = {
+      radarrBaseUrl,
+      sonarrBaseUrl,
+      googleNumResults,
+      googleQuery,
+      overseerrBaseUrl,
+    };
+
+    if (rememberSecrets) {
+      values.radarrApiKey = radarrApiKey;
+      values.sonarrApiKey = sonarrApiKey;
+      values.googleApiKey = googleApiKey;
+      values.googleCseId = googleCseId;
+      values.tmdbApiKey = tmdbApiKey;
+      values.openAiApiKey = openAiApiKey;
+      values.overseerrApiKey = overseerrApiKey;
+      values.plexAuthToken = plexAuthToken;
+    }
+
+    saveOnboarding({
+      completed: true,
+      completedAt: new Date().toISOString(),
+      rememberSecrets,
+      values,
+      results: {
+        plex: plexWhoami,
+        radarr: radarrResult,
+        sonarr: sonarrResult,
+        google: googleResult,
+        tmdb: tmdbResult,
+        openai: openAiResult,
+        overseerr: overseerrResult,
+      },
+    });
+
+    setWizardOpen(false);
+  }
+
+  function resetWizard() {
+    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    window.location.reload();
+  }
+
+  function currentStepCanContinue() {
+    // Steps: 0 Plex, 1 Radarr, 2 Sonarr, 3 Google, 4 TMDB, 5 OpenAI, 6 Overseerr, 7 Summary
+    switch (wizardStep) {
+      case 0:
+        return Boolean(plexAuthToken && plexWhoami);
+      case 1:
+        return Boolean(radarrResult && !radarrError);
+      case 2:
+        return Boolean(sonarrResult && !sonarrError);
+      case 3:
+        return Boolean(googleResult && !googleError);
+      case 4:
+        return Boolean(tmdbResult && !tmdbError);
+      case 5:
+        return Boolean(openAiResult && !openAiError);
+      case 6:
+        return Boolean(overseerrResult && !overseerrError);
+      case 7:
+        return allCredsPassed();
+      default:
+        return false;
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
         <h1 className="title">Tautulli Curated Plex (WIP)</h1>
         <p className="subtitle">TypeScript rewrite • Plex-native auth and monitoring (next)</p>
       </header>
+
+      {stored?.completed ? (
+        <section className="panel">
+          <div className="panelTitle">Credential validation</div>
+          <div className="muted">
+            Last completed: {stored.completedAt ? new Date(stored.completedAt).toLocaleString() : 'unknown'}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <button onClick={resetWizard}>Re-run setup wizard</button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel">
         <div className="panelTitle">Backend status</div>
@@ -816,6 +977,325 @@ function App() {
           </div>
         ) : null}
       </section>
+
+      {wizardOpen ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div className="panelTitle">Setup wizard</div>
+                <div className="muted">Validate credentials one-by-one to unlock the app.</div>
+              </div>
+              <button onClick={resetWizard}>Reset</button>
+            </div>
+
+            <div className="stepper" style={{ marginTop: 12 }}>
+              {['Plex', 'Radarr', 'Sonarr', 'Google', 'TMDB', 'OpenAI', 'Overseerr', 'Finish'].map(
+                (label, idx) => (
+                  <button
+                    key={label}
+                    className={idx === wizardStep ? 'stepActive' : 'step'}
+                    onClick={() => setWizardStep(idx)}
+                    disabled={idx > wizardStep && !currentStepCanContinue()}
+                    style={{ padding: '6px 10px' }}
+                  >
+                    {idx + 1}. {label}
+                  </button>
+                ),
+              )}
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              {wizardStep === 0 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Plex</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Click Connect Plex and approve access in the Plex window.
+                  </div>
+                  <button onClick={onConnectPlex} disabled={isConnectingPlex}>
+                    {isConnectingPlex ? 'Connecting…' : 'Connect Plex'}
+                  </button>
+                  {plexError ? <div className="error" style={{ marginTop: 12 }}>Error: {plexError}</div> : null}
+                  {plexWhoami ? (
+                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(plexWhoami, null, 2)}</pre>
+                  ) : (
+                    <div className="muted" style={{ marginTop: 12 }}>
+                      {plexAuthToken ? 'Validating token…' : 'Not connected yet.'}
+                    </div>
+                  )}
+                </>
+              ) : null}
+
+              {wizardStep === 1 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Radarr</div>
+                  <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
+                      <input
+                        value={radarrBaseUrl}
+                        onChange={(e) => setRadarrBaseUrl(e.target.value)}
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>API Key</div>
+                      <input
+                        value={radarrApiKey}
+                        onChange={(e) => setRadarrApiKey(e.target.value)}
+                        type="password"
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <div>
+                      <button onClick={onTestRadarr}>Test Radarr</button>
+                    </div>
+                  </div>
+                  {radarrError ? <div className="error" style={{ marginTop: 12 }}>Error: {radarrError}</div> : null}
+                  {radarrResult ? (
+                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(radarrResult, null, 2)}</pre>
+                  ) : null}
+                </>
+              ) : null}
+
+              {wizardStep === 2 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Sonarr</div>
+                  <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
+                      <input
+                        value={sonarrBaseUrl}
+                        onChange={(e) => setSonarrBaseUrl(e.target.value)}
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>API Key</div>
+                      <input
+                        value={sonarrApiKey}
+                        onChange={(e) => setSonarrApiKey(e.target.value)}
+                        type="password"
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <div>
+                      <button onClick={onTestSonarr}>Test Sonarr</button>
+                    </div>
+                  </div>
+                  {sonarrError ? <div className="error" style={{ marginTop: 12 }}>Error: {sonarrError}</div> : null}
+                  {sonarrResult ? (
+                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(sonarrResult, null, 2)}</pre>
+                  ) : null}
+                </>
+              ) : null}
+
+              {wizardStep === 3 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Google Programmable Search</div>
+                  <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_API_KEY</div>
+                      <input
+                        value={googleApiKey}
+                        onChange={(e) => setGoogleApiKey(e.target.value)}
+                        type="password"
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_CSE_ID (cx)</div>
+                      <input
+                        value={googleCseId}
+                        onChange={(e) => setGoogleCseId(e.target.value)}
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>num_results</div>
+                      <input
+                        value={String(googleNumResults)}
+                        onChange={(e) =>
+                          setGoogleNumResults(Number.parseInt(e.target.value || '0', 10))
+                        }
+                        type="number"
+                        min={0}
+                        max={50}
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>test query</div>
+                      <input
+                        value={googleQuery}
+                        onChange={(e) => setGoogleQuery(e.target.value)}
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <div>
+                      <button onClick={onTestGoogle}>Test Google</button>
+                    </div>
+                  </div>
+                  {googleError ? <div className="error" style={{ marginTop: 12 }}>Error: {googleError}</div> : null}
+                  {googleResult ? (
+                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(googleResult, null, 2)}</pre>
+                  ) : null}
+                </>
+              ) : null}
+
+              {wizardStep === 4 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>TMDB</div>
+                  <label>
+                    <div className="muted" style={{ marginBottom: 4 }}>TMDB_API_KEY</div>
+                    <input
+                      value={tmdbApiKey}
+                      onChange={(e) => setTmdbApiKey(e.target.value)}
+                      type="password"
+                      style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                    />
+                  </label>
+                  <div style={{ marginTop: 8 }}>
+                    <button onClick={onTestTmdb}>Test TMDB</button>
+                  </div>
+                  {tmdbError ? <div className="error" style={{ marginTop: 12 }}>Error: {tmdbError}</div> : null}
+                  {tmdbResult ? (
+                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(tmdbResult, null, 2)}</pre>
+                  ) : null}
+                </>
+              ) : null}
+
+              {wizardStep === 5 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>OpenAI</div>
+                  <label>
+                    <div className="muted" style={{ marginBottom: 4 }}>OPENAI_API_KEY</div>
+                    <input
+                      value={openAiApiKey}
+                      onChange={(e) => setOpenAiApiKey(e.target.value)}
+                      type="password"
+                      style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                    />
+                  </label>
+                  <div style={{ marginTop: 8 }}>
+                    <button onClick={onTestOpenAi}>Test OpenAI</button>
+                  </div>
+                  {openAiError ? <div className="error" style={{ marginTop: 12 }}>Error: {openAiError}</div> : null}
+                  {openAiResult ? (
+                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(openAiResult, null, 2)}</pre>
+                  ) : null}
+                </>
+              ) : null}
+
+              {wizardStep === 6 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Overseerr</div>
+                  <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
+                      <input
+                        value={overseerrBaseUrl}
+                        onChange={(e) => setOverseerrBaseUrl(e.target.value)}
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <label>
+                      <div className="muted" style={{ marginBottom: 4 }}>API Key</div>
+                      <input
+                        value={overseerrApiKey}
+                        onChange={(e) => setOverseerrApiKey(e.target.value)}
+                        type="password"
+                        style={{ width: '100%', padding: 10, borderRadius: 8 }}
+                      />
+                    </label>
+                    <div>
+                      <button onClick={onTestOverseerr}>Test Overseerr</button>
+                    </div>
+                  </div>
+                  {overseerrError ? (
+                    <div className="error" style={{ marginTop: 12 }}>
+                      Error: {overseerrError}
+                    </div>
+                  ) : null}
+                  {overseerrResult ? (
+                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(overseerrResult, null, 2)}</pre>
+                  ) : null}
+                </>
+              ) : null}
+
+              {wizardStep === 7 ? (
+                <>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Confirmation</div>
+                  <div className="muted">All integrations must be OK to finish.</div>
+                  <pre className="code" style={{ marginTop: 12 }}>
+{JSON.stringify(
+  {
+    plex: Boolean(plexAuthToken && plexWhoami),
+    radarr: Boolean(radarrResult && !radarrError),
+    sonarr: Boolean(sonarrResult && !sonarrError),
+    google: Boolean(googleResult && !googleError),
+    tmdb: Boolean(tmdbResult && !tmdbError),
+    openai: Boolean(openAiResult && !openAiError),
+    overseerr: Boolean(overseerrResult && !overseerrError),
+  },
+  null,
+  2,
+)}
+                  </pre>
+
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={rememberSecrets}
+                      onChange={(e) => setRememberSecrets(e.target.checked)}
+                    />
+                    <span>Remember credentials on this browser (temporary; we’ll move this server-side)</span>
+                  </label>
+                </>
+              ) : null}
+
+              {wizardError ? <div className="error" style={{ marginTop: 12 }}>Error: {wizardError}</div> : null}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
+              <button
+                onClick={() => {
+                  setWizardError(null);
+                  setWizardStep((s) => Math.max(0, s - 1));
+                }}
+                disabled={wizardStep === 0}
+              >
+                Back
+              </button>
+
+              {wizardStep < 7 ? (
+                <button
+                  onClick={() => {
+                    setWizardError(null);
+                    if (!currentStepCanContinue()) {
+                      setWizardError('Please test this step and ensure it passes before continuing.');
+                      return;
+                    }
+                    setWizardStep((s) => Math.min(7, s + 1));
+                  }}
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setWizardError(null);
+                    completeWizard();
+                  }}
+                  disabled={!allCredsPassed()}
+                >
+                  Finish setup
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
