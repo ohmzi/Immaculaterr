@@ -2,15 +2,19 @@ import { useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { Navigation, MobileNavigation } from '@/components/Navigation';
+import { Navigation } from '@/components/Navigation';
+import { InternalNavigation } from '@/components/InternalNavigation';
+import { MobileNavigation } from '@/components/Navigation'; // Re-export MobileNav from Navigation file or move it
 import { getMe, logout } from '@/api/auth';
 import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
+import { getInitialTheme, setTheme, type Theme } from '@/app/theme';
 
 export function AppShell() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<Theme>(() => getInitialTheme());
 
   const meQuery = useQuery({
     queryKey: ['auth', 'me'],
@@ -44,24 +48,41 @@ export function AppShell() {
     },
   });
 
-  // Check if we're on the home page (show Figma design nav) or other pages
+  const toggleTheme = () => {
+    const next: Theme = currentTheme === 'dark' ? 'light' : 'dark';
+    setCurrentTheme(next);
+    setTheme(next);
+  };
+
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
+
+  const username = meQuery.data?.user?.username ?? 'User';
   const isHomePage = location.pathname === '/';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Desktop Navigation - Only show on home, other pages have their own header */}
-      {isHomePage && (
+    <div className="min-h-screen bg-background transition-colors duration-300">
+      {/* Desktop Navigation Switcher */}
+      {isHomePage ? (
         <div className="hidden lg:block">
           <Navigation />
         </div>
+      ) : (
+        <InternalNavigation 
+          username={username}
+          theme={currentTheme}
+          onToggleTheme={toggleTheme}
+          onLogout={handleLogout}
+        />
       )}
 
       {/* Main Content */}
-      <main className={isHomePage ? '' : 'pt-0 pb-24 lg:pb-0'}>
+      <main className={isHomePage ? '' : 'pt-24 pb-24 lg:pb-8'}>
         <Outlet />
       </main>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation - Always visible */}
       <MobileNavigation />
 
       {/* Setup Wizard Modal */}
