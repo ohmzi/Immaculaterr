@@ -14,6 +14,8 @@ import {
   Layers,
   ListChecks,
   History,
+  Bell,
+  Plus,
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -32,16 +34,16 @@ import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
 import { getInitialTheme, setTheme, type Theme } from '@/app/theme';
 
-// Mobile bottom nav items
+// Mobile bottom nav items - 5 max for clean pill design
 const mobileNavItems = [
   { to: '/', icon: Home, label: 'Home' },
   { to: '/connections', icon: PlugZap, label: 'Connect' },
-  { to: '/collections', icon: Layers, label: 'Collections' },
+  { to: '/collections', icon: Layers, label: 'Library' },
   { to: '/jobs', icon: ListChecks, label: 'Jobs' },
   { to: '/runs', icon: History, label: 'Runs' },
 ];
 
-// Full nav for sidebar/mobile menu
+// Full nav for desktop/menu
 const navItems = [
   { to: '/', icon: Home, label: 'Dashboard' },
   { to: '/setup', icon: Settings2, label: 'Setup' },
@@ -105,16 +107,66 @@ export function AppShell() {
     setTheme(next);
   };
 
+  const username = meQuery.data?.user?.username ?? 'User';
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Top Header - Minimal, floating style */}
-      <header className="fixed left-0 right-0 top-0 z-50">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+      {/* Background orbs */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
+      </div>
+
+      {/* Mobile Header - Greeting style like reference */}
+      <header className="fixed left-0 right-0 top-0 z-40 lg:hidden">
+        <div className="px-4 py-4">
+          <div className="flex items-center justify-between">
+            {/* User greeting */}
+            <div className="flex items-center gap-3">
+              <div
+                className={cn(
+                  'flex h-12 w-12 items-center justify-center rounded-full',
+                  'bg-gradient-to-br from-primary to-primary/70',
+                  'text-lg font-bold text-white shadow-lg shadow-primary/30',
+                )}
+              >
+                {username[0].toUpperCase()}
+              </div>
+              <div>
+                <p className="text-lg font-semibold">Hi {username} 👋</p>
+                <p className="text-sm text-muted-foreground">Welcome back</p>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 rounded-full glass"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 rounded-full glass"
+              >
+                <Bell className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Desktop Header */}
+      <header className="fixed left-0 right-0 top-0 z-40 hidden lg:block">
+        <div className="mx-auto max-w-7xl px-6 py-4">
           <nav
             className={cn(
-              'flex items-center justify-between rounded-2xl px-4 py-3',
-              'border bg-background/80 backdrop-blur-xl',
-              'shadow-lg shadow-black/5 dark:shadow-black/20',
+              'flex items-center justify-between rounded-2xl px-5 py-3',
+              'glass-strong shadow-xl shadow-black/10',
             )}
           >
             {/* Logo */}
@@ -125,18 +177,18 @@ export function AppShell() {
               <div
                 className={cn(
                   'flex h-10 w-10 items-center justify-center rounded-xl',
-                  'bg-gradient-to-br from-primary to-primary/80',
-                  'text-primary-foreground shadow-md shadow-primary/25',
+                  'bg-gradient-to-br from-primary to-primary/70',
+                  'text-sm font-bold text-white shadow-md shadow-primary/25',
                   'transition-transform group-hover:scale-105',
                 )}
               >
                 TC
               </div>
-              <span className="hidden text-lg sm:inline">Tautulli Curated</span>
+              <span className="text-lg font-semibold">Tautulli Curated</span>
             </Link>
 
-            {/* Desktop Nav - Hidden on mobile */}
-            <div className="hidden items-center gap-1 lg:flex">
+            {/* Desktop Nav Links */}
+            <div className="flex items-center gap-1">
               {navItems.slice(0, 5).map((item) => {
                 const isActive =
                   item.to === '/'
@@ -147,9 +199,9 @@ export function AppShell() {
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      'rounded-xl px-4 py-2 text-sm font-medium transition-all',
+                      'rounded-xl px-4 py-2.5 text-sm font-medium transition-all',
                       isActive
-                        ? 'bg-primary/10 text-primary'
+                        ? 'bg-primary text-white shadow-md shadow-primary/30'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                     )}
                   >
@@ -166,7 +218,7 @@ export function AppShell() {
                 variant="ghost"
                 size="icon"
                 onClick={toggleTheme}
-                className="rounded-xl"
+                className="h-10 w-10 rounded-xl"
               >
                 {theme === 'dark' ? (
                   <Sun className="h-5 w-5" />
@@ -178,24 +230,23 @@ export function AppShell() {
               {/* User menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-2 rounded-xl">
+                  <Button variant="ghost" size="sm" className="gap-2 rounded-xl pl-2 pr-3">
                     <div
                       className={cn(
                         'flex h-8 w-8 items-center justify-center rounded-lg',
-                        'bg-primary/10 text-sm font-bold text-primary',
+                        'bg-gradient-to-br from-primary to-primary/70',
+                        'text-sm font-bold text-white',
                       )}
                     >
-                      {(meQuery.data?.user?.username ?? 'A')[0].toUpperCase()}
+                      {username[0].toUpperCase()}
                     </div>
-                    <ChevronDown className="hidden h-4 w-4 opacity-50 sm:inline" />
+                    <ChevronDown className="h-4 w-4 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 rounded-xl">
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
-                      <span className="font-semibold">
-                        {meQuery.data?.user?.username ?? 'Admin'}
-                      </span>
+                      <span className="font-semibold">{username}</span>
                       <span className="text-xs font-normal text-muted-foreground">
                         Local Administrator
                       </span>
@@ -246,20 +297,6 @@ export function AppShell() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-
-              {/* Mobile menu button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-xl lg:hidden"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                {mobileMenuOpen ? (
-                  <X className="h-5 w-5" />
-                ) : (
-                  <Menu className="h-5 w-5" />
-                )}
-              </Button>
             </div>
           </nav>
         </div>
@@ -268,13 +305,25 @@ export function AppShell() {
       {/* Mobile Full-Screen Menu */}
       <div
         className={cn(
-          'fixed inset-0 z-40 bg-background/95 backdrop-blur-xl transition-all duration-300 lg:hidden',
+          'fixed inset-0 z-50 bg-background/98 backdrop-blur-xl transition-all duration-300 lg:hidden',
           mobileMenuOpen
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none',
         )}
       >
-        <nav className="flex h-full flex-col items-center justify-center gap-4 p-8">
+        {/* Close button */}
+        <div className="absolute right-4 top-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-12 w-12 rounded-full glass"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <X className="h-6 w-6" />
+          </Button>
+        </div>
+
+        <nav className="flex h-full flex-col items-center justify-center gap-3 p-8">
           {navItems.map((item, index) => {
             const Icon = item.icon;
             const isActive =
@@ -288,43 +337,80 @@ export function AppShell() {
                 onClick={() => setMobileMenuOpen(false)}
                 className={cn(
                   'flex w-full max-w-sm items-center gap-4 rounded-2xl px-6 py-4',
-                  'text-xl font-semibold transition-all',
-                  'border',
+                  'text-lg font-semibold transition-all',
+                  'card-reveal',
                   isActive
-                    ? 'border-primary/30 bg-primary/10 text-primary'
-                    : 'border-transparent hover:border-border hover:bg-accent',
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                    : 'glass hover:bg-accent',
                 )}
-                style={{
-                  animationDelay: `${index * 50}ms`,
-                }}
+                style={{ animationDelay: `${index * 50}ms` }}
               >
-                <Icon className="h-6 w-6" />
+                <div
+                  className={cn(
+                    'flex h-12 w-12 items-center justify-center rounded-xl',
+                    isActive ? 'bg-white/20' : 'bg-primary/10',
+                  )}
+                >
+                  <Icon className={cn('h-6 w-6', isActive ? 'text-white' : 'text-primary')} />
+                </div>
                 {item.label}
               </NavLink>
             );
           })}
+
+          {/* Theme toggle in menu */}
+          <button
+            onClick={toggleTheme}
+            className={cn(
+              'flex w-full max-w-sm items-center gap-4 rounded-2xl px-6 py-4',
+              'text-lg font-semibold glass hover:bg-accent transition-all',
+              'card-reveal',
+            )}
+            style={{ animationDelay: `${navItems.length * 50}ms` }}
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10">
+              {theme === 'dark' ? (
+                <Sun className="h-6 w-6 text-amber-500" />
+              ) : (
+                <Moon className="h-6 w-6 text-amber-500" />
+              )}
+            </div>
+            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          </button>
+
+          {/* Sign out */}
+          <button
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            className={cn(
+              'flex w-full max-w-sm items-center gap-4 rounded-2xl px-6 py-4',
+              'text-lg font-semibold glass hover:bg-destructive/10 transition-all',
+              'card-reveal',
+            )}
+            style={{ animationDelay: `${(navItems.length + 1) * 50}ms` }}
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-destructive/10">
+              <LogOut className="h-6 w-6 text-destructive" />
+            </div>
+            Sign Out
+          </button>
         </nav>
       </div>
 
       {/* Main Content */}
-      <main className="min-h-screen pt-24 pb-24 lg:pb-8">
+      <main className="relative z-10 min-h-screen pt-20 pb-28 lg:pt-24 lg:pb-8">
         <Outlet />
       </main>
 
-      {/* Mobile Bottom Navigation - Floating pill */}
+      {/* Mobile Bottom Navigation - Floating Pill (exactly like reference) */}
       <nav
         className={cn(
-          'fixed bottom-6 left-4 right-4 z-50 lg:hidden',
-          mobileMenuOpen && 'opacity-0 pointer-events-none',
+          'nav-pill lg:hidden',
+          'transition-all duration-300',
+          mobileMenuOpen && 'opacity-0 pointer-events-none translate-y-4',
         )}
       >
-        <div
-          className={cn(
-            'mx-auto flex max-w-md items-center justify-around',
-            'rounded-2xl border bg-background/90 p-2 backdrop-blur-xl',
-            'shadow-xl shadow-black/10 dark:shadow-black/30',
-          )}
-        >
+        <div className="flex items-center justify-around">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -336,19 +422,34 @@ export function AppShell() {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  'flex flex-col items-center gap-1 rounded-xl px-3 py-2',
-                  'text-xs font-medium transition-all',
+                  'flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl',
+                  'text-xs font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-primary text-primary-foreground scale-105'
+                    ? 'nav-item-active'
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <Icon className={cn('h-5 w-5', isActive && 'animate-pulse')} />
-                <span className={cn(!isActive && 'opacity-70')}>{item.label}</span>
+                <Icon className="h-5 w-5" />
+                <span className={cn(isActive ? 'text-white' : 'opacity-80')}>
+                  {item.label}
+                </span>
               </NavLink>
             );
           })}
         </div>
+
+        {/* Menu button integrated in nav */}
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className={cn(
+            'absolute -top-14 right-4',
+            'flex h-12 w-12 items-center justify-center rounded-full',
+            'glass shadow-xl',
+            'transition-all hover:scale-105',
+          )}
+        >
+          <Menu className="h-5 w-5" />
+        </button>
       </nav>
 
       <SetupWizardModal

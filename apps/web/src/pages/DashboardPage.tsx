@@ -2,77 +2,83 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Search,
   Settings2,
   PlugZap,
   Layers,
   ListChecks,
   History,
   FileUp,
-  ArrowRight,
-  Sparkles,
-  Zap,
   Activity,
+  Zap,
+  Server,
+  Clock,
+  ChevronRight,
+  Sparkles,
+  Film,
+  Tv,
+  MonitorPlay,
 } from 'lucide-react';
 
 import { useHealthQuery } from '@/api/queries';
 import { getPublicSettings } from '@/api/settings';
 import { cn } from '@/lib/utils';
 
-// Page navigation data
-const pages = [
-  {
-    to: '/setup',
-    icon: Settings2,
-    title: 'Setup',
-    description: 'Configure your integrations',
-    color: 'from-emerald-500 to-teal-600',
-    bgColor: 'bg-emerald-500/10',
-    textColor: 'text-emerald-600 dark:text-emerald-400',
-  },
+// Quick Access items - main navigation cards
+const quickAccess = [
   {
     to: '/connections',
     icon: PlugZap,
     title: 'Connections',
-    description: 'Test service connectivity',
-    color: 'from-blue-500 to-cyan-600',
-    bgColor: 'bg-blue-500/10',
-    textColor: 'text-blue-600 dark:text-blue-400',
+    subtitle: 'Test services',
+    color: 'from-blue-500 to-cyan-500',
+    iconBg: 'bg-blue-500/15',
+    iconColor: 'text-blue-400',
   },
   {
     to: '/collections',
     icon: Layers,
     title: 'Collections',
-    description: 'Manage Plex collections',
-    color: 'from-violet-500 to-purple-600',
-    bgColor: 'bg-violet-500/10',
-    textColor: 'text-violet-600 dark:text-violet-400',
+    subtitle: 'Manage library',
+    color: 'from-violet-500 to-purple-500',
+    iconBg: 'bg-violet-500/15',
+    iconColor: 'text-violet-400',
   },
   {
     to: '/jobs',
     icon: ListChecks,
     title: 'Jobs',
-    description: 'Run & schedule workflows',
-    color: 'from-amber-500 to-orange-600',
-    bgColor: 'bg-amber-500/10',
-    textColor: 'text-amber-600 dark:text-amber-400',
+    subtitle: 'Run workflows',
+    color: 'from-amber-500 to-orange-500',
+    iconBg: 'bg-amber-500/15',
+    iconColor: 'text-amber-400',
   },
   {
     to: '/runs',
     icon: History,
-    title: 'Runs',
-    description: 'View execution history',
-    color: 'from-rose-500 to-pink-600',
-    bgColor: 'bg-rose-500/10',
-    textColor: 'text-rose-600 dark:text-rose-400',
+    title: 'History',
+    subtitle: 'View runs',
+    color: 'from-rose-500 to-pink-500',
+    iconBg: 'bg-rose-500/15',
+    iconColor: 'text-rose-400',
+  },
+];
+
+// My sections - room-card style
+const sections = [
+  {
+    to: '/setup',
+    icon: Settings2,
+    title: 'Setup',
+    count: 'Configure',
+    accent: 'bg-emerald-500',
   },
   {
     to: '/import',
     icon: FileUp,
     title: 'Import',
-    description: 'Import from config.yaml',
-    color: 'from-slate-500 to-gray-600',
-    bgColor: 'bg-slate-500/10',
-    textColor: 'text-slate-600 dark:text-slate-400',
+    count: 'YAML',
+    accent: 'bg-slate-500',
   },
 ];
 
@@ -95,157 +101,178 @@ export function DashboardPage() {
     return Boolean((onboarding as Record<string, unknown>)['completed']);
   }, [settingsQuery.data?.settings]);
 
+  const isOnline = health && !healthError;
+
   return (
     <div className="relative min-h-[calc(100vh-8rem)]">
-      {/* Animated background orbs */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
-      </div>
+      <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
+        
+        {/* Search Bar - Mobile prominent */}
+        <div className="mb-6 lg:hidden">
+          <div className="search-bar flex items-center gap-3 px-4 py-3">
+            <Search className="h-5 w-5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search features..."
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+        </div>
 
-      <div className="relative z-10 mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 lg:py-16">
-        {/* Hero Section - Full width, bold like CoLabs */}
-        <header className="mb-16 text-center lg:mb-24 lg:text-left">
-          {/* Status badge */}
-          <div className="mb-8 flex justify-center lg:justify-start">
-            <div
-              className={cn(
-                'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium',
-                'border backdrop-blur-sm',
-                healthError
-                  ? 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400'
-                  : health
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    : 'border-border bg-muted text-muted-foreground',
-              )}
-            >
-              <span
-                className={cn(
-                  'h-2 w-2 rounded-full status-dot',
-                  healthError
-                    ? 'bg-red-500'
-                    : health
-                      ? 'bg-emerald-500'
-                      : 'bg-muted-foreground',
-                )}
-              />
-              {healthError ? 'Offline' : health ? 'System Online' : 'Connecting...'}
+        {/* Hero Stat Card - Weather widget style */}
+        <div className="mb-8 hero-text">
+          <div className="stat-card">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                {/* Status icon - like weather icon */}
+                <div
+                  className={cn(
+                    'flex h-16 w-16 items-center justify-center rounded-2xl',
+                    isOnline ? 'bg-emerald-500/20' : 'bg-red-500/20',
+                  )}
+                >
+                  {isOnline ? (
+                    <Activity className="h-8 w-8 text-emerald-400" />
+                  ) : (
+                    <Server className="h-8 w-8 text-red-400" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">System Status</p>
+                  <p className="text-3xl font-bold tracking-tight">
+                    {healthError ? 'Offline' : isOnline ? 'Online' : 'Connecting...'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Tautulli Curated</p>
+                </div>
+              </div>
+
+              {/* Quick stats row */}
+              <div className="hidden sm:block">
+                <div className="flex items-center gap-6 text-sm">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-primary">
+                      {setupComplete ? '✓' : '—'}
+                    </p>
+                    <p className="text-muted-foreground">Setup</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">Local</p>
+                    <p className="text-muted-foreground">Mode</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom stats row - like weather details */}
+            <div className="mt-6 grid grid-cols-4 gap-4 border-t border-white/5 pt-4">
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1.5">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">{isOnline ? 'Ready' : '—'}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Status</p>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1.5">
+                  <Server className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">Local</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Server</p>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1.5">
+                  <Clock className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">Auto</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Schedule</p>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">{setupComplete ? 'Done' : 'Pending'}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Setup</p>
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Main headline */}
-          <h1 className="hero-text mb-6">
-            <span className="block text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
-              Making space for
-            </span>
-            <span className="block text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl gradient-text">
-              curated media
-            </span>
-          </h1>
-
-          <p className="hero-text hero-text-delay-1 mx-auto max-w-2xl text-lg text-muted-foreground sm:text-xl lg:mx-0 lg:text-2xl">
-            Automate your Plex library with intelligent monitoring, 
-            collection management, and seamless Radarr & Sonarr integration.
-          </p>
-
-          {/* Quick action buttons */}
-          <div className="hero-text hero-text-delay-2 mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center lg:justify-start">
-            {!setupComplete ? (
-              <Link
-                to="/setup"
-                className={cn(
-                  'group inline-flex items-center gap-3 rounded-full px-8 py-4',
-                  'bg-primary text-primary-foreground font-semibold text-lg',
-                  'btn-float shadow-lg shadow-primary/25',
-                )}
-              >
-                <Sparkles className="h-5 w-5 icon-bounce" />
-                Get Started
-                <ArrowRight className="h-5 w-5 arrow-slide" />
-              </Link>
-            ) : (
-              <Link
-                to="/jobs"
-                className={cn(
-                  'group inline-flex items-center gap-3 rounded-full px-8 py-4',
-                  'bg-primary text-primary-foreground font-semibold text-lg',
-                  'btn-float shadow-lg shadow-primary/25',
-                )}
-              >
-                <Zap className="h-5 w-5 icon-bounce" />
-                Run Jobs
-                <ArrowRight className="h-5 w-5 arrow-slide" />
-              </Link>
-            )}
+        {/* Quick Access Section */}
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between hero-text hero-text-delay-1">
+            <h2 className="section-title">Quick Access</h2>
             <Link
-              to="/collections"
-              className={cn(
-                'group inline-flex items-center gap-3 rounded-full px-8 py-4',
-                'border-2 border-border bg-background/80 backdrop-blur-sm',
-                'font-semibold text-lg text-foreground',
-                'btn-float',
-              )}
+              to="/setup"
+              className="flex items-center gap-1 text-sm text-primary hover:underline"
             >
-              <Layers className="h-5 w-5 icon-bounce" />
-              Collections
+              See All
+              <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
-        </header>
 
-        {/* Page Navigation Cards - CoLabs style grid */}
-        <section>
-          <h2 className="hero-text hero-text-delay-3 mb-8 text-center text-sm font-semibold uppercase tracking-widest text-muted-foreground lg:text-left">
-            Explore Features
-          </h2>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
-            {pages.map((page, index) => {
-              const Icon = page.icon;
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {quickAccess.map((item, index) => {
+              const Icon = item.icon;
               return (
                 <Link
-                  key={page.to}
-                  to={page.to}
+                  key={item.to}
+                  to={item.to}
                   className={cn(
-                    'group page-card card-reveal p-6 sm:p-8',
+                    'quick-card card-reveal group',
                     `card-delay-${index + 1}`,
                   )}
                 >
-                  {/* Gradient overlay */}
-                  <div
-                    className={cn(
-                      'absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100',
-                      'bg-gradient-to-br',
-                      page.color,
-                    )}
-                    style={{ opacity: 0.03 }}
-                  />
+                  <div className="mb-3 flex items-start justify-between">
+                    <div className={cn('icon-container', item.iconBg)}>
+                      <Icon className={cn('h-5 w-5', item.iconColor)} />
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  </div>
+                  <h3 className="font-semibold">{item.title}</h3>
+                  <p className="text-sm text-muted-foreground">{item.subtitle}</p>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
 
-                  <div className="relative">
-                    {/* Icon */}
+        {/* My Sections - Room card style */}
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between hero-text hero-text-delay-2">
+            <h2 className="section-title">My Sections</h2>
+            <Link
+              to="/collections"
+              className="flex items-center gap-1 text-sm text-primary hover:underline"
+            >
+              See All
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            {sections.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    'dash-card group p-5 card-reveal',
+                    `card-delay-${index + 3}`,
+                  )}
+                >
+                  <div className="flex items-center gap-4">
                     <div
                       className={cn(
-                        'mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl',
-                        page.bgColor,
+                        'flex h-14 w-14 items-center justify-center rounded-2xl',
+                        item.accent + '/15',
                       )}
                     >
-                      <Icon className={cn('h-7 w-7 icon-bounce', page.textColor)} />
+                      <Icon className={cn('h-7 w-7', item.accent.replace('bg-', 'text-').replace('-500', '-400'))} />
                     </div>
-
-                    {/* Title & Description */}
-                    <h3 className="mb-2 text-xl font-bold tracking-tight sm:text-2xl">
-                      {page.title}
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {page.description}
-                    </p>
-
-                    {/* Arrow indicator */}
-                    <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-primary">
-                      <span className="opacity-0 transition-opacity group-hover:opacity-100">
-                        Explore
-                      </span>
-                      <ArrowRight className="h-4 w-4 arrow-slide" />
+                    <div>
+                      <h3 className="text-lg font-semibold">{item.title}</h3>
+                      <p className="text-sm text-muted-foreground">{item.count}</p>
                     </div>
                   </div>
                 </Link>
@@ -254,38 +281,107 @@ export function DashboardPage() {
           </div>
         </section>
 
-        {/* Quick Stats Footer */}
-        <footer className="mt-16 lg:mt-24">
-          <div className="card-reveal card-delay-6 rounded-3xl border bg-card/50 p-6 backdrop-blur-sm sm:p-8">
-            <div className="grid gap-6 sm:grid-cols-3">
-              <div className="text-center sm:text-left">
-                <div className="flex items-center justify-center gap-2 sm:justify-start">
-                  <Activity className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium text-muted-foreground">Status</span>
+        {/* Desktop Hero Section - Bold like fintech reference */}
+        <section className="hidden lg:block mb-12 hero-text hero-text-delay-3">
+          <div className="dash-card overflow-hidden">
+            <div className="relative p-8 lg:p-12">
+              {/* Background gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
+              
+              <div className="relative flex items-center justify-between">
+                <div className="max-w-xl">
+                  <h2 className="mb-4 text-4xl font-bold tracking-tight">
+                    Automate your <span className="gradient-text">Plex library</span>
+                  </h2>
+                  <p className="mb-6 text-lg text-muted-foreground">
+                    Intelligent monitoring, collection management, and seamless 
+                    Radarr & Sonarr integration — all in one place.
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <Link
+                      to={setupComplete ? '/jobs' : '/setup'}
+                      className={cn(
+                        'inline-flex items-center gap-2 rounded-full px-6 py-3',
+                        'bg-primary text-white font-semibold',
+                        'btn-lift shadow-lg shadow-primary/30',
+                      )}
+                    >
+                      <Zap className="h-5 w-5" />
+                      {setupComplete ? 'Run Jobs' : 'Get Started'}
+                    </Link>
+                    <Link
+                      to="/collections"
+                      className={cn(
+                        'inline-flex items-center gap-2 rounded-full px-6 py-3',
+                        'glass font-semibold',
+                        'transition-all hover:bg-accent',
+                      )}
+                    >
+                      <Layers className="h-5 w-5" />
+                      Collections
+                    </Link>
+                  </div>
                 </div>
-                <p className="mt-2 text-2xl font-bold">
-                  {healthError ? 'Offline' : health ? 'Online' : '...'}
-                </p>
-              </div>
-              <div className="text-center sm:text-left">
-                <div className="flex items-center justify-center gap-2 sm:justify-start">
-                  <Settings2 className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium text-muted-foreground">Setup</span>
+
+                {/* Floating cards - fintech style */}
+                <div className="hidden xl:flex flex-col gap-4">
+                  <div className="quick-card flex items-center gap-3 px-5 py-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15">
+                      <Film className="h-5 w-5 text-violet-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">Movies</p>
+                      <p className="text-sm text-muted-foreground">Radarr sync</p>
+                    </div>
+                  </div>
+                  <div className="quick-card flex items-center gap-3 px-5 py-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15">
+                      <Tv className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">TV Shows</p>
+                      <p className="text-sm text-muted-foreground">Sonarr sync</p>
+                    </div>
+                  </div>
+                  <div className="quick-card flex items-center gap-3 px-5 py-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15">
+                      <MonitorPlay className="h-5 w-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">Plex</p>
+                      <p className="text-sm text-muted-foreground">Collections</p>
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-2 text-2xl font-bold">
-                  {setupComplete ? 'Complete' : 'Pending'}
-                </p>
-              </div>
-              <div className="text-center sm:text-left">
-                <div className="flex items-center justify-center gap-2 sm:justify-start">
-                  <Zap className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium text-muted-foreground">Mode</span>
-                </div>
-                <p className="mt-2 text-2xl font-bold">Local Server</p>
               </div>
             </div>
           </div>
-        </footer>
+        </section>
+
+        {/* Get Started CTA - Mobile */}
+        {!setupComplete && (
+          <section className="lg:hidden card-reveal card-delay-5">
+            <Link
+              to="/setup"
+              className={cn(
+                'dash-card flex items-center justify-between p-5',
+                'bg-gradient-to-r from-primary/20 to-primary/5',
+                'border-primary/30',
+              )}
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
+                  <Sparkles className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">Complete Setup</h3>
+                  <p className="text-sm text-muted-foreground">Configure your integrations</p>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-primary" />
+            </Link>
+          </section>
+        )}
       </div>
     </div>
   );
