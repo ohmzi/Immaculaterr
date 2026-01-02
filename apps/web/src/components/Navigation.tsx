@@ -1,30 +1,47 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 
 interface NavItem {
   label: string;
-  dropdown?: string[];
+  dropdown?: { label: string; to: string }[];
 }
 
 const navItems: NavItem[] = [
   {
     label: 'Overview',
-    dropdown: ['Company', 'Team', 'Careers', 'News'],
+    dropdown: [
+      { label: 'Open App', to: '/app' },
+      { label: 'Collections', to: '/collections' },
+      { label: 'Jobs', to: '/jobs' },
+      { label: 'Runs', to: '/runs' },
+    ],
   },
   {
     label: 'Solution',
-    dropdown: ['For Business', 'For Individuals', 'For Developers', 'Enterprise'],
+    dropdown: [
+      { label: 'Connections', to: '/connections' },
+      { label: 'Import', to: '/import' },
+      { label: 'Setup', to: '/setup' },
+      { label: 'Open App', to: '/app' },
+    ],
   },
   {
     label: 'Service',
-    dropdown: ['Lab Space', 'Build a Lab', 'Innovation Facilitation', 'Office Space'],
+    dropdown: [
+      { label: 'Collections', to: '/collections' },
+      { label: 'Jobs', to: '/jobs' },
+      { label: 'Runs', to: '/runs' },
+      { label: 'Setup', to: '/setup' },
+    ],
   },
 ];
 
 export function Navigation() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <>
@@ -128,8 +145,12 @@ export function Navigation() {
                               <button
                                 key={subIndex}
                                 className="w-full rounded-xl px-4 py-3 text-left text-sm text-gray-800 transition-colors duration-200 hover:bg-gray-100"
+                                onClick={() => {
+                                  setHoveredIndex(null);
+                                  navigate(subItem.to);
+                                }}
                               >
-                                {subItem}
+                                {subItem.label}
                               </button>
                             ))}
                           </div>
@@ -176,7 +197,10 @@ export function Navigation() {
                   </motion.button>
                 </div>
 
-                <button className="rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm text-white transition-all duration-300 hover:bg-white/20 backdrop-blur-sm">
+                <button
+                  className="rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm text-white transition-all duration-300 hover:bg-white/20 backdrop-blur-sm"
+                  onClick={() => navigate('/setup')}
+                >
                   Help
                 </button>
               </div>

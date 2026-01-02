@@ -1,24 +1,40 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 
 interface NavItem {
   label: string;
-  dropdown?: string[];
+  dropdown?: { label: string; to: string }[];
 }
 
 const navItems: NavItem[] = [
   {
     label: 'Overview',
-    dropdown: ['Company', 'Team', 'Careers', 'News'],
+    dropdown: [
+      { label: 'Open App', to: '/app' },
+      { label: 'Collections', to: '/collections' },
+      { label: 'Jobs', to: '/jobs' },
+      { label: 'Runs', to: '/runs' },
+    ],
   },
   {
     label: 'Solution',
-    dropdown: ['For Business', 'For Individuals', 'For Developers', 'Enterprise'],
+    dropdown: [
+      { label: 'Connections', to: '/connections' },
+      { label: 'Import', to: '/import' },
+      { label: 'Setup', to: '/setup' },
+      { label: 'Open App', to: '/app' },
+    ],
   },
   {
     label: 'Service',
-    dropdown: ['Lab Space', 'Build a Lab', 'Innovation Facilitation', 'Office Space'],
+    dropdown: [
+      { label: 'Collections', to: '/collections' },
+      { label: 'Jobs', to: '/jobs' },
+      { label: 'Runs', to: '/runs' },
+      { label: 'Setup', to: '/setup' },
+    ],
   },
 ];
 
@@ -27,6 +43,7 @@ export function MobileNavigation() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const updatePositions = () => {
@@ -91,8 +108,12 @@ export function MobileNavigation() {
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: idx * 0.05 }}
                     className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-gray-800 transition-all duration-200 hover:bg-gray-100"
+                    onClick={() => {
+                      setSelectedIndex(null);
+                      navigate(item.to);
+                    }}
                   >
-                    {item}
+                    {item.label}
                   </motion.button>
                 ))}
               </div>
@@ -252,6 +273,7 @@ export function MobileNavigation() {
               animate={{ x: isSearchOpen ? 100 : 0, opacity: isSearchOpen ? 0 : 1 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-white transition-all duration-300 hover:bg-white/20 backdrop-blur-sm"
+              onClick={() => navigate('/setup')}
             >
               Help
             </motion.button>

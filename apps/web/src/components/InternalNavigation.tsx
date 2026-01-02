@@ -30,7 +30,7 @@ interface InternalNavigationProps {
 }
 
 const navItems = [
-  { to: '/', icon: Home, label: 'Home' },
+  { to: '/app', icon: Home, label: 'Home' },
   { to: '/collections', icon: Layers, label: 'Collections' },
   { to: '/jobs', icon: ListChecks, label: 'Jobs' },
   { to: '/runs', icon: History, label: 'Runs' },
@@ -56,7 +56,7 @@ export function InternalNavigation({
         >
           {/* Logo */}
           <Link
-            to="/"
+            to="/app"
             className="group flex items-center gap-3 font-bold tracking-tight"
           >
             <div

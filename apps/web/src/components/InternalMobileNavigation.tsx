@@ -7,7 +7,7 @@ export function InternalMobileNavigation() {
   const location = useLocation();
 
   const mobileItems = [
-    { to: '/', icon: Home, label: 'Home' },
+    { to: '/app', icon: Home, label: 'Home' },
     { to: '/collections', icon: Layers, label: 'Library' },
     { to: '/jobs', icon: ListChecks, label: 'Jobs' },
     { to: '/runs', icon: History, label: 'Runs' },

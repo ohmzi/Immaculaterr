@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
@@ -15,6 +15,14 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
+function ProtectedAppShell() {
+  return (
+    <AuthGate>
+      <AppShell />
+    </AuthGate>
+  );
+}
+
 export default function App() {
   useEffect(() => {
     // One-time cleanup: stop using legacy localStorage onboarding/secrets.
@@ -27,23 +35,29 @@ export default function App() {
   }, []);
 
   return (
-    <AuthGate>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route index element={<DashboardPage />} />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Outlet />}>
+          {/* Public landing page */}
+          <Route index element={<DashboardPage />} />
+
+          {/* Protected app pages */}
+          <Route element={<ProtectedAppShell />}>
+            <Route path="app" element={<Navigate to="/jobs" replace />} />
             <Route path="setup" element={<SetupPage />} />
-          <Route path="integrations" element={<Navigate to="/connections" replace />} />
-          <Route path="connections" element={<ConnectionsPage />} />
-          <Route path="collections" element={<CollectionsPage />} />
-          <Route path="import" element={<ImportPage />} />
+            <Route path="integrations" element={<Navigate to="/connections" replace />} />
+            <Route path="connections" element={<ConnectionsPage />} />
+            <Route path="collections" element={<CollectionsPage />} />
+            <Route path="import" element={<ImportPage />} />
             <Route path="jobs" element={<JobsPage />} />
-          <Route path="runs" element={<RunsPage />} />
+            <Route path="runs" element={<RunsPage />} />
             <Route path="jobs/runs/:runId" element={<JobRunDetailPage />} />
-            <Route path="*" element={<NotFoundPage />} />
           </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthGate>
+
+          {/* Public 404 */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
