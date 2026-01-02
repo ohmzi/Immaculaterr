@@ -43,13 +43,13 @@ function App() {
   const [plexWhoami, setPlexWhoami] = useState<PlexWhoamiResponse | null>(null);
   const [plexWhoamiError, setPlexWhoamiError] = useState<string | null>(null);
 
-  const [radarrBaseUrl, setRadarrBaseUrl] = useState('');
+  const [radarrBaseUrl, setRadarrBaseUrl] = useState('http://localhost:7878');
   const [radarrApiKey, setRadarrApiKey] = useState('');
   const [radarrResult, setRadarrResult] = useState<ArrTestResponse | null>(null);
   const [radarrError, setRadarrError] = useState<string | null>(null);
   const [radarrLog, setRadarrLog] = useState<string[]>([]);
 
-  const [sonarrBaseUrl, setSonarrBaseUrl] = useState('');
+  const [sonarrBaseUrl, setSonarrBaseUrl] = useState('http://localhost:8989');
   const [sonarrApiKey, setSonarrApiKey] = useState('');
   const [sonarrResult, setSonarrResult] = useState<ArrTestResponse | null>(null);
   const [sonarrError, setSonarrError] = useState<string | null>(null);
@@ -170,12 +170,40 @@ function App() {
     }
   }
 
+  async function readApiError(res: Response) {
+    const contentType = res.headers.get('content-type') ?? '';
+
+    if (contentType.includes('application/json')) {
+      const body = (await res.json().catch(() => null)) as unknown;
+      if (body && typeof body === 'object') {
+        const maybeMessage = (body as Record<string, unknown>)['message'];
+        if (typeof maybeMessage === 'string') return maybeMessage;
+        if (Array.isArray(maybeMessage)) return maybeMessage.join('; ');
+      }
+      return JSON.stringify(body);
+    }
+
+    const text = await res.text().catch(() => '');
+    return text || `HTTP ${res.status}`;
+  }
+
   async function onTestRadarr() {
     setRadarrError(null);
     setRadarrResult(null);
     setRadarrLog(['Testing Radarr connection…']);
 
     try {
+      if (!radarrBaseUrl.trim()) {
+        setRadarrError('Base URL is required');
+        setRadarrLog((prev) => [...prev, 'Radarr test FAILED.']);
+        return;
+      }
+      if (!radarrApiKey.trim()) {
+        setRadarrError('API key is required');
+        setRadarrLog((prev) => [...prev, 'Radarr test FAILED.']);
+        return;
+      }
+
       const res = await fetch('/api/radarr/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,7 +212,10 @@ function App() {
           apiKey: radarrApiKey,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
       const data = (await res.json()) as ArrTestResponse;
       setRadarrResult(data);
       setRadarrLog((prev) => [...prev, 'Radarr test OK.']);
@@ -200,6 +231,17 @@ function App() {
     setSonarrLog(['Testing Sonarr connection…']);
 
     try {
+      if (!sonarrBaseUrl.trim()) {
+        setSonarrError('Base URL is required');
+        setSonarrLog((prev) => [...prev, 'Sonarr test FAILED.']);
+        return;
+      }
+      if (!sonarrApiKey.trim()) {
+        setSonarrError('API key is required');
+        setSonarrLog((prev) => [...prev, 'Sonarr test FAILED.']);
+        return;
+      }
+
       const res = await fetch('/api/sonarr/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,7 +250,10 @@ function App() {
           apiKey: sonarrApiKey,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
       const data = (await res.json()) as ArrTestResponse;
       setSonarrResult(data);
       setSonarrLog((prev) => [...prev, 'Sonarr test OK.']);
