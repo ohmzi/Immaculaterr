@@ -96,14 +96,18 @@
 @layer utilities {
   /* Large floating button - CoLabs style */
   .btn-float {
-    @apply relative overflow-hidden;
+    position: relative;
+    overflow: hidden;
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     transform: translateY(0) scale(1);
   }
 
   .btn-float::before {
     content: '';
-    @apply absolute inset-0 bg-primary/10 opacity-0;
+    position: absolute;
+    inset: 0;
+    background: hsl(var(--primary) / 0.10);
+    opacity: 0;
     transition: opacity 0.3s ease;
   }
 
@@ -115,7 +119,7 @@
   }
 
   .btn-float:hover::before {
-    @apply opacity-100;
+    opacity: 1;
   }
 
   .btn-float:active {
@@ -125,13 +129,17 @@
 
   /* Page card - full width floating style */
   .page-card {
-    @apply relative overflow-hidden rounded-3xl border-2 border-transparent bg-card;
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius);
+    border: 2px solid transparent;
+    background: hsl(var(--card));
     transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
     box-shadow: 0 4px 30px -10px hsl(var(--foreground) / 0.08);
   }
 
   .page-card:hover {
-    @apply border-primary/20;
+    border-color: hsl(var(--primary) / 0.20);
     transform: translateY(-8px);
     box-shadow: 
       0 30px 60px -20px hsl(var(--primary) / 0.25),
@@ -170,7 +178,9 @@
 
   /* Gradient text */
   .gradient-text {
-    @apply bg-clip-text text-transparent;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
     background-image: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(180 50% 45%) 50%, hsl(var(--primary)) 100%);
     background-size: 200% 200%;
     animation: gradientShift 8s ease infinite;
@@ -178,22 +188,36 @@
 
   /* Floating orbs background */
   .orb {
-    @apply absolute rounded-full blur-3xl;
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(64px);
     animation: orbFloat 20s ease-in-out infinite;
   }
 
   .orb-1 {
-    @apply bg-primary/20 w-[500px] h-[500px] -top-64 -left-64;
+    background: hsl(var(--primary) / 0.20);
+    width: 500px;
+    height: 500px;
+    top: -16rem;
+    left: -16rem;
     animation-delay: 0s;
   }
 
   .orb-2 {
-    @apply bg-sky-500/10 w-[400px] h-[400px] top-1/2 -right-48;
+    background: hsl(200 90% 60% / 0.10);
+    width: 400px;
+    height: 400px;
+    top: 50%;
+    right: -12rem;
     animation-delay: -7s;
   }
 
   .orb-3 {
-    @apply bg-primary/10 w-[300px] h-[300px] -bottom-32 left-1/4;
+    background: hsl(var(--primary) / 0.10);
+    width: 300px;
+    height: 300px;
+    bottom: -8rem;
+    left: 25%;
     animation-delay: -14s;
   }
 
@@ -220,18 +244,23 @@
 
   /* Pulse ring effect */
   .pulse-ring {
-    @apply absolute inset-0 rounded-full;
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
     animation: pulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
   /* Status dot */
   .status-dot {
-    @apply relative;
+    position: relative;
   }
 
   .status-dot::after {
     content: '';
-    @apply absolute inset-0 rounded-full bg-inherit;
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: inherit;
     animation: statusPulse 2s ease-in-out infinite;
   }
 }
