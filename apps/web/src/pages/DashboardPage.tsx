@@ -88,8 +88,11 @@ export function DashboardPage() {
   });
 
   const setupComplete = useMemo(() => {
-    const s = settingsQuery.data?.settings as any;
-    return Boolean(s?.onboarding?.completed);
+    const s = settingsQuery.data?.settings;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
+    const onboarding = (s as Record<string, unknown>)['onboarding'];
+    if (!onboarding || typeof onboarding !== 'object' || Array.isArray(onboarding)) return false;
+    return Boolean((onboarding as Record<string, unknown>)['completed']);
   }, [settingsQuery.data?.settings]);
 
   return (

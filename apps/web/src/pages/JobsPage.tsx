@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Loader2, Play, Save, Shield } from 'lucide-react';
@@ -150,24 +150,6 @@ export function JobsPage() {
     staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
-
-  useEffect(() => {
-    const jobs = jobsQuery.data?.jobs ?? [];
-    if (!jobs.length) return;
-    setDrafts((prev) => {
-      const next = { ...prev };
-      for (const job of jobs) {
-        if (next[job.id]) continue;
-        const cron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
-        next[job.id] = defaultDraftFromCron({
-          cron,
-          enabled: job.schedule?.enabled ?? false,
-          timezone: job.schedule?.timezone ?? null,
-        });
-      }
-      return next;
-    });
-  }, [jobsQuery.data?.jobs]);
 
   const runMutation = useMutation({
     mutationFn: async (params: { jobId: string; dryRun: boolean }) => runJob(params.jobId, params.dryRun),

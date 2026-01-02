@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
@@ -124,35 +124,6 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
   const [sonarrBaseUrl, setSonarrBaseUrl] = useState('');
   const [sonarrApiKey, setSonarrApiKey] = useState('');
 
-  useEffect(() => {
-    const s = settingsQuery.data?.settings as Record<string, unknown> | undefined;
-    if (!s) return;
-    if (!plexBaseUrl) setPlexBaseUrl(readString(s, 'plex.baseUrl'));
-    if (!plexMovieLibraryName) {
-      setPlexMovieLibraryName(
-        readString(s, 'plex.movieLibraryName') ||
-          readString(s, 'plex.movie_library_name') ||
-          'Movies',
-      );
-    }
-    if (!plexTvLibraryName) {
-      setPlexTvLibraryName(
-        readString(s, 'plex.tvLibraryName') ||
-          readString(s, 'plex.tv_library_name') ||
-          'TV Shows',
-      );
-    }
-    if (!radarrBaseUrl) setRadarrBaseUrl(readString(s, 'radarr.baseUrl'));
-    if (!sonarrBaseUrl) setSonarrBaseUrl(readString(s, 'sonarr.baseUrl'));
-  }, [
-    settingsQuery.data?.settings,
-    plexBaseUrl,
-    plexMovieLibraryName,
-    plexTvLibraryName,
-    radarrBaseUrl,
-    sonarrBaseUrl,
-  ]);
-
   const saveMutation = useMutation({
     mutationFn: async () => {
       const settingsPatch: Record<string, unknown> = {};
@@ -184,7 +155,10 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
   });
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
-  const settingsObj = (settingsQuery.data?.settings ?? {}) as Record<string, unknown>;
+  const settingsObj = useMemo(
+    () => (settingsQuery.data?.settings ?? {}) as Record<string, unknown>,
+    [settingsQuery.data?.settings],
+  );
 
   const plexConfigured = Boolean(readString(settingsObj, 'plex.baseUrl')) && Boolean(secretsPresent.plex);
   const radarrConfigured =
@@ -271,8 +245,10 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
   });
 
   const onboarding = useMemo(() => {
-    const raw = (settingsObj as any)?.onboarding;
-    return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const raw = settingsObj['onboarding'];
+    return raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
   }, [settingsObj]);
 
   const completed = Boolean(onboarding?.completed);
@@ -411,7 +387,7 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
             <div className="grid gap-2">
               <Label>Plex base URL</Label>
               <Input
-                value={plexBaseUrl}
+                value={plexBaseUrl || readString(settingsObj, 'plex.baseUrl')}
                 onChange={(e) => setPlexBaseUrl(e.target.value)}
                 placeholder="http://localhost:32400"
               />
@@ -428,7 +404,12 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
             <div className="grid gap-2">
               <Label>Plex movie library name</Label>
               <Input
-                value={plexMovieLibraryName}
+                value={
+                  plexMovieLibraryName ||
+                  readString(settingsObj, 'plex.movieLibraryName') ||
+                  readString(settingsObj, 'plex.movie_library_name') ||
+                  'Movies'
+                }
                 onChange={(e) => setPlexMovieLibraryName(e.target.value)}
                 placeholder="Movies"
               />
@@ -436,7 +417,12 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
             <div className="grid gap-2">
               <Label>Plex TV library name</Label>
               <Input
-                value={plexTvLibraryName}
+                value={
+                  plexTvLibraryName ||
+                  readString(settingsObj, 'plex.tvLibraryName') ||
+                  readString(settingsObj, 'plex.tv_library_name') ||
+                  'TV Shows'
+                }
                 onChange={(e) => setPlexTvLibraryName(e.target.value)}
                 placeholder="TV Shows"
               />
@@ -445,7 +431,7 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
             <div className="grid gap-2">
               <Label>Radarr base URL</Label>
               <Input
-                value={radarrBaseUrl}
+                value={radarrBaseUrl || readString(settingsObj, 'radarr.baseUrl')}
                 onChange={(e) => setRadarrBaseUrl(e.target.value)}
                 placeholder="http://localhost:7878"
               />
@@ -463,7 +449,7 @@ export function SetupWizard({ onFinish }: { onFinish?: () => void }) {
             <div className="grid gap-2">
               <Label>Sonarr base URL</Label>
               <Input
-                value={sonarrBaseUrl}
+                value={sonarrBaseUrl || readString(settingsObj, 'sonarr.baseUrl')}
                 onChange={(e) => setSonarrBaseUrl(e.target.value)}
                 placeholder="http://localhost:8989"
               />

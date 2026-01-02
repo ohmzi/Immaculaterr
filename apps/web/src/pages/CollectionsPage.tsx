@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Download, Loader2, Plus, Trash2, Upload } from 'lucide-react';
 
@@ -48,23 +48,21 @@ export function CollectionsPage() {
     retry: false,
   });
 
-  const collections = collectionsQuery.data?.collections ?? [];
-
-  useEffect(() => {
-    if (selectedId) return;
-    if (!collections.length) return;
-    setSelectedId(collections[0].id);
-  }, [collections, selectedId]);
+  const collections = useMemo(
+    () => collectionsQuery.data?.collections ?? [],
+    [collectionsQuery.data?.collections],
+  );
+  const activeCollectionId = selectedId ?? collections[0]?.id ?? null;
 
   const selected = useMemo(
-    () => collections.find((c) => c.id === selectedId) ?? null,
-    [collections, selectedId],
+    () => collections.find((c) => c.id === activeCollectionId) ?? null,
+    [collections, activeCollectionId],
   );
 
   const itemsQuery = useQuery({
-    queryKey: ['collectionItems', selectedId],
-    queryFn: () => listCollectionItems(selectedId as string),
-    enabled: Boolean(selectedId),
+    queryKey: ['collectionItems', activeCollectionId],
+    queryFn: () => listCollectionItems(activeCollectionId as string),
+    enabled: Boolean(activeCollectionId),
     staleTime: 2_000,
     refetchOnWindowFocus: false,
     retry: false,
@@ -100,38 +98,39 @@ export function CollectionsPage() {
   const addItemMutation = useMutation({
     mutationFn: async () =>
       addCollectionItem({
-        collectionId: selectedId as string,
+        collectionId: activeCollectionId as string,
         title: addTitle.trim() || undefined,
         ratingKey: addRatingKey.trim() || undefined,
       }),
     onSuccess: async () => {
       setAddTitle('');
       setAddRatingKey('');
-      await queryClient.invalidateQueries({ queryKey: ['collectionItems', selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ['collectionItems', activeCollectionId] });
       await queryClient.invalidateQueries({ queryKey: ['collections'] });
     },
   });
 
   const deleteItemMutation = useMutation({
     mutationFn: async (params: { itemId: number }) =>
-      deleteCollectionItem({ collectionId: selectedId as string, itemId: params.itemId }),
+      deleteCollectionItem({ collectionId: activeCollectionId as string, itemId: params.itemId }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['collectionItems', selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ['collectionItems', activeCollectionId] });
       await queryClient.invalidateQueries({ queryKey: ['collections'] });
     },
   });
 
   const importMutation = useMutation({
-    mutationFn: async () => importCollectionJson({ collectionId: selectedId as string, json: importText }),
+    mutationFn: async () =>
+      importCollectionJson({ collectionId: activeCollectionId as string, json: importText }),
     onSuccess: async () => {
       setImportText('');
-      await queryClient.invalidateQueries({ queryKey: ['collectionItems', selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ['collectionItems', activeCollectionId] });
       await queryClient.invalidateQueries({ queryKey: ['collections'] });
     },
   });
 
   const exportMutation = useMutation({
-    mutationFn: async () => exportCollectionJson(selectedId as string),
+    mutationFn: async () => exportCollectionJson(activeCollectionId as string),
     onSuccess: (res) => {
       const name = (selected?.name ?? 'collection').replace(/[^\w\- ]+/g, '').trim() || 'collection';
       downloadJson(`${name}.json`, res.items);

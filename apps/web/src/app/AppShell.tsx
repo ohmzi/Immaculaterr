@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Menu,
@@ -75,19 +75,12 @@ export function AppShell() {
   });
 
   const onboardingCompleted = useMemo(() => {
-    const s = settingsQuery.data?.settings as any;
-    return Boolean(s?.onboarding?.completed);
+    const s = settingsQuery.data?.settings;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
+    const onboarding = (s as Record<string, unknown>)['onboarding'];
+    if (!onboarding || typeof onboarding !== 'object' || Array.isArray(onboarding)) return false;
+    return Boolean((onboarding as Record<string, unknown>)['completed']);
   }, [settingsQuery.data?.settings]);
-
-  useEffect(() => {
-    if (settingsQuery.isLoading || settingsQuery.error) return;
-    if (!onboardingCompleted) setWizardOpen(true);
-  }, [settingsQuery.isLoading, settingsQuery.error, onboardingCompleted]);
-
-  // Close mobile menu on navigation
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [location.pathname]);
 
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -292,6 +285,7 @@ export function AppShell() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                onClick={() => setMobileMenuOpen(false)}
                 className={cn(
                   'flex w-full max-w-sm items-center gap-4 rounded-2xl px-6 py-4',
                   'text-xl font-semibold transition-all',

@@ -70,7 +70,7 @@ export function JobRunDetailPage() {
   });
 
   const run = runQuery.data?.run;
-  const logs = logsQuery.data?.logs ?? [];
+  const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs]);
   const logStats = useMemo(() => {
     const counts = { error: 0, warn: 0 };
     for (const l of logs) {

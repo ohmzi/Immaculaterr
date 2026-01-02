@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, CircleAlert, Loader2, PlugZap, Save } from 'lucide-react';
 
@@ -76,31 +76,18 @@ export function ConnectionsPage() {
   const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('');
   const [overseerrApiKey, setOverseerrApiKey] = useState('');
 
-  useEffect(() => {
-    if (!settingsQuery.data) return;
-    // Only initialize once per field so we don't clobber edits while typing.
-    if (!plexBaseUrl) setPlexBaseUrl(readString(settingsObj, 'plex.baseUrl'));
-    if (!plexMovieLibraryName)
-      setPlexMovieLibraryName(readString(settingsObj, 'plex.movieLibraryName') || 'Movies');
-    if (!plexTvLibraryName)
-      setPlexTvLibraryName(readString(settingsObj, 'plex.tvLibraryName') || 'TV Shows');
+  const plexBaseUrlValue = plexBaseUrl || readString(settingsObj, 'plex.baseUrl');
+  const plexMovieLibraryNameValue =
+    plexMovieLibraryName || readString(settingsObj, 'plex.movieLibraryName') || 'Movies';
+  const plexTvLibraryNameValue =
+    plexTvLibraryName || readString(settingsObj, 'plex.tvLibraryName') || 'TV Shows';
 
-    if (!radarrBaseUrl) setRadarrBaseUrl(readString(settingsObj, 'radarr.baseUrl'));
-    if (!sonarrBaseUrl) setSonarrBaseUrl(readString(settingsObj, 'sonarr.baseUrl'));
+  const radarrBaseUrlValue = radarrBaseUrl || readString(settingsObj, 'radarr.baseUrl');
+  const sonarrBaseUrlValue = sonarrBaseUrl || readString(settingsObj, 'sonarr.baseUrl');
 
-    if (!googleSearchEngineId) setGoogleSearchEngineId(readString(settingsObj, 'google.searchEngineId'));
-    if (!overseerrBaseUrl) setOverseerrBaseUrl(readString(settingsObj, 'overseerr.baseUrl'));
-  }, [
-    settingsQuery.data,
-    settingsObj,
-    plexBaseUrl,
-    plexMovieLibraryName,
-    plexTvLibraryName,
-    radarrBaseUrl,
-    sonarrBaseUrl,
-    googleSearchEngineId,
-    overseerrBaseUrl,
-  ]);
+  const googleSearchEngineIdValue =
+    googleSearchEngineId || readString(settingsObj, 'google.searchEngineId');
+  const overseerrBaseUrlValue = overseerrBaseUrl || readString(settingsObj, 'overseerr.baseUrl');
 
   const saveMutation = useMutation({
     mutationFn: async (params: { settings?: Record<string, unknown>; secrets?: Record<string, unknown> }) =>
@@ -131,13 +118,15 @@ export function ConnectionsPage() {
 
   const isTesting = (id: string) => testMutation.isPending && testMutation.variables === id;
 
-  const plexOk = Boolean(plexBaseUrl.trim()) && Boolean(secretsPresent.plex);
-  const radarrOk = Boolean(radarrBaseUrl.trim()) && Boolean(secretsPresent.radarr);
-  const sonarrOk = Boolean(sonarrBaseUrl.trim()) && Boolean(secretsPresent.sonarr);
+  const plexOk = Boolean(plexBaseUrlValue.trim()) && Boolean(secretsPresent.plex);
+  const radarrOk = Boolean(radarrBaseUrlValue.trim()) && Boolean(secretsPresent.radarr);
+  const sonarrOk = Boolean(sonarrBaseUrlValue.trim()) && Boolean(secretsPresent.sonarr);
   const tmdbOk = Boolean(secretsPresent.tmdb);
-  const googleOk = Boolean(googleSearchEngineId.trim()) && Boolean(secretsPresent.google);
+  const googleOk =
+    Boolean(googleSearchEngineIdValue.trim()) && Boolean(secretsPresent.google);
   const openAiOk = Boolean(secretsPresent.openai);
-  const overseerrOk = Boolean(overseerrBaseUrl.trim()) && Boolean(secretsPresent.overseerr);
+  const overseerrOk =
+    Boolean(overseerrBaseUrlValue.trim()) && Boolean(secretsPresent.overseerr);
 
   return (
     <div className="space-y-6">
@@ -170,15 +159,15 @@ export function ConnectionsPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Base URL</Label>
-                <Input value={plexBaseUrl} onChange={(e) => setPlexBaseUrl(e.target.value)} placeholder="http://localhost:32400" />
+                <Input value={plexBaseUrlValue} onChange={(e) => setPlexBaseUrl(e.target.value)} placeholder="http://localhost:32400" />
               </div>
               <div className="grid gap-2">
                 <Label>Movie library name</Label>
-                <Input value={plexMovieLibraryName} onChange={(e) => setPlexMovieLibraryName(e.target.value)} placeholder="Movies" />
+                <Input value={plexMovieLibraryNameValue} onChange={(e) => setPlexMovieLibraryName(e.target.value)} placeholder="Movies" />
               </div>
               <div className="grid gap-2">
                 <Label>TV library name</Label>
-                <Input value={plexTvLibraryName} onChange={(e) => setPlexTvLibraryName(e.target.value)} placeholder="TV Shows" />
+                <Input value={plexTvLibraryNameValue} onChange={(e) => setPlexTvLibraryName(e.target.value)} placeholder="TV Shows" />
               </div>
               <div className="grid gap-2">
                 <Label>Token (hidden)</Label>
@@ -201,7 +190,13 @@ export function ConnectionsPage() {
                 <Button
                   onClick={() =>
                     saveMutation.mutate({
-                      settings: { plex: { baseUrl: plexBaseUrl.trim(), movieLibraryName: plexMovieLibraryName.trim(), tvLibraryName: plexTvLibraryName.trim() } },
+                      settings: {
+                        plex: {
+                          baseUrl: plexBaseUrlValue.trim(),
+                          movieLibraryName: plexMovieLibraryNameValue.trim(),
+                          tvLibraryName: plexTvLibraryNameValue.trim(),
+                        },
+                      },
                       secrets: plexToken.trim() ? { plex: { token: plexToken.trim() } } : undefined,
                     })
                   }
@@ -229,7 +224,7 @@ export function ConnectionsPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Base URL</Label>
-                <Input value={radarrBaseUrl} onChange={(e) => setRadarrBaseUrl(e.target.value)} placeholder="http://localhost:7878" />
+                <Input value={radarrBaseUrlValue} onChange={(e) => setRadarrBaseUrl(e.target.value)} placeholder="http://localhost:7878" />
               </div>
               <div className="grid gap-2">
                 <Label>API key (hidden)</Label>
@@ -248,7 +243,7 @@ export function ConnectionsPage() {
                 <Button
                   onClick={() =>
                     saveMutation.mutate({
-                      settings: { radarr: { baseUrl: radarrBaseUrl.trim() } },
+                      settings: { radarr: { baseUrl: radarrBaseUrlValue.trim() } },
                       secrets: radarrApiKey.trim() ? { radarr: { apiKey: radarrApiKey.trim() } } : undefined,
                     })
                   }
@@ -276,7 +271,7 @@ export function ConnectionsPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Base URL</Label>
-                <Input value={sonarrBaseUrl} onChange={(e) => setSonarrBaseUrl(e.target.value)} placeholder="http://localhost:8989" />
+                <Input value={sonarrBaseUrlValue} onChange={(e) => setSonarrBaseUrl(e.target.value)} placeholder="http://localhost:8989" />
               </div>
               <div className="grid gap-2">
                 <Label>API key (hidden)</Label>
@@ -295,7 +290,7 @@ export function ConnectionsPage() {
                 <Button
                   onClick={() =>
                     saveMutation.mutate({
-                      settings: { sonarr: { baseUrl: sonarrBaseUrl.trim() } },
+                      settings: { sonarr: { baseUrl: sonarrBaseUrlValue.trim() } },
                       secrets: sonarrApiKey.trim() ? { sonarr: { apiKey: sonarrApiKey.trim() } } : undefined,
                     })
                   }
@@ -365,7 +360,7 @@ export function ConnectionsPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Search engine ID</Label>
-                <Input value={googleSearchEngineId} onChange={(e) => setGoogleSearchEngineId(e.target.value)} placeholder="cx=..." />
+                <Input value={googleSearchEngineIdValue} onChange={(e) => setGoogleSearchEngineId(e.target.value)} placeholder="cx=..." />
               </div>
               <div className="grid gap-2">
                 <Label>API key (hidden)</Label>
@@ -384,7 +379,7 @@ export function ConnectionsPage() {
                 <Button
                   onClick={() =>
                     saveMutation.mutate({
-                      settings: { google: { searchEngineId: googleSearchEngineId.trim() } },
+                      settings: { google: { searchEngineId: googleSearchEngineIdValue.trim() } },
                       secrets: googleApiKey.trim() ? { google: { apiKey: googleApiKey.trim() } } : undefined,
                     })
                   }
@@ -454,7 +449,7 @@ export function ConnectionsPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Base URL</Label>
-                <Input value={overseerrBaseUrl} onChange={(e) => setOverseerrBaseUrl(e.target.value)} placeholder="http://localhost:5055" />
+                <Input value={overseerrBaseUrlValue} onChange={(e) => setOverseerrBaseUrl(e.target.value)} placeholder="http://localhost:5055" />
               </div>
               <div className="grid gap-2">
                 <Label>API key (hidden)</Label>
@@ -473,7 +468,7 @@ export function ConnectionsPage() {
                 <Button
                   onClick={() =>
                     saveMutation.mutate({
-                      settings: { overseerr: { baseUrl: overseerrBaseUrl.trim() } },
+                      settings: { overseerr: { baseUrl: overseerrBaseUrlValue.trim() } },
                       secrets: overseerrApiKey.trim() ? { overseerr: { apiKey: overseerrApiKey.trim() } } : undefined,
                     })
                   }
