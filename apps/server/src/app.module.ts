@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PlexModule } from './plex/plex.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -17,7 +18,7 @@ const staticImports = existsSync(webDistPath)
   : [];
 
 @Module({
-  imports: [...staticImports],
+  imports: [...staticImports, PlexModule],
   controllers: [AppController],
   providers: [AppService],
 })
