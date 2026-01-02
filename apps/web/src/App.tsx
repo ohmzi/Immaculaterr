@@ -89,7 +89,7 @@ type OverseerrTestResponse = {
 };
 
 function App() {
-  const stored = loadOnboarding();
+  const [stored, setStored] = useState<OnboardingStored | null>(() => loadOnboarding());
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +165,7 @@ function App() {
   const [rememberSecrets, setRememberSecrets] = useState(stored?.rememberSecrets ?? true);
   const [wizardOpen, setWizardOpen] = useState(!stored?.completed);
   const [wizardStep, setWizardStep] = useState(0);
-  const [wizardError, setWizardError] = useState<string | null>(null);
+  const [wizardSubmitting, setWizardSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -299,7 +299,7 @@ function App() {
     return text || `HTTP ${res.status}`;
   }
 
-  async function onTestRadarr() {
+  async function onTestRadarr(): Promise<boolean> {
     setRadarrError(null);
     setRadarrResult(null);
     setRadarrLog(['Testing Radarr connection…']);
@@ -308,12 +308,12 @@ function App() {
       if (!radarrBaseUrl.trim()) {
         setRadarrError('Base URL is required');
         setRadarrLog((prev) => [...prev, 'Radarr test FAILED.']);
-        return;
+        return false;
       }
       if (!radarrApiKey.trim()) {
         setRadarrError('API key is required');
         setRadarrLog((prev) => [...prev, 'Radarr test FAILED.']);
-        return;
+        return false;
       }
 
       const res = await fetch('/api/radarr/test', {
@@ -331,13 +331,15 @@ function App() {
       const data = (await res.json()) as ArrTestResponse;
       setRadarrResult(data);
       setRadarrLog((prev) => [...prev, 'Radarr test OK.']);
+      return true;
     } catch (err) {
       setRadarrError(err instanceof Error ? err.message : String(err));
       setRadarrLog((prev) => [...prev, 'Radarr test FAILED.']);
+      return false;
     }
   }
 
-  async function onTestSonarr() {
+  async function onTestSonarr(): Promise<boolean> {
     setSonarrError(null);
     setSonarrResult(null);
     setSonarrLog(['Testing Sonarr connection…']);
@@ -346,12 +348,12 @@ function App() {
       if (!sonarrBaseUrl.trim()) {
         setSonarrError('Base URL is required');
         setSonarrLog((prev) => [...prev, 'Sonarr test FAILED.']);
-        return;
+        return false;
       }
       if (!sonarrApiKey.trim()) {
         setSonarrError('API key is required');
         setSonarrLog((prev) => [...prev, 'Sonarr test FAILED.']);
-        return;
+        return false;
       }
 
       const res = await fetch('/api/sonarr/test', {
@@ -369,13 +371,15 @@ function App() {
       const data = (await res.json()) as ArrTestResponse;
       setSonarrResult(data);
       setSonarrLog((prev) => [...prev, 'Sonarr test OK.']);
+      return true;
     } catch (err) {
       setSonarrError(err instanceof Error ? err.message : String(err));
       setSonarrLog((prev) => [...prev, 'Sonarr test FAILED.']);
+      return false;
     }
   }
 
-  async function onTestGoogle() {
+  async function onTestGoogle(): Promise<boolean> {
     setGoogleError(null);
     setGoogleResult(null);
     setGoogleLog(['Testing Google Programmable Search…']);
@@ -384,12 +388,12 @@ function App() {
       if (!googleApiKey.trim()) {
         setGoogleError('GOOGLE_API_KEY is required');
         setGoogleLog((prev) => [...prev, 'Google test FAILED.']);
-        return;
+        return false;
       }
       if (!googleCseId.trim()) {
         setGoogleError('GOOGLE_CSE_ID (cx) is required for Google Programmable Search');
         setGoogleLog((prev) => [...prev, 'Google test FAILED.']);
-        return;
+        return false;
       }
 
       const res = await fetch('/api/google/test', {
@@ -411,13 +415,15 @@ function App() {
       const data = (await res.json()) as GoogleTestResponse;
       setGoogleResult(data);
       setGoogleLog((prev) => [...prev, 'Google test OK.']);
+      return true;
     } catch (err) {
       setGoogleError(err instanceof Error ? err.message : String(err));
       setGoogleLog((prev) => [...prev, 'Google test FAILED.']);
+      return false;
     }
   }
 
-  async function onTestTmdb() {
+  async function onTestTmdb(): Promise<boolean> {
     setTmdbError(null);
     setTmdbResult(null);
     setTmdbLog(['Testing TMDB connection…']);
@@ -426,7 +432,7 @@ function App() {
       if (!tmdbApiKey.trim()) {
         setTmdbError('TMDB_API_KEY is required');
         setTmdbLog((prev) => [...prev, 'TMDB test FAILED.']);
-        return;
+        return false;
       }
 
       const res = await fetch('/api/tmdb/test', {
@@ -445,13 +451,15 @@ function App() {
       const data = (await res.json()) as TmdbTestResponse;
       setTmdbResult(data);
       setTmdbLog((prev) => [...prev, 'TMDB test OK.']);
+      return true;
     } catch (err) {
       setTmdbError(err instanceof Error ? err.message : String(err));
       setTmdbLog((prev) => [...prev, 'TMDB test FAILED.']);
+      return false;
     }
   }
 
-  async function onTestOpenAi() {
+  async function onTestOpenAi(): Promise<boolean> {
     setOpenAiError(null);
     setOpenAiResult(null);
     setOpenAiLog(['Testing OpenAI connection…']);
@@ -460,7 +468,7 @@ function App() {
       if (!openAiApiKey.trim()) {
         setOpenAiError('OPENAI_API_KEY is required');
         setOpenAiLog((prev) => [...prev, 'OpenAI test FAILED.']);
-        return;
+        return false;
       }
 
       const res = await fetch('/api/openai/test', {
@@ -479,13 +487,15 @@ function App() {
       const data = (await res.json()) as OpenAiTestResponse;
       setOpenAiResult(data);
       setOpenAiLog((prev) => [...prev, 'OpenAI test OK.']);
+      return true;
     } catch (err) {
       setOpenAiError(err instanceof Error ? err.message : String(err));
       setOpenAiLog((prev) => [...prev, 'OpenAI test FAILED.']);
+      return false;
     }
   }
 
-  async function onTestOverseerr() {
+  async function onTestOverseerr(): Promise<boolean> {
     setOverseerrError(null);
     setOverseerrResult(null);
     setOverseerrLog(['Testing Overseerr connection…']);
@@ -494,12 +504,12 @@ function App() {
       if (!overseerrBaseUrl.trim()) {
         setOverseerrError('Base URL is required');
         setOverseerrLog((prev) => [...prev, 'Overseerr test FAILED.']);
-        return;
+        return false;
       }
       if (!overseerrApiKey.trim()) {
         setOverseerrError('API key is required');
         setOverseerrLog((prev) => [...prev, 'Overseerr test FAILED.']);
-        return;
+        return false;
       }
 
       const res = await fetch('/api/overseerr/test', {
@@ -519,9 +529,11 @@ function App() {
       const data = (await res.json()) as OverseerrTestResponse;
       setOverseerrResult(data);
       setOverseerrLog((prev) => [...prev, 'Overseerr test OK.']);
+      return true;
     } catch (err) {
       setOverseerrError(err instanceof Error ? err.message : String(err));
       setOverseerrLog((prev) => [...prev, 'Overseerr test FAILED.']);
+      return false;
     }
   }
 
@@ -537,10 +549,7 @@ function App() {
   }
 
   function completeWizard() {
-    if (!allCredsPassed()) {
-      setWizardError('All integrations must pass before finishing.');
-      return;
-    }
+    if (!allCredsPassed()) return;
 
     const values: Record<string, unknown> = {
       radarrBaseUrl,
@@ -561,7 +570,7 @@ function App() {
       values.plexAuthToken = plexAuthToken;
     }
 
-    saveOnboarding({
+    const completed: OnboardingStored = {
       completed: true,
       completedAt: new Date().toISOString(),
       rememberSecrets,
@@ -575,35 +584,45 @@ function App() {
         openai: openAiResult,
         overseerr: overseerrResult,
       },
-    });
+    };
+
+    saveOnboarding(completed);
+    setStored(completed);
 
     setWizardOpen(false);
   }
 
-  function resetWizard() {
-    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
-    window.location.reload();
-  }
+  useEffect(() => {
+    // If Plex auth finishes while we're on the Plex step, advance automatically.
+    if (!wizardOpen) return;
+    if (wizardStep !== 0) return;
+    if (plexAuthToken && plexWhoami) {
+      setWizardStep(1);
+    }
+  }, [wizardOpen, wizardStep, plexAuthToken, plexWhoami]);
 
-  function currentStepCanContinue() {
-    // Steps: 0 Plex, 1 Radarr, 2 Sonarr, 3 Google, 4 TMDB, 5 OpenAI, 6 Overseerr, 7 Summary
-    switch (wizardStep) {
-      case 0:
-        return Boolean(plexAuthToken && plexWhoami);
+  async function submitWizardStep(step: number): Promise<boolean> {
+    // Steps: 0 Plex, 1 Radarr, 2 Sonarr, 3 Google, 4 TMDB, 5 OpenAI, 6 Overseerr
+    switch (step) {
+      case 0: {
+        if (plexAuthToken && plexWhoami) return true;
+        if (!isConnectingPlex) {
+          await onConnectPlex();
+        }
+        return false;
+      }
       case 1:
-        return Boolean(radarrResult && !radarrError);
+        return await onTestRadarr();
       case 2:
-        return Boolean(sonarrResult && !sonarrError);
+        return await onTestSonarr();
       case 3:
-        return Boolean(googleResult && !googleError);
+        return await onTestGoogle();
       case 4:
-        return Boolean(tmdbResult && !tmdbError);
+        return await onTestTmdb();
       case 5:
-        return Boolean(openAiResult && !openAiError);
+        return await onTestOpenAi();
       case 6:
-        return Boolean(overseerrResult && !overseerrError);
-      case 7:
-        return allCredsPassed();
+        return await onTestOverseerr();
       default:
         return false;
     }
@@ -620,11 +639,24 @@ function App() {
         <section className="panel">
           <div className="panelTitle">Credential validation</div>
           <div className="muted">
-            Last completed: {stored.completedAt ? new Date(stored.completedAt).toLocaleString() : 'unknown'}
+            Last completed:{' '}
+            {stored.completedAt ? new Date(stored.completedAt).toLocaleString() : 'unknown'}
           </div>
-          <div style={{ marginTop: 12 }}>
-            <button onClick={resetWizard}>Re-run setup wizard</button>
-          </div>
+          <pre className="code" style={{ marginTop: 12 }}>
+{JSON.stringify(
+  {
+    plex: Boolean((stored.results as Record<string, unknown> | undefined)?.plex),
+    radarr: Boolean((stored.results as Record<string, unknown> | undefined)?.radarr),
+    sonarr: Boolean((stored.results as Record<string, unknown> | undefined)?.sonarr),
+    google: Boolean((stored.results as Record<string, unknown> | undefined)?.google),
+    tmdb: Boolean((stored.results as Record<string, unknown> | undefined)?.tmdb),
+    openai: Boolean((stored.results as Record<string, unknown> | undefined)?.openai),
+    overseerr: Boolean((stored.results as Record<string, unknown> | undefined)?.overseerr),
+  },
+  null,
+  2,
+)}
+          </pre>
         </section>
       ) : null}
 
@@ -986,7 +1018,6 @@ function App() {
                 <div className="panelTitle">Setup wizard</div>
                 <div className="muted">Validate credentials one-by-one to unlock the app.</div>
               </div>
-              <button onClick={resetWizard}>Reset</button>
             </div>
 
             <div className="stepper" style={{ marginTop: 12 }}>
@@ -996,7 +1027,7 @@ function App() {
                     key={label}
                     className={idx === wizardStep ? 'stepActive' : 'step'}
                     onClick={() => setWizardStep(idx)}
-                    disabled={idx > wizardStep && !currentStepCanContinue()}
+                    disabled={wizardSubmitting || idx > wizardStep}
                     style={{ padding: '6px 10px' }}
                   >
                     {idx + 1}. {label}
@@ -1010,17 +1041,28 @@ function App() {
                 <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>Plex</div>
                   <div className="muted" style={{ marginBottom: 12 }}>
-                    Click Connect Plex and approve access in the Plex window.
+                    Click Next to open Plex authorization, then approve access in the Plex window.
                   </div>
-                  <button onClick={onConnectPlex} disabled={isConnectingPlex}>
-                    {isConnectingPlex ? 'Connecting…' : 'Connect Plex'}
-                  </button>
-                  {plexError ? <div className="error" style={{ marginTop: 12 }}>Error: {plexError}</div> : null}
+
+                  {plexPin?.authUrl ? (
+                    <div style={{ marginBottom: 12 }}>
+                      <a href={plexPin.authUrl} target="_blank" rel="noreferrer">
+                        Open Plex authorization page
+                      </a>
+                    </div>
+                  ) : null}
+
+                  {plexError ? (
+                    <div className="error" style={{ marginTop: 12 }}>
+                      Error: {plexError}
+                    </div>
+                  ) : null}
+
                   {plexWhoami ? (
-                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(plexWhoami, null, 2)}</pre>
+                    <div style={{ marginTop: 12 }}>Connected to Plex.</div>
                   ) : (
                     <div className="muted" style={{ marginTop: 12 }}>
-                      {plexAuthToken ? 'Validating token…' : 'Not connected yet.'}
+                      {isConnectingPlex ? 'Waiting for approval…' : 'Not connected yet.'}
                     </div>
                   )}
                 </>
@@ -1029,6 +1071,9 @@ function App() {
               {wizardStep === 1 ? (
                 <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>Radarr</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Enter Radarr details, then click Next to validate.
+                  </div>
                   <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
                     <label>
                       <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
@@ -1047,13 +1092,11 @@ function App() {
                         style={{ width: '100%', padding: 10, borderRadius: 8 }}
                       />
                     </label>
-                    <div>
-                      <button onClick={onTestRadarr}>Test Radarr</button>
-                    </div>
                   </div>
-                  {radarrError ? <div className="error" style={{ marginTop: 12 }}>Error: {radarrError}</div> : null}
-                  {radarrResult ? (
-                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(radarrResult, null, 2)}</pre>
+                  {radarrError ? (
+                    <div className="error" style={{ marginTop: 8 }}>
+                      Error: {radarrError}
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -1061,6 +1104,9 @@ function App() {
               {wizardStep === 2 ? (
                 <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>Sonarr</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Enter Sonarr details, then click Next to validate.
+                  </div>
                   <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
                     <label>
                       <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
@@ -1079,13 +1125,11 @@ function App() {
                         style={{ width: '100%', padding: 10, borderRadius: 8 }}
                       />
                     </label>
-                    <div>
-                      <button onClick={onTestSonarr}>Test Sonarr</button>
-                    </div>
                   </div>
-                  {sonarrError ? <div className="error" style={{ marginTop: 12 }}>Error: {sonarrError}</div> : null}
-                  {sonarrResult ? (
-                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(sonarrResult, null, 2)}</pre>
+                  {sonarrError ? (
+                    <div className="error" style={{ marginTop: 8 }}>
+                      Error: {sonarrError}
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -1093,6 +1137,9 @@ function App() {
               {wizardStep === 3 ? (
                 <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>Google Programmable Search</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Enter Google details, then click Next to validate.
+                  </div>
                   <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
                     <label>
                       <div className="muted" style={{ marginBottom: 4 }}>GOOGLE_API_KEY</div>
@@ -1132,13 +1179,11 @@ function App() {
                         style={{ width: '100%', padding: 10, borderRadius: 8 }}
                       />
                     </label>
-                    <div>
-                      <button onClick={onTestGoogle}>Test Google</button>
-                    </div>
                   </div>
-                  {googleError ? <div className="error" style={{ marginTop: 12 }}>Error: {googleError}</div> : null}
-                  {googleResult ? (
-                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(googleResult, null, 2)}</pre>
+                  {googleError ? (
+                    <div className="error" style={{ marginTop: 8 }}>
+                      Error: {googleError}
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -1146,6 +1191,9 @@ function App() {
               {wizardStep === 4 ? (
                 <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>TMDB</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Enter TMDB key, then click Next to validate.
+                  </div>
                   <label>
                     <div className="muted" style={{ marginBottom: 4 }}>TMDB_API_KEY</div>
                     <input
@@ -1155,12 +1203,10 @@ function App() {
                       style={{ width: '100%', padding: 10, borderRadius: 8 }}
                     />
                   </label>
-                  <div style={{ marginTop: 8 }}>
-                    <button onClick={onTestTmdb}>Test TMDB</button>
-                  </div>
-                  {tmdbError ? <div className="error" style={{ marginTop: 12 }}>Error: {tmdbError}</div> : null}
-                  {tmdbResult ? (
-                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(tmdbResult, null, 2)}</pre>
+                  {tmdbError ? (
+                    <div className="error" style={{ marginTop: 8 }}>
+                      Error: {tmdbError}
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -1168,6 +1214,9 @@ function App() {
               {wizardStep === 5 ? (
                 <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>OpenAI</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Enter OpenAI key, then click Next to validate.
+                  </div>
                   <label>
                     <div className="muted" style={{ marginBottom: 4 }}>OPENAI_API_KEY</div>
                     <input
@@ -1177,12 +1226,10 @@ function App() {
                       style={{ width: '100%', padding: 10, borderRadius: 8 }}
                     />
                   </label>
-                  <div style={{ marginTop: 8 }}>
-                    <button onClick={onTestOpenAi}>Test OpenAI</button>
-                  </div>
-                  {openAiError ? <div className="error" style={{ marginTop: 12 }}>Error: {openAiError}</div> : null}
-                  {openAiResult ? (
-                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(openAiResult, null, 2)}</pre>
+                  {openAiError ? (
+                    <div className="error" style={{ marginTop: 8 }}>
+                      Error: {openAiError}
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -1190,6 +1237,9 @@ function App() {
               {wizardStep === 6 ? (
                 <>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>Overseerr</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Enter Overseerr details, then click Next to validate.
+                  </div>
                   <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
                     <label>
                       <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
@@ -1208,17 +1258,11 @@ function App() {
                         style={{ width: '100%', padding: 10, borderRadius: 8 }}
                       />
                     </label>
-                    <div>
-                      <button onClick={onTestOverseerr}>Test Overseerr</button>
-                    </div>
                   </div>
                   {overseerrError ? (
-                    <div className="error" style={{ marginTop: 12 }}>
+                    <div className="error" style={{ marginTop: 8 }}>
                       Error: {overseerrError}
                     </div>
-                  ) : null}
-                  {overseerrResult ? (
-                    <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(overseerrResult, null, 2)}</pre>
                   ) : null}
                 </>
               ) : null}
@@ -1253,38 +1297,39 @@ function App() {
                   </label>
                 </>
               ) : null}
-
-              {wizardError ? <div className="error" style={{ marginTop: 12 }}>Error: {wizardError}</div> : null}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
               <button
                 onClick={() => {
-                  setWizardError(null);
                   setWizardStep((s) => Math.max(0, s - 1));
                 }}
-                disabled={wizardStep === 0}
+                disabled={wizardSubmitting || wizardStep === 0}
               >
                 Back
               </button>
 
               {wizardStep < 7 ? (
                 <button
-                  onClick={() => {
-                    setWizardError(null);
-                    if (!currentStepCanContinue()) {
-                      setWizardError('Please test this step and ensure it passes before continuing.');
-                      return;
+                  onClick={async () => {
+                    if (wizardSubmitting) return;
+                    setWizardSubmitting(true);
+                    try {
+                      const ok = await submitWizardStep(wizardStep);
+                      if (ok) {
+                        setWizardStep((s) => Math.min(7, s + 1));
+                      }
+                    } finally {
+                      setWizardSubmitting(false);
                     }
-                    setWizardStep((s) => Math.min(7, s + 1));
                   }}
+                  disabled={wizardSubmitting || (wizardStep === 0 && isConnectingPlex)}
                 >
-                  Next
+                  {wizardSubmitting ? 'Working…' : 'Next'}
                 </button>
               ) : (
                 <button
                   onClick={() => {
-                    setWizardError(null);
                     completeWizard();
                   }}
                   disabled={!allCredsPassed()}
