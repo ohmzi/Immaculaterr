@@ -1,7 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
 import {
-  Menu,
-  X,
   ChevronDown,
   LogOut,
   Moon,

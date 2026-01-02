@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { Navigation, MobileNavigation } from '@/components/Navigation';
 import { InternalNavigation } from '@/components/InternalNavigation';
+import { InternalMobileNavigation } from '@/components/InternalMobileNavigation';
 import { getMe, logout } from '@/api/auth';
 import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
@@ -62,12 +62,8 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background transition-colors duration-300">
-      {/* Desktop Navigation Switcher */}
-      {isHomePage ? (
-        <div className="hidden lg:block">
-          <Navigation />
-        </div>
-      ) : (
+      {/* Desktop app navigation (internal pages only) */}
+      {isHomePage ? null : (
         <InternalNavigation 
           username={username}
           theme={currentTheme}
@@ -81,16 +77,18 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      {/* Mobile Bottom Navigation - Always visible */}
-      <MobileNavigation />
+      {/* Mobile app navigation (internal pages only) */}
+      {isHomePage ? null : <InternalMobileNavigation />}
 
-      {/* Setup Wizard Modal */}
-      <SetupWizardModal
-        open={wizardOpen || !onboardingCompleted}
-        required={!onboardingCompleted}
-        onClose={() => setWizardOpen(false)}
-        onFinished={() => setWizardOpen(false)}
-      />
+      {/* Setup Wizard Modal (internal pages only) */}
+      {isHomePage ? null : (
+        <SetupWizardModal
+          open={wizardOpen || !onboardingCompleted}
+          required={!onboardingCompleted}
+          onClose={() => setWizardOpen(false)}
+          onFinished={() => setWizardOpen(false)}
+        />
+      )}
     </div>
   );
 }
