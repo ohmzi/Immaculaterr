@@ -1,9 +1,10 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PlexPin } from './plex.types';
 
 @Injectable()
 export class PlexService {
+  private readonly logger = new Logger(PlexService.name);
   private readonly clientIdentifier: string;
 
   constructor() {
@@ -28,6 +29,7 @@ export class PlexService {
     }
 
     const data = (await res.json()) as PlexPin;
+    this.logger.log(`Created Plex PIN id=${data.id}`);
     return {
       id: data.id,
       code: data.code,
@@ -53,10 +55,42 @@ export class PlexService {
     }
 
     const data = (await res.json()) as PlexPin;
+    if (data.authToken) {
+      this.logger.log(`Plex PIN authorized id=${data.id}`);
+    }
     return {
       id: data.id,
       authToken: data.authToken ?? null,
       expiresAt: data.expiresAt ?? null,
+    };
+  }
+
+  async whoami(plexToken: string) {
+    const url = 'https://plex.tv/api/v2/user';
+
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...this.getPlexHeaders(),
+        'X-Plex-Token': plexToken,
+      },
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new BadGatewayException(
+        `Plex whoami failed: HTTP ${res.status} ${body}`.trim(),
+      );
+    }
+
+    const data = (await res.json()) as Record<string, unknown>;
+
+    // Return a minimal, non-sensitive subset for diagnostics.
+    return {
+      id: data['id'] ?? null,
+      uuid: data['uuid'] ?? null,
+      username: data['username'] ?? null,
+      title: data['title'] ?? null,
     };
   }
 

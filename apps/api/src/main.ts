@@ -13,7 +13,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const port = Number.parseInt(process.env.PORT ?? '3000', 10);
+  // Default away from 3000 (commonly taken on dev machines).
+  const port = Number.parseInt(process.env.PORT ?? '3210', 10);
   const host = process.env.HOST ?? '0.0.0.0';
   await app.listen(port, host);
 }

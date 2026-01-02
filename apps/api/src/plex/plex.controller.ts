@@ -1,4 +1,11 @@
-import { BadRequestException, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { PlexService } from './plex.service';
 
 @Controller('plex')
@@ -17,6 +24,14 @@ export class PlexController {
       throw new BadRequestException('Invalid pin id');
     }
     return this.plexService.checkPin(pinId);
+  }
+
+  @Get('whoami')
+  whoami(@Headers('x-plex-token') plexToken?: string) {
+    if (!plexToken) {
+      throw new BadRequestException('Missing header: X-Plex-Token');
+    }
+    return this.plexService.whoami(plexToken);
   }
 }
 

@@ -9,11 +9,17 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev:server": "npm -w apps/server run start:dev",
+    "dev:api": "npm -w apps/api run start:dev",
     "dev:web": "npm -w apps/web run dev",
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "docker:up": "docker compose -f docker/tautulli-curated-plex/docker-compose.yml up --build",
+    "docker:down": "docker compose -f docker/tautulli-curated-plex/docker-compose.yml down",
     "build": "npm --workspaces --if-present run build",
     "lint": "npm --workspaces --if-present run lint",
     "test": "npm --workspaces --if-present run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
 

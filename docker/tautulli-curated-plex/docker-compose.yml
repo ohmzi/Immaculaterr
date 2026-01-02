@@ -1,0 +1,13 @@
+services:
+  tautulli-curated-plex:
+    build:
+      context: ../..
+      dockerfile: docker/tautulli-curated-plex/Dockerfile
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3210
+    ports:
+      # Host port is configurable because dev boxes often already use 3000.
+      - "${HOST_PORT:-3210}:3210"
+
+

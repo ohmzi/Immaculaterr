@@ -20,6 +20,13 @@ type PlexCheckPinResponse = {
   expiresAt: string | null;
 };
 
+type PlexWhoamiResponse = {
+  id: unknown;
+  uuid: unknown;
+  username: unknown;
+  title: unknown;
+};
+
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +35,9 @@ function App() {
   const [plexAuthToken, setPlexAuthToken] = useState<string | null>(null);
   const [plexError, setPlexError] = useState<string | null>(null);
   const [isConnectingPlex, setIsConnectingPlex] = useState(false);
+  const [plexLog, setPlexLog] = useState<string[]>([]);
+  const [plexWhoami, setPlexWhoami] = useState<PlexWhoamiResponse | null>(null);
+  const [plexWhoamiError, setPlexWhoamiError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +79,7 @@ function App() {
         if (data.authToken) {
           setPlexAuthToken(data.authToken);
           setIsConnectingPlex(false);
+          setPlexLog((prev) => [...prev, 'Plex token received. Validating…']);
         }
       } catch (err) {
         if (cancelled) return;
@@ -83,10 +94,46 @@ function App() {
     };
   }, [plexPin, plexAuthToken]);
 
+  useEffect(() => {
+    if (!plexAuthToken) return;
+
+    let cancelled = false;
+    setPlexWhoami(null);
+    setPlexWhoamiError(null);
+
+    fetch('/api/plex/whoami', {
+      headers: {
+        'X-Plex-Token': plexAuthToken,
+      },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as PlexWhoamiResponse;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setPlexWhoami(data);
+        setPlexLog((prev) => [...prev, 'Plex token validated (whoami OK).']);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPlexWhoamiError(err instanceof Error ? err.message : String(err));
+        setPlexLog((prev) => [...prev, 'Plex token validation failed.']);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [plexAuthToken]);
+
   async function onConnectPlex() {
     setPlexError(null);
     setPlexAuthToken(null);
+    setPlexWhoami(null);
+    setPlexWhoamiError(null);
+    setPlexPin(null);
     setIsConnectingPlex(true);
+    setPlexLog(['Requesting Plex PIN…']);
 
     try {
       const res = await fetch('/api/plex/pin', { method: 'POST' });
@@ -94,6 +141,13 @@ function App() {
 
       const data = (await res.json()) as PlexCreatePinResponse;
       setPlexPin(data);
+      setPlexLog((prev) => [
+        ...prev,
+        `Plex PIN created (id=${data.id}). Opening Plex link page…`,
+      ]);
+
+      // User-triggered button click -> popup should generally be allowed.
+      window.open(data.linkUrl, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setPlexError(err instanceof Error ? err.message : String(err));
       setIsConnectingPlex(false);
@@ -137,6 +191,20 @@ function App() {
         {plexAuthToken ? (
           <div style={{ marginTop: 12 }}>
             Connected. Token suffix: <code>{plexAuthToken.slice(-6)}</code>
+            {plexWhoami ? (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>whoami</div>
+                <pre className="code">{JSON.stringify(plexWhoami, null, 2)}</pre>
+              </div>
+            ) : plexWhoamiError ? (
+              <div className="error" style={{ marginTop: 12 }}>
+                whoami error: {plexWhoamiError}
+              </div>
+            ) : (
+              <div className="muted" style={{ marginTop: 12 }}>
+                Validating token…
+              </div>
+            )}
           </div>
         ) : plexPin ? (
           <div style={{ marginTop: 12 }}>
@@ -147,6 +215,17 @@ function App() {
             Not connected yet.
           </div>
         )}
+
+        {plexLog.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {plexLog.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
     </div>
   );
