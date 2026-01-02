@@ -37,6 +37,23 @@ type GoogleTestResponse = {
   meta: unknown;
 };
 
+type TmdbTestResponse = {
+  ok: boolean;
+  summary: unknown;
+  configuration: unknown;
+};
+
+type OpenAiTestResponse = {
+  ok: boolean;
+  meta: unknown;
+};
+
+type OverseerrTestResponse = {
+  ok: boolean;
+  status: unknown;
+  summary: unknown;
+};
+
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +85,22 @@ function App() {
   const [googleResult, setGoogleResult] = useState<GoogleTestResponse | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [googleLog, setGoogleLog] = useState<string[]>([]);
+
+  const [tmdbApiKey, setTmdbApiKey] = useState('');
+  const [tmdbResult, setTmdbResult] = useState<TmdbTestResponse | null>(null);
+  const [tmdbError, setTmdbError] = useState<string | null>(null);
+  const [tmdbLog, setTmdbLog] = useState<string[]>([]);
+
+  const [openAiApiKey, setOpenAiApiKey] = useState('');
+  const [openAiResult, setOpenAiResult] = useState<OpenAiTestResponse | null>(null);
+  const [openAiError, setOpenAiError] = useState<string | null>(null);
+  const [openAiLog, setOpenAiLog] = useState<string[]>([]);
+
+  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
+  const [overseerrApiKey, setOverseerrApiKey] = useState('');
+  const [overseerrResult, setOverseerrResult] = useState<OverseerrTestResponse | null>(null);
+  const [overseerrError, setOverseerrError] = useState<string | null>(null);
+  const [overseerrLog, setOverseerrLog] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -319,6 +352,114 @@ function App() {
     }
   }
 
+  async function onTestTmdb() {
+    setTmdbError(null);
+    setTmdbResult(null);
+    setTmdbLog(['Testing TMDB connection…']);
+
+    try {
+      if (!tmdbApiKey.trim()) {
+        setTmdbError('TMDB_API_KEY is required');
+        setTmdbLog((prev) => [...prev, 'TMDB test FAILED.']);
+        return;
+      }
+
+      const res = await fetch('/api/tmdb/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: tmdbApiKey,
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
+
+      const data = (await res.json()) as TmdbTestResponse;
+      setTmdbResult(data);
+      setTmdbLog((prev) => [...prev, 'TMDB test OK.']);
+    } catch (err) {
+      setTmdbError(err instanceof Error ? err.message : String(err));
+      setTmdbLog((prev) => [...prev, 'TMDB test FAILED.']);
+    }
+  }
+
+  async function onTestOpenAi() {
+    setOpenAiError(null);
+    setOpenAiResult(null);
+    setOpenAiLog(['Testing OpenAI connection…']);
+
+    try {
+      if (!openAiApiKey.trim()) {
+        setOpenAiError('OPENAI_API_KEY is required');
+        setOpenAiLog((prev) => [...prev, 'OpenAI test FAILED.']);
+        return;
+      }
+
+      const res = await fetch('/api/openai/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: openAiApiKey,
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
+
+      const data = (await res.json()) as OpenAiTestResponse;
+      setOpenAiResult(data);
+      setOpenAiLog((prev) => [...prev, 'OpenAI test OK.']);
+    } catch (err) {
+      setOpenAiError(err instanceof Error ? err.message : String(err));
+      setOpenAiLog((prev) => [...prev, 'OpenAI test FAILED.']);
+    }
+  }
+
+  async function onTestOverseerr() {
+    setOverseerrError(null);
+    setOverseerrResult(null);
+    setOverseerrLog(['Testing Overseerr connection…']);
+
+    try {
+      if (!overseerrBaseUrl.trim()) {
+        setOverseerrError('Base URL is required');
+        setOverseerrLog((prev) => [...prev, 'Overseerr test FAILED.']);
+        return;
+      }
+      if (!overseerrApiKey.trim()) {
+        setOverseerrError('API key is required');
+        setOverseerrLog((prev) => [...prev, 'Overseerr test FAILED.']);
+        return;
+      }
+
+      const res = await fetch('/api/overseerr/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: overseerrBaseUrl,
+          apiKey: overseerrApiKey,
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await readApiError(res);
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
+
+      const data = (await res.json()) as OverseerrTestResponse;
+      setOverseerrResult(data);
+      setOverseerrLog((prev) => [...prev, 'Overseerr test OK.']);
+    } catch (err) {
+      setOverseerrError(err instanceof Error ? err.message : String(err));
+      setOverseerrLog((prev) => [...prev, 'Overseerr test FAILED.']);
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -544,6 +685,131 @@ function App() {
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {googleLog.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panelTitle">TMDB</div>
+
+        <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>TMDB_API_KEY</div>
+            <input
+              value={tmdbApiKey}
+              onChange={(e) => setTmdbApiKey(e.target.value)}
+              placeholder="Paste TMDB API key (v3)"
+              type="password"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <div>
+            <button onClick={onTestTmdb}>Test TMDB</button>
+          </div>
+        </div>
+
+        {tmdbError ? <div className="error" style={{ marginTop: 12 }}>Error: {tmdbError}</div> : null}
+        {tmdbResult ? (
+          <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(tmdbResult, null, 2)}</pre>
+        ) : null}
+
+        {tmdbLog.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {tmdbLog.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panelTitle">OpenAI</div>
+
+        <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>OPENAI_API_KEY</div>
+            <input
+              value={openAiApiKey}
+              onChange={(e) => setOpenAiApiKey(e.target.value)}
+              placeholder="Paste OpenAI API key"
+              type="password"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <div>
+            <button onClick={onTestOpenAi}>Test OpenAI</button>
+          </div>
+        </div>
+
+        {openAiError ? (
+          <div className="error" style={{ marginTop: 12 }}>
+            Error: {openAiError}
+          </div>
+        ) : null}
+        {openAiResult ? (
+          <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(openAiResult, null, 2)}</pre>
+        ) : null}
+
+        {openAiLog.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {openAiLog.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panelTitle">Overseerr</div>
+
+        <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
+            <input
+              value={overseerrBaseUrl}
+              onChange={(e) => setOverseerrBaseUrl(e.target.value)}
+              placeholder="http://localhost:5055  (or https://host/overseerr)"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>API Key</div>
+            <input
+              value={overseerrApiKey}
+              onChange={(e) => setOverseerrApiKey(e.target.value)}
+              placeholder="Paste Overseerr API key"
+              type="password"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <div>
+            <button onClick={onTestOverseerr}>Test Overseerr</button>
+          </div>
+        </div>
+
+        {overseerrError ? (
+          <div className="error" style={{ marginTop: 12 }}>
+            Error: {overseerrError}
+          </div>
+        ) : null}
+        {overseerrResult ? (
+          <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(overseerrResult, null, 2)}</pre>
+        ) : null}
+
+        {overseerrLog.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {overseerrLog.map((line, idx) => (
                 <li key={idx}>{line}</li>
               ))}
             </ul>

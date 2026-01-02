@@ -9,6 +9,9 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { RadarrModule } from './radarr/radarr.module';
 import { SonarrModule } from './sonarr/sonarr.module';
 import { GoogleModule } from './google/google.module';
+import { TmdbModule } from './tmdb/tmdb.module';
+import { OpenAiModule } from './openai/openai.module';
+import { OverseerrModule } from './overseerr/overseerr.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -29,6 +32,9 @@ const staticImports = existsSync(webDistPath)
     RadarrModule,
     SonarrModule,
     GoogleModule,
+    TmdbModule,
+    OpenAiModule,
+    OverseerrModule,
   ],
   controllers: [AppController],
   providers: [AppService],
