@@ -40,7 +40,6 @@ export class PlexService {
 
     return {
       id: data.id,
-      code: data.code,
       expiresAt: data.expiresAt ?? null,
       authUrl,
       clientIdentifier: this.clientIdentifier,

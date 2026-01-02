@@ -8,7 +8,6 @@ type HealthResponse = {
 
 type PlexCreatePinResponse = {
   id: number;
-  code: string;
   expiresAt: string | null;
   authUrl: string;
   clientIdentifier: string;
@@ -208,7 +207,7 @@ function App() {
           </div>
         ) : plexPin ? (
           <div style={{ marginTop: 12 }}>
-            Enter this code in Plex: <code>{plexPin.code}</code>
+            Authorize in the Plex window we opened. Waiting for approval…
           </div>
         ) : (
           <div className="muted" style={{ marginTop: 12 }}>
