@@ -48,6 +48,12 @@ scripts_run:
   # Main recommendation pipeline with points system
   # (runs fourth, main pipeline)
   run_immaculate_taste_collection: true
+
+  # TV Support (Episode triggers)
+  # When Tautulli triggers with media_type=episode, these control the TV pipeline.
+  # Safe defaults are DISABLED.
+  run_tv_immaculate_taste_collection: true   # TV Immaculate Taste pipeline (episode triggers)
+  run_tv_collection_refresher: true          # TV Immaculate Taste collection refresher (adds shows to Plex collection)
   
   # Collection Refreshers (MANDATORY by default - these actually add movies to Plex!)
   # These scripts read the JSON files created by the main scripts and:
@@ -85,6 +91,7 @@ plex:
   movie_library_name: "Movies"                       # Name of your Plex movie library
   tv_library_name: "TV Shows"                        # Name of your Plex TV shows library (can be customized, e.g., "Shows", "Television", etc.)
   collection_name: "Inspired by your Immaculate Taste"  # Name of the main Plex collection
+  tv_collection_name: "Inspired by your Immaculate Taste (TV)"  # Name of the TV Plex collection
   
   # Duplicate Cleaner Settings
   delete_preference: "smallest_file"  # Which file to delete when duplicates found
@@ -97,7 +104,7 @@ plex:
 # ============================================================================
 openai:
   api_key: "sk-proj-XXXXXXXXXXXXXXXXXXX"  # Optional (placeholder/blank disables OpenAI)
-  # model: "gpt-5.2-chat-latest"           # Optional (default: gpt-5.2-chat-latest)
+  model: "gpt-5.2-chat-latest"             # Optional (default: gpt-5.2-chat-latest if empty/null)
 
 # ============================================================================
 # RECOMMENDATION SETTINGS (Overall)
@@ -173,6 +180,10 @@ sonarr:
   url: "http://localhost:8989"                      # Your Sonarr server URL
   api_key: "SONARR_API_KEY"                         # Replace with your Sonarr API key
   root_folder: "/path/to/TV Shows"                  # Root folder for TV show downloads
+  
+  # Optional automation: add recommended shows to Sonarr and sync episode monitoring
+  # Safe default is DISABLED.
+  auto_download_recommendations: false
   
   # Tag(s) to apply to added series (for future curated collection features)
   # Option 1: Single tag (string)

@@ -172,7 +172,7 @@ def get_related_movies(
     movie_name: str,
     *,
     api_key: Optional[str] = None,
-    model: str = "gpt-5.2-chat-latest",
+    model: Optional[str] = None,
     limit: int = 25,
     tmdb_seed_metadata: Optional[dict] = None,
     google_search_context: Optional[str] = None,
@@ -192,6 +192,9 @@ def get_related_movies(
     if not api_key:
         logger.info("OpenAI disabled (missing API key); skipping OpenAI recommendations.")
         return []
+
+    # Use provided model or fallback to default
+    model_name = model or "gpt-5.2-chat-latest"
 
     client = OpenAI(api_key=api_key)
 
@@ -236,7 +239,7 @@ def get_related_movies(
     try:
         # Note: some newer chat-latest models only support the default temperature.
         resp = client.chat.completions.create(
-            model=model,
+            model=model_name,
             messages=[
                 {"role": "system", "content": "You are a movie recommendation engine."},
                 {"role": "user", "content": prompt},
@@ -298,6 +301,123 @@ def get_related_movies(
     except Exception as e:
         logger.warning(f"OpenAI call failed (non-fatal): {type(e).__name__}: {e}")
         return []
+
+
+def get_related_tv_shows(
+    show_name: str,
+    *,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+    limit: int = 25,
+    tmdb_seed_metadata: Optional[dict] = None,
+    google_search_context: Optional[str] = None,
+    upcoming_cap_fraction: float = 0.50,
+) -> List[str]:
+    """
+    Return a list of related TV show titles for a given seed show.
+    Uses OpenAI if available/configured; otherwise returns [].
+    """
+    api_key = api_key or os.getenv("OPENAI_API_KEY")
+    if OpenAI is None:
+        logger.warning("OpenAI SDK not available (openai import failed).")
+        return []
+
+    if not api_key:
+        logger.info("OpenAI disabled (missing API key); skipping OpenAI TV recommendations.")
+        return []
+
+    # Use provided model or fallback to default
+    model_name = model or "gpt-5.2-chat-latest"
+
+    client = OpenAI(api_key=api_key)
+
+    seed_block = ""
+    if isinstance(tmdb_seed_metadata, dict) and tmdb_seed_metadata:
+        try:
+            seed_block = json.dumps(tmdb_seed_metadata, ensure_ascii=False)
+        except Exception:
+            seed_block = ""
+
+    web_block = (google_search_context or "").strip()
+    try:
+        frac = float(upcoming_cap_fraction)
+    except Exception:
+        frac = 0.50
+    if frac < 0:
+        frac = 0.0
+    if frac > 1:
+        frac = 1.0
+    upcoming_cap = max(0, min(limit, int(limit * frac)))
+
+    prompt = (
+        f"You are a TV show recommendation engine.\n\n"
+        f"Seed title: {show_name}\n"
+        f"Desired count: {limit}\n\n"
+        f"TMDb seed metadata (JSON):\n{seed_block or '{}'}\n\n"
+        f"Web search snippets (may include upcoming seasons/new shows):\n{web_block or '(none)'}\n\n"
+        "Return STRICT JSON only (no markdown, no prose) with this schema:\n"
+        "{\n"
+        '  \"primary_recommendations\": [\"Show Title 1\", \"Show Title 2\", ...],\n'
+        '  \"upcoming_from_search\": [\"Upcoming Show A\", \"Upcoming Show B\", ...]\n'
+        "}\n\n"
+        "Rules:\n"
+        "- primary_recommendations should be mostly established shows similar in tone/themes/style to the seed.\n"
+        f"- upcoming_from_search should include up to {upcoming_cap} items (max {int(frac*100)}% of {limit}).\n"
+        "- upcoming_from_search may include upcoming/new shows or new seasons relevant to the seed, preferably found in the web snippets.\n"
+        "- Avoid duplicates across both lists.\n"
+        "- Show titles only (no season/episode names; no years unless needed to disambiguate).\n"
+    )
+
+    try:
+        resp = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a TV show recommendation engine."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        text = resp.choices[0].message.content or ""
+        primary, upcoming = _try_parse_json_recs(text)
+        if primary or upcoming:
+            logger.info("=" * 60)
+            logger.info("OPENAI TV RECOMMENDATIONS BREAKDOWN:")
+            logger.info("=" * 60)
+            logger.info(f"Primary Recommendations ({len(primary)} total):")
+            for i, title in enumerate(primary, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("")
+            logger.info(f"Upcoming from Search ({len(upcoming)} total):")
+            for i, title in enumerate(upcoming, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("")
+            logger.info(f"Upcoming cap: {int(limit * frac)} (max {int(frac*100)}% of {limit})")
+            logger.info("=" * 60)
+
+            recs = _merge_primary_and_upcoming(primary, upcoming, limit=limit, upcoming_cap_fraction=frac)
+
+            logger.info("=" * 60)
+            logger.info("MERGE DETAILS (TV):")
+            logger.info("=" * 60)
+            logger.info(f"Final merged list ({len(recs)} items):")
+            for i, title in enumerate(recs, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("=" * 60)
+        else:
+            recs = parse_recommendations(text, limit=limit)
+            logger.info("=" * 60)
+            logger.info("OPENAI TV RECOMMENDATIONS (Fallback Format):")
+            logger.info("=" * 60)
+            for i, title in enumerate(recs, 1):
+                logger.info(f"  {i}. {title}")
+            logger.info("=" * 60)
+
+        logger.info(f"OpenAI returned {len(recs)} TV recommendations for '{show_name}'")
+        return recs
+
+    except Exception as e:
+        logger.warning(f"OpenAI call failed (non-fatal): {type(e).__name__}: {e}")
+        return []
         
 
 if __name__ == "__main__":
@@ -312,6 +432,7 @@ if __name__ == "__main__":
     recs = get_related_movies(
         movie,
         api_key=config.openai.api_key,               # ✅ pulled from config.yaml
+        model=config.openai.model,                   # ✅ pulled from config.yaml
         limit=config.recommendations.count,
     )
 

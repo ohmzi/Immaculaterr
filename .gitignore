@@ -2,6 +2,9 @@
 config/config.local.yaml
 config/config.local.yml
 
+# IDE/editor
+.idea/
+
 # Python bytecode/cache
 __pycache__/
 *.py[cod]

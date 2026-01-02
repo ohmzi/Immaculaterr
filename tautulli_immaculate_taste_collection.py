@@ -90,9 +90,13 @@ def _status_from_exit_code(exit_code: int, argv: list[str]) -> str:
         code = 30
 
     if code == 0:
-        # Special-case: this script only processes movies; non-movie triggers are a clean skip
-        if len(argv) >= 3 and str(argv[2]).lower().strip() != "movie":
-            return "SKIPPED"
+        # For Tautulli triggers:
+        # - movie + episode triggers are considered successful runs (even if downstream scripts are disabled)
+        # - other media types are a clean skip
+        if len(argv) >= 3:
+            mt = str(argv[2]).lower().strip()
+            if mt not in {"movie", "episode"}:
+                return "SKIPPED"
         return "SUCCESS"
     if code == 10:
         return "PARTIAL"

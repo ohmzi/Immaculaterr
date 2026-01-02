@@ -401,16 +401,16 @@ def _hub_move_row(plex, *, section_key: str, identifier: str, after: str | None 
     return bool(success)
 
 
-def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
+def _pin_collection_hubs(plex, section, *, collection_order: list[str], logger=None) -> dict:
     """
-    Ensure the curated collections are:
+    Ensure the given collections are:
     - Visible on Library Recommended + Home (as rows)
-    - Ordered at the top in CURATED_RECOMMENDATION_COLLECTION_ORDER order
+    - Ordered at the top in the provided order
 
     Returns a small stats dict for logging/testing.
     """
     stats = {
-        "requested": len(CURATED_RECOMMENDATION_COLLECTION_ORDER),
+        "requested": len(collection_order or []),
         "found": 0,
         "updated": 0,
         "missing": 0,
@@ -423,7 +423,7 @@ def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
             logger.warning("hub_pin: section has no key attribute; cannot manage recommendations")
         return stats
 
-    for order_idx, collection_name in enumerate(CURATED_RECOMMENDATION_COLLECTION_ORDER, start=1):
+    for order_idx, collection_name in enumerate(collection_order or [], start=1):
         try:
             collection = section.collection(collection_name)
         except NotFound:
@@ -471,7 +471,7 @@ def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
     try:
         identifiers_in_order: list[str] = []
         collections_in_order: list[str] = []
-        for collection_name in CURATED_RECOMMENDATION_COLLECTION_ORDER:
+        for collection_name in collection_order or []:
             try:
                 collection = section.collection(collection_name)
             except Exception:
@@ -503,6 +503,13 @@ def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
             logger.warning(f"hub_pin: reorder failed (non-critical): {type(e).__name__}: {e}")
 
     return stats
+
+
+def _pin_curated_collection_hubs(plex, section, logger=None) -> dict:
+    """
+    Backward-compatible wrapper for the movie collections pinned in the Movies library.
+    """
+    return _pin_collection_hubs(plex, section, collection_order=CURATED_RECOMMENDATION_COLLECTION_ORDER, logger=logger)
 
 
 def refresh_collection_with_points(
@@ -914,6 +921,8 @@ def apply_collection_state_to_plex(
     collection_state: dict,
     logger=None,
     base_dir: Path = None,
+    allowed_types: set[str] | None = None,
+    hub_pin_order: list[str] | None = None,
 ):
     """
     Applies the collection state to Plex by:
@@ -967,27 +976,32 @@ def apply_collection_state_to_plex(
     if logger:
         logger.info(f"apply_collection: existing_items={len(existing_items)}")
     
-    # Fetch items by rating key and filter to only movies
+    allowed_types = allowed_types or {"movie"}
+
+    # Fetch items by rating key and filter to only allowed types
     rating_keys = collection_state.get("rating_keys", [])
     desired_items = []
     failed_keys = []
-    filtered_non_movies = []
+    filtered_non_matching_types = []
     
     for rating_key in rating_keys:
         item = _fetch_by_rating_key(section, rating_key)
         if item:
-            # Only include movie items (filter out clips, shows, etc.)
+            # Only include desired types (filter out clips, shows, etc.)
             item_type = getattr(item, 'type', '').lower()
-            if item_type == 'movie':
+            if item_type in {t.lower() for t in allowed_types}:
                 desired_items.append(item)
             else:
-                filtered_non_movies.append({
+                filtered_non_matching_types.append({
                     'rating_key': rating_key,
                     'title': getattr(item, 'title', 'Unknown'),
                     'type': item_type
                 })
                 if logger:
-                    logger.debug(f"apply_collection: filtering out non-movie item: {getattr(item, 'title', 'Unknown')} (type: {item_type})")
+                    logger.debug(
+                        f"apply_collection: filtering out item: {getattr(item, 'title', 'Unknown')} (type: {item_type}) "
+                        f"allowed_types={sorted({t.lower() for t in allowed_types})}"
+                    )
         else:
             failed_keys.append(rating_key)
             if logger:
@@ -997,18 +1011,21 @@ def apply_collection_state_to_plex(
         if logger:
             logger.warning(f"apply_collection: failed to fetch {len(failed_keys)} items")
     
-    if filtered_non_movies:
+    if filtered_non_matching_types:
         if logger:
-            logger.warning(f"apply_collection: filtered out {len(filtered_non_movies)} non-movie items (clips, shows, etc.)")
+            logger.warning(
+                f"apply_collection: filtered out {len(filtered_non_matching_types)} items not in allowed types "
+                f"(allowed_types={sorted({t.lower() for t in allowed_types})})"
+            )
             # Log a sample of filtered items
-            sample = filtered_non_movies[:5]
+            sample = filtered_non_matching_types[:5]
             for filtered in sample:
                 logger.debug(f"  - {filtered['title']} (type: {filtered['type']})")
-            if len(filtered_non_movies) > 5:
-                logger.debug(f"  ... and {len(filtered_non_movies) - 5} more")
+            if len(filtered_non_matching_types) > 5:
+                logger.debug(f"  ... and {len(filtered_non_matching_types) - 5} more")
     
     if logger:
-        logger.info(f"apply_collection: desired_items={len(desired_items)} (movies only)")
+        logger.info(f"apply_collection: desired_items={len(desired_items)} (allowed_types={sorted({t.lower() for t in allowed_types})})")
     
     # Remove all existing items
     if existing_items:
@@ -1135,7 +1152,8 @@ def apply_collection_state_to_plex(
     # Ensure curated collections are visible + pinned at top (Manage Recommendations)
     if collection:
         try:
-            pin_stats = _pin_curated_collection_hubs(plex, section, logger=logger)
+            order = hub_pin_order if hub_pin_order is not None else CURATED_RECOMMENDATION_COLLECTION_ORDER
+            pin_stats = _pin_collection_hubs(plex, section, collection_order=order, logger=logger)
             if logger:
                 logger.info(f"hub_pin: done stats={pin_stats}")
         except Exception as e:

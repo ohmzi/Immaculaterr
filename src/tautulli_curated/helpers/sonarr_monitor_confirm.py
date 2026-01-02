@@ -32,6 +32,7 @@ from plexapi.server import PlexServer
 from tautulli_curated.helpers.logger import setup_logger
 from tautulli_curated.helpers.config_loader import load_config
 from tautulli_curated.helpers import sonarr_utils
+from tautulli_curated.helpers.plex_tv_helpers import get_tvdb_id_from_plex_series, get_plex_episodes_set
 from tautulli_curated.helpers.sonarr_utils import (
     sonarr_get_episodes_by_series,
     sonarr_find_series_by_tvdb_id,
@@ -65,44 +66,6 @@ def get_plex_tv_shows(config, log):
     )
     
     return shows if success else []
-
-
-def get_tvdb_id_from_plex_series(series) -> Optional[int]:
-    """Extract TVDB ID from Plex series GUIDs."""
-    try:
-        guids = getattr(series, "guids", []) or []
-        for guid in guids:
-            guid_id = getattr(guid, "id", "") or str(guid)
-            if "tvdb" in guid_id.lower():
-                import re
-                match = re.search(r'(\d+)', guid_id)
-                if match:
-                    return int(match.group(1))
-    except Exception as e:
-        logger.debug(f"Error extracting TVDB ID from Plex series {series.title}: {e}")
-    
-    return None
-
-
-def get_plex_episodes_set(plex_series) -> Set[Tuple[int, int]]:
-    """
-    Get set of (season, episode) tuples from Plex series.
-    
-    Returns:
-        Set of (season_number, episode_number) tuples
-    """
-    episodes_set = set()
-    try:
-        episodes = plex_series.episodes()
-        for episode in episodes:
-            season = getattr(episode, "seasonNumber", None) or getattr(episode, "parentIndex", None)
-            episode_num = getattr(episode, "episodeNumber", None) or getattr(episode, "index", None)
-            if season is not None and episode_num is not None:
-                episodes_set.add((int(season), int(episode_num)))
-    except Exception as e:
-        logger.warning(f"Error getting episodes from Plex series {plex_series.title}: {e}")
-    
-    return episodes_set
 
 
 def find_plex_series_by_tvdb_id(plex_shows, tvdb_id: int, log):

@@ -45,6 +45,7 @@ class PlexConfig:
     movie_library_name: str
     tv_library_name: str
     collection_name: str
+    tv_collection_name: str  # Default comes from config.yaml, fallback in config loader
     delete_preference: str = "smallest_file"
     preserve_quality: list[str] = None
     randomize_collection: bool = True
@@ -92,6 +93,7 @@ class SonarrConfig:
     root_folder: str
     tag_name: str | list[str]  # Can be a single tag (string) or multiple tags (list)
     quality_profile_id: int = 1
+    auto_download_recommendations: bool = False
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,8 @@ class ScriptsRunConfig:
     run_recently_watched_collection: bool = True  # Recently Watched Collection script
     run_immaculate_taste_collection: bool = True  # Immaculate Taste Collection script
     run_recently_watched_refresher: bool = True  # Recently Watched Collection Refresher (mandatory - adds movies to Plex)
+    run_tv_immaculate_taste_collection: bool = False  # TV Immaculate Taste (episode triggers)
+    run_tv_collection_refresher: bool = False  # TV Immaculate Taste collection refresher
 
 
 @dataclass(frozen=True)
@@ -192,6 +196,8 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         movie_library_name=_require(data, "plex.movie_library_name"),
         tv_library_name=_require(data, "plex.tv_library_name"),
         collection_name=_require(data, "plex.collection_name"),
+        tv_collection_name=_normalize_str(data.get("plex", {}).get("tv_collection_name", "Inspired by your Immaculate Taste (TV)"))
+        or "Inspired by your Immaculate Taste (TV)",
         delete_preference=data.get("plex", {}).get("delete_preference", "smallest_file"),
         preserve_quality=data.get("plex", {}).get("preserve_quality", []) or [],
         randomize_collection=bool(data.get("plex", {}).get("randomize_collection", True)),
@@ -281,6 +287,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         root_folder=_require(data, "sonarr.root_folder"),
         tag_name=_require(data, "sonarr.tag_name"),
         quality_profile_id=int(data.get("sonarr", {}).get("quality_profile_id", 1)),
+        auto_download_recommendations=bool(data.get("sonarr", {}).get("auto_download_recommendations", False)),
     )
 
     # Note: Both points_file and tmdb_cache_file are hardcoded in scripts:
@@ -298,6 +305,8 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         run_recently_watched_collection=bool(data.get("scripts_run", {}).get("run_recently_watched_collection", True)),
         run_immaculate_taste_collection=bool(data.get("scripts_run", {}).get("run_immaculate_taste_collection", True)),
         run_recently_watched_refresher=bool(data.get("scripts_run", {}).get("run_recently_watched_refresher", True)),  # Default: True (mandatory)
+        run_tv_immaculate_taste_collection=bool(data.get("scripts_run", {}).get("run_tv_immaculate_taste_collection", False)),
+        run_tv_collection_refresher=bool(data.get("scripts_run", {}).get("run_tv_collection_refresher", False)),
     )
 
     # Optional: Email alerts (Gmail SMTP App Password)

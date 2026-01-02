@@ -44,3 +44,35 @@ def find_plex_movie(plex, title, library_name: str = "Movies", logger=None):
     
     return result
 
+
+def find_plex_show(plex, title, library_name: str = "TV Shows", logger=None):
+    """
+    Fast Plex lookup for a TV series using server-side search with error handling.
+    """
+    def _search():
+        section = plex.library.section(library_name)
+        results = section.search(title=title)
+
+        if not results:
+            return None
+
+        target = normalize(title)
+        for item in results:
+            try:
+                if getattr(item, "type", "").lower() != "show":
+                    continue
+                if normalize(item.title) == target:
+                    return item
+            except Exception:
+                continue
+
+        return None
+
+    return safe_execute(
+        _search,
+        logger_instance=logger,
+        operation_name=f"Plex search for show '{title}'",
+        default_return=None,
+        log_errors=True,
+    )
+
