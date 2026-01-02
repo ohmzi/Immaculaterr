@@ -26,6 +26,11 @@ type PlexWhoamiResponse = {
   title: unknown;
 };
 
+type ArrTestResponse = {
+  ok: boolean;
+  status: unknown;
+};
+
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +42,18 @@ function App() {
   const [plexLog, setPlexLog] = useState<string[]>([]);
   const [plexWhoami, setPlexWhoami] = useState<PlexWhoamiResponse | null>(null);
   const [plexWhoamiError, setPlexWhoamiError] = useState<string | null>(null);
+
+  const [radarrBaseUrl, setRadarrBaseUrl] = useState('');
+  const [radarrApiKey, setRadarrApiKey] = useState('');
+  const [radarrResult, setRadarrResult] = useState<ArrTestResponse | null>(null);
+  const [radarrError, setRadarrError] = useState<string | null>(null);
+  const [radarrLog, setRadarrLog] = useState<string[]>([]);
+
+  const [sonarrBaseUrl, setSonarrBaseUrl] = useState('');
+  const [sonarrApiKey, setSonarrApiKey] = useState('');
+  const [sonarrResult, setSonarrResult] = useState<ArrTestResponse | null>(null);
+  const [sonarrError, setSonarrError] = useState<string | null>(null);
+  const [sonarrLog, setSonarrLog] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +170,54 @@ function App() {
     }
   }
 
+  async function onTestRadarr() {
+    setRadarrError(null);
+    setRadarrResult(null);
+    setRadarrLog(['Testing Radarr connection…']);
+
+    try {
+      const res = await fetch('/api/radarr/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: radarrBaseUrl,
+          apiKey: radarrApiKey,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ArrTestResponse;
+      setRadarrResult(data);
+      setRadarrLog((prev) => [...prev, 'Radarr test OK.']);
+    } catch (err) {
+      setRadarrError(err instanceof Error ? err.message : String(err));
+      setRadarrLog((prev) => [...prev, 'Radarr test FAILED.']);
+    }
+  }
+
+  async function onTestSonarr() {
+    setSonarrError(null);
+    setSonarrResult(null);
+    setSonarrLog(['Testing Sonarr connection…']);
+
+    try {
+      const res = await fetch('/api/sonarr/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: sonarrBaseUrl,
+          apiKey: sonarrApiKey,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ArrTestResponse;
+      setSonarrResult(data);
+      setSonarrLog((prev) => [...prev, 'Sonarr test OK.']);
+    } catch (err) {
+      setSonarrError(err instanceof Error ? err.message : String(err));
+      setSonarrLog((prev) => [...prev, 'Sonarr test FAILED.']);
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -220,6 +285,96 @@ function App() {
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {plexLog.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panelTitle">Radarr</div>
+
+        <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
+            <input
+              value={radarrBaseUrl}
+              onChange={(e) => setRadarrBaseUrl(e.target.value)}
+              placeholder="http://localhost:7878  (or https://host/radarr)"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>API Key</div>
+            <input
+              value={radarrApiKey}
+              onChange={(e) => setRadarrApiKey(e.target.value)}
+              placeholder="Paste Radarr API key"
+              type="password"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <div>
+            <button onClick={onTestRadarr}>Test Radarr</button>
+          </div>
+        </div>
+
+        {radarrError ? <div className="error" style={{ marginTop: 12 }}>Error: {radarrError}</div> : null}
+        {radarrResult ? (
+          <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(radarrResult, null, 2)}</pre>
+        ) : null}
+
+        {radarrLog.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {radarrLog.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panelTitle">Sonarr</div>
+
+        <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>Base URL</div>
+            <input
+              value={sonarrBaseUrl}
+              onChange={(e) => setSonarrBaseUrl(e.target.value)}
+              placeholder="http://localhost:8989  (or https://host/sonarr)"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <label>
+            <div className="muted" style={{ marginBottom: 4 }}>API Key</div>
+            <input
+              value={sonarrApiKey}
+              onChange={(e) => setSonarrApiKey(e.target.value)}
+              placeholder="Paste Sonarr API key"
+              type="password"
+              style={{ width: '100%', padding: 10, borderRadius: 8 }}
+            />
+          </label>
+          <div>
+            <button onClick={onTestSonarr}>Test Sonarr</button>
+          </div>
+        </div>
+
+        {sonarrError ? <div className="error" style={{ marginTop: 12 }}>Error: {sonarrError}</div> : null}
+        {sonarrResult ? (
+          <pre className="code" style={{ marginTop: 12 }}>{JSON.stringify(sonarrResult, null, 2)}</pre>
+        ) : null}
+
+        {sonarrLog.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Activity log</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {sonarrLog.map((line, idx) => (
                 <li key={idx}>{line}</li>
               ))}
             </ul>

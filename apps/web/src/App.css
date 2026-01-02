@@ -30,6 +30,17 @@
   margin-bottom: 12px;
 }
 
+input {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+}
+
+input:focus {
+  outline: 2px solid rgba(100, 108, 255, 0.6);
+  outline-offset: 1px;
+}
+
 .code {
   margin: 0;
   padding: 12px;
