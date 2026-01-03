@@ -189,7 +189,7 @@ export function HeroSection() {
           >
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight lg:tracking-normal text-black dark:text-black leading-tight">
               <span className="inline-block text-left">
-                <span className="block">Your library,</span>
+                <span className="block">Your Library,</span>
                 <span className="block pl-4 whitespace-nowrap">on autopilot.</span>
               </span>
             </h1>
