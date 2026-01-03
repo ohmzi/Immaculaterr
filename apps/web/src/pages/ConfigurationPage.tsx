@@ -331,30 +331,16 @@ export function ConfigurationPage() {
         });
 
         if (response.ok) {
-          const data = await response.json().catch(() => ({} as Record<string, unknown>));
-          const mi =
-            (data as any)?.summary?.machineIdentifier ??
-            (data as any)?.machineIdentifier ??
-            '';
-          const short = typeof mi === 'string' && mi ? `${mi.substring(0, 8)}…` : '';
-          toast.success(
-            short
-              ? `✓ Plex OK (${short}) • Libraries found`
-              : '✓ Plex OK • Libraries found',
-            { id: toastId },
-          );
+          toast.success('Connected to Plex.', { id: toastId });
         } else {
           const error = await response.json().catch(() => ({ message: response.statusText }));
           const code = (error as any)?.code as string | undefined;
-          const msg = (error as any)?.message || response.statusText;
           if (code === 'PLEX_MOVIE_LIBRARY_NOT_FOUND') {
             toast.error(`Movie library not found: "${plexMovieLibrary}"`, { id: toastId });
           } else if (code === 'PLEX_TV_LIBRARY_NOT_FOUND') {
             toast.error(`TV library not found: "${plexTvLibrary}"`, { id: toastId });
-          } else if (typeof msg === 'string' && (msg.includes('HTTP 401') || msg.includes('HTTP 403'))) {
-            toast.error('Plex authentication failed (token invalid or no access).', { id: toastId });
           } else {
-            toast.error(`Plex test failed: ${msg || 'Connection error'}`, { id: toastId });
+            toast.error('Plex credentials are incorrect.', { id: toastId });
           }
         }
       } else {
@@ -371,34 +357,21 @@ export function ConfigurationPage() {
         });
 
         if (response.ok) {
-          const data = await response.json();
-          const mi = (data as any)?.machineIdentifier as string | undefined;
-          const short = mi ? `${mi.substring(0, 8)}…` : '';
-          toast.success(
-            short
-              ? `✓ Plex OK (${short}) • Libraries found`
-              : '✓ Plex OK • Libraries found',
-            { id: toastId },
-          );
+          toast.success('Connected to Plex.', { id: toastId });
         } else {
           const error = await response.json().catch(() => ({ message: response.statusText }));
           const code = (error as any)?.code as string | undefined;
-          const msg = (error as any)?.message || response.statusText;
-          if (msg.includes('401') || msg.includes('Unauthorized')) {
-            toast.error('Invalid Plex token or server not accessible', { id: toastId });
-          } else if (msg.includes('timeout') || msg.includes('ECONNREFUSED')) {
-            toast.error('Cannot reach Plex server - check URL and network', { id: toastId });
-          } else if (code === 'PLEX_MOVIE_LIBRARY_NOT_FOUND') {
+          if (code === 'PLEX_MOVIE_LIBRARY_NOT_FOUND') {
             toast.error(`Movie library not found: "${plexMovieLibrary}"`, { id: toastId });
           } else if (code === 'PLEX_TV_LIBRARY_NOT_FOUND') {
             toast.error(`TV library not found: "${plexTvLibrary}"`, { id: toastId });
           } else {
-            toast.error(`Plex: ${msg}`, { id: toastId });
+            toast.error('Plex credentials are incorrect.', { id: toastId });
           }
         }
       }
     } catch (error) {
-      toast.error(`Network error: Cannot reach Plex server`, { id: toastId });
+      toast.error('Plex credentials are incorrect.', { id: toastId });
     }
   };
 
