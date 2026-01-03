@@ -115,7 +115,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
             // Ignore localStorage errors
           }
 
-          toast.success('Successfully connected to Plex!');
+          toast.success('Connected to Plex.');
         }
       } catch (error) {
         console.error('Error polling Plex pin:', error);
@@ -204,7 +204,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       // Validate
       toast.info('Validating Plex credentials...');
       await testSavedIntegration('plex');
-      toast.success('Plex validated successfully!');
+      toast.success('Connected to Plex.');
     },
     onSuccess: () => {
       // Only invalidate settings after successful validation, not during OAuth
@@ -228,7 +228,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       // Validate
       toast.info('Validating TMDB credentials...');
       await testSavedIntegration('tmdb');
-      toast.success('TMDB validated successfully!');
+      toast.success('Connected to TMDB.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });

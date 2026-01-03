@@ -180,7 +180,7 @@ export function ConfigurationPage() {
         window.open(authUrl, '_blank', 'noopener,noreferrer');
       }
 
-      toast.success('Login with Plex in the opened window/tab', { id: toastId });
+      toast.info('Login with Plex in the opened window/tab', { id: toastId });
 
       // Step 3: Poll for the auth token
       let attempts = 0;
@@ -221,7 +221,7 @@ export function ConfigurationPage() {
               }
               setPlexToken(checkData.authToken);
               setIsPlexOAuthLoading(false);
-              toast.success('✓ Successfully logged in with Plex!', { id: toastId });
+              toast.success('Connected to Plex.', { id: toastId });
             }
           }
         } catch (error) {
@@ -602,9 +602,7 @@ export function ConfigurationPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const version = data.status?.version || 'unknown';
-        toast.success(`✓ Connected to Radarr v${version}`, { id: toastId });
+        toast.success('Connected to Radarr.', { id: toastId });
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
@@ -636,9 +634,7 @@ export function ConfigurationPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const version = data.status?.version || 'unknown';
-        toast.success(`✓ Connected to Sonarr v${version}`, { id: toastId });
+        toast.success('Connected to Sonarr.', { id: toastId });
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
@@ -666,7 +662,7 @@ export function ConfigurationPage() {
         });
 
         if (response.ok) {
-          toast.success('✓ Connected to TMDB with saved credentials!', { id: toastId });
+          toast.success('Connected to TMDB.', { id: toastId });
         } else {
           const error = await response.json().catch(() => ({ message: response.statusText }));
           toast.error(`TMDB test failed: ${error.message || 'Connection error'}`, { id: toastId });
@@ -685,7 +681,7 @@ export function ConfigurationPage() {
         });
 
         if (response.ok) {
-          toast.success('✓ Connected to TMDB successfully!', { id: toastId });
+          toast.success('Connected to TMDB.', { id: toastId });
         } else {
           const error = await response.json().catch(() => ({ message: response.statusText }));
           const msg = error.message || response.statusText;
@@ -721,9 +717,7 @@ export function ConfigurationPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const numResults = data.results?.length || 0;
-        toast.success(`✓ Connected to Google! Found ${numResults} results`, { id: toastId });
+        toast.success('Connected to Google Search.', { id: toastId });
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
@@ -749,9 +743,7 @@ export function ConfigurationPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const modelCount = data.models?.length || 0;
-        toast.success(`✓ Connected to OpenAI! ${modelCount} models available`, { id: toastId });
+        toast.success('Connected to OpenAI.', { id: toastId });
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
@@ -781,9 +773,7 @@ export function ConfigurationPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const version = data.version || 'unknown';
-        toast.success(`✓ Connected to Overseerr v${version}`, { id: toastId });
+        toast.success('Connected to Overseerr.', { id: toastId });
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
