@@ -140,7 +140,7 @@ export function Navigation() {
           {/* Main dark glassy overlay with curved bottom */}
           <div className="relative px-12 pt-6 pb-12">
             {/* Backdrop blur overlay with smooth curved bottom */}
-            <div className="absolute inset-0 bg-[#0b0c0f]/85 backdrop-blur-xl shadow-2xl overflow-hidden"
+            <div className="absolute inset-0 bg-[#0b0c0f]/55 backdrop-blur-2xl shadow-2xl overflow-hidden border border-white/10"
                  style={{
                    borderRadius: '3rem 3rem 50% 50%'
                  }}
@@ -189,7 +189,7 @@ export function Navigation() {
                           transition={{ duration: 0.2 }}
                           className="absolute top-full left-0 mt-2 min-w-[220px] rounded-2xl overflow-hidden shadow-2xl"
                         >
-                          <div className="bg-[#0b0c0f]/90 backdrop-blur-xl border border-white/10 p-2">
+                          <div className="bg-[#0b0c0f]/70 backdrop-blur-2xl border border-white/10 p-2">
                             {item.dropdown.map((subItem, subIndex) => (
                               <button
                                 key={subIndex}
@@ -249,7 +249,7 @@ export function Navigation() {
                 <div className="relative">
                   <button
                     onClick={() => setIsHelpOpen(!isHelpOpen)}
-                    className="px-5 py-2.5 text-sm text-white bg-white/10 dark:bg-white/20 hover:bg-white/20 dark:hover:bg-white/30 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 dark:border-white/30"
+                    className="px-5 py-2.5 text-sm text-white bg-white/10 hover:bg-white/15 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20"
                   >
                     Help
                   </button>
@@ -262,11 +262,11 @@ export function Navigation() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.2 }}
-                        className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50"
+                        className="absolute top-full right-0 mt-2 w-64 bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden z-50"
                       >
                         <div className="p-4">
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Help & Support</h3>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                          <h3 className="text-lg font-semibold text-white mb-2">Help & Support</h3>
+                          <p className="text-sm text-white/70 mb-4">
                             Need assistance? Visit our documentation or contact support.
                           </p>
 
@@ -274,17 +274,17 @@ export function Navigation() {
                             <button
                               onClick={handleResetAccount}
                               disabled={logoutMutation.isPending}
-                              className="w-full px-4 py-2.5 text-left text-sm text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-xl transition-colors font-medium disabled:opacity-50"
+                              className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 rounded-xl transition-colors font-medium disabled:opacity-50"
                             >
                               Reset Account to Fresh Setup
                             </button>
                           </div>
 
-                          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                          <div className="mt-4 pt-4 border-t border-white/10">
                             <button
                               onClick={handleLogout}
                               disabled={logoutMutation.isPending}
-                              className="w-full px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors flex items-center gap-2 font-medium disabled:opacity-50"
+                              className="w-full px-4 py-2.5 text-left text-sm text-red-300 hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2 font-medium disabled:opacity-50"
                             >
                               <LogOut size={16} />
                               {logoutMutation.isPending ? 'Logging out...' : 'Logout'}
