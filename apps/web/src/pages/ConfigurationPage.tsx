@@ -18,6 +18,17 @@ function readString(obj: unknown, path: string): string {
   return typeof cur === 'string' ? cur : '';
 }
 
+function readBool(obj: unknown, path: string): boolean | null {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const p of parts) {
+    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return null;
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  return typeof cur === 'boolean' ? cur : null;
+}
+
 export function ConfigurationPage() {
   const queryClient = useQueryClient();
 
@@ -44,6 +55,8 @@ export function ConfigurationPage() {
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
 
+    const secrets = settingsQuery.data?.secretsPresent ?? {};
+
     const plexBaseUrlSaved = readString(settings, 'plex.baseUrl');
     const plexMovieSaved = readString(settings, 'plex.movieLibraryName');
     const plexTvSaved = readString(settings, 'plex.tvLibraryName');
@@ -59,6 +72,19 @@ export function ConfigurationPage() {
     if (sonarrBaseUrlSaved) setSonarrBaseUrl(sonarrBaseUrlSaved);
     if (googleSearchEngineIdSaved) setGoogleSearchEngineId(googleSearchEngineIdSaved);
     if (overseerrBaseUrlSaved) setOverseerrBaseUrl(overseerrBaseUrlSaved);
+
+    // Prefer explicit enabled flags from settings. Fallback to secrets-present for legacy configs.
+    const radarrEnabledSaved = readBool(settings, 'radarr.enabled');
+    const sonarrEnabledSaved = readBool(settings, 'sonarr.enabled');
+    const googleEnabledSaved = readBool(settings, 'google.enabled');
+    const openAiEnabledSaved = readBool(settings, 'openai.enabled');
+    const overseerrEnabledSaved = readBool(settings, 'overseerr.enabled');
+
+    setRadarrEnabled(radarrEnabledSaved ?? Boolean((secrets as any).radarr));
+    setSonarrEnabled(sonarrEnabledSaved ?? Boolean((secrets as any).sonarr));
+    setGoogleEnabled(googleEnabledSaved ?? Boolean((secrets as any).google));
+    setOpenAiEnabled(openAiEnabledSaved ?? Boolean((secrets as any).openai));
+    setOverseerrEnabled(overseerrEnabledSaved ?? Boolean((secrets as any).overseerr));
   }, [settingsQuery.data?.settings]);
 
   const [radarrBaseUrl, setRadarrBaseUrl] = useState('http://localhost:7878');
@@ -109,24 +135,8 @@ export function ConfigurationPage() {
   const [openAiEnabled, setOpenAiEnabled] = useState(false);
   const [overseerrEnabled, setOverseerrEnabled] = useState(false);
 
-  // Auto-enable toggles for services that have saved credentials
-  useEffect(() => {
-    if (secretsPresent.radarr && !radarrEnabled) {
-      setRadarrEnabled(true);
-    }
-    if (secretsPresent.sonarr && !sonarrEnabled) {
-      setSonarrEnabled(true);
-    }
-    if (secretsPresent.google && !googleEnabled) {
-      setGoogleEnabled(true);
-    }
-    if (secretsPresent.openai && !openAiEnabled) {
-      setOpenAiEnabled(true);
-    }
-    if (secretsPresent.overseerr && !overseerrEnabled) {
-      setOverseerrEnabled(true);
-    }
-  }, [secretsPresent]);
+  // Note: enabled toggles are driven by settings (with a legacy fallback above),
+  // not by re-auto-enabling whenever secrets exist.
 
   // Plex OAuth state
   const [isPlexOAuthLoading, setIsPlexOAuthLoading] = useState(false);
@@ -276,10 +286,27 @@ export function ConfigurationPage() {
       const curGoogleSearchEngineId = readString(currentSettings, 'google.searchEngineId');
       const curOverseerrBaseUrl = readString(currentSettings, 'overseerr.baseUrl');
 
+      const curRadarrEnabled =
+        readBool(currentSettings, 'radarr.enabled') ?? Boolean(secretsPresent.radarr);
+      const curSonarrEnabled =
+        readBool(currentSettings, 'sonarr.enabled') ?? Boolean(secretsPresent.sonarr);
+      const curGoogleEnabled =
+        readBool(currentSettings, 'google.enabled') ?? Boolean(secretsPresent.google);
+      const curOpenAiEnabled =
+        readBool(currentSettings, 'openai.enabled') ?? Boolean(secretsPresent.openai);
+      const curOverseerrEnabled =
+        readBool(currentSettings, 'overseerr.enabled') ?? Boolean(secretsPresent.overseerr);
+
       const nextRadarrBaseUrl = radarrBaseUrl.trim();
       const nextSonarrBaseUrl = sonarrBaseUrl.trim();
       const nextGoogleSearchEngineId = googleSearchEngineId.trim();
       const nextOverseerrBaseUrl = overseerrBaseUrl.trim();
+
+      const radarrEnabledChanged = radarrEnabled !== curRadarrEnabled;
+      const sonarrEnabledChanged = sonarrEnabled !== curSonarrEnabled;
+      const googleEnabledChanged = googleEnabled !== curGoogleEnabled;
+      const openAiEnabledChanged = openAiEnabled !== curOpenAiEnabled;
+      const overseerrEnabledChanged = overseerrEnabled !== curOverseerrEnabled;
 
       const radarrBaseChanged =
         radarrEnabled && Boolean(nextRadarrBaseUrl) && nextRadarrBaseUrl !== curRadarrBaseUrl;
@@ -294,10 +321,29 @@ export function ConfigurationPage() {
         Boolean(nextOverseerrBaseUrl) &&
         nextOverseerrBaseUrl !== curOverseerrBaseUrl;
 
-      if (radarrBaseChanged) settingsPatch.radarr = { baseUrl: nextRadarrBaseUrl };
-      if (sonarrBaseChanged) settingsPatch.sonarr = { baseUrl: nextSonarrBaseUrl };
-      if (googleIdChanged) settingsPatch.google = { searchEngineId: nextGoogleSearchEngineId };
-      if (overseerrBaseChanged) settingsPatch.overseerr = { baseUrl: nextOverseerrBaseUrl };
+      const radarrSettings: Record<string, unknown> = {};
+      if (radarrEnabledChanged) radarrSettings.enabled = radarrEnabled;
+      if (radarrBaseChanged) radarrSettings.baseUrl = nextRadarrBaseUrl;
+      if (Object.keys(radarrSettings).length) settingsPatch.radarr = radarrSettings;
+
+      const sonarrSettings: Record<string, unknown> = {};
+      if (sonarrEnabledChanged) sonarrSettings.enabled = sonarrEnabled;
+      if (sonarrBaseChanged) sonarrSettings.baseUrl = nextSonarrBaseUrl;
+      if (Object.keys(sonarrSettings).length) settingsPatch.sonarr = sonarrSettings;
+
+      const googleSettings: Record<string, unknown> = {};
+      if (googleEnabledChanged) googleSettings.enabled = googleEnabled;
+      if (googleIdChanged) googleSettings.searchEngineId = nextGoogleSearchEngineId;
+      if (Object.keys(googleSettings).length) settingsPatch.google = googleSettings;
+
+      const openAiSettings: Record<string, unknown> = {};
+      if (openAiEnabledChanged) openAiSettings.enabled = openAiEnabled;
+      if (Object.keys(openAiSettings).length) settingsPatch.openai = openAiSettings;
+
+      const overseerrSettings: Record<string, unknown> = {};
+      if (overseerrEnabledChanged) overseerrSettings.enabled = overseerrEnabled;
+      if (overseerrBaseChanged) overseerrSettings.baseUrl = nextOverseerrBaseUrl;
+      if (Object.keys(overseerrSettings).length) settingsPatch.overseerr = overseerrSettings;
 
       if (plexTokenChanged) {
         secretsPatch.plex = { token: plexTokenTrimmed };
@@ -396,7 +442,8 @@ export function ConfigurationPage() {
       }
 
       // Radarr: validate if baseUrl/apiKey changed (and enabled)
-      if (radarrEnabled && (radarrBaseChanged || radarrKeyChanged)) {
+      const radarrBecameEnabled = radarrEnabled && !curRadarrEnabled;
+      if (radarrEnabled && (radarrBecameEnabled || radarrBaseChanged || radarrKeyChanged)) {
         if (!nextRadarrBaseUrl) throw new Error('Please enter Radarr Base URL');
         if (!radarrKeyChanged && !secretsPresent.radarr)
           throw new Error('Please enter Radarr API Key');
@@ -416,7 +463,8 @@ export function ConfigurationPage() {
       }
 
       // Sonarr: validate if baseUrl/apiKey changed (and enabled)
-      if (sonarrEnabled && (sonarrBaseChanged || sonarrKeyChanged)) {
+      const sonarrBecameEnabled = sonarrEnabled && !curSonarrEnabled;
+      if (sonarrEnabled && (sonarrBecameEnabled || sonarrBaseChanged || sonarrKeyChanged)) {
         if (!nextSonarrBaseUrl) throw new Error('Please enter Sonarr Base URL');
         if (!sonarrKeyChanged && !secretsPresent.sonarr)
           throw new Error('Please enter Sonarr API Key');
@@ -436,7 +484,8 @@ export function ConfigurationPage() {
       }
 
       // Google: validate if searchEngineId/apiKey changed (and enabled)
-      if (googleEnabled && (googleIdChanged || googleKeyChanged)) {
+      const googleBecameEnabled = googleEnabled && !curGoogleEnabled;
+      if (googleEnabled && (googleBecameEnabled || googleIdChanged || googleKeyChanged)) {
         if (!nextGoogleSearchEngineId) throw new Error('Please enter Google Search Engine ID');
         if (!googleKeyChanged && !secretsPresent.google) throw new Error('Please enter Google API Key');
 
@@ -460,17 +509,23 @@ export function ConfigurationPage() {
       }
 
       // OpenAI: validate if apiKey changed (and enabled)
-      if (openAiEnabled && openAiKeyChanged) {
-        const res = await fetch('/api/openai/test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: openAiKeyTrimmed }),
-        });
+      const openAiBecameEnabled = openAiEnabled && !curOpenAiEnabled;
+      if (openAiEnabled && (openAiBecameEnabled || openAiKeyChanged)) {
+        if (!openAiKeyChanged && !secretsPresent.openai) throw new Error('Please enter OpenAI API Key');
+
+        const res = openAiKeyChanged
+          ? await fetch('/api/openai/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiKey: openAiKeyTrimmed }),
+            })
+          : await fetch('/api/integrations/test/openai', { method: 'POST' });
         if (!res.ok) throw new Error('OpenAI API key is invalid.');
       }
 
       // Overseerr: validate if baseUrl/apiKey changed (and enabled)
-      if (overseerrEnabled && (overseerrBaseChanged || overseerrKeyChanged)) {
+      const overseerrBecameEnabled = overseerrEnabled && !curOverseerrEnabled;
+      if (overseerrEnabled && (overseerrBecameEnabled || overseerrBaseChanged || overseerrKeyChanged)) {
         if (!nextOverseerrBaseUrl) throw new Error('Please enter Overseerr Base URL');
         if (!overseerrKeyChanged && !secretsPresent.overseerr)
           throw new Error('Please enter Overseerr API Key');
@@ -588,18 +643,28 @@ export function ConfigurationPage() {
   };
 
   const testRadarrConnection = async () => {
-    if (!radarrBaseUrl || !radarrApiKey) {
-      toast.error('Please enter Radarr Base URL and API Key');
-      return;
-    }
-
     const toastId = toast.loading('Testing Radarr connection...');
     try {
-      const response = await fetch('/api/radarr/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl: radarrBaseUrl, apiKey: radarrApiKey }),
-      });
+      const baseUrl = radarrBaseUrl.trim();
+      const apiKey = radarrApiKey.trim();
+
+      if (!baseUrl) {
+        toast.error('Please enter Radarr Base URL', { id: toastId });
+        return;
+      }
+
+      const response =
+        secretsPresent.radarr && apiKey === MASKED_SECRET
+          ? await fetch('/api/integrations/test/radarr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl }),
+            })
+          : await fetch('/api/radarr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl, apiKey }),
+            });
 
       if (response.ok) {
         toast.success('Connected to Radarr.', { id: toastId });
@@ -626,18 +691,28 @@ export function ConfigurationPage() {
   };
 
   const testSonarrConnection = async () => {
-    if (!sonarrBaseUrl || !sonarrApiKey) {
-      toast.error('Please enter Sonarr Base URL and API Key');
-      return;
-    }
-
     const toastId = toast.loading('Testing Sonarr connection...');
     try {
-      const response = await fetch('/api/sonarr/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl: sonarrBaseUrl, apiKey: sonarrApiKey }),
-      });
+      const baseUrl = sonarrBaseUrl.trim();
+      const apiKey = sonarrApiKey.trim();
+
+      if (!baseUrl) {
+        toast.error('Please enter Sonarr Base URL', { id: toastId });
+        return;
+      }
+
+      const response =
+        secretsPresent.sonarr && apiKey === MASKED_SECRET
+          ? await fetch('/api/integrations/test/sonarr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl }),
+            })
+          : await fetch('/api/sonarr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl, apiKey }),
+            });
 
       if (response.ok) {
         toast.success('Connected to Sonarr.', { id: toastId });
@@ -717,23 +792,33 @@ export function ConfigurationPage() {
   };
 
   const testGoogleConnection = async () => {
-    if (!googleSearchEngineId || !googleApiKey) {
-      toast.error('Please enter Google Search Engine ID and API Key');
-      return;
-    }
-
     const toastId = toast.loading('Testing Google Search connection...');
     try {
-      const response = await fetch('/api/google/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: googleApiKey,
-          cseId: googleSearchEngineId,
-          query: 'tautulli curated plex',
-          numResults: 3
-        }),
-      });
+      const cseId = googleSearchEngineId.trim();
+      const apiKey = googleApiKey.trim();
+
+      if (!cseId) {
+        toast.error('Please enter Google Search Engine ID', { id: toastId });
+        return;
+      }
+
+      const response =
+        secretsPresent.google && apiKey === MASKED_SECRET
+          ? await fetch('/api/integrations/test/google', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ searchEngineId: cseId }),
+            })
+          : await fetch('/api/google/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                apiKey,
+                cseId,
+                query: 'tautulli curated plex',
+                numResults: 3,
+              }),
+            });
 
       if (response.ok) {
         toast.success('Connected to Google Search.', { id: toastId });
@@ -755,18 +840,17 @@ export function ConfigurationPage() {
   };
 
   const testOpenAiConnection = async () => {
-    if (!openAiApiKey) {
-      toast.error('Please enter OpenAI API Key');
-      return;
-    }
-
     const toastId = toast.loading('Testing OpenAI connection...');
     try {
-      const response = await fetch('/api/openai/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: openAiApiKey }),
-      });
+      const apiKey = openAiApiKey.trim();
+      const response =
+        secretsPresent.openai && apiKey === MASKED_SECRET
+          ? await fetch('/api/integrations/test/openai', { method: 'POST' })
+          : await fetch('/api/openai/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiKey }),
+            });
 
       if (response.ok) {
         toast.success('Connected to OpenAI.', { id: toastId });
@@ -788,18 +872,28 @@ export function ConfigurationPage() {
   };
 
   const testOverseerrConnection = async () => {
-    if (!overseerrBaseUrl || !overseerrApiKey) {
-      toast.error('Please enter Overseerr Base URL and API Key');
-      return;
-    }
-
     const toastId = toast.loading('Testing Overseerr connection...');
     try {
-      const response = await fetch('/api/overseerr/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl: overseerrBaseUrl, apiKey: overseerrApiKey }),
-      });
+      const baseUrl = overseerrBaseUrl.trim();
+      const apiKey = overseerrApiKey.trim();
+
+      if (!baseUrl) {
+        toast.error('Please enter Overseerr Base URL', { id: toastId });
+        return;
+      }
+
+      const response =
+        secretsPresent.overseerr && apiKey === MASKED_SECRET
+          ? await fetch('/api/integrations/test/overseerr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl }),
+            })
+          : await fetch('/api/overseerr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl, apiKey }),
+            });
 
       if (response.ok) {
         toast.success('Connected to Overseerr.', { id: toastId });
