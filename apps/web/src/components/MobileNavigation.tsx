@@ -248,7 +248,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
           {/* Logo */}
           <button
             onClick={() => navigate('/')}
-            className="flex flex-shrink-0 items-center gap-2 active:opacity-70 transition-opacity"
+            className="flex min-w-0 items-center gap-2 active:opacity-70 transition-opacity"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               {/* Screen/Monitor */}
@@ -259,18 +259,16 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               <path d="M12.5 12.5L15 15" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <span
-              className={`${
-                isSearchOpen ? 'hidden' : 'hidden sm:inline'
-              } font-semibold tracking-tight text-white`}
+              className={`${isSearchOpen ? 'hidden' : 'inline'} max-w-[150px] truncate font-semibold tracking-tight text-white sm:max-w-none`}
             >
               Immaculaterr
             </span>
           </button>
 
           {/* Right side controls */}
-          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1">
             {/* Search (icon -> expands into full bar) */}
-            <div className="relative min-w-0 flex-1 overflow-visible">
+            <div className="relative flex min-w-0 flex-1 items-center justify-end overflow-visible">
               <AnimatePresence>
                 {isSearchOpen && (
                   <motion.div
@@ -278,7 +276,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     animate={{ width: '100%', opacity: 1 }}
                     exit={{ width: 0, opacity: 0 }}
                     transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                    className="min-w-0"
+                    className="min-w-0 flex-1"
                   >
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/60" />
