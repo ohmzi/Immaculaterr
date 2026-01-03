@@ -19,7 +19,7 @@ const navItems: NavItem[] = [
       { label: 'Dashboard', to: '/' },
       { label: 'Collections', to: '/collections' },
       { label: 'Jobs', to: '/jobs' },
-      { label: 'Runs', to: '/runs' },
+      { label: 'History', to: '/history' },
     ],
   },
   {
@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
     label: 'Scheduler',
     dropdown: [
       { label: 'Jobs', to: '/jobs' },
-      { label: 'Runs', to: '/runs' },
+      { label: 'History', to: '/history' },
     ],
   },
 ];

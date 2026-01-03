@@ -42,7 +42,7 @@ function formatDuration(ms: number): string {
   return `${h}h ${mm}m`;
 }
 
-export function RunsPage() {
+export function HistoryPage() {
   const [jobId, setJobId] = useState('');
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
@@ -55,8 +55,8 @@ export function RunsPage() {
     retry: false,
   });
 
-  const runsQuery = useQuery({
-    queryKey: ['jobRuns', 'runsPage'],
+  const historyQuery = useQuery({
+    queryKey: ['jobRuns', 'historyPage'],
     queryFn: () => listRuns({ take: 200 }),
     staleTime: 2_000,
     refetchInterval: 3_000,
@@ -65,7 +65,7 @@ export function RunsPage() {
   });
 
   const filtered = useMemo(() => {
-    const runs = runsQuery.data?.runs ?? [];
+    const runs = historyQuery.data?.runs ?? [];
     const query = q.trim().toLowerCase();
     return runs.filter((r) => {
       if (jobId && r.jobId !== jobId) return false;
@@ -74,14 +74,16 @@ export function RunsPage() {
       const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [runsQuery.data?.runs, jobId, status, q]);
+  }, [historyQuery.data?.runs, jobId, status, q]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
-          <p className="text-sm text-muted-foreground">History of job runs (logs, summary, errors).</p>
+          <h1 className="text-2xl font-semibold tracking-tight">History</h1>
+          <p className="text-sm text-muted-foreground">
+            History of job runs (logs, summary, errors).
+          </p>
         </div>
         <Button asChild variant="outline">
           <Link to="/jobs">Back to Jobs</Link>
@@ -138,21 +140,21 @@ export function RunsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent runs</CardTitle>
+          <CardTitle>Recent history</CardTitle>
           <CardDescription>
-            {runsQuery.isLoading ? 'Loading…' : `${filtered.length} shown`}
+            {historyQuery.isLoading ? 'Loading…' : `${filtered.length} shown`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {runsQuery.isLoading ? (
+          {historyQuery.isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading…
             </div>
-          ) : runsQuery.error ? (
+          ) : historyQuery.error ? (
             <div className="flex items-start gap-2 text-sm text-destructive">
               <CircleAlert className="mt-0.5 h-4 w-4" />
-              <div>{(runsQuery.error as Error).message}</div>
+              <div>{(historyQuery.error as Error).message}</div>
             </div>
           ) : filtered.length ? (
             <div className="overflow-auto rounded-md border">
@@ -175,21 +177,34 @@ export function RunsPage() {
                         <td className="px-3 py-2 whitespace-nowrap">
                           <Link
                             className="font-mono text-xs underline-offset-4 hover:underline"
-                            to={`/jobs/runs/${run.id}`}
+                            to={`/history/${run.id}`}
                           >
                             {new Date(run.startedAt).toLocaleString()}
                           </Link>
                         </td>
                         <td className="px-3 py-2">{run.jobId}</td>
                         <td className="px-3 py-2">
-                          <span className={cn('rounded-full px-2 py-1 text-xs font-medium', statusPill(run.status))}>
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-1 text-xs font-medium',
+                              statusPill(run.status),
+                            )}
+                          >
                             {run.status}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">{run.dryRun ? 'dry-run' : 'live'}</td>
-                        <td className="px-3 py-2 text-muted-foreground">{ms === null ? '—' : formatDuration(ms)}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {run.dryRun ? 'dry-run' : 'live'}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {ms === null ? '—' : formatDuration(ms)}
+                        </td>
                         <td className="px-3 py-2 text-destructive">
-                          {run.errorMessage ? (run.errorMessage.length > 80 ? `${run.errorMessage.slice(0, 80)}…` : run.errorMessage) : ''}
+                          {run.errorMessage
+                            ? run.errorMessage.length > 80
+                              ? `${run.errorMessage.slice(0, 80)}…`
+                              : run.errorMessage
+                            : ''}
                         </td>
                       </tr>
                     );
@@ -198,7 +213,7 @@ export function RunsPage() {
               </table>
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground">No runs found.</div>
+            <div className="text-sm text-muted-foreground">No history found.</div>
           )}
         </CardContent>
       </Card>

@@ -6,7 +6,7 @@ import { AuthGate } from '@/app/AuthGate';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { CollectionsPage } from '@/pages/CollectionsPage';
 import { JobsPage } from '@/pages/JobsPage';
-import { RunsPage } from '@/pages/RunsPage';
+import { HistoryPage } from '@/pages/HistoryPage';
 import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { ConfigurationPage } from '@/pages/ConfigurationPage';
@@ -43,8 +43,8 @@ export default function App() {
             <Route path="configuration" element={<ConfigurationPage />} />
             <Route path="collections" element={<CollectionsPage />} />
             <Route path="jobs" element={<JobsPage />} />
-            <Route path="runs" element={<RunsPage />} />
-            <Route path="jobs/runs/:runId" element={<JobRunDetailPage />} />
+            <Route path="history" element={<HistoryPage />} />
+            <Route path="history/:runId" element={<JobRunDetailPage />} />
             {/* Redirect old routes */}
             <Route path="connections" element={<Navigate to="/configuration" replace />} />
             <Route path="integrations" element={<Navigate to="/configuration" replace />} />

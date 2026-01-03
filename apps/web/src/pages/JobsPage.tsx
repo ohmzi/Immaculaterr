@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Loader2, Play, Save, Shield } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule } from '@/api/jobs';
-// (status pill lives on Runs/Run Detail pages now)
+// (status pill lives on History/Detail pages now)
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -152,7 +152,7 @@ export function JobsPage() {
     mutationFn: async (params: { jobId: string; dryRun: boolean }) => runJob(params.jobId, params.dryRun),
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: ['jobRuns'] });
-      void navigate(`/jobs/runs/${data.run.id}`);
+      void navigate(`/history/${data.run.id}`);
     },
   });
 
@@ -575,8 +575,8 @@ export function JobsPage() {
 
             <div className="mt-8 text-sm text-white/70">
               Need history? Go to{' '}
-              <Link className="text-white underline-offset-4 hover:underline" to="/runs">
-                Runs
+              <Link className="text-white underline-offset-4 hover:underline" to="/history">
+                History
               </Link>
               .
             </div>
