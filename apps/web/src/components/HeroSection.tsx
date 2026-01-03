@@ -81,14 +81,14 @@ function CombinedYAxisTick(props: {
   return (
     <g transform={`translate(${x},${y})`}>
       <text
-        x={-6}
+        x={-4}
         y={0}
         textAnchor="end"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
       >
         <tspan fill="#60a5fa">{tvText}</tspan>
-        <tspan fill="#9ca3af">{' / '}</tspan>
+        <tspan fill="#9ca3af">{'/'}</tspan>
         <tspan fill="#facc15">{movieText}</tspan>
       </text>
     </g>
@@ -233,7 +233,7 @@ export function HeroSection() {
                         axisLine={{ stroke: '#9ca3af' }}
                         tickLine={{ stroke: '#9ca3af' }}
                         style={{ fontSize: '12px' }}
-                        width={84}
+                        width={64}
                         tick={(tickProps) => (
                           <CombinedYAxisTick
                             {...tickProps}
