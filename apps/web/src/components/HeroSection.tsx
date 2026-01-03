@@ -1,4 +1,5 @@
 import { motion } from 'motion/react';
+import { useState } from 'react';
 import { ArrowRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
@@ -52,14 +53,29 @@ export function HeroSection() {
   const last = series.at(-1) ?? null;
   const prev = series.length >= 2 ? series.at(-2)! : null;
 
-  const totalItems = last ? last.movies + last.tv : 0;
-  const prevTotal = prev ? prev.movies + prev.tv : 0;
-  const thisMonthDelta = last ? totalItems - prevTotal : 0;
-  const growthPct =
-    prevTotal > 0 ? Math.round(((totalItems - prevTotal) / prevTotal) * 100) : 0;
+  const moviesTotal = last?.movies ?? 0;
+  const tvTotal = last?.tv ?? 0;
+  const moviesPrev = prev?.movies ?? 0;
+  const tvPrev = prev?.tv ?? 0;
 
-  const hasData = series.length > 0 && totalItems > 0;
+  const moviesThisMonth = last ? moviesTotal - moviesPrev : 0;
+  const tvThisMonth = last ? tvTotal - tvPrev : 0;
+
+  const hasData = series.length > 0 && (moviesTotal > 0 || tvTotal > 0);
   const showBlur = !hasData;
+
+  const [statsMedia, setStatsMedia] = useState<'movies' | 'tv'>('movies');
+  const toggleStatsMedia = () =>
+    setStatsMedia((m) => (m === 'movies' ? 'tv' : 'movies'));
+
+  const statsLabel = statsMedia === 'movies' ? 'Movies' : 'TV Shows';
+  const statsTotal = statsMedia === 'movies' ? moviesTotal : tvTotal;
+  const statsPrevTotal = statsMedia === 'movies' ? moviesPrev : tvPrev;
+  const statsThisMonth = statsMedia === 'movies' ? moviesThisMonth : tvThisMonth;
+  const statsGrowthPct =
+    statsPrevTotal > 0
+      ? Math.round(((statsTotal - statsPrevTotal) / statsPrevTotal) * 100)
+      : 0;
 
   const moviesMax = series.reduce((acc, p) => Math.max(acc, p.movies), 0);
   const tvMax = series.reduce((acc, p) => Math.max(acc, p.tv), 0);
@@ -225,22 +241,55 @@ export function HeroSection() {
                 </div>
 
                 {/* Stats Footer */}
-                <div className="mt-6 pt-6 border-t border-gray-700 dark:border-gray-600 grid grid-cols-3 gap-4 relative">
-                  <div>
-                    <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Total Items</p>
-                    <p className="text-white font-semibold">{hasData ? totalItems.toLocaleString() : '—'}</p>
+                <button
+                  type="button"
+                  onClick={toggleStatsMedia}
+                  aria-label={`Toggle stats between Movies and TV Shows. Currently showing ${statsLabel}.`}
+                  className="mt-6 pt-6 border-t border-gray-700 dark:border-gray-600 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                >
+                  <div className="absolute -top-3 right-0">
+                    <div
+                      className={[
+                        'px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm',
+                        statsMedia === 'movies'
+                          ? 'bg-yellow-400/10 text-yellow-200 border-yellow-400/20'
+                          : 'bg-blue-400/10 text-blue-200 border-blue-400/20',
+                      ].join(' ')}
+                    >
+                      {statsLabel} · tap to switch
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">This Month</p>
-                    <p className="text-white font-semibold">
-                      {hasData ? `${thisMonthDelta >= 0 ? '+' : ''}${thisMonthDelta.toLocaleString()}` : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Growth</p>
-                    <p className="text-yellow-400 dark:text-yellow-300 font-semibold">
-                      {hasData && prevTotal > 0 ? `${growthPct >= 0 ? '+' : ''}${growthPct}%` : '—'}
-                    </p>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Total Items</p>
+                      <p className="text-white font-semibold">
+                        {hasData ? statsTotal.toLocaleString() : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">This Month</p>
+                      <p className="text-white font-semibold">
+                        {hasData
+                          ? `${statsThisMonth >= 0 ? '+' : ''}${statsThisMonth.toLocaleString()}`
+                          : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Growth</p>
+                      <p
+                        className={[
+                          'font-semibold',
+                          statsMedia === 'movies'
+                            ? 'text-yellow-400 dark:text-yellow-300'
+                            : 'text-blue-300 dark:text-blue-300',
+                        ].join(' ')}
+                      >
+                        {hasData && statsPrevTotal > 0
+                          ? `${statsGrowthPct >= 0 ? '+' : ''}${statsGrowthPct}%`
+                          : '—'}
+                      </p>
+                    </div>
                   </div>
                   
                   {/* Blur Overlay for Stats */}
@@ -252,7 +301,7 @@ export function HeroSection() {
                       className="absolute inset-0 backdrop-blur-lg bg-gradient-to-r from-gray-900/50 via-gray-800/40 to-gray-900/50 rounded-lg border border-white/5"
                     />
                   )}
-                </div>
+                </button>
               </div>
             </div>
           </motion.div>
