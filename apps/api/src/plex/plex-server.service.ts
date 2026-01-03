@@ -10,6 +10,7 @@ type PlexSection = {
 type PlexMetadata = Record<string, unknown> & {
   ratingKey?: string;
   title?: string;
+  addedAt?: number | string;
   Guid?: unknown;
   parentIndex?: number | string;
   index?: number | string;
@@ -201,6 +202,38 @@ export class PlexServerService {
       throw new BadGatewayException(`Plex library section not found: ${title}`);
     }
     return found.key;
+  }
+
+  async getAddedAtTimestampsForSection(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<number[]> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const url = new URL(
+      `library/sections/${librarySectionKey}/all`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
+
+    const container = xml.MediaContainer;
+    const items = asArray(
+      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
+    );
+
+    const out: number[] = [];
+    for (const it of items) {
+      const raw = it.addedAt;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        out.push(raw);
+        continue;
+      }
+      if (typeof raw === 'string' && raw.trim()) {
+        const n = Number.parseInt(raw.trim(), 10);
+        if (Number.isFinite(n)) out.push(n);
+      }
+    }
+    return out;
   }
 
   async getMovieTmdbIdSet(params: {

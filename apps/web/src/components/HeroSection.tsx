@@ -1,20 +1,39 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getPlexLibraryGrowth } from '@/api/plex';
 
-const chartData = [
-  { month: 'Jan', value: 2400 },
-  { month: 'Feb', value: 1398 },
-  { month: 'Mar', value: 9800 },
-  { month: 'Apr', value: 3908 },
-  { month: 'May', value: 4800 },
-  { month: 'Jun', value: 3800 },
-  { month: 'Jul', value: 4300 },
-];
+function formatMonthLabel(value: string) {
+  const [y, m] = value.split('-');
+  const year = Number.parseInt(y ?? '', 10);
+  const month = Number.parseInt(m ?? '', 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return value;
+  const d = new Date(Date.UTC(year, month - 1, 1));
+  return d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
+}
 
 export function HeroSection() {
-  const [showBlur] = useState(true);
+  const growthQuery = useQuery({
+    queryKey: ['plex', 'library-growth'],
+    queryFn: getPlexLibraryGrowth,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
+  const series = growthQuery.data?.series ?? [];
+  const last = series.at(-1) ?? null;
+  const prev = series.length >= 2 ? series.at(-2)! : null;
+
+  const totalItems = last ? last.movies + last.tv : 0;
+  const prevTotal = prev ? prev.movies + prev.tv : 0;
+  const thisMonthDelta = last ? totalItems - prevTotal : 0;
+  const growthPct =
+    prevTotal > 0 ? Math.round(((totalItems - prevTotal) / prevTotal) * 100) : 0;
+
+  const hasData = series.length > 0 && totalItems > 0;
+  const showBlur = !hasData;
 
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8">
@@ -81,24 +100,34 @@ export function HeroSection() {
                 {/* Chart */}
                 <div className="w-full h-[240px] relative min-w-0">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-                    <AreaChart data={chartData}>
+                    <AreaChart data={series}>
                       <defs>
-                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#facc15" stopOpacity={0.3}/>
+                        <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#facc15" stopOpacity={0.25}/>
                           <stop offset="95%" stopColor="#facc15" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorTv" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.22}/>
+                          <stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
                       <XAxis 
-                        dataKey="month" 
+                        dataKey="month"
                         stroke="#9ca3af" 
                         style={{ fontSize: '12px' }}
+                        tickFormatter={formatMonthLabel}
                       />
                       <YAxis 
                         stroke="#9ca3af" 
                         style={{ fontSize: '12px' }}
                       />
                       <Tooltip 
+                        labelFormatter={(label) => formatMonthLabel(String(label))}
+                        formatter={(value, name) => [
+                          value,
+                          name === 'movies' ? 'Movies' : name === 'tv' ? 'TV Shows' : String(name),
+                        ]}
                         contentStyle={{ 
                           backgroundColor: '#1f2937', 
                           border: '1px solid #374151',
@@ -108,10 +137,17 @@ export function HeroSection() {
                       />
                       <Area 
                         type="monotone" 
-                        dataKey="value" 
+                        dataKey="movies"
                         stroke="#facc15" 
-                        strokeWidth={3}
-                        fill="url(#colorValue)" 
+                        strokeWidth={2.5}
+                        fill="url(#colorMovies)" 
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="tv"
+                        stroke="#60a5fa"
+                        strokeWidth={2.5}
+                        fill="url(#colorTv)"
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -128,7 +164,9 @@ export function HeroSection() {
                         <Lock className="w-6 h-6 text-yellow-400" />
                       </div>
                       <div className="text-center px-4">
-                        <p className="text-white font-medium">No Data Available</p>
+                        <p className="text-white font-medium">
+                          {growthQuery.isLoading ? 'Loading…' : 'No Data Available'}
+                        </p>
                       </div>
                     </motion.div>
                   )}
@@ -138,15 +176,19 @@ export function HeroSection() {
                 <div className="mt-6 pt-6 border-t border-gray-700 dark:border-gray-600 grid grid-cols-3 gap-4 relative">
                   <div>
                     <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Total Items</p>
-                    <p className="text-white font-semibold">2,847</p>
+                    <p className="text-white font-semibold">{hasData ? totalItems.toLocaleString() : '—'}</p>
                   </div>
                   <div>
                     <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">This Month</p>
-                    <p className="text-white font-semibold">+432</p>
+                    <p className="text-white font-semibold">
+                      {hasData ? `${thisMonthDelta >= 0 ? '+' : ''}${thisMonthDelta.toLocaleString()}` : '—'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Growth</p>
-                    <p className="text-yellow-400 dark:text-yellow-300 font-semibold">+18%</p>
+                    <p className="text-yellow-400 dark:text-yellow-300 font-semibold">
+                      {hasData && prevTotal > 0 ? `${growthPct >= 0 ? '+' : ''}${growthPct}%` : '—'}
+                    </p>
                   </div>
                   
                   {/* Blur Overlay for Stats */}

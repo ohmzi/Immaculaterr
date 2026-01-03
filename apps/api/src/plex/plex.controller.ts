@@ -6,9 +6,12 @@ import {
   Headers,
   Param,
   Post,
+  Req,
 } from '@nestjs/common';
 import { PlexService } from './plex.service';
 import { PlexServerService } from './plex-server.service';
+import { PlexAnalyticsService } from './plex-analytics.service';
+import type { AuthenticatedRequest } from '../auth/auth.types';
 
 type TestPlexServerBody = {
   baseUrl?: unknown;
@@ -22,6 +25,7 @@ export class PlexController {
   constructor(
     private readonly plexService: PlexService,
     private readonly plexServerService: PlexServerService,
+    private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
 
   @Post('pin')
@@ -110,5 +114,10 @@ export class PlexController {
     }
 
     return { ok: true, machineIdentifier };
+  }
+
+  @Get('library-growth')
+  async libraryGrowth(@Req() req: AuthenticatedRequest) {
+    return await this.plexAnalytics.getLibraryGrowth(req.user.id);
   }
 }
