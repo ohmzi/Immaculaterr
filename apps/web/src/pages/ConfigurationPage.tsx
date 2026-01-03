@@ -552,6 +552,26 @@ export function ConfigurationPage() {
     }
   };
 
+  const cardClass =
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+  const cardHeaderClass = 'flex items-center justify-between gap-4 mb-6';
+  const cardTitleClass = 'text-2xl font-semibold text-white';
+  const labelClass = 'block text-sm font-medium text-white/70 mb-2';
+  const inputBaseClass =
+    'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
+  const inputClass = `w-full ${inputBaseClass}`;
+  const inputFlexClass = `flex-1 ${inputBaseClass}`;
+  const testButtonClass =
+    'px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium';
+  const toggleTrackClass = (enabled: boolean) =>
+    `relative inline-flex h-7 w-12 items-center rounded-full transition-colors active:scale-95 ${
+      enabled ? 'bg-yellow-400' : 'bg-white/15'
+    }`;
+  const toggleThumbClass = (enabled: boolean) =>
+    `inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+      enabled ? 'translate-x-6' : 'translate-x-1'
+    }`;
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Background (landing-page style, blue-tinted) */}
@@ -576,8 +596,8 @@ export function ConfigurationPage() {
           >
             {/* Page Header */}
             <div className="mb-8">
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Service Configuration</h1>
-              <p className="text-lg text-gray-600 dark:text-gray-400">Configure your media services and API integrations</p>
+              <h1 className="text-4xl font-bold text-white mb-2">Service Configuration</h1>
+              <p className="text-lg text-white/70">Configure your media services and API integrations</p>
             </div>
 
             {/* Configuration Form */}
@@ -587,13 +607,13 @@ export function ConfigurationPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.1 }}
-                className="bg-white dark:bg-gray-800 rounded-3xl p-6 lg:p-8 shadow-lg"
+                className={cardClass}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Plex Media Server</h2>
+                <div className={cardHeaderClass}>
+                  <h2 className={cardTitleClass}>Plex Media Server</h2>
                   <button
                     onClick={testPlexConnection}
-                    className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium"
+                    className={testButtonClass}
                   >
                     <TestTube size={18} />
                     Test
@@ -601,29 +621,29 @@ export function ConfigurationPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Base URL</label>
+                    <label className={labelClass}>Base URL</label>
                     <input
                       type="text"
                       value={plexBaseUrl}
                       onChange={(e) => setPlexBaseUrl(e.target.value)}
                       placeholder="http://localhost:32400"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Token</label>
+                    <label className={labelClass}>Token</label>
                     <div className="flex gap-2">
                       <input
                         type="password"
                         value={plexToken}
                         onChange={(e) => setPlexToken(e.target.value)}
                         placeholder={secretsPresent.plex ? "Saved (enter new to replace)" : "Enter Plex token"}
-                        className="flex-1 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                        className={inputFlexClass}
                       />
                       <button
                         onClick={handlePlexOAuth}
                         disabled={isPlexOAuthLoading}
-                        className="px-4 py-3 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-xl active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        className="px-4 py-3 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-xl active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         title="Login with Plex"
                       >
                         <LogIn size={18} />
@@ -632,23 +652,23 @@ export function ConfigurationPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Movie Library Name</label>
+                    <label className={labelClass}>Movie Library Name</label>
                     <input
                       type="text"
                       value={plexMovieLibrary}
                       onChange={(e) => setPlexMovieLibrary(e.target.value)}
                       placeholder="Movies"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">TV Library Name</label>
+                    <label className={labelClass}>TV Library Name</label>
                     <input
                       type="text"
                       value={plexTvLibrary}
                       onChange={(e) => setPlexTvLibrary(e.target.value)}
                       placeholder="TV Shows"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -659,13 +679,13 @@ export function ConfigurationPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.2 }}
-                className="bg-white dark:bg-gray-800 rounded-3xl p-6 lg:p-8 shadow-lg"
+                className={cardClass}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">The Movie Database (TMDB)</h2>
+                <div className={cardHeaderClass}>
+                  <h2 className={cardTitleClass}>The Movie Database (TMDB)</h2>
                   <button
                     onClick={testTmdbConnection}
-                    className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium"
+                    className={testButtonClass}
                   >
                     <TestTube size={18} />
                     Test
@@ -673,13 +693,13 @@ export function ConfigurationPage() {
                 </div>
                 <div className="grid grid-cols-1 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <label className={labelClass}>API Key</label>
                     <input
                       type="password"
                       value={tmdbApiKey}
                       onChange={(e) => setTmdbApiKey(e.target.value)}
                       placeholder={secretsPresent.tmdb ? "Saved (enter new to replace)" : "Enter TMDB API key"}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -690,29 +710,25 @@ export function ConfigurationPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.3 }}
-                className="bg-white dark:bg-gray-800 rounded-3xl p-6 lg:p-8 shadow-lg"
+                className={cardClass}
               >
-                <div className="flex items-center justify-between mb-6">
+                <div className={cardHeaderClass}>
                   <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Radarr</h2>
+                    <h2 className={cardTitleClass}>Radarr</h2>
                     <button
                       onClick={() => setRadarrEnabled(!radarrEnabled)}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors active:scale-95 ${
-                        radarrEnabled ? 'bg-yellow-400 dark:bg-yellow-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
+                      className={toggleTrackClass(radarrEnabled)}
                       aria-label="Toggle Radarr"
                     >
                       <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                          radarrEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className={toggleThumbClass(radarrEnabled)}
                       />
                     </button>
                   </div>
                   {radarrEnabled && (
                     <button
                       onClick={testRadarrConnection}
-                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium"
+                      className={testButtonClass}
                     >
                       <TestTube size={18} />
                       Test
@@ -722,23 +738,23 @@ export function ConfigurationPage() {
                 {radarrEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Base URL</label>
+                    <label className={labelClass}>Base URL</label>
                     <input
                       type="text"
                       value={radarrBaseUrl}
                       onChange={(e) => setRadarrBaseUrl(e.target.value)}
                       placeholder="http://localhost:7878"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <label className={labelClass}>API Key</label>
                     <input
                       type="password"
                       value={radarrApiKey}
                       onChange={(e) => setRadarrApiKey(e.target.value)}
                       placeholder={secretsPresent.radarr ? "Saved (enter new to replace)" : "Enter Radarr API key"}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -750,29 +766,25 @@ export function ConfigurationPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
-                className="bg-white dark:bg-gray-800 rounded-3xl p-6 lg:p-8 shadow-lg"
+                className={cardClass}
               >
-                <div className="flex items-center justify-between mb-6">
+                <div className={cardHeaderClass}>
                   <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Sonarr</h2>
+                    <h2 className={cardTitleClass}>Sonarr</h2>
                     <button
                       onClick={() => setSonarrEnabled(!sonarrEnabled)}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors active:scale-95 ${
-                        sonarrEnabled ? 'bg-yellow-400 dark:bg-yellow-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
+                      className={toggleTrackClass(sonarrEnabled)}
                       aria-label="Toggle Sonarr"
                     >
                       <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                          sonarrEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className={toggleThumbClass(sonarrEnabled)}
                       />
                     </button>
                   </div>
                   {sonarrEnabled && (
                     <button
                       onClick={testSonarrConnection}
-                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium"
+                      className={testButtonClass}
                     >
                       <TestTube size={18} />
                       Test
@@ -782,23 +794,23 @@ export function ConfigurationPage() {
                 {sonarrEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Base URL</label>
+                    <label className={labelClass}>Base URL</label>
                     <input
                       type="text"
                       value={sonarrBaseUrl}
                       onChange={(e) => setSonarrBaseUrl(e.target.value)}
                       placeholder="http://localhost:8989"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <label className={labelClass}>API Key</label>
                     <input
                       type="password"
                       value={sonarrApiKey}
                       onChange={(e) => setSonarrApiKey(e.target.value)}
                       placeholder={secretsPresent.sonarr ? "Saved (enter new to replace)" : "Enter Sonarr API key"}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -810,29 +822,25 @@ export function ConfigurationPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.5 }}
-                className="bg-white dark:bg-gray-800 rounded-3xl p-6 lg:p-8 shadow-lg"
+                className={cardClass}
               >
-                <div className="flex items-center justify-between mb-6">
+                <div className={cardHeaderClass}>
                   <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Google Search</h2>
+                    <h2 className={cardTitleClass}>Google Search</h2>
                     <button
                       onClick={() => setGoogleEnabled(!googleEnabled)}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors active:scale-95 ${
-                        googleEnabled ? 'bg-yellow-400 dark:bg-yellow-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
+                      className={toggleTrackClass(googleEnabled)}
                       aria-label="Toggle Google Search"
                     >
                       <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                          googleEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className={toggleThumbClass(googleEnabled)}
                       />
                     </button>
                   </div>
                   {googleEnabled && (
                     <button
                       onClick={testGoogleConnection}
-                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium"
+                      className={testButtonClass}
                     >
                       <TestTube size={18} />
                       Test
@@ -842,23 +850,23 @@ export function ConfigurationPage() {
                 {googleEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search Engine ID</label>
+                    <label className={labelClass}>Search Engine ID</label>
                     <input
                       type="text"
                       value={googleSearchEngineId}
                       onChange={(e) => setGoogleSearchEngineId(e.target.value)}
                       placeholder="Enter Google Search Engine ID"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <label className={labelClass}>API Key</label>
                     <input
                       type="password"
                       value={googleApiKey}
                       onChange={(e) => setGoogleApiKey(e.target.value)}
                       placeholder={secretsPresent.google ? "Saved (enter new to replace)" : "Enter Google API key"}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -870,29 +878,25 @@ export function ConfigurationPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.6 }}
-                className="bg-white dark:bg-gray-800 rounded-3xl p-6 lg:p-8 shadow-lg"
+                className={cardClass}
               >
-                <div className="flex items-center justify-between mb-6">
+                <div className={cardHeaderClass}>
                   <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">OpenAI</h2>
+                    <h2 className={cardTitleClass}>OpenAI</h2>
                     <button
                       onClick={() => setOpenAiEnabled(!openAiEnabled)}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors active:scale-95 ${
-                        openAiEnabled ? 'bg-yellow-400 dark:bg-yellow-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
+                      className={toggleTrackClass(openAiEnabled)}
                       aria-label="Toggle OpenAI"
                     >
                       <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                          openAiEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className={toggleThumbClass(openAiEnabled)}
                       />
                     </button>
                   </div>
                   {openAiEnabled && (
                     <button
                       onClick={testOpenAiConnection}
-                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium"
+                      className={testButtonClass}
                     >
                       <TestTube size={18} />
                       Test
@@ -902,13 +906,13 @@ export function ConfigurationPage() {
                 {openAiEnabled && (
                   <div className="grid grid-cols-1 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <label className={labelClass}>API Key</label>
                     <input
                       type="password"
                       value={openAiApiKey}
                       onChange={(e) => setOpenAiApiKey(e.target.value)}
                       placeholder={secretsPresent.openai ? "Saved (enter new to replace)" : "Enter OpenAI API key"}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -920,29 +924,25 @@ export function ConfigurationPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.7 }}
-                className="bg-white dark:bg-gray-800 rounded-3xl p-6 lg:p-8 shadow-lg"
+                className={cardClass}
               >
-                <div className="flex items-center justify-between mb-6">
+                <div className={cardHeaderClass}>
                   <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Overseerr</h2>
+                    <h2 className={cardTitleClass}>Overseerr</h2>
                     <button
                       onClick={() => setOverseerrEnabled(!overseerrEnabled)}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors active:scale-95 ${
-                        overseerrEnabled ? 'bg-yellow-400 dark:bg-yellow-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
+                      className={toggleTrackClass(overseerrEnabled)}
                       aria-label="Toggle Overseerr"
                     >
                       <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                          overseerrEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className={toggleThumbClass(overseerrEnabled)}
                       />
                     </button>
                   </div>
                   {overseerrEnabled && (
                     <button
                       onClick={testOverseerrConnection}
-                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-600 text-gray-900 dark:text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium"
+                      className={testButtonClass}
                     >
                       <TestTube size={18} />
                       Test
@@ -952,23 +952,23 @@ export function ConfigurationPage() {
                 {overseerrEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Base URL</label>
+                    <label className={labelClass}>Base URL</label>
                     <input
                       type="text"
                       value={overseerrBaseUrl}
                       onChange={(e) => setOverseerrBaseUrl(e.target.value)}
                       placeholder="http://localhost:5055"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <label className={labelClass}>API Key</label>
                     <input
                       type="password"
                       value={overseerrApiKey}
                       onChange={(e) => setOverseerrApiKey(e.target.value)}
                       placeholder={secretsPresent.overseerr ? "Saved (enter new to replace)" : "Enter Overseerr API key"}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-yellow-400 focus:border-transparent outline-none transition"
+                      className={inputClass}
                     />
                   </div>
                 </div>
