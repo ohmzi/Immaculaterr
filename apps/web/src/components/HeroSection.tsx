@@ -187,7 +187,7 @@ export function HeroSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="lg:pr-4 text-center lg:text-left"
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight lg:tracking-normal text-black dark:text-black leading-tight">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight lg:tracking-normal text-black dark:text-black leading-tight">
               <span className="inline-block text-left">
                 <span className="block">Your Library,</span>
                 <span className="block pl-4 whitespace-nowrap">on Autopilot.</span>
