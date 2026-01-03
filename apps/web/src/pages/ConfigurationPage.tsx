@@ -564,7 +564,7 @@ export function ConfigurationPage() {
   const testButtonClass =
     'px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium';
   const toggleTrackClass = (enabled: boolean) =>
-    `relative inline-flex h-7 w-12 items-center rounded-full transition-colors active:scale-95 ${
+    `relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95 ${
       enabled ? 'bg-yellow-400' : 'bg-white/15'
     }`;
   const toggleThumbClass = (enabled: boolean) =>
@@ -713,10 +713,13 @@ export function ConfigurationPage() {
                 className={cardClass}
               >
                 <div className={cardHeaderClass}>
-                  <div className="flex items-center gap-4">
-                    <h2 className={cardTitleClass}>Radarr</h2>
+                  <h2 className={cardTitleClass}>Radarr</h2>
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setRadarrEnabled(!radarrEnabled)}
+                      type="button"
+                      role="switch"
+                      aria-checked={radarrEnabled}
+                      onClick={() => setRadarrEnabled((v) => !v)}
                       className={toggleTrackClass(radarrEnabled)}
                       aria-label="Toggle Radarr"
                     >
@@ -724,16 +727,16 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(radarrEnabled)}
                       />
                     </button>
+                    {radarrEnabled && (
+                      <button
+                        onClick={testRadarrConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                   </div>
-                  {radarrEnabled && (
-                    <button
-                      onClick={testRadarrConnection}
-                      className={testButtonClass}
-                    >
-                      <TestTube size={18} />
-                      Test
-                    </button>
-                  )}
                 </div>
                 {radarrEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -769,10 +772,13 @@ export function ConfigurationPage() {
                 className={cardClass}
               >
                 <div className={cardHeaderClass}>
-                  <div className="flex items-center gap-4">
-                    <h2 className={cardTitleClass}>Sonarr</h2>
+                  <h2 className={cardTitleClass}>Sonarr</h2>
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setSonarrEnabled(!sonarrEnabled)}
+                      type="button"
+                      role="switch"
+                      aria-checked={sonarrEnabled}
+                      onClick={() => setSonarrEnabled((v) => !v)}
                       className={toggleTrackClass(sonarrEnabled)}
                       aria-label="Toggle Sonarr"
                     >
@@ -780,16 +786,16 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(sonarrEnabled)}
                       />
                     </button>
+                    {sonarrEnabled && (
+                      <button
+                        onClick={testSonarrConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                   </div>
-                  {sonarrEnabled && (
-                    <button
-                      onClick={testSonarrConnection}
-                      className={testButtonClass}
-                    >
-                      <TestTube size={18} />
-                      Test
-                    </button>
-                  )}
                 </div>
                 {sonarrEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -825,10 +831,13 @@ export function ConfigurationPage() {
                 className={cardClass}
               >
                 <div className={cardHeaderClass}>
-                  <div className="flex items-center gap-4">
-                    <h2 className={cardTitleClass}>Google Search</h2>
+                  <h2 className={cardTitleClass}>Google Search</h2>
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setGoogleEnabled(!googleEnabled)}
+                      type="button"
+                      role="switch"
+                      aria-checked={googleEnabled}
+                      onClick={() => setGoogleEnabled((v) => !v)}
                       className={toggleTrackClass(googleEnabled)}
                       aria-label="Toggle Google Search"
                     >
@@ -836,16 +845,16 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(googleEnabled)}
                       />
                     </button>
+                    {googleEnabled && (
+                      <button
+                        onClick={testGoogleConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                   </div>
-                  {googleEnabled && (
-                    <button
-                      onClick={testGoogleConnection}
-                      className={testButtonClass}
-                    >
-                      <TestTube size={18} />
-                      Test
-                    </button>
-                  )}
                 </div>
                 {googleEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -881,10 +890,13 @@ export function ConfigurationPage() {
                 className={cardClass}
               >
                 <div className={cardHeaderClass}>
-                  <div className="flex items-center gap-4">
-                    <h2 className={cardTitleClass}>OpenAI</h2>
+                  <h2 className={cardTitleClass}>OpenAI</h2>
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setOpenAiEnabled(!openAiEnabled)}
+                      type="button"
+                      role="switch"
+                      aria-checked={openAiEnabled}
+                      onClick={() => setOpenAiEnabled((v) => !v)}
                       className={toggleTrackClass(openAiEnabled)}
                       aria-label="Toggle OpenAI"
                     >
@@ -892,16 +904,16 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(openAiEnabled)}
                       />
                     </button>
+                    {openAiEnabled && (
+                      <button
+                        onClick={testOpenAiConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                   </div>
-                  {openAiEnabled && (
-                    <button
-                      onClick={testOpenAiConnection}
-                      className={testButtonClass}
-                    >
-                      <TestTube size={18} />
-                      Test
-                    </button>
-                  )}
                 </div>
                 {openAiEnabled && (
                   <div className="grid grid-cols-1 gap-6">
@@ -927,10 +939,13 @@ export function ConfigurationPage() {
                 className={cardClass}
               >
                 <div className={cardHeaderClass}>
-                  <div className="flex items-center gap-4">
-                    <h2 className={cardTitleClass}>Overseerr</h2>
+                  <h2 className={cardTitleClass}>Overseerr</h2>
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setOverseerrEnabled(!overseerrEnabled)}
+                      type="button"
+                      role="switch"
+                      aria-checked={overseerrEnabled}
+                      onClick={() => setOverseerrEnabled((v) => !v)}
                       className={toggleTrackClass(overseerrEnabled)}
                       aria-label="Toggle Overseerr"
                     >
@@ -938,16 +953,16 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(overseerrEnabled)}
                       />
                     </button>
+                    {overseerrEnabled && (
+                      <button
+                        onClick={testOverseerrConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                   </div>
-                  {overseerrEnabled && (
-                    <button
-                      onClick={testOverseerrConnection}
-                      className={testButtonClass}
-                    >
-                      <TestTube size={18} />
-                      Test
-                    </button>
-                  )}
                 </div>
                 {overseerrEnabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
