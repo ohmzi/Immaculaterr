@@ -41,6 +41,7 @@ const navItems: NavItem[] = [
 export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const navigate = useNavigate();
@@ -68,6 +69,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
   const handleButtonClick = (index: number) => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     if (selectedIndex === index) {
       setSelectedIndex(null);
     } else {
@@ -256,25 +258,62 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               <circle cx="10" cy="10" r="3" fill="none" stroke="#facc15" strokeWidth="1.5" />
               <path d="M12.5 12.5L15 15" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            <span className="hidden sm:inline font-semibold tracking-tight text-white">Immaculaterr</span>
+            <span
+              className={`${
+                isSearchOpen ? 'hidden' : 'hidden sm:inline'
+              } font-semibold tracking-tight text-white`}
+            >
+              Immaculaterr
+            </span>
           </button>
 
           {/* Right side controls */}
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
-            {/* Search bar */}
-            <div className="relative min-w-0 flex-1 max-w-[240px]">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/60" />
-              <input
-                type="text"
-                placeholder="Search…"
-                className="h-9 w-full rounded-full border border-white/20 bg-white/10 pl-9 pr-3 text-sm text-white placeholder-white/60 backdrop-blur-sm outline-none transition-colors focus:border-white/40"
-              />
+            {/* Search (icon -> expands into full bar) */}
+            <div className="relative min-w-0 flex-1 overflow-visible">
+              <AnimatePresence>
+                {isSearchOpen && (
+                  <motion.div
+                    initial={{ width: 0, opacity: 0 }}
+                    animate={{ width: '100%', opacity: 1 }}
+                    exit={{ width: 0, opacity: 0 }}
+                    transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                    className="min-w-0"
+                  >
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/60" />
+                      <input
+                        type="text"
+                        placeholder="Search…"
+                        autoFocus
+                        onBlur={() => setIsSearchOpen(false)}
+                        className="h-9 w-full rounded-full border border-white/20 bg-white/10 pl-9 pr-3 text-sm text-white placeholder-white/60 backdrop-blur-sm outline-none transition-colors focus:border-white/40"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {!isSearchOpen && (
+                <button
+                  onClick={() => {
+                    setSelectedIndex(null);
+                    setIsHelpOpen(false);
+                    setIsSearchOpen(true);
+                  }}
+                  className="rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+                  aria-label="Search"
+                >
+                  <Search size={20} />
+                </button>
+              )}
             </div>
 
             {/* Help button (matches desktop top bar) */}
             <button
               onClick={() => {
                 setSelectedIndex(null);
+                setIsSearchOpen(false);
                 setIsHelpOpen((v) => !v);
               }}
               className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
