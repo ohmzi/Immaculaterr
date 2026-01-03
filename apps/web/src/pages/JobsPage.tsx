@@ -1,13 +1,10 @@
 import { useState } from 'react';
+import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Loader2, Play, Save, Shield } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule } from '@/api/jobs';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 // (status pill lives on Runs/Run Detail pages now)
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
@@ -174,65 +171,96 @@ export function JobsPage() {
     },
   });
 
+  const cardClass =
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+  const cardHeaderClass = 'flex items-start justify-between gap-4 mb-6 min-h-[44px]';
+  const cardTitleClass = 'text-2xl font-semibold text-white';
+  const labelClass = 'block text-sm font-medium text-white/70 mb-2';
+  const inputBaseClass =
+    'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
+  const inputClass = `w-full ${inputBaseClass}`;
+  const selectClass = `w-full ${inputBaseClass}`;
+
+  const primaryButtonClass =
+    'px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium disabled:opacity-50 disabled:cursor-not-allowed';
+  const secondaryButtonClass =
+    'px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium border border-white/15 disabled:opacity-50 disabled:cursor-not-allowed';
+  const ghostButtonClass =
+    'px-4 py-2 bg-transparent hover:bg-white/10 text-white/80 rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium disabled:opacity-50 disabled:cursor-not-allowed';
+
+  const toggleTrackClass = (enabled: boolean) =>
+    `relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95 ${
+      enabled ? 'bg-yellow-400' : 'bg-white/15'
+    }`;
+  const toggleThumbClass = (enabled: boolean) =>
+    `inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+      enabled ? 'translate-x-6' : 'translate-x-1'
+    }`;
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
-        <p className="text-sm text-muted-foreground">
-          Run workflows on-demand and schedule them (MVP: Monitor Confirm + Recently Watched refresher).
-        </p>
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+      {/* Background (landing-page style, green-tinted) */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <img
+          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          alt=""
+          className="h-full w-full object-cover object-center opacity-80"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/45 via-teal-600/45 to-indigo-900/60" />
+        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
-      {jobsQuery.isLoading ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading jobs…
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      ) : jobsQuery.error ? (
-        <Card className="border-destructive/40">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <CircleAlert className="h-5 w-5" />
-              Failed to load jobs
-            </CardTitle>
-            <CardDescription className="text-destructive/80">
-              {(jobsQuery.error as Error).message}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {(jobsQuery.data?.jobs ?? []).map((job) => (
-            <Card key={job.id}>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between gap-3">
-                  <span>{job.name}</span>
-                  {job.id === 'monitorConfirm' ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
-                      <Shield className="h-3.5 w-3.5" />
-                      MVP
-                    </span>
-                  ) : null}
-                </CardTitle>
-                <CardDescription>{job.description}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(() => {
-                  const draft =
-                    drafts[job.id] ??
-                    defaultDraftFromCron({
-                      cron: job.schedule?.cron ?? job.defaultScheduleCron ?? '',
-                      enabled: job.schedule?.enabled ?? false,
-                      timezone: job.schedule?.timezone ?? null,
-                    });
+      {/* Jobs Content */}
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
+        <div className="container mx-auto px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-5xl mx-auto"
+          >
+            {/* Page Header */}
+            <div className="mb-8">
+              <h1 className="text-4xl font-bold text-white mb-2">Jobs</h1>
+              <p className="text-lg text-white/70">
+                Run workflows on-demand and schedule them.
+              </p>
+            </div>
 
+            {jobsQuery.isLoading ? (
+              <div className={cardClass}>
+                <div className="flex items-center gap-2 text-white">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <div className="text-lg font-semibold">Loading jobs…</div>
+                </div>
+              </div>
+            ) : jobsQuery.error ? (
+              <div className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}>
+                <div className="flex items-start gap-3">
+                  <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
+                  <div className="min-w-0">
+                    <div className="text-white font-semibold">Failed to load jobs</div>
+                    <div className="text-sm text-white/70">
+                      {(jobsQuery.error as Error).message}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-6 lg:grid-cols-2">
+                {(jobsQuery.data?.jobs ?? []).map((job, idx) => {
                   const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
                   const baseEnabled = job.schedule?.enabled ?? false;
                   const baseTz = job.schedule?.timezone ?? '';
+
+                  const draft =
+                    drafts[job.id] ??
+                    defaultDraftFromCron({
+                      cron: baseCron,
+                      enabled: baseEnabled,
+                      timezone: job.schedule?.timezone ?? null,
+                    });
+
                   const computedCron = buildCronFromDraft(draft);
                   const isDirty =
                     (computedCron ? computedCron !== baseCron : false) ||
@@ -243,163 +271,222 @@ export function JobsPage() {
                   const nextRunAt = job.schedule?.nextRunAt ?? null;
 
                   const isSavingSchedule =
-                    scheduleMutation.isPending && scheduleMutation.variables?.jobId === job.id;
+                    scheduleMutation.isPending &&
+                    scheduleMutation.variables?.jobId === job.id;
                   const scheduleError =
                     scheduleMutation.isError && scheduleMutation.variables?.jobId === job.id
                       ? (scheduleMutation.error as Error).message
                       : null;
 
+                  const isRunningJob =
+                    runMutation.isPending && runMutation.variables?.jobId === job.id;
+                  const runError =
+                    runMutation.isError && runMutation.variables?.jobId === job.id
+                      ? (runMutation.error as Error).message
+                      : null;
+
                   return (
-                    <div className="rounded-lg border bg-muted/20 p-3">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-medium">Schedule</div>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={draft.enabled}
-                              className="h-4 w-4 accent-primary"
-                              onChange={(e) =>
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [job.id]: { ...draft, enabled: e.target.checked },
-                                }))
-                              }
-                            />
-                            <span className={draft.enabled ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}>
-                              {draft.enabled ? 'Enabled' : 'Disabled'}
+                    <motion.div
+                      key={job.id}
+                      initial={{ opacity: 0, y: 18 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.55, delay: Math.min(0.25, idx * 0.05) }}
+                      className={cardClass}
+                    >
+                      <div className={cardHeaderClass}>
+                        <div className="min-w-0">
+                          <h2 className={cardTitleClass}>{job.name}</h2>
+                          <p className="mt-2 text-sm text-white/70">
+                            {job.description}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          {job.id === 'monitorConfirm' ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-200 border border-emerald-500/20">
+                              <Shield className="h-3.5 w-3.5" />
+                              MVP
                             </span>
-                          </label>
-                        </div>
-
-                        <div className="grid gap-2">
-                          <Label>Repeat</Label>
-                          <div className="inline-flex w-fit rounded-full border bg-background/50 p-1 backdrop-blur">
-                            {(['daily', 'weekly', 'monthly'] as ScheduleFrequency[]).map((freq) => (
-                              <button
-                                key={freq}
-                                type="button"
-                                onClick={() =>
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [job.id]: { ...draft, frequency: freq },
-                                  }))
-                                }
-                                className={
-                                  draft.frequency === freq
-                                    ? 'rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground'
-                                    : 'rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                                }
-                              >
-                                {freq === 'daily' ? 'Daily' : freq === 'weekly' ? 'Weekly' : 'Monthly'}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {draft.frequency === 'weekly' ? (
-                            <div className="grid gap-2">
-                              <Label>Day of week</Label>
-                              <select
-                                value={draft.dayOfWeek}
-                                onChange={(e) =>
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [job.id]: { ...draft, dayOfWeek: e.target.value },
-                                  }))
-                                }
-                                className="h-10 w-full rounded-xl border border-input/70 bg-background/60 px-3 text-sm backdrop-blur"
-                              >
-                                {DAYS_OF_WEEK.map((d) => (
-                                  <option key={d.value} value={d.value}>
-                                    {d.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
                           ) : null}
 
-                          {draft.frequency === 'monthly' ? (
-                            <div className="grid gap-2">
-                              <Label>Day of month</Label>
-                              <select
-                                value={draft.dayOfMonth}
-                                onChange={(e) =>
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [job.id]: { ...draft, dayOfMonth: e.target.value },
-                                  }))
-                                }
-                                className="h-10 w-full rounded-xl border border-input/70 bg-background/60 px-3 text-sm backdrop-blur"
-                              >
-                                {Array.from({ length: 28 }, (_, i) => String(i + 1)).map((n) => (
-                                  <option key={n} value={n}>
-                                    {n}
-                                  </option>
-                                ))}
-                              </select>
-                              <div className="text-xs text-muted-foreground">
-                                Limited to 1–28 to avoid missing dates in shorter months.
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="grid gap-2">
-                            <Label>Time</Label>
-                            <Input
-                              type="time"
-                              value={draft.time}
-                              onChange={(e) =>
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [job.id]: { ...draft, time: e.target.value },
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid gap-2">
-                          <Label>Timezone (optional)</Label>
-                          <Input
-                            value={draft.timezone}
-                            onChange={(e) =>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={draft.enabled}
+                            onClick={() =>
                               setDrafts((prev) => ({
                                 ...prev,
-                                [job.id]: { ...draft, timezone: e.target.value },
+                                [job.id]: { ...draft, enabled: !draft.enabled },
                               }))
                             }
-                            placeholder="e.g. America/New_York"
-                          />
-                          <div className="text-xs text-muted-foreground">
-                            Next run:{' '}
-                            {scheduleEnabled && nextRunAt ? new Date(nextRunAt).toLocaleString() : '—'}
-                            {isDirty ? ' (save to update)' : ''}
+                            className={toggleTrackClass(draft.enabled)}
+                            aria-label={`Toggle schedule for ${job.name}`}
+                          >
+                            <span className={toggleThumbClass(draft.enabled)} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Schedule */}
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-white/85">Schedule</div>
+                          <div className="text-xs text-white/55">
+                            {draft.enabled ? 'Enabled' : 'Disabled'}
+                            {isDirty ? ' · Unsaved changes' : ''}
                           </div>
-                          {draft.advancedCron ? (
-                            <div className="text-xs text-muted-foreground">
-                              This job was previously set using an advanced cron pattern and will be converted when you save.
-                            </div>
-                          ) : null}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              (() => {
-                                const cron = buildCronFromDraft(draft);
-                                if (!cron) return;
-                                scheduleMutation.mutate({
-                                  jobId: job.id,
-                                  cron,
-                                  enabled: draft.enabled,
-                                  timezone: draft.timezone.trim() ? draft.timezone.trim() : null,
-                                });
-                              })()
-                            }
-                            disabled={!buildCronFromDraft(draft) || isSavingSchedule}
+                        {draft.enabled ? (
+                          <div className="mt-4 space-y-4">
+                            <div>
+                              <div className={labelClass}>Repeat</div>
+                              <div className="inline-flex w-fit rounded-full border border-white/15 bg-white/10 p-1 backdrop-blur">
+                                {(['daily', 'weekly', 'monthly'] as ScheduleFrequency[]).map(
+                                  (freq) => (
+                                    <button
+                                      key={freq}
+                                      type="button"
+                                      onClick={() =>
+                                        setDrafts((prev) => ({
+                                          ...prev,
+                                          [job.id]: { ...draft, frequency: freq },
+                                        }))
+                                      }
+                                      className={
+                                        draft.frequency === freq
+                                          ? 'rounded-full bg-yellow-400 px-3 py-1.5 text-xs font-semibold text-gray-900'
+                                          : 'rounded-full px-3 py-1.5 text-xs font-semibold text-white/60 hover:bg-white/10 hover:text-white'
+                                      }
+                                    >
+                                      {freq === 'daily'
+                                        ? 'Daily'
+                                        : freq === 'weekly'
+                                          ? 'Weekly'
+                                          : 'Monthly'}
+                                    </button>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              {draft.frequency === 'weekly' ? (
+                                <div>
+                                  <label className={labelClass}>Day of week</label>
+                                  <select
+                                    value={draft.dayOfWeek}
+                                    onChange={(e) =>
+                                      setDrafts((prev) => ({
+                                        ...prev,
+                                        [job.id]: { ...draft, dayOfWeek: e.target.value },
+                                      }))
+                                    }
+                                    className={selectClass}
+                                  >
+                                    {DAYS_OF_WEEK.map((d) => (
+                                      <option key={d.value} value={d.value}>
+                                        {d.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ) : null}
+
+                              {draft.frequency === 'monthly' ? (
+                                <div>
+                                  <label className={labelClass}>Day of month</label>
+                                  <select
+                                    value={draft.dayOfMonth}
+                                    onChange={(e) =>
+                                      setDrafts((prev) => ({
+                                        ...prev,
+                                        [job.id]: { ...draft, dayOfMonth: e.target.value },
+                                      }))
+                                    }
+                                    className={selectClass}
+                                  >
+                                    {Array.from({ length: 28 }, (_, i) => String(i + 1)).map(
+                                      (n) => (
+                                        <option key={n} value={n}>
+                                          {n}
+                                        </option>
+                                      ),
+                                    )}
+                                  </select>
+                                  <div className="mt-2 text-xs text-white/55">
+                                    Limited to 1–28 to avoid missing dates in shorter months.
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              <div>
+                                <label className={labelClass}>Time</label>
+                                <input
+                                  type="time"
+                                  value={draft.time}
+                                  onChange={(e) =>
+                                    setDrafts((prev) => ({
+                                      ...prev,
+                                      [job.id]: { ...draft, time: e.target.value },
+                                    }))
+                                  }
+                                  className={inputClass}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className={labelClass}>Timezone (optional)</label>
+                              <input
+                                value={draft.timezone}
+                                onChange={(e) =>
+                                  setDrafts((prev) => ({
+                                    ...prev,
+                                    [job.id]: { ...draft, timezone: e.target.value },
+                                  }))
+                                }
+                                placeholder="e.g. America/New_York"
+                                className={inputClass}
+                              />
+                              <div className="mt-2 text-xs text-white/55">
+                                Next run:{' '}
+                                {scheduleEnabled && nextRunAt
+                                  ? new Date(nextRunAt).toLocaleString()
+                                  : '—'}
+                                {isDirty ? ' (save to update)' : ''}
+                              </div>
+                              {draft.advancedCron ? (
+                                <div className="mt-2 text-xs text-white/55">
+                                  This job was previously set using an advanced cron pattern and
+                                  will be converted when you save.
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-sm text-white/60">
+                            Disabled. Enable to configure automatic runs.
+                          </div>
+                        )}
+
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cron = buildCronFromDraft(draft);
+                              if (!cron) return;
+                              scheduleMutation.mutate({
+                                jobId: job.id,
+                                cron,
+                                enabled: draft.enabled,
+                                timezone: draft.timezone.trim()
+                                  ? draft.timezone.trim()
+                                  : null,
+                              });
+                            }}
+                            disabled={!computedCron || isSavingSchedule || !isDirty}
+                            className={secondaryButtonClass}
                           >
                             {isSavingSchedule ? (
                               <>
@@ -412,11 +499,11 @@ export function JobsPage() {
                                 Save schedule
                               </>
                             )}
-                          </Button>
+                          </button>
 
                           {isDirty ? (
-                            <Button
-                              variant="ghost"
+                            <button
+                              type="button"
                               onClick={() =>
                                 setDrafts((prev) => ({
                                   ...prev,
@@ -428,54 +515,74 @@ export function JobsPage() {
                                 }))
                               }
                               disabled={isSavingSchedule}
+                              className={ghostButtonClass}
                             >
                               Reset
-                            </Button>
+                            </button>
                           ) : null}
                         </div>
 
                         {scheduleError ? (
-                          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                          <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
                             {scheduleError}
                           </div>
                         ) : null}
                       </div>
-                    </div>
+
+                      {/* Run controls */}
+                      <div className="mt-5 pt-5 border-t border-white/10 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            runMutation.mutate({ jobId: job.id, dryRun: true })
+                          }
+                          disabled={runMutation.isPending}
+                          className={secondaryButtonClass}
+                        >
+                          <Play className="h-4 w-4" />
+                          Dry-run
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            runMutation.mutate({ jobId: job.id, dryRun: false })
+                          }
+                          disabled={runMutation.isPending}
+                          className={primaryButtonClass}
+                        >
+                          <Play className="h-4 w-4" />
+                          Run
+                        </button>
+
+                        {isRunningJob ? (
+                          <div className="text-sm text-white/60 flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Starting…
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {runError ? (
+                        <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
+                          {runError}
+                        </div>
+                      ) : null}
+                    </motion.div>
                   );
-                })()}
+                })}
+              </div>
+            )}
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => runMutation.mutate({ jobId: job.id, dryRun: true })}
-                    disabled={runMutation.isPending}
-                  >
-                    <Play className="h-4 w-4" />
-                    Dry-run
-                  </Button>
-                  <Button
-                    onClick={() => runMutation.mutate({ jobId: job.id, dryRun: false })}
-                    disabled={runMutation.isPending}
-                  >
-                    <Play className="h-4 w-4" />
-                    Run
-                  </Button>
-                </div>
-
-                {runMutation.isError && runMutation.variables?.jobId === job.id ? (
-                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-                    {(runMutation.error as Error).message}
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
+            <div className="mt-8 text-sm text-white/70">
+              Need history? Go to{' '}
+              <Link className="text-white underline-offset-4 hover:underline" to="/runs">
+                Runs
+              </Link>
+              .
+            </div>
+          </motion.div>
         </div>
-      )}
-
-      <div className="text-sm text-muted-foreground">
-        Need history? Go to <Link className="underline-offset-4 hover:underline" to="/runs">Runs</Link>.
-      </div>
+      </section>
     </div>
   );
 }
