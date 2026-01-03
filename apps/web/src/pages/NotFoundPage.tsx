@@ -1,24 +1,89 @@
-import { Link } from 'react-router-dom';
+import { motion } from 'motion/react';
+import { ArrowLeft, Home, Settings } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function NotFoundPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   return (
-    <div className="mx-auto max-w-xl">
-      <Card>
-        <CardHeader>
-          <CardTitle>Page not found</CardTitle>
-          <CardDescription>The page you requested doesn’t exist.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">Check the navigation to continue.</div>
-          <Button asChild>
-            <Link to="/">Go home</Link>
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+    <section className="relative min-h-[calc(100vh-160px)] overflow-hidden">
+      {/* Background (match landing page) */}
+      <div className="pointer-events-none fixed inset-0">
+        <img
+          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          alt="Movie posters collection"
+          className="h-full w-full object-cover object-center"
+        />
+      </div>
+
+      {/* Red tint overlay */}
+      <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-red-600/85 via-rose-500/80 to-orange-400/75" />
+      <div className="pointer-events-none fixed inset-0 bg-black/10" />
+
+      {/* Content */}
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-160px)] max-w-6xl items-center justify-center px-6 py-10">
+        <motion.div
+          initial={{ opacity: 0, y: 14, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: 'easeOut' }}
+          className="w-full max-w-2xl"
+        >
+          <div className="w-full rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl border border-white/10 bg-gradient-to-br from-gray-900/85 to-gray-800/65">
+            <div className="flex items-start justify-between gap-6">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/80">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-300" />
+                  404
+                </div>
+                <h1 className="mt-4 text-3xl sm:text-4xl font-bold text-white">
+                  Page not found
+                </h1>
+                <p className="mt-3 text-sm sm:text-base text-white/70">
+                  The page you requested doesn’t exist or was moved.
+                </p>
+                <p className="mt-2 text-xs text-white/50 font-mono truncate">
+                  {location.pathname}
+                </p>
+              </div>
+
+              <div className="hidden sm:flex shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
+                <span className="text-4xl font-black tracking-tight">?</span>
+              </div>
+            </div>
+
+            <div className="mt-7 flex flex-col sm:flex-row gap-3">
+              <Button
+                variant="outline"
+                onClick={() => navigate(-1)}
+                className="border-white/15 bg-white/5 text-white hover:bg-white/10"
+              >
+                <ArrowLeft />
+                Back
+              </Button>
+              <Button asChild className="bg-white text-gray-900 hover:bg-white/90">
+                <Link to="/">
+                  <Home />
+                  Go home
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant="secondary"
+                className="bg-gray-900/40 text-white hover:bg-gray-900/55 border border-white/10"
+              >
+                <Link to="/configuration">
+                  <Settings />
+                  Configuration
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </section>
   );
 }
 
