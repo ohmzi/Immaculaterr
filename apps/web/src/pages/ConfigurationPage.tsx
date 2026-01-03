@@ -553,9 +553,20 @@ export function ConfigurationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+      {/* Background (landing-page style, blue-tinted) */}
+      <div className="pointer-events-none absolute inset-0">
+        <img
+          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          alt=""
+          className="h-full w-full object-cover opacity-80"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-sky-500/55 via-blue-700/45 to-indigo-900/60" />
+        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
+      </div>
+
       {/* Configuration Content */}
-      <section className="relative min-h-screen overflow-hidden pt-10 lg:pt-10">
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
         <div className="container mx-auto px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
