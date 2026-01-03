@@ -188,7 +188,10 @@ export function HeroSection() {
             className="lg:pr-4 text-center lg:text-left"
           >
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight lg:tracking-normal text-black dark:text-black leading-tight">
-              Your library, on autopilot.
+              <span className="inline-block text-left">
+                <span className="block">Your library,</span>
+                <span className="block pl-4 whitespace-nowrap">on autopilot.</span>
+              </span>
             </h1>
             {/* Placeholder elements - kept for future use */}
             <div className="hidden">
