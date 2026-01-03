@@ -13,15 +13,30 @@ function formatMonthLabel(value: string) {
   return d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
 }
 
+function niceCeilStep(rawStep: number) {
+  // Round the step up to a "nice" magnitude: 10s / 100s / 1000s, etc.
+  // - < 10: keep integer precision
+  // - 10..99: round to nearest 10
+  // - 100+: keep ~2 significant digits (e.g. 30,804 -> 31,000)
+  if (!Number.isFinite(rawStep) || rawStep <= 0) return 1;
+  if (rawStep < 10) return Math.max(1, Math.ceil(rawStep));
+  if (rawStep < 100) return Math.ceil(rawStep / 10) * 10;
+
+  const exp = Math.floor(Math.log10(rawStep));
+  const granularity = 10 ** Math.max(0, exp - 1);
+  return Math.ceil(rawStep / granularity) * granularity;
+}
+
 function buildQuarterScale(maxValue: number) {
-  // Keep the smallest visible scale at 20 (0,5,10,15,20) to avoid a cramped chart.
-  const minMax = 20;
+  // Keep the smallest visible scale at 20 (0..20) to avoid a cramped chart.
+  const minDomainMax = 20;
   const safeMax = Number.isFinite(maxValue) ? Math.max(0, maxValue) : 0;
-  const domainMax = Math.max(minMax, safeMax);
-  const step = Math.max(1, Math.ceil(domainMax / 4));
-  const niceMax = step * 4;
-  const ticks = [0, step, step * 2, step * 3, niceMax];
-  return { ticks, domain: [0, niceMax] as [number, number] };
+  const targetMax = Math.max(minDomainMax, safeMax);
+
+  const step = niceCeilStep(targetMax / 4);
+  const domainMax = step * 4;
+  const ticks = [0, step, step * 2, step * 3, domainMax];
+  return { ticks, domain: [0, domainMax] as [number, number] };
 }
 
 export function HeroSection() {
@@ -50,6 +65,9 @@ export function HeroSection() {
   const tvMax = series.reduce((acc, p) => Math.max(acc, p.tv), 0);
   const moviesScale = buildQuarterScale(moviesMax);
   const tvScale = buildQuarterScale(tvMax);
+
+  const formatCountTick = (v: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString() : String(v);
 
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8">
@@ -135,22 +153,24 @@ export function HeroSection() {
                         tickFormatter={formatMonthLabel}
                       />
                       <YAxis
+                        yAxisId="tv"
+                        orientation="left"
+                        stroke="#60a5fa"
+                        style={{ fontSize: '12px' }}
+                        tick={{ fill: '#60a5fa' }}
+                        tickFormatter={formatCountTick}
+                        domain={tvScale.domain}
+                        ticks={tvScale.ticks}
+                      />
+                      <YAxis
                         yAxisId="movies"
                         orientation="left"
                         stroke="#facc15"
                         style={{ fontSize: '12px' }}
                         tick={{ fill: '#facc15' }}
+                        tickFormatter={formatCountTick}
                         domain={moviesScale.domain}
                         ticks={moviesScale.ticks}
-                      />
-                      <YAxis
-                        yAxisId="tv"
-                        orientation="right"
-                        stroke="#60a5fa"
-                        style={{ fontSize: '12px' }}
-                        tick={{ fill: '#60a5fa' }}
-                        domain={tvScale.domain}
-                        ticks={tvScale.ticks}
                       />
                       <Tooltip 
                         labelFormatter={(label) => formatMonthLabel(String(label))}
