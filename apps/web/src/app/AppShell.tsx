@@ -4,24 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Navigation } from '@/components/Navigation';
-import { getMe, logout } from '@/api/auth';
+import { logout } from '@/api/auth';
 import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
-import { getInitialTheme, setTheme, type Theme } from '@/app/theme';
 
 export function AppShell() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<Theme>(() => getInitialTheme());
-
-  const meQuery = useQuery({
-    queryKey: ['auth', 'me'],
-    queryFn: getMe,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
 
   const settingsQuery = useQuery({
     queryKey: ['settings'],
@@ -47,17 +37,10 @@ export function AppShell() {
     },
   });
 
-  const toggleTheme = () => {
-    const next: Theme = currentTheme === 'dark' ? 'light' : 'dark';
-    setCurrentTheme(next);
-    setTheme(next);
-  };
-
   const handleLogout = () => {
     logoutMutation.mutate();
   };
 
-  const username = meQuery.data?.user?.username ?? 'User';
   const isHomePage = location.pathname === '/';
 
   return (
@@ -72,12 +55,7 @@ export function AppShell() {
 
       {/* Mobile app navigation */}
       <div className="lg:hidden">
-        <MobileNavigation
-          username={username}
-          theme={currentTheme}
-          onToggleTheme={toggleTheme}
-          onLogout={handleLogout}
-        />
+        <MobileNavigation onLogout={handleLogout} />
       </div>
 
       {/* Setup Wizard Modal */}

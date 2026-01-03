@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { Moon, Sun, LogOut, ChevronDown } from 'lucide-react';
+import { LogOut, Search } from 'lucide-react';
 
 interface MobileNavigationProps {
-  username: string;
-  theme: 'light' | 'dark';
-  onToggleTheme: () => void;
   onLogout: () => void;
 }
 
@@ -41,9 +38,9 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function MobileNavigation({ username, theme, onToggleTheme, onLogout }: MobileNavigationProps) {
+export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const navigate = useNavigate();
@@ -70,10 +67,47 @@ export function MobileNavigation({ username, theme, onToggleTheme, onLogout }: M
   }, []);
 
   const handleButtonClick = (index: number) => {
+    setIsHelpOpen(false);
     if (selectedIndex === index) {
       setSelectedIndex(null);
     } else {
       setSelectedIndex(index);
+    }
+  };
+
+  const handleResetAccount = async () => {
+    setIsHelpOpen(false);
+    if (
+      !confirm(
+        'Are you sure you want to reset your account? This will:\n\n• Delete all settings and configurations\n• Delete all secrets (API keys)\n• Force you through setup wizard again\n• Log you out\n\nThis action CANNOT be undone!',
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/reset-dev', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        try {
+          localStorage.clear();
+        } catch {
+          // ignore
+        }
+        try {
+          sessionStorage.clear();
+        } catch {
+          // ignore
+        }
+        window.location.href = '/';
+      } else {
+        alert('Failed to reset account. Please try logging out and back in.');
+      }
+    } catch {
+      alert('Network error while resetting account.');
     }
   };
 
@@ -208,7 +242,7 @@ export function MobileNavigation({ username, theme, onToggleTheme, onLogout }: M
 
       {/* Top bar with logo and controls */}
       <div className="fixed left-0 right-0 top-0 z-50 bg-black/40 backdrop-blur-xl lg:hidden">
-        <div className="flex items-center justify-between gap-4 px-4 py-3">
+        <div className="flex items-center gap-3 px-4 py-3">
           {/* Logo */}
           <button
             onClick={() => navigate('/')}
@@ -222,81 +256,85 @@ export function MobileNavigation({ username, theme, onToggleTheme, onLogout }: M
               <circle cx="10" cy="10" r="3" fill="none" stroke="#facc15" strokeWidth="1.5" />
               <path d="M12.5 12.5L15 15" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            <span className="font-semibold tracking-tight text-white">Immaculaterr</span>
+            <span className="hidden sm:inline font-semibold tracking-tight text-white">Immaculaterr</span>
           </button>
 
           {/* Right side controls */}
-          <div className="flex items-center gap-2">
-            {/* Theme toggle */}
-            <button
-              onClick={onToggleTheme}
-              className="rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
-            >
-              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+            {/* Search bar */}
+            <div className="relative min-w-0 flex-1 max-w-[240px]">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/60" />
+              <input
+                type="text"
+                placeholder="Search…"
+                className="h-9 w-full rounded-full border border-white/20 bg-white/10 pl-9 pr-3 text-sm text-white placeholder-white/60 backdrop-blur-sm outline-none transition-colors focus:border-white/40"
+              />
+            </div>
 
-            {/* User profile dropdown */}
+            {/* Help button (matches desktop top bar) */}
             <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-white/80 transition-colors hover:bg-white/20 active:scale-95"
+              onClick={() => {
+                setSelectedIndex(null);
+                setIsHelpOpen((v) => !v);
+              }}
+              className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
             >
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
-                {username[0]?.toUpperCase()}
-              </div>
-              <ChevronDown size={16} />
+              Help
             </button>
           </div>
         </div>
       </div>
 
-      {/* User menu dropdown */}
+      {/* Help dropdown (mobile) */}
       <AnimatePresence>
-        {showUserMenu && (
+        {isHelpOpen && (
           <>
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowUserMenu(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
+              onClick={() => setIsHelpOpen(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 lg:hidden"
             />
 
-            {/* User menu card */}
+            {/* Help card */}
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2 }}
-              className="fixed top-16 right-4 z-50 lg:hidden"
+              className="fixed top-16 left-4 right-4 z-[60] lg:hidden"
             >
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 p-2 min-w-[200px]">
-                <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-                  <p className="font-semibold text-gray-900 dark:text-white">{username}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Local Administrator</p>
+              <div className="ml-auto w-full max-w-sm bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
+                <div className="p-4">
+                  <h3 className="text-lg font-semibold text-white mb-2">Help & Support</h3>
+                  <p className="text-sm text-white/70 mb-4">
+                    Need assistance? Visit our documentation or contact support.
+                  </p>
+
+                  <div className="space-y-2">
+                    <button
+                      onClick={handleResetAccount}
+                      className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 rounded-xl transition-colors font-medium"
+                    >
+                      Reset Account to Fresh Setup
+                    </button>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <button
+                      onClick={() => {
+                        setIsHelpOpen(false);
+                        onLogout();
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-red-300 hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2 font-medium"
+                    >
+                      <LogOut size={16} />
+                      Logout
+                    </button>
+                  </div>
                 </div>
-
-                <button
-                  onClick={() => {
-                    setShowUserMenu(false);
-                    onToggleTheme();
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                  Toggle Theme
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowUserMenu(false);
-                    onLogout();
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                >
-                  <LogOut size={16} />
-                  Sign Out
-                </button>
               </div>
             </motion.div>
           </>
