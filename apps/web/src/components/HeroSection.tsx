@@ -187,10 +187,8 @@ export function HeroSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="lg:pr-4 text-center lg:text-left"
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight lg:tracking-normal text-gray-900 dark:text-white leading-tight">
-              Automate your
-              <br />
-              media collection
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight lg:tracking-normal text-black dark:text-black leading-tight">
+              Your library, on autopilot.
             </h1>
             {/* Placeholder elements - kept for future use */}
             <div className="hidden">
