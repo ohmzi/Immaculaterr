@@ -33,7 +33,7 @@ export function LogsPage() {
   const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs]);
 
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-3 shadow-2xl';
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
@@ -56,39 +56,42 @@ export function LogsPage() {
             transition={{ duration: 0.6 }}
             className="max-w-5xl mx-auto"
           >
+            {/* Page Header */}
+            <div className="mb-8">
+              <h1 className="text-4xl font-bold text-white mb-2">Logs</h1>
+              <p className="text-lg text-white/70">
+                Live logs from server
+              </p>
+            </div>
+
             <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.55, delay: 0.05 }}
               className={cardClass}
             >
-              <div className="mb-6">
-                <div className="text-2xl font-semibold text-white">Logs</div>
-                <div className="mt-2 text-sm text-white/70">Live logs from server</div>
-              </div>
-
               {logsQuery.isLoading ? (
-                <div className="flex items-center gap-2 text-sm text-white/70">
+                <div className="flex items-center gap-2 text-sm text-white/70 p-4">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading…
                 </div>
               ) : logsQuery.error ? (
-                <div className="flex items-start gap-2 text-sm text-red-200">
+                <div className="flex items-start gap-2 text-sm text-red-200 p-4">
                   <CircleAlert className="mt-0.5 h-4 w-4" />
                   <div>{(logsQuery.error as Error).message}</div>
                 </div>
               ) : logs.length ? (
-                <div className="max-h-[560px] overflow-auto rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
+                <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
                   <table className="w-full text-sm">
-                    <thead className="text-left text-xs text-white/60">
+                    <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
                       <tr>
-                        <th className="sticky top-0 z-20 border-b border-white/10 bg-[#0b0c0f] px-4 py-3 whitespace-nowrap">
+                        <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
                           Timestamp
                         </th>
-                        <th className="sticky top-0 z-20 border-b border-white/10 bg-[#0b0c0f] px-4 py-3 whitespace-nowrap">
+                        <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
                           Level
                         </th>
-                        <th className="sticky top-0 z-20 border-b border-white/10 bg-[#0b0c0f] px-4 py-3">
+                        <th className="border-b border-white/10 px-4 py-3">
                           Message
                         </th>
                       </tr>
@@ -121,7 +124,7 @@ export function LogsPage() {
                   </table>
                 </div>
               ) : (
-                <div className="text-sm text-white/70">No logs yet.</div>
+                <div className="text-sm text-white/70 p-4">No logs yet.</div>
               )}
             </motion.div>
           </motion.div>

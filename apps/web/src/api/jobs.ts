@@ -58,15 +58,14 @@ export function updateJobSchedule(params: {
   jobId: string;
   cron: string;
   enabled: boolean;
-  timezone?: string | null;
 }) {
-  const { jobId, cron, enabled, timezone } = params;
+  const { jobId, cron, enabled } = params;
   return fetchJson<{ ok: true; schedule: JobSchedule }>(
     `/api/jobs/schedules/${encodeURIComponent(jobId)}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cron, enabled, timezone }),
+      body: JSON.stringify({ cron, enabled }),
     },
   );
 }

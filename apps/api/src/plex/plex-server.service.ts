@@ -106,21 +106,36 @@ function extractFirstInt(value: string): number | null {
 }
 
 function extractIdFromGuid(id: string, kind: 'tmdb' | 'tvdb'): number | null {
+  // Python script approach: look for 'tmdb' or 'tvdb' anywhere in the string (case-insensitive)
   const lower = id.toLowerCase();
-  const proto = `${kind}://`;
-  const idx = lower.indexOf(proto);
-  if (idx >= 0) {
-    const rest = id.slice(idx + proto.length);
-    const clean = rest.split('?')[0].split('&')[0].split('/')[0];
-    const n = Number.parseInt(clean, 10);
-    if (Number.isFinite(n)) return n;
+  const searchTerm = kind === 'tmdb' ? 'tmdb' : 'tvdb';
+  
+  if (!lower.includes(searchTerm)) {
+    return null;
   }
 
-  if (kind === 'tmdb' && lower.includes('themoviedb')) {
-    return extractFirstInt(id);
-  }
-  if (kind === 'tvdb' && lower.includes('thetvdb')) {
-    return extractFirstInt(id);
+  if (kind === 'tmdb') {
+    // Radarr Python script: guid.id.split('//')[-1]
+    // Split by '//' and take the last part
+    const parts = id.split('//');
+    if (parts.length > 1) {
+      const lastPart = parts[parts.length - 1];
+      // Remove query parameters and path segments, then extract integer
+      const clean = lastPart.split('?')[0].split('&')[0].split('/')[0];
+      const n = Number.parseInt(clean, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    // Fallback: try to extract first integer from the whole string
+    const fallback = extractFirstInt(id);
+    if (fallback) return fallback;
+  } else {
+    // Sonarr Python script: re.search(r"(\d+)", guid_id) - find first number
+    // Match Python's get_tvdb_id_from_plex_series logic
+    const match = id.match(/(\d+)/);
+    if (match) {
+      const n = Number.parseInt(match[1], 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
   }
 
   return null;
@@ -135,9 +150,30 @@ function extractIdsFromGuids(
 
   for (const g of guids) {
     if (!g || typeof g !== 'object') continue;
-    const id = (g as Record<string, unknown>)['id'];
-    if (typeof id !== 'string') continue;
-    const parsed = extractIdFromGuid(id, kind);
+    // Plex XML GUIDs can be structured as { id: "..." } or just a string
+    // Try 'id' property first (most common)
+    let idValue: string | undefined;
+    if ('id' in g) {
+      const idProp = (g as Record<string, unknown>)['id'];
+      if (typeof idProp === 'string') {
+        idValue = idProp;
+      }
+    }
+    // If no 'id' property, try using the object itself as a string (some XML parsers do this)
+    if (!idValue && typeof g === 'string') {
+      idValue = g;
+    }
+    // If still no value, try '#text' (some XML parsers put text content there)
+    if (!idValue && '#text' in g) {
+      const textProp = (g as Record<string, unknown>)['#text'];
+      if (typeof textProp === 'string') {
+        idValue = textProp;
+      }
+    }
+    
+    if (!idValue) continue;
+    
+    const parsed = extractIdFromGuid(idValue, kind);
     if (parsed) ids.push(parsed);
   }
 
@@ -283,24 +319,45 @@ export class PlexServerService {
       title: movieLibraryName,
     });
 
+    // Include GUIDs in the response (required to get TMDB IDs)
     const url = new URL(
       `library/sections/${sectionKey}/all`,
       normalizeBaseUrl(baseUrl),
-    ).toString();
-    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
+    );
+    url.searchParams.set('includeGuids', '1');
+    const urlString = url.toString();
+    const xml = asPlexXml(await this.fetchXml(urlString, token, 60000));
 
     const container = xml.MediaContainer;
     const items = asPlexMetadataArray(container);
 
     const set = new Set<number>();
+    let itemsWithGuids = 0;
+    let itemsWithoutGuids = 0;
+    let totalGuidsProcessed = 0;
+    
     for (const item of items) {
+      if (!item.Guid) {
+        itemsWithoutGuids++;
+        continue;
+      }
+      
+      itemsWithGuids++;
       const ids = extractIdsFromGuids(item.Guid, 'tmdb');
+      totalGuidsProcessed += ids.length;
       for (const id of ids) set.add(id);
     }
 
     this.logger.log(
-      `Plex TMDB set size=${set.size} section=${movieLibraryName}`,
+      `Plex TMDB set size=${set.size} section=${movieLibraryName} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} totalGuids=${totalGuidsProcessed}`,
     );
+    
+    // Log a sample of GUIDs for debugging
+    if (items.length > 0 && items[0]?.Guid) {
+      const sampleGuids = asUnknownArray(items[0].Guid).slice(0, 3);
+      this.logger.debug(`Sample GUID structure: ${JSON.stringify(sampleGuids)}`);
+    }
+    
     return set;
   }
 
@@ -316,27 +373,58 @@ export class PlexServerService {
       title: tvLibraryName,
     });
 
+    // Include GUIDs in the response (required to get TVDB IDs)
     const url = new URL(
       `library/sections/${sectionKey}/all`,
       normalizeBaseUrl(baseUrl),
-    ).toString();
-    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
+    );
+    url.searchParams.set('includeGuids', '1');
+    const urlString = url.toString();
+    const xml = asPlexXml(await this.fetchXml(urlString, token, 60000));
 
     const container = xml.MediaContainer;
     const items = asPlexMetadataArray(container);
 
     const map = new Map<number, string>();
+    let itemsWithGuids = 0;
+    let itemsWithoutGuids = 0;
+    let totalGuidsProcessed = 0;
+    let itemsWithTvdbIds = 0;
+    let itemsWithoutTvdbIds = 0;
+    
     for (const item of items) {
       const ratingKey = item.ratingKey ? String(item.ratingKey) : '';
       if (!ratingKey) continue;
 
+      if (!item.Guid) {
+        itemsWithoutGuids++;
+        continue;
+      }
+      
+      itemsWithGuids++;
       const ids = extractIdsFromGuids(item.Guid, 'tvdb');
-      for (const id of ids) {
-        if (!map.has(id)) map.set(id, ratingKey);
+      totalGuidsProcessed += ids.length;
+      
+      if (ids.length > 0) {
+        itemsWithTvdbIds++;
+        for (const id of ids) {
+          if (!map.has(id)) map.set(id, ratingKey);
+        }
+      } else {
+        itemsWithoutTvdbIds++;
       }
     }
 
-    this.logger.log(`Plex TVDB map size=${map.size} section=${tvLibraryName}`);
+    this.logger.log(
+      `Plex TVDB map size=${map.size} section=${tvLibraryName} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} withTvdbIds=${itemsWithTvdbIds} withoutTvdbIds=${itemsWithoutTvdbIds} totalGuids=${totalGuidsProcessed}`,
+    );
+    
+    // Log a sample of GUIDs for debugging
+    if (items.length > 0 && items[0]?.Guid) {
+      const sampleGuids = asUnknownArray(items[0].Guid).slice(0, 3);
+      this.logger.debug(`Sample GUID structure: ${JSON.stringify(sampleGuids)}`);
+    }
+    
     return map;
   }
 

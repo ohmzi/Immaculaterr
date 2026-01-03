@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -15,7 +15,6 @@ const navItems: NavItem[] = [
     label: 'Overview',
     dropdown: [
       { label: 'Dashboard', to: '/' },
-      { label: 'Collections', to: '/collections' },
     ],
   },
   {
@@ -40,6 +39,56 @@ export function Navigation() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
+
+  // Update button positions when they change
+  useEffect(() => {
+    const updatePositions = () => {
+      const positions = buttonRefs.current.map((ref) => {
+        if (ref) {
+          const rect = ref.getBoundingClientRect();
+          const parentRect = ref.parentElement?.parentElement?.getBoundingClientRect();
+          return {
+            left: rect.left - (parentRect?.left || 0),
+            width: rect.width,
+          };
+        }
+        return { left: 0, width: 0 };
+      });
+      setButtonPositions(positions);
+    };
+
+    // Initial update and on resize
+    const timeoutId = setTimeout(updatePositions, 100);
+    window.addEventListener('resize', updatePositions);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', updatePositions);
+    };
+  }, []);
+
+  // Update positions when hover changes
+  useEffect(() => {
+    if (hoveredIndex !== null) {
+      const updatePositions = () => {
+        const positions = buttonRefs.current.map((ref) => {
+          if (ref) {
+            const rect = ref.getBoundingClientRect();
+            const parentRect = ref.parentElement?.parentElement?.getBoundingClientRect();
+            return {
+              left: rect.left - (parentRect?.left || 0),
+              width: rect.width,
+            };
+          }
+          return { left: 0, width: 0 };
+        });
+        setButtonPositions(positions);
+      };
+      const timeoutId = setTimeout(updatePositions, 0);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [hoveredIndex]);
 
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -163,7 +212,29 @@ export function Navigation() {
               </button>
 
               {/* Navigation Items */}
-              <div className="flex items-center gap-1">
+              <div className="relative flex items-center gap-1">
+                {/* Sliding rectangle indicator - hover only */}
+                {hoveredIndex !== null && 
+                 buttonPositions.length > hoveredIndex && 
+                 buttonPositions[hoveredIndex] && 
+                 buttonPositions[hoveredIndex].width > 0 && (
+                  <motion.div
+                    layoutId="navIndicator"
+                    initial={false}
+                    animate={{
+                      left: buttonPositions[hoveredIndex]?.left ?? 0,
+                      width: buttonPositions[hoveredIndex]?.width ?? 0,
+                    }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 400,
+                      damping: 30,
+                    }}
+                    className="absolute bottom-0 top-0 rounded-xl bg-white/20 backdrop-blur-sm pointer-events-none z-0"
+                    style={{ position: 'absolute' }}
+                  />
+                )}
+
                 {navItems.map((item, index) => (
                   <div
                     key={item.label}
@@ -171,7 +242,12 @@ export function Navigation() {
                     onMouseEnter={() => setHoveredIndex(index)}
                     onMouseLeave={() => setHoveredIndex(null)}
                   >
-                    <button className="relative px-5 py-2.5 text-sm text-white/90 hover:text-white active:text-white transition-all duration-300 rounded-2xl overflow-hidden group active:scale-[0.98]">
+                    <button
+                      ref={(el) => {
+                        buttonRefs.current[index] = el;
+                      }}
+                      className="relative px-5 py-2.5 text-sm text-white/90 hover:text-white active:text-white transition-all duration-300 rounded-2xl overflow-hidden group active:scale-[0.98]"
+                    >
                       {/* Glassy button background */}
                       <div className="absolute inset-0 bg-white/8 backdrop-blur-sm opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-300 rounded-2xl border border-white/15" />
                       <span className="relative z-10">{item.label}</span>

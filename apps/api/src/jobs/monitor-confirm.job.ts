@@ -110,6 +110,10 @@ export class MonitorConfirmJob {
       token: plexToken,
       movieLibraryName,
     });
+    await ctx.info('plex: TMDB id set built', { 
+      size: plexTmdbIds.size,
+      sample: Array.from(plexTmdbIds).slice(0, 10),
+    });
 
     // --- Radarr confirm
     await ctx.info('radarr: loading monitored movies');
@@ -121,37 +125,67 @@ export class MonitorConfirmJob {
     const radarrTotalMonitored = monitoredMovies.length;
     let radarrAlreadyInPlex = 0;
     let radarrUnmonitored = 0;
+    let radarrSkippedPathConflicts = 0;
     const radarrSample: string[] = [];
 
     for (const movie of monitoredMovies) {
       const tmdbId = toInt(movie.tmdbId);
-      if (!tmdbId) continue;
+      if (!tmdbId) {
+        await ctx.warn('radarr: movie missing tmdbId (skipping)', {
+          title: typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
+          id: movie.id,
+        });
+        continue;
+      }
 
-      if (!plexTmdbIds.has(tmdbId)) continue;
+      if (!plexTmdbIds.has(tmdbId)) {
+        await ctx.debug('radarr: movie not in Plex (keep monitored)', {
+          title: typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
+          tmdbId,
+        });
+        continue;
+      }
 
       radarrAlreadyInPlex += 1;
       const title =
         typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
       if (radarrSample.length < 25) radarrSample.push(title);
 
+      await ctx.info('radarr: movie in Plex, unmonitoring', {
+        title,
+        tmdbId,
+        dryRun: ctx.dryRun,
+      });
+
       if (ctx.dryRun) {
         radarrUnmonitored += 1;
         continue;
       }
 
-      await this.radarr.setMovieMonitored({
+      const success = await this.radarr.setMovieMonitored({
         baseUrl: radarrBaseUrl,
         apiKey: radarrApiKey,
         movie,
         monitored: false,
       });
-      radarrUnmonitored += 1;
+      
+      if (success) {
+        radarrUnmonitored += 1;
+        await ctx.info('radarr: successfully unmonitored movie', { title, tmdbId });
+      } else {
+        radarrSkippedPathConflicts += 1;
+        await ctx.warn('radarr: skipped unmonitor due to path conflict (duplicate path in Radarr)', {
+          title,
+          tmdbId,
+        });
+      }
     }
 
     await ctx.info('radarr: summary', {
       totalMonitored: radarrTotalMonitored,
       alreadyInPlex: radarrAlreadyInPlex,
       unmonitored: radarrUnmonitored,
+      skippedPathConflicts: radarrSkippedPathConflicts,
       dryRun: ctx.dryRun,
     });
 
@@ -161,6 +195,10 @@ export class MonitorConfirmJob {
       baseUrl: plexBaseUrl,
       token: plexToken,
       tvLibraryName,
+    });
+    await ctx.info('plex: TVDB show map built', { 
+      size: plexTvdbMap.size,
+      sampleTvdbIds: Array.from(plexTvdbMap.keys()).slice(0, 10),
     });
 
     // --- Sonarr confirm (episodes)
@@ -201,6 +239,12 @@ export class MonitorConfirmJob {
         token: plexToken,
         showRatingKey,
       });
+      await ctx.debug('sonarr: Plex episodes retrieved', {
+        title,
+        tvdbId,
+        episodeCount: plexEpisodes.size,
+        sample: Array.from(plexEpisodes).slice(0, 10),
+      });
 
       const episodes = await this.sonarr.getEpisodesBySeries({
         baseUrl: sonarrBaseUrl,
@@ -223,37 +267,92 @@ export class MonitorConfirmJob {
 
       for (const [season, seasonEpisodes] of episodesBySeason.entries()) {
         let seasonMissing = 0;
+        let seasonEpisodesInPlex = 0;
+        const seasonEpisodesToUnmonitor: SonarrEpisode[] = [];
 
+        // Process all episodes in the season (matching Python script logic)
         for (const ep of seasonEpisodes) {
           const epNum = toInt(ep.episodeNumber);
           if (!epNum) continue;
           sonarrEpisodesChecked += 1;
 
-          if (plexEpisodes.has(episodeKey(season, epNum))) {
+          const epKey = episodeKey(season, epNum);
+          const isInPlex = plexEpisodes.has(epKey);
+          const isMonitored = Boolean(ep.monitored);
+
+          if (isInPlex) {
             sonarrEpisodesInPlex += 1;
-            if (ep.monitored) {
-              if (ctx.dryRun) {
-                sonarrEpisodesUnmonitored += 1;
-              } else {
-                await this.sonarr.setEpisodeMonitored({
-                  baseUrl: sonarrBaseUrl,
-                  apiKey: sonarrApiKey,
-                  episode: ep,
-                  monitored: false,
-                });
-                sonarrEpisodesUnmonitored += 1;
-              }
+            seasonEpisodesInPlex += 1;
+            if (isMonitored) {
+              seasonEpisodesToUnmonitor.push(ep);
+              await ctx.debug('sonarr: episode in Plex, will unmonitor', {
+                title,
+                season,
+                episode: epNum,
+                dryRun: ctx.dryRun,
+              });
             }
           } else {
             seasonMissing += 1;
             hasMissing = true;
+            if (isMonitored) {
+              await ctx.debug('sonarr: episode missing from Plex (keep monitored)', {
+                title,
+                season,
+                episode: epNum,
+              });
+            }
           }
         }
 
+        // Unmonitor episodes that are in Plex (matching Python script logic)
+        if (seasonEpisodesToUnmonitor.length > 0) {
+          await ctx.info('sonarr: unmonitoring episodes in Plex', {
+            title,
+            season,
+            count: seasonEpisodesToUnmonitor.length,
+            dryRun: ctx.dryRun,
+          });
+
+          for (const ep of seasonEpisodesToUnmonitor) {
+            if (ctx.dryRun) {
+              sonarrEpisodesUnmonitored += 1;
+            } else {
+              const success = await this.sonarr.setEpisodeMonitored({
+                baseUrl: sonarrBaseUrl,
+                apiKey: sonarrApiKey,
+                episode: ep,
+                monitored: false,
+              });
+              if (success) {
+                sonarrEpisodesUnmonitored += 1;
+              } else {
+                await ctx.warn('sonarr: failed to unmonitor episode', {
+                  title,
+                  season,
+                  episode: toInt(ep.episodeNumber),
+                });
+              }
+            }
+          }
+        }
+
+        // Check if season is complete (all episodes in Plex)
         if (seasonMissing === 0 && seasonEpisodes.length > 0) {
           completeSeasons.push(season);
-        } else {
+          await ctx.info('sonarr: season complete (all episodes in Plex)', {
+            title,
+            season,
+          });
+        } else if (seasonMissing > 0) {
           incompleteSeasons.push(season);
+          await ctx.debug('sonarr: season incomplete (has missing episodes)', {
+            title,
+            season,
+            missing: seasonMissing,
+            inPlex: seasonEpisodesInPlex,
+            total: seasonEpisodes.length,
+          });
         }
       }
 
@@ -325,6 +424,7 @@ export class MonitorConfirmJob {
         totalMonitored: radarrTotalMonitored,
         alreadyInPlex: radarrAlreadyInPlex,
         unmonitored: radarrUnmonitored,
+        skippedPathConflicts: radarrSkippedPathConflicts,
         sampleTitles: radarrSample,
       },
       sonarr: {

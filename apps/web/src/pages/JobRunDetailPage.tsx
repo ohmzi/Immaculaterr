@@ -1,47 +1,30 @@
 import { useMemo } from 'react';
+import { motion } from 'motion/react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CircleAlert, Loader2 } from 'lucide-react';
 
 import { getRun, getRunLogs } from '@/api/jobs';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 
-function statusColor(status: string) {
+function statusPill(status: string) {
   switch (status) {
     case 'SUCCESS':
-      return 'bg-emerald-600 text-white';
+      return 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25';
     case 'FAILED':
-      return 'bg-destructive text-destructive-foreground';
+      return 'bg-red-500/15 text-red-200 border border-red-500/25';
     case 'RUNNING':
-      return 'bg-amber-500 text-white';
+      return 'bg-amber-500/15 text-amber-200 border border-amber-500/25';
     default:
-      return 'bg-muted text-foreground';
+      return 'bg-white/10 text-white/70 border border-white/10';
   }
 }
 
-function levelStyles(level: string) {
+function levelClass(level: string) {
   const l = level.toLowerCase();
-  if (l === 'error') {
-    return {
-      row: 'bg-destructive/5',
-      pill: 'text-destructive',
-    };
-  }
-  if (l === 'warn' || l === 'warning') {
-    return {
-      row: 'bg-amber-500/10',
-      pill: 'text-amber-700 dark:text-amber-300',
-    };
-  }
-  if (l === 'debug') {
-    return {
-      row: '',
-      pill: 'text-muted-foreground',
-    };
-  }
-  return { row: '', pill: 'text-foreground' };
+  if (l === 'error') return 'text-red-200';
+  if (l === 'warn' || l === 'warning') return 'text-amber-200';
+  if (l === 'debug') return 'text-white/50';
+  return 'text-white/80';
 }
 
 export function JobRunDetailPage() {
@@ -81,137 +64,262 @@ export function JobRunDetailPage() {
     return counts;
   }, [logs]);
 
-  const title = useMemo(() => {
-    if (!run) return 'Job run';
-    return `${run.jobId} • ${run.status}`;
-  }, [run]);
+  const cardClass =
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          <p className="text-sm text-muted-foreground">
-            Run ID: <span className="font-mono">{runId}</span>
-          </p>
-        </div>
-
-        <Button asChild variant="outline">
-          <Link to="/jobs">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Jobs
-          </Link>
-        </Button>
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+      {/* Background (landing-page style, cyan-tinted) */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <img
+          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          alt=""
+          className="h-full w-full object-cover object-center opacity-80"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/30 via-sky-700/40 to-indigo-900/65" />
+        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
-      {runQuery.isLoading ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading run…
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      ) : runQuery.error ? (
-        <Card className="border-destructive/40">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <CircleAlert className="h-5 w-5" />
-              Failed to load run
-            </CardTitle>
-            <CardDescription className="text-destructive/80">
-              {(runQuery.error as Error).message}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : run ? (
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-3">
-                <span>Run</span>
-                <span className={cn('rounded-full px-3 py-1 text-xs font-medium', statusColor(run.status))}>
-                  {run.status}
-                  {run.dryRun ? ' (dry-run)' : ''}
-                </span>
-              </CardTitle>
-              <CardDescription>
-                Started: {new Date(run.startedAt).toLocaleString()}
-                {run.finishedAt ? ` • Finished: ${new Date(run.finishedAt).toLocaleString()}` : ''}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {run.errorMessage ? (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-                  Error: {run.errorMessage}
-                </div>
-              ) : null}
-
-              <div>
-                <div className="mb-2 text-sm font-medium">Summary</div>
-                <pre className="max-h-96 overflow-auto rounded-md bg-muted/30 p-3 text-xs">
-{JSON.stringify(run.summary ?? null, null, 2)}
-                </pre>
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
+        <div className="container mx-auto px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-5xl mx-auto"
+          >
+            {/* Page Header */}
+            <div className="mb-8">
+              <div className="flex items-center gap-3 mb-2">
+                <Link
+                  to="/history"
+                  className="text-white/70 hover:text-white transition-colors"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Link>
+                <h1 className="text-4xl font-bold text-white">
+                  {run?.jobId ?? 'Job Run'}
+                </h1>
+                {run && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusPill(run.status)}`}>
+                    {run.status}
+                    {run.dryRun ? ' (dry-run)' : ''}
+                  </span>
+                )}
               </div>
-            </CardContent>
-          </Card>
+              <p className="text-lg text-white/70 ml-8">
+                Run ID: <span className="font-mono text-white/90">{runId}</span>
+              </p>
+            </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Logs</CardTitle>
-              <CardDescription>
-                {logsQuery.isLoading ? 'Loading…' : `${logs.length} lines`}
-                {logStats.error ? ` • ${logStats.error} errors` : ''}
-                {logStats.warn ? ` • ${logStats.warn} warnings` : ''}
-                {isRunning ? ' • live' : ''}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {logsQuery.error ? (
-                <div className="flex items-start gap-2 text-sm text-destructive">
-                  <CircleAlert className="mt-0.5 h-4 w-4" />
-                  <div>{(logsQuery.error as Error).message}</div>
+            {runQuery.isLoading ? (
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.05 }}
+                className={cardClass}
+              >
+                <div className="flex items-center gap-2 text-white">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <div className="text-lg font-semibold">Loading run…</div>
                 </div>
-              ) : logs.length ? (
-                <div className="max-h-[520px] overflow-auto rounded-md border bg-background">
-                  <div className="divide-y">
-                    {logs.map((line) => (
-                      <div
-                        key={line.id}
-                        className={cn('px-3 py-2 text-xs', levelStyles(line.level).row)}
-                      >
-                        <div className="flex items-baseline gap-2">
-                          <span className="font-mono text-muted-foreground">
-                            {new Date(line.time).toLocaleTimeString()}
-                          </span>
-                          <span className={cn('font-mono font-semibold', levelStyles(line.level).pill)}>
-                            {line.level}
-                          </span>
-                          <span className="font-mono">{line.message}</span>
-                        </div>
-                        {line.context ? (
-                          <pre className="mt-1 overflow-auto rounded bg-muted/30 p-2 text-[11px] text-muted-foreground">
-{JSON.stringify(line.context, null, 2)}
-                          </pre>
-                        ) : null}
-                      </div>
-                    ))}
+              </motion.div>
+            ) : runQuery.error ? (
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.05 }}
+                className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}
+              >
+                <div className="flex items-start gap-3">
+                  <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
+                  <div className="min-w-0">
+                    <div className="text-white font-semibold">Failed to load run</div>
+                    <div className="text-sm text-white/70">
+                      {(runQuery.error as Error).message}
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">No logs yet.</div>
-              )}
-            </CardContent>
-          </Card>
+              </motion.div>
+            ) : run ? (
+              <div className="grid gap-6">
+                {/* Run Details Card */}
+                <motion.div
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.55, delay: 0.1 }}
+                  className={cardClass}
+                >
+                  <div className="text-sm text-white/70 mb-4">
+                    Started: {new Date(run.startedAt).toLocaleString()}
+                    {run.finishedAt ? ` • Finished: ${new Date(run.finishedAt).toLocaleString()}` : ''}
+                  </div>
+
+                  {run.errorMessage ? (
+                    <div className="mb-6 rounded-2xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
+                      <div className="font-semibold mb-1">Error:</div>
+                      {run.errorMessage}
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <div className="mb-3 text-sm font-medium text-white/85">Summary</div>
+
+                    {run.summary && typeof run.summary === 'object' ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-6">
+                        {(run.summary as any).radarr && (
+                          <div>
+                            <div className="text-sm font-semibold text-white mb-3">Radarr</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl font-bold text-white">
+                                {(run.summary as any).radarr.unmonitored ?? 0}
+                              </span>
+                              <span className="text-white/70">
+                                unmonitored {((run.summary as any).radarr.unmonitored ?? 0) === 1 ? 'movie' : 'movies'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {(run.summary as any).sonarr && (
+                          <div>
+                            <div className="text-sm font-semibold text-white mb-3">Sonarr</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl font-bold text-white">
+                                {(run.summary as any).sonarr.episodesUnmonitored ?? 0}
+                              </span>
+                              <span className="text-white/70">
+                                unmonitored {((run.summary as any).sonarr.episodesUnmonitored ?? 0) === 1 ? 'episode' : 'episodes'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : isRunning ? (
+                      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6">
+                        <motion.div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent"
+                          animate={{ x: ['0%', '200%'] }}
+                          transition={{ duration: 1.35, repeat: Infinity, ease: 'linear' }}
+                        />
+
+                        <div className="relative">
+                          <div className="flex items-center gap-2 text-sm text-white/80">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Still running… building summary</span>
+                            <span className="inline-flex items-center gap-1">
+                              <motion.span
+                                className="h-1.5 w-1.5 rounded-full bg-white/70"
+                                animate={{ opacity: [0.2, 1, 0.2] }}
+                                transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
+                              />
+                              <motion.span
+                                className="h-1.5 w-1.5 rounded-full bg-white/70"
+                                animate={{ opacity: [0.2, 1, 0.2] }}
+                                transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: 0.15 }}
+                              />
+                              <motion.span
+                                className="h-1.5 w-1.5 rounded-full bg-white/70"
+                                animate={{ opacity: [0.2, 1, 0.2] }}
+                                transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
+                              />
+                            </span>
+                          </div>
+
+                          <div className="mt-6 grid gap-5 sm:grid-cols-2 animate-pulse">
+                            <div className="space-y-3">
+                              <div className="h-4 w-16 rounded bg-white/10" />
+                              <div className="h-8 w-40 rounded bg-white/10" />
+                            </div>
+                            <div className="space-y-3">
+                              <div className="h-4 w-16 rounded bg-white/10" />
+                              <div className="h-8 w-44 rounded bg-white/10" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+                        No summary available.
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+
+                {/* Logs Card */}
+                <motion.div
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.55, delay: 0.15 }}
+                  className={cardClass}
+                >
+                  <div className="text-sm text-white/70 mb-4">
+                    {logsQuery.isLoading ? 'Loading…' : `${logs.length} lines`}
+                    {logStats.error ? ` • ${logStats.error} errors` : ''}
+                    {logStats.warn ? ` • ${logStats.warn} warnings` : ''}
+                    {isRunning ? ' • live' : ''}
+                  </div>
+
+                  {logsQuery.error ? (
+                    <div className="flex items-start gap-2 text-sm text-red-200">
+                      <CircleAlert className="mt-0.5 h-4 w-4" />
+                      <div>{(logsQuery.error as Error).message}</div>
+                    </div>
+                  ) : logs.length ? (
+                    <div className="overflow-auto rounded-2xl border border-white/10 bg-white/5" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+                      <table className="w-full text-sm">
+                        <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
+                          <tr>
+                            <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">Time</th>
+                            <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">Level</th>
+                            <th className="border-b border-white/10 px-4 py-3">Message</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {logs.map((line) => (
+                            <tr
+                              key={line.id}
+                              className="border-t border-white/10 hover:bg-white/5"
+                            >
+                              <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60">
+                                {new Date(line.time).toLocaleTimeString()}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`font-mono text-xs font-semibold ${levelClass(line.level)}`}>
+                                  {line.level}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 font-mono text-xs text-white/85">
+                                {line.message}
+                                {line.context ? (
+                                  <pre className="mt-2 overflow-auto rounded bg-white/5 p-2 text-[11px] text-white/60">
+{JSON.stringify(line.context, null, 2)}
+                                  </pre>
+                                ) : null}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-white/70">No logs yet.</div>
+                  )}
+                </motion.div>
+              </div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.05 }}
+                className={cardClass}
+              >
+                <div className="text-white font-semibold">Run not found</div>
+              </motion.div>
+            )}
+          </motion.div>
         </div>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Run not found</CardTitle>
-          </CardHeader>
-        </Card>
-      )}
+      </section>
     </div>
   );
 }

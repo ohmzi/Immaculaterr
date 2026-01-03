@@ -8,7 +8,6 @@ export const queryKeys = {
     me: ['auth', 'me'] as const,
   },
   settings: ['settings'] as const,
-  collections: ['collections'] as const,
   logs: ['serverLogs'] as const,
 } as const;
 

@@ -97,6 +97,47 @@ export class RadarrService {
     return movies.filter((m) => Boolean(m && m.monitored));
   }
 
+  async getMovieById(params: {
+    baseUrl: string;
+    apiKey: string;
+    movieId: number;
+  }): Promise<RadarrMovie | null> {
+    const { baseUrl, apiKey, movieId } = params;
+    const url = this.buildApiUrl(baseUrl, `api/v3/movie/${movieId}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) return null;
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr get movie failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      return data as RadarrMovie;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr get movie failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async setMovieMonitored(params: {
     baseUrl: string;
     apiKey: string;
@@ -104,12 +145,19 @@ export class RadarrService {
     monitored: boolean;
   }): Promise<boolean> {
     const { baseUrl, apiKey, movie, monitored } = params;
-    const url = this.buildApiUrl(baseUrl, `api/v3/movie/${movie.id}`);
+    
+    // Check if already in the desired state (like Python script does)
+    if (movie.monitored === monitored) {
+      return true;
+    }
 
+    const url = this.buildApiUrl(baseUrl, `api/v3/movie/${movie.id}`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
 
     try {
+      // Match Python script behavior: use the movie object directly from the list
+      // and only update the monitored field
       const updated: RadarrMovie = { ...movie, monitored };
 
       const res = await fetch(url, {
@@ -125,6 +173,22 @@ export class RadarrService {
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
+        const errorText = body.toLowerCase();
+        
+        // If path validation fails, this indicates duplicate movies in Radarr
+        // This is a Radarr data integrity issue, not a code issue
+        // Log a warning and return false so the job can continue processing other movies
+        if (
+          res.status === 400 &&
+          (errorText.includes('path') || errorText.includes('moviepathvalidator'))
+        ) {
+          const title = typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
+          this.logger.warn(
+            `Radarr path validation error for movie ${movie.id} (${title}): ${body}. This may indicate duplicate movies in Radarr with the same path. Skipping this movie.`,
+          );
+          return false;
+        }
+        
         throw new BadGatewayException(
           `Radarr update movie failed: HTTP ${res.status} ${body}`.trim(),
         );

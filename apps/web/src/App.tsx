@@ -4,7 +4,6 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { CollectionsPage } from '@/pages/CollectionsPage';
 import { JobsPage } from '@/pages/JobsPage';
 import { HistoryPage } from '@/pages/HistoryPage';
 import { LogsPage } from '@/pages/LogsPage';
@@ -42,7 +41,6 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="app" element={<Navigate to="/" replace />} />
             <Route path="configuration" element={<ConfigurationPage />} />
-            <Route path="collections" element={<CollectionsPage />} />
             <Route path="jobs" element={<JobsPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="history/:runId" element={<JobRunDetailPage />} />

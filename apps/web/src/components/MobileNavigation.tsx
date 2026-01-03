@@ -15,10 +15,9 @@ interface NavItem {
 const navItems: NavItem[] = [
   {
     label: 'Overview',
-    dropdown: [
-      { label: 'Dashboard', to: '/' },
-      { label: 'Collections', to: '/collections' },
-    ],
+      dropdown: [
+        { label: 'Dashboard', to: '/' },
+      ],
   },
   {
     label: 'Settings',
