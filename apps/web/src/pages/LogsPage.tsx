@@ -24,7 +24,7 @@ function levelClass(raw: string) {
 export function LogsPage() {
   const logsQuery = useQuery({
     queryKey: ['serverLogs'],
-    queryFn: () => listServerLogs({ limit: 500 }),
+    queryFn: () => listServerLogs({ limit: 5000 }),
     refetchInterval: 5_000,
     refetchOnWindowFocus: false,
     retry: false,

@@ -73,6 +73,31 @@ function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 }
 
+function sanitizeUrlForLogs(raw: string): string {
+  try {
+    const u = new URL(raw);
+    // Never log credentials if someone configured baseUrl as http(s)://user:pass@host
+    u.username = '';
+    u.password = '';
+
+    // Defensive: if any token-like query params appear, redact them.
+    for (const k of [
+      'X-Plex-Token',
+      'x-plex-token',
+      'token',
+      'authToken',
+      'auth_token',
+      'plexToken',
+      'plex_token',
+    ]) {
+      if (u.searchParams.has(k)) u.searchParams.set(k, 'REDACTED');
+    }
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
 function extractFirstInt(value: string): number | null {
   const match = value.match(/(\d{2,})/);
   if (!match) return null;
@@ -406,28 +431,7 @@ export class PlexServerService {
       : `library/collections/${collectionRatingKey}/items/${itemRatingKey}/move`;
 
     const url = new URL(path, normalizeBaseUrl(baseUrl)).toString();
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    try {
-      const res = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          Accept: 'application/json',
-          'X-Plex-Token': token,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Plex move failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-    } finally {
-      clearTimeout(timeout);
-    }
+    await this.fetchNoContent(url, token, 'PUT', 20000);
   }
 
   async createCollection(params: {
@@ -531,6 +535,8 @@ export class PlexServerService {
   ) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
 
     try {
       const res = await fetch(url, {
@@ -544,10 +550,17 @@ export class PlexServerService {
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
+        const ms = Date.now() - startedAt;
+        this.logger.warn(
+          `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+        );
         throw new BadGatewayException(
           `Plex request failed: ${method} ${url} -> HTTP ${res.status} ${body}`.trim(),
         );
       }
+
+      const ms = Date.now() - startedAt;
+      this.logger.log(`Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`);
     } finally {
       clearTimeout(timeout);
     }
@@ -560,6 +573,8 @@ export class PlexServerService {
   ): Promise<unknown> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
 
     try {
       const res = await fetch(url, {
@@ -571,18 +586,27 @@ export class PlexServerService {
         signal: controller.signal,
       });
 
+      const text = await res.text().catch(() => '');
+      const ms = Date.now() - startedAt;
+
       if (!res.ok) {
-        const body = await res.text().catch(() => '');
+        this.logger.warn(
+          `Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${text}`.trim(),
+        );
         throw new BadGatewayException(
-          `Plex request failed: HTTP ${res.status} ${body}`.trim(),
+          `Plex request failed: HTTP ${res.status} ${text}`.trim(),
         );
       }
 
-      const text = await res.text();
+      this.logger.log(`Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
       const parsed: unknown = parser.parse(text) as unknown;
       return parsed;
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
+      const ms = Date.now() - startedAt;
+      this.logger.warn(
+        `Plex HTTP GET ${safeUrl} -> FAILED (${ms}ms): ${(err as Error)?.message ?? String(err)}`.trim(),
+      );
       throw new BadGatewayException(
         `Plex request failed: ${(err as Error)?.message ?? String(err)}`,
       );

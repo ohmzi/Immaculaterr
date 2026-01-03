@@ -2,6 +2,28 @@ import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PlexPin } from './plex.types';
 
+function sanitizeUrlForLogs(raw: string): string {
+  try {
+    const u = new URL(raw);
+    u.username = '';
+    u.password = '';
+    for (const k of [
+      'X-Plex-Token',
+      'x-plex-token',
+      'token',
+      'authToken',
+      'auth_token',
+      'plexToken',
+      'plex_token',
+    ]) {
+      if (u.searchParams.has(k)) u.searchParams.set(k, 'REDACTED');
+    }
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
 @Injectable()
 export class PlexService {
   private readonly logger = new Logger(PlexService.name);
@@ -17,6 +39,8 @@ export class PlexService {
     // strong=true creates a PIN that generates a permanent (non-expiring) auth token
     // The PIN itself expires in ~30 minutes, but the resulting auth token never expires
     const url = 'https://plex.tv/api/v2/pins?strong=true';
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
 
     const res = await fetch(url, {
       method: 'POST',
@@ -25,12 +49,18 @@ export class PlexService {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
+      const ms = Date.now() - startedAt;
+      this.logger.warn(
+        `Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+      );
       throw new BadGatewayException(
         `Plex PIN create failed: HTTP ${res.status} ${body}`.trim(),
       );
     }
 
     const data = (await res.json()) as PlexPin;
+    const ms = Date.now() - startedAt;
+    this.logger.log(`Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
     this.logger.log(`Created Plex PIN id=${data.id}`);
 
     // Plex OAuth-style page (NOT plex.tv/link which is the 4-character “Link Account” flow).
@@ -50,6 +80,8 @@ export class PlexService {
 
   async checkPin(pinId: number) {
     const url = `https://plex.tv/api/v2/pins/${pinId}`;
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
 
     const res = await fetch(url, {
       method: 'GET',
@@ -58,12 +90,18 @@ export class PlexService {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
+      const ms = Date.now() - startedAt;
+      this.logger.warn(
+        `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+      );
       throw new BadGatewayException(
         `Plex PIN check failed: HTTP ${res.status} ${body}`.trim(),
       );
     }
 
     const data = (await res.json()) as PlexPin;
+    const ms = Date.now() - startedAt;
+    this.logger.log(`Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
     if (data.authToken) {
       this.logger.log(`Plex PIN authorized id=${data.id}`);
     }
@@ -76,6 +114,8 @@ export class PlexService {
 
   async whoami(plexToken: string) {
     const url = 'https://plex.tv/api/v2/user';
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
 
     const res = await fetch(url, {
       method: 'GET',
@@ -87,12 +127,18 @@ export class PlexService {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
+      const ms = Date.now() - startedAt;
+      this.logger.warn(
+        `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+      );
       throw new BadGatewayException(
         `Plex whoami failed: HTTP ${res.status} ${body}`.trim(),
       );
     }
 
     const data = (await res.json()) as Record<string, unknown>;
+    const ms = Date.now() - startedAt;
+    this.logger.log(`Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
 
     // Return a minimal, non-sensitive subset for diagnostics.
     return {

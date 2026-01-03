@@ -7,8 +7,10 @@ export type ServerLogEntry = {
   message: string;
 };
 
-// Keep the last 500 messages in-memory (circular buffer).
-const MAX_ENTRIES = 500;
+// Keep the last N messages in-memory (circular buffer).
+// Plex-related operations can be very chatty; keep more history so the UI doesn't
+// look like it's "filtering out" logs.
+const MAX_ENTRIES = 5000;
 
 let nextId = 1;
 const ring: Array<ServerLogEntry | null> = Array.from({ length: MAX_ENTRIES }, () => null);
@@ -51,7 +53,7 @@ export function listServerLogs(params?: {
   limit?: number;
 }): { logs: ServerLogEntry[]; latestId: number } {
   const latestId = nextId - 1;
-  const limit = Math.max(1, Math.min(500, params?.limit ?? 200));
+  const limit = Math.max(1, Math.min(MAX_ENTRIES, params?.limit ?? 200));
   const afterId = params?.afterId ?? null;
 
   if (!count) return { logs: [], latestId };
