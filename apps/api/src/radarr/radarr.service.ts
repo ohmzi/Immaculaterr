@@ -145,7 +145,7 @@ export class RadarrService {
     monitored: boolean;
   }): Promise<boolean> {
     const { baseUrl, apiKey, movie, monitored } = params;
-    
+
     // Check if already in the desired state (like Python script does)
     if (movie.monitored === monitored) {
       return true;
@@ -174,21 +174,23 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         const errorText = body.toLowerCase();
-        
+
         // If path validation fails, this indicates duplicate movies in Radarr
         // This is a Radarr data integrity issue, not a code issue
         // Log a warning and return false so the job can continue processing other movies
         if (
           res.status === 400 &&
-          (errorText.includes('path') || errorText.includes('moviepathvalidator'))
+          (errorText.includes('path') ||
+            errorText.includes('moviepathvalidator'))
         ) {
-          const title = typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
+          const title =
+            typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
           this.logger.warn(
             `Radarr path validation error for movie ${movie.id} (${title}): ${body}. This may indicate duplicate movies in Radarr with the same path. Skipping this movie.`,
           );
           return false;
         }
-        
+
         throw new BadGatewayException(
           `Radarr update movie failed: HTTP ${res.status} ${body}`.trim(),
         );

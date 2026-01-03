@@ -53,7 +53,7 @@ export function ConfigurationPage() {
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
 
-    const secrets = settingsQuery.data?.secretsPresent ?? {};
+    const secrets: Record<string, boolean> = settingsQuery.data?.secretsPresent ?? {};
 
     const plexBaseUrlSaved = readString(settings, 'plex.baseUrl');
     const radarrBaseUrlSaved = readString(settings, 'radarr.baseUrl');
@@ -74,11 +74,11 @@ export function ConfigurationPage() {
     const openAiEnabledSaved = readBool(settings, 'openai.enabled');
     const overseerrEnabledSaved = readBool(settings, 'overseerr.enabled');
 
-    setRadarrEnabled(radarrEnabledSaved ?? Boolean((secrets as any).radarr));
-    setSonarrEnabled(sonarrEnabledSaved ?? Boolean((secrets as any).sonarr));
-    setGoogleEnabled(googleEnabledSaved ?? Boolean((secrets as any).google));
-    setOpenAiEnabled(openAiEnabledSaved ?? Boolean((secrets as any).openai));
-    setOverseerrEnabled(overseerrEnabledSaved ?? Boolean((secrets as any).overseerr));
+    setRadarrEnabled(radarrEnabledSaved ?? Boolean(secrets.radarr));
+    setSonarrEnabled(sonarrEnabledSaved ?? Boolean(secrets.sonarr));
+    setGoogleEnabled(googleEnabledSaved ?? Boolean(secrets.google));
+    setOpenAiEnabled(openAiEnabledSaved ?? Boolean(secrets.openai));
+    setOverseerrEnabled(overseerrEnabledSaved ?? Boolean(secrets.overseerr));
   }, [settingsQuery.data?.settings]);
 
   const [radarrBaseUrl, setRadarrBaseUrl] = useState('http://localhost:7878');
@@ -234,7 +234,7 @@ export function ConfigurationPage() {
         }
       }, 2000); // Poll every 2 seconds
 
-    } catch (error) {
+    } catch {
       try {
         popup.close();
       } catch {
@@ -576,7 +576,7 @@ export function ConfigurationPage() {
           toast.error('Plex credentials are incorrect.', { id: toastId });
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Plex credentials are incorrect.', { id: toastId });
     }
   };
@@ -624,7 +624,7 @@ export function ConfigurationPage() {
           toast.error('Couldn’t connect to Radarr. Check the URL and API key.', { id: toastId });
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Couldn’t connect to Radarr. Check the URL and API key.', { id: toastId });
     }
   };
@@ -672,7 +672,7 @@ export function ConfigurationPage() {
           toast.error('Couldn’t connect to Sonarr. Check the URL and API key.', { id: toastId });
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Couldn’t connect to Sonarr. Check the URL and API key.', { id: toastId });
     }
   };
@@ -725,7 +725,7 @@ export function ConfigurationPage() {
           }
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Couldn’t connect to TMDB.', { id: toastId });
     }
   };
@@ -773,7 +773,7 @@ export function ConfigurationPage() {
           });
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Couldn’t connect to Google Search. Check your API key and Search Engine ID.', { id: toastId });
     }
   };
@@ -805,7 +805,7 @@ export function ConfigurationPage() {
           toast.error('Couldn’t connect to OpenAI.', { id: toastId });
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Couldn’t connect to OpenAI.', { id: toastId });
     }
   };
@@ -853,7 +853,7 @@ export function ConfigurationPage() {
           toast.error('Couldn’t connect to Overseerr. Check the URL and API key.', { id: toastId });
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Couldn’t connect to Overseerr. Check the URL and API key.', { id: toastId });
     }
   };

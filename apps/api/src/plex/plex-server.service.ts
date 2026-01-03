@@ -44,17 +44,18 @@ function asUnknownArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [value];
 }
 
-function asPlexMetadataArray(container: Record<string, unknown> | undefined): PlexMetadata[] {
+function asPlexMetadataArray(
+  container: Record<string, unknown> | undefined,
+): PlexMetadata[] {
   // Plex can return items under different element names depending on endpoint:
   // - /library/sections/:id/all => Video (movies) or Directory (shows)
   // - /library/.../search => Video / Directory
   // - /library/metadata/... => Metadata
-  const items =
-    (container?.Metadata ??
-      container?.Video ??
-      container?.Directory ??
-      container?.Track ??
-      []) as PlexMetadata | PlexMetadata[];
+  const items = (container?.Metadata ??
+    container?.Video ??
+    container?.Directory ??
+    container?.Track ??
+    []) as PlexMetadata | PlexMetadata[];
   return asArray(items);
 }
 
@@ -109,7 +110,7 @@ function extractIdFromGuid(id: string, kind: 'tmdb' | 'tvdb'): number | null {
   // Python script approach: look for 'tmdb' or 'tvdb' anywhere in the string (case-insensitive)
   const lower = id.toLowerCase();
   const searchTerm = kind === 'tmdb' ? 'tmdb' : 'tvdb';
-  
+
   if (!lower.includes(searchTerm)) {
     return null;
   }
@@ -170,9 +171,9 @@ function extractIdsFromGuids(
         idValue = textProp;
       }
     }
-    
+
     if (!idValue) continue;
-    
+
     const parsed = extractIdFromGuid(idValue, kind);
     if (parsed) ids.push(parsed);
   }
@@ -335,13 +336,13 @@ export class PlexServerService {
     let itemsWithGuids = 0;
     let itemsWithoutGuids = 0;
     let totalGuidsProcessed = 0;
-    
+
     for (const item of items) {
       if (!item.Guid) {
         itemsWithoutGuids++;
         continue;
       }
-      
+
       itemsWithGuids++;
       const ids = extractIdsFromGuids(item.Guid, 'tmdb');
       totalGuidsProcessed += ids.length;
@@ -351,13 +352,15 @@ export class PlexServerService {
     this.logger.log(
       `Plex TMDB set size=${set.size} section=${movieLibraryName} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} totalGuids=${totalGuidsProcessed}`,
     );
-    
+
     // Log a sample of GUIDs for debugging
     if (items.length > 0 && items[0]?.Guid) {
       const sampleGuids = asUnknownArray(items[0].Guid).slice(0, 3);
-      this.logger.debug(`Sample GUID structure: ${JSON.stringify(sampleGuids)}`);
+      this.logger.debug(
+        `Sample GUID structure: ${JSON.stringify(sampleGuids)}`,
+      );
     }
-    
+
     return set;
   }
 
@@ -391,7 +394,7 @@ export class PlexServerService {
     let totalGuidsProcessed = 0;
     let itemsWithTvdbIds = 0;
     let itemsWithoutTvdbIds = 0;
-    
+
     for (const item of items) {
       const ratingKey = item.ratingKey ? String(item.ratingKey) : '';
       if (!ratingKey) continue;
@@ -400,11 +403,11 @@ export class PlexServerService {
         itemsWithoutGuids++;
         continue;
       }
-      
+
       itemsWithGuids++;
       const ids = extractIdsFromGuids(item.Guid, 'tvdb');
       totalGuidsProcessed += ids.length;
-      
+
       if (ids.length > 0) {
         itemsWithTvdbIds++;
         for (const id of ids) {
@@ -418,13 +421,15 @@ export class PlexServerService {
     this.logger.log(
       `Plex TVDB map size=${map.size} section=${tvLibraryName} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} withTvdbIds=${itemsWithTvdbIds} withoutTvdbIds=${itemsWithoutTvdbIds} totalGuids=${totalGuidsProcessed}`,
     );
-    
+
     // Log a sample of GUIDs for debugging
     if (items.length > 0 && items[0]?.Guid) {
       const sampleGuids = asUnknownArray(items[0].Guid).slice(0, 3);
-      this.logger.debug(`Sample GUID structure: ${JSON.stringify(sampleGuids)}`);
+      this.logger.debug(
+        `Sample GUID structure: ${JSON.stringify(sampleGuids)}`,
+      );
     }
-    
+
     return map;
   }
 
@@ -503,6 +508,29 @@ export class PlexServerService {
       .filter((x) => x.ratingKey && x.title);
   }
 
+  async setCollectionSort(params: {
+    baseUrl: string;
+    token: string;
+    collectionRatingKey: string;
+    sort: 'release' | 'alpha' | 'custom';
+  }) {
+    const { baseUrl, token, collectionRatingKey, sort } = params;
+    const sortMap: Record<'release' | 'alpha' | 'custom', number> = {
+      release: 0,
+      alpha: 1,
+      custom: 2,
+    };
+    const sortValue = sortMap[sort];
+
+    // PlexAPI uses: /library/metadata/<collectionRatingKey>/prefs?collectionSort=<0|1|2>
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(collectionRatingKey)}/prefs`,
+      normalizeBaseUrl(baseUrl),
+    );
+    url.searchParams.set('collectionSort', String(sortValue));
+    await this.fetchNoContent(url.toString(), token, 'PUT', 20000);
+  }
+
   async moveCollectionItem(params: {
     baseUrl: string;
     token: string;
@@ -512,14 +540,33 @@ export class PlexServerService {
   }) {
     const { baseUrl, token, collectionRatingKey, itemRatingKey, after } =
       params;
-    const path = after
-      ? `library/collections/${collectionRatingKey}/items/${itemRatingKey}/move?after=${encodeURIComponent(
-          after,
-        )}`
-      : `library/collections/${collectionRatingKey}/items/${itemRatingKey}/move`;
+    const metaPath = after
+      ? `library/metadata/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+          itemRatingKey,
+        )}/move?after=${encodeURIComponent(after)}`
+      : `library/metadata/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+          itemRatingKey,
+        )}/move`;
+    const metaUrl = new URL(metaPath, normalizeBaseUrl(baseUrl)).toString();
 
-    const url = new URL(path, normalizeBaseUrl(baseUrl)).toString();
-    await this.fetchNoContent(url, token, 'PUT', 20000);
+    try {
+      await this.fetchNoContent(metaUrl, token, 'PUT', 20000);
+      return;
+    } catch {
+      // Fallback: some servers accept /library/collections/... paths
+      const collectionsPath = after
+        ? `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+            itemRatingKey,
+          )}/move?after=${encodeURIComponent(after)}`
+        : `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+            itemRatingKey,
+          )}/move`;
+      const collectionsUrl = new URL(
+        collectionsPath,
+        normalizeBaseUrl(baseUrl),
+      ).toString();
+      await this.fetchNoContent(collectionsUrl, token, 'PUT', 20000);
+    }
   }
 
   async createCollection(params: {
@@ -577,13 +624,24 @@ export class PlexServerService {
       itemRatingKey,
     } = params;
     const uri = this.buildMetadataUri(machineIdentifier, itemRatingKey);
-    const url = new URL(
-      `library/collections/${encodeURIComponent(collectionRatingKey)}/items?uri=${encodeURIComponent(
-        uri,
-      )}`,
+    const metaUrl = new URL(
+      `library/metadata/${encodeURIComponent(collectionRatingKey)}/items`,
       normalizeBaseUrl(baseUrl),
-    ).toString();
-    await this.fetchNoContent(url, token, 'PUT', 30000);
+    );
+    metaUrl.searchParams.set('uri', uri);
+
+    try {
+      await this.fetchNoContent(metaUrl.toString(), token, 'PUT', 30000);
+      return;
+    } catch {
+      // Fallback: some servers accept /library/collections/... paths
+      const collectionsUrl = new URL(
+        `library/collections/${encodeURIComponent(collectionRatingKey)}/items`,
+        normalizeBaseUrl(baseUrl),
+      );
+      collectionsUrl.searchParams.set('uri', uri);
+      await this.fetchNoContent(collectionsUrl.toString(), token, 'PUT', 30000);
+    }
   }
 
   async removeItemFromCollection(params: {
@@ -593,8 +651,8 @@ export class PlexServerService {
     itemRatingKey: string;
   }) {
     const { baseUrl, token, collectionRatingKey, itemRatingKey } = params;
-    const url = new URL(
-      `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+    const metaUrl = new URL(
+      `library/metadata/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
         itemRatingKey,
       )}`,
       normalizeBaseUrl(baseUrl),
@@ -602,17 +660,233 @@ export class PlexServerService {
 
     // Best-effort: Plex endpoints vary by server version.
     try {
-      await this.fetchNoContent(url, token, 'DELETE', 30000);
+      await this.fetchNoContent(metaUrl, token, 'DELETE', 30000);
     } catch {
-      // Some servers accept PUT with ?remove=1
-      const fallback = `${url}?remove=1`;
-      await this.fetchNoContent(fallback, token, 'PUT', 30000);
+      // Some servers accept PUT with ?remove=1 (metadata path)
+      try {
+        const fallback = `${metaUrl}?remove=1`;
+        await this.fetchNoContent(fallback, token, 'PUT', 30000);
+        return;
+      } catch {
+        // Fallback: try /library/collections/... paths
+        const collectionsUrl = new URL(
+          `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+            itemRatingKey,
+          )}`,
+          normalizeBaseUrl(baseUrl),
+        ).toString();
+        try {
+          await this.fetchNoContent(collectionsUrl, token, 'DELETE', 30000);
+        } catch {
+          const fallback = `${collectionsUrl}?remove=1`;
+          await this.fetchNoContent(fallback, token, 'PUT', 30000);
+        }
+      }
     }
   }
 
+  async uploadCollectionPoster(params: {
+    baseUrl: string;
+    token: string;
+    collectionRatingKey: string;
+    filepath: string;
+  }): Promise<void> {
+    const { baseUrl, token, collectionRatingKey, filepath } = params;
+    const { readFile } = await import('node:fs/promises');
+    const fileData = await readFile(filepath);
+
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(collectionRatingKey)}/posters`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'X-Plex-Token': token,
+        },
+        body: fileData,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        const ms = Date.now() - startedAt;
+        this.logger.warn(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+        );
+        throw new BadGatewayException(
+          `Plex upload poster failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const ms = Date.now() - startedAt;
+      this.logger.log(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      const ms = Date.now() - startedAt;
+      this.logger.warn(
+        `Plex HTTP POST ${safeUrl} -> FAILED (${ms}ms): ${(err as Error)?.message ?? String(err)}`.trim(),
+      );
+      throw new BadGatewayException(
+        `Plex upload poster failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async uploadCollectionArt(params: {
+    baseUrl: string;
+    token: string;
+    collectionRatingKey: string;
+    filepath: string;
+  }): Promise<void> {
+    const { baseUrl, token, collectionRatingKey, filepath } = params;
+    const { readFile } = await import('node:fs/promises');
+    const fileData = await readFile(filepath);
+
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(collectionRatingKey)}/arts`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'X-Plex-Token': token,
+        },
+        body: fileData,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        const ms = Date.now() - startedAt;
+        this.logger.warn(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+        );
+        throw new BadGatewayException(
+          `Plex upload art failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const ms = Date.now() - startedAt;
+      this.logger.log(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      const ms = Date.now() - startedAt;
+      this.logger.warn(
+        `Plex HTTP POST ${safeUrl} -> FAILED (${ms}ms): ${(err as Error)?.message ?? String(err)}`.trim(),
+      );
+      throw new BadGatewayException(
+        `Plex upload art failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async setCollectionHubVisibility(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    collectionRatingKey: string;
+    promotedToRecommended: number;
+    promotedToOwnHome: number;
+    promotedToSharedHome?: number;
+  }): Promise<void> {
+    const {
+      baseUrl,
+      token,
+      librarySectionKey,
+      collectionRatingKey,
+      promotedToRecommended,
+      promotedToOwnHome,
+      promotedToSharedHome = 0,
+    } = params;
+
+    const url = new URL(
+      `hubs/sections/${encodeURIComponent(librarySectionKey)}/manage`,
+      normalizeBaseUrl(baseUrl),
+    );
+    url.searchParams.set('metadataItemId', collectionRatingKey);
+    url.searchParams.set(
+      'promotedToRecommended',
+      String(promotedToRecommended),
+    );
+    url.searchParams.set('promotedToOwnHome', String(promotedToOwnHome));
+    url.searchParams.set('promotedToSharedHome', String(promotedToSharedHome));
+
+    await this.fetchNoContent(url.toString(), token, 'POST', 20000);
+  }
+
+  async getCollectionHubIdentifier(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    collectionRatingKey: string;
+  }): Promise<string | null> {
+    const { baseUrl, token, librarySectionKey, collectionRatingKey } = params;
+    const url = new URL(
+      `hubs/sections/${encodeURIComponent(librarySectionKey)}/manage`,
+      normalizeBaseUrl(baseUrl),
+    );
+    url.searchParams.set('metadataItemId', collectionRatingKey);
+
+    const xml = asPlexXml(await this.fetchXml(url.toString(), token, 20000));
+    const container = xml.MediaContainer;
+    if (!container) return null;
+
+    // Hub endpoint returns items directly (not under Metadata/Video/Directory)
+    // Check for common item keys
+    const items = asUnknownArray(
+      container.Hub ?? container.Directory ?? container.Metadata ?? [],
+    );
+
+    if (items.length === 0) return null;
+    const first = items[0];
+    if (!first || typeof first !== 'object') return null;
+
+    // Plex XML attributes are stored directly on the object (XMLParser with attributeNamePrefix: '')
+    const identifier = (first as Record<string, unknown>)['identifier'];
+    return typeof identifier === 'string' ? identifier : null;
+  }
+
+  async moveHubRow(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    identifier: string;
+    after?: string | null;
+  }): Promise<void> {
+    const { baseUrl, token, librarySectionKey, identifier, after } = params;
+    const url = new URL(
+      `hubs/sections/${encodeURIComponent(librarySectionKey)}/manage/${encodeURIComponent(identifier)}/move`,
+      normalizeBaseUrl(baseUrl),
+    );
+    if (after) {
+      url.searchParams.set('after', after);
+    }
+
+    await this.fetchNoContent(url.toString(), token, 'PUT', 20000);
+  }
+
   private buildMetadataUri(machineIdentifier: string, ratingKey: string) {
-    // Common Plex URI format used for playlist/collection modifications.
-    return `server://${machineIdentifier}/com.plexapp.library.library/metadata/${ratingKey}`;
+    // Match Python plexapi format: server://{machineIdentifier}/com.plexapp.plugins.library/library/metadata/{ratingKey}
+    return `server://${machineIdentifier}/com.plexapp.plugins.library/library/metadata/${ratingKey}`;
   }
 
   private async fetchNoContent(
@@ -648,7 +922,9 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.log(`Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`);
+      this.logger.log(
+        `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
+      );
     } finally {
       clearTimeout(timeout);
     }

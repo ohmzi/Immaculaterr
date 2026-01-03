@@ -139,15 +139,23 @@ export function Navigation() {
       if (response.ok) {
         // Clear everything like logout
         queryClient.clear();
-        try { localStorage.clear(); } catch (e) {}
-        try { sessionStorage.clear(); } catch (e) {}
+        try {
+          localStorage.clear();
+        } catch (e) {
+          void e;
+        }
+        try {
+          sessionStorage.clear();
+        } catch (e) {
+          void e;
+        }
 
         // Reload to force fresh state
         window.location.href = '/';
       } else {
         alert('Failed to reset account. Please try logging out and back in.');
       }
-    } catch (error) {
+    } catch {
       alert('Network error while resetting account.');
     }
   };

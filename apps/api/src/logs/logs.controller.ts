@@ -6,7 +6,10 @@ import { listServerLogs } from './server-logs.store';
 @ApiTags('logs')
 export class LogsController {
   @Get()
-  getLogs(@Query('afterId') afterIdRaw?: string, @Query('limit') limitRaw?: string) {
+  getLogs(
+    @Query('afterId') afterIdRaw?: string,
+    @Query('limit') limitRaw?: string,
+  ) {
     const afterId = afterIdRaw ? Number.parseInt(afterIdRaw, 10) : undefined;
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
     const data = listServerLogs({
@@ -16,5 +19,3 @@ export class LogsController {
     return { ok: true, ...data };
   }
 }
-
-

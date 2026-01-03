@@ -5,5 +5,3 @@ import { LogsController } from './logs.controller';
   controllers: [LogsController],
 })
 export class LogsModule {}
-
-

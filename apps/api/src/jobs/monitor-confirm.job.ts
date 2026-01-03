@@ -110,7 +110,7 @@ export class MonitorConfirmJob {
       token: plexToken,
       movieLibraryName,
     });
-    await ctx.info('plex: TMDB id set built', { 
+    await ctx.info('plex: TMDB id set built', {
       size: plexTmdbIds.size,
       sample: Array.from(plexTmdbIds).slice(0, 10),
     });
@@ -132,7 +132,8 @@ export class MonitorConfirmJob {
       const tmdbId = toInt(movie.tmdbId);
       if (!tmdbId) {
         await ctx.warn('radarr: movie missing tmdbId (skipping)', {
-          title: typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
+          title:
+            typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
           id: movie.id,
         });
         continue;
@@ -140,7 +141,8 @@ export class MonitorConfirmJob {
 
       if (!plexTmdbIds.has(tmdbId)) {
         await ctx.debug('radarr: movie not in Plex (keep monitored)', {
-          title: typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
+          title:
+            typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
           tmdbId,
         });
         continue;
@@ -168,16 +170,22 @@ export class MonitorConfirmJob {
         movie,
         monitored: false,
       });
-      
+
       if (success) {
         radarrUnmonitored += 1;
-        await ctx.info('radarr: successfully unmonitored movie', { title, tmdbId });
-      } else {
-        radarrSkippedPathConflicts += 1;
-        await ctx.warn('radarr: skipped unmonitor due to path conflict (duplicate path in Radarr)', {
+        await ctx.info('radarr: successfully unmonitored movie', {
           title,
           tmdbId,
         });
+      } else {
+        radarrSkippedPathConflicts += 1;
+        await ctx.warn(
+          'radarr: skipped unmonitor due to path conflict (duplicate path in Radarr)',
+          {
+            title,
+            tmdbId,
+          },
+        );
       }
     }
 
@@ -196,7 +204,7 @@ export class MonitorConfirmJob {
       token: plexToken,
       tvLibraryName,
     });
-    await ctx.info('plex: TVDB show map built', { 
+    await ctx.info('plex: TVDB show map built', {
       size: plexTvdbMap.size,
       sampleTvdbIds: Array.from(plexTvdbMap.keys()).slice(0, 10),
     });
@@ -296,11 +304,14 @@ export class MonitorConfirmJob {
             seasonMissing += 1;
             hasMissing = true;
             if (isMonitored) {
-              await ctx.debug('sonarr: episode missing from Plex (keep monitored)', {
-                title,
-                season,
-                episode: epNum,
-              });
+              await ctx.debug(
+                'sonarr: episode missing from Plex (keep monitored)',
+                {
+                  title,
+                  season,
+                  episode: epNum,
+                },
+              );
             }
           }
         }

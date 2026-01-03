@@ -242,7 +242,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   const saveOptionalService = useMutation({
     mutationFn: async (service: 'radarr' | 'sonarr' | 'google' | 'openai' | 'overseerr') => {
-      const updates: any = {};
+      const updates: Parameters<typeof putSettings>[0] = {};
 
       if (service === 'radarr' && radarrBaseUrl && radarrApiKey) {
         updates.settings = { radarr: { baseUrl: radarrBaseUrl.trim() } };

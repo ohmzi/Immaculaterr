@@ -166,34 +166,148 @@ export function JobRunDetailPage() {
                     <div className="mb-3 text-sm font-medium text-white/85">Summary</div>
 
                     {run.summary && typeof run.summary === 'object' ? (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-6">
-                        {(run.summary as any).radarr && (
-                          <div>
-                            <div className="text-sm font-semibold text-white mb-3">Radarr</div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-2xl font-bold text-white">
-                                {(run.summary as any).radarr.unmonitored ?? 0}
-                              </span>
-                              <span className="text-white/70">
-                                unmonitored {((run.summary as any).radarr.unmonitored ?? 0) === 1 ? 'movie' : 'movies'}
-                              </span>
+                      (() => {
+                        const s = run.summary as Record<string, unknown>;
+
+                        const radarrRaw = s.radarr;
+                        const sonarrRaw = s.sonarr;
+
+                        const radarr =
+                          radarrRaw &&
+                          typeof radarrRaw === 'object' &&
+                          !Array.isArray(radarrRaw)
+                            ? (radarrRaw as Record<string, unknown>)
+                            : null;
+
+                        const sonarr =
+                          sonarrRaw &&
+                          typeof sonarrRaw === 'object' &&
+                          !Array.isArray(sonarrRaw)
+                            ? (sonarrRaw as Record<string, unknown>)
+                            : null;
+
+                        const hasMonitorConfirm = Boolean(radarr || sonarr);
+
+                        const radarrUnmonitored =
+                          radarr && typeof radarr.unmonitored === 'number'
+                            ? radarr.unmonitored
+                            : 0;
+
+                        const sonarrEpisodesUnmonitored =
+                          sonarr && typeof sonarr.episodesUnmonitored === 'number'
+                            ? sonarr.episodesUnmonitored
+                            : 0;
+
+                        const collectionsRaw = s.collections;
+                        const collections = Array.isArray(collectionsRaw)
+                          ? collectionsRaw.filter(
+                              (c): c is Record<string, unknown> =>
+                                Boolean(c) &&
+                                typeof c === 'object' &&
+                                !Array.isArray(c),
+                            )
+                          : null;
+
+                        if (hasMonitorConfirm) {
+                          return (
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-6">
+                              {radarr && (
+                                <div>
+                                  <div className="text-sm font-semibold text-white mb-3">Radarr</div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-bold text-white">
+                                      {radarrUnmonitored}
+                                    </span>
+                                    <span className="text-white/70">
+                                      unmonitored {radarrUnmonitored === 1 ? 'movie' : 'movies'}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              {sonarr && (
+                                <div>
+                                  <div className="text-sm font-semibold text-white mb-3">Sonarr</div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-bold text-white">
+                                      {sonarrEpisodesUnmonitored}
+                                    </span>
+                                    <span className="text-white/70">
+                                      unmonitored {sonarrEpisodesUnmonitored === 1 ? 'episode' : 'episodes'}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
-                        {(run.summary as any).sonarr && (
-                          <div>
-                            <div className="text-sm font-semibold text-white mb-3">Sonarr</div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-2xl font-bold text-white">
-                                {(run.summary as any).sonarr.episodesUnmonitored ?? 0}
-                              </span>
-                              <span className="text-white/70">
-                                unmonitored {((run.summary as any).sonarr.episodesUnmonitored ?? 0) === 1 ? 'episode' : 'episodes'}
-                              </span>
+                          );
+                        }
+
+                        if (collections) {
+                          return (
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
+                              {collections.map((c, idx) => {
+                                const name = String(c?.collectionName ?? 'Collection');
+                                const jsonFile = c?.jsonFile ? String(c.jsonFile) : null;
+                                const jsonFound = typeof c?.jsonFound === 'boolean' ? c.jsonFound : null;
+                                const removed = Number.isFinite(Number(c?.removed)) ? Number(c.removed) : 0;
+                                const added = Number.isFinite(Number(c?.added)) ? Number(c.added) : 0;
+                                const moved = Number.isFinite(Number(c?.moved)) ? Number(c.moved) : 0;
+                                const skipped = Number.isFinite(Number(c?.skipped)) ? Number(c.skipped) : 0;
+                                const resolved = Number.isFinite(Number(c?.resolved)) ? Number(c.resolved) : null;
+
+                                return (
+                                  <div
+                                    key={`${name}-${idx}`}
+                                    className="rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-5"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white truncate">{name}</div>
+                                        {jsonFile ? (
+                                          <div className="mt-1 text-xs text-white/60 font-mono truncate">
+                                            {jsonFile}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                      {jsonFound === false ? (
+                                        <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200">
+                                          JSON missing
+                                        </span>
+                                      ) : null}
+                                    </div>
+
+                                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-white/70 sm:grid-cols-4">
+                                      <div>
+                                        <span className="text-white font-semibold">{removed}</span> removed
+                                      </div>
+                                      <div>
+                                        <span className="text-white font-semibold">{added}</span> added
+                                      </div>
+                                      <div>
+                                        <span className="text-white font-semibold">{moved}</span> moved
+                                      </div>
+                                      <div>
+                                        <span className="text-white font-semibold">{skipped}</span> skipped
+                                      </div>
+                                    </div>
+
+                                    {resolved !== null ? (
+                                      <div className="mt-3 text-xs text-white/60">
+                                        Resolved items: <span className="text-white/80 font-semibold">{resolved}</span>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
                             </div>
+                          );
+                        }
+
+                        return (
+                          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+                            Summary is available for this job, but no renderer is configured for it.
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()
                     ) : isRunning ? (
                       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6">
                         <motion.div

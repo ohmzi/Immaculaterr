@@ -101,7 +101,8 @@ export class IntegrationsController {
 
     if (id === 'radarr') {
       const baseUrlRaw =
-        pickString(bodyObj, 'baseUrl') || pickString(settings, 'radarr.baseUrl');
+        pickString(bodyObj, 'baseUrl') ||
+        pickString(settings, 'radarr.baseUrl');
       const apiKey = pickString(secrets, 'radarr.apiKey');
       if (!baseUrlRaw)
         throw new BadRequestException('Radarr baseUrl is not set');
@@ -113,7 +114,8 @@ export class IntegrationsController {
 
     if (id === 'sonarr') {
       const baseUrlRaw =
-        pickString(bodyObj, 'baseUrl') || pickString(settings, 'sonarr.baseUrl');
+        pickString(bodyObj, 'baseUrl') ||
+        pickString(settings, 'sonarr.baseUrl');
       const apiKey = pickString(secrets, 'sonarr.apiKey');
       if (!baseUrlRaw)
         throw new BadRequestException('Sonarr baseUrl is not set');

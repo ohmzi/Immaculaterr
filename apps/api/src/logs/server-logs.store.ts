@@ -1,3 +1,5 @@
+import { inspect } from 'node:util';
+
 export type ServerLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type ServerLogEntry = {
@@ -13,7 +15,10 @@ export type ServerLogEntry = {
 const MAX_ENTRIES = 5000;
 
 let nextId = 1;
-const ring: Array<ServerLogEntry | null> = Array.from({ length: MAX_ENTRIES }, () => null);
+const ring: Array<ServerLogEntry | null> = Array.from(
+  { length: MAX_ENTRIES },
+  () => null,
+);
 let writeIndex = 0;
 let count = 0;
 
@@ -21,10 +26,24 @@ function normalizeMessage(input: unknown): string {
   if (input instanceof Error) return input.stack ?? input.message;
   if (typeof input === 'string') return input;
   if (input === null || input === undefined) return '';
-  try {
-    return JSON.stringify(input);
-  } catch {
+  if (
+    typeof input === 'number' ||
+    typeof input === 'boolean' ||
+    typeof input === 'bigint'
+  ) {
     return String(input);
+  }
+  if (typeof input === 'symbol') {
+    return input.description ? `Symbol(${input.description})` : 'Symbol()';
+  }
+  try {
+    const json = JSON.stringify(input);
+    return typeof json === 'string'
+      ? json
+      : inspect(input, { depth: 6, maxArrayLength: 50 });
+  } catch {
+    // Handles circular references and avoids "[object Object]" stringification.
+    return inspect(input, { depth: 6, maxArrayLength: 50 });
   }
 }
 
@@ -42,16 +61,17 @@ export function addServerLog(params: {
     id: nextId++,
     time: new Date().toISOString(),
     level: params.level,
-    message: combined.length > 10_000 ? `${combined.slice(0, 10_000)}…` : combined,
+    message:
+      combined.length > 10_000 ? `${combined.slice(0, 10_000)}…` : combined,
   };
   writeIndex = (writeIndex + 1) % MAX_ENTRIES;
   count = Math.min(MAX_ENTRIES, count + 1);
 }
 
-export function listServerLogs(params?: {
-  afterId?: number;
-  limit?: number;
-}): { logs: ServerLogEntry[]; latestId: number } {
+export function listServerLogs(params?: { afterId?: number; limit?: number }): {
+  logs: ServerLogEntry[];
+  latestId: number;
+} {
   const latestId = nextId - 1;
   const limit = Math.max(1, Math.min(MAX_ENTRIES, params?.limit ?? 200));
   const afterId = params?.afterId ?? null;
@@ -71,5 +91,3 @@ export function listServerLogs(params?: {
     afterId === null ? ordered : ordered.filter((l) => l.id > afterId);
   return { logs: filtered.slice(-limit), latestId };
 }
-
-

@@ -70,8 +70,9 @@ export class PlexController {
       throw new BadRequestException('baseUrl must be a valid http(s) URL');
     }
 
-    const machineIdentifier =
-      await this.plexServerService.getMachineIdentifier({ baseUrl, token });
+    const machineIdentifier = await this.plexServerService.getMachineIdentifier(
+      { baseUrl, token },
+    );
 
     return { ok: true, machineIdentifier };
   }

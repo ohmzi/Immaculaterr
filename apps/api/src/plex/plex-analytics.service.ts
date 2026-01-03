@@ -64,7 +64,9 @@ function startOfMonthUtc(tsSeconds: number): Date {
 }
 
 function addMonthsUtc(date: Date, months: number): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1),
+  );
 }
 
 function buildCumulativeMonthlySeries(params: {
@@ -74,7 +76,7 @@ function buildCumulativeMonthlySeries(params: {
   const all = [...params.movieAddedAtSeconds, ...params.tvAddedAtSeconds];
   if (!all.length) return [];
 
-  let minTs = all[0]!;
+  let minTs = all[0];
   for (const ts of all) {
     if (ts < minTs) minTs = ts;
   }
@@ -139,7 +141,8 @@ export class PlexAnalyticsService {
   ) {}
 
   async getLibraryGrowth(userId: string): Promise<PlexLibraryGrowthResponse> {
-    const { settings, secrets } = await this.settings.getInternalSettings(userId);
+    const { settings, secrets } =
+      await this.settings.getInternalSettings(userId);
 
     const baseUrlRaw = pickString(settings, 'plex.baseUrl');
     const token = pickString(secrets, 'plex.token');
@@ -147,7 +150,13 @@ export class PlexAnalyticsService {
       return {
         ok: true,
         series: [],
-        summary: { startMonth: null, endMonth: null, movies: 0, tv: 0, total: 0 },
+        summary: {
+          startMonth: null,
+          endMonth: null,
+          movies: 0,
+          tv: 0,
+          total: 0,
+        },
       };
     }
 
@@ -172,7 +181,13 @@ export class PlexAnalyticsService {
       const data: PlexLibraryGrowthResponse = {
         ok: true,
         series: [],
-        summary: { startMonth: null, endMonth: null, movies: 0, tv: 0, total: 0 },
+        summary: {
+          startMonth: null,
+          endMonth: null,
+          movies: 0,
+          tv: 0,
+          total: 0,
+        },
       };
       this.cache.set(userId, {
         signature,
@@ -224,5 +239,3 @@ export class PlexAnalyticsService {
     return data;
   }
 }
-
-

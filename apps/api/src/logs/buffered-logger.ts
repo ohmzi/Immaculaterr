@@ -27,5 +27,3 @@ export class BufferedLogger extends ConsoleLogger {
     addServerLog({ level: 'debug', message });
   }
 }
-
-
