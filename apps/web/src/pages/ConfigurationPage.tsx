@@ -560,7 +560,7 @@ export function ConfigurationPage() {
   const inputBaseClass =
     'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
   const inputClass = `w-full ${inputBaseClass}`;
-  const inputFlexClass = `flex-1 ${inputBaseClass}`;
+  const inputFlexClass = `flex-1 min-w-0 ${inputBaseClass}`;
   const testButtonClass =
     'px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium';
   const toggleTrackClass = (enabled: boolean) =>
@@ -632,7 +632,7 @@ export function ConfigurationPage() {
                   </div>
                   <div>
                     <label className={labelClass}>Token</label>
-                    <div className="flex gap-2">
+                    <div className="flex min-w-0 gap-2">
                       <input
                         type="password"
                         value={plexToken}
@@ -643,7 +643,7 @@ export function ConfigurationPage() {
                       <button
                         onClick={handlePlexOAuth}
                         disabled={isPlexOAuthLoading}
-                        className="px-4 py-3 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-xl active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        className="shrink-0 px-4 py-3 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-xl active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         title="Login with Plex"
                       >
                         <LogIn size={18} />
