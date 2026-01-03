@@ -7,6 +7,19 @@
   -webkit-touch-callout: none;
 }
 
+/* Remove the default iOS/Android tap highlight + add our own focus style */
+:where(button, a) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Premium focus ring (keyboard only) */
+:where(button, a):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(11, 12, 15, 0.55),
+    0 0 0 4px rgba(250, 204, 21, 0.65);
+}
+
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;

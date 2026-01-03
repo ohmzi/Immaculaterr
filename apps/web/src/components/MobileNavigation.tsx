@@ -128,7 +128,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                 {navItems[selectedIndex].dropdown!.map((item, idx) => (
                   <button
                     key={idx}
-                    className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:scale-[0.99]"
+                    className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99]"
                     onClick={() => {
                       setSelectedIndex(null);
                       navigate(item.to);
@@ -222,7 +222,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     buttonRefs.current[index] = el;
                   }}
                   onClick={() => handleButtonClick(index)}
-                  className="relative z-20 px-4 py-2.5 text-xs font-medium text-white/70 transition-colors duration-200 hover:text-white"
+                  className="relative z-20 rounded-full px-4 py-2.5 text-xs font-medium text-white/70 transition-all duration-200 hover:text-white active:bg-white/10 active:text-white active:scale-[0.98]"
                 >
                   <span className={selectedIndex === index ? 'text-white' : ''}>{item.label}</span>
                 </button>
@@ -294,7 +294,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     setIsHelpOpen(false);
                     setIsSearchOpen(true);
                   }}
-                  className="rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+                  className="rounded-full p-2 text-white/80 transition-all hover:bg-white/10 hover:text-white active:bg-white/15 active:scale-95"
                   aria-label="Search"
                 >
                   <Search size={20} />
@@ -309,7 +309,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                 setIsSearchOpen(false);
                 setIsHelpOpen((v) => !v);
               }}
-              className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
+              className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
             >
               Help
             </button>
@@ -348,7 +348,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   <div className="space-y-2">
                     <button
                       onClick={handleResetAccount}
-                      className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 rounded-xl transition-colors font-medium"
+                      className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium"
                     >
                       Reset Account to Fresh Setup
                     </button>
@@ -360,7 +360,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                         setIsHelpOpen(false);
                         onLogout();
                       }}
-                      className="w-full px-4 py-2.5 text-left text-sm text-red-300 hover:bg-white/10 rounded-xl transition-colors flex items-center gap-2 font-medium"
+                      className="w-full px-4 py-2.5 text-left text-sm text-red-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all flex items-center gap-2 font-medium"
                     >
                       <LogOut size={16} />
                       Logout

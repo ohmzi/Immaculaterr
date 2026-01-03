@@ -1,49 +1,58 @@
-import { fetchJson } from '@/api/http';
+import { ApiError, fetchJson } from '@/api/http';
+
+export type AuthUser = {
+  id: string;
+  username: string;
+};
 
 export type BootstrapResponse = {
   needsAdminSetup: boolean;
+  onboardingComplete: boolean;
 };
 
-export type MeResponse = {
-  user: { id: string; username: string } | null;
-};
+export type MeResponse = { user: AuthUser };
+export type AuthOkResponse = { ok: true; user: AuthUser };
+export type LogoutResponse = { ok: true };
 
-export async function getBootstrap() {
+export function bootstrap() {
   return fetchJson<BootstrapResponse>('/api/auth/bootstrap');
 }
 
-export async function getMe(): Promise<MeResponse> {
-  const res = await fetch('/api/auth/me', { credentials: 'include' });
-  if (res.status === 401) return { user: null };
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `HTTP ${res.status}`);
+export function me() {
+  return fetchJson<MeResponse>('/api/auth/me');
+}
+
+export async function getMeOrNull(): Promise<AuthUser | null> {
+  try {
+    const res = await me();
+    return res.user;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
   }
-  return (await res.json()) as MeResponse;
 }
 
-export async function login(params: { username: string; password: string }) {
-  return fetchJson<{ ok: true; user: { id: string; username: string } }>('/api/auth/login', {
+export function register(params: { username: string; password: string }) {
+  return fetchJson<AuthOkResponse>('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
 }
 
-export async function registerAdmin(params: { username: string; password: string }) {
-  return fetchJson<{ ok: true; user: { id: string; username: string } }>('/api/auth/register', {
+export function login(params: { username: string; password: string }) {
+  return fetchJson<AuthOkResponse>('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
 }
 
-export async function logout() {
-  return fetchJson<{ ok: true }>('/api/auth/logout', { method: 'POST' });
+export function logout() {
+  return fetchJson<LogoutResponse>('/api/auth/logout', { method: 'POST' });
 }
 
-export async function resetDev() {
+export function resetDev() {
   return fetchJson<{ ok: true }>('/api/auth/reset-dev', { method: 'POST' });
 }
-
 

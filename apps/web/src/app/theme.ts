@@ -1,34 +1,40 @@
-export type Theme = 'light' | 'dark';
+export type ThemeMode = 'light' | 'dark' | 'system';
 
-const STORAGE_KEY = 'tcp_theme';
+const THEME_STORAGE_KEY = 'tcp_theme';
 
-export function getStoredTheme(): Theme | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw === 'dark' || raw === 'light' ? raw : null;
-  } catch {
-    return null;
-  }
+function readSystemPrefersDark(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-export function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle('dark', theme === 'dark');
-}
-
-export function setTheme(theme: Theme) {
+export function getInitialTheme(): ThemeMode {
+  if (typeof window === 'undefined') return 'system';
   try {
-    localStorage.setItem(STORAGE_KEY, theme);
+    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (raw === 'light' || raw === 'dark' || raw === 'system') return raw;
   } catch {
     // ignore
   }
-  applyTheme(theme);
+  return 'system';
 }
 
-export function getInitialTheme(): Theme {
-  const stored = getStoredTheme();
-  if (stored) return stored;
-  // Default to dark for the "app-like" look (matches your inspiration screenshots).
-  return 'dark';
+export function applyTheme(mode: ThemeMode) {
+  if (typeof document === 'undefined') return;
+
+  const isDark = mode === 'dark' || (mode === 'system' && readSystemPrefersDark());
+  document.documentElement.classList.toggle('dark', isDark);
+
+  // Helps native form controls + scrollbars match our theme.
+  document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
 }
 
+export function setTheme(mode: ThemeMode) {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch {
+    // ignore
+  }
+  applyTheme(mode);
+}
 

@@ -14,6 +14,8 @@ export type CuratedCollectionItem = {
   title: string;
 };
 
+export type ExportCollectionItem = { ratingKey: string; title: string };
+
 export function listCollections() {
   return fetchJson<{ collections: CuratedCollection[] }>('/api/collections');
 }
@@ -27,15 +29,19 @@ export function createCollection(name: string) {
 }
 
 export function seedDefaultCollections() {
-  return fetchJson<{ ok: true; collections: CuratedCollection[] }>('/api/collections/seed-defaults', {
-    method: 'POST',
-  });
+  return fetchJson<{ ok: true; collections: CuratedCollection[] }>(
+    '/api/collections/seed-defaults',
+    {
+      method: 'POST',
+    },
+  );
 }
 
 export function deleteCollection(collectionId: string) {
-  return fetchJson<{ ok: true }>(`/api/collections/${encodeURIComponent(collectionId)}`, {
-    method: 'DELETE',
-  });
+  return fetchJson<{ ok: true }>(
+    `/api/collections/${encodeURIComponent(collectionId)}`,
+    { method: 'DELETE' },
+  );
 }
 
 export function listCollectionItems(collectionId: string) {
@@ -49,24 +55,25 @@ export function addCollectionItem(params: {
   title?: string;
   ratingKey?: string;
 }) {
-  const { collectionId, title, ratingKey } = params;
+  const { collectionId, ...body } = params;
   return fetchJson<{ ok: true; item: CuratedCollectionItem }>(
     `/api/collections/${encodeURIComponent(collectionId)}/items`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, ratingKey }),
+      body: JSON.stringify(body),
     },
   );
 }
 
-export function deleteCollectionItem(params: { collectionId: string; itemId: number }) {
+export function deleteCollectionItem(params: {
+  collectionId: string;
+  itemId: number;
+}) {
   const { collectionId, itemId } = params;
   return fetchJson<{ ok: true }>(
     `/api/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(String(itemId))}`,
-    {
-      method: 'DELETE',
-    },
+    { method: 'DELETE' },
   );
 }
 
@@ -83,9 +90,8 @@ export function importCollectionJson(params: { collectionId: string; json: strin
 }
 
 export function exportCollectionJson(collectionId: string) {
-  return fetchJson<{ ok: true; items: Array<{ ratingKey: string; title: string }> }>(
+  return fetchJson<{ ok: true; items: ExportCollectionItem[] }>(
     `/api/collections/${encodeURIComponent(collectionId)}/export-json`,
   );
 }
-
 

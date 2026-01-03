@@ -1,15 +1,26 @@
 import { fetchJson } from '@/api/http';
 
-export type IntegrationTestResponse = {
+export type TestSavedIntegrationResponse = {
   ok: true;
-  result?: unknown;
-  summary?: unknown;
+  // Backend returns different shapes per integration (result/summary/etc).
+  [key: string]: unknown;
 };
 
-export function testSavedIntegration(integrationId: string) {
-  return fetchJson<IntegrationTestResponse>(`/api/integrations/test/${integrationId}`, {
-    method: 'POST',
-  });
+export function testSavedIntegration(
+  integrationId: string,
+  body?: Record<string, unknown>,
+) {
+  return fetchJson<TestSavedIntegrationResponse>(
+    `/api/integrations/test/${encodeURIComponent(integrationId)}`,
+    {
+      method: 'POST',
+      ...(body
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }
+        : {}),
+    },
+  );
 }
-
 

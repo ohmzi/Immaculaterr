@@ -80,11 +80,17 @@ export function LogsPage() {
               ) : logs.length ? (
                 <div className="max-h-[560px] overflow-auto rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                   <table className="w-full text-sm">
-                    <thead className="bg-white/5 text-left text-xs text-white/60 sticky top-0">
+                    <thead className="text-left text-xs text-white/60">
                       <tr>
-                        <th className="px-4 py-3 whitespace-nowrap">Timestamp</th>
-                        <th className="px-4 py-3 whitespace-nowrap">Level</th>
-                        <th className="px-4 py-3">Message</th>
+                        <th className="sticky top-0 z-20 border-b border-white/10 bg-[#0b0c0f] px-4 py-3 whitespace-nowrap">
+                          Timestamp
+                        </th>
+                        <th className="sticky top-0 z-20 border-b border-white/10 bg-[#0b0c0f] px-4 py-3 whitespace-nowrap">
+                          Level
+                        </th>
+                        <th className="sticky top-0 z-20 border-b border-white/10 bg-[#0b0c0f] px-4 py-3">
+                          Message
+                        </th>
                       </tr>
                     </thead>
                     <tbody>

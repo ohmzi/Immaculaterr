@@ -1,172 +1,159 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleAlert, Loader2, Lock, User } from 'lucide-react';
+import { CircleAlert, Loader2, LogIn, UserPlus } from 'lucide-react';
 
-import { getBootstrap, getMe, login, registerAdmin } from '@/api/auth';
+import { bootstrap, getMeOrNull, login, register } from '@/api/auth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-function AuthShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
-          <div className="absolute -right-24 top-1/3 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
-        </div>
-        <div className="relative w-full max-w-md">{children}</div>
-      </div>
-    </div>
-  );
-}
-
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('');
 
   const bootstrapQuery = useQuery({
     queryKey: ['auth', 'bootstrap'],
-    queryFn: getBootstrap,
-    staleTime: 60_000,
+    queryFn: bootstrap,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
     retry: false,
   });
 
   const meQuery = useQuery({
     queryKey: ['auth', 'me'],
-    queryFn: getMe,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    queryFn: getMeOrNull,
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
     retry: false,
   });
 
-  const needsAdminSetup = Boolean(bootstrapQuery.data?.needsAdminSetup);
-  const user = meQuery.data?.user ?? null;
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const mode = useMemo<'register' | 'login'>(() => {
+    if (bootstrapQuery.data?.needsAdminSetup) return 'register';
+    return 'login';
+  }, [bootstrapQuery.data?.needsAdminSetup]);
 
   const authMutation = useMutation({
     mutationFn: async () => {
-      if (needsAdminSetup) {
-        return await registerAdmin({ username, password });
-      }
-      return await login({ username, password });
+      const u = username.trim();
+      const p = password;
+      if (mode === 'register') return register({ username: u, password: p });
+      return login({ username: u, password: p });
     },
     onSuccess: async () => {
       setPassword('');
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'bootstrap'] });
       await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      await queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
   });
 
-  const modeLabel = useMemo(
-    () => (needsAdminSetup ? 'Create admin account' : 'Sign in'),
-    [needsAdminSetup],
-  );
-
+  // Loading states
   if (bootstrapQuery.isLoading || meQuery.isLoading) {
     return (
-      <AuthShell>
-        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading…
         </div>
-      </AuthShell>
+      </div>
     );
   }
 
+  // If we are authenticated, render the app.
+  if (meQuery.data) return <>{children}</>;
+
+  // Errors (bootstrap errors are important; auth/me errors other than 401 are handled in getMeOrNull).
   if (bootstrapQuery.error) {
     return (
-      <AuthShell>
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="flex items-start gap-2 text-sm text-destructive max-w-lg">
           <CircleAlert className="mt-0.5 h-4 w-4" />
           <div>{(bootstrapQuery.error as Error).message}</div>
         </div>
-      </AuthShell>
+      </div>
     );
   }
 
-  if (user) return <>{children}</>;
+  const title = mode === 'register' ? 'Create admin account' : 'Sign in';
+  const subtitle =
+    mode === 'register'
+      ? 'First-time setup: create the initial admin user to continue.'
+      : 'Sign in to continue to the dashboard.';
 
   return (
-    <AuthShell>
-      <Card className="shadow-sm">
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-              TC
-            </span>
-            <span>{modeLabel}</span>
+          <CardTitle className="text-xl flex items-center gap-2">
+            {mode === 'register' ? <UserPlus className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+            {title}
           </CardTitle>
-          <CardDescription>
-            {needsAdminSetup
-              ? 'First run: create the admin account to protect your API keys and settings.'
-              : 'Login is required to access settings, jobs, and integrations.'}
-          </CardDescription>
+          <CardDescription>{subtitle}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2">
-            <Label>Username</Label>
-            <div className="relative">
-              <User className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+
+        <CardContent>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              authMutation.mutate();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
               <Input
+                id="username"
+                autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                className="pl-9"
+                placeholder="admin"
               />
             </div>
-          </div>
 
-          <div className="grid gap-2">
-            <Label>Password</Label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
               <Input
+                id="password"
                 type="password"
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete={needsAdminSetup ? 'new-password' : 'current-password'}
-                placeholder={needsAdminSetup ? 'At least 10 characters' : 'Your password'}
-                className="pl-9"
               />
             </div>
-          </div>
 
-          {authMutation.error ? (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-              <CircleAlert className="mt-0.5 h-4 w-4" />
-              <div>{(authMutation.error as Error).message}</div>
-            </div>
-          ) : null}
+            {authMutation.error ? (
+              <div className="flex items-start gap-2 text-sm text-destructive">
+                <CircleAlert className="mt-0.5 h-4 w-4" />
+                <div>{(authMutation.error as Error).message}</div>
+              </div>
+            ) : null}
 
-          <Button
-            className="w-full"
-            onClick={() => authMutation.mutate()}
-            disabled={authMutation.isPending || !username.trim() || !password.trim()}
-          >
-            {authMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Please wait…
-              </>
-            ) : needsAdminSetup ? (
-              'Create admin + sign in'
-            ) : (
-              'Sign in'
-            )}
-          </Button>
-
-          <div className="text-xs text-muted-foreground">
-            Session is stored in a <span className="font-medium">session cookie</span> (clears when
-            the browser closes). API keys are encrypted server-side and never shown again after
-            saving.
-          </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={authMutation.isPending || !username.trim() || !password}
+            >
+              {authMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Please wait…
+                </>
+              ) : mode === 'register' ? (
+                'Create account'
+              ) : (
+                'Sign in'
+              )}
+            </Button>
+          </form>
         </CardContent>
+
+        <CardFooter className="text-xs text-muted-foreground">
+          Authentication is session-based; your browser stores a secure httpOnly cookie.
+        </CardFooter>
       </Card>
-    </AuthShell>
+    </div>
   );
 }
-
 
