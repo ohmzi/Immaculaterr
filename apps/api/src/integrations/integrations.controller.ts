@@ -91,43 +91,10 @@ export class IntegrationsController {
         token,
       });
 
-      const movieLibraryName =
-        pickString(bodyObj, 'movieLibraryName') ||
-        pickString(settings, 'plex.movieLibraryName') ||
-        'Movies';
-      const tvLibraryName =
-        pickString(bodyObj, 'tvLibraryName') ||
-        pickString(settings, 'plex.tvLibraryName') ||
-        'TV Shows';
-
-      const sections = await this.plexServer.getSections({ baseUrl, token });
-      const find = (title: string) =>
-        sections.find((s) => s.title.toLowerCase() === title.toLowerCase());
-
-      const movie = movieLibraryName ? find(movieLibraryName) : undefined;
-      if (movieLibraryName && !movie) {
-        throw new BadRequestException({
-          code: 'PLEX_MOVIE_LIBRARY_NOT_FOUND',
-          message: `Movie library not found: ${movieLibraryName}`,
-        });
-      }
-
-      const tv = tvLibraryName ? find(tvLibraryName) : undefined;
-      if (tvLibraryName && !tv) {
-        throw new BadRequestException({
-          code: 'PLEX_TV_LIBRARY_NOT_FOUND',
-          message: `TV library not found: ${tvLibraryName}`,
-        });
-      }
-
       return {
         ok: true,
         summary: {
           machineIdentifier,
-          libraries: {
-            movie: movie ? { title: movie.title, key: movie.key } : null,
-            tv: tv ? { title: tv.title, key: tv.key } : null,
-          },
         },
       };
     }

@@ -16,8 +16,6 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 type TestPlexServerBody = {
   baseUrl?: unknown;
   token?: unknown;
-  movieLibraryName?: unknown;
-  tvLibraryName?: unknown;
 };
 
 @Controller('plex')
@@ -55,12 +53,6 @@ export class PlexController {
     const baseUrlRaw =
       typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
     const token = typeof body.token === 'string' ? body.token.trim() : '';
-    const movieLibraryName =
-      typeof body.movieLibraryName === 'string'
-        ? body.movieLibraryName.trim()
-        : '';
-    const tvLibraryName =
-      typeof body.tvLibraryName === 'string' ? body.tvLibraryName.trim() : '';
 
     if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
     if (!token) throw new BadRequestException('token is required');
@@ -80,38 +72,6 @@ export class PlexController {
 
     const machineIdentifier =
       await this.plexServerService.getMachineIdentifier({ baseUrl, token });
-
-    // Optional: validate that configured libraries exist.
-    if (movieLibraryName || tvLibraryName) {
-      const sections = await this.plexServerService.getSections({ baseUrl, token });
-      const find = (title: string) =>
-        sections.find((s) => s.title.toLowerCase() === title.toLowerCase());
-
-      const movie = movieLibraryName ? find(movieLibraryName) : undefined;
-      if (movieLibraryName && !movie) {
-        throw new BadRequestException({
-          code: 'PLEX_MOVIE_LIBRARY_NOT_FOUND',
-          message: `Movie library not found: ${movieLibraryName}`,
-        });
-      }
-
-      const tv = tvLibraryName ? find(tvLibraryName) : undefined;
-      if (tvLibraryName && !tv) {
-        throw new BadRequestException({
-          code: 'PLEX_TV_LIBRARY_NOT_FOUND',
-          message: `TV library not found: ${tvLibraryName}`,
-        });
-      }
-
-      return {
-        ok: true,
-        machineIdentifier,
-        libraries: {
-          movie: movie ? { title: movie.title, key: movie.key } : null,
-          tv: tv ? { title: tv.title, key: tv.key } : null,
-        },
-      };
-    }
 
     return { ok: true, machineIdentifier };
   }

@@ -152,16 +152,8 @@ export class PlexAnalyticsService {
     }
 
     const baseUrl = normalizeHttpUrl(baseUrlRaw);
-    const movieLibraryName =
-      pickString(settings, 'plex.movieLibraryName') || 'Movies';
-    const tvLibraryName = pickString(settings, 'plex.tvLibraryName') || 'TV Shows';
 
-    const signature = JSON.stringify({
-      baseUrl,
-      token,
-      movieLibraryName,
-      tvLibraryName,
-    });
+    const signature = JSON.stringify({ baseUrl, token });
 
     const cached = this.cache.get(userId);
     const now = Date.now();
@@ -170,23 +162,24 @@ export class PlexAnalyticsService {
     }
 
     const sections = await this.plexServer.getSections({ baseUrl, token });
-    const find = (title: string) =>
-      sections.find((s) => s.title.toLowerCase() === title.toLowerCase());
+    const movie = sections.find(
+      (s) => (s.type ?? '').toLowerCase() === 'movie',
+    );
+    const tv = sections.find((s) => (s.type ?? '').toLowerCase() === 'show');
 
-    const movie = find(movieLibraryName);
-    if (!movie) {
-      throw new BadRequestException({
-        code: 'PLEX_MOVIE_LIBRARY_NOT_FOUND',
-        message: `Movie library not found: ${movieLibraryName}`,
+    // If the server has no movie/show libraries, just return empty analytics.
+    if (!movie || !tv) {
+      const data: PlexLibraryGrowthResponse = {
+        ok: true,
+        series: [],
+        summary: { startMonth: null, endMonth: null, movies: 0, tv: 0, total: 0 },
+      };
+      this.cache.set(userId, {
+        signature,
+        expiresAt: now + 10 * 60_000,
+        data,
       });
-    }
-
-    const tv = find(tvLibraryName);
-    if (!tv) {
-      throw new BadRequestException({
-        code: 'PLEX_TV_LIBRARY_NOT_FOUND',
-        message: `TV library not found: ${tvLibraryName}`,
-      });
+      return data;
     }
 
     this.logger.log(

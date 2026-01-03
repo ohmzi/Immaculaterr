@@ -52,8 +52,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   // Plex state - restore from localStorage if available
   const [plexBaseUrl, setPlexBaseUrl] = useState('http://localhost:32400');
   const [plexToken, setPlexToken] = useState('');
-  const [plexMovieLibrary, setPlexMovieLibrary] = useState('Movies');
-  const [plexTvLibrary, setPlexTvLibrary] = useState('TV Shows');
   const [plexOAuthPinId, setPlexOAuthPinId] = useState<number | null>(() => {
     try {
       const saved = localStorage.getItem('wizard_plex_pin_id');
@@ -192,8 +190,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         settings: {
           plex: {
             baseUrl: plexBaseUrl.trim(),
-            movieLibraryName: plexMovieLibrary.trim(),
-            tvLibraryName: plexTvLibrary.trim(),
           },
         },
         secrets: {
@@ -211,16 +207,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       handleNext();
     },
-    onError: (error: Error) => {
-      const msg = (error?.message ?? '').toLowerCase();
-      if (msg.includes('movie library not found')) {
-        toast.error(`Movie library not found: "${plexMovieLibrary.trim() || 'Movies'}"`);
-        return;
-      }
-      if (msg.includes('tv library not found')) {
-        toast.error(`TV library not found: "${plexTvLibrary.trim() || 'TV Shows'}"`);
-        return;
-      }
+    onError: () => {
       toast.error('Plex credentials are incorrect.');
     },
   });
@@ -431,26 +418,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <p className="text-xs text-muted-foreground">
                     Manual tokens are permanent and will work for scheduled jobs. Get your token from Plex settings.
                   </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="plexMovieLibrary">Movie Library</Label>
-                    <Input
-                      id="plexMovieLibrary"
-                      value={plexMovieLibrary}
-                      onChange={(e) => setPlexMovieLibrary(e.target.value)}
-                      placeholder="Movies"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="plexTvLibrary">TV Library</Label>
-                    <Input
-                      id="plexTvLibrary"
-                      value={plexTvLibrary}
-                      onChange={(e) => setPlexTvLibrary(e.target.value)}
-                      placeholder="TV Shows"
-                    />
-                  </div>
                 </div>
               </div>
             </div>

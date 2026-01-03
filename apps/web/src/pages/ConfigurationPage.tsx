@@ -46,8 +46,6 @@ export function ConfigurationPage() {
 
   // Service configuration states
   const [plexBaseUrl, setPlexBaseUrl] = useState('http://localhost:32400');
-  const [plexMovieLibrary, setPlexMovieLibrary] = useState('Movies');
-  const [plexTvLibrary, setPlexTvLibrary] = useState('TV Shows');
   const [plexToken, setPlexToken] = useState('');
 
   // Load existing settings when data is available
@@ -58,16 +56,12 @@ export function ConfigurationPage() {
     const secrets = settingsQuery.data?.secretsPresent ?? {};
 
     const plexBaseUrlSaved = readString(settings, 'plex.baseUrl');
-    const plexMovieSaved = readString(settings, 'plex.movieLibraryName');
-    const plexTvSaved = readString(settings, 'plex.tvLibraryName');
     const radarrBaseUrlSaved = readString(settings, 'radarr.baseUrl');
     const sonarrBaseUrlSaved = readString(settings, 'sonarr.baseUrl');
     const googleSearchEngineIdSaved = readString(settings, 'google.searchEngineId');
     const overseerrBaseUrlSaved = readString(settings, 'overseerr.baseUrl');
 
     if (plexBaseUrlSaved) setPlexBaseUrl(plexBaseUrlSaved);
-    if (plexMovieSaved) setPlexMovieLibrary(plexMovieSaved);
-    if (plexTvSaved) setPlexTvLibrary(plexTvSaved);
     if (radarrBaseUrlSaved) setRadarrBaseUrl(radarrBaseUrlSaved);
     if (sonarrBaseUrlSaved) setSonarrBaseUrl(sonarrBaseUrlSaved);
     if (googleSearchEngineIdSaved) setGoogleSearchEngineId(googleSearchEngineIdSaved);
@@ -258,23 +252,13 @@ export function ConfigurationPage() {
       const secretsPatch: Record<string, unknown> = {};
 
       const nextPlexBaseUrl = plexBaseUrl.trim();
-      const nextPlexMovieLibrary = plexMovieLibrary.trim();
-      const nextPlexTvLibrary = plexTvLibrary.trim();
 
       const curPlexBaseUrl = readString(currentSettings, 'plex.baseUrl');
-      const curPlexMovieLibrary = readString(currentSettings, 'plex.movieLibraryName');
-      const curPlexTvLibrary = readString(currentSettings, 'plex.tvLibraryName');
 
       const plexBaseUrlChanged = Boolean(nextPlexBaseUrl) && nextPlexBaseUrl !== curPlexBaseUrl;
-      const plexMovieChanged =
-        Boolean(nextPlexMovieLibrary) && nextPlexMovieLibrary !== curPlexMovieLibrary;
-      const plexTvChanged =
-        Boolean(nextPlexTvLibrary) && nextPlexTvLibrary !== curPlexTvLibrary;
 
       const plexSettings: Record<string, unknown> = {};
       if (plexBaseUrlChanged) plexSettings.baseUrl = nextPlexBaseUrl;
-      if (plexMovieChanged) plexSettings.movieLibraryName = nextPlexMovieLibrary;
-      if (plexTvChanged) plexSettings.tvLibraryName = nextPlexTvLibrary;
       if (Object.keys(plexSettings).length) settingsPatch.plex = plexSettings;
 
       const plexTokenTrimmed = plexToken.trim();
@@ -393,28 +377,11 @@ export function ConfigurationPage() {
       }
 
       // --- Pre-save validation (only for changed items) ---
-      const readError = async (res: Response): Promise<{ code?: string; message: string }> => {
-        const contentType = res.headers.get('content-type') ?? '';
-        if (contentType.includes('application/json')) {
-          const body = (await res.json().catch(() => null)) as any;
-          const code = body && typeof body === 'object' ? (body.code as string | undefined) : undefined;
-          const message =
-            body && typeof body === 'object' && typeof body.message === 'string'
-              ? body.message
-              : res.statusText;
-          return { code, message };
-        }
-        const text = await res.text().catch(() => '');
-        return { message: text || res.statusText };
-      };
-
       // Plex: validate if any Plex field changed (settings or token)
-      const plexChanged = plexBaseUrlChanged || plexMovieChanged || plexTvChanged || plexTokenChanged;
+      const plexChanged = plexBaseUrlChanged || plexTokenChanged;
       if (plexChanged) {
         const payload = {
           baseUrl: nextPlexBaseUrl || curPlexBaseUrl,
-          movieLibraryName: nextPlexMovieLibrary || curPlexMovieLibrary,
-          tvLibraryName: nextPlexTvLibrary || curPlexTvLibrary,
         };
 
         const res = plexTokenChanged
@@ -430,13 +397,6 @@ export function ConfigurationPage() {
             });
 
         if (!res.ok) {
-          const err = await readError(res);
-          if (err.code === 'PLEX_MOVIE_LIBRARY_NOT_FOUND') {
-            throw new Error(`Movie library not found: "${payload.movieLibraryName}"`);
-          }
-          if (err.code === 'PLEX_TV_LIBRARY_NOT_FOUND') {
-            throw new Error(`TV library not found: "${payload.tvLibraryName}"`);
-          }
           throw new Error('Plex credentials are incorrect.');
         }
       }
@@ -584,31 +544,18 @@ export function ConfigurationPage() {
   const testPlexConnection = async () => {
     const toastId = toast.loading('Testing Plex connection...');
     try {
-      const libraryPayload = {
-        movieLibraryName: plexMovieLibrary.trim(),
-        tvLibraryName: plexTvLibrary.trim(),
-      };
-
       // If credentials are saved (masked), test the saved credentials
       if (secretsPresent.plex && (!plexToken.trim() || plexToken === MASKED_SECRET)) {
         const response = await fetch('/api/integrations/test/plex', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(libraryPayload),
+          body: JSON.stringify({ baseUrl: plexBaseUrl.trim() }),
         });
 
         if (response.ok) {
           toast.success('Connected to Plex.', { id: toastId });
         } else {
-          const error = await response.json().catch(() => ({ message: response.statusText }));
-          const code = (error as any)?.code as string | undefined;
-          if (code === 'PLEX_MOVIE_LIBRARY_NOT_FOUND') {
-            toast.error(`Movie library not found: "${plexMovieLibrary}"`, { id: toastId });
-          } else if (code === 'PLEX_TV_LIBRARY_NOT_FOUND') {
-            toast.error(`TV library not found: "${plexTvLibrary}"`, { id: toastId });
-          } else {
-            toast.error('Plex credentials are incorrect.', { id: toastId });
-          }
+          toast.error('Plex credentials are incorrect.', { id: toastId });
         }
       } else {
         // Test with the values in the form
@@ -620,21 +567,13 @@ export function ConfigurationPage() {
         const response = await fetch('/api/plex/test', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ baseUrl: plexBaseUrl, token: plexToken, ...libraryPayload }),
+          body: JSON.stringify({ baseUrl: plexBaseUrl, token: plexToken }),
         });
 
         if (response.ok) {
           toast.success('Connected to Plex.', { id: toastId });
         } else {
-          const error = await response.json().catch(() => ({ message: response.statusText }));
-          const code = (error as any)?.code as string | undefined;
-          if (code === 'PLEX_MOVIE_LIBRARY_NOT_FOUND') {
-            toast.error(`Movie library not found: "${plexMovieLibrary}"`, { id: toastId });
-          } else if (code === 'PLEX_TV_LIBRARY_NOT_FOUND') {
-            toast.error(`TV library not found: "${plexTvLibrary}"`, { id: toastId });
-          } else {
-            toast.error('Plex credentials are incorrect.', { id: toastId });
-          }
+          toast.error('Plex credentials are incorrect.', { id: toastId });
         }
       }
     } catch (error) {
@@ -1018,26 +957,6 @@ export function ConfigurationPage() {
                       </button>
                     </div>
                   </div>
-                  <div>
-                    <label className={labelClass}>Movie Library Name</label>
-                    <input
-                      type="text"
-                      value={plexMovieLibrary}
-                      onChange={(e) => setPlexMovieLibrary(e.target.value)}
-                      placeholder="Movies"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>TV Library Name</label>
-                    <input
-                      type="text"
-                      value={plexTvLibrary}
-                      onChange={(e) => setPlexTvLibrary(e.target.value)}
-                      placeholder="TV Shows"
-                      className={inputClass}
-                    />
-                  </div>
                 </div>
               </motion.div>
 
@@ -1364,14 +1283,23 @@ export function ConfigurationPage() {
                 transition={{ duration: 0.6, delay: 0.8 }}
                 className="flex justify-end"
               >
-                <button
+                <motion.button
                   onClick={handleSave}
                   disabled={saveMutation.isPending}
-                  className="px-8 py-4 bg-gray-900 dark:bg-gray-800 text-white rounded-full hover:bg-gray-800 dark:hover:bg-gray-700 active:scale-95 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2 min-h-[44px] disabled:opacity-60 disabled:pointer-events-none"
+                  whileTap={{ scale: 0.96 }}
+                  className="px-8 py-4 bg-gray-900 dark:bg-gray-800 text-white rounded-full hover:bg-gray-800 dark:hover:bg-gray-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2 min-h-[44px] disabled:opacity-60 disabled:pointer-events-none"
                 >
                   <Save size={20} />
-                  {saveMutation.isPending ? 'Saving…' : 'Save Configuration'}
-                </button>
+                  {/* Reserve space so label swap doesn't cause a width/position jitter */}
+                  <span className="grid">
+                    <span className="col-start-1 row-start-1 opacity-0">
+                      Save Configuration
+                    </span>
+                    <span className="col-start-1 row-start-1">
+                      {saveMutation.isPending ? 'Saving…' : 'Save Configuration'}
+                    </span>
+                  </span>
+                </motion.button>
               </motion.div>
             </div>
           </motion.div>
