@@ -276,7 +276,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     animate={{ width: '100%', opacity: 1 }}
                     exit={{ width: 0, opacity: 0 }}
                     transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                    className="min-w-0 flex-1"
+                    className="min-w-0 overflow-hidden"
                   >
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/60" />
