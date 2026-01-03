@@ -1,25 +1,21 @@
 import { useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, Loader2 } from 'lucide-react';
 
 import { listJobs, listRuns, type JobRun } from '@/api/jobs';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
 
 function statusPill(status: string) {
   switch (status) {
     case 'SUCCESS':
-      return 'bg-emerald-600 text-white';
+      return 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25';
     case 'FAILED':
-      return 'bg-destructive text-destructive-foreground';
+      return 'bg-red-500/15 text-red-200 border border-red-500/25';
     case 'RUNNING':
-      return 'bg-amber-500 text-white';
+      return 'bg-amber-500/15 text-amber-200 border border-amber-500/25';
     default:
-      return 'bg-muted text-foreground';
+      return 'bg-white/10 text-white/70 border border-white/10';
   }
 }
 
@@ -76,147 +72,209 @@ export function HistoryPage() {
     });
   }, [historyQuery.data?.runs, jobId, status, q]);
 
+  const cardClass =
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+  const labelClass = 'block text-sm font-medium text-white/70 mb-2';
+  const inputBaseClass =
+    'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
+  const inputClass = `w-full ${inputBaseClass}`;
+  const selectClass = `w-full ${inputBaseClass}`;
+  const secondaryButtonClass =
+    'px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-full active:scale-95 transition-all duration-300 inline-flex items-center gap-2 min-h-[44px] font-medium border border-white/15';
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">History</h1>
-          <p className="text-sm text-muted-foreground">
-            History of job runs (logs, summary, errors).
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link to="/jobs">Back to Jobs</Link>
-        </Button>
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+      {/* Background (landing-page style, violet-tinted) */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <img
+          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          alt=""
+          className="h-full w-full object-cover object-center opacity-80"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-400/35 via-violet-700/45 to-indigo-900/65" />
+        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>Filter by job, status, or a quick text search.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 lg:grid-cols-3">
-          <div className="grid gap-2">
-            <Label>Job</Label>
-            <select
-              value={jobId}
-              onChange={(e) => setJobId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">All jobs</option>
-              {(jobsQuery.data?.jobs ?? []).map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Status</Label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Any</option>
-              <option value="RUNNING">RUNNING</option>
-              <option value="SUCCESS">SUCCESS</option>
-              <option value="FAILED">FAILED</option>
-              <option value="PENDING">PENDING</option>
-            </select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Search</Label>
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="jobId, status, error text…"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent history</CardTitle>
-          <CardDescription>
-            {historyQuery.isLoading ? 'Loading…' : `${filtered.length} shown`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {historyQuery.isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading…
+      {/* History Content */}
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
+        <div className="container mx-auto px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-5xl mx-auto"
+          >
+            {/* Page Header */}
+            <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h1 className="text-4xl font-bold text-white mb-2">History</h1>
+                <p className="text-lg text-white/70">
+                  History of job runs (logs, summary, errors).
+                </p>
+              </div>
+              <Link to="/jobs" className={secondaryButtonClass}>
+                Back to Jobs
+              </Link>
             </div>
-          ) : historyQuery.error ? (
-            <div className="flex items-start gap-2 text-sm text-destructive">
-              <CircleAlert className="mt-0.5 h-4 w-4" />
-              <div>{(historyQuery.error as Error).message}</div>
-            </div>
-          ) : filtered.length ? (
-            <div className="overflow-auto rounded-md border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2">Time</th>
-                    <th className="px-3 py-2">Job</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Mode</th>
-                    <th className="px-3 py-2">Duration</th>
-                    <th className="px-3 py-2">Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((run) => {
-                    const ms = durationMs(run);
-                    return (
-                      <tr key={run.id} className="border-t hover:bg-muted/20">
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <Link
-                            className="font-mono text-xs underline-offset-4 hover:underline"
-                            to={`/history/${run.id}`}
-                          >
-                            {new Date(run.startedAt).toLocaleString()}
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2">{run.jobId}</td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={cn(
-                              'rounded-full px-2 py-1 text-xs font-medium',
-                              statusPill(run.status),
-                            )}
-                          >
-                            {run.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {run.dryRun ? 'dry-run' : 'live'}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {ms === null ? '—' : formatDuration(ms)}
-                        </td>
-                        <td className="px-3 py-2 text-destructive">
-                          {run.errorMessage
-                            ? run.errorMessage.length > 80
-                              ? `${run.errorMessage.slice(0, 80)}…`
-                              : run.errorMessage
-                            : ''}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">No history found.</div>
-          )}
-        </CardContent>
-      </Card>
+
+            {historyQuery.isLoading ? (
+              <div className={cardClass}>
+                <div className="flex items-center gap-2 text-white">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <div className="text-lg font-semibold">Loading history…</div>
+                </div>
+              </div>
+            ) : historyQuery.error ? (
+              <div className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}>
+                <div className="flex items-start gap-3">
+                  <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
+                  <div className="min-w-0">
+                    <div className="text-white font-semibold">Failed to load history</div>
+                    <div className="text-sm text-white/70">
+                      {(historyQuery.error as Error).message}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <motion.div
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.55, delay: 0.05 }}
+                  className={cardClass}
+                >
+                  <div className="mb-6">
+                    <div className="text-2xl font-semibold text-white">Filters</div>
+                    <div className="mt-2 text-sm text-white/70">
+                      Filter by job, status, or a quick text search.
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <label className={labelClass}>Job</label>
+                      <select
+                        value={jobId}
+                        onChange={(e) => setJobId(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">All jobs</option>
+                        {(jobsQuery.data?.jobs ?? []).map((j) => (
+                          <option key={j.id} value={j.id}>
+                            {j.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Status</label>
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">Any</option>
+                        <option value="RUNNING">RUNNING</option>
+                        <option value="SUCCESS">SUCCESS</option>
+                        <option value="FAILED">FAILED</option>
+                        <option value="PENDING">PENDING</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>Search</label>
+                      <input
+                        value={q}
+                        onChange={(e) => setQ(e.target.value)}
+                        placeholder="jobId, status, error text…"
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.55, delay: 0.1 }}
+                  className={cardClass}
+                >
+                  <div className="mb-6 flex items-end justify-between gap-4">
+                    <div>
+                      <div className="text-2xl font-semibold text-white">Recent history</div>
+                      <div className="mt-2 text-sm text-white/70">
+                        {`${filtered.length.toLocaleString()} shown`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {filtered.length ? (
+                    <div className="overflow-auto rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
+                      <table className="w-full text-sm">
+                        <thead className="bg-white/5 text-left text-xs text-white/60">
+                          <tr>
+                            <th className="px-3 py-3">Time</th>
+                            <th className="px-3 py-3">Job</th>
+                            <th className="px-3 py-3">Status</th>
+                            <th className="px-3 py-3">Mode</th>
+                            <th className="px-3 py-3">Duration</th>
+                            <th className="px-3 py-3">Error</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((run) => {
+                            const ms = durationMs(run);
+                            return (
+                              <tr key={run.id} className="border-t border-white/10 hover:bg-white/5">
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  <Link
+                                    className="font-mono text-xs text-white/80 underline-offset-4 hover:underline"
+                                    to={`/history/${run.id}`}
+                                  >
+                                    {new Date(run.startedAt).toLocaleString()}
+                                  </Link>
+                                </td>
+                                <td className="px-3 py-3 text-white/85">{run.jobId}</td>
+                                <td className="px-3 py-3">
+                                  <span
+                                    className={[
+                                      'rounded-full px-2.5 py-1 text-xs font-medium inline-flex items-center',
+                                      statusPill(run.status),
+                                    ].join(' ')}
+                                  >
+                                    {run.status}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 text-white/60">
+                                  {run.dryRun ? 'dry-run' : 'live'}
+                                </td>
+                                <td className="px-3 py-3 text-white/60">
+                                  {ms === null ? '—' : formatDuration(ms)}
+                                </td>
+                                <td className="px-3 py-3 text-red-200/80">
+                                  {run.errorMessage
+                                    ? run.errorMessage.length > 80
+                                      ? `${run.errorMessage.slice(0, 80)}…`
+                                      : run.errorMessage
+                                    : ''}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-white/70">No history found.</div>
+                  )}
+                </motion.div>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      </section>
     </div>
   );
 }
