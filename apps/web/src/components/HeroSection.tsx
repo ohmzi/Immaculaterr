@@ -19,16 +19,16 @@ export function HeroSection() {
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8">
       {/* Background Image */}
-      <div className="absolute inset-0">
+      <div className="pointer-events-none fixed inset-0">
         <img 
-          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
+          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
           alt="Movie posters collection"
-          className="w-full h-full object-cover"
+          className="h-full w-full object-cover object-center"
         />
       </div>
       
       {/* Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
+      <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
 
       {/* Content Container */}
       <div className="relative z-10 container mx-auto px-6 lg:px-8 pt-32 lg:pt-48 pb-24 flex items-center min-h-[calc(100vh-200px)]">

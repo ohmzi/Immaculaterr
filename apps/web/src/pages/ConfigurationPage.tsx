@@ -555,11 +555,11 @@ export function ConfigurationPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Background (landing-page style, blue-tinted) */}
-      <div className="pointer-events-none absolute inset-0">
+      <div className="pointer-events-none fixed inset-0 z-0">
         <img
           src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
           alt=""
-          className="h-full w-full object-cover opacity-80"
+          className="h-full w-full object-cover object-center opacity-80"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-sky-500/55 via-blue-700/45 to-indigo-900/60" />
         <div className="absolute inset-0 bg-[#0b0c0f]/15" />
