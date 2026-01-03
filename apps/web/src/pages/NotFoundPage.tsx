@@ -1,11 +1,10 @@
 import { motion } from 'motion/react';
-import { ArrowLeft, Home, Settings } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Home } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 
 export function NotFoundPage() {
-  const location = useLocation();
   const navigate = useNavigate();
 
   return (
@@ -34,23 +33,12 @@ export function NotFoundPage() {
           <div className="w-full rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl border border-white/10 bg-gradient-to-br from-gray-900/85 to-gray-800/65">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/80">
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-300" />
-                  404
-                </div>
-                <h1 className="mt-4 text-3xl sm:text-4xl font-bold text-white">
+                <h1 className="text-3xl sm:text-4xl font-bold text-white">
                   Page not found
                 </h1>
                 <p className="mt-3 text-sm sm:text-base text-white/70">
                   The page you requested doesn’t exist or was moved.
                 </p>
-                <p className="mt-2 text-xs text-white/50 font-mono truncate">
-                  {location.pathname}
-                </p>
-              </div>
-
-              <div className="hidden sm:flex shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
-                <span className="text-4xl font-black tracking-tight">?</span>
               </div>
             </div>
 
@@ -67,16 +55,6 @@ export function NotFoundPage() {
                 <Link to="/">
                   <Home />
                   Go home
-                </Link>
-              </Button>
-              <Button
-                asChild
-                variant="secondary"
-                className="bg-gray-900/40 text-white hover:bg-gray-900/55 border border-white/10"
-              >
-                <Link to="/configuration">
-                  <Settings />
-                  Configuration
                 </Link>
               </Button>
             </div>
