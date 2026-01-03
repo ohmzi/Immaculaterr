@@ -17,12 +17,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    label: 'Home',
-    // No dropdown - just navigates to home
-  },
-  {
-    label: 'Scheduler',
+    label: 'Overview',
     dropdown: [
+      { label: 'Dashboard', to: '/' },
+      { label: 'Collections', to: '/collections' },
       { label: 'Jobs', to: '/jobs' },
       { label: 'Runs', to: '/runs' },
     ],
@@ -30,8 +28,15 @@ const navItems: NavItem[] = [
   {
     label: 'Settings',
     dropdown: [
-      { label: 'Collections', to: '/collections' },
       { label: 'Configuration', to: '/configuration' },
+      { label: 'Setup', to: '/setup' },
+    ],
+  },
+  {
+    label: 'Scheduler',
+    dropdown: [
+      { label: 'Jobs', to: '/jobs' },
+      { label: 'Runs', to: '/runs' },
     ],
   },
 ];
@@ -65,12 +70,6 @@ export function MobileNavigation({ username, theme, onToggleTheme, onLogout }: M
   }, []);
 
   const handleButtonClick = (index: number) => {
-    // Home button (index 0) navigates to /app instead of showing dropdown
-    if (index === 0) {
-      navigate('/app');
-      return;
-    }
-
     if (selectedIndex === index) {
       setSelectedIndex(null);
     } else {
