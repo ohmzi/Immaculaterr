@@ -243,48 +243,260 @@ export function ConfigurationPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const currentSettings = settingsQuery.data?.settings ?? {};
       const settingsPatch: Record<string, unknown> = {};
       const secretsPatch: Record<string, unknown> = {};
 
+      const nextPlexBaseUrl = plexBaseUrl.trim();
+      const nextPlexMovieLibrary = plexMovieLibrary.trim();
+      const nextPlexTvLibrary = plexTvLibrary.trim();
+
+      const curPlexBaseUrl = readString(currentSettings, 'plex.baseUrl');
+      const curPlexMovieLibrary = readString(currentSettings, 'plex.movieLibraryName');
+      const curPlexTvLibrary = readString(currentSettings, 'plex.tvLibraryName');
+
+      const plexBaseUrlChanged = Boolean(nextPlexBaseUrl) && nextPlexBaseUrl !== curPlexBaseUrl;
+      const plexMovieChanged =
+        Boolean(nextPlexMovieLibrary) && nextPlexMovieLibrary !== curPlexMovieLibrary;
+      const plexTvChanged =
+        Boolean(nextPlexTvLibrary) && nextPlexTvLibrary !== curPlexTvLibrary;
+
       const plexSettings: Record<string, unknown> = {};
-      if (plexBaseUrl.trim()) plexSettings.baseUrl = plexBaseUrl.trim();
-      if (plexMovieLibrary.trim()) plexSettings.movieLibraryName = plexMovieLibrary.trim();
-      if (plexTvLibrary.trim()) plexSettings.tvLibraryName = plexTvLibrary.trim();
+      if (plexBaseUrlChanged) plexSettings.baseUrl = nextPlexBaseUrl;
+      if (plexMovieChanged) plexSettings.movieLibraryName = nextPlexMovieLibrary;
+      if (plexTvChanged) plexSettings.tvLibraryName = nextPlexTvLibrary;
       if (Object.keys(plexSettings).length) settingsPatch.plex = plexSettings;
 
-      if (radarrEnabled && radarrBaseUrl.trim()) {
-        settingsPatch.radarr = { baseUrl: radarrBaseUrl.trim() };
-      }
-      if (sonarrEnabled && sonarrBaseUrl.trim()) {
-        settingsPatch.sonarr = { baseUrl: sonarrBaseUrl.trim() };
-      }
-      if (googleEnabled && googleSearchEngineId.trim()) {
-        settingsPatch.google = { searchEngineId: googleSearchEngineId.trim() };
-      }
-      if (overseerrEnabled && overseerrBaseUrl.trim()) {
-        settingsPatch.overseerr = { baseUrl: overseerrBaseUrl.trim() };
+      const plexTokenTrimmed = plexToken.trim();
+      const plexTokenChanged = Boolean(plexTokenTrimmed) && plexTokenTrimmed !== MASKED_SECRET;
+
+      // Optional services (diff-based patches; only when toggled on)
+      const curRadarrBaseUrl = readString(currentSettings, 'radarr.baseUrl');
+      const curSonarrBaseUrl = readString(currentSettings, 'sonarr.baseUrl');
+      const curGoogleSearchEngineId = readString(currentSettings, 'google.searchEngineId');
+      const curOverseerrBaseUrl = readString(currentSettings, 'overseerr.baseUrl');
+
+      const nextRadarrBaseUrl = radarrBaseUrl.trim();
+      const nextSonarrBaseUrl = sonarrBaseUrl.trim();
+      const nextGoogleSearchEngineId = googleSearchEngineId.trim();
+      const nextOverseerrBaseUrl = overseerrBaseUrl.trim();
+
+      const radarrBaseChanged =
+        radarrEnabled && Boolean(nextRadarrBaseUrl) && nextRadarrBaseUrl !== curRadarrBaseUrl;
+      const sonarrBaseChanged =
+        sonarrEnabled && Boolean(nextSonarrBaseUrl) && nextSonarrBaseUrl !== curSonarrBaseUrl;
+      const googleIdChanged =
+        googleEnabled &&
+        Boolean(nextGoogleSearchEngineId) &&
+        nextGoogleSearchEngineId !== curGoogleSearchEngineId;
+      const overseerrBaseChanged =
+        overseerrEnabled &&
+        Boolean(nextOverseerrBaseUrl) &&
+        nextOverseerrBaseUrl !== curOverseerrBaseUrl;
+
+      if (radarrBaseChanged) settingsPatch.radarr = { baseUrl: nextRadarrBaseUrl };
+      if (sonarrBaseChanged) settingsPatch.sonarr = { baseUrl: nextSonarrBaseUrl };
+      if (googleIdChanged) settingsPatch.google = { searchEngineId: nextGoogleSearchEngineId };
+      if (overseerrBaseChanged) settingsPatch.overseerr = { baseUrl: nextOverseerrBaseUrl };
+
+      if (plexTokenChanged) {
+        secretsPatch.plex = { token: plexTokenTrimmed };
       }
 
-      if (plexToken.trim() && plexToken !== MASKED_SECRET) {
-        secretsPatch.plex = { token: plexToken.trim() };
+      const tmdbKeyTrimmed = tmdbApiKey.trim();
+      const tmdbKeyChanged = Boolean(tmdbKeyTrimmed) && tmdbKeyTrimmed !== MASKED_SECRET;
+      if (tmdbKeyChanged) {
+        secretsPatch.tmdb = { apiKey: tmdbKeyTrimmed };
       }
-      if (tmdbApiKey.trim() && tmdbApiKey !== MASKED_SECRET) {
-        secretsPatch.tmdb = { apiKey: tmdbApiKey.trim() };
+
+      const radarrKeyTrimmed = radarrApiKey.trim();
+      const radarrKeyChanged =
+        radarrEnabled && Boolean(radarrKeyTrimmed) && radarrKeyTrimmed !== MASKED_SECRET;
+      if (radarrKeyChanged) {
+        secretsPatch.radarr = { apiKey: radarrKeyTrimmed };
       }
-      if (radarrApiKey.trim() && radarrApiKey !== MASKED_SECRET) {
-        secretsPatch.radarr = { apiKey: radarrApiKey.trim() };
+
+      const sonarrKeyTrimmed = sonarrApiKey.trim();
+      const sonarrKeyChanged =
+        sonarrEnabled && Boolean(sonarrKeyTrimmed) && sonarrKeyTrimmed !== MASKED_SECRET;
+      if (sonarrKeyChanged) {
+        secretsPatch.sonarr = { apiKey: sonarrKeyTrimmed };
       }
-      if (sonarrApiKey.trim() && sonarrApiKey !== MASKED_SECRET) {
-        secretsPatch.sonarr = { apiKey: sonarrApiKey.trim() };
+
+      const googleKeyTrimmed = googleApiKey.trim();
+      const googleKeyChanged =
+        googleEnabled && Boolean(googleKeyTrimmed) && googleKeyTrimmed !== MASKED_SECRET;
+      if (googleKeyChanged) {
+        secretsPatch.google = { apiKey: googleKeyTrimmed };
       }
-      if (googleApiKey.trim() && googleApiKey !== MASKED_SECRET) {
-        secretsPatch.google = { apiKey: googleApiKey.trim() };
+
+      const openAiKeyTrimmed = openAiApiKey.trim();
+      const openAiKeyChanged =
+        openAiEnabled && Boolean(openAiKeyTrimmed) && openAiKeyTrimmed !== MASKED_SECRET;
+      if (openAiKeyChanged) {
+        secretsPatch.openai = { apiKey: openAiKeyTrimmed };
       }
-      if (openAiApiKey.trim() && openAiApiKey !== MASKED_SECRET) {
-        secretsPatch.openai = { apiKey: openAiApiKey.trim() };
+
+      const overseerrKeyTrimmed = overseerrApiKey.trim();
+      const overseerrKeyChanged =
+        overseerrEnabled &&
+        Boolean(overseerrKeyTrimmed) &&
+        overseerrKeyTrimmed !== MASKED_SECRET;
+      if (overseerrKeyChanged) {
+        secretsPatch.overseerr = { apiKey: overseerrKeyTrimmed };
       }
-      if (overseerrApiKey.trim() && overseerrApiKey !== MASKED_SECRET) {
-        secretsPatch.overseerr = { apiKey: overseerrApiKey.trim() };
+
+      // --- Pre-save validation (only for changed items) ---
+      const readError = async (res: Response): Promise<{ code?: string; message: string }> => {
+        const contentType = res.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+          const body = (await res.json().catch(() => null)) as any;
+          const code = body && typeof body === 'object' ? (body.code as string | undefined) : undefined;
+          const message =
+            body && typeof body === 'object' && typeof body.message === 'string'
+              ? body.message
+              : res.statusText;
+          return { code, message };
+        }
+        const text = await res.text().catch(() => '');
+        return { message: text || res.statusText };
+      };
+
+      // Plex: validate if any Plex field changed (settings or token)
+      const plexChanged = plexBaseUrlChanged || plexMovieChanged || plexTvChanged || plexTokenChanged;
+      if (plexChanged) {
+        const payload = {
+          baseUrl: nextPlexBaseUrl || curPlexBaseUrl,
+          movieLibraryName: nextPlexMovieLibrary || curPlexMovieLibrary,
+          tvLibraryName: nextPlexTvLibrary || curPlexTvLibrary,
+        };
+
+        const res = plexTokenChanged
+          ? await fetch('/api/plex/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...payload, token: plexTokenTrimmed }),
+            })
+          : await fetch('/api/integrations/test/plex', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+
+        if (!res.ok) {
+          const err = await readError(res);
+          if (err.code === 'PLEX_MOVIE_LIBRARY_NOT_FOUND') {
+            throw new Error(`Movie library not found: "${payload.movieLibraryName}"`);
+          }
+          if (err.code === 'PLEX_TV_LIBRARY_NOT_FOUND') {
+            throw new Error(`TV library not found: "${payload.tvLibraryName}"`);
+          }
+          throw new Error('Plex credentials are incorrect.');
+        }
+      }
+
+      // Radarr: validate if baseUrl/apiKey changed (and enabled)
+      if (radarrEnabled && (radarrBaseChanged || radarrKeyChanged)) {
+        if (!nextRadarrBaseUrl) throw new Error('Please enter Radarr Base URL');
+        if (!radarrKeyChanged && !secretsPresent.radarr)
+          throw new Error('Please enter Radarr API Key');
+
+        const res = radarrKeyChanged
+          ? await fetch('/api/radarr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: nextRadarrBaseUrl, apiKey: radarrKeyTrimmed }),
+            })
+          : await fetch('/api/integrations/test/radarr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: nextRadarrBaseUrl }),
+            });
+        if (!res.ok) throw new Error('Radarr credentials are incorrect.');
+      }
+
+      // Sonarr: validate if baseUrl/apiKey changed (and enabled)
+      if (sonarrEnabled && (sonarrBaseChanged || sonarrKeyChanged)) {
+        if (!nextSonarrBaseUrl) throw new Error('Please enter Sonarr Base URL');
+        if (!sonarrKeyChanged && !secretsPresent.sonarr)
+          throw new Error('Please enter Sonarr API Key');
+
+        const res = sonarrKeyChanged
+          ? await fetch('/api/sonarr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: nextSonarrBaseUrl, apiKey: sonarrKeyTrimmed }),
+            })
+          : await fetch('/api/integrations/test/sonarr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: nextSonarrBaseUrl }),
+            });
+        if (!res.ok) throw new Error('Sonarr credentials are incorrect.');
+      }
+
+      // Google: validate if searchEngineId/apiKey changed (and enabled)
+      if (googleEnabled && (googleIdChanged || googleKeyChanged)) {
+        if (!nextGoogleSearchEngineId) throw new Error('Please enter Google Search Engine ID');
+        if (!googleKeyChanged && !secretsPresent.google) throw new Error('Please enter Google API Key');
+
+        const res = googleKeyChanged
+          ? await fetch('/api/google/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                apiKey: googleKeyTrimmed,
+                cseId: nextGoogleSearchEngineId,
+                query: 'tautulli curated plex',
+                numResults: 3,
+              }),
+            })
+          : await fetch('/api/integrations/test/google', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ searchEngineId: nextGoogleSearchEngineId }),
+            });
+        if (!res.ok) throw new Error('Google credentials are incorrect.');
+      }
+
+      // OpenAI: validate if apiKey changed (and enabled)
+      if (openAiEnabled && openAiKeyChanged) {
+        const res = await fetch('/api/openai/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: openAiKeyTrimmed }),
+        });
+        if (!res.ok) throw new Error('OpenAI API key is invalid.');
+      }
+
+      // Overseerr: validate if baseUrl/apiKey changed (and enabled)
+      if (overseerrEnabled && (overseerrBaseChanged || overseerrKeyChanged)) {
+        if (!nextOverseerrBaseUrl) throw new Error('Please enter Overseerr Base URL');
+        if (!overseerrKeyChanged && !secretsPresent.overseerr)
+          throw new Error('Please enter Overseerr API Key');
+
+        const res = overseerrKeyChanged
+          ? await fetch('/api/overseerr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: nextOverseerrBaseUrl, apiKey: overseerrKeyTrimmed }),
+            })
+          : await fetch('/api/integrations/test/overseerr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: nextOverseerrBaseUrl }),
+            });
+        if (!res.ok) throw new Error('Overseerr credentials are incorrect.');
+      }
+
+      // TMDB: validate if apiKey changed
+      if (tmdbKeyChanged) {
+        const res = await fetch('/api/tmdb/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: tmdbKeyTrimmed }),
+        });
+        if (!res.ok) throw new Error('TMDB API key is invalid.');
       }
 
       return await putSettings({

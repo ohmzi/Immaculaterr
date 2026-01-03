@@ -76,11 +76,12 @@ export class IntegrationsController {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(userId);
 
+    const bodyObj = isPlainObject(body) ? body : {};
     const id = integrationId.toLowerCase();
 
     if (id === 'plex') {
-      const bodyObj = isPlainObject(body) ? body : {};
-      const baseUrlRaw = pickString(settings, 'plex.baseUrl');
+      const baseUrlRaw =
+        pickString(bodyObj, 'baseUrl') || pickString(settings, 'plex.baseUrl');
       const token = pickString(secrets, 'plex.token');
       if (!baseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
       if (!token) throw new BadRequestException('Plex token is not set');
@@ -132,7 +133,8 @@ export class IntegrationsController {
     }
 
     if (id === 'radarr') {
-      const baseUrlRaw = pickString(settings, 'radarr.baseUrl');
+      const baseUrlRaw =
+        pickString(bodyObj, 'baseUrl') || pickString(settings, 'radarr.baseUrl');
       const apiKey = pickString(secrets, 'radarr.apiKey');
       if (!baseUrlRaw)
         throw new BadRequestException('Radarr baseUrl is not set');
@@ -143,7 +145,8 @@ export class IntegrationsController {
     }
 
     if (id === 'sonarr') {
-      const baseUrlRaw = pickString(settings, 'sonarr.baseUrl');
+      const baseUrlRaw =
+        pickString(bodyObj, 'baseUrl') || pickString(settings, 'sonarr.baseUrl');
       const apiKey = pickString(secrets, 'sonarr.apiKey');
       if (!baseUrlRaw)
         throw new BadRequestException('Sonarr baseUrl is not set');
@@ -162,7 +165,10 @@ export class IntegrationsController {
 
     if (id === 'google') {
       const apiKey = pickString(secrets, 'google.apiKey');
-      const cseId = pickString(settings, 'google.searchEngineId');
+      const cseId =
+        pickString(bodyObj, 'cseId') ||
+        pickString(bodyObj, 'searchEngineId') ||
+        pickString(settings, 'google.searchEngineId');
       if (!apiKey) throw new BadRequestException('Google apiKey is not set');
       if (!cseId)
         throw new BadRequestException('Google searchEngineId is not set');
@@ -183,7 +189,9 @@ export class IntegrationsController {
     }
 
     if (id === 'overseerr') {
-      const baseUrlRaw = pickString(settings, 'overseerr.baseUrl');
+      const baseUrlRaw =
+        pickString(bodyObj, 'baseUrl') ||
+        pickString(settings, 'overseerr.baseUrl');
       const apiKey = pickString(secrets, 'overseerr.apiKey');
       if (!baseUrlRaw)
         throw new BadRequestException('Overseerr baseUrl is not set');
