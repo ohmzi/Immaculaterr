@@ -26,7 +26,6 @@ const navItems: NavItem[] = [
     label: 'Settings',
     dropdown: [
       { label: 'Configuration', to: '/configuration' },
-      { label: 'Setup', to: '/setup' },
     ],
   },
   {
@@ -259,7 +258,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               <path d="M12.5 12.5L15 15" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <span
-              className={`${isSearchOpen ? 'hidden' : 'inline'} max-w-[150px] truncate font-semibold tracking-tight text-white sm:max-w-none`}
+              className={`${isSearchOpen ? 'hidden' : 'inline'} max-w-[150px] truncate text-lg font-semibold tracking-tight text-white sm:max-w-none`}
             >
               Immaculaterr
             </span>

@@ -24,7 +24,6 @@ const navItems: NavItem[] = [
     label: 'Settings',
     dropdown: [
       { label: 'Configuration', to: '/configuration' },
-      { label: 'Setup', to: '/setup' },
     ],
   },
   {
