@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { ensureBootstrapEnv } from './bootstrap-env';
+import { BufferedLogger } from './logs/buffered-logger';
 
 async function bootstrap() {
   await ensureBootstrapEnv();
@@ -18,7 +19,9 @@ async function bootstrap() {
     process.exit(1);
   });
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: new BufferedLogger(),
+  });
   app.use(cookieParser());
 
   // Keep the API surface separate from the UI routes we’ll serve later.

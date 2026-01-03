@@ -1,10 +1,9 @@
 import { useMemo } from 'react';
 import { motion } from 'motion/react';
-import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, Loader2 } from 'lucide-react';
 
-import { getRunLogs, listRuns } from '@/api/jobs';
+import { listServerLogs } from '@/api/logs';
 
 function formatLevel(raw: string) {
   const l = String(raw ?? '').toLowerCase();
@@ -23,26 +22,10 @@ function levelClass(raw: string) {
 }
 
 export function LogsPage() {
-  const params = useParams();
-  const paramRunId = params.runId ?? '';
-
-  const latestRunQuery = useQuery({
-    queryKey: ['jobRuns', 'latestForLogs'],
-    queryFn: () => listRuns({ take: 1 }),
-    staleTime: 0,
-    refetchInterval: 3_000,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-
-  const latestRunId = latestRunQuery.data?.runs?.[0]?.id ?? '';
-  const runId = paramRunId || latestRunId;
-
   const logsQuery = useQuery({
-    queryKey: ['jobRunLogs', runId],
-    queryFn: () => getRunLogs({ runId, take: 1000 }),
-    enabled: Boolean(runId),
-    refetchInterval: 2_000,
+    queryKey: ['serverLogs'],
+    queryFn: () => listServerLogs({ limit: 500 }),
+    refetchInterval: 5_000,
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -84,19 +67,7 @@ export function LogsPage() {
                 <div className="mt-2 text-sm text-white/70">Live logs from server</div>
               </div>
 
-              {latestRunQuery.isLoading ? (
-                <div className="flex items-center gap-2 text-sm text-white/70">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading…
-                </div>
-              ) : latestRunQuery.error ? (
-                <div className="flex items-start gap-2 text-sm text-red-200">
-                  <CircleAlert className="mt-0.5 h-4 w-4" />
-                  <div>{(latestRunQuery.error as Error).message}</div>
-                </div>
-              ) : !runId ? (
-                <div className="text-sm text-white/70">No logs yet.</div>
-              ) : logsQuery.isLoading ? (
+              {logsQuery.isLoading ? (
                 <div className="flex items-center gap-2 text-sm text-white/70">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading…

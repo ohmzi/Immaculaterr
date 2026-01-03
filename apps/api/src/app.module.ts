@@ -20,6 +20,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './auth/auth.guard';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { CollectionsModule } from './collections/collections.module';
+import { LogsModule } from './logs/logs.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -40,6 +41,7 @@ const staticImports = existsSync(webDistPath)
     SettingsModule,
     IntegrationsModule,
     CollectionsModule,
+    LogsModule,
     JobsModule,
     PlexModule,
     WebhooksModule,
