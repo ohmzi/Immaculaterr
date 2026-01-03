@@ -130,7 +130,7 @@ export function HeroSection() {
 
       {/* Content Container */}
       <div className="relative z-10 container mx-auto px-6 lg:px-8 pt-32 lg:pt-48 pb-24 flex items-center min-h-[calc(100vh-200px)]">
-        <div className="grid lg:grid-cols-[auto_auto] gap-6 lg:gap-1 items-center w-full justify-center">
+        <div className="grid lg:grid-cols-[1fr_560px] gap-8 lg:gap-12 items-center w-full">
           {/* Left Content */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -165,9 +165,9 @@ export function HeroSection() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.4 }}
-            className="flex justify-center lg:justify-end items-center w-full lg:w-auto"
+            className="flex justify-center lg:justify-end items-center w-full"
           >
-            <div className="relative w-full max-w-[380px] min-w-[320px]">
+            <div className="relative w-full max-w-[560px]">
               {/* Analytics Card */}
               <div className="w-full bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-white/5">
                 {/* Card Header */}
