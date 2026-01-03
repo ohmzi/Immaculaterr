@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CircleAlert, Loader2 } from 'lucide-react';
+import { CircleAlert, Loader2, RotateCcw } from 'lucide-react';
 
 import { listJobs, listRuns, type JobRun } from '@/api/jobs';
 
@@ -105,15 +105,27 @@ export function HistoryPage() {
             className="max-w-5xl mx-auto"
           >
             {/* Page Header */}
-            <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h1 className="text-4xl font-bold text-white mb-2">History</h1>
-                <p className="text-lg text-white/70">
-                  History of job runs (logs, summary, errors).
+            <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10 hover:rotate-0 transition-transform duration-300">
+                    <RotateCcw className="w-8 h-8 text-black" strokeWidth={2.5} />
+                  </div>
+                  <h1 className="text-5xl sm:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
+                    Rewind
+                  </h1>
+                </div>
+                <p className="text-purple-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
+                  A look back at what your server has been up to. Logs, errors, and
+                  everything in between.
                 </p>
               </div>
-              <Link to="/jobs" className={secondaryButtonClass}>
-                Back to Jobs
+
+              <Link
+                to="/"
+                className="text-sm text-white/70 hover:text-white/90 transition-colors underline-offset-4 hover:underline"
+              >
+                Return to Dashboard
               </Link>
             </div>
 
