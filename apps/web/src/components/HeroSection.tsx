@@ -40,6 +40,38 @@ function buildQuarterScale(maxValue: number) {
   return { ticks, domain: [0, domainMax] as [number, number] };
 }
 
+function CombinedYAxisTick(props: {
+  x?: number;
+  y?: number;
+  payload?: { value?: number };
+  tvTicks: number[];
+  movieTicks: number[];
+}) {
+  const { x = 0, y = 0, payload, tvTicks, movieTicks } = props;
+  const v = typeof payload?.value === 'number' ? payload.value : 0;
+  const idx = movieTicks.indexOf(v);
+  const tvValue = idx >= 0 ? (tvTicks[idx] ?? 0) : 0;
+
+  const tvText = tvValue.toLocaleString();
+  const movieText = v.toLocaleString();
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={-6}
+        y={0}
+        textAnchor="end"
+        dominantBaseline="middle"
+        style={{ fontSize: '12px' }}
+      >
+        <tspan fill="#60a5fa">{tvText}</tspan>
+        <tspan fill="#9ca3af">{' / '}</tspan>
+        <tspan fill="#facc15">{movieText}</tspan>
+      </text>
+    </g>
+  );
+}
+
 export function HeroSection() {
   const growthQuery = useQuery({
     queryKey: ['plex', 'library-growth'],
@@ -81,9 +113,6 @@ export function HeroSection() {
   const tvMax = series.reduce((acc, p) => Math.max(acc, p.tv), 0);
   const moviesScale = buildQuarterScale(moviesMax);
   const tvScale = buildQuarterScale(tvMax);
-
-  const formatCountTick = (v: number) =>
-    typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString() : String(v);
 
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8">
@@ -170,21 +199,23 @@ export function HeroSection() {
                       />
                       <YAxis
                         yAxisId="tv"
-                        orientation="left"
-                        stroke="#60a5fa"
-                        style={{ fontSize: '12px' }}
-                        tick={{ fill: '#60a5fa' }}
-                        tickFormatter={formatCountTick}
+                        hide
                         domain={tvScale.domain}
                         ticks={tvScale.ticks}
                       />
                       <YAxis
                         yAxisId="movies"
                         orientation="left"
-                        stroke="#facc15"
+                        stroke="#9ca3af"
                         style={{ fontSize: '12px' }}
-                        tick={{ fill: '#facc15' }}
-                        tickFormatter={formatCountTick}
+                        width={112}
+                        tick={(tickProps) => (
+                          <CombinedYAxisTick
+                            {...tickProps}
+                            tvTicks={tvScale.ticks}
+                            movieTicks={moviesScale.ticks}
+                          />
+                        )}
                         domain={moviesScale.domain}
                         ticks={moviesScale.ticks}
                       />
