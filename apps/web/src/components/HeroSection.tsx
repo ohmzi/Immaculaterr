@@ -36,7 +36,8 @@ function buildQuarterScale(maxValue: number) {
 
   const step = niceCeilStep(targetMax / 4);
   const domainMax = step * 4;
-  const ticks = [0, step, step * 2, step * 3, domainMax];
+  // UX: avoid showing "0" on the Y-axis.
+  const ticks = [step, step * 2, step * 3, domainMax];
   return { ticks, domain: [0, domainMax] as [number, number] };
 }
 
@@ -69,8 +70,9 @@ function CombinedYAxisTick(props: {
   payload?: { value?: number };
   tvTicks: number[];
   movieTicks: number[];
+  axisWidth: number;
 }) {
-  const { x = 0, y = 0, payload, tvTicks, movieTicks } = props;
+  const { x = 0, y = 0, payload, tvTicks, movieTicks, axisWidth } = props;
   const v = typeof payload?.value === 'number' ? payload.value : 0;
   const idx = movieTicks.indexOf(v);
   const tvValue = idx >= 0 ? (tvTicks[idx] ?? 0) : 0;
@@ -78,12 +80,15 @@ function CombinedYAxisTick(props: {
   const tvText = formatCompactCount(tvValue);
   const movieText = formatCompactCount(v);
 
+  // Align tick labels with the left edge of the card content.
+  const leftX = -axisWidth + 2;
+
   return (
     <g transform={`translate(${x},${y})`}>
       <text
-        x={-4}
+        x={leftX}
         y={-7}
-        textAnchor="end"
+        textAnchor="start"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
         fill="#facc15"
@@ -91,9 +96,9 @@ function CombinedYAxisTick(props: {
         {movieText}
       </text>
       <text
-        x={-4}
+        x={leftX}
         y={7}
-        textAnchor="end"
+        textAnchor="start"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
         fill="#60a5fa"
@@ -145,6 +150,18 @@ export function HeroSection() {
   const tvMax = series.reduce((acc, p) => Math.max(acc, p.tv), 0);
   const moviesScale = buildQuarterScale(moviesMax);
   const tvScale = buildQuarterScale(tvMax);
+
+  const yAxisWidth = (() => {
+    const lens: number[] = [];
+    for (let i = 0; i < moviesScale.ticks.length; i++) {
+      const movieLabel = formatCompactCount(moviesScale.ticks[i] ?? 0);
+      const tvLabel = formatCompactCount(tvScale.ticks[i] ?? 0);
+      lens.push(Math.max(movieLabel.length, tvLabel.length));
+    }
+    const maxLen = lens.length ? Math.max(...lens) : 0;
+    // Rough px estimate for 12px text: ~7px/char + padding.
+    return Math.max(40, Math.min(72, Math.ceil(maxLen * 7 + 18)));
+  })();
 
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8">
@@ -242,12 +259,14 @@ export function HeroSection() {
                         axisLine={{ stroke: '#9ca3af' }}
                         tickLine={{ stroke: '#9ca3af' }}
                         style={{ fontSize: '12px' }}
-                        width={64}
+                        width={yAxisWidth}
+                        tickMargin={0}
                         tick={(tickProps) => (
                           <CombinedYAxisTick
                             {...tickProps}
                             tvTicks={tvScale.ticks}
                             movieTicks={moviesScale.ticks}
+                            axisWidth={yAxisWidth}
                           />
                         )}
                         domain={moviesScale.domain}
