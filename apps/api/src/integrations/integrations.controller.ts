@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Param,
   Post,
@@ -69,6 +70,7 @@ export class IntegrationsController {
   async testSaved(
     @Req() req: AuthenticatedRequest,
     @Param('integrationId') integrationId: string,
+    @Body() body: unknown,
   ) {
     const userId = req.user.id;
     const { settings, secrets } =
@@ -77,6 +79,7 @@ export class IntegrationsController {
     const id = integrationId.toLowerCase();
 
     if (id === 'plex') {
+      const bodyObj = isPlainObject(body) ? body : {};
       const baseUrlRaw = pickString(settings, 'plex.baseUrl');
       const token = pickString(secrets, 'plex.token');
       if (!baseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
@@ -86,7 +89,46 @@ export class IntegrationsController {
         baseUrl,
         token,
       });
-      return { ok: true, summary: { machineIdentifier } };
+
+      const movieLibraryName =
+        pickString(bodyObj, 'movieLibraryName') ||
+        pickString(settings, 'plex.movieLibraryName') ||
+        'Movies';
+      const tvLibraryName =
+        pickString(bodyObj, 'tvLibraryName') ||
+        pickString(settings, 'plex.tvLibraryName') ||
+        'TV Shows';
+
+      const sections = await this.plexServer.getSections({ baseUrl, token });
+      const find = (title: string) =>
+        sections.find((s) => s.title.toLowerCase() === title.toLowerCase());
+
+      const movie = movieLibraryName ? find(movieLibraryName) : undefined;
+      if (movieLibraryName && !movie) {
+        throw new BadRequestException({
+          code: 'PLEX_MOVIE_LIBRARY_NOT_FOUND',
+          message: `Movie library not found: ${movieLibraryName}`,
+        });
+      }
+
+      const tv = tvLibraryName ? find(tvLibraryName) : undefined;
+      if (tvLibraryName && !tv) {
+        throw new BadRequestException({
+          code: 'PLEX_TV_LIBRARY_NOT_FOUND',
+          message: `TV library not found: ${tvLibraryName}`,
+        });
+      }
+
+      return {
+        ok: true,
+        summary: {
+          machineIdentifier,
+          libraries: {
+            movie: movie ? { title: movie.title, key: movie.key } : null,
+            tv: tv ? { title: tv.title, key: tv.key } : null,
+          },
+        },
+      };
     }
 
     if (id === 'radarr') {
