@@ -237,7 +237,7 @@ export function ConfigurationPage() {
         // ignore
       }
       setIsPlexOAuthLoading(false);
-      toast.error(`OAuth failed: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: toastId });
+      toast.error('Couldn’t start Plex login. Please try again.', { id: toastId });
     }
   };
 
@@ -606,16 +606,22 @@ export function ConfigurationPage() {
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
-        if (msg.includes('401') || msg.includes('Unauthorized')) {
-          toast.error('Invalid Radarr API key', { id: toastId });
-        } else if (msg.includes('timeout') || msg.includes('ECONNREFUSED')) {
-          toast.error('Cannot reach Radarr - check URL (usually :7878)', { id: toastId });
+        const lower = String(msg).toLowerCase();
+        if (lower.includes('http 401') || lower.includes('http 403') || lower.includes('unauthorized')) {
+          toast.error('Radarr API key is incorrect.', { id: toastId });
+        } else if (
+          lower.includes('timeout') ||
+          lower.includes('econnrefused') ||
+          lower.includes('enotfound') ||
+          lower.includes('failed to fetch')
+        ) {
+          toast.error('Couldn’t reach Radarr. Check the URL.', { id: toastId });
         } else {
-          toast.error(`Radarr: ${msg}`, { id: toastId });
+          toast.error('Couldn’t connect to Radarr. Check the URL and API key.', { id: toastId });
         }
       }
     } catch (error) {
-      toast.error(`Network error: Cannot reach Radarr`, { id: toastId });
+      toast.error('Couldn’t connect to Radarr. Check the URL and API key.', { id: toastId });
     }
   };
 
@@ -638,16 +644,22 @@ export function ConfigurationPage() {
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
-        if (msg.includes('401') || msg.includes('Unauthorized')) {
-          toast.error('Invalid Sonarr API key', { id: toastId });
-        } else if (msg.includes('timeout') || msg.includes('ECONNREFUSED')) {
-          toast.error('Cannot reach Sonarr - check URL (usually :8989)', { id: toastId });
+        const lower = String(msg).toLowerCase();
+        if (lower.includes('http 401') || lower.includes('http 403') || lower.includes('unauthorized')) {
+          toast.error('Sonarr API key is incorrect.', { id: toastId });
+        } else if (
+          lower.includes('timeout') ||
+          lower.includes('econnrefused') ||
+          lower.includes('enotfound') ||
+          lower.includes('failed to fetch')
+        ) {
+          toast.error('Couldn’t reach Sonarr. Check the URL.', { id: toastId });
         } else {
-          toast.error(`Sonarr: ${msg}`, { id: toastId });
+          toast.error('Couldn’t connect to Sonarr. Check the URL and API key.', { id: toastId });
         }
       }
     } catch (error) {
-      toast.error(`Network error: Cannot reach Sonarr`, { id: toastId });
+      toast.error('Couldn’t connect to Sonarr. Check the URL and API key.', { id: toastId });
     }
   };
 
@@ -665,7 +677,13 @@ export function ConfigurationPage() {
           toast.success('Connected to TMDB.', { id: toastId });
         } else {
           const error = await response.json().catch(() => ({ message: response.statusText }));
-          toast.error(`TMDB test failed: ${error.message || 'Connection error'}`, { id: toastId });
+          const msg = error.message || response.statusText;
+          const lower = String(msg).toLowerCase();
+          if (lower.includes('http 401') || lower.includes('invalid api key') || lower.includes('unauthorized')) {
+            toast.error('TMDB API key is invalid.', { id: toastId });
+          } else {
+            toast.error('Couldn’t connect to TMDB.', { id: toastId });
+          }
         }
       } else {
         // Test with the values in the form
@@ -685,15 +703,16 @@ export function ConfigurationPage() {
         } else {
           const error = await response.json().catch(() => ({ message: response.statusText }));
           const msg = error.message || response.statusText;
-          if (msg.includes('401') || msg.includes('Invalid API key')) {
-            toast.error('Invalid TMDB API key - get one at themoviedb.org/settings/api', { id: toastId, duration: 5000 });
+          const lower = String(msg).toLowerCase();
+          if (lower.includes('http 401') || lower.includes('invalid api key') || lower.includes('unauthorized')) {
+            toast.error('TMDB API key is invalid.', { id: toastId });
           } else {
-            toast.error(`TMDB: ${msg}`, { id: toastId });
+            toast.error('Couldn’t connect to TMDB.', { id: toastId });
           }
         }
       }
     } catch (error) {
-      toast.error(`Network error: Cannot reach TMDB`, { id: toastId });
+      toast.error('Couldn’t connect to TMDB.', { id: toastId });
     }
   };
 
@@ -721,10 +740,17 @@ export function ConfigurationPage() {
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
-        toast.error(`Google: ${msg}`, { id: toastId, duration: 6000 });
+        const lower = String(msg).toLowerCase();
+        if (lower.includes('http 401') || lower.includes('http 403') || lower.includes('unauthorized')) {
+          toast.error('Google Search credentials are incorrect.', { id: toastId });
+        } else {
+          toast.error('Couldn’t connect to Google Search. Check your API key and Search Engine ID.', {
+            id: toastId,
+          });
+        }
       }
     } catch (error) {
-      toast.error(`Network error: Cannot reach Google API`, { id: toastId });
+      toast.error('Couldn’t connect to Google Search. Check your API key and Search Engine ID.', { id: toastId });
     }
   };
 
@@ -747,14 +773,17 @@ export function ConfigurationPage() {
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
-        if (msg.includes('401') || msg.includes('Incorrect API key')) {
-          toast.error('Invalid OpenAI API key - check your key at platform.openai.com', { id: toastId, duration: 5000 });
+        const lower = String(msg).toLowerCase();
+        if (lower.includes('http 401') || lower.includes('incorrect api key') || lower.includes('unauthorized')) {
+          toast.error('OpenAI API key is invalid.', { id: toastId });
+        } else if (lower.includes('http 429') || lower.includes('rate')) {
+          toast.error('OpenAI is rate-limiting requests. Please try again.', { id: toastId });
         } else {
-          toast.error(`OpenAI: ${msg}`, { id: toastId });
+          toast.error('Couldn’t connect to OpenAI.', { id: toastId });
         }
       }
     } catch (error) {
-      toast.error(`Network error: Cannot reach OpenAI API`, { id: toastId });
+      toast.error('Couldn’t connect to OpenAI.', { id: toastId });
     }
   };
 
@@ -777,16 +806,22 @@ export function ConfigurationPage() {
       } else {
         const error = await response.json().catch(() => ({ message: response.statusText }));
         const msg = error.message || response.statusText;
-        if (msg.includes('401') || msg.includes('Unauthorized')) {
-          toast.error('Invalid Overseerr API key', { id: toastId });
-        } else if (msg.includes('timeout') || msg.includes('ECONNREFUSED')) {
-          toast.error('Cannot reach Overseerr - check URL (usually :5055)', { id: toastId });
+        const lower = String(msg).toLowerCase();
+        if (lower.includes('http 401') || lower.includes('http 403') || lower.includes('unauthorized')) {
+          toast.error('Overseerr API key is incorrect.', { id: toastId });
+        } else if (
+          lower.includes('timeout') ||
+          lower.includes('econnrefused') ||
+          lower.includes('enotfound') ||
+          lower.includes('failed to fetch')
+        ) {
+          toast.error('Couldn’t reach Overseerr. Check the URL.', { id: toastId });
         } else {
-          toast.error(`Overseerr: ${msg}`, { id: toastId });
+          toast.error('Couldn’t connect to Overseerr. Check the URL and API key.', { id: toastId });
         }
       }
     } catch (error) {
-      toast.error(`Network error: Cannot reach Overseerr`, { id: toastId });
+      toast.error('Couldn’t connect to Overseerr. Check the URL and API key.', { id: toastId });
     }
   };
 

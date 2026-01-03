@@ -212,7 +212,16 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       handleNext();
     },
     onError: (error: Error) => {
-      toast.error(`Plex validation failed: ${error.message}`);
+      const msg = (error?.message ?? '').toLowerCase();
+      if (msg.includes('movie library not found')) {
+        toast.error(`Movie library not found: "${plexMovieLibrary.trim() || 'Movies'}"`);
+        return;
+      }
+      if (msg.includes('tv library not found')) {
+        toast.error(`TV library not found: "${plexTvLibrary.trim() || 'TV Shows'}"`);
+        return;
+      }
+      toast.error('Plex credentials are incorrect.');
     },
   });
 
@@ -235,7 +244,12 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       handleNext();
     },
     onError: (error: Error) => {
-      toast.error(`TMDB validation failed: ${error.message}`);
+      const msg = (error?.message ?? '').toLowerCase();
+      if (msg.includes('http 401') || msg.includes('invalid api key') || msg.includes('unauthorized')) {
+        toast.error('TMDB API key is invalid.');
+        return;
+      }
+      toast.error('Couldn’t connect to TMDB.');
     },
   });
 
