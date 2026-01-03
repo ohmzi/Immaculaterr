@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { InternalNavigation } from '@/components/InternalNavigation';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Navigation } from '@/components/Navigation';
 import { getMe, logout } from '@/api/auth';
@@ -63,17 +62,8 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background transition-colors duration-300">
-      {/* Desktop navigation */}
-      {isHomePage ? (
-        <Navigation />
-      ) : (
-        <InternalNavigation
-          username={username}
-          theme={currentTheme}
-          onToggleTheme={toggleTheme}
-          onLogout={handleLogout}
-        />
-      )}
+      {/* Desktop navigation (same on every screen) */}
+      <Navigation />
 
       {/* Main Content */}
       <main className={isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}>

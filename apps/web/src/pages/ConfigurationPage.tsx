@@ -555,7 +555,7 @@ export function ConfigurationPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Configuration Content */}
-      <section className="relative min-h-screen overflow-hidden pt-32 lg:pt-40">
+      <section className="relative min-h-screen overflow-hidden pt-10 lg:pt-10">
         <div className="container mx-auto px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
