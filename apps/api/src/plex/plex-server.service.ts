@@ -44,6 +44,20 @@ function asUnknownArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [value];
 }
 
+function asPlexMetadataArray(container: Record<string, unknown> | undefined): PlexMetadata[] {
+  // Plex can return items under different element names depending on endpoint:
+  // - /library/sections/:id/all => Video (movies) or Directory (shows)
+  // - /library/.../search => Video / Directory
+  // - /library/metadata/... => Metadata
+  const items =
+    (container?.Metadata ??
+      container?.Video ??
+      container?.Directory ??
+      container?.Track ??
+      []) as PlexMetadata | PlexMetadata[];
+  return asArray(items);
+}
+
 function toStringSafe(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean')
@@ -144,9 +158,7 @@ export class PlexServerService {
 
     const xml = asPlexXml(await this.fetchXml(url, token, 20000));
     const container = xml.MediaContainer;
-    const items = asArray(
-      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
-    );
+    const items = asPlexMetadataArray(container);
 
     if (!items.length) return null;
 
@@ -217,9 +229,7 @@ export class PlexServerService {
     const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
     const container = xml.MediaContainer;
-    const items = asArray(
-      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
-    );
+    const items = asPlexMetadataArray(container);
 
     const out: number[] = [];
     for (const it of items) {
@@ -255,9 +265,7 @@ export class PlexServerService {
     const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
     const container = xml.MediaContainer;
-    const items = asArray(
-      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
-    );
+    const items = asPlexMetadataArray(container);
 
     const set = new Set<number>();
     for (const item of items) {
@@ -290,9 +298,7 @@ export class PlexServerService {
     const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
     const container = xml.MediaContainer;
-    const items = asArray(
-      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
-    );
+    const items = asPlexMetadataArray(container);
 
     const map = new Map<number, string>();
     for (const item of items) {
@@ -322,9 +328,7 @@ export class PlexServerService {
     const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
     const container = xml.MediaContainer;
-    const items = asArray(
-      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
-    );
+    const items = asPlexMetadataArray(container);
 
     const set = new Set<string>();
     for (const item of items) {
@@ -352,9 +356,7 @@ export class PlexServerService {
 
     const xml = asPlexXml(await this.fetchXml(url, token, 20000));
     const container = xml.MediaContainer;
-    const items = asArray(
-      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
-    );
+    const items = asPlexMetadataArray(container);
 
     for (const item of items) {
       const title = typeof item.title === 'string' ? item.title : '';
@@ -379,9 +381,7 @@ export class PlexServerService {
     const xml = asPlexXml(await this.fetchXml(url, token, 60000));
 
     const container = xml.MediaContainer;
-    const items = asArray(
-      (container?.Metadata ?? []) as PlexMetadata | PlexMetadata[],
-    );
+    const items = asPlexMetadataArray(container);
     return items
       .map((m) => ({
         ratingKey: m.ratingKey ? String(m.ratingKey) : '',
