@@ -213,7 +213,7 @@ export class RecentlyWatchedRefresherJob {
       })),
     );
 
-    // Ensure Plex collection exists
+    // Find existing Plex collection (if any)
     let plexCollectionKey = await this.plexServer.findCollectionRatingKey({
       baseUrl,
       token,
@@ -221,8 +221,125 @@ export class RecentlyWatchedRefresherJob {
       collectionName,
     });
 
+    let existingItems: Array<{ ratingKey: string; title: string }> = [];
+    if (plexCollectionKey) {
+      try {
+        existingItems = await this.plexServer.getCollectionItems({
+          baseUrl,
+          token,
+          collectionRatingKey: plexCollectionKey,
+        });
+      } catch (err) {
+        await ctx.warn(
+          'collection: failed to load existing items (continuing)',
+          {
+            collectionName,
+            plexCollectionKey,
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
+      }
+    }
+    const existingCount = existingItems.length;
+
+    if (ctx.dryRun) {
+      await ctx.info('collection: dry-run preview', {
+        collectionName,
+        plexCollectionKey,
+        existingCount,
+        desiredCount: desired.length,
+        strategy: plexCollectionKey ? 'recreate' : 'create',
+      });
+      return {
+        collectionName,
+        source: 'json',
+        jsonFile,
+        jsonFound: true,
+        jsonPath,
+        totalEntries: rawEntries.length,
+        resolved: desired.length,
+        plexCollectionKey,
+        existingCount,
+        desiredCount: desired.length,
+        removed: existingCount,
+        added: desired.length,
+        moved: desired.length,
+        skipped,
+        sample: desired.slice(0, 10).map((d) => d.title),
+      };
+    }
+
+    let removed = 0;
+    let added = 0;
+
+    // If the collection already exists, delete it so we can recreate with a fresh shuffled order.
+    // This avoids cases where Plex keeps the old ordering even after remove/re-add.
+    if (plexCollectionKey) {
+      await ctx.info(
+        'collection: deleting existing Plex collection for reshuffle',
+        {
+          collectionName,
+          plexCollectionKey,
+          existingCount,
+        },
+      );
+
+      try {
+        const oldKey = plexCollectionKey;
+        await this.plexServer.deleteCollection({
+          baseUrl,
+          token,
+          collectionRatingKey: oldKey,
+        });
+
+        // Best-effort: wait for deletion to propagate (avoids duplicate collections).
+        let gone = false;
+        for (let i = 0; i < 12; i += 1) {
+          try {
+            await this.plexServer.getCollectionItems({
+              baseUrl,
+              token,
+              collectionRatingKey: oldKey,
+            });
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            if (msg.includes('HTTP 404') || msg.includes('404')) {
+              gone = true;
+              break;
+            }
+          }
+          await sleep(250);
+        }
+
+        if (gone) {
+          removed = existingCount;
+          plexCollectionKey = null;
+          existingItems = [];
+        } else {
+          await ctx.warn(
+            'collection: delete did not fully propagate; falling back to in-place refresh',
+            {
+              collectionName,
+              plexCollectionKey: oldKey,
+            },
+          );
+          plexCollectionKey = oldKey;
+        }
+      } catch (err) {
+        await ctx.warn(
+          'collection: failed to delete existing Plex collection; falling back to in-place refresh',
+          {
+            collectionName,
+            plexCollectionKey,
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
+      }
+    }
+
+    // Ensure Plex collection exists (create new if deleted/missing)
     if (!plexCollectionKey) {
-      await ctx.warn('collection: plex collection not found; creating', {
+      await ctx.info('collection: creating Plex collection', {
         collectionName,
       });
       const first = desired[0]?.ratingKey ?? null;
@@ -239,11 +356,12 @@ export class RecentlyWatchedRefresherJob {
           totalEntries: rawEntries.length,
           resolved: desired.length,
           skipped,
-          removed: 0,
+          removed: existingCount,
           added: 0,
           moved: 0,
         };
       }
+
       await this.plexServer.createCollection({
         baseUrl,
         token,
@@ -254,93 +372,93 @@ export class RecentlyWatchedRefresherJob {
         initialItemRatingKey: first,
       });
 
-      plexCollectionKey = await this.plexServer.findCollectionRatingKey({
-        baseUrl,
-        token,
-        librarySectionKey: movieSectionKey,
-        collectionName,
-      });
+      // Find the newly created collection ratingKey (with small retry)
+      for (let i = 0; i < 10; i += 1) {
+        plexCollectionKey = await this.plexServer.findCollectionRatingKey({
+          baseUrl,
+          token,
+          librarySectionKey: movieSectionKey,
+          collectionName,
+        });
+        if (plexCollectionKey) break;
+        await sleep(200);
+      }
+
+      if (!plexCollectionKey) {
+        throw new Error(
+          `Failed to find or create Plex collection: ${collectionName}`,
+        );
+      }
+
+      // First item was included during createCollection (uri=...), add the rest in order.
+      removed = existingCount;
+      added = 1;
+      for (const item of desired.slice(1)) {
+        try {
+          await this.plexServer.addItemToCollection({
+            baseUrl,
+            token,
+            machineIdentifier,
+            collectionRatingKey: plexCollectionKey,
+            itemRatingKey: item.ratingKey,
+          });
+          added += 1;
+        } catch (err) {
+          skipped += 1;
+          await ctx.warn('collection: failed to add item (continuing)', {
+            collectionName,
+            ratingKey: item.ratingKey,
+            title: item.title,
+            error: (err as Error)?.message ?? String(err),
+          });
+        }
+      }
+    } else {
+      // Fallback: refresh collection in-place (remove all, then re-add in shuffled order)
+      for (const item of existingItems) {
+        try {
+          await this.plexServer.removeItemFromCollection({
+            baseUrl,
+            token,
+            collectionRatingKey: plexCollectionKey,
+            itemRatingKey: item.ratingKey,
+          });
+          removed += 1;
+        } catch (err) {
+          await ctx.warn('collection: failed to remove item (continuing)', {
+            collectionName,
+            ratingKey: item.ratingKey,
+            error: (err as Error)?.message ?? String(err),
+          });
+        }
+      }
+
+      for (const item of desired) {
+        try {
+          await this.plexServer.addItemToCollection({
+            baseUrl,
+            token,
+            machineIdentifier,
+            collectionRatingKey: plexCollectionKey,
+            itemRatingKey: item.ratingKey,
+          });
+          added += 1;
+        } catch (err) {
+          skipped += 1;
+          await ctx.warn('collection: failed to add item (continuing)', {
+            collectionName,
+            ratingKey: item.ratingKey,
+            title: item.title,
+            error: (err as Error)?.message ?? String(err),
+          });
+        }
+      }
     }
 
     if (!plexCollectionKey) {
       throw new Error(
         `Failed to find or create Plex collection: ${collectionName}`,
       );
-    }
-
-    const currentItems = await this.plexServer.getCollectionItems({
-      baseUrl,
-      token,
-      collectionRatingKey: plexCollectionKey,
-    });
-
-    if (ctx.dryRun) {
-      await ctx.info('collection: dry-run preview', {
-        collectionName,
-        plexCollectionKey,
-        existingCount: currentItems.length,
-        desiredCount: desired.length,
-      });
-      return {
-        collectionName,
-        source: 'json',
-        jsonFile,
-        jsonFound: true,
-        jsonPath,
-        totalEntries: rawEntries.length,
-        resolved: desired.length,
-        plexCollectionKey,
-        existingCount: currentItems.length,
-        desiredCount: desired.length,
-        removed: currentItems.length,
-        added: desired.length,
-        moved: desired.length,
-        skipped,
-        sample: desired.slice(0, 10).map((d) => d.title),
-      };
-    }
-
-    // Remove all existing items (best-effort)
-    let removed = 0;
-    for (const item of currentItems) {
-      try {
-        await this.plexServer.removeItemFromCollection({
-          baseUrl,
-          token,
-          collectionRatingKey: plexCollectionKey,
-          itemRatingKey: item.ratingKey,
-        });
-        removed += 1;
-      } catch (err) {
-        await ctx.warn('collection: failed to remove item (continuing)', {
-          collectionName,
-          ratingKey: item.ratingKey,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
-    }
-
-    // Add items in randomized order
-    let added = 0;
-    for (const item of desired) {
-      try {
-        await this.plexServer.addItemToCollection({
-          baseUrl,
-          token,
-          machineIdentifier,
-          collectionRatingKey: plexCollectionKey,
-          itemRatingKey: item.ratingKey,
-        });
-        added += 1;
-      } catch (err) {
-        skipped += 1;
-        await ctx.warn('collection: failed to add item (continuing)', {
-          collectionName,
-          ratingKey: item.ratingKey,
-          title: item.title,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
     }
 
     // Force collection order to 'custom' (required for move operations to reflect in Plex UI)
@@ -386,11 +504,7 @@ export class RecentlyWatchedRefresherJob {
     }
 
     // Set collection artwork if available (only if items were added or collection exists)
-    if (
-      plexCollectionKey &&
-      (added > 0 || currentItems.length > 0) &&
-      !ctx.dryRun
-    ) {
+    if (plexCollectionKey && (added > 0 || existingCount > 0) && !ctx.dryRun) {
       try {
         await ctx.info('collection: setting artwork', { collectionName });
         await this.setCollectionArtwork({
@@ -409,11 +523,7 @@ export class RecentlyWatchedRefresherJob {
     }
 
     // Pin collections to home/library (only if items were added or collection exists)
-    if (
-      plexCollectionKey &&
-      (added > 0 || currentItems.length > 0) &&
-      !ctx.dryRun
-    ) {
+    if (plexCollectionKey && (added > 0 || existingCount > 0) && !ctx.dryRun) {
       try {
         await ctx.info('collection: pinning to home/library', {
           collectionName,
@@ -758,6 +868,10 @@ function shuffle<T>(items: T[]): T[] {
     [items[i], items[j]] = [items[j], items[i]];
   }
   return items;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function resolveDataFilePath(fileName: string): string | null {

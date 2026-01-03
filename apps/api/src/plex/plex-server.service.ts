@@ -569,6 +569,30 @@ export class PlexServerService {
     }
   }
 
+  async deleteCollection(params: {
+    baseUrl: string;
+    token: string;
+    collectionRatingKey: string;
+  }) {
+    const { baseUrl, token, collectionRatingKey } = params;
+    const metaUrl = new URL(
+      `library/metadata/${encodeURIComponent(collectionRatingKey)}`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+
+    try {
+      await this.fetchNoContent(metaUrl, token, 'DELETE', 30000);
+      return;
+    } catch {
+      // Fallback: some servers accept /library/collections/... paths
+      const collectionsUrl = new URL(
+        `library/collections/${encodeURIComponent(collectionRatingKey)}`,
+        normalizeBaseUrl(baseUrl),
+      ).toString();
+      await this.fetchNoContent(collectionsUrl, token, 'DELETE', 30000);
+    }
+  }
+
   async createCollection(params: {
     baseUrl: string;
     token: string;
