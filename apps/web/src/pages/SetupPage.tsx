@@ -1,7 +1,7 @@
-import { SetupWizard } from '@/app/SetupWizard';
+import { MultiStepWizard } from '@/app/MultiStepWizard';
 
 export function SetupPage() {
-  return <SetupWizard />;
+  return <MultiStepWizard />;
 }
 
 

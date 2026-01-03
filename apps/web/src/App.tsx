@@ -5,13 +5,12 @@ import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { SetupPage } from '@/pages/SetupPage';
-import { ConnectionsPage } from '@/pages/ConnectionsPage';
 import { CollectionsPage } from '@/pages/CollectionsPage';
-import { ImportPage } from '@/pages/ImportPage';
 import { JobsPage } from '@/pages/JobsPage';
 import { RunsPage } from '@/pages/RunsPage';
 import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { ConfigurationPage } from '@/pages/ConfigurationPage';
 
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
@@ -38,24 +37,22 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Outlet />}>
-          {/* Public landing page */}
-          <Route index element={<DashboardPage />} />
-
-          {/* Protected app pages */}
+          {/* All pages require authentication and wizard completion */}
           <Route element={<ProtectedAppShell />}>
-            <Route path="app" element={<Navigate to="/jobs" replace />} />
-            <Route path="setup" element={<SetupPage />} />
-            <Route path="integrations" element={<Navigate to="/connections" replace />} />
-            <Route path="connections" element={<ConnectionsPage />} />
+            <Route index element={<DashboardPage />} />
+            <Route path="app" element={<Navigate to="/" replace />} />
+            <Route path="configuration" element={<ConfigurationPage />} />
             <Route path="collections" element={<CollectionsPage />} />
-            <Route path="import" element={<ImportPage />} />
             <Route path="jobs" element={<JobsPage />} />
             <Route path="runs" element={<RunsPage />} />
             <Route path="jobs/runs/:runId" element={<JobRunDetailPage />} />
+            <Route path="setup" element={<SetupPage />} />
+            {/* Redirect old routes */}
+            <Route path="connections" element={<Navigate to="/configuration" replace />} />
+            <Route path="integrations" element={<Navigate to="/configuration" replace />} />
+            {/* 404 also requires auth */}
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
-
-          {/* Public 404 */}
-          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

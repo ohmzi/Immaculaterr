@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { Moon, Sun, LogOut, ChevronDown } from 'lucide-react';
+
+interface MobileNavigationProps {
+  username: string;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
+  onLogout: () => void;
+}
 
 interface NavItem {
   label: string;
@@ -10,37 +17,28 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    label: 'Overview',
+    label: 'Home',
+    // No dropdown - just navigates to home
+  },
+  {
+    label: 'Scheduler',
     dropdown: [
-      { label: 'Open App', to: '/app' },
-      { label: 'Collections', to: '/collections' },
       { label: 'Jobs', to: '/jobs' },
       { label: 'Runs', to: '/runs' },
     ],
   },
   {
-    label: 'Solution',
-    dropdown: [
-      { label: 'Connections', to: '/connections' },
-      { label: 'Import', to: '/import' },
-      { label: 'Setup', to: '/setup' },
-      { label: 'Open App', to: '/app' },
-    ],
-  },
-  {
-    label: 'Service',
+    label: 'Settings',
     dropdown: [
       { label: 'Collections', to: '/collections' },
-      { label: 'Jobs', to: '/jobs' },
-      { label: 'Runs', to: '/runs' },
-      { label: 'Setup', to: '/setup' },
+      { label: 'Configuration', to: '/configuration' },
     ],
   },
 ];
 
-export function MobileNavigation() {
+export function MobileNavigation({ username, theme, onToggleTheme, onLogout }: MobileNavigationProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const navigate = useNavigate();
@@ -67,6 +65,12 @@ export function MobileNavigation() {
   }, []);
 
   const handleButtonClick = (index: number) => {
+    // Home button (index 0) navigates to /app instead of showing dropdown
+    if (index === 0) {
+      navigate('/app');
+      return;
+    }
+
     if (selectedIndex === index) {
       setSelectedIndex(null);
     } else {
@@ -76,19 +80,6 @@ export function MobileNavigation() {
 
   return (
     <>
-      {/* Search backdrop - closes search when clicked */}
-      <AnimatePresence>
-        {isSearchOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSearchOpen(false)}
-            className="fixed inset-0 z-40"
-          />
-        )}
-      </AnimatePresence>
-
       {/* Card that opens above navigation */}
       <AnimatePresence>
         {selectedIndex !== null && navItems[selectedIndex].dropdown && (
@@ -216,11 +207,14 @@ export function MobileNavigation() {
         </div>
       </nav>
 
-      {/* Top bar with search and help */}
+      {/* Top bar with logo and controls */}
       <div className="fixed left-0 right-0 top-0 z-50 bg-black/40 backdrop-blur-xl lg:hidden">
-        <div className="flex items-center justify-between gap-4 px-6 py-4">
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
           {/* Logo */}
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <button
+            onClick={() => navigate('/')}
+            className="flex flex-shrink-0 items-center gap-2 active:opacity-70 transition-opacity"
+          >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               {/* Screen/Monitor */}
               <rect x="3" y="4" width="18" height="13" rx="2" fill="none" stroke="#facc15" strokeWidth="2" />
@@ -229,57 +223,86 @@ export function MobileNavigation() {
               <circle cx="10" cy="10" r="3" fill="none" stroke="#facc15" strokeWidth="1.5" />
               <path d="M12.5 12.5L15 15" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            <span className="font-semibold tracking-tight text-white">Tautulli Curated</span>
-          </div>
+            <span className="font-semibold tracking-tight text-white">Immaculaterr</span>
+          </button>
 
-          {/* Right side buttons */}
-          <div className="flex items-center gap-2 overflow-visible">
-            {/* Search bar container */}
-            <div className="relative flex items-center">
-              {/* Sliding search input */}
-              <AnimatePresence>
-                {isSearchOpen && (
-                  <motion.div
-                    initial={{ width: 0, opacity: 0 }}
-                    animate={{ width: 130, opacity: 1 }}
-                    exit={{ width: 0, opacity: 0 }}
-                    transition={{
-                      duration: 0.3,
-                      ease: [0.16, 1, 0.3, 1],
-                    }}
-                    className="mr-1 overflow-hidden"
-                  >
-                    <input
-                      type="text"
-                      placeholder="Search..."
-                      autoFocus
-                      className="w-full rounded-full border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/60 backdrop-blur-sm transition-colors focus:border-white/40 focus:outline-none"
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <motion.button
-                animate={{ x: isSearchOpen ? 0 : 0 }}
-                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="relative z-50 rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-                onClick={() => setIsSearchOpen(!isSearchOpen)}
-              >
-                <Search size={20} />
-              </motion.button>
-            </div>
-
-            <motion.button
-              animate={{ x: isSearchOpen ? 100 : 0, opacity: isSearchOpen ? 0 : 1 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-              className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-white transition-all duration-300 hover:bg-white/20 backdrop-blur-sm"
-              onClick={() => navigate('/setup')}
+          {/* Right side controls */}
+          <div className="flex items-center gap-2">
+            {/* Theme toggle */}
+            <button
+              onClick={onToggleTheme}
+              className="rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
             >
-              Help
-            </motion.button>
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            {/* User profile dropdown */}
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-white/80 transition-colors hover:bg-white/20 active:scale-95"
+            >
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
+                {username[0]?.toUpperCase()}
+              </div>
+              <ChevronDown size={16} />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* User menu dropdown */}
+      <AnimatePresence>
+        {showUserMenu && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowUserMenu(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
+            />
+
+            {/* User menu card */}
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-16 right-4 z-50 lg:hidden"
+            >
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 p-2 min-w-[200px]">
+                <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                  <p className="font-semibold text-gray-900 dark:text-white">{username}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Local Administrator</p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    onToggleTheme();
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                  Toggle Theme
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    onLogout();
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                >
+                  <LogOut size={16} />
+                  Sign Out
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </>
   );
 }

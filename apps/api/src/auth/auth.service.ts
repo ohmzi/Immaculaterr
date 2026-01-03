@@ -143,6 +143,33 @@ export class AuthService {
     return user?.id ?? null;
   }
 
+  async isOnboardingComplete(): Promise<boolean> {
+    const userId = await this.getFirstAdminUserId();
+    if (!userId) return false;
+
+    const settings = await this.prisma.userSettings.findUnique({
+      where: { userId },
+    });
+    if (!settings?.value) return false;
+
+    try {
+      const parsed = JSON.parse(settings.value) as unknown;
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        'onboarding' in parsed &&
+        parsed.onboarding &&
+        typeof parsed.onboarding === 'object' &&
+        'completed' in parsed.onboarding
+      ) {
+        return Boolean(parsed.onboarding.completed);
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   async resetAllDataForDev() {
     if (process.env.NODE_ENV === 'production') {
       throw new BadRequestException('Reset is disabled in production.');

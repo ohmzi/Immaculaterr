@@ -12,9 +12,9 @@ export default defineConfig({
   },
   server: {
     // Allow accessing the dev UI from other devices (phones/tablets) on the LAN.
-    // Note: use http://<server-ip>:5173 from other devices (not localhost).
-    host: true,
-    port: Number.parseInt(process.env.WEB_PORT ?? '5173', 10),
+    // Note: use http://<server-ip>:5174 from other devices (not localhost).
+    host: '0.0.0.0',
+    port: Number.parseInt(process.env.WEB_PORT ?? '5174', 10),
     strictPort: true,
     proxy: {
       '/api': {

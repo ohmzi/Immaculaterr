@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { SetupWizard } from '@/app/SetupWizard';
+import { MultiStepWizard } from '@/app/MultiStepWizard';
 
 export function SetupWizardModal(params: {
   open: boolean;
@@ -24,7 +24,7 @@ export function SetupWizardModal(params: {
         ) : null}
 
         <div className="p-4 sm:p-6">
-          <SetupWizard onFinish={onFinished} />
+          <MultiStepWizard key="wizard-instance" onFinish={onFinished} />
         </div>
 
         {required ? (

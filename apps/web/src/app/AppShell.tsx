@@ -3,7 +3,8 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { InternalNavigation } from '@/components/InternalNavigation';
-import { InternalMobileNavigation } from '@/components/InternalMobileNavigation';
+import { MobileNavigation } from '@/components/MobileNavigation';
+import { Navigation } from '@/components/Navigation';
 import { getMe, logout } from '@/api/auth';
 import { getPublicSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
@@ -62,9 +63,11 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background transition-colors duration-300">
-      {/* Desktop app navigation (internal pages only) */}
-      {isHomePage ? null : (
-        <InternalNavigation 
+      {/* Desktop navigation */}
+      {isHomePage ? (
+        <Navigation />
+      ) : (
+        <InternalNavigation
           username={username}
           theme={currentTheme}
           onToggleTheme={toggleTheme}
@@ -73,22 +76,27 @@ export function AppShell() {
       )}
 
       {/* Main Content */}
-      <main className={isHomePage ? '' : 'pt-24 pb-24 lg:pb-8'}>
+      <main className={isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}>
         <Outlet />
       </main>
 
-      {/* Mobile app navigation (internal pages only) */}
-      {isHomePage ? null : <InternalMobileNavigation />}
-
-      {/* Setup Wizard Modal (internal pages only) */}
-      {isHomePage ? null : (
-        <SetupWizardModal
-          open={wizardOpen || !onboardingCompleted}
-          required={!onboardingCompleted}
-          onClose={() => setWizardOpen(false)}
-          onFinished={() => setWizardOpen(false)}
+      {/* Mobile app navigation */}
+      <div className="lg:hidden">
+        <MobileNavigation
+          username={username}
+          theme={currentTheme}
+          onToggleTheme={toggleTheme}
+          onLogout={handleLogout}
         />
-      )}
+      </div>
+
+      {/* Setup Wizard Modal */}
+      <SetupWizardModal
+        open={wizardOpen || !onboardingCompleted}
+        required={!onboardingCompleted}
+        onClose={() => setWizardOpen(false)}
+        onFinished={() => setWizardOpen(false)}
+      />
     </div>
   );
 }

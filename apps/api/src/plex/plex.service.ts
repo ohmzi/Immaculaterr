@@ -14,6 +14,8 @@ export class PlexService {
   }
 
   async createPin() {
+    // strong=true creates a PIN that generates a permanent (non-expiring) auth token
+    // The PIN itself expires in ~30 minutes, but the resulting auth token never expires
     const url = 'https://plex.tv/api/v2/pins?strong=true';
 
     const res = await fetch(url, {

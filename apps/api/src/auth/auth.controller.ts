@@ -7,6 +7,7 @@ import { Public } from './public.decorator';
 
 type BootstrapResponse = {
   needsAdminSetup: boolean;
+  onboardingComplete: boolean;
 };
 
 type RegisterBody = {
@@ -28,7 +29,12 @@ export class AuthController {
   @Get('bootstrap')
   async bootstrap(): Promise<BootstrapResponse> {
     const hasUser = await this.authService.hasAnyUser();
-    return { needsAdminSetup: !hasUser };
+    if (!hasUser) {
+      return { needsAdminSetup: true, onboardingComplete: false };
+    }
+
+    const onboardingComplete = await this.authService.isOnboardingComplete();
+    return { needsAdminSetup: false, onboardingComplete };
   }
 
   @Public()
