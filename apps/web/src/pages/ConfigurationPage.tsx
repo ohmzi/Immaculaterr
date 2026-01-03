@@ -868,7 +868,7 @@ export function ConfigurationPage() {
   const inputClass = `w-full ${inputBaseClass}`;
   const inputFlexClass = `flex-1 min-w-0 ${inputBaseClass}`;
   const testButtonClass =
-    'px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-full active:scale-95 transition-all duration-300 flex items-center gap-2 min-h-[44px] font-medium';
+    'inline-flex items-center gap-2 rounded-full border border-yellow-200/25 bg-yellow-400/90 px-4 py-2 text-sm font-semibold text-gray-900 shadow-[0_16px_40px_-18px_rgba(250,204,21,0.9)] hover:bg-yellow-300 hover:-translate-y-px active:translate-y-0 active:scale-95 transition-all duration-200 min-h-[44px]';
   const toggleTrackClass = (enabled: boolean) =>
     `relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95 ${
       enabled ? 'bg-yellow-400' : 'bg-white/15'
@@ -1001,6 +1001,15 @@ export function ConfigurationPage() {
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Radarr</h2>
                   <div className="flex items-center gap-3">
+                    {radarrEnabled && (
+                      <button
+                        onClick={testRadarrConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                     <button
                       type="button"
                       role="switch"
@@ -1013,15 +1022,6 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(radarrEnabled)}
                       />
                     </button>
-                    {radarrEnabled && (
-                      <button
-                        onClick={testRadarrConnection}
-                        className={testButtonClass}
-                      >
-                        <TestTube size={18} />
-                        Test
-                      </button>
-                    )}
                   </div>
                 </div>
                 {radarrEnabled && (
@@ -1060,6 +1060,15 @@ export function ConfigurationPage() {
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Sonarr</h2>
                   <div className="flex items-center gap-3">
+                    {sonarrEnabled && (
+                      <button
+                        onClick={testSonarrConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                     <button
                       type="button"
                       role="switch"
@@ -1072,15 +1081,6 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(sonarrEnabled)}
                       />
                     </button>
-                    {sonarrEnabled && (
-                      <button
-                        onClick={testSonarrConnection}
-                        className={testButtonClass}
-                      >
-                        <TestTube size={18} />
-                        Test
-                      </button>
-                    )}
                   </div>
                 </div>
                 {sonarrEnabled && (
@@ -1119,6 +1119,15 @@ export function ConfigurationPage() {
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Google Search</h2>
                   <div className="flex items-center gap-3">
+                    {googleEnabled && (
+                      <button
+                        onClick={testGoogleConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                     <button
                       type="button"
                       role="switch"
@@ -1131,15 +1140,6 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(googleEnabled)}
                       />
                     </button>
-                    {googleEnabled && (
-                      <button
-                        onClick={testGoogleConnection}
-                        className={testButtonClass}
-                      >
-                        <TestTube size={18} />
-                        Test
-                      </button>
-                    )}
                   </div>
                 </div>
                 {googleEnabled && (
@@ -1178,6 +1178,15 @@ export function ConfigurationPage() {
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>OpenAI</h2>
                   <div className="flex items-center gap-3">
+                    {openAiEnabled && (
+                      <button
+                        onClick={testOpenAiConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                     <button
                       type="button"
                       role="switch"
@@ -1190,15 +1199,6 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(openAiEnabled)}
                       />
                     </button>
-                    {openAiEnabled && (
-                      <button
-                        onClick={testOpenAiConnection}
-                        className={testButtonClass}
-                      >
-                        <TestTube size={18} />
-                        Test
-                      </button>
-                    )}
                   </div>
                 </div>
                 {openAiEnabled && (
@@ -1227,6 +1227,15 @@ export function ConfigurationPage() {
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Overseerr</h2>
                   <div className="flex items-center gap-3">
+                    {overseerrEnabled && (
+                      <button
+                        onClick={testOverseerrConnection}
+                        className={testButtonClass}
+                      >
+                        <TestTube size={18} />
+                        Test
+                      </button>
+                    )}
                     <button
                       type="button"
                       role="switch"
@@ -1239,15 +1248,6 @@ export function ConfigurationPage() {
                         className={toggleThumbClass(overseerrEnabled)}
                       />
                     </button>
-                    {overseerrEnabled && (
-                      <button
-                        onClick={testOverseerrConnection}
-                        className={testButtonClass}
-                      >
-                        <TestTube size={18} />
-                        Test
-                      </button>
-                    )}
                   </div>
                 </div>
                 {overseerrEnabled && (
