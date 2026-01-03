@@ -124,7 +124,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="fixed bottom-28 left-4 right-4 z-40"
           >
-            <div className="mx-auto max-w-md rounded-3xl border border-gray-200/50 bg-white/95 p-4 shadow-2xl backdrop-blur-2xl">
+            <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-[#0b0c0f]/75 p-4 shadow-2xl backdrop-blur-2xl">
               <div className="grid grid-cols-2 gap-2">
                 {navItems[selectedIndex].dropdown!.map((item, idx) => (
                   <motion.button
@@ -132,7 +132,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: idx * 0.05 }}
-                    className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-gray-800 transition-all duration-200 hover:bg-gray-100"
+                    className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:scale-[0.99]"
                     onClick={() => {
                       setSelectedIndex(null);
                       navigate(item.to);
