@@ -7,6 +7,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { CollectionsPage } from '@/pages/CollectionsPage';
 import { JobsPage } from '@/pages/JobsPage';
 import { HistoryPage } from '@/pages/HistoryPage';
+import { LogsPage } from '@/pages/LogsPage';
 import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { ConfigurationPage } from '@/pages/ConfigurationPage';
@@ -45,6 +46,8 @@ export default function App() {
             <Route path="jobs" element={<JobsPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="history/:runId" element={<JobRunDetailPage />} />
+            <Route path="logs" element={<LogsPage />} />
+            <Route path="logs/:runId" element={<LogsPage />} />
             {/* Redirect old routes */}
             <Route path="connections" element={<Navigate to="/configuration" replace />} />
             <Route path="integrations" element={<Navigate to="/configuration" replace />} />
