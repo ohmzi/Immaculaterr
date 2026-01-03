@@ -70,9 +70,8 @@ function CombinedYAxisTick(props: {
   payload?: { value?: number };
   tvTicks: number[];
   movieTicks: number[];
-  axisWidth: number;
 }) {
-  const { x = 0, y = 0, payload, tvTicks, movieTicks, axisWidth } = props;
+  const { x = 0, y = 0, payload, tvTicks, movieTicks } = props;
   const v = typeof payload?.value === 'number' ? payload.value : 0;
   const idx = movieTicks.indexOf(v);
   const tvValue = idx >= 0 ? (tvTicks[idx] ?? 0) : 0;
@@ -80,8 +79,9 @@ function CombinedYAxisTick(props: {
   const tvText = formatCompactCount(tvValue);
   const movieText = formatCompactCount(v);
 
-  // Align tick labels with the left edge of the card content.
-  const leftX = -axisWidth + 2;
+  // Always align tick labels to the *actual* left edge of the chart area.
+  // (Mobile browsers can shift axis group x/width differently than desktop.)
+  const leftX = -x;
 
   return (
     <g transform={`translate(${x},${y})`}>
@@ -159,8 +159,8 @@ export function HeroSection() {
       lens.push(Math.max(movieLabel.length, tvLabel.length));
     }
     const maxLen = lens.length ? Math.max(...lens) : 0;
-    // Rough px estimate for 12px text: ~7px/char + padding.
-    return Math.max(40, Math.min(72, Math.ceil(maxLen * 7 + 18)));
+    // Tighter px estimate for 12px text: ~6px/char + small gutter.
+    return Math.max(28, Math.min(64, Math.ceil(maxLen * 6 + 10)));
   })();
 
   return (
@@ -266,7 +266,6 @@ export function HeroSection() {
                             {...tickProps}
                             tvTicks={tvScale.ticks}
                             movieTicks={moviesScale.ticks}
-                            axisWidth={yAxisWidth}
                           />
                         )}
                         domain={moviesScale.domain}
