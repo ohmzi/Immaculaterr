@@ -132,6 +132,29 @@ export function ConfigurationPage() {
   const [isPlexOAuthLoading, setIsPlexOAuthLoading] = useState(false);
 
   const handlePlexOAuth = async () => {
+    // Mobile Safari (and some browsers) will block popups if window.open is called
+    // after an async boundary. Open a placeholder window synchronously, then
+    // navigate it once we have the Plex authUrl.
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const features = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+    const popup = window.open('about:blank', 'PlexAuth', features);
+
+    if (!popup) {
+      toast.error('Popup blocked. Please allow popups to sign in with Plex.');
+      return;
+    }
+
+    try {
+      popup.document.title = 'Plex Login';
+      popup.document.body.innerHTML =
+        '<div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 24px;">Loading Plex login…</div>';
+    } catch {
+      // Cross-origin / sandboxed environments may block access. Safe to ignore.
+    }
+
     setIsPlexOAuthLoading(true);
     const toastId = toast.loading('Opening Plex login...');
 
@@ -149,23 +172,15 @@ export function ConfigurationPage() {
       const pinData = await pinResponse.json();
       const { id: pinId, authUrl } = pinData;
 
-      // Step 2: Open popup window
-      const width = 600;
-      const height = 700;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-
-      const popup = window.open(
-        authUrl,
-        'PlexAuth',
-        `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes`
-      );
-
-      if (!popup) {
-        throw new Error('Failed to open popup. Please allow popups for this site.');
+      // Step 2: Navigate the pre-opened window/tab to Plex auth.
+      try {
+        popup.location.href = authUrl;
+      } catch {
+        // Fallback: if we cannot set location for some reason, open a new tab.
+        window.open(authUrl, '_blank', 'noopener,noreferrer');
       }
 
-      toast.success('Login with Plex in the popup window', { id: toastId });
+      toast.success('Login with Plex in the opened window/tab', { id: toastId });
 
       // Step 3: Poll for the auth token
       let attempts = 0;
@@ -199,7 +214,11 @@ export function ConfigurationPage() {
             if (checkData.authToken) {
               // Success! Got the token
               clearInterval(pollInterval);
-              popup.close();
+              try {
+                popup.close();
+              } catch {
+                // ignore
+              }
               setPlexToken(checkData.authToken);
               setIsPlexOAuthLoading(false);
               toast.success('✓ Successfully logged in with Plex!', { id: toastId });
@@ -212,6 +231,11 @@ export function ConfigurationPage() {
       }, 2000); // Poll every 2 seconds
 
     } catch (error) {
+      try {
+        popup.close();
+      } catch {
+        // ignore
+      }
       setIsPlexOAuthLoading(false);
       toast.error(`OAuth failed: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: toastId });
     }
