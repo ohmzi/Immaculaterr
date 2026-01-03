@@ -79,25 +79,39 @@ function buildCumulativeMonthlySeries(params: {
     if (ts < minTs) minTs = ts;
   }
 
-  const start = startOfMonthUtc(minTs);
+  // Plex can contain bogus/legacy addedAt timestamps (e.g. 1970). For UX,
+  // clamp the visible timeline to start no earlier than 2015-01.
+  const minStart = new Date(Date.UTC(2015, 0, 1));
+  const rawStart = startOfMonthUtc(minTs);
+  const start = rawStart < minStart ? minStart : rawStart;
+  const startSeconds = Math.floor(start.getTime() / 1000);
   const now = new Date();
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
   const movieAdds = new Map<string, number>();
+  let movies = 0;
   for (const ts of params.movieAddedAtSeconds) {
+    if (ts < startSeconds) {
+      // Baseline: count items that existed before the visible window.
+      movies += 1;
+      continue;
+    }
     const key = monthKeyUtc(new Date(ts * 1000));
     movieAdds.set(key, (movieAdds.get(key) ?? 0) + 1);
   }
 
   const tvAdds = new Map<string, number>();
+  let tv = 0;
   for (const ts of params.tvAddedAtSeconds) {
+    if (ts < startSeconds) {
+      tv += 1;
+      continue;
+    }
     const key = monthKeyUtc(new Date(ts * 1000));
     tvAdds.set(key, (tvAdds.get(key) ?? 0) + 1);
   }
 
   const series: PlexLibraryGrowthPoint[] = [];
-  let movies = 0;
-  let tv = 0;
 
   // Iterate month-by-month (UTC)
   for (let cursor = start; cursor <= end; cursor = addMonthsUtc(cursor, 1)) {
