@@ -140,7 +140,7 @@ export function Navigation() {
           {/* Main dark glassy overlay with curved bottom */}
           <div className="relative px-12 pt-6 pb-12">
             {/* Backdrop blur overlay with smooth curved bottom */}
-            <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-xl shadow-2xl overflow-hidden"
+            <div className="absolute inset-0 bg-[#0b0c0f]/85 backdrop-blur-xl shadow-2xl overflow-hidden"
                  style={{
                    borderRadius: '3rem 3rem 50% 50%'
                  }}
@@ -175,7 +175,7 @@ export function Navigation() {
                   >
                     <button className="relative px-5 py-2.5 text-sm text-white/90 hover:text-white transition-all duration-300 rounded-2xl overflow-hidden group">
                       {/* Glassy button background */}
-                      <div className="absolute inset-0 bg-white/5 dark:bg-white/10 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl border border-white/10 dark:border-white/20" />
+                      <div className="absolute inset-0 bg-white/8 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl border border-white/15" />
                       <span className="relative z-10">{item.label}</span>
                     </button>
 
@@ -189,11 +189,11 @@ export function Navigation() {
                           transition={{ duration: 0.2 }}
                           className="absolute top-full left-0 mt-2 min-w-[220px] rounded-2xl overflow-hidden shadow-2xl"
                         >
-                          <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl border border-white/20 dark:border-gray-700 p-2">
+                          <div className="bg-[#0b0c0f]/90 backdrop-blur-xl border border-white/10 p-2">
                             {item.dropdown.map((subItem, subIndex) => (
                               <button
                                 key={subIndex}
-                                className="w-full text-left px-4 py-3 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors duration-200"
+                                className="w-full text-left px-4 py-3 text-sm text-white/90 hover:bg-white/10 rounded-xl transition-colors duration-200"
                                 onClick={() => {
                                   setHoveredIndex(null);
                                   navigate(subItem.to);
@@ -230,7 +230,7 @@ export function Navigation() {
                           type="text"
                           placeholder="Search..."
                           autoFocus
-                          className="w-full px-4 py-2 text-base text-white placeholder-white/60 bg-white/10 dark:bg-white/20 backdrop-blur-sm rounded-full border border-white/20 dark:border-white/30 focus:outline-none focus:border-white/40 dark:focus:border-white/50 transition-colors"
+                          className="w-full px-4 py-2 text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm rounded-full border border-white/20 focus:outline-none focus:border-white/40 transition-colors"
                         />
                       </motion.div>
                     )}
