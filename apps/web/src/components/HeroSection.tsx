@@ -207,6 +207,8 @@ export function HeroSection() {
                         yAxisId="movies"
                         orientation="left"
                         stroke="#9ca3af"
+                        axisLine={{ stroke: '#9ca3af' }}
+                        tickLine={{ stroke: '#9ca3af' }}
                         style={{ fontSize: '12px' }}
                         width={112}
                         tick={(tickProps) => (
