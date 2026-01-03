@@ -256,7 +256,7 @@ export function HeroSection() {
                           : 'bg-blue-400/10 text-blue-200 border-blue-400/20',
                       ].join(' ')}
                     >
-                      {statsLabel} · tap to switch
+                      {statsLabel}
                     </div>
                   </div>
 
