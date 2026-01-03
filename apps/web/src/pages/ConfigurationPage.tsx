@@ -554,7 +554,7 @@ export function ConfigurationPage() {
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
-  const cardHeaderClass = 'flex items-center justify-between gap-4 mb-6';
+  const cardHeaderClass = 'flex items-center justify-between gap-4 mb-6 min-h-[44px]';
   const cardTitleClass = 'text-2xl font-semibold text-white';
   const labelClass = 'block text-sm font-medium text-white/70 mb-2';
   const inputBaseClass =
