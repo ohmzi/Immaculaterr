@@ -36,3 +36,16 @@ input, textarea, [contenteditable] {
   -webkit-user-select: auto;
   user-select: auto;
 }
+
+/* Recharts: avoid accidental text-selection/focus outlines when tapping charts on mobile */
+.recharts-wrapper,
+.recharts-wrapper * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-surface:focus {
+  outline: none;
+}
