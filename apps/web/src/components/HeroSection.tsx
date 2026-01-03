@@ -40,6 +40,29 @@ function buildQuarterScale(maxValue: number) {
   return { ticks, domain: [0, domainMax] as [number, number] };
 }
 
+function formatCompactCount(value: number) {
+  if (!Number.isFinite(value)) return String(value);
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+
+  if (abs >= 1_000_000_000) {
+    const v = abs / 1_000_000_000;
+    const digits = v >= 10 ? 0 : 1;
+    return `${sign}${v.toFixed(digits).replace(/\.0$/, '')}B`;
+  }
+  if (abs >= 1_000_000) {
+    const v = abs / 1_000_000;
+    const digits = v >= 10 ? 0 : 1;
+    return `${sign}${v.toFixed(digits).replace(/\.0$/, '')}M`;
+  }
+  if (abs >= 1_000) {
+    const v = abs / 1_000;
+    const digits = v >= 10 ? 0 : 1;
+    return `${sign}${v.toFixed(digits).replace(/\.0$/, '')}k`;
+  }
+  return `${sign}${abs.toLocaleString()}`;
+}
+
 function CombinedYAxisTick(props: {
   x?: number;
   y?: number;
@@ -52,8 +75,8 @@ function CombinedYAxisTick(props: {
   const idx = movieTicks.indexOf(v);
   const tvValue = idx >= 0 ? (tvTicks[idx] ?? 0) : 0;
 
-  const tvText = tvValue.toLocaleString();
-  const movieText = v.toLocaleString();
+  const tvText = formatCompactCount(tvValue);
+  const movieText = formatCompactCount(v);
 
   return (
     <g transform={`translate(${x},${y})`}>
@@ -210,7 +233,7 @@ export function HeroSection() {
                         axisLine={{ stroke: '#9ca3af' }}
                         tickLine={{ stroke: '#9ca3af' }}
                         style={{ fontSize: '12px' }}
-                        width={112}
+                        width={84}
                         tick={(tickProps) => (
                           <CombinedYAxisTick
                             {...tickProps}
