@@ -82,14 +82,23 @@ function CombinedYAxisTick(props: {
     <g transform={`translate(${x},${y})`}>
       <text
         x={-4}
-        y={0}
+        y={-7}
         textAnchor="end"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
+        fill="#facc15"
       >
-        <tspan fill="#60a5fa">{tvText}</tspan>
-        <tspan fill="#9ca3af">{'/'}</tspan>
-        <tspan fill="#facc15">{movieText}</tspan>
+        {movieText}
+      </text>
+      <text
+        x={-4}
+        y={7}
+        textAnchor="end"
+        dominantBaseline="middle"
+        style={{ fontSize: '12px' }}
+        fill="#60a5fa"
+      >
+        {tvText}
       </text>
     </g>
   );
