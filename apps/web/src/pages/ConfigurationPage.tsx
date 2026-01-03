@@ -590,7 +590,7 @@ export function ConfigurationPage() {
       };
 
       // If credentials are saved (masked), test the saved credentials
-      if (secretsPresent.plex && plexToken === MASKED_SECRET) {
+      if (secretsPresent.plex && (!plexToken.trim() || plexToken === MASKED_SECRET)) {
         const response = await fetch('/api/integrations/test/plex', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -654,7 +654,7 @@ export function ConfigurationPage() {
       }
 
       const response =
-        secretsPresent.radarr && apiKey === MASKED_SECRET
+        secretsPresent.radarr && (!apiKey || apiKey === MASKED_SECRET)
           ? await fetch('/api/integrations/test/radarr', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -702,7 +702,7 @@ export function ConfigurationPage() {
       }
 
       const response =
-        secretsPresent.sonarr && apiKey === MASKED_SECRET
+        secretsPresent.sonarr && (!apiKey || apiKey === MASKED_SECRET)
           ? await fetch('/api/integrations/test/sonarr', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -742,7 +742,7 @@ export function ConfigurationPage() {
     const toastId = toast.loading('Testing TMDB connection...');
     try {
       // If credentials are saved (masked), test the saved credentials
-      if (secretsPresent.tmdb && tmdbApiKey === MASKED_SECRET) {
+      if (secretsPresent.tmdb && (!tmdbApiKey.trim() || tmdbApiKey === MASKED_SECRET)) {
         const response = await fetch('/api/integrations/test/tmdb', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -803,7 +803,7 @@ export function ConfigurationPage() {
       }
 
       const response =
-        secretsPresent.google && apiKey === MASKED_SECRET
+        secretsPresent.google && (!apiKey || apiKey === MASKED_SECRET)
           ? await fetch('/api/integrations/test/google', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -844,7 +844,7 @@ export function ConfigurationPage() {
     try {
       const apiKey = openAiApiKey.trim();
       const response =
-        secretsPresent.openai && apiKey === MASKED_SECRET
+        secretsPresent.openai && (!apiKey || apiKey === MASKED_SECRET)
           ? await fetch('/api/integrations/test/openai', { method: 'POST' })
           : await fetch('/api/openai/test', {
               method: 'POST',
@@ -883,7 +883,7 @@ export function ConfigurationPage() {
       }
 
       const response =
-        secretsPresent.overseerr && apiKey === MASKED_SECRET
+        secretsPresent.overseerr && (!apiKey || apiKey === MASKED_SECRET)
           ? await fetch('/api/integrations/test/overseerr', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
