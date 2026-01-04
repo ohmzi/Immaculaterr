@@ -92,7 +92,7 @@ export function JobRunDetailPage() {
             <div className="mb-8">
               <div className="flex items-center gap-3 mb-2">
                 <Link
-                  to="/history"
+                  to="/rewind"
                   className="text-white/70 hover:text-white transition-colors"
                 >
                   <ArrowLeft className="h-5 w-5" />

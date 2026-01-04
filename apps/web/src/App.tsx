@@ -5,11 +5,11 @@ import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { JobsPage } from '@/pages/JobsPage';
-import { HistoryPage } from '@/pages/HistoryPage';
+import { RewindPage } from '@/pages/RewindPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
-import { ConfigurationPage } from '@/pages/ConfigurationPage';
+import { CommandCenterPage } from '@/pages/CommandCenterPage';
 
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
@@ -40,15 +40,15 @@ export default function App() {
           <Route element={<ProtectedAppShell />}>
             <Route index element={<DashboardPage />} />
             <Route path="app" element={<Navigate to="/" replace />} />
-            <Route path="configuration" element={<ConfigurationPage />} />
+            <Route path="command-center" element={<CommandCenterPage />} />
             <Route path="jobs" element={<JobsPage />} />
-            <Route path="history" element={<HistoryPage />} />
-            <Route path="history/:runId" element={<JobRunDetailPage />} />
+            <Route path="rewind" element={<RewindPage />} />
+            <Route path="rewind/:runId" element={<JobRunDetailPage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="logs/:runId" element={<LogsPage />} />
             {/* Redirect old routes */}
-            <Route path="connections" element={<Navigate to="/configuration" replace />} />
-            <Route path="integrations" element={<Navigate to="/configuration" replace />} />
+            <Route path="connections" element={<Navigate to="/command-center" replace />} />
+            <Route path="integrations" element={<Navigate to="/command-center" replace />} />
             {/* 404 also requires auth */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>

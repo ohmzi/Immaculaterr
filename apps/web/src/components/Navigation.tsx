@@ -20,14 +20,14 @@ const navItems: NavItem[] = [
   {
     label: 'Settings',
     dropdown: [
-      { label: 'Configuration', to: '/configuration' },
+      { label: 'Command Center', to: '/command-center' },
     ],
   },
   {
     label: 'Scheduler',
     dropdown: [
       { label: 'Jobs', to: '/jobs' },
-      { label: 'History', to: '/history' },
+      { label: 'Rewind', to: '/rewind' },
       { label: 'Logs', to: '/logs' },
     ],
   }
@@ -126,7 +126,7 @@ export function Navigation() {
 
   const handleResetAccount = async () => {
     setIsHelpOpen(false);
-    if (!confirm('Are you sure you want to reset your account? This will:\n\n• Delete all settings and configurations\n• Delete all secrets (API keys)\n• Force you through setup wizard again\n• Log you out\n\nThis action CANNOT be undone!')) {
+    if (!confirm('Are you sure you want to reset your account? This will:\n\n• Delete all settings and setup data\n• Delete all secrets (API keys)\n• Force you through setup wizard again\n• Log you out\n\nThis action CANNOT be undone!')) {
       return;
     }
 

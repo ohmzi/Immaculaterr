@@ -49,13 +49,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     },
   });
 
-  // Loading states
-  if (bootstrapQuery.isLoading || meQuery.isLoading) {
+  // Errors (bootstrap errors are important; auth/me errors other than 401 are handled in getMeOrNull).
+  if (bootstrapQuery.error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading…
+        <div className="flex items-start gap-2 text-sm text-destructive max-w-lg">
+          <CircleAlert className="mt-0.5 h-4 w-4" />
+          <div>{(bootstrapQuery.error as Error).message}</div>
         </div>
       </div>
     );
@@ -64,13 +64,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // If we are authenticated, render the app.
   if (meQuery.data) return <>{children}</>;
 
-  // Errors (bootstrap errors are important; auth/me errors other than 401 are handled in getMeOrNull).
-  if (bootstrapQuery.error) {
+  // Loading states - show loading until BOTH queries have completed
+  // This prevents flashing the auth form while checking authentication
+  if (bootstrapQuery.isLoading || meQuery.isLoading || bootstrapQuery.isFetching || meQuery.isFetching) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="flex items-start gap-2 text-sm text-destructive max-w-lg">
-          <CircleAlert className="mt-0.5 h-4 w-4" />
-          <div>{(bootstrapQuery.error as Error).message}</div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading…
         </div>
       </div>
     );

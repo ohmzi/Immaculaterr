@@ -38,7 +38,7 @@ function formatDuration(ms: number): string {
   return `${h}h ${mm}m`;
 }
 
-export function HistoryPage() {
+export function RewindPage() {
   const [jobId, setJobId] = useState('');
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
@@ -51,8 +51,8 @@ export function HistoryPage() {
     retry: false,
   });
 
-  const historyQuery = useQuery({
-    queryKey: ['jobRuns', 'historyPage'],
+  const rewindQuery = useQuery({
+    queryKey: ['jobRuns', 'rewind'],
     queryFn: () => listRuns({ take: 200 }),
     staleTime: 2_000,
     refetchInterval: 3_000,
@@ -61,7 +61,7 @@ export function HistoryPage() {
   });
 
   const filtered = useMemo(() => {
-    const runs = historyQuery.data?.runs ?? [];
+    const runs = rewindQuery.data?.runs ?? [];
     const query = q.trim().toLowerCase();
     return runs.filter((r) => {
       if (jobId && r.jobId !== jobId) return false;
@@ -70,7 +70,7 @@ export function HistoryPage() {
       const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [historyQuery.data?.runs, jobId, status, q]);
+  }, [rewindQuery.data?.runs, jobId, status, q]);
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
@@ -79,8 +79,6 @@ export function HistoryPage() {
     'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
   const inputClass = `w-full ${inputBaseClass}`;
   const selectClass = `w-full ${inputBaseClass}`;
-  const secondaryButtonClass =
-    'px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-full active:scale-95 transition-all duration-300 inline-flex items-center gap-2 min-h-[44px] font-medium border border-white/15';
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
@@ -95,7 +93,7 @@ export function HistoryPage() {
         <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
-      {/* History Content */}
+      {/* Rewind Content */}
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
         <div className="container mx-auto px-6 lg:px-8">
           <motion.div
@@ -108,9 +106,17 @@ export function HistoryPage() {
             <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10 hover:rotate-0 transition-transform duration-300">
+                  <motion.div
+                    initial={{ rotate: -10, scale: 0.94, y: 2 }}
+                    animate={{ rotate: -6, scale: 1, y: 0 }}
+                    whileHover={{ rotate: 0, scale: 1.04 }}
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+                    style={{ backfaceVisibility: 'hidden' }}
+                    className="will-change-transform transform-gpu p-3 bg-[#facc15] rounded-2xl shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10"
+                  >
                     <RotateCcw className="w-8 h-8 text-black" strokeWidth={2.5} />
-                  </div>
+                  </motion.div>
                   <h1 className="text-5xl sm:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
                     Rewind
                   </h1>
@@ -129,21 +135,21 @@ export function HistoryPage() {
               </Link>
             </div>
 
-            {historyQuery.isLoading ? (
+            {rewindQuery.isLoading ? (
               <div className={cardClass}>
                 <div className="flex items-center gap-2 text-white">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <div className="text-lg font-semibold">Loading history…</div>
+                  <div className="text-lg font-semibold">Loading rewind…</div>
                 </div>
               </div>
-            ) : historyQuery.error ? (
+            ) : rewindQuery.error ? (
               <div className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}>
                 <div className="flex items-start gap-3">
                   <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
                   <div className="min-w-0">
-                    <div className="text-white font-semibold">Failed to load history</div>
+                    <div className="text-white font-semibold">Failed to load rewind</div>
                     <div className="text-sm text-white/70">
-                      {(historyQuery.error as Error).message}
+                      {(rewindQuery.error as Error).message}
                     </div>
                   </div>
                 </div>
@@ -215,7 +221,7 @@ export function HistoryPage() {
                 >
                   <div className="mb-6 flex items-end justify-between gap-4">
                     <div>
-                      <div className="text-2xl font-semibold text-white">Recent history</div>
+                      <div className="text-2xl font-semibold text-white">Recent rewind</div>
                       <div className="mt-2 text-sm text-white/70">
                         {`${filtered.length.toLocaleString()} shown`}
                       </div>
@@ -243,7 +249,7 @@ export function HistoryPage() {
                                 <td className="px-3 py-3 whitespace-nowrap">
                                   <Link
                                     className="font-mono text-xs text-white/80 underline-offset-4 hover:underline"
-                                    to={`/history/${run.id}`}
+                                    to={`/rewind/${run.id}`}
                                   >
                                     {new Date(run.startedAt).toLocaleString()}
                                   </Link>
@@ -279,7 +285,7 @@ export function HistoryPage() {
                       </table>
                     </div>
                   ) : (
-                    <div className="text-sm text-white/70">No history found.</div>
+                    <div className="text-sm text-white/70">No rewind found.</div>
                   )}
                 </motion.div>
               </div>
