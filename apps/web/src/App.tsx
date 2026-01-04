@@ -4,7 +4,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { TaskRunnerPage } from '@/pages/TaskRunnerPage';
+import { TaskManagerPage } from '@/pages/TaskManagerPage';
 import { RewindPage } from '@/pages/RewindPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
@@ -41,7 +41,7 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="app" element={<Navigate to="/" replace />} />
             <Route path="command-center" element={<CommandCenterPage />} />
-            <Route path="jobs" element={<TaskRunnerPage />} />
+            <Route path="jobs" element={<TaskManagerPage />} />
             <Route path="rewind" element={<RewindPage />} />
             <Route path="rewind/:runId" element={<JobRunDetailPage />} />
             <Route path="logs" element={<LogsPage />} />

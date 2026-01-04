@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
   {
     label: 'Scheduler',
     dropdown: [
-      { label: 'Task Runner', to: '/jobs' },
+      { label: 'Task Manager', to: '/jobs' },
       { label: 'Rewind', to: '/rewind' },
       { label: 'Logs', to: '/logs' },
     ],

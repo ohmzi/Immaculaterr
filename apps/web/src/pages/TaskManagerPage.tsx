@@ -248,7 +248,7 @@ function calculateNextRuns(draft: ScheduleDraft, count: number = 5): Date[] {
   return runs;
 }
 
-export function TaskRunnerPage() {
+export function TaskManagerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
@@ -454,7 +454,7 @@ export function TaskRunnerPage() {
         <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
-      {/* Task Runner Content */}
+      {/* Task Manager Content */}
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
         <div className="mb-12">
@@ -475,7 +475,7 @@ export function TaskRunnerPage() {
                 </div>
               </div>
               <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
-                Task Runner
+                Task Manager
               </h1>
             </div>
 
