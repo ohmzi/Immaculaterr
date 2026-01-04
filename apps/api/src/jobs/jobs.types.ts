@@ -22,6 +22,7 @@ export type JobContext = {
   userId: string;
   dryRun: boolean;
   trigger: JobRunTrigger;
+  input?: JsonObject;
   log: (
     level: JobLogLevel,
     message: string,

@@ -8,13 +8,50 @@ import {
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
+import { AuthService } from '../auth/auth.service';
+import { Public } from '../auth/public.decorator';
+import { JobsService } from '../jobs/jobs.service';
 import { WebhooksService } from './webhooks.service';
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pick(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickString(obj: Record<string, unknown>, path: string): string {
+  const v = pick(obj, path);
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function pickNumber(obj: Record<string, unknown>, path: string): number | null {
+  const v = pick(obj, path);
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number.parseInt(v.trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 @Controller('webhooks')
 export class WebhooksController {
-  constructor(private readonly webhooksService: WebhooksService) {}
+  constructor(
+    private readonly webhooksService: WebhooksService,
+    private readonly jobsService: JobsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post('plex')
+  @Public()
   @UseInterceptors(
     AnyFilesInterceptor({
       limits: {
@@ -50,6 +87,47 @@ export class WebhooksController {
     };
 
     const persisted = await this.webhooksService.persistPlexWebhookEvent(event);
-    return { ok: true, ...persisted };
+
+    // Trigger watched-movie automation on scrobble(movie).
+    // NOTE: Plex webhooks can be noisy; we keep the conditions strict.
+    const payloadObj = isPlainObject(payload) ? payload : null;
+    const plexEvent = payloadObj ? pickString(payloadObj, 'event') : '';
+    const mediaType = payloadObj ? pickString(payloadObj, 'Metadata.type') : '';
+
+    if (plexEvent === 'media.scrobble' && mediaType.toLowerCase() === 'movie') {
+      const seedTitle = payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
+      const seedRatingKey = payloadObj
+        ? pickString(payloadObj, 'Metadata.ratingKey')
+        : '';
+      const seedYear = payloadObj ? pickNumber(payloadObj, 'Metadata.year') : null;
+
+      if (seedTitle) {
+        const userId = await this.authService.getFirstAdminUserId();
+        if (userId) {
+          try {
+            const run = await this.jobsService.runJob({
+              jobId: 'watchedMovieRecommendations',
+              trigger: 'manual',
+              dryRun: false,
+              userId,
+              input: {
+                source: 'plexWebhook',
+                plexEvent,
+                seedTitle,
+                seedYear: seedYear ?? null,
+                seedRatingKey: seedRatingKey || null,
+                persistedPath: persisted.path,
+              },
+            });
+            return { ok: true, ...persisted, triggered: true, runId: run.id };
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            return { ok: true, ...persisted, triggered: false, error: msg };
+          }
+        }
+      }
+    }
+
+    return { ok: true, ...persisted, triggered: false };
   }
 }

@@ -13,9 +13,11 @@ import { ApiTags } from '@nestjs/swagger';
 import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import type { JsonObject } from './jobs.types';
 
 type RunJobBody = {
   dryRun?: unknown;
+  input?: unknown;
 };
 
 type UpsertScheduleBody = {
@@ -45,11 +47,23 @@ export class JobsController {
   ) {
     const userId = req.user.id;
     const dryRun = Boolean(body?.dryRun);
+    const inputRaw = body?.input;
+    const input: JsonObject | undefined =
+      inputRaw === undefined
+        ? undefined
+        : inputRaw && typeof inputRaw === 'object' && !Array.isArray(inputRaw)
+          ? (inputRaw as JsonObject)
+          : undefined;
+
+    if (inputRaw !== undefined && !input) {
+      throw new BadRequestException('input must be a JSON object');
+    }
     const run = await this.jobsService.runJob({
       jobId,
       trigger: 'manual',
       dryRun,
       userId,
+      input,
     });
     return { ok: true, run };
   }

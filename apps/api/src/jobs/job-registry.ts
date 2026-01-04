@@ -14,6 +14,13 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     defaultScheduleCron: '0 3 * * *', // 3am daily (placeholder)
   },
   {
+    id: 'watchedMovieRecommendations',
+    name: 'Watched Movie Recommendations',
+    description:
+      'Triggered by Plex webhooks when a movie is finished. Generates recommendations and rebuilds curated Plex collections.',
+    defaultScheduleCron: undefined,
+  },
+  {
     id: 'recentlyWatchedRefresher',
     name: 'Collection Refresher',
     description:

@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { SettingsService } from '../settings/settings.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { join } from 'node:path';
 
 const DEFAULT_REFRESH_SOURCES = [
   {
@@ -23,6 +23,7 @@ export class RecentlyWatchedRefresherJob {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
+    private readonly plexCuratedCollections: PlexCuratedCollectionsService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
@@ -147,7 +148,7 @@ export class RecentlyWatchedRefresherJob {
 
     // Resolve entries to Plex ratingKeys (prefer rating_key; fallback to title search)
     const resolved: Array<{ ratingKey: string; title: string }> = [];
-    let skipped = 0;
+    let skippedUnresolved = 0;
     for (const entry of rawEntries) {
       const rk = pickRatingKey(entry);
       const title = pickTitle(entry);
@@ -169,12 +170,12 @@ export class RecentlyWatchedRefresherJob {
         if (found) {
           resolved.push({ ratingKey: found.ratingKey, title: found.title });
         } else {
-          skipped += 1;
+          skippedUnresolved += 1;
         }
         continue;
       }
 
-      skipped += 1;
+      skippedUnresolved += 1;
     }
 
     if (!resolved.length) {
@@ -183,7 +184,7 @@ export class RecentlyWatchedRefresherJob {
         jsonFile,
         jsonPath,
         totalEntries: rawEntries.length,
-        skipped,
+        skipped: skippedUnresolved,
       });
       return {
         collectionName,
@@ -193,7 +194,7 @@ export class RecentlyWatchedRefresherJob {
         jsonPath,
         totalEntries: rawEntries.length,
         resolved: 0,
-        skipped,
+        skipped: skippedUnresolved,
         removed: 0,
         added: 0,
         moved: 0,
@@ -206,348 +207,33 @@ export class RecentlyWatchedRefresherJob {
       if (!uniq.has(it.ratingKey)) uniq.set(it.ratingKey, it.title);
     }
 
-    const desired = shuffle(
-      Array.from(uniq.entries()).map(([ratingKey, title]) => ({
-        ratingKey,
-        title,
-      })),
-    );
+    const desiredItems = Array.from(uniq.entries()).map(([ratingKey, title]) => ({
+      ratingKey,
+      title,
+    }));
 
-    // Find existing Plex collection (if any)
-    let plexCollectionKey = await this.plexServer.findCollectionRatingKey({
+    const applied = await this.plexCuratedCollections.rebuildMovieCollection({
+      ctx,
       baseUrl,
       token,
-      librarySectionKey: movieSectionKey,
+      machineIdentifier,
+      movieSectionKey,
       collectionName,
+      desiredItems,
+      randomizeOrder: true,
     });
 
-    let existingItems: Array<{ ratingKey: string; title: string }> = [];
-    if (plexCollectionKey) {
-      try {
-        existingItems = await this.plexServer.getCollectionItems({
-          baseUrl,
-          token,
-          collectionRatingKey: plexCollectionKey,
-        });
-      } catch (err) {
-        await ctx.warn(
-          'collection: failed to load existing items (continuing)',
-          {
-            collectionName,
-            plexCollectionKey,
-            error: (err as Error)?.message ?? String(err),
-          },
-        );
-      }
-    }
-    const existingCount = existingItems.length;
-
-    if (ctx.dryRun) {
-      await ctx.info('collection: dry-run preview', {
-        collectionName,
-        plexCollectionKey,
-        existingCount,
-        desiredCount: desired.length,
-        strategy: plexCollectionKey ? 'recreate' : 'create',
-      });
-      return {
-        collectionName,
-        source: 'json',
-        jsonFile,
-        jsonFound: true,
-        jsonPath,
-        totalEntries: rawEntries.length,
-        resolved: desired.length,
-        plexCollectionKey,
-        existingCount,
-        desiredCount: desired.length,
-        removed: existingCount,
-        added: desired.length,
-        moved: desired.length,
-        skipped,
-        sample: desired.slice(0, 10).map((d) => d.title),
-      };
-    }
-
-    let removed = 0;
-    let added = 0;
-
-    // If the collection already exists, delete it so we can recreate with a fresh shuffled order.
-    // This avoids cases where Plex keeps the old ordering even after remove/re-add.
-    if (plexCollectionKey) {
-      await ctx.info(
-        'collection: deleting existing Plex collection for reshuffle',
-        {
-          collectionName,
-          plexCollectionKey,
-          existingCount,
-        },
-      );
-
-      try {
-        const oldKey = plexCollectionKey;
-        await this.plexServer.deleteCollection({
-          baseUrl,
-          token,
-          collectionRatingKey: oldKey,
-        });
-
-        // Best-effort: wait for deletion to propagate (avoids duplicate collections).
-        let gone = false;
-        for (let i = 0; i < 12; i += 1) {
-          try {
-            await this.plexServer.getCollectionItems({
-              baseUrl,
-              token,
-              collectionRatingKey: oldKey,
-            });
-          } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
-            if (msg.includes('HTTP 404') || msg.includes('404')) {
-              gone = true;
-              break;
-            }
-          }
-          await sleep(250);
-        }
-
-        if (gone) {
-          removed = existingCount;
-          plexCollectionKey = null;
-          existingItems = [];
-        } else {
-          await ctx.warn(
-            'collection: delete did not fully propagate; falling back to in-place refresh',
-            {
-              collectionName,
-              plexCollectionKey: oldKey,
-            },
-          );
-          plexCollectionKey = oldKey;
-        }
-      } catch (err) {
-        await ctx.warn(
-          'collection: failed to delete existing Plex collection; falling back to in-place refresh',
-          {
-            collectionName,
-            plexCollectionKey,
-            error: (err as Error)?.message ?? String(err),
-          },
-        );
-      }
-    }
-
-    // Ensure Plex collection exists (create new if deleted/missing)
-    if (!plexCollectionKey) {
-      await ctx.info('collection: creating Plex collection', {
-        collectionName,
-      });
-      const first = desired[0]?.ratingKey ?? null;
-      if (!first) {
-        await ctx.warn('collection: cannot create Plex collection (no items)', {
-          collectionName,
-        });
-        return {
-          collectionName,
-          source: 'json',
-          jsonFile,
-          jsonFound: true,
-          jsonPath,
-          totalEntries: rawEntries.length,
-          resolved: desired.length,
-          skipped,
-          removed: existingCount,
-          added: 0,
-          moved: 0,
-        };
-      }
-
-      await this.plexServer.createCollection({
-        baseUrl,
-        token,
-        machineIdentifier,
-        librarySectionKey: movieSectionKey,
-        collectionName,
-        type: 1,
-        initialItemRatingKey: first,
-      });
-
-      // Find the newly created collection ratingKey (with small retry)
-      for (let i = 0; i < 10; i += 1) {
-        plexCollectionKey = await this.plexServer.findCollectionRatingKey({
-          baseUrl,
-          token,
-          librarySectionKey: movieSectionKey,
-          collectionName,
-        });
-        if (plexCollectionKey) break;
-        await sleep(200);
-      }
-
-      if (!plexCollectionKey) {
-        throw new Error(
-          `Failed to find or create Plex collection: ${collectionName}`,
-        );
-      }
-
-      // First item was included during createCollection (uri=...), add the rest in order.
-      removed = existingCount;
-      added = 1;
-      for (const item of desired.slice(1)) {
-        try {
-          await this.plexServer.addItemToCollection({
-            baseUrl,
-            token,
-            machineIdentifier,
-            collectionRatingKey: plexCollectionKey,
-            itemRatingKey: item.ratingKey,
-          });
-          added += 1;
-        } catch (err) {
-          skipped += 1;
-          await ctx.warn('collection: failed to add item (continuing)', {
-            collectionName,
-            ratingKey: item.ratingKey,
-            title: item.title,
-            error: (err as Error)?.message ?? String(err),
-          });
-        }
-      }
-    } else {
-      // Fallback: refresh collection in-place (remove all, then re-add in shuffled order)
-      for (const item of existingItems) {
-        try {
-          await this.plexServer.removeItemFromCollection({
-            baseUrl,
-            token,
-            collectionRatingKey: plexCollectionKey,
-            itemRatingKey: item.ratingKey,
-          });
-          removed += 1;
-        } catch (err) {
-          await ctx.warn('collection: failed to remove item (continuing)', {
-            collectionName,
-            ratingKey: item.ratingKey,
-            error: (err as Error)?.message ?? String(err),
-          });
-        }
-      }
-
-      for (const item of desired) {
-        try {
-          await this.plexServer.addItemToCollection({
-            baseUrl,
-            token,
-            machineIdentifier,
-            collectionRatingKey: plexCollectionKey,
-            itemRatingKey: item.ratingKey,
-          });
-          added += 1;
-        } catch (err) {
-          skipped += 1;
-          await ctx.warn('collection: failed to add item (continuing)', {
-            collectionName,
-            ratingKey: item.ratingKey,
-            title: item.title,
-            error: (err as Error)?.message ?? String(err),
-          });
-        }
-      }
-    }
-
-    if (!plexCollectionKey) {
-      throw new Error(
-        `Failed to find or create Plex collection: ${collectionName}`,
-      );
-    }
-
-    // Force collection order to 'custom' (required for move operations to reflect in Plex UI)
-    try {
-      await this.plexServer.setCollectionSort({
-        baseUrl,
-        token,
-        collectionRatingKey: plexCollectionKey,
-        sort: 'custom',
-      });
-    } catch (err) {
-      await ctx.warn(
-        'collection: failed to set collection sort=custom (continuing)',
-        {
-          collectionName,
-          plexCollectionKey,
-          error: (err as Error)?.message ?? String(err),
-        },
-      );
-    }
-
-    // Apply custom order by moving items
-    let moved = 0;
-    let prev: string | null = null;
-    for (const item of desired) {
-      try {
-        await this.plexServer.moveCollectionItem({
-          baseUrl,
-          token,
-          collectionRatingKey: plexCollectionKey,
-          itemRatingKey: item.ratingKey,
-          after: prev,
-        });
-        prev = item.ratingKey;
-        moved += 1;
-      } catch (err) {
-        await ctx.warn('collection: failed to move item (continuing)', {
-          collectionName,
-          ratingKey: item.ratingKey,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
-    }
-
-    // Set collection artwork if available (only if items were added or collection exists)
-    if (plexCollectionKey && (added > 0 || existingCount > 0) && !ctx.dryRun) {
-      try {
-        await ctx.info('collection: setting artwork', { collectionName });
-        await this.setCollectionArtwork({
-          ctx,
-          baseUrl,
-          token,
-          collectionRatingKey: plexCollectionKey,
-          collectionName,
-        });
-      } catch (err) {
-        await ctx.warn('collection: failed to set artwork (non-critical)', {
-          collectionName,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
-    }
-
-    // Pin collections to home/library (only if items were added or collection exists)
-    if (plexCollectionKey && (added > 0 || existingCount > 0) && !ctx.dryRun) {
-      try {
-        await ctx.info('collection: pinning to home/library', {
-          collectionName,
-        });
-        await this.pinCuratedCollectionHubs({
-          ctx,
-          baseUrl,
-          token,
-          librarySectionKey: movieSectionKey,
-        });
-      } catch (err) {
-        await ctx.warn('collection: failed to pin hubs (non-critical)', {
-          collectionName,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
-    }
+    const applySkipped =
+      typeof (applied as Record<string, unknown>)['skipped'] === 'number'
+        ? ((applied as Record<string, unknown>)['skipped'] as number)
+        : 0;
+    const skipped = skippedUnresolved + applySkipped;
 
     await ctx.info('collection: done', {
       collectionName,
       jsonFile,
-      removed,
-      added,
-      moved,
+      ...applied,
+      skippedUnresolved,
       skipped,
     });
 
@@ -558,270 +244,11 @@ export class RecentlyWatchedRefresherJob {
       jsonFound: true,
       jsonPath,
       totalEntries: rawEntries.length,
-      resolved: desired.length,
-      plexCollectionKey,
-      removed,
-      added,
-      moved,
+      resolved: desiredItems.length,
+      ...applied,
       skipped,
-      sample: desired.slice(0, 10).map((d) => d.title),
+      skippedUnresolved,
     };
-  }
-
-  private async setCollectionArtwork(params: {
-    ctx: JobContext;
-    baseUrl: string;
-    token: string;
-    collectionRatingKey: string;
-    collectionName: string;
-  }): Promise<void> {
-    const { ctx, baseUrl, token, collectionRatingKey, collectionName } = params;
-
-    const artworkPaths = this.getArtworkPaths(collectionName);
-    if (!artworkPaths.poster && !artworkPaths.background) {
-      await ctx.debug('collection: no artwork files found', { collectionName });
-      return;
-    }
-
-    if (artworkPaths.poster) {
-      try {
-        await this.plexServer.uploadCollectionPoster({
-          baseUrl,
-          token,
-          collectionRatingKey,
-          filepath: artworkPaths.poster,
-        });
-        await ctx.info('collection: poster set', {
-          collectionName,
-          poster: path.basename(artworkPaths.poster),
-        });
-      } catch (err) {
-        await ctx.warn('collection: failed to set poster', {
-          collectionName,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
-    }
-
-    if (artworkPaths.background) {
-      try {
-        await this.plexServer.uploadCollectionArt({
-          baseUrl,
-          token,
-          collectionRatingKey,
-          filepath: artworkPaths.background,
-        });
-        await ctx.info('collection: background set', {
-          collectionName,
-          background: path.basename(artworkPaths.background),
-        });
-      } catch (err) {
-        await ctx.warn('collection: failed to set background', {
-          collectionName,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
-    }
-  }
-
-  private async pinCuratedCollectionHubs(params: {
-    ctx: JobContext;
-    baseUrl: string;
-    token: string;
-    librarySectionKey: string;
-  }): Promise<void> {
-    const { ctx, baseUrl, token, librarySectionKey } = params;
-
-    // Order matches Python script: CURATED_RECOMMENDATION_COLLECTION_ORDER
-    const collectionOrder = [
-      'Based on your recently watched movie',
-      'Inspired by your Immaculate Taste',
-      'Change of Taste',
-    ];
-
-    const stats = {
-      requested: collectionOrder.length,
-      found: 0,
-      updated: 0,
-      missing: 0,
-      failed: 0,
-    };
-
-    // First, set visibility for all collections
-    for (const collectionName of collectionOrder) {
-      try {
-        const collectionKey = await this.plexServer.findCollectionRatingKey({
-          baseUrl,
-          token,
-          librarySectionKey,
-          collectionName,
-        });
-
-        if (!collectionKey) {
-          stats.missing += 1;
-          await ctx.debug('hub_pin: collection missing', { collectionName });
-          continue;
-        }
-
-        stats.found += 1;
-        try {
-          await this.plexServer.setCollectionHubVisibility({
-            baseUrl,
-            token,
-            librarySectionKey,
-            collectionRatingKey: collectionKey,
-            promotedToRecommended: 1,
-            promotedToOwnHome: 1,
-            promotedToSharedHome: 0,
-          });
-          stats.updated += 1;
-          await ctx.info('hub_pin: set visible_on(library,home)=ON', {
-            collectionName,
-          });
-        } catch (err) {
-          stats.failed += 1;
-          await ctx.warn('hub_pin: failed updating hub settings', {
-            collectionName,
-            error: (err as Error)?.message ?? String(err),
-          });
-        }
-      } catch (err) {
-        stats.failed += 1;
-        await ctx.warn('hub_pin: failed loading collection', {
-          collectionName,
-          error: (err as Error)?.message ?? String(err),
-        });
-      }
-    }
-
-    // Now reorder the hubs so they appear as top rows
-    try {
-      const identifiers: string[] = [];
-      const collections: string[] = [];
-
-      for (const collectionName of collectionOrder) {
-        try {
-          const collectionKey = await this.plexServer.findCollectionRatingKey({
-            baseUrl,
-            token,
-            librarySectionKey,
-            collectionName,
-          });
-
-          if (!collectionKey) continue;
-
-          const identifier = await this.plexServer.getCollectionHubIdentifier({
-            baseUrl,
-            token,
-            librarySectionKey,
-            collectionRatingKey: collectionKey,
-          });
-
-          if (identifier) {
-            identifiers.push(identifier);
-            collections.push(collectionName);
-          }
-        } catch (err) {
-          await ctx.debug('hub_pin: failed to get identifier', {
-            collectionName,
-            error: (err as Error)?.message ?? String(err),
-          });
-        }
-      }
-
-      if (identifiers.length > 0) {
-        // Move first to the top, then chain "after=" for the rest
-        const first = identifiers[0];
-        await this.plexServer.moveHubRow({
-          baseUrl,
-          token,
-          librarySectionKey,
-          identifier: first,
-          after: null,
-        });
-
-        let prev = first;
-        for (let i = 1; i < identifiers.length; i++) {
-          await this.plexServer.moveHubRow({
-            baseUrl,
-            token,
-            librarySectionKey,
-            identifier: identifiers[i],
-            after: prev,
-          });
-          prev = identifiers[i];
-        }
-
-        await ctx.info('hub_pin: reordered top collections', {
-          collections,
-          identifiers,
-        });
-      }
-    } catch (err) {
-      await ctx.warn('hub_pin: reorder failed (non-critical)', {
-        error: (err as Error)?.message ?? String(err),
-      });
-    }
-
-    await ctx.info('hub_pin: done', { stats });
-  }
-
-  private getArtworkPaths(collectionName: string): {
-    poster: string | null;
-    background: string | null;
-  } {
-    // Map collection names to artwork file names (matches Python script)
-    const collectionArtworkMap: Record<string, string> = {
-      'Inspired by your Immaculate Taste': 'immaculate_taste_collection',
-      'Based on your recently watched movie': 'recently_watched_collection',
-      'Change of Taste': 'change_of_taste_collection',
-    };
-
-    const artworkName = collectionArtworkMap[collectionName];
-    if (!artworkName) {
-      return { poster: null, background: null };
-    }
-
-    // Find project root by looking for assets/collection_artwork directory
-    // Try common layouts relative to current working directory
-    const cwd = process.cwd();
-    const candidates = [
-      join(cwd, 'assets', 'collection_artwork'),
-      join(cwd, '..', 'assets', 'collection_artwork'),
-      join(cwd, '..', '..', 'assets', 'collection_artwork'),
-      join(cwd, '..', '..', '..', 'assets', 'collection_artwork'),
-    ];
-
-    let assetsDir: string | null = null;
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) {
-        assetsDir = candidate;
-        break;
-      }
-    }
-
-    if (!assetsDir) {
-      return { poster: null, background: null };
-    }
-
-    // Try .png first, then .jpg
-    const posterPng = join(assetsDir, 'posters', `${artworkName}.png`);
-    const posterJpg = join(assetsDir, 'posters', `${artworkName}.jpg`);
-    const poster = existsSync(posterPng)
-      ? posterPng
-      : existsSync(posterJpg)
-        ? posterJpg
-        : null;
-
-    const backgroundPng = join(assetsDir, 'backgrounds', `${artworkName}.png`);
-    const backgroundJpg = join(assetsDir, 'backgrounds', `${artworkName}.jpg`);
-    const background = existsSync(backgroundPng)
-      ? backgroundPng
-      : existsSync(backgroundJpg)
-        ? backgroundJpg
-        : null;
-
-    return { poster, background };
   }
 
   private async readCollectionJson(jsonPath: string): Promise<unknown[]> {
@@ -860,18 +287,6 @@ export class RecentlyWatchedRefresherJob {
 
 function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
-}
-
-function shuffle<T>(items: T[]): T[] {
-  for (let i = items.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [items[i], items[j]] = [items[j], items[i]];
-  }
-  return items;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function resolveDataFilePath(fileName: string): string | null {

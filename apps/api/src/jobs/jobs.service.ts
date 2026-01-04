@@ -91,8 +91,9 @@ export class JobsService {
     trigger: JobRunTrigger;
     dryRun: boolean;
     userId: string;
+    input?: JsonObject;
   }) {
-    const { jobId, trigger, dryRun, userId } = params;
+    const { jobId, trigger, dryRun, userId, input } = params;
     const def = findJobDefinition(jobId);
     if (!def) throw new NotFoundException(`Unknown job: ${jobId}`);
 
@@ -133,6 +134,7 @@ export class JobsService {
       userId,
       dryRun,
       trigger,
+      input,
       log,
       debug: (m, c) => log('debug', m, c),
       info: (m, c) => log('info', m, c),
@@ -158,6 +160,7 @@ export class JobsService {
       await ctx.info('run: started', {
         trigger: ctx.trigger,
         dryRun: ctx.dryRun,
+        input: ctx.input ?? null,
       });
       const result = await this.handlers.run(jobId, ctx);
       await ctx.info('run: finished');

@@ -46,11 +46,14 @@ export function listJobs() {
   return fetchJson<{ jobs: JobDefinition[] }>('/api/jobs');
 }
 
-export function runJob(jobId: string, dryRun: boolean) {
+export function runJob(jobId: string, dryRun: boolean, input?: unknown) {
   return fetchJson<{ ok: true; run: JobRun }>(`/api/jobs/${encodeURIComponent(jobId)}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dryRun }),
+    body: JSON.stringify({
+      dryRun,
+      ...(input !== undefined ? { input } : {}),
+    }),
   });
 }
 

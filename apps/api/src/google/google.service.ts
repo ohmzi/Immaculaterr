@@ -20,12 +20,80 @@ export type GoogleSearchResult = {
 export class GoogleService {
   private readonly logger = new Logger(GoogleService.name);
 
+  async search(params: {
+    apiKey: string;
+    cseId: string;
+    query: string;
+    numResults: number;
+  }): Promise<{
+    results: GoogleSearchResult[];
+    meta: { requested: number; returned: number };
+  }> {
+    const { results, meta } = await this.executeSearch({
+      apiKey: params.apiKey,
+      cseId: params.cseId,
+      query: params.query,
+      numResults: params.numResults,
+      purpose: 'runtime',
+    });
+    return { results, meta };
+  }
+
   async testConnection(params: {
     apiKey: string;
     cseId: string;
     query: string;
     numResults: number;
   }) {
+    const { results, meta } = await this.executeSearch({
+      apiKey: params.apiKey,
+      cseId: params.cseId,
+      query: params.query,
+      numResults: params.numResults,
+      purpose: 'test',
+    });
+    return { ok: true, results, meta };
+  }
+
+  formatForPrompt(results: GoogleSearchResult[]): string {
+    const lines: string[] = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const r = results[i];
+      const title = (r.title || '').trim();
+      const snippet = (r.snippet || '').trim();
+      const link = (r.link || '').trim();
+      if (!title && !snippet) continue;
+      if (!link) continue;
+      lines.push(
+        [
+          `${i + 1}. ${title || '(untitled)'}`.trim(),
+          snippet ? `Snippet: ${snippet}` : null,
+          `Link: ${link}`,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+      lines.push(''); // spacer
+    }
+    return lines.join('\n').trim();
+  }
+
+  private coerceWanted(value: number) {
+    const n = Number.isFinite(value) ? Math.trunc(value) : 15;
+    if (n < 0) return 0;
+    return n;
+  }
+
+  private async executeSearch(params: {
+    apiKey: string;
+    cseId: string;
+    query: string;
+    numResults: number;
+    purpose: 'test' | 'runtime';
+  }): Promise<{
+    results: GoogleSearchResult[];
+    meta: { requested: number; returned: number };
+  }> {
     const apiKey = params.apiKey.trim();
     const cseId = params.cseId.trim();
     const query = params.query.trim();
@@ -34,15 +102,20 @@ export class GoogleService {
     // Google CSE constraints: num ∈ [1,10] per request; use pagination via start=1,11,21...
     const hardCap = Math.min(wanted, 50);
 
-    this.logger.log(
-      `Testing Google CSE: query=${JSON.stringify(query)} wanted=${hardCap}`,
-    );
+    if (params.purpose === 'test') {
+      this.logger.log(
+        `Testing Google CSE: query=${JSON.stringify(query)} wanted=${hardCap}`,
+      );
+    } else {
+      this.logger.log(
+        `Google CSE search: query=${JSON.stringify(query)} wanted=${hardCap}`,
+      );
+    }
 
     if (hardCap === 0) {
       return {
-        ok: true,
         results: [] as GoogleSearchResult[],
-        meta: { requested: 0 },
+        meta: { requested: 0, returned: 0 },
       };
     }
 
@@ -74,7 +147,7 @@ export class GoogleService {
         if (!res.ok) {
           const detail = await this.extractGoogleErrorDetail(res);
           throw new BadGatewayException(
-            `Google CSE test failed: HTTP ${res.status}${detail ? ` ${detail}` : ''}`.trim(),
+            `Google CSE failed: HTTP ${res.status}${detail ? ` ${detail}` : ''}`.trim(),
           );
         }
 
@@ -109,7 +182,7 @@ export class GoogleService {
       } catch (err) {
         if (err instanceof BadGatewayException) throw err;
         throw new BadGatewayException(
-          `Google CSE test failed: ${(err as Error)?.message ?? String(err)}`,
+          `Google CSE failed: ${(err as Error)?.message ?? String(err)}`,
         );
       } finally {
         clearTimeout(timeout);
@@ -117,19 +190,12 @@ export class GoogleService {
     }
 
     return {
-      ok: true,
       results,
       meta: {
         requested: hardCap,
         returned: results.length,
       },
     };
-  }
-
-  private coerceWanted(value: number) {
-    const n = Number.isFinite(value) ? Math.trunc(value) : 15;
-    if (n < 0) return 0;
-    return n;
   }
 
   private async extractGoogleErrorDetail(res: Response) {

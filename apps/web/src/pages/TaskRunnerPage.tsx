@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -6,6 +6,7 @@ import {
   CircleAlert,
   Loader2,
   Play,
+  X,
   Terminal as TerminalIcon,
   MonitorPlay,
   RotateCw,
@@ -15,6 +16,7 @@ import {
   ChevronRight,
   ChevronDown,
   Zap,
+  Sparkles,
 } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
@@ -59,6 +61,12 @@ const JOB_CONFIG: Record<
     color: 'text-emerald-400',
     description:
       'Shuffles your Plex home screen collections, giving you more chances to discover a new movie or TV show.',
+  },
+  watchedMovieRecommendations: {
+    icon: <Sparkles className="w-8 h-8" />,
+    color: 'text-violet-400',
+    description:
+      'Triggered when Plex reports you finished a movie. Generates fresh recommendations and rebuilds your curated collections.',
   },
   noop: {
     icon: <Zap className="w-8 h-8" />,
@@ -240,6 +248,13 @@ export function TaskRunnerPage() {
   const [nextRunsPopup, setNextRunsPopup] = useState<Record<string, boolean>>({});
   const [timePickerOpen, setTimePickerOpen] = useState<Record<string, boolean>>({});
 
+  // Manual test harness (Watched Movie Recommendations)
+  const [watchedMovieTestOpen, setWatchedMovieTestOpen] = useState(false);
+  const [watchedMovieTitle, setWatchedMovieTitle] = useState('');
+  const [watchedMovieYear, setWatchedMovieYear] = useState('');
+  const [watchedMovieTestError, setWatchedMovieTestError] = useState<string | null>(null);
+  const watchedMovieTitleRef = useRef<HTMLInputElement | null>(null);
+
   // Close all popups when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
@@ -252,6 +267,24 @@ export function TaskRunnerPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!watchedMovieTestOpen) return;
+    // Let the dialog mount before focusing.
+    const t = setTimeout(() => watchedMovieTitleRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [watchedMovieTestOpen]);
+
+  useEffect(() => {
+    if (!watchedMovieTestOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setWatchedMovieTestOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [watchedMovieTestOpen]);
+
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
     queryFn: listJobs,
@@ -260,8 +293,8 @@ export function TaskRunnerPage() {
   });
 
   const runMutation = useMutation({
-    mutationFn: async (params: { jobId: string; dryRun: boolean }) =>
-      runJob(params.jobId, params.dryRun),
+    mutationFn: async (params: { jobId: string; dryRun: boolean; input?: unknown }) =>
+      runJob(params.jobId, params.dryRun, params.input),
     onSuccess: async (data, vars) => {
       await queryClient.invalidateQueries({ queryKey: ['jobRuns'] });
 
@@ -680,6 +713,12 @@ export function TaskRunnerPage() {
                         <button
                           type="button"
                           onClick={() => {
+                            if (job.id === 'watchedMovieRecommendations') {
+                              setWatchedMovieTestError(null);
+                              setWatchedMovieTestOpen(true);
+                              return;
+                            }
+
                             setTerminalState((prev) => ({
                               ...prev,
                               [job.id]: { status: 'running' },
@@ -1124,6 +1163,190 @@ export function TaskRunnerPage() {
         </div>
         </div>
       </section>
+
+      {/* Watched Movie Recommendations - Manual Test Dialog */}
+      <AnimatePresence>
+        {watchedMovieTestOpen && (
+          <motion.div
+            className="fixed inset-0 z-[100000] flex items-end sm:items-center justify-center p-4 sm:p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setWatchedMovieTestOpen(false)}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
+            >
+              <div className="p-6 sm:p-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                      Manual test
+                    </div>
+                    <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                      Watched Movie Recommendations
+                    </h2>
+                    <p className="mt-2 text-sm text-white/70 leading-relaxed">
+                      Enter a movie title to run as if Plex sent a <span className="text-white font-semibold">media.scrobble</span> event.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWatchedMovieTestOpen(false)}
+                    className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center"
+                    aria-label="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      Movie title
+                    </label>
+                    <input
+                      ref={watchedMovieTitleRef}
+                      value={watchedMovieTitle}
+                      onChange={(e) => {
+                        setWatchedMovieTestError(null);
+                        setWatchedMovieTitle(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        const title = watchedMovieTitle.trim();
+                        if (!title) {
+                          setWatchedMovieTestError('Please enter a movie title.');
+                          return;
+                        }
+                        const yearRaw = watchedMovieYear.trim();
+                        const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
+                        if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
+                          setWatchedMovieTestError('Year must be a valid 4-digit number.');
+                          return;
+                        }
+
+                        setTerminalState((prev) => ({
+                          ...prev,
+                          watchedMovieRecommendations: { status: 'running' },
+                        }));
+                        runMutation.mutate({
+                          jobId: 'watchedMovieRecommendations',
+                          dryRun: false,
+                          input: {
+                            source: 'manualTest',
+                            plexEvent: 'media.scrobble',
+                            seedTitle: title,
+                            seedYear: Number.isFinite(year) ? year : null,
+                            seedRatingKey: null,
+                          },
+                        });
+                        setWatchedMovieTestOpen(false);
+                      }}
+                      placeholder="Inception"
+                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      Year (optional)
+                    </label>
+                    <input
+                      value={watchedMovieYear}
+                      onChange={(e) => {
+                        setWatchedMovieTestError(null);
+                        setWatchedMovieYear(e.target.value);
+                      }}
+                      inputMode="numeric"
+                      placeholder="2010"
+                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                    />
+                  </div>
+                </div>
+
+                {watchedMovieTestError && (
+                  <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
+                    {watchedMovieTestError}
+                  </div>
+                )}
+
+                <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setWatchedMovieTestOpen(false)}
+                    className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const title = watchedMovieTitle.trim();
+                      if (!title) {
+                        setWatchedMovieTestError('Please enter a movie title.');
+                        return;
+                      }
+
+                      const yearRaw = watchedMovieYear.trim();
+                      const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
+                      if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
+                        setWatchedMovieTestError('Year must be a valid 4-digit number.');
+                        return;
+                      }
+
+                      setTerminalState((prev) => ({
+                        ...prev,
+                        watchedMovieRecommendations: { status: 'running' },
+                      }));
+                      runMutation.mutate({
+                        jobId: 'watchedMovieRecommendations',
+                        dryRun: false,
+                        input: {
+                          source: 'manualTest',
+                          plexEvent: 'media.scrobble',
+                          seedTitle: title,
+                          seedYear: Number.isFinite(year) ? year : null,
+                          seedRatingKey: null,
+                        },
+                      });
+                      setWatchedMovieTestOpen(false);
+                    }}
+                    className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2"
+                    disabled={runMutation.isPending}
+                  >
+                    {runMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Running…
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-current" />
+                        Run test
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-6 sm:px-7 pb-6 sm:pb-7 pt-0">
+                <div className="rounded-2xl bg-[#0F0B15]/40 border border-white/5 p-4 text-xs text-white/55 leading-relaxed">
+                  Tip: after starting the run, click the <span className="text-white/80 font-semibold">terminal</span> button on the job card to open the execution report.
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
