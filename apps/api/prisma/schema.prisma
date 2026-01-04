@@ -129,4 +129,16 @@ model CuratedCollectionItem {
   @@index([collectionId])
 }
 
+model ImmaculateTasteMovie {
+  ratingKey String @id
+  title     String?
+  points    Int
+  tmdbId    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([points])
+}
+
 

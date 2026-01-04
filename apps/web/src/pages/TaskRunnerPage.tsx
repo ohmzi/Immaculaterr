@@ -62,6 +62,18 @@ const JOB_CONFIG: Record<
     description:
       'Shuffles your Plex home screen collections, giving you more chances to discover a new movie or TV show.',
   },
+  immaculateTastePoints: {
+    icon: <Sparkles className="w-8 h-8" />,
+    color: 'text-yellow-300',
+    description:
+      'Triggered when Plex reports you finished a movie. Updates your Immaculate Taste points dataset and optionally sends missing movies to Radarr.',
+  },
+  immaculateTasteRefresher: {
+    icon: <CalendarDays className="w-8 h-8" />,
+    color: 'text-sky-300',
+    description:
+      'Off-peak refresh of your “Inspired by your Immaculate Taste” collection from the points dataset. This can take a while for large collections.',
+  },
   watchedMovieRecommendations: {
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-violet-400',
@@ -248,12 +260,13 @@ export function TaskRunnerPage() {
   const [nextRunsPopup, setNextRunsPopup] = useState<Record<string, boolean>>({});
   const [timePickerOpen, setTimePickerOpen] = useState<Record<string, boolean>>({});
 
-  // Manual test harness (Watched Movie Recommendations)
-  const [watchedMovieTestOpen, setWatchedMovieTestOpen] = useState(false);
-  const [watchedMovieTitle, setWatchedMovieTitle] = useState('');
-  const [watchedMovieYear, setWatchedMovieYear] = useState('');
-  const [watchedMovieTestError, setWatchedMovieTestError] = useState<string | null>(null);
-  const watchedMovieTitleRef = useRef<HTMLInputElement | null>(null);
+  // Manual test harness (movie-seeded jobs)
+  const [movieSeedDialogOpen, setMovieSeedDialogOpen] = useState(false);
+  const [movieSeedDialogJobId, setMovieSeedDialogJobId] = useState<string | null>(null);
+  const [movieSeedTitle, setMovieSeedTitle] = useState('');
+  const [movieSeedYear, setMovieSeedYear] = useState('');
+  const [movieSeedError, setMovieSeedError] = useState<string | null>(null);
+  const movieSeedTitleRef = useRef<HTMLInputElement | null>(null);
 
   // Close all popups when clicking outside
   useEffect(() => {
@@ -268,22 +281,23 @@ export function TaskRunnerPage() {
   }, []);
 
   useEffect(() => {
-    if (!watchedMovieTestOpen) return;
+    if (!movieSeedDialogOpen) return;
     // Let the dialog mount before focusing.
-    const t = setTimeout(() => watchedMovieTitleRef.current?.focus(), 0);
+    const t = setTimeout(() => movieSeedTitleRef.current?.focus(), 0);
     return () => clearTimeout(t);
-  }, [watchedMovieTestOpen]);
+  }, [movieSeedDialogOpen]);
 
   useEffect(() => {
-    if (!watchedMovieTestOpen) return;
+    if (!movieSeedDialogOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setWatchedMovieTestOpen(false);
+        setMovieSeedDialogOpen(false);
+        setMovieSeedDialogJobId(null);
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [watchedMovieTestOpen]);
+  }, [movieSeedDialogOpen]);
 
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
@@ -713,9 +727,13 @@ export function TaskRunnerPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            if (job.id === 'watchedMovieRecommendations') {
-                              setWatchedMovieTestError(null);
-                              setWatchedMovieTestOpen(true);
+                            const needsTitle =
+                              job.id === 'watchedMovieRecommendations' ||
+                              job.id === 'immaculateTastePoints';
+                            if (needsTitle) {
+                              setMovieSeedError(null);
+                              setMovieSeedDialogJobId(job.id);
+                              setMovieSeedDialogOpen(true);
                               return;
                             }
 
@@ -1166,13 +1184,16 @@ export function TaskRunnerPage() {
 
       {/* Watched Movie Recommendations - Manual Test Dialog */}
       <AnimatePresence>
-        {watchedMovieTestOpen && (
+        {movieSeedDialogOpen && (
           <motion.div
             className="fixed inset-0 z-[100000] flex items-end sm:items-center justify-center p-4 sm:p-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setWatchedMovieTestOpen(false)}
+            onClick={() => {
+              setMovieSeedDialogOpen(false);
+              setMovieSeedDialogJobId(null);
+            }}
           >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -1191,15 +1212,21 @@ export function TaskRunnerPage() {
                       Manual test
                     </div>
                     <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                      Watched Movie Recommendations
+                      {movieSeedDialogJobId === 'immaculateTastePoints'
+                        ? 'Immaculate Taste (Points Update)'
+                        : 'Watched Movie Recommendations'}
                     </h2>
                     <p className="mt-2 text-sm text-white/70 leading-relaxed">
-                      Enter a movie title to run as if Plex sent a <span className="text-white font-semibold">media.scrobble</span> event.
+                      Enter a movie title to run as if Plex sent a{' '}
+                      <span className="text-white font-semibold">media.scrobble</span> event.
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setWatchedMovieTestOpen(false)}
+                    onClick={() => {
+                      setMovieSeedDialogOpen(false);
+                      setMovieSeedDialogJobId(null);
+                    }}
                     className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center"
                     aria-label="Close"
                   >
@@ -1213,43 +1240,46 @@ export function TaskRunnerPage() {
                       Movie title
                     </label>
                     <input
-                      ref={watchedMovieTitleRef}
-                      value={watchedMovieTitle}
+                      ref={movieSeedTitleRef}
+                      value={movieSeedTitle}
                       onChange={(e) => {
-                        setWatchedMovieTestError(null);
-                        setWatchedMovieTitle(e.target.value);
+                        setMovieSeedError(null);
+                        setMovieSeedTitle(e.target.value);
                       }}
                       onKeyDown={(e) => {
                         if (e.key !== 'Enter') return;
                         e.preventDefault();
-                        const title = watchedMovieTitle.trim();
+                        const title = movieSeedTitle.trim();
                         if (!title) {
-                          setWatchedMovieTestError('Please enter a movie title.');
+                          setMovieSeedError('Please enter a movie title.');
                           return;
                         }
-                        const yearRaw = watchedMovieYear.trim();
+                        const yearRaw = movieSeedYear.trim();
                         const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
                         if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
-                          setWatchedMovieTestError('Year must be a valid 4-digit number.');
+                          setMovieSeedError('Year must be a valid 4-digit number.');
                           return;
                         }
 
                         setTerminalState((prev) => ({
                           ...prev,
-                          watchedMovieRecommendations: { status: 'running' },
+                          ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),
                         }));
-                        runMutation.mutate({
-                          jobId: 'watchedMovieRecommendations',
-                          dryRun: false,
-                          input: {
-                            source: 'manualTest',
-                            plexEvent: 'media.scrobble',
-                            seedTitle: title,
-                            seedYear: Number.isFinite(year) ? year : null,
-                            seedRatingKey: null,
-                          },
-                        });
-                        setWatchedMovieTestOpen(false);
+                        if (movieSeedDialogJobId) {
+                          runMutation.mutate({
+                            jobId: movieSeedDialogJobId,
+                            dryRun: false,
+                            input: {
+                              source: 'manualTest',
+                              plexEvent: 'media.scrobble',
+                              seedTitle: title,
+                              seedYear: Number.isFinite(year) ? year : null,
+                              seedRatingKey: null,
+                            },
+                          });
+                        }
+                        setMovieSeedDialogOpen(false);
+                        setMovieSeedDialogJobId(null);
                       }}
                       placeholder="Inception"
                       className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
@@ -1261,10 +1291,10 @@ export function TaskRunnerPage() {
                       Year (optional)
                     </label>
                     <input
-                      value={watchedMovieYear}
+                      value={movieSeedYear}
                       onChange={(e) => {
-                        setWatchedMovieTestError(null);
-                        setWatchedMovieYear(e.target.value);
+                        setMovieSeedError(null);
+                        setMovieSeedYear(e.target.value);
                       }}
                       inputMode="numeric"
                       placeholder="2010"
@@ -1273,16 +1303,19 @@ export function TaskRunnerPage() {
                   </div>
                 </div>
 
-                {watchedMovieTestError && (
+                {movieSeedError && (
                   <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
-                    {watchedMovieTestError}
+                    {movieSeedError}
                   </div>
                 )}
 
                 <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => setWatchedMovieTestOpen(false)}
+                    onClick={() => {
+                      setMovieSeedDialogOpen(false);
+                      setMovieSeedDialogJobId(null);
+                    }}
                     className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98]"
                   >
                     Cancel
@@ -1290,35 +1323,38 @@ export function TaskRunnerPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      const title = watchedMovieTitle.trim();
+                      const title = movieSeedTitle.trim();
                       if (!title) {
-                        setWatchedMovieTestError('Please enter a movie title.');
+                        setMovieSeedError('Please enter a movie title.');
                         return;
                       }
 
-                      const yearRaw = watchedMovieYear.trim();
+                      const yearRaw = movieSeedYear.trim();
                       const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
                       if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
-                        setWatchedMovieTestError('Year must be a valid 4-digit number.');
+                        setMovieSeedError('Year must be a valid 4-digit number.');
                         return;
                       }
 
                       setTerminalState((prev) => ({
                         ...prev,
-                        watchedMovieRecommendations: { status: 'running' },
+                        ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),
                       }));
-                      runMutation.mutate({
-                        jobId: 'watchedMovieRecommendations',
-                        dryRun: false,
-                        input: {
-                          source: 'manualTest',
-                          plexEvent: 'media.scrobble',
-                          seedTitle: title,
-                          seedYear: Number.isFinite(year) ? year : null,
-                          seedRatingKey: null,
-                        },
-                      });
-                      setWatchedMovieTestOpen(false);
+                      if (movieSeedDialogJobId) {
+                        runMutation.mutate({
+                          jobId: movieSeedDialogJobId,
+                          dryRun: false,
+                          input: {
+                            source: 'manualTest',
+                            plexEvent: 'media.scrobble',
+                            seedTitle: title,
+                            seedYear: Number.isFinite(year) ? year : null,
+                            seedRatingKey: null,
+                          },
+                        });
+                      }
+                      setMovieSeedDialogOpen(false);
+                      setMovieSeedDialogJobId(null);
                     }}
                     className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2"
                     disabled={runMutation.isPending}

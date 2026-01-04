@@ -540,32 +540,33 @@ export class PlexServerService {
   }) {
     const { baseUrl, token, collectionRatingKey, itemRatingKey, after } =
       params;
-    const metaPath = after
-      ? `library/metadata/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+    // Prefer /library/collections/... first (this works on many Plex servers and avoids noisy 404 fallbacks).
+    const collectionsPath = after
+      ? `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
           itemRatingKey,
         )}/move?after=${encodeURIComponent(after)}`
-      : `library/metadata/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+      : `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
           itemRatingKey,
         )}/move`;
-    const metaUrl = new URL(metaPath, normalizeBaseUrl(baseUrl)).toString();
+    const collectionsUrl = new URL(
+      collectionsPath,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
 
     try {
-      await this.fetchNoContent(metaUrl, token, 'PUT', 20000);
+      await this.fetchNoContent(collectionsUrl, token, 'PUT', 20000);
       return;
     } catch {
-      // Fallback: some servers accept /library/collections/... paths
-      const collectionsPath = after
-        ? `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+      // Fallback: some servers accept /library/metadata/... paths
+      const metaPath = after
+        ? `library/metadata/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
             itemRatingKey,
           )}/move?after=${encodeURIComponent(after)}`
-        : `library/collections/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
+        : `library/metadata/${encodeURIComponent(collectionRatingKey)}/items/${encodeURIComponent(
             itemRatingKey,
           )}/move`;
-      const collectionsUrl = new URL(
-        collectionsPath,
-        normalizeBaseUrl(baseUrl),
-      ).toString();
-      await this.fetchNoContent(collectionsUrl, token, 'PUT', 20000);
+      const metaUrl = new URL(metaPath, normalizeBaseUrl(baseUrl)).toString();
+      await this.fetchNoContent(metaUrl, token, 'PUT', 20000);
     }
   }
 
@@ -648,23 +649,25 @@ export class PlexServerService {
       itemRatingKey,
     } = params;
     const uri = this.buildMetadataUri(machineIdentifier, itemRatingKey);
-    const metaUrl = new URL(
-      `library/metadata/${encodeURIComponent(collectionRatingKey)}/items`,
+
+    // Prefer /library/collections/... first (this works on many Plex servers and avoids noisy 404 fallbacks).
+    const collectionsUrl = new URL(
+      `library/collections/${encodeURIComponent(collectionRatingKey)}/items`,
       normalizeBaseUrl(baseUrl),
     );
-    metaUrl.searchParams.set('uri', uri);
+    collectionsUrl.searchParams.set('uri', uri);
 
     try {
-      await this.fetchNoContent(metaUrl.toString(), token, 'PUT', 30000);
+      await this.fetchNoContent(collectionsUrl.toString(), token, 'PUT', 30000);
       return;
     } catch {
-      // Fallback: some servers accept /library/collections/... paths
-      const collectionsUrl = new URL(
-        `library/collections/${encodeURIComponent(collectionRatingKey)}/items`,
+      // Fallback: some servers accept /library/metadata/... paths
+      const metaUrl = new URL(
+        `library/metadata/${encodeURIComponent(collectionRatingKey)}/items`,
         normalizeBaseUrl(baseUrl),
       );
-      collectionsUrl.searchParams.set('uri', uri);
-      await this.fetchNoContent(collectionsUrl.toString(), token, 'PUT', 30000);
+      metaUrl.searchParams.set('uri', uri);
+      await this.fetchNoContent(metaUrl.toString(), token, 'PUT', 30000);
     }
   }
 

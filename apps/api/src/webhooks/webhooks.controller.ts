@@ -105,21 +105,55 @@ export class WebhooksController {
         const userId = await this.authService.getFirstAdminUserId();
         if (userId) {
           try {
-            const run = await this.jobsService.runJob({
-              jobId: 'watchedMovieRecommendations',
-              trigger: 'manual',
-              dryRun: false,
-              userId,
-              input: {
-                source: 'plexWebhook',
-                plexEvent,
-                seedTitle,
-                seedYear: seedYear ?? null,
-                seedRatingKey: seedRatingKey || null,
-                persistedPath: persisted.path,
-              },
-            });
-            return { ok: true, ...persisted, triggered: true, runId: run.id };
+            const payloadInput = {
+              source: 'plexWebhook',
+              plexEvent,
+              seedTitle,
+              seedYear: seedYear ?? null,
+              seedRatingKey: seedRatingKey || null,
+              persistedPath: persisted.path,
+            } as const;
+
+            const runs: Record<string, string> = {};
+            const errors: Record<string, string> = {};
+
+            // 1) Recently-watched recommendations (two collections)
+            try {
+              const run = await this.jobsService.runJob({
+                jobId: 'watchedMovieRecommendations',
+                trigger: 'manual',
+                dryRun: false,
+                userId,
+                input: payloadInput,
+              });
+              runs.watchedMovieRecommendations = run.id;
+            } catch (err) {
+              errors.watchedMovieRecommendations =
+                (err as Error)?.message ?? String(err);
+            }
+
+            // 2) Immaculate Taste points update (dataset grows/decays over time)
+            try {
+              const run = await this.jobsService.runJob({
+                jobId: 'immaculateTastePoints',
+                trigger: 'manual',
+                dryRun: false,
+                userId,
+                input: payloadInput,
+              });
+              runs.immaculateTastePoints = run.id;
+            } catch (err) {
+              errors.immaculateTastePoints = (err as Error)?.message ?? String(err);
+            }
+
+            const triggered = Object.keys(runs).length > 0;
+            return {
+              ok: true,
+              ...persisted,
+              triggered,
+              runs,
+              ...(Object.keys(errors).length ? { errors } : {}),
+            };
           } catch (err) {
             const msg = (err as Error)?.message ?? String(err);
             return { ok: true, ...persisted, triggered: false, error: msg };
