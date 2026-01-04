@@ -15,7 +15,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
   },
   {
     id: 'recentlyWatchedRefresher',
-    name: 'Recently Watched Refresher',
+    name: 'Collection Refresher',
     description:
       'Refresh Plex collections for recently watched recommendations.',
     defaultScheduleCron: '0 1 * * *', // 1am daily (placeholder)

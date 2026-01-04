@@ -40,7 +40,7 @@ Script Execution Configuration:
   ✓ Plex Duplicate Cleaner: ENABLED
   ✓ Radarr Monitor Confirm: ENABLED
   ✓ Immaculate Taste Collection: ENABLED
-  ✓ Recently Watched Refresher: ENABLED
+  ✓ Collection Refresher: ENABLED
   ✓ Immaculate Taste Refresher: ENABLED
 
 Execution Order:

@@ -840,7 +840,7 @@ scripts_run:
   run_sonarr_monitor_confirm_plex: true    # OPTIONAL: Sonarr Monitor Confirm (default: true)
   run_sonarr_search_monitored: true        # OPTIONAL: Sonarr Search Monitored (default: true)
   run_immaculate_taste_collection: true    # OPTIONAL: Step 4 - Immaculate Taste Collection (default: true)
-  run_recently_watched_refresher: true    # OPTIONAL: Step 5a - Recently Watched Refresher (default: true, MANDATORY for collections to appear in Plex)
+  run_recently_watched_refresher: true    # OPTIONAL: Step 5a - Collection Refresher (default: true, MANDATORY for collections to appear in Plex)
   run_collection_refresher: true           # OPTIONAL: Step 5b - Immaculate Taste Refresher (default: true, MANDATORY for collection to appear in Plex)
 
 # ============================================================================
@@ -1244,7 +1244,7 @@ Script Execution Configuration:
   ✓ Plex Duplicate Cleaner: ENABLED
   ✓ Radarr Monitor Confirm: ENABLED
   ✓ Immaculate Taste Collection: ENABLED
-  ✓ Recently Watched Refresher: ENABLED
+  ✓ Collection Refresher: ENABLED
   ✓ Immaculate Taste Refresher: ENABLED
 
 Execution Order:

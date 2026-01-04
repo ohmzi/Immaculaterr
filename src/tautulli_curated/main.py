@@ -132,7 +132,7 @@ def main():
             logger.info(f"  {'✓' if run_sonarr_confirm else '✗'} Sonarr Monitor Confirm: {'ENABLED' if run_sonarr_confirm else 'DISABLED'}")
             logger.info(f"  {'✓' if run_sonarr_search else '✗'} Sonarr Search Monitored: {'ENABLED' if run_sonarr_search else 'DISABLED'}")
             logger.info(f"  {'✓' if run_immaculate_taste else '✗'} Immaculate Taste Collection: {'ENABLED' if run_immaculate_taste else 'DISABLED'}")
-            logger.info(f"  {'✓' if run_recently_watched_refresher else '✗'} Recently Watched Refresher: {'ENABLED' if run_recently_watched_refresher else 'DISABLED'}")
+            logger.info(f"  {'✓' if run_recently_watched_refresher else '✗'} Collection Refresher: {'ENABLED' if run_recently_watched_refresher else 'DISABLED'}")
             logger.info(f"  {'✓' if run_immaculate_refresher else '✗'} Immaculate Taste Refresher: {'ENABLED' if run_immaculate_refresher else 'DISABLED'}")
         else:
             logger.info(f"  {'✓' if run_tv_immaculate_taste else '✗'} TV Immaculate Taste Collection: {'ENABLED' if run_tv_immaculate_taste else 'DISABLED'}")

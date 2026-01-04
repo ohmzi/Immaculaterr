@@ -82,55 +82,46 @@ export function JobRunDetailPage() {
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
         <div className="container mx-auto px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="max-w-5xl mx-auto"
-          >
-            {/* Page Header */}
-            <div className="mb-8">
-              <div className="flex items-center gap-3 mb-2">
-                <Link
-                  to="/rewind"
-                  className="text-white/70 hover:text-white transition-colors"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </Link>
-                <h1 className="text-4xl font-bold text-white">
-                  {run?.jobId ?? 'Job Run'}
-                </h1>
-                {run && (
-                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusPill(run.status)}`}>
-                    {run.status}
-                    {run.dryRun ? ' (dry-run)' : ''}
-                  </span>
-                )}
+          <div className="max-w-5xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              {/* Page Header */}
+              <div className="mb-8">
+                <div className="flex items-center gap-3 mb-2">
+                  <Link
+                    to="/rewind"
+                    className="text-white/70 hover:text-white transition-colors"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Link>
+                  <h1 className="text-4xl font-bold text-white">
+                    {run?.jobId ?? 'Job Run'}
+                  </h1>
+                  {run && (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusPill(run.status)}`}>
+                      {run.status}
+                      {run.dryRun ? ' (dry-run)' : ''}
+                    </span>
+                  )}
+                </div>
+                <p className="text-lg text-white/70 ml-8">
+                  Run ID: <span className="font-mono text-white/90">{runId}</span>
+                </p>
               </div>
-              <p className="text-lg text-white/70 ml-8">
-                Run ID: <span className="font-mono text-white/90">{runId}</span>
-              </p>
-            </div>
+            </motion.div>
 
             {runQuery.isLoading ? (
-              <motion.div
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, delay: 0.05 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className="flex items-center gap-2 text-white">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <div className="text-lg font-semibold">Loading run…</div>
                 </div>
-              </motion.div>
+              </div>
             ) : runQuery.error ? (
-              <motion.div
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, delay: 0.05 }}
-                className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}
-              >
+              <div className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}>
                 <div className="flex items-start gap-3">
                   <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
                   <div className="min-w-0">
@@ -140,16 +131,11 @@ export function JobRunDetailPage() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ) : run ? (
               <div className="grid gap-6">
                 {/* Run Details Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 18 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.55, delay: 0.1 }}
-                  className={cardClass}
-                >
+                <div className={cardClass}>
                   <div className="text-sm text-white/70 mb-4">
                     Started: {new Date(run.startedAt).toLocaleString()}
                     {run.finishedAt ? ` • Finished: ${new Date(run.finishedAt).toLocaleString()}` : ''}
@@ -358,15 +344,10 @@ export function JobRunDetailPage() {
                       </div>
                     )}
                   </div>
-                </motion.div>
+                </div>
 
                 {/* Logs Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 18 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.55, delay: 0.15 }}
-                  className={cardClass}
-                >
+                <div className={cardClass}>
                   <div className="text-sm text-white/70 mb-4">
                     {logsQuery.isLoading ? 'Loading…' : `${logs.length} lines`}
                     {logStats.error ? ` • ${logStats.error} errors` : ''}
@@ -419,19 +400,14 @@ export function JobRunDetailPage() {
                   ) : (
                     <div className="text-sm text-white/70">No logs yet.</div>
                   )}
-                </motion.div>
+                </div>
               </div>
             ) : (
-              <motion.div
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, delay: 0.05 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className="text-white font-semibold">Run not found</div>
-              </motion.div>
+              </div>
             )}
-          </motion.div>
+          </div>
         </div>
       </section>
     </div>

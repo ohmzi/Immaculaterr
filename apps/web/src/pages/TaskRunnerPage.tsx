@@ -52,13 +52,13 @@ const JOB_CONFIG: Record<
     icon: <MonitorPlay className="w-8 h-8" />,
     color: 'text-blue-400',
     description:
-      'Scans your Plex library to verify file existence and syncs state with Sonarr. Can trigger missing episode searches.',
+      'Scans your Plex library and verifies which movies and TV shows should remain monitored.',
   },
   recentlyWatchedRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
     color: 'text-emerald-400',
     description:
-      'Aggressively updates Plex collections and metadata for recently watched items to keep recommendations fresh.',
+      'Shuffles your Plex home screen collections, giving you more chances to discover a new movie or TV show.',
   },
   noop: {
     icon: <Zap className="w-8 h-8" />,
@@ -228,7 +228,7 @@ function calculateNextRuns(draft: ScheduleDraft, count: number = 5): Date[] {
   return runs;
 }
 
-export function JobsPage() {
+export function TaskRunnerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
@@ -395,27 +395,26 @@ export function JobsPage() {
   }, [drafts, jobsQuery.data?.jobs]);
 
   return (
-    <div className="relative min-h-screen w-full bg-[#0F0B15] text-white font-sans selection:bg-[#facc15] selection:text-black overflow-x-hidden">
-      {/* Dynamic Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black">
+      {/* Background (landing-page style, teal-tinted) */}
+      <div className="pointer-events-none fixed inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop"
-          alt="Abstract Background"
-          className="w-full h-full object-cover opacity-20 mix-blend-color-dodge"
+          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          alt=""
+          className="h-full w-full object-cover object-center opacity-80"
         />
-        <div className="absolute inset-0 bg-[#0F0B15]/90" />
-
-        {/* Animated Orbs */}
-        <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-purple-600/20 blur-[150px] rounded-full mix-blend-screen animate-pulse duration-1000" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-yellow-500/10 blur-[150px] rounded-full mix-blend-screen" />
+        <div className="absolute inset-0 bg-gradient-to-br from-teal-900/50 via-cyan-900/60 to-slate-900/70" />
+        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
-      {/* Main Content */}
-      <div className="relative z-10 container mx-auto px-4 pt-10 lg:pt-16 pb-20 max-w-5xl">
+      {/* Task Runner Content */}
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <div className="container mx-auto px-4 pb-20 max-w-5xl">
         <div className="mb-12">
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
             className="space-y-6"
           >
             <div className="flex items-center gap-5">
@@ -433,9 +432,9 @@ export function JobsPage() {
               </h1>
             </div>
 
-            <p className="text-xl text-gray-400 font-medium max-w-lg leading-relaxed pl-1">
-              Automate your media empire. <br />
-              <span className="text-white/60 text-sm">
+            <p className="text-purple-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
+              <span className="text-[#facc15] font-bold">Automate</span> your media empire. <br />
+              <span className="text-sm opacity-60 font-normal">
                 Schedule workflows, run diagnostics, and keep the lights on.
               </span>
             </p>
@@ -463,7 +462,7 @@ export function JobsPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {(jobsQuery.data?.jobs ?? []).map((job, idx) => {
+            {(jobsQuery.data?.jobs ?? []).map((job) => {
               const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
               const baseEnabled = job.schedule?.enabled ?? false;
 
@@ -507,9 +506,6 @@ export function JobsPage() {
               return (
                 <motion.div
                   key={job.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: Math.min(0.3, idx * 0.1) }}
                   layout
                   style={{
                     position: 'relative',
@@ -519,7 +515,7 @@ export function JobsPage() {
                 >
                   <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
 
-                  <div className="p-6 md:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start md:items-center relative z-10">
+                  <div className="p-6 md:p-8 flex flex-wrap gap-4 items-start relative z-10">
                     {/* Icon Box */}
                     <div
                       className={cn(
@@ -530,13 +526,13 @@ export function JobsPage() {
                       {config.icon}
                     </div>
 
-                    <div className="flex-1 space-y-2 min-w-0">
+                    <div className="flex-1 space-y-1 min-w-0">
                       <div className="flex items-center gap-3">
                         <h3 className="text-xl font-bold text-white tracking-tight truncate">
                           {job.name}
                         </h3>
                         {draft.enabled && (
-                          <Badge className="bg-emerald-500/20 text-emerald-400 border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold animate-in fade-in zoom-in duration-300 shrink-0">
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold shrink-0">
                             Active
                           </Badge>
                         )}
@@ -698,7 +694,7 @@ export function JobsPage() {
                               : 'bg-[#facc15] text-black w-32 px-6 hover:bg-[#facc15] hover:scale-105'
                           )}
                         >
-                          <AnimatePresence mode="wait">
+                          <AnimatePresence mode="wait" initial={false}>
                             {isRunningJob ? (
                               <motion.div
                                 key="loading"
@@ -728,7 +724,7 @@ export function JobsPage() {
                   </div>
 
                   {/* Scheduler Drawer */}
-                  <AnimatePresence>
+                  <AnimatePresence initial={false}>
                     {draft.enabled && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
@@ -1126,7 +1122,8 @@ export function JobsPage() {
             <ChevronRight className="w-4 h-4 opacity-50 group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }

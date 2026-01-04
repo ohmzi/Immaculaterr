@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { useQuery } from '@tanstack/react-query';
-import { CircleAlert, Loader2 } from 'lucide-react';
+import { CircleAlert, Loader2, ScrollText } from 'lucide-react';
 
 import { listServerLogs } from '@/api/logs';
 
@@ -48,86 +48,89 @@ export function LogsPage() {
         <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
-      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
-        <div className="container mx-auto px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="max-w-5xl mx-auto"
-          >
-            {/* Page Header */}
-            <div className="mb-8">
-              <h1 className="text-4xl font-bold text-white mb-2">Logs</h1>
-              <p className="text-lg text-white/70">
-                Live logs from server
-              </p>
-            </div>
-
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <div className="container mx-auto px-4 pb-20 max-w-5xl">
+          {/* Page Header */}
+          <div className="mb-12">
             <motion.div
-              initial={{ opacity: 0, y: 18 }}
+              initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, delay: 0.05 }}
-              className={cardClass}
+              transition={{ duration: 0.5 }}
+              className="space-y-6"
             >
-              {logsQuery.isLoading ? (
-                <div className="flex items-center gap-2 text-sm text-white/70 p-4">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading…
+              <div className="flex items-center gap-5">
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
+                  <div className="relative p-3 md:p-4 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20 group-hover:rotate-0 transition-transform duration-300 ease-spring">
+                    <ScrollText className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
+                  </div>
                 </div>
-              ) : logsQuery.error ? (
-                <div className="flex items-start gap-2 text-sm text-red-200 p-4">
-                  <CircleAlert className="mt-0.5 h-4 w-4" />
-                  <div>{(logsQuery.error as Error).message}</div>
-                </div>
-              ) : logs.length ? (
-                <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-                  <table className="w-full text-sm">
-                    <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
-                      <tr>
-                        <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
-                          Timestamp
-                        </th>
-                        <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
-                          Level
-                        </th>
-                        <th className="border-b border-white/10 px-4 py-3">
-                          Message
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {logs.map((line) => (
-                        <tr
-                          key={line.id}
-                          className="border-t border-white/10 hover:bg-white/5"
-                        >
-                          <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60">
-                            {new Date(line.time).toLocaleTimeString()}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span
-                              className={[
-                                'font-mono text-xs font-semibold',
-                                levelClass(line.level),
-                              ].join(' ')}
-                            >
-                              {formatLevel(line.level)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-xs text-white/85">
-                            {line.message}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-sm text-white/70 p-4">No logs yet.</div>
-              )}
+                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
+                  Logs
+                </h1>
+              </div>
+
+              <p className="text-purple-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
+                Real-time server <span className="text-[#facc15] font-bold">monitoring</span>. <br />
+                <span className="text-sm opacity-60 font-normal">
+                  Watch your system breathe, one log line at a time.
+                </span>
+              </p>
             </motion.div>
-          </motion.div>
+          </div>
+
+          <div className={cardClass}>
+            {logsQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-white/70 p-4">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading…
+              </div>
+            ) : logsQuery.error ? (
+              <div className="flex items-start gap-2 text-sm text-red-200 p-4">
+                <CircleAlert className="mt-0.5 h-4 w-4" />
+                <div>{(logsQuery.error as Error).message}</div>
+              </div>
+            ) : logs.length ? (
+              <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
+                    <tr>
+                      <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
+                        Timestamp
+                      </th>
+                      <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
+                        Level
+                      </th>
+                      <th className="border-b border-white/10 px-4 py-3">
+                        Message
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logs.map((line) => (
+                      <tr key={line.id} className="border-t border-white/10 hover:bg-white/5">
+                        <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60">
+                          {new Date(line.time).toLocaleTimeString()}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span
+                            className={['font-mono text-xs font-semibold', levelClass(line.level)].join(' ')}
+                          >
+                            {formatLevel(line.level)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-white/85">
+                          {line.message}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-sm text-white/70 p-4">No logs yet.</div>
+            )}
+          </div>
         </div>
       </section>
     </div>

@@ -615,14 +615,27 @@ export function CommandCenterPage() {
 
   const testPlexConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Plex connection...') : undefined;
-    const showError = (message: string) => {
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
-      if (toastId) toast.error(message, { id: toastId });
-      else toast.error(message);
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
     const showSuccess = (message: string) => {
       if (!toastId) return;
-      toast.success(message, { id: toastId });
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
 
     try {
@@ -630,11 +643,11 @@ export function CommandCenterPage() {
       const token = plexToken.trim();
 
       if (!baseUrl) {
-        showError('Please enter Plex Base URL');
+        showError('Please enter Plex Base URL', { immediate: true });
         return null;
       }
       if (!secretsPresent.plex && !token) {
-        showError('Please enter Plex Token');
+        showError('Please enter Plex Token', { immediate: true });
         return null;
       }
 
@@ -666,14 +679,27 @@ export function CommandCenterPage() {
 
   const testRadarrConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Radarr connection...') : undefined;
-    const showError = (message: string) => {
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
-      if (toastId) toast.error(message, { id: toastId });
-      else toast.error(message);
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
     const showSuccess = (message: string) => {
       if (!toastId) return;
-      toast.success(message, { id: toastId });
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
 
     try {
@@ -681,11 +707,11 @@ export function CommandCenterPage() {
       const apiKey = radarrApiKey.trim();
 
       if (!baseUrl) {
-        showError('Please enter Radarr Base URL');
+        showError('Please enter Radarr Base URL', { immediate: true });
         return null;
       }
       if (!secretsPresent.radarr && !apiKey) {
-        showError('Please enter Radarr API Key');
+        showError('Please enter Radarr API Key', { immediate: true });
         return null;
       }
 
@@ -731,14 +757,27 @@ export function CommandCenterPage() {
 
   const testSonarrConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Sonarr connection...') : undefined;
-    const showError = (message: string) => {
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
-      if (toastId) toast.error(message, { id: toastId });
-      else toast.error(message);
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
     const showSuccess = (message: string) => {
       if (!toastId) return;
-      toast.success(message, { id: toastId });
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
 
     try {
@@ -746,11 +785,11 @@ export function CommandCenterPage() {
       const apiKey = sonarrApiKey.trim();
 
       if (!baseUrl) {
-        showError('Please enter Sonarr Base URL');
+        showError('Please enter Sonarr Base URL', { immediate: true });
         return null;
       }
       if (!secretsPresent.sonarr && !apiKey) {
-        showError('Please enter Sonarr API Key');
+        showError('Please enter Sonarr API Key', { immediate: true });
         return null;
       }
 
@@ -796,20 +835,33 @@ export function CommandCenterPage() {
 
   const testTmdbConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing TMDB connection...') : undefined;
-    const showError = (message: string) => {
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
-      if (toastId) toast.error(message, { id: toastId });
-      else toast.error(message);
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
     const showSuccess = (message: string) => {
       if (!toastId) return;
-      toast.success(message, { id: toastId });
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
 
     try {
       const apiKey = tmdbApiKey.trim();
       if (!secretsPresent.tmdb && !apiKey) {
-        showError('Please enter TMDB API Key');
+        showError('Please enter TMDB API Key', { immediate: true });
         return null;
       }
 
@@ -847,14 +899,27 @@ export function CommandCenterPage() {
 
   const testGoogleConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Google Search connection...') : undefined;
-    const showError = (message: string) => {
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
-      if (toastId) toast.error(message, { id: toastId });
-      else toast.error(message);
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
     const showSuccess = (message: string) => {
       if (!toastId) return;
-      toast.success(message, { id: toastId });
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
 
     try {
@@ -862,11 +927,11 @@ export function CommandCenterPage() {
       const apiKey = googleApiKey.trim();
 
       if (!cseId) {
-        showError('Please enter Google Search Engine ID');
+        showError('Please enter Google Search Engine ID', { immediate: true });
         return null;
       }
       if (!secretsPresent.google && !apiKey) {
-        showError('Please enter Google API Key');
+        showError('Please enter Google API Key', { immediate: true });
         return null;
       }
 
@@ -910,20 +975,33 @@ export function CommandCenterPage() {
 
   const testOpenAiConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing OpenAI connection...') : undefined;
-    const showError = (message: string) => {
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
-      if (toastId) toast.error(message, { id: toastId });
-      else toast.error(message);
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
     const showSuccess = (message: string) => {
       if (!toastId) return;
-      toast.success(message, { id: toastId });
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
 
     try {
       const apiKey = openAiApiKey.trim();
       if (!secretsPresent.openai && !apiKey) {
-        showError('Please enter OpenAI API Key');
+        showError('Please enter OpenAI API Key', { immediate: true });
         return null;
       }
 
@@ -960,14 +1038,27 @@ export function CommandCenterPage() {
 
   const testOverseerrConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Overseerr connection...') : undefined;
-    const showError = (message: string) => {
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
-      if (toastId) toast.error(message, { id: toastId });
-      else toast.error(message);
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
     const showSuccess = (message: string) => {
       if (!toastId) return;
-      toast.success(message, { id: toastId });
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
     };
 
     try {
@@ -975,11 +1066,11 @@ export function CommandCenterPage() {
       const apiKey = overseerrApiKey.trim();
 
       if (!baseUrl) {
-        showError('Please enter Overseerr Base URL');
+        showError('Please enter Overseerr Base URL', { immediate: true });
         return null;
       }
       if (!secretsPresent.overseerr && !apiKey) {
-        showError('Please enter Overseerr API Key');
+        showError('Please enter Overseerr API Key', { immediate: true });
         return null;
       }
 
@@ -1431,48 +1522,47 @@ export function CommandCenterPage() {
       </div>
 
       {/* Command Center Content */}
-      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
-        <div className="container mx-auto px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="max-w-5xl mx-auto"
-          >
-            {/* Page Header */}
-            <div className="mb-10 flex flex-col gap-4">
-              <div className="flex items-center gap-4">
-                <motion.div
-                  initial={{ rotate: -10, scale: 0.94, y: 2 }}
-                  animate={{ rotate: -6, scale: 1, y: 0 }}
-                  whileHover={{ rotate: 0, scale: 1.04 }}
-                  whileTap={{ scale: 0.98 }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 28 }}
-                  style={{ backfaceVisibility: 'hidden' }}
-                  className="will-change-transform transform-gpu p-3 bg-[#facc15] rounded-2xl shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10"
-                >
-                  <Settings2 className="w-8 h-8 text-black" strokeWidth={2.5} />
-                </motion.div>
-                <h1 className="text-5xl sm:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <div className="container mx-auto px-4 pb-20 max-w-5xl">
+          <div className="mb-12">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center gap-5">
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
+                  <motion.div
+                    initial={{ rotate: -10, scale: 0.94, y: 2 }}
+                    animate={{ rotate: -6, scale: 1, y: 0 }}
+                    whileHover={{ rotate: 0, scale: 1.04 }}
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+                    style={{ backfaceVisibility: 'hidden' }}
+                    className="relative will-change-transform transform-gpu p-3 md:p-4 bg-[#facc15] rounded-2xl shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20"
+                  >
+                    <Settings2 className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
+                  </motion.div>
+                </div>
+                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
                   Command Center
                 </h1>
               </div>
+
               <p className="text-purple-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
-                Tweak, tune, and <span className="text-[#facc15] font-bold">turbocharge</span> your setup.
-                <br/>
+                Tweak, tune, and turbocharge your <span className="text-[#facc15] font-bold">setup</span>.
+                <br />
                 <span className="text-sm opacity-60 font-normal">Remember: With great power comes great uptime.</span>
               </p>
-            </div>
+            </motion.div>
+          </div>
 
-            {/* Command Center Form */}
-            <div className="space-y-6">
+          {/* Command Center Form */}
+          <div className="space-y-6">
               {/* Plex Settings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Plex Media Server</h2>
                   <button
@@ -1531,15 +1621,10 @@ export function CommandCenterPage() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
 
               {/* TMDB Settings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>The Movie Database (TMDB)</h2>
                   <button
@@ -1573,15 +1658,10 @@ export function CommandCenterPage() {
                     />
                   </div>
                 </div>
-              </motion.div>
+              </div>
 
               {/* Radarr Settings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Radarr</h2>
                   <div className="flex items-center gap-3">
@@ -1673,15 +1753,10 @@ export function CommandCenterPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
 
               {/* Sonarr Settings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Sonarr</h2>
                   <div className="flex items-center gap-3">
@@ -1773,15 +1848,10 @@ export function CommandCenterPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
 
               {/* Google Settings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Google Search</h2>
                   <div className="flex items-center gap-3">
@@ -1874,15 +1944,10 @@ export function CommandCenterPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
 
               {/* OpenAI Settings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.6 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>OpenAI</h2>
                   <div className="flex items-center gap-3">
@@ -1962,15 +2027,10 @@ export function CommandCenterPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
 
               {/* Overseerr Settings */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.7 }}
-                className={cardClass}
-              >
+              <div className={cardClass}>
                 <div className={cardHeaderClass}>
                   <h2 className={cardTitleClass}>Overseerr</h2>
                   <div className="flex items-center gap-3">
@@ -2067,15 +2127,10 @@ export function CommandCenterPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
 
               {/* Save Button */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.8 }}
-                className="flex justify-end"
-              >
+              <div className="flex justify-end">
                 <motion.button
                   onClick={handleSave}
                   disabled={saveMutation.isPending}
@@ -2093,9 +2148,8 @@ export function CommandCenterPage() {
                     </span>
                   </span>
                 </motion.button>
-              </motion.div>
-            </div>
-          </motion.div>
+              </div>
+          </div>
         </div>
       </section>
     </div>
