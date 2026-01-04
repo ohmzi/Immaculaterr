@@ -2,20 +2,20 @@ import { Injectable } from '@nestjs/common';
 import type { JobContext, JobRunResult } from './jobs.types';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { NoopJob } from './noop.job';
-import { ImmaculateTastePointsJob } from './immaculate-taste-points.job';
+import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
-import { RecentlyWatchedRefresherJob } from './recently-watched-refresher.job';
-import { WatchedMovieRecommendationsJob } from './watched-movie-recommendations.job';
+import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
+import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
 
 @Injectable()
 export class JobsHandlers {
   constructor(
     private readonly noopJob: NoopJob,
     private readonly monitorConfirmJob: MonitorConfirmJob,
-    private readonly immaculateTastePointsJob: ImmaculateTastePointsJob,
+    private readonly immaculateTasteCollectionJob: ImmaculateTasteCollectionJob,
     private readonly immaculateTasteRefresherJob: ImmaculateTasteRefresherJob,
-    private readonly recentlyWatchedRefresherJob: RecentlyWatchedRefresherJob,
-    private readonly watchedMovieRecommendationsJob: WatchedMovieRecommendationsJob,
+    private readonly basedonLatestWatchedRefresherJob: BasedonLatestWatchedRefresherJob,
+    private readonly basedonLatestWatchedCollectionJob: BasedonLatestWatchedCollectionJob,
   ) {}
 
   async run(jobId: string, ctx: JobContext): Promise<JobRunResult> {
@@ -25,13 +25,13 @@ export class JobsHandlers {
       case 'monitorConfirm':
         return await this.monitorConfirmJob.run(ctx);
       case 'immaculateTastePoints':
-        return await this.immaculateTastePointsJob.run(ctx);
+        return await this.immaculateTasteCollectionJob.run(ctx);
       case 'immaculateTasteRefresher':
         return await this.immaculateTasteRefresherJob.run(ctx);
       case 'watchedMovieRecommendations':
-        return await this.watchedMovieRecommendationsJob.run(ctx);
+        return await this.basedonLatestWatchedCollectionJob.run(ctx);
       case 'recentlyWatchedRefresher':
-        return await this.recentlyWatchedRefresherJob.run(ctx);
+        return await this.basedonLatestWatchedRefresherJob.run(ctx);
       default:
         throw new Error(`No handler registered for jobId=${jobId}`);
     }

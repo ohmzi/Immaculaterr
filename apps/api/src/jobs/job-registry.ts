@@ -15,7 +15,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
   },
   {
     id: 'immaculateTastePoints',
-    name: 'Immaculate Taste (Points Update)',
+    name: 'Immaculate Taste Collection',
     description:
       'Triggered by Plex webhooks when a movie is finished. Updates the Immaculate Taste points dataset and optionally sends missing movies to Radarr.',
     defaultScheduleCron: undefined,
@@ -29,16 +29,16 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
   },
   {
     id: 'watchedMovieRecommendations',
-    name: 'Watched Movie Recommendations',
+    name: 'Based on Latest Watched Collection',
     description:
       'Triggered by Plex webhooks when a movie is finished. Generates recommendations and rebuilds curated Plex collections.',
     defaultScheduleCron: undefined,
   },
   {
     id: 'recentlyWatchedRefresher',
-    name: 'Collection Refresher',
+    name: 'Based on Latest Watched Refresher',
     description:
-      'Refresh Plex collections for recently watched recommendations.',
+      'Refreshes and reshuffles the curated Plex collections "Based on your recently watched movie" and "Change of Taste".',
     defaultScheduleCron: '0 1 * * *', // 1am daily (placeholder)
   },
   {

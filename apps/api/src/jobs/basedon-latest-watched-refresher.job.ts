@@ -19,7 +19,7 @@ const DEFAULT_REFRESH_SOURCES = [
 ] as const;
 
 @Injectable()
-export class RecentlyWatchedRefresherJob {
+export class BasedonLatestWatchedRefresherJob {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,

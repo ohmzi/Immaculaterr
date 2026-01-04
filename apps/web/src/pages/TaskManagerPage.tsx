@@ -60,7 +60,7 @@ const JOB_CONFIG: Record<
     icon: <RotateCw className="w-8 h-8" />,
     color: 'text-emerald-400',
     description:
-      'Shuffles your Plex home screen collections, giving you more chances to discover a new movie or TV show.',
+      'Refreshes and reshuffles your curated collections based on your latest watched movie.',
   },
   immaculateTastePoints: {
     icon: <Sparkles className="w-8 h-8" />,
@@ -1182,7 +1182,7 @@ export function TaskManagerPage() {
         </div>
       </section>
 
-      {/* Watched Movie Recommendations - Manual Test Dialog */}
+      {/* Based on Latest Watched Collection - Manual Test Dialog */}
       <AnimatePresence>
         {movieSeedDialogOpen && (
           <motion.div
@@ -1213,8 +1213,8 @@ export function TaskManagerPage() {
                     </div>
                     <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
                       {movieSeedDialogJobId === 'immaculateTastePoints'
-                        ? 'Immaculate Taste (Points Update)'
-                        : 'Watched Movie Recommendations'}
+                        ? 'Immaculate Taste Collection'
+                        : 'Based on Latest Watched Collection'}
                     </h2>
                     <p className="mt-2 text-sm text-white/70 leading-relaxed">
                       Enter a movie title to run as if Plex sent a{' '}

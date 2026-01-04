@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../db/prisma.service';
-import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { SettingsService } from '../settings/settings.service';
 import { TmdbService } from '../tmdb/tmdb.service';
+import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -53,15 +52,14 @@ function normalizeHttpUrl(raw: string): string {
 }
 
 @Injectable()
-export class WatchedMovieRecommendationsJob {
+export class ImmaculateTasteCollectionJob {
   constructor(
-    private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
-    private readonly plexCurated: PlexCuratedCollectionsService,
     private readonly recommendations: RecommendationsService,
     private readonly tmdb: TmdbService,
     private readonly radarr: RadarrService,
+    private readonly immaculateTaste: ImmaculateTasteCollectionService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
@@ -73,7 +71,7 @@ export class WatchedMovieRecommendationsJob {
         ? Math.trunc(input['seedYear'])
         : null;
 
-    await ctx.info('watchedMovieRecommendations: start', {
+    await ctx.info('immaculateTastePoints: start', {
       dryRun: ctx.dryRun,
       trigger: ctx.trigger,
       seedTitle: seedTitle || null,
@@ -108,10 +106,6 @@ export class WatchedMovieRecommendationsJob {
       token: plexToken,
       title: movieLibraryName,
     });
-    const machineIdentifier = await this.plexServer.getMachineIdentifier({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
 
     // --- Recommendation + integration config ---
     const tmdbApiKey =
@@ -129,28 +123,39 @@ export class WatchedMovieRecommendationsJob {
     const googleApiKey = pickString(secrets, 'google.apiKey');
     const googleSearchEngineId = pickString(settings, 'google.searchEngineId');
     const googleEnabled =
-      openAiEnabled && googleEnabledFlag && Boolean(googleApiKey) && Boolean(googleSearchEngineId);
+      openAiEnabled &&
+      googleEnabledFlag &&
+      Boolean(googleApiKey) &&
+      Boolean(googleSearchEngineId);
 
-    const recCount =
-      Math.trunc(pickNumber(settings, 'recommendations.count') ?? 15) || 15;
-    const webContextFraction = pickNumber(settings, 'recommendations.webContextFraction') ??
+    const suggestionsPerRun =
+      Math.trunc(pickNumber(settings, 'immaculateTaste.suggestionsPerRun') ?? 50) ||
+      50;
+    const maxPoints =
+      Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
+    const webContextFraction =
+      pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
       0.3;
 
-    await ctx.info('watchedMovieRecommendations: config', {
+    await ctx.info('immaculateTastePoints: config', {
       movieLibraryName,
       openAiEnabled,
       googleEnabled,
-      recCount,
+      suggestionsPerRun,
+      maxPoints,
       webContextFraction,
     });
 
-    const similar = await this.recommendations.buildSimilarMovieTitles({
+    await this.immaculateTaste.ensureLegacyImported({ ctx, maxPoints });
+
+    // --- Recommend (tiered pipeline: Google -> OpenAI -> TMDb) ---
+    const recs = await this.recommendations.buildSimilarMovieTitles({
       ctx,
       seedTitle,
       seedYear,
       tmdbApiKey,
-      count: recCount,
+      count: suggestionsPerRun,
       webContextFraction,
       openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
       google: googleEnabled
@@ -158,125 +163,20 @@ export class WatchedMovieRecommendationsJob {
         : null,
     });
 
-    const changeOfTaste = await this.recommendations.buildChangeOfTasteMovieTitles({
-      ctx,
-      seedTitle,
-      seedYear,
-      tmdbApiKey,
-      count: recCount,
-      openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+    await ctx.info('immaculateTastePoints: recommendations ready', {
+      strategy: recs.strategy,
+      returned: recs.titles.length,
+      sample: recs.titles.slice(0, 12),
     });
 
-    await ctx.info('watchedMovieRecommendations: recommendations ready', {
-      similar: {
-        strategy: similar.strategy,
-        returned: similar.titles.length,
-        sample: similar.titles.slice(0, 10),
-      },
-      changeOfTaste: {
-        strategy: changeOfTaste.strategy,
-        returned: changeOfTaste.titles.length,
-        sample: changeOfTaste.titles.slice(0, 10),
-      },
-    });
-
-    const collectionsToBuild: Array<{
-      name: string;
-      titles: string[];
-      strategy: string;
-    }> = [
-      {
-        name: 'Based on your recently watched movie',
-        titles: similar.titles,
-        strategy: similar.strategy,
-      },
-      {
-        name: 'Change of Taste',
-        titles: changeOfTaste.titles,
-        strategy: changeOfTaste.strategy,
-      },
-    ];
-
-    const radarrEnabledFlag = pickBool(settings, 'radarr.enabled') ?? false;
-    const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
-    const radarrApiKey = pickString(secrets, 'radarr.apiKey');
-    const radarrEnabled =
-      radarrEnabledFlag && Boolean(radarrBaseUrlRaw) && Boolean(radarrApiKey);
-    const radarrBaseUrl = radarrEnabled ? normalizeHttpUrl(radarrBaseUrlRaw) : '';
-
-    const perCollection: JsonObject[] = [];
-    for (const col of collectionsToBuild) {
-      const summary = await this.processOneCollection({
-        ctx,
-        tmdbApiKey,
-        plexBaseUrl,
-        plexToken,
-        machineIdentifier,
-        movieSectionKey,
-        collectionName: col.name,
-        recommendationTitles: col.titles,
-        recommendationStrategy: col.strategy,
-        radarr: radarrEnabled
-          ? { baseUrl: radarrBaseUrl, apiKey: radarrApiKey }
-          : null,
-      });
-      perCollection.push(summary);
-    }
-
-    const summary: JsonObject = {
-      seedTitle,
-      seedYear,
-      collections: perCollection,
-    };
-
-    await ctx.info('watchedMovieRecommendations: done', summary);
-    return { summary };
-  }
-
-  private async processOneCollection(params: {
-    ctx: JobContext;
-    tmdbApiKey: string;
-    plexBaseUrl: string;
-    plexToken: string;
-    machineIdentifier: string;
-    movieSectionKey: string;
-    collectionName: string;
-    recommendationTitles: string[];
-    recommendationStrategy: string;
-    radarr: { baseUrl: string; apiKey: string } | null;
-  }): Promise<JsonObject> {
-    const {
-      ctx,
-      tmdbApiKey,
-      plexBaseUrl,
-      plexToken,
-      machineIdentifier,
-      movieSectionKey,
-      collectionName,
-      recommendationTitles,
-      recommendationStrategy,
-      radarr,
-    } = params;
-
-    await ctx.info('collection_run: start', {
-      collectionName,
-      recommendationStrategy,
-      generated: recommendationTitles.length,
-    });
-
-    await ctx.info('collection_run: recommendations sample', {
-      collectionName,
-      sample: recommendationTitles.slice(0, 10),
-    });
-
-    await ctx.info('collection_run: resolving titles in Plex', {
-      collectionName,
-      requested: recommendationTitles.length,
+    // --- Resolve in Plex ---
+    await ctx.info('immaculateTastePoints: resolving titles in Plex', {
+      requested: recs.titles.length,
     });
 
     const resolved: Array<{ ratingKey: string; title: string }> = [];
     const missingTitles: string[] = [];
-    for (const title of recommendationTitles) {
+    for (const title of recs.titles) {
       const t = title.trim();
       if (!t) continue;
       const found = await this.plexServer
@@ -287,34 +187,37 @@ export class WatchedMovieRecommendationsJob {
           title: t,
         })
         .catch(() => null);
-      if (found) {
-        resolved.push({ ratingKey: found.ratingKey, title: found.title });
-      } else {
-        missingTitles.push(t);
-      }
+      if (found) resolved.push({ ratingKey: found.ratingKey, title: found.title });
+      else missingTitles.push(t);
     }
 
-    await ctx.info('collection_run: plex resolve done', {
-      collectionName,
-      resolved: resolved.length,
-      missing: missingTitles.length,
-      sampleMissing: missingTitles.slice(0, 10),
-      sampleResolved: resolved.slice(0, 10).map((d) => d.title),
-    });
-
-    // Deduplicate by ratingKey, preserving order
+    // Deduplicate by ratingKey (preserving order)
     const unique = new Map<string, string>();
-    for (const item of resolved) {
-      if (!unique.has(item.ratingKey)) unique.set(item.ratingKey, item.title);
+    for (const it of resolved) {
+      if (!unique.has(it.ratingKey)) unique.set(it.ratingKey, it.title);
     }
-    const desiredItems = Array.from(unique.entries()).map(([ratingKey, title]) => ({
+    const suggestedItems = Array.from(unique.entries()).map(([ratingKey, title]) => ({
       ratingKey,
       title,
     }));
 
-    // Optional Radarr: add missing titles
+    await ctx.info('immaculateTastePoints: plex resolve done', {
+      resolved: suggestedItems.length,
+      missing: missingTitles.length,
+      sampleMissing: missingTitles.slice(0, 10),
+      sampleResolved: suggestedItems.slice(0, 10).map((d) => d.title),
+    });
+
+    // --- Optional Radarr: add missing titles (best-effort) ---
+    const radarrEnabledFlag = pickBool(settings, 'radarr.enabled') ?? false;
+    const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
+    const radarrApiKey = pickString(secrets, 'radarr.apiKey');
+    const radarrEnabled =
+      radarrEnabledFlag && Boolean(radarrBaseUrlRaw) && Boolean(radarrApiKey);
+    const radarrBaseUrl = radarrEnabled ? normalizeHttpUrl(radarrBaseUrlRaw) : '';
+
     const radarrStats = {
-      enabled: Boolean(radarr),
+      enabled: radarrEnabled,
       attempted: 0,
       added: 0,
       exists: 0,
@@ -322,30 +225,23 @@ export class WatchedMovieRecommendationsJob {
       skipped: 0,
     };
 
-    if (!ctx.dryRun && radarr && missingTitles.length) {
+    if (!ctx.dryRun && radarrEnabled && missingTitles.length) {
       await ctx.info('radarr: start', {
-        collectionName,
         missingTitles: missingTitles.length,
         sampleMissing: missingTitles.slice(0, 10),
       });
-    }
 
-    if (!ctx.dryRun && radarr && missingTitles.length) {
       const defaults = await this.pickRadarrDefaults({
         ctx,
-        baseUrl: radarr.baseUrl,
-        apiKey: radarr.apiKey,
-      }).catch((err) => {
-        const msg = (err as Error)?.message ?? String(err);
-        return { error: msg };
-      });
+        baseUrl: radarrBaseUrl,
+        apiKey: radarrApiKey,
+      }).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
 
       if ('error' in defaults) {
         await ctx.warn('radarr: defaults unavailable (skipping adds)', defaults);
       } else {
         for (const title of missingTitles) {
           radarrStats.attempted += 1;
-
           const tmdbMatch = await this.pickBestTmdbMatch({
             tmdbApiKey,
             title,
@@ -357,8 +253,8 @@ export class WatchedMovieRecommendationsJob {
 
           try {
             const result = await this.radarr.addMovie({
-              baseUrl: radarr.baseUrl,
-              apiKey: radarr.apiKey,
+              baseUrl: radarrBaseUrl,
+              apiKey: radarrApiKey,
               title: tmdbMatch.title,
               tmdbId: tmdbMatch.tmdbId,
               year: tmdbMatch.year ?? null,
@@ -379,102 +275,34 @@ export class WatchedMovieRecommendationsJob {
           }
         }
       }
+
+      await ctx.info('radarr: done', radarrStats);
     }
 
-    // Persist the latest list in app DB (replace items)
-    let dbSaved = false;
-    let curatedCollectionId: string | null = null;
-    if (!ctx.dryRun) {
-      await ctx.info('db: replace curated collection items', {
-        collectionName,
-        desiredItems: desiredItems.length,
-      });
-
-      const col = await this.prisma.curatedCollection.upsert({
-        where: { name: collectionName },
-        update: {},
-        create: { name: collectionName },
-        select: { id: true },
-      });
-      curatedCollectionId = col.id;
-
-      await this.prisma.curatedCollectionItem.deleteMany({
-        where: { collectionId: col.id },
-      });
-
-      if (desiredItems.length) {
-        await this.prisma.curatedCollectionItem.createMany({
-          data: desiredItems.map((it) => ({
-            collectionId: col.id,
-            ratingKey: it.ratingKey,
-            title: it.title,
-          })),
+    // --- Update points dataset (DB) ---
+    const pointsSummary = ctx.dryRun
+      ? ({ dryRun: true } as JsonObject)
+      : await this.immaculateTaste.applyPointsUpdate({
+          ctx,
+          suggested: suggestedItems,
+          maxPoints,
         });
-      }
-      dbSaved = true;
-
-      await ctx.info('db: saved', {
-        collectionName,
-        curatedCollectionId,
-        savedItems: desiredItems.length,
-      });
-    }
-
-    // Rebuild Plex collection (delete → create → order → artwork → pin)
-    const plexResult = await (async () => {
-      if (!desiredItems.length) {
-        await ctx.warn('collection_run: no resolvable Plex items (skipping plex rebuild)', {
-          collectionName,
-          generated: recommendationTitles.length,
-          missing: missingTitles.length,
-        });
-        return null;
-      }
-
-      await ctx.info('plex: rebuild start', {
-        collectionName,
-        desiredItems: desiredItems.length,
-      });
-      return await this.plexCurated.rebuildMovieCollection({
-        ctx,
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        machineIdentifier,
-        movieSectionKey,
-        collectionName,
-        desiredItems,
-        randomizeOrder: false,
-      });
-    })();
-
-    await ctx.info('plex: rebuild done', {
-      collectionName,
-      result: plexResult,
-    });
-
-    if (!ctx.dryRun && radarr && missingTitles.length) {
-      await ctx.info('radarr: done', {
-        collectionName,
-        ...radarrStats,
-      });
-    }
 
     const summary: JsonObject = {
-      collectionName,
-      recommendationStrategy,
-      generated: recommendationTitles.length,
-      resolvedInPlex: desiredItems.length,
+      seedTitle,
+      seedYear,
+      recommendationStrategy: recs.strategy,
+      generated: recs.titles.length,
+      resolvedInPlex: suggestedItems.length,
       missingInPlex: missingTitles.length,
-      dbSaved,
-      curatedCollectionId,
       radarr: radarrStats,
-      plex: plexResult,
+      points: pointsSummary,
       sampleMissing: missingTitles.slice(0, 10),
-      sampleResolved: desiredItems.slice(0, 10).map((d) => d.title),
+      sampleResolved: suggestedItems.slice(0, 10).map((d) => d.title),
     };
 
-    await ctx.info('collection_run: done', summary);
-    return summary;
+    await ctx.info('immaculateTastePoints: done', summary);
+    return { summary };
   }
 
   private async pickRadarrDefaults(params: {
@@ -485,16 +313,10 @@ export class WatchedMovieRecommendationsJob {
     const { ctx, baseUrl, apiKey } = params;
 
     const rootFolders = await this.radarr.listRootFolders({ baseUrl, apiKey });
-    if (!rootFolders.length) {
-      throw new Error('Radarr has no root folders configured');
-    }
-    const qualityProfiles = await this.radarr.listQualityProfiles({
-      baseUrl,
-      apiKey,
-    });
-    if (!qualityProfiles.length) {
+    if (!rootFolders.length) throw new Error('Radarr has no root folders configured');
+    const qualityProfiles = await this.radarr.listQualityProfiles({ baseUrl, apiKey });
+    if (!qualityProfiles.length)
       throw new Error('Radarr has no quality profiles configured');
-    }
 
     const rootFolderPath = rootFolders[0].path;
     const qualityProfileId = qualityProfiles[0].id;
@@ -504,7 +326,6 @@ export class WatchedMovieRecommendationsJob {
       qualityProfileId,
       qualityProfileName: qualityProfiles[0].name,
     });
-
     return { rootFolderPath, qualityProfileId };
   }
 

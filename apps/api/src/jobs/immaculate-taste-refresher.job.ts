@@ -3,7 +3,7 @@ import { PrismaService } from '../db/prisma.service';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { SettingsService } from '../settings/settings.service';
-import { ImmaculateTasteService } from '../immaculate-taste/immaculate-taste.service';
+import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -60,7 +60,7 @@ export class ImmaculateTasteRefresherJob {
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
     private readonly plexCurated: PlexCuratedCollectionsService,
-    private readonly immaculateTaste: ImmaculateTasteService,
+    private readonly immaculateTaste: ImmaculateTasteCollectionService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {

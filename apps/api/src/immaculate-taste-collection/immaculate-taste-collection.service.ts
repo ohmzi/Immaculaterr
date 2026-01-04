@@ -49,7 +49,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 @Injectable()
-export class ImmaculateTasteService {
+export class ImmaculateTasteCollectionService {
   static readonly DEFAULT_MAX_POINTS = 50;
   static readonly LEGACY_POINTS_FILE = 'recommendation_points.json';
 
@@ -74,10 +74,10 @@ export class ImmaculateTasteService {
       return { imported: false, sourcePath: null, importedCount: 0 };
     }
 
-    const sourcePath = resolveLegacyPointsPath(ImmaculateTasteService.LEGACY_POINTS_FILE);
+    const sourcePath = resolveLegacyPointsPath(ImmaculateTasteCollectionService.LEGACY_POINTS_FILE);
     if (!sourcePath) {
       await ctx.info('immaculateTaste: no legacy points file found (starting fresh)', {
-        expectedFile: ImmaculateTasteService.LEGACY_POINTS_FILE,
+        expectedFile: ImmaculateTasteCollectionService.LEGACY_POINTS_FILE,
       });
       return { imported: false, sourcePath: null, importedCount: 0 };
     }
@@ -296,8 +296,8 @@ function clampMaxPoints(v: unknown): number {
       ? Math.trunc(v)
       : typeof v === 'string' && v.trim()
         ? Number.parseInt(v.trim(), 10)
-        : ImmaculateTasteService.DEFAULT_MAX_POINTS;
-  if (!Number.isFinite(n)) return ImmaculateTasteService.DEFAULT_MAX_POINTS;
+        : ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
+  if (!Number.isFinite(n)) return ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
   return Math.max(1, Math.min(100, n));
 }
 
