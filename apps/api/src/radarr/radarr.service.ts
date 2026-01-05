@@ -18,6 +18,11 @@ export type RadarrQualityProfile = {
   name: string;
 };
 
+export type RadarrTag = {
+  id: number;
+  label: string;
+};
+
 @Injectable()
 export class RadarrService {
   private readonly logger = new Logger(RadarrService.name);
@@ -315,6 +320,52 @@ export class RadarrService {
     }
   }
 
+  async listTags(params: { baseUrl: string; apiKey: string }): Promise<RadarrTag[]> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr list tags failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+
+      const out: RadarrTag[] = [];
+      for (const r of rows) {
+        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
+        const label = typeof r['label'] === 'string' ? r['label'].trim() : '';
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (!label) continue;
+        out.push({ id: Math.trunc(id), label });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr list tags failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async addMovie(params: {
     baseUrl: string;
     apiKey: string;
@@ -323,6 +374,7 @@ export class RadarrService {
     year?: number | null;
     qualityProfileId: number;
     rootFolderPath: string;
+    tags?: number[];
     monitored?: boolean;
     minimumAvailability?: 'announced' | 'inCinemas' | 'released';
     searchForMovie?: boolean;
@@ -339,6 +391,7 @@ export class RadarrService {
           : undefined,
       qualityProfileId: Math.trunc(params.qualityProfileId),
       rootFolderPath: params.rootFolderPath,
+      tags: Array.isArray(params.tags) ? params.tags.map((t) => Math.trunc(t)) : undefined,
       monitored: params.monitored ?? true,
       minimumAvailability: params.minimumAvailability ?? 'announced',
       addOptions: {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { motion } from 'motion/react';
+import { motion, useAnimation } from 'motion/react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, Loader2, ScrollText } from 'lucide-react';
 
@@ -22,6 +22,8 @@ function levelClass(raw: string) {
 }
 
 export function LogsPage() {
+  const titleIconControls = useAnimation();
+  const titleIconGlowControls = useAnimation();
   const logsQuery = useQuery({
     queryKey: ['serverLogs'],
     queryFn: () => listServerLogs({ limit: 5000 }),
@@ -59,12 +61,35 @@ export function LogsPage() {
               className="space-y-6"
             >
               <div className="flex items-center gap-5">
-                <div className="relative group">
+                <motion.button
+                  type="button"
+                  onClick={() => {
+                    titleIconControls.stop();
+                    titleIconGlowControls.stop();
+                    void titleIconControls.start({
+                      scale: [1, 1.06, 1],
+                      transition: { duration: 0.55, ease: 'easeOut' },
+                    });
+                    void titleIconGlowControls.start({
+                      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+                      transition: { duration: 1.4, ease: 'easeInOut' },
+                    });
+                  }}
+                  animate={titleIconControls}
+                  className="relative group focus:outline-none touch-manipulation"
+                  aria-label="Animate Logs icon"
+                  title="Animate"
+                >
+                  <motion.div
+                    aria-hidden="true"
+                    animate={titleIconGlowControls}
+                    className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
+                  />
                   <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
                   <div className="relative p-3 md:p-4 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20 group-hover:rotate-0 transition-transform duration-300 ease-spring">
                     <ScrollText className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
                   </div>
-                </div>
+                </motion.button>
                 <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
                   Logs
                 </h1>

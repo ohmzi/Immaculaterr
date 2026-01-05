@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Param,
   Post,
   Req,
@@ -39,6 +40,11 @@ function pickString(obj: Record<string, unknown>, path: string): string {
   return asString(pick(obj, path));
 }
 
+function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+  const v = pick(obj, path);
+  return typeof v === 'boolean' ? v : null;
+}
+
 function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
@@ -65,6 +71,39 @@ export class IntegrationsController {
     private readonly openai: OpenAiService,
     private readonly overseerr: OverseerrService,
   ) {}
+
+  @Get('radarr/options')
+  async radarrOptions(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const radarrEnabledFlag = pickBool(settings, 'radarr.enabled');
+    const baseUrlRaw = pickString(settings, 'radarr.baseUrl');
+    const apiKey = pickString(secrets, 'radarr.apiKey');
+    // Back-compat: if radarr.enabled is not set, treat "secret present" as enabled.
+    const enabledFlag = radarrEnabledFlag ?? Boolean(apiKey);
+    const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
+
+    if (!enabled) {
+      throw new BadRequestException('Radarr is not enabled or not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+
+    const [rootFolders, qualityProfiles, tags] = await Promise.all([
+      this.radarr.listRootFolders({ baseUrl, apiKey }),
+      this.radarr.listQualityProfiles({ baseUrl, apiKey }),
+      this.radarr.listTags({ baseUrl, apiKey }),
+    ]);
+
+    // Stable order for UI
+    rootFolders.sort((a, b) => a.path.localeCompare(b.path));
+    qualityProfiles.sort((a, b) => a.name.localeCompare(b.name));
+    tags.sort((a, b) => a.label.localeCompare(b.label));
+
+    return { ok: true, rootFolders, qualityProfiles, tags };
+  }
 
   @Post('test/:integrationId')
   async testSaved(

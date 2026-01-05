@@ -11,6 +11,7 @@ import type { Express } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
+import { SettingsService } from '../settings/settings.service';
 import { WebhooksService } from './webhooks.service';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -42,12 +43,18 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   return null;
 }
 
+function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+  const v = pick(obj, path);
+  return typeof v === 'boolean' ? v : null;
+}
+
 @Controller('webhooks')
 export class WebhooksController {
   constructor(
     private readonly webhooksService: WebhooksService,
     private readonly jobsService: JobsService,
     private readonly authService: AuthService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   @Post('plex')
@@ -116,34 +123,54 @@ export class WebhooksController {
 
             const runs: Record<string, string> = {};
             const errors: Record<string, string> = {};
+            const skipped: Record<string, string> = {};
+
+            // Respect per-job webhook auto-run toggles (default: enabled)
+            const { settings } = await this.settingsService
+              .getInternalSettings(userId)
+              .catch(() => ({ settings: {} as Record<string, unknown>, secrets: {} }));
+            const watchedEnabled =
+              pickBool(settings, 'jobs.webhookEnabled.watchedMovieRecommendations') ??
+              true;
+            const immaculateEnabled =
+              pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ?? true;
 
             // 1) Recently-watched recommendations (two collections)
-            try {
-              const run = await this.jobsService.runJob({
-                jobId: 'watchedMovieRecommendations',
-                trigger: 'manual',
-                dryRun: false,
-                userId,
-                input: payloadInput,
-              });
-              runs.watchedMovieRecommendations = run.id;
-            } catch (err) {
-              errors.watchedMovieRecommendations =
-                (err as Error)?.message ?? String(err);
+            if (!watchedEnabled) {
+              skipped.watchedMovieRecommendations = 'disabled';
+            } else {
+              try {
+                const run = await this.jobsService.runJob({
+                  jobId: 'watchedMovieRecommendations',
+                  trigger: 'manual',
+                  dryRun: false,
+                  userId,
+                  input: payloadInput,
+                });
+                runs.watchedMovieRecommendations = run.id;
+              } catch (err) {
+                errors.watchedMovieRecommendations =
+                  (err as Error)?.message ?? String(err);
+              }
             }
 
             // 2) Immaculate Taste points update (dataset grows/decays over time)
-            try {
-              const run = await this.jobsService.runJob({
-                jobId: 'immaculateTastePoints',
-                trigger: 'manual',
-                dryRun: false,
-                userId,
-                input: payloadInput,
-              });
-              runs.immaculateTastePoints = run.id;
-            } catch (err) {
-              errors.immaculateTastePoints = (err as Error)?.message ?? String(err);
+            if (!immaculateEnabled) {
+              skipped.immaculateTastePoints = 'disabled';
+            } else {
+              try {
+                const run = await this.jobsService.runJob({
+                  jobId: 'immaculateTastePoints',
+                  trigger: 'manual',
+                  dryRun: false,
+                  userId,
+                  input: payloadInput,
+                });
+                runs.immaculateTastePoints = run.id;
+              } catch (err) {
+                errors.immaculateTastePoints =
+                  (err as Error)?.message ?? String(err);
+              }
             }
 
             const triggered = Object.keys(runs).length > 0;
@@ -152,6 +179,7 @@ export class WebhooksController {
               ...persisted,
               triggered,
               runs,
+              ...(Object.keys(skipped).length ? { skipped } : {}),
               ...(Object.keys(errors).length ? { errors } : {}),
             };
           } catch (err) {

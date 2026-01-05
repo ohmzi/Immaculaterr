@@ -11,6 +11,11 @@ import { JOB_DEFINITIONS, findJobDefinition } from './job-registry';
 import { JobsService } from './jobs.service';
 
 const REGISTRY_PREFIX = 'job:';
+const UNSCHEDULABLE_JOB_IDS = new Set<string>([
+  // Webhook/manual-input jobs (no schedule support)
+  'immaculateTastePoints',
+  'watchedMovieRecommendations',
+]);
 
 @Injectable()
 export class JobsScheduler implements OnModuleInit {
@@ -41,6 +46,11 @@ export class JobsScheduler implements OnModuleInit {
     if (!findJobDefinition(jobId)) {
       throw new BadRequestException(`Unknown job: ${jobId}`);
     }
+    if (UNSCHEDULABLE_JOB_IDS.has(jobId)) {
+      throw new BadRequestException(
+        `Job ${jobId} is webhook-only and cannot be scheduled`,
+      );
+    }
 
     // Validate cron by constructing a job (won't start)
     try {
@@ -65,7 +75,10 @@ export class JobsScheduler implements OnModuleInit {
     this.clearManagedCronJobs();
 
     const enabledSchedules = await this.prisma.jobSchedule.findMany({
-      where: { enabled: true },
+      where: {
+        enabled: true,
+        jobId: { notIn: Array.from(UNSCHEDULABLE_JOB_IDS) },
+      },
     });
 
     for (const schedule of enabledSchedules) {

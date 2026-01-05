@@ -23,12 +23,13 @@ const navItems: NavItem[] = [
     label: 'Settings',
     dropdown: [
       { label: 'Command Center', to: '/command-center' },
+      { label: 'Vault', to: '/vault' },
     ],
   },
   {
     label: 'Scheduler',
     dropdown: [
-      { label: 'Task Manager', to: '/jobs' },
+      { label: 'Task Manager', to: '/task-manager' },
       { label: 'Rewind', to: '/rewind' },
       { label: 'Logs', to: '/logs' },
     ],

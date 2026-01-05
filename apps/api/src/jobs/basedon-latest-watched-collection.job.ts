@@ -197,12 +197,45 @@ export class BasedonLatestWatchedCollectionJob {
       },
     ];
 
-    const radarrEnabledFlag = pickBool(settings, 'radarr.enabled') ?? false;
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(secrets, 'radarr.apiKey');
+    // Back-compat: if radarr.enabled isn't set, treat "secret present" as enabled.
     const radarrEnabled =
-      radarrEnabledFlag && Boolean(radarrBaseUrlRaw) && Boolean(radarrApiKey);
+      (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
+      Boolean(radarrBaseUrlRaw) &&
+      Boolean(radarrApiKey);
     const radarrBaseUrl = radarrEnabled ? normalizeHttpUrl(radarrBaseUrlRaw) : '';
+
+    const radarrDefaults = !ctx.dryRun && radarrEnabled
+      ? await this.pickRadarrDefaults({
+          ctx,
+          baseUrl: radarrBaseUrl,
+          apiKey: radarrApiKey,
+          preferredRootFolderPath:
+            pickString(settings, 'radarr.defaultRootFolderPath') ||
+            pickString(settings, 'radarr.rootFolderPath'),
+          preferredQualityProfileId:
+            Math.max(
+              1,
+              Math.trunc(
+                pickNumber(settings, 'radarr.defaultQualityProfileId') ??
+                  pickNumber(settings, 'radarr.qualityProfileId') ??
+                  1,
+              ),
+            ) || 1,
+          preferredTagId: (() => {
+            const v =
+              pickNumber(settings, 'radarr.defaultTagId') ??
+              pickNumber(settings, 'radarr.tagId');
+            return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+          })(),
+        }).catch(async (err) => {
+          await ctx.warn('radarr: defaults unavailable (skipping adds)', {
+            error: (err as Error)?.message ?? String(err),
+          });
+          return null;
+        })
+      : null;
 
     const perCollection: JsonObject[] = [];
     for (const col of collectionsToBuild) {
@@ -217,7 +250,7 @@ export class BasedonLatestWatchedCollectionJob {
         recommendationTitles: col.titles,
         recommendationStrategy: col.strategy,
         radarr: radarrEnabled
-          ? { baseUrl: radarrBaseUrl, apiKey: radarrApiKey }
+          ? { baseUrl: radarrBaseUrl, apiKey: radarrApiKey, defaults: radarrDefaults }
           : null,
       });
       perCollection.push(summary);
@@ -243,7 +276,17 @@ export class BasedonLatestWatchedCollectionJob {
     collectionName: string;
     recommendationTitles: string[];
     recommendationStrategy: string;
-    radarr: { baseUrl: string; apiKey: string } | null;
+    radarr:
+      | {
+          baseUrl: string;
+          apiKey: string;
+          defaults: {
+            rootFolderPath: string;
+            qualityProfileId: number;
+            tagIds: number[];
+          } | null;
+        }
+      | null;
   }): Promise<JsonObject> {
     const {
       ctx,
@@ -331,17 +374,11 @@ export class BasedonLatestWatchedCollectionJob {
     }
 
     if (!ctx.dryRun && radarr && missingTitles.length) {
-      const defaults = await this.pickRadarrDefaults({
-        ctx,
-        baseUrl: radarr.baseUrl,
-        apiKey: radarr.apiKey,
-      }).catch((err) => {
-        const msg = (err as Error)?.message ?? String(err);
-        return { error: msg };
-      });
-
-      if ('error' in defaults) {
-        await ctx.warn('radarr: defaults unavailable (skipping adds)', defaults);
+      const defaults = radarr.defaults;
+      if (!defaults) {
+        await ctx.warn('radarr: defaults unavailable (skipping adds)', {
+          reason: 'defaults_not_resolved',
+        });
       } else {
         for (const title of missingTitles) {
           radarrStats.attempted += 1;
@@ -364,6 +401,7 @@ export class BasedonLatestWatchedCollectionJob {
               year: tmdbMatch.year ?? null,
               qualityProfileId: defaults.qualityProfileId,
               rootFolderPath: defaults.rootFolderPath,
+              tags: defaults.tagIds,
               monitored: true,
               minimumAvailability: 'announced',
               searchForMovie: true,
@@ -481,31 +519,62 @@ export class BasedonLatestWatchedCollectionJob {
     ctx: JobContext;
     baseUrl: string;
     apiKey: string;
-  }): Promise<{ rootFolderPath: string; qualityProfileId: number }> {
+    preferredRootFolderPath?: string;
+    preferredQualityProfileId?: number;
+    preferredTagId?: number | null;
+  }): Promise<{
+    rootFolderPath: string;
+    qualityProfileId: number;
+    tagIds: number[];
+  }> {
     const { ctx, baseUrl, apiKey } = params;
 
-    const rootFolders = await this.radarr.listRootFolders({ baseUrl, apiKey });
+    const [rootFolders, qualityProfiles, tags] = await Promise.all([
+      this.radarr.listRootFolders({ baseUrl, apiKey }),
+      this.radarr.listQualityProfiles({ baseUrl, apiKey }),
+      this.radarr.listTags({ baseUrl, apiKey }),
+    ]);
+
     if (!rootFolders.length) {
       throw new Error('Radarr has no root folders configured');
     }
-    const qualityProfiles = await this.radarr.listQualityProfiles({
-      baseUrl,
-      apiKey,
-    });
     if (!qualityProfiles.length) {
       throw new Error('Radarr has no quality profiles configured');
     }
 
-    const rootFolderPath = rootFolders[0].path;
-    const qualityProfileId = qualityProfiles[0].id;
+    const preferredRoot = (params.preferredRootFolderPath ?? '').trim();
+    const rootFolder = preferredRoot
+      ? rootFolders.find((r) => r.path === preferredRoot) ?? rootFolders[0]
+      : rootFolders[0];
+
+    const desiredQualityId = Math.max(1, Math.trunc(params.preferredQualityProfileId ?? 1));
+    const qualityProfile =
+      qualityProfiles.find((p) => p.id === desiredQualityId) ??
+      (desiredQualityId !== 1 ? qualityProfiles.find((p) => p.id === 1) : null) ??
+      qualityProfiles[0];
+
+    const preferredTagId =
+      typeof params.preferredTagId === 'number' && Number.isFinite(params.preferredTagId)
+        ? Math.trunc(params.preferredTagId)
+        : null;
+    const tag = preferredTagId ? tags.find((t) => t.id === preferredTagId) : null;
+
+    const rootFolderPath = rootFolder.path;
+    const qualityProfileId = qualityProfile.id;
+    const tagIds = tag ? [tag.id] : [];
 
     await ctx.info('radarr: defaults selected', {
       rootFolderPath,
       qualityProfileId,
-      qualityProfileName: qualityProfiles[0].name,
+      qualityProfileName: qualityProfile.name,
+      tagIds,
+      tagLabel: tag?.label ?? null,
+      usedPreferredRootFolder: Boolean(preferredRoot && rootFolder.path === preferredRoot),
+      usedPreferredQualityProfile: Boolean(qualityProfile.id === desiredQualityId),
+      usedPreferredTag: Boolean(tag),
     });
 
-    return { rootFolderPath, qualityProfileId };
+    return { rootFolderPath, qualityProfileId, tagIds };
   }
 
   private async pickBestTmdbMatch(params: {

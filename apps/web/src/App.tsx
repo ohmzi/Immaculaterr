@@ -9,6 +9,7 @@ import { RewindPage } from '@/pages/RewindPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { VaultPage } from '@/pages/VaultPage';
 import { CommandCenterPage } from '@/pages/CommandCenterPage';
 
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
@@ -40,15 +41,20 @@ export default function App() {
           <Route element={<ProtectedAppShell />}>
             <Route index element={<DashboardPage />} />
             <Route path="app" element={<Navigate to="/" replace />} />
+            <Route path="vault" element={<VaultPage />} />
             <Route path="command-center" element={<CommandCenterPage />} />
-            <Route path="jobs" element={<TaskManagerPage />} />
+            <Route path="task-manager" element={<TaskManagerPage />} />
             <Route path="rewind" element={<RewindPage />} />
             <Route path="rewind/:runId" element={<JobRunDetailPage />} />
+            {/* Legacy Rewind routes */}
+            <Route path="history" element={<Navigate to="/rewind" replace />} />
+            <Route path="history/:runId" element={<JobRunDetailPage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="logs/:runId" element={<LogsPage />} />
             {/* Redirect old routes */}
-            <Route path="connections" element={<Navigate to="/command-center" replace />} />
-            <Route path="integrations" element={<Navigate to="/command-center" replace />} />
+            <Route path="jobs" element={<Navigate to="/task-manager" replace />} />
+            <Route path="connections" element={<Navigate to="/vault" replace />} />
+            <Route path="integrations" element={<Navigate to="/vault" replace />} />
             {/* 404 also requires auth */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useAnimation } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
+import { getPublicSettings, putSettings } from '@/api/settings';
 import { cn } from '@/components/ui/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
@@ -35,6 +36,11 @@ type ScheduleDraft = {
   daysOfMonth: string[]; // ['1', '2', ...] (1-28) for monthly
   advancedCron?: string | null; // present if stored cron isn't representable by simple UI
 };
+
+const UNSCHEDULABLE_JOB_IDS = new Set<string>([
+  'immaculateTastePoints', // webhook/manual input only
+  'watchedMovieRecommendations', // webhook/manual input only
+]);
 
 const DAYS_OF_WEEK: Array<{ value: string; label: string; short: string }> = [
   { value: '0', label: 'Sunday', short: 'Sun' },
@@ -87,6 +93,25 @@ const JOB_CONFIG: Record<
       'Runs a quick no-op cycle to validate the job runner, event loop latency, and database connectivity.',
   },
 };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readPath(obj: unknown, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function readBool(obj: unknown, path: string): boolean | null {
+  const v = readPath(obj, path);
+  return typeof v === 'boolean' ? v : null;
+}
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -251,7 +276,10 @@ function calculateNextRuns(draft: ScheduleDraft, count: number = 5): Date[] {
 export function TaskManagerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const titleIconControls = useAnimation();
+  const titleIconGlowControls = useAnimation();
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [terminalState, setTerminalState] = useState<
     Record<string, { status: 'idle' | 'running' | 'completed'; runId?: string }>
   >({});
@@ -267,6 +295,93 @@ export function TaskManagerPage() {
   const [movieSeedYear, setMovieSeedYear] = useState('');
   const [movieSeedError, setMovieSeedError] = useState<string | null>(null);
   const movieSeedTitleRef = useRef<HTMLInputElement | null>(null);
+
+  // Immaculate Taste flow config (persisted in Settings)
+  const settingsQuery = useQuery({
+    queryKey: ['publicSettings'],
+    queryFn: getPublicSettings,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  const [
+    immaculateIncludeRefresherAfterUpdate,
+    setImmaculateIncludeRefresherAfterUpdate,
+  ] = useState(true);
+  const [immaculateRefresherDetailsOpen, setImmaculateRefresherDetailsOpen] =
+    useState(false);
+  const [cardIconPulse, setCardIconPulse] = useState<{
+    jobId: string;
+    nonce: number;
+  } | null>(null);
+  const [flashJob, setFlashJob] = useState<{ jobId: string; nonce: number } | null>(
+    null,
+  );
+  const [webhookAutoRun, setWebhookAutoRun] = useState<Record<string, boolean>>({});
+  const immaculateIncludeRefresherMutation = useMutation({
+    mutationFn: async (enabled: boolean) =>
+      putSettings({
+        settings: { immaculateTaste: { includeRefresherAfterUpdate: enabled } },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+  useEffect(() => {
+    if (immaculateIncludeRefresherMutation.isPending) return;
+    const saved = readBool(
+      settingsQuery.data?.settings,
+      'immaculateTaste.includeRefresherAfterUpdate',
+    );
+    setImmaculateIncludeRefresherAfterUpdate(saved ?? true);
+  }, [settingsQuery.data?.settings, immaculateIncludeRefresherMutation.isPending]);
+
+  useEffect(() => {
+    if (immaculateIncludeRefresherMutation.isError) {
+      setImmaculateRefresherDetailsOpen(true);
+    }
+  }, [immaculateIncludeRefresherMutation.isError]);
+
+  const webhookAutoRunMutation = useMutation({
+    mutationFn: async (params: { jobId: string; enabled: boolean }) =>
+      putSettings({
+        settings: { jobs: { webhookEnabled: { [params.jobId]: params.enabled } } },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
+  useEffect(() => {
+    // Initialize webhook-only auto-run toggles from settings (default: enabled).
+    const settings = settingsQuery.data?.settings;
+    if (!settings) return;
+    if (webhookAutoRunMutation.isPending) return;
+
+    setWebhookAutoRun((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const jobId of UNSCHEDULABLE_JOB_IDS) {
+        if (next[jobId] !== undefined) continue;
+        const saved = readBool(settings, `jobs.webhookEnabled.${jobId}`);
+        next[jobId] = saved ?? true;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [settingsQuery.data?.settings, webhookAutoRunMutation.isPending]);
+
+  useEffect(() => {
+    if (!flashJob) return;
+    // Keep the highlight mounted long enough for the full pulse sequence.
+    const t = setTimeout(() => setFlashJob(null), 4200);
+    return () => clearTimeout(t);
+  }, [flashJob?.nonce]);
+
+  useEffect(() => {
+    if (!cardIconPulse) return;
+    const t = setTimeout(() => setCardIconPulse(null), 750);
+    return () => clearTimeout(t);
+  }, [cardIconPulse?.nonce]);
 
   // Close all popups when clicking outside
   useEffect(() => {
@@ -443,14 +558,14 @@ export function TaskManagerPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black">
-      {/* Background (landing-page style, teal-tinted) */}
+      {/* Background (landing-page style, indigo-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
           src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-teal-900/50 via-cyan-900/60 to-slate-900/70" />
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/55 via-blue-900/65 to-slate-900/75" />
         <div className="absolute inset-0 bg-[#0b0c0f]/15" />
       </div>
 
@@ -465,7 +580,30 @@ export function TaskManagerPage() {
             className="space-y-6"
           >
             <div className="flex items-center gap-5">
-              <div className="relative group">
+              <motion.button
+                type="button"
+                onClick={() => {
+                  titleIconControls.stop();
+                  titleIconGlowControls.stop();
+                  void titleIconControls.start({
+                    scale: [1, 1.06, 1],
+                    transition: { duration: 0.55, ease: 'easeOut' },
+                  });
+                  void titleIconGlowControls.start({
+                    opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+                    transition: { duration: 1.4, ease: 'easeInOut' },
+                  });
+                }}
+                animate={titleIconControls}
+                className="relative group focus:outline-none touch-manipulation"
+                aria-label="Animate Task Manager icon"
+                title="Animate"
+              >
+                <motion.div
+                  aria-hidden="true"
+                  animate={titleIconGlowControls}
+                  className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
+                />
                 <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
                 <div className="relative p-3 md:p-4 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20 group-hover:rotate-0 transition-transform duration-300 ease-spring">
                   <TerminalIcon
@@ -473,7 +611,7 @@ export function TaskManagerPage() {
                     strokeWidth={2.5}
                   />
                 </div>
-              </div>
+              </motion.button>
               <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
                 Task Manager
               </h1>
@@ -549,18 +687,77 @@ export function TaskManagerPage() {
               const monthlyOpen = monthlyDaySelector[job.id] ?? false;
               const nextRunsOpen = nextRunsPopup[job.id] ?? false;
               const timePickerIsOpen = timePickerOpen[job.id] ?? false;
+              const supportsSchedule = !UNSCHEDULABLE_JOB_IDS.has(job.id);
+              const webhookEnabled =
+                webhookAutoRun[job.id] ??
+                (readBool(settingsQuery.data?.settings, `jobs.webhookEnabled.${job.id}`) ??
+                  true);
+              const isAutoRunEnabled = supportsSchedule ? draft.enabled : webhookEnabled;
+              const iconPulseActive = cardIconPulse?.jobId === job.id;
+              const isExpanded = expandedCards[job.id] ?? false;
+              const canExpand =
+                (supportsSchedule && Boolean(job.schedule || job.defaultScheduleCron)) ||
+                job.id === 'immaculateTastePoints';
 
               return (
                 <motion.div
                   key={job.id}
+                  id={`job-${job.id}`}
                   layout
+                  onPointerDownCapture={() => {
+                    setCardIconPulse({ jobId: job.id, nonce: Date.now() });
+                  }}
+                  onClick={(e) => {
+                    if (!canExpand) return;
+                    const t = e.target as HTMLElement | null;
+                    if (!t) return;
+                    if (
+                      t.closest(
+                        'button, a, input, select, textarea, [role="switch"], [data-no-card-toggle="true"]',
+                      )
+                    ) {
+                      return;
+                    }
+                    setExpandedCards((prev) => ({ ...prev, [job.id]: !isExpanded }));
+                  }}
                   style={{
                     position: 'relative',
                     zIndex: weeklyOpen || monthlyOpen || nextRunsOpen || timePickerIsOpen ? 9999 : 'auto',
                   }}
-                  className="group relative rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10"
+                  className="group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10 scroll-mt-24"
                 >
                   <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
+                  <AnimatePresence initial={false}>
+                    {flashJob?.jobId === job.id && (
+                      <>
+                        {/* Flash highlight: use INSET shadows so it still shows even with overflow-hidden cards */}
+                        <motion.div
+                          key={`${flashJob.nonce}-glow`}
+                          className="pointer-events-none absolute inset-0 rounded-[32px]"
+                          initial={{
+                            boxShadow:
+                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
+                          }}
+                          animate={{
+                            boxShadow: [
+                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
+                              'inset 0 0 0 1px rgba(250, 204, 21, 0.35), inset 0 0 44px rgba(250, 204, 21, 0.14)',
+                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
+                              'inset 0 0 0 1px rgba(250, 204, 21, 0.35), inset 0 0 44px rgba(250, 204, 21, 0.14)',
+                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
+                              'inset 0 0 0 1px rgba(250, 204, 21, 0.35), inset 0 0 44px rgba(250, 204, 21, 0.14)',
+                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
+                            ],
+                          }}
+                          exit={{
+                            boxShadow:
+                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
+                          }}
+                          transition={{ duration: 3.8, ease: 'easeInOut' }}
+                        />
+                      </>
+                    )}
+                  </AnimatePresence>
 
                   <div className="p-6 md:p-8 flex flex-wrap gap-4 items-start relative z-10">
                     {/* Icon Box */}
@@ -570,94 +767,158 @@ export function TaskManagerPage() {
                         config.color
                       )}
                     >
-                      {config.icon}
+                      <span
+                        className={cn(
+                          'transition-[filter] duration-300 will-change-[filter]',
+                          'group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor]',
+                          iconPulseActive
+                            ? 'drop-shadow-[0_0_18px_currentColor]'
+                            : 'drop-shadow-none'
+                        )}
+                      >
+                        {config.icon}
+                      </span>
                     </div>
 
                     <div className="flex-1 space-y-1 min-w-0">
                       <div className="flex items-center gap-3">
-                        <h3 className="text-xl font-bold text-white tracking-tight truncate">
+                        <h3 className="text-xl font-bold text-white tracking-tight leading-tight break-words sm:truncate">
                           {job.name}
                         </h3>
-                        {draft.enabled && (
+                        {isAutoRunEnabled && (
                           <Badge className="bg-emerald-500/20 text-emerald-400 border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold shrink-0">
                             Active
                           </Badge>
                         )}
                       </div>
-                      <p className="text-gray-400 leading-relaxed font-medium text-sm md:text-base max-w-lg">
+                      <p className="hidden sm:block text-gray-400 leading-relaxed font-medium text-sm md:text-base max-w-lg">
                         {config.description}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-4 self-end md:self-center w-full md:w-auto justify-between md:justify-end shrink-0">
-                      <div className="flex flex-col items-center gap-2">
-                        <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                          Auto-Run
-                        </span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={draft.enabled}
-                          onClick={() => {
-                            const newEnabled = !draft.enabled;
+                      {supportsSchedule ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                            Auto-Run
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={draft.enabled}
+                            onClick={() => {
+                              const newEnabled = !draft.enabled;
 
-                            if (newEnabled) {
-                              // If enabling, auto-save with default daily 3am schedule
-                              const defaultCron = '0 3 * * *'; // Daily at 3am
+                              if (newEnabled) {
+                                setExpandedCards((prev) => ({ ...prev, [job.id]: true }));
+                                // If enabling, auto-save with default daily 3am schedule
+                                const defaultCron = '0 3 * * *'; // Daily at 3am
 
-                              const defaultDraft = defaultDraftFromCron({
-                                cron: defaultCron,
-                                enabled: true,
-                              });
+                                const defaultDraft = defaultDraftFromCron({
+                                  cron: defaultCron,
+                                  enabled: true,
+                                });
 
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [job.id]: defaultDraft,
-                              }));
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [job.id]: defaultDraft,
+                                }));
 
-                              scheduleMutation.mutate({
-                                jobId: job.id,
-                                cron: defaultCron,
-                                enabled: true,
-                              });
-                            } else {
-                              // If disabling, save immediately
-                              const cron =
-                                buildCronFromDraft(draft) ||
-                                baseCron ||
-                                job.defaultScheduleCron ||
-                                '0 3 * * *';
+                                scheduleMutation.mutate({
+                                  jobId: job.id,
+                                  cron: defaultCron,
+                                  enabled: true,
+                                });
+                              } else {
+                                // If disabling, save immediately
+                                const cron =
+                                  buildCronFromDraft(draft) ||
+                                  baseCron ||
+                                  job.defaultScheduleCron ||
+                                  '0 3 * * *';
 
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [job.id]: { ...draft, enabled: false },
-                              }));
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [job.id]: { ...draft, enabled: false },
+                                }));
 
-                              scheduleMutation.mutate({
-                                jobId: job.id,
-                                cron,
-                                enabled: false,
-                              });
+                                scheduleMutation.mutate({
+                                  jobId: job.id,
+                                  cron,
+                                  enabled: false,
+                                });
+                              }
+                            }}
+                            disabled={
+                              scheduleMutation.isPending &&
+                              scheduleMutation.variables?.jobId === job.id
                             }
-                          }}
-                          disabled={
-                            scheduleMutation.isPending &&
-                            scheduleMutation.variables?.jobId === job.id
-                          }
-                          className={cn(
-                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                            draft.enabled ? 'bg-[#facc15]' : 'bg-[#2a2438] border-2 border-white/10'
-                          )}
-                          aria-label={`Toggle schedule for ${job.name}`}
-                        >
-                          <span
                             className={cn(
-                              'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
-                              draft.enabled ? 'translate-x-6' : 'translate-x-1'
+                              'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                              draft.enabled
+                                ? 'bg-[#facc15]'
+                                : 'bg-[#2a2438] border-2 border-white/10'
                             )}
-                          />
-                        </button>
-                      </div>
+                            aria-label={`Toggle schedule for ${job.name}`}
+                          >
+                            <span
+                              className={cn(
+                                'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
+                                draft.enabled ? 'translate-x-6' : 'translate-x-1'
+                              )}
+                            />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                            Auto-Run
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={webhookEnabled}
+                            onClick={() => {
+                              const prev = webhookEnabled;
+                              const next = !webhookEnabled;
+                              setWebhookAutoRun((p) => ({ ...p, [job.id]: next }));
+                              if (next && job.id === 'immaculateTastePoints') {
+                                setExpandedCards((p) => ({ ...p, [job.id]: true }));
+                              }
+                              webhookAutoRunMutation.mutate(
+                                { jobId: job.id, enabled: next },
+                                {
+                                  onError: () => {
+                                    setWebhookAutoRun((p) => ({ ...p, [job.id]: prev }));
+                                  },
+                                },
+                              );
+                            }}
+                            disabled={
+                              settingsQuery.isLoading ||
+                              (webhookAutoRunMutation.isPending &&
+                                webhookAutoRunMutation.variables?.jobId === job.id)
+                            }
+                            className={cn(
+                              'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                              webhookEnabled
+                                ? 'bg-[#facc15]'
+                                : 'bg-[#2a2438] border-2 border-white/10'
+                            )}
+                            aria-label={`Toggle webhook auto-run for ${job.name}`}
+                          >
+                            <span
+                              className={cn(
+                                'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
+                                webhookEnabled ? 'translate-x-6' : 'translate-x-1'
+                              )}
+                            />
+                          </button>
+                          <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                            Plex scrobble
+                          </div>
+                        </div>
+                      )}
 
                       <div className="w-px h-10 bg-white/5 hidden md:block" />
 
@@ -780,10 +1041,163 @@ export function TaskManagerPage() {
                     </div>
                   </div>
 
+                  {/* Webhook-only expansion (shows extra controls only when Auto-Run is enabled) */}
+                  {!supportsSchedule && (
+                    <AnimatePresence initial={false}>
+                      {isExpanded && webhookEnabled && job.id === 'immaculateTastePoints' && (
+                        <motion.div
+                          data-no-card-toggle="true"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{
+                            type: 'spring',
+                            stiffness: 200,
+                            damping: 25,
+                            mass: 0.8,
+                          }}
+                          className="overflow-hidden bg-[#0F0B15]/30 border-t border-white/5"
+                        >
+                          <div className="px-6 md:px-8 py-5">
+                            {job.id === 'immaculateTastePoints' && (
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={immaculateRefresherDetailsOpen}
+                                onClick={() =>
+                                  setImmaculateRefresherDetailsOpen((v) => !v)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setImmaculateRefresherDetailsOpen((v) => !v);
+                                  }
+                                }}
+                                className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5 cursor-pointer select-none hover:bg-[#0F0B15]/45 transition-colors"
+                              >
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                      <RotateCw className="w-3 h-3 text-sky-300" />
+                                      Immaculate Taste Refresher
+                                    </div>
+
+                                    <AnimatePresence initial={false}>
+                                      {immaculateRefresherDetailsOpen && (
+                                        <motion.div
+                                          initial={{ height: 0, opacity: 0 }}
+                                          animate={{ height: 'auto', opacity: 1 }}
+                                          exit={{ height: 0, opacity: 0 }}
+                                          transition={{
+                                            type: 'spring',
+                                            stiffness: 240,
+                                            damping: 26,
+                                            mass: 0.85,
+                                          }}
+                                          className="overflow-hidden"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <p className="mt-2 text-sm text-gray-400 leading-relaxed">
+                                            After updating points, automatically rebuild your{' '}
+                                            <span className="text-white/80 font-semibold">
+                                              Inspired by your Immaculate Taste
+                                            </span>{' '}
+                                            Plex collection.
+                                          </p>
+                                          <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                                            If disabled, you can still{' '}
+                                            <a
+                                              href="#job-immaculateTasteRefresher"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                document
+                                                  .getElementById(
+                                                    'job-immaculateTasteRefresher',
+                                                  )
+                                                  ?.scrollIntoView({
+                                                    behavior: 'smooth',
+                                                    block: 'start',
+                                                  });
+                                                setFlashJob({
+                                                  jobId: 'immaculateTasteRefresher',
+                                                  nonce: Date.now(),
+                                                });
+                                              }}
+                                              className="text-sky-200/90 underline underline-offset-4 hover:text-sky-100 transition-colors"
+                                            >
+                                              run/schedule the refresher from its own card
+                                            </a>{' '}
+                                            independently.
+                                          </p>
+
+                                          {immaculateIncludeRefresherMutation.isError && (
+                                            <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
+                                              <CircleAlert className="w-4 h-4" />
+                                              {(immaculateIncludeRefresherMutation.error as Error)
+                                                .message}
+                                            </div>
+                                          )}
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+
+                                  <div
+                                    className="flex flex-col items-end gap-2 shrink-0"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={immaculateIncludeRefresherAfterUpdate}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const next = !immaculateIncludeRefresherAfterUpdate;
+                                        setImmaculateIncludeRefresherAfterUpdate(next);
+                                        immaculateIncludeRefresherMutation.mutate(next);
+                                      }}
+                                      onPointerDown={(e) => e.stopPropagation()}
+                                      disabled={
+                                        settingsQuery.isLoading ||
+                                        immaculateIncludeRefresherMutation.isPending
+                                      }
+                                      className={cn(
+                                        'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                        immaculateIncludeRefresherAfterUpdate
+                                          ? 'bg-sky-400'
+                                          : 'bg-[#2a2438] border-2 border-white/10'
+                                      )}
+                                      aria-label="Toggle Immaculate Taste Refresher after update"
+                                    >
+                                      <span
+                                        className={cn(
+                                          'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                          immaculateIncludeRefresherAfterUpdate
+                                            ? 'translate-x-6'
+                                            : 'translate-x-1'
+                                        )}
+                                      >
+                                        {immaculateIncludeRefresherMutation.isPending && (
+                                          <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                        )}
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  )}
+
                   {/* Scheduler Drawer */}
                   <AnimatePresence initial={false}>
-                    {draft.enabled && (
+                    {supportsSchedule && isExpanded && draft.enabled && (
                       <motion.div
+                        data-no-card-toggle="true"
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}

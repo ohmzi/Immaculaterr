@@ -1,9 +1,25 @@
 import { motion } from 'motion/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth } from '@/api/plex';
+
+type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
+
+const TIME_RANGE_OPTIONS: Array<{
+  key: TimeRangeKey;
+  label: string;
+  months?: number;
+  title: string;
+}> = [
+  { key: '1M', label: '1M', months: 1, title: 'Last 1 month' },
+  { key: '3M', label: '3M', months: 3, title: 'Last 3 months' },
+  { key: '6M', label: '6M', months: 6, title: 'Last 6 months' },
+  { key: '1Y', label: '1Y', months: 12, title: 'Last 1 year' },
+  { key: '5Y', label: '5Y', months: 60, title: 'Last 5 years' },
+  { key: 'ALL', label: 'All', title: 'All time' },
+];
 
 function formatMonthLabel(value: string) {
   const [y, m] = value.split('-');
@@ -12,6 +28,14 @@ function formatMonthLabel(value: string) {
   if (!Number.isFinite(year) || !Number.isFinite(month)) return value;
   const d = new Date(Date.UTC(year, month - 1, 1));
   return d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
+}
+
+function parseUtcMonthStart(value: string): Date | null {
+  const [y, m] = value.split('-');
+  const year = Number.parseInt(y ?? '', 10);
+  const month = Number.parseInt(m ?? '', 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return new Date(Date.UTC(year, month - 1, 1));
 }
 
 function niceCeilStep(rawStep: number) {
@@ -122,6 +146,33 @@ export function HeroSection() {
   const last = series.at(-1) ?? null;
   const prev = series.length >= 2 ? series.at(-2)! : null;
 
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>('1Y');
+
+  const filteredSeries = useMemo(() => {
+    if (timeRange === 'ALL') return series;
+    const opt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
+    const months = opt?.months;
+    if (!months) return series;
+
+    const end = parseUtcMonthStart(series.at(-1)?.month ?? '');
+    if (!end) return series;
+
+    // Include the month *before* the window so a "1M" view still has a visible trend.
+    // Example: for 6M we show the last 7 monthly points (baseline + 6 month window).
+    const start = new Date(
+      Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - months, 1),
+    );
+
+    const next = series.filter((p) => {
+      const dt = parseUtcMonthStart(p.month);
+      return dt ? dt >= start : false;
+    });
+
+    if (next.length >= 2) return next;
+    if (next.length > 0) return next;
+    return series;
+  }, [series, timeRange]);
+
   const moviesTotal = last?.movies ?? 0;
   const tvTotal = last?.tv ?? 0;
   const moviesPrev = prev?.movies ?? 0;
@@ -146,8 +197,8 @@ export function HeroSection() {
       ? Math.round(((statsTotal - statsPrevTotal) / statsPrevTotal) * 100)
       : 0;
 
-  const moviesMax = series.reduce((acc, p) => Math.max(acc, p.movies), 0);
-  const tvMax = series.reduce((acc, p) => Math.max(acc, p.tv), 0);
+  const moviesMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.movies), 0);
+  const tvMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.tv), 0);
   const moviesScale = buildQuarterScale(moviesMax);
   const tvScale = buildQuarterScale(tvMax);
 
@@ -221,15 +272,51 @@ export function HeroSection() {
               {/* Analytics Card */}
               <div className="w-full bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-white/5">
                 {/* Card Header */}
-                <div className="mb-6">
-                  <h3 className="text-white text-lg font-semibold mb-1">Media Analytics</h3>
-                  <p className="text-gray-400 dark:text-gray-500 text-sm">Collection growth over time</p>
+                <div className="mb-6 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-white text-lg font-semibold mb-1">Media Analytics</h3>
+                    <p className="text-gray-400 dark:text-gray-500 text-sm">
+                      Collection growth over time
+                    </p>
+                  </div>
+
+                  <div className="shrink-0">
+                    <div
+                      className="inline-flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1 backdrop-blur-md"
+                      role="group"
+                      aria-label="Select chart time range"
+                    >
+                      {TIME_RANGE_OPTIONS.map((opt) => {
+                        const selected = timeRange === opt.key;
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => setTimeRange(opt.key)}
+                            disabled={!hasData}
+                            aria-pressed={selected}
+                            title={opt.title}
+                            className={[
+                              'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20',
+                              'disabled:opacity-40 disabled:cursor-not-allowed',
+                              selected
+                                ? 'bg-white/15 text-white'
+                                : 'text-white/70 hover:text-white hover:bg-white/10',
+                            ].join(' ')}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Chart */}
                 <div className="w-full h-[240px] relative min-w-0">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-                    <AreaChart data={series}>
+                    <AreaChart data={filteredSeries}>
                       <defs>
                         <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#facc15" stopOpacity={0.25}/>

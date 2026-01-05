@@ -6,6 +6,7 @@ import { SettingsService } from '../settings/settings.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -60,6 +61,7 @@ export class ImmaculateTasteCollectionJob {
     private readonly tmdb: TmdbService,
     private readonly radarr: RadarrService,
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
+    private readonly immaculateTasteRefresher: ImmaculateTasteRefresherJob,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
@@ -133,6 +135,8 @@ export class ImmaculateTasteCollectionJob {
       50;
     const maxPoints =
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
+    const includeRefresherAfterUpdate =
+      pickBool(settings, 'immaculateTaste.includeRefresherAfterUpdate') ?? true;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -144,6 +148,7 @@ export class ImmaculateTasteCollectionJob {
       googleEnabled,
       suggestionsPerRun,
       maxPoints,
+      includeRefresherAfterUpdate,
       webContextFraction,
     });
 
@@ -209,11 +214,13 @@ export class ImmaculateTasteCollectionJob {
     });
 
     // --- Optional Radarr: add missing titles (best-effort) ---
-    const radarrEnabledFlag = pickBool(settings, 'radarr.enabled') ?? false;
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(secrets, 'radarr.apiKey');
+    // Back-compat: if radarr.enabled isn't set, treat "secret present" as enabled.
     const radarrEnabled =
-      radarrEnabledFlag && Boolean(radarrBaseUrlRaw) && Boolean(radarrApiKey);
+      (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
+      Boolean(radarrBaseUrlRaw) &&
+      Boolean(radarrApiKey);
     const radarrBaseUrl = radarrEnabled ? normalizeHttpUrl(radarrBaseUrlRaw) : '';
 
     const radarrStats = {
@@ -235,6 +242,24 @@ export class ImmaculateTasteCollectionJob {
         ctx,
         baseUrl: radarrBaseUrl,
         apiKey: radarrApiKey,
+        preferredRootFolderPath:
+          pickString(settings, 'radarr.defaultRootFolderPath') ||
+          pickString(settings, 'radarr.rootFolderPath'),
+        preferredQualityProfileId:
+          Math.max(
+            1,
+            Math.trunc(
+              pickNumber(settings, 'radarr.defaultQualityProfileId') ??
+                pickNumber(settings, 'radarr.qualityProfileId') ??
+                1,
+            ),
+          ) || 1,
+        preferredTagId: (() => {
+          const v =
+            pickNumber(settings, 'radarr.defaultTagId') ??
+            pickNumber(settings, 'radarr.tagId');
+          return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+        })(),
       }).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
 
       if ('error' in defaults) {
@@ -260,6 +285,7 @@ export class ImmaculateTasteCollectionJob {
               year: tmdbMatch.year ?? null,
               qualityProfileId: defaults.qualityProfileId,
               rootFolderPath: defaults.rootFolderPath,
+              tags: defaults.tagIds,
               monitored: true,
               minimumAvailability: 'announced',
               searchForMovie: true,
@@ -288,6 +314,29 @@ export class ImmaculateTasteCollectionJob {
           maxPoints,
         });
 
+    // --- Optional chained refresher (rebuild Plex collection from points DB) ---
+    let refresherSummary: JsonObject | null = null;
+    if (!includeRefresherAfterUpdate) {
+      refresherSummary = { skipped: true, reason: 'disabled' };
+      await ctx.info('immaculateTastePoints: refresher skipped (disabled)', {
+        includeRefresherAfterUpdate,
+      });
+    } else if (ctx.dryRun) {
+      refresherSummary = { skipped: true, reason: 'dry_run' };
+      await ctx.info('immaculateTastePoints: refresher skipped (dryRun)', {
+        includeRefresherAfterUpdate,
+      });
+    } else {
+      await ctx.info('immaculateTastePoints: running refresher (chained)', {
+        jobId: 'immaculateTasteRefresher',
+      });
+      const refresherResult = await this.immaculateTasteRefresher.run(ctx);
+      refresherSummary = refresherResult.summary ?? null;
+      await ctx.info('immaculateTastePoints: refresher done (chained)', {
+        refresher: refresherSummary,
+      });
+    }
+
     const summary: JsonObject = {
       seedTitle,
       seedYear,
@@ -297,6 +346,7 @@ export class ImmaculateTasteCollectionJob {
       missingInPlex: missingTitles.length,
       radarr: radarrStats,
       points: pointsSummary,
+      refresher: refresherSummary,
       sampleMissing: missingTitles.slice(0, 10),
       sampleResolved: suggestedItems.slice(0, 10).map((d) => d.title),
     };
@@ -309,24 +359,59 @@ export class ImmaculateTasteCollectionJob {
     ctx: JobContext;
     baseUrl: string;
     apiKey: string;
-  }): Promise<{ rootFolderPath: string; qualityProfileId: number }> {
+    preferredRootFolderPath?: string;
+    preferredQualityProfileId?: number;
+    preferredTagId?: number | null;
+  }): Promise<{
+    rootFolderPath: string;
+    qualityProfileId: number;
+    tagIds: number[];
+  }> {
     const { ctx, baseUrl, apiKey } = params;
 
-    const rootFolders = await this.radarr.listRootFolders({ baseUrl, apiKey });
+    const [rootFolders, qualityProfiles, tags] = await Promise.all([
+      this.radarr.listRootFolders({ baseUrl, apiKey }),
+      this.radarr.listQualityProfiles({ baseUrl, apiKey }),
+      this.radarr.listTags({ baseUrl, apiKey }),
+    ]);
+
     if (!rootFolders.length) throw new Error('Radarr has no root folders configured');
-    const qualityProfiles = await this.radarr.listQualityProfiles({ baseUrl, apiKey });
     if (!qualityProfiles.length)
       throw new Error('Radarr has no quality profiles configured');
 
-    const rootFolderPath = rootFolders[0].path;
-    const qualityProfileId = qualityProfiles[0].id;
+    const preferredRoot = (params.preferredRootFolderPath ?? '').trim();
+    const rootFolder = preferredRoot
+      ? rootFolders.find((r) => r.path === preferredRoot) ?? rootFolders[0]
+      : rootFolders[0];
+
+    const desiredQualityId = Math.max(1, Math.trunc(params.preferredQualityProfileId ?? 1));
+    const qualityProfile =
+      qualityProfiles.find((p) => p.id === desiredQualityId) ??
+      (desiredQualityId !== 1 ? qualityProfiles.find((p) => p.id === 1) : null) ??
+      qualityProfiles[0];
+
+    const preferredTagId =
+      typeof params.preferredTagId === 'number' && Number.isFinite(params.preferredTagId)
+        ? Math.trunc(params.preferredTagId)
+        : null;
+    const tag = preferredTagId ? tags.find((t) => t.id === preferredTagId) : null;
+
+    const rootFolderPath = rootFolder.path;
+    const qualityProfileId = qualityProfile.id;
+    const tagIds = tag ? [tag.id] : [];
 
     await ctx.info('radarr: defaults selected', {
       rootFolderPath,
       qualityProfileId,
-      qualityProfileName: qualityProfiles[0].name,
+      qualityProfileName: qualityProfile.name,
+      tagIds,
+      tagLabel: tag?.label ?? null,
+      usedPreferredRootFolder: Boolean(preferredRoot && rootFolder.path === preferredRoot),
+      usedPreferredQualityProfile: Boolean(qualityProfile.id === desiredQualityId),
+      usedPreferredTag: Boolean(tag),
     });
-    return { rootFolderPath, qualityProfileId };
+
+    return { rootFolderPath, qualityProfileId, tagIds };
   }
 
   private async pickBestTmdbMatch(params: {

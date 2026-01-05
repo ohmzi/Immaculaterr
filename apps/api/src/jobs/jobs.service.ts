@@ -46,6 +46,11 @@ function toIsoString(value: unknown): string | null {
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
   private readonly runningJobIds = new Set<string>();
+  private static readonly UNSCHEDULABLE_JOB_IDS = new Set<string>([
+    // Webhook/manual-input jobs (no schedule support)
+    'immaculateTastePoints',
+    'watchedMovieRecommendations',
+  ]);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -68,6 +73,7 @@ export class JobsService {
     return this.listDefinitions().map((j) => ({
       ...j,
       schedule: (() => {
+        if (JobsService.UNSCHEDULABLE_JOB_IDS.has(j.id)) return null;
         const s = scheduleMap.get(j.id) ?? null;
         if (!s) return null;
         const nextRunAt = s.enabled
