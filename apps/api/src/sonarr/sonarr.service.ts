@@ -18,6 +18,21 @@ export type SonarrEpisode = Record<string, unknown> & {
   monitored?: boolean;
 };
 
+export type SonarrRootFolder = {
+  id: number;
+  path: string;
+};
+
+export type SonarrQualityProfile = {
+  id: number;
+  name: string;
+};
+
+export type SonarrTag = {
+  id: number;
+  label: string;
+};
+
 @Injectable()
 export class SonarrService {
   private readonly logger = new Logger(SonarrService.name);
@@ -272,6 +287,150 @@ export class SonarrService {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
         `Sonarr search monitored failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async listRootFolders(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<SonarrRootFolder[]> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/rootfolder');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr list root folders failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+
+      const out: SonarrRootFolder[] = [];
+      for (const r of rows) {
+        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
+        const path = typeof r['path'] === 'string' ? r['path'].trim() : '';
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (!path) continue;
+        out.push({ id: Math.trunc(id), path });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr list root folders failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async listQualityProfiles(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<SonarrQualityProfile[]> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/qualityprofile');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr list quality profiles failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+
+      const out: SonarrQualityProfile[] = [];
+      for (const r of rows) {
+        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
+        const name = typeof r['name'] === 'string' ? r['name'].trim() : '';
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (!name) continue;
+        out.push({ id: Math.trunc(id), name });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr list quality profiles failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async listTags(params: { baseUrl: string; apiKey: string }): Promise<SonarrTag[]> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr list tags failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+
+      const out: SonarrTag[] = [];
+      for (const r of rows) {
+        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
+        const label = typeof r['label'] === 'string' ? r['label'].trim() : '';
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (!label) continue;
+        out.push({ id: Math.trunc(id), label });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr list tags failed: ${(err as Error)?.message ?? String(err)}`,
       );
     } finally {
       clearTimeout(timeout);

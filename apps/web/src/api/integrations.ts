@@ -35,3 +35,14 @@ export function getRadarrOptions() {
   return fetchJson<RadarrOptionsResponse>('/api/integrations/radarr/options');
 }
 
+export type SonarrOptionsResponse = {
+  ok: true;
+  rootFolders: Array<{ id: number; path: string }>;
+  qualityProfiles: Array<{ id: number; name: string }>;
+  tags: Array<{ id: number; label: string }>;
+};
+
+export function getSonarrOptions() {
+  return fetchJson<SonarrOptionsResponse>('/api/integrations/sonarr/options');
+}
+

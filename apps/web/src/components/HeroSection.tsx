@@ -133,6 +133,35 @@ function CombinedYAxisTick(props: {
   );
 }
 
+function MonthXAxisTick(props: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+  firstMonth: string;
+  lastMonth: string;
+}) {
+  const { x = 0, y = 0, payload, firstMonth, lastMonth } = props;
+  const value = typeof payload?.value === 'string' ? payload.value : '';
+  const label = value ? formatMonthLabel(value) : '';
+  const anchor =
+    value && value === firstMonth ? 'start' : value && value === lastMonth ? 'end' : 'middle';
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={16}
+        textAnchor={anchor}
+        fill="#9ca3af"
+        style={{ fontSize: '12px' }}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
 export function HeroSection() {
   const growthQuery = useQuery({
     queryKey: ['plex', 'library-growth'],
@@ -201,6 +230,8 @@ export function HeroSection() {
   const tvMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.tv), 0);
   const moviesScale = buildQuarterScale(moviesMax);
   const tvScale = buildQuarterScale(tvMax);
+  const firstMonth = filteredSeries[0]?.month ?? '';
+  const lastMonth = filteredSeries.at(-1)?.month ?? '';
 
   const yAxisWidth = (() => {
     const lens: number[] = [];
@@ -215,7 +246,7 @@ export function HeroSection() {
   })();
 
   return (
-    <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8">
+    <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8 select-none [-webkit-touch-callout:none]">
       {/* Background Image */}
       <div className="pointer-events-none fixed inset-0">
         <img 
@@ -272,7 +303,7 @@ export function HeroSection() {
               {/* Analytics Card */}
               <div className="w-full bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-white/5">
                 {/* Card Header */}
-                <div className="mb-6 flex items-start justify-between gap-4">
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <h3 className="text-white text-lg font-semibold mb-1">Media Analytics</h3>
                     <p className="text-gray-400 dark:text-gray-500 text-sm">
@@ -280,43 +311,48 @@ export function HeroSection() {
                     </p>
                   </div>
 
-                  <div className="shrink-0">
-                    <div
-                      className="inline-flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1 backdrop-blur-md"
-                      role="group"
-                      aria-label="Select chart time range"
-                    >
-                      {TIME_RANGE_OPTIONS.map((opt) => {
-                        const selected = timeRange === opt.key;
-                        return (
-                          <button
-                            key={opt.key}
-                            type="button"
-                            onClick={() => setTimeRange(opt.key)}
-                            disabled={!hasData}
-                            aria-pressed={selected}
-                            title={opt.title}
-                            className={[
-                              'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
-                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20',
-                              'disabled:opacity-40 disabled:cursor-not-allowed',
-                              selected
-                                ? 'bg-white/15 text-white'
-                                : 'text-white/70 hover:text-white hover:bg-white/10',
-                            ].join(' ')}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
+                  <div className="w-full sm:w-auto">
+                    <div className="max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <div
+                        className="inline-flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1 backdrop-blur-md whitespace-nowrap"
+                        role="group"
+                        aria-label="Select chart time range"
+                      >
+                        {TIME_RANGE_OPTIONS.map((opt) => {
+                          const selected = timeRange === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => setTimeRange(opt.key)}
+                              disabled={!hasData}
+                              aria-pressed={selected}
+                              title={opt.title}
+                              className={[
+                                'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
+                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20',
+                                'disabled:opacity-40 disabled:cursor-not-allowed',
+                                selected
+                                  ? 'bg-white/15 text-white'
+                                  : 'text-white/70 hover:text-white hover:bg-white/10',
+                              ].join(' ')}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Chart */}
-                <div className="w-full h-[240px] relative min-w-0">
+                <div className="w-full h-[240px] relative min-w-0 overflow-hidden">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-                    <AreaChart data={filteredSeries}>
+                    <AreaChart
+                      data={filteredSeries}
+                      margin={{ top: 8, right: 26, bottom: 8, left: 0 }}
+                    >
                       <defs>
                         <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#facc15" stopOpacity={0.25}/>
@@ -333,6 +369,17 @@ export function HeroSection() {
                         stroke="#9ca3af" 
                         style={{ fontSize: '12px' }}
                         tickFormatter={formatMonthLabel}
+                        tick={(tickProps) => (
+                          <MonthXAxisTick
+                            {...tickProps}
+                            firstMonth={firstMonth}
+                            lastMonth={lastMonth}
+                          />
+                        )}
+                        interval="preserveStartEnd"
+                        minTickGap={16}
+                        tickMargin={10}
+                        padding={{ left: 10, right: 22 }}
                       />
                       <YAxis
                         yAxisId="tv"

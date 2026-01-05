@@ -700,66 +700,65 @@ export function TaskManagerPage() {
                 job.id === 'immaculateTastePoints';
 
               return (
-                <motion.div
+                <div
                   key={job.id}
                   id={`job-${job.id}`}
-                  layout
-                  onPointerDownCapture={() => {
-                    setCardIconPulse({ jobId: job.id, nonce: Date.now() });
-                  }}
-                  onClick={(e) => {
-                    if (!canExpand) return;
-                    const t = e.target as HTMLElement | null;
-                    if (!t) return;
-                    if (
-                      t.closest(
-                        'button, a, input, select, textarea, [role="switch"], [data-no-card-toggle="true"]',
-                      )
-                    ) {
-                      return;
-                    }
-                    setExpandedCards((prev) => ({ ...prev, [job.id]: !isExpanded }));
-                  }}
+                  className="relative scroll-mt-24"
                   style={{
                     position: 'relative',
-                    zIndex: weeklyOpen || monthlyOpen || nextRunsOpen || timePickerIsOpen ? 9999 : 'auto',
+                    zIndex:
+                      weeklyOpen || monthlyOpen || nextRunsOpen || timePickerIsOpen
+                        ? 9999
+                        : 'auto',
                   }}
-                  className="group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10 scroll-mt-24"
                 >
-                  <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
+                  {/* Flash highlight (reference style): outer boxShadow pulses */}
                   <AnimatePresence initial={false}>
                     {flashJob?.jobId === job.id && (
-                      <>
-                        {/* Flash highlight: use INSET shadows so it still shows even with overflow-hidden cards */}
-                        <motion.div
-                          key={`${flashJob.nonce}-glow`}
-                          className="pointer-events-none absolute inset-0 rounded-[32px]"
-                          initial={{
-                            boxShadow:
-                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
-                          }}
-                          animate={{
-                            boxShadow: [
-                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
-                              'inset 0 0 0 1px rgba(250, 204, 21, 0.35), inset 0 0 44px rgba(250, 204, 21, 0.14)',
-                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
-                              'inset 0 0 0 1px rgba(250, 204, 21, 0.35), inset 0 0 44px rgba(250, 204, 21, 0.14)',
-                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
-                              'inset 0 0 0 1px rgba(250, 204, 21, 0.35), inset 0 0 44px rgba(250, 204, 21, 0.14)',
-                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
-                            ],
-                          }}
-                          exit={{
-                            boxShadow:
-                              'inset 0 0 0 0px rgba(250, 204, 21, 0), inset 0 0 0px rgba(250, 204, 21, 0)',
-                          }}
-                          transition={{ duration: 3.8, ease: 'easeInOut' }}
-                        />
-                      </>
+                      <motion.div
+                        key={`${flashJob.nonce}-glow`}
+                        className="pointer-events-none absolute inset-0 rounded-[32px]"
+                        initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+                        animate={{
+                          boxShadow: [
+                            '0 0 0px rgba(250, 204, 21, 0)',
+                            '0 0 30px rgba(250, 204, 21, 0.5)',
+                            '0 0 0px rgba(250, 204, 21, 0)',
+                            '0 0 30px rgba(250, 204, 21, 0.5)',
+                            '0 0 0px rgba(250, 204, 21, 0)',
+                            '0 0 30px rgba(250, 204, 21, 0.5)',
+                            '0 0 0px rgba(250, 204, 21, 0)',
+                          ],
+                        }}
+                        exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+                        transition={{ duration: 3.8, ease: 'easeInOut' }}
+                      />
                     )}
                   </AnimatePresence>
 
-                  <div className="p-6 md:p-8 flex flex-wrap gap-4 items-start relative z-10">
+                  <motion.div
+                    layout
+                    onPointerDownCapture={() => {
+                      setCardIconPulse({ jobId: job.id, nonce: Date.now() });
+                    }}
+                    onClick={(e) => {
+                      if (!canExpand) return;
+                      const t = e.target as HTMLElement | null;
+                      if (!t) return;
+                      if (
+                        t.closest(
+                          'button, a, input, select, textarea, [role="switch"], [data-no-card-toggle="true"]',
+                        )
+                      ) {
+                        return;
+                      }
+                      setExpandedCards((prev) => ({ ...prev, [job.id]: !isExpanded }));
+                    }}
+                    className="group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10"
+                  >
+                    <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
+
+                    <div className="p-6 md:p-8 flex flex-wrap gap-4 items-start relative z-10">
                     {/* Icon Box */}
                     <div
                       className={cn(
@@ -1578,6 +1577,7 @@ export function TaskManagerPage() {
                   )}
 
                 </motion.div>
+              </div>
               );
             })}
           </div>

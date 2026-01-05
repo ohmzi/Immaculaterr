@@ -105,6 +105,39 @@ export class IntegrationsController {
     return { ok: true, rootFolders, qualityProfiles, tags };
   }
 
+  @Get('sonarr/options')
+  async sonarrOptions(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const sonarrEnabledFlag = pickBool(settings, 'sonarr.enabled');
+    const baseUrlRaw = pickString(settings, 'sonarr.baseUrl');
+    const apiKey = pickString(secrets, 'sonarr.apiKey');
+    // Back-compat: if sonarr.enabled is not set, treat "secret present" as enabled.
+    const enabledFlag = sonarrEnabledFlag ?? Boolean(apiKey);
+    const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
+
+    if (!enabled) {
+      throw new BadRequestException('Sonarr is not enabled or not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+
+    const [rootFolders, qualityProfiles, tags] = await Promise.all([
+      this.sonarr.listRootFolders({ baseUrl, apiKey }),
+      this.sonarr.listQualityProfiles({ baseUrl, apiKey }),
+      this.sonarr.listTags({ baseUrl, apiKey }),
+    ]);
+
+    // Stable order for UI
+    rootFolders.sort((a, b) => a.path.localeCompare(b.path));
+    qualityProfiles.sort((a, b) => a.name.localeCompare(b.name));
+    tags.sort((a, b) => a.label.localeCompare(b.label));
+
+    return { ok: true, rootFolders, qualityProfiles, tags };
+  }
+
   @Post('test/:integrationId')
   async testSaved(
     @Req() req: AuthenticatedRequest,

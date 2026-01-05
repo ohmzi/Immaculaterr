@@ -1,10 +1,25 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { AnimatePresence, motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save, LogIn, LockKeyhole } from 'lucide-react';
+import {
+  Loader2,
+  Save,
+  LogIn,
+  LockKeyhole,
+  Sparkles,
+  Eye,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { useLocation } from 'react-router-dom';
+import {
+  GoogleLogo,
+  OpenAiLogo,
+  PlexLogo,
+  RadarrLogo,
+  SonarrLogo,
+  TmdbLogo,
+} from '@/components/ArrLogos';
 
 const MASKED_SECRET = '••••••••••••';
 
@@ -55,6 +70,9 @@ export function SettingsPage({
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const didRunLandingHealthCheck = useRef(false);
   const allowCardExpandAnimations = useRef(false);
+  const [flashCard, setFlashCard] = useState<{ id: string; nonce: number } | null>(
+    null,
+  );
 
   // Load settings to check which services are already configured
   const settingsQuery = useQuery({
@@ -145,6 +163,13 @@ export function SettingsPage({
     allowCardExpandAnimations.current = true;
   }, [settingsHydrated, showCards]);
 
+  useEffect(() => {
+    if (!flashCard) return;
+    // Keep the highlight mounted long enough for the full pulse sequence.
+    const t = setTimeout(() => setFlashCard(null), 4200);
+    return () => clearTimeout(t);
+  }, [flashCard?.nonce]);
+
   // Support deep-linking to a specific integration card on Vault via hash
   // (e.g. /vault#vault-radarr). Wait for hydration so the target exists.
   useEffect(() => {
@@ -162,6 +187,7 @@ export function SettingsPage({
       const targetTop = window.scrollY + rect.top - (desiredCenterY - rect.height / 2);
       window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
     });
+    setFlashCard({ id, nonce: Date.now() });
   }, [location.hash, settingsHydrated, showCards]);
 
   const [radarrBaseUrl, setRadarrBaseUrl] = useState('http://localhost:7878');
@@ -1426,8 +1452,9 @@ export function SettingsPage({
   ]);
 
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
-  const cardHeaderClass = 'flex items-center justify-between gap-4 mb-6 min-h-[44px]';
+    "group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10";
+  const cardHeaderClass =
+    'flex items-start sm:items-center justify-between gap-4 mb-6 min-h-[44px]';
   const cardTitleClass = 'text-2xl font-semibold text-white';
   const labelClass = 'block text-sm font-medium text-white/70 mb-2';
   const inputBaseClass =
@@ -1670,9 +1697,16 @@ export function SettingsPage({
                 {/* Settings Form */}
                 <div className="space-y-6">
               {/* Plex Settings */}
-              <div className={cardClass}>
+              <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
-                  <h2 className={cardTitleClass}>Plex Media Server</h2>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#fbbf24]">
+                      <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                        <PlexLogo className="w-7 h-7" />
+                      </span>
+                    </div>
+                    <h2 className={cardTitleClass}>Plex Media Server</h2>
+                  </div>
                   <button
                     type="button"
                     disabled={plexStatus === 'testing' || (plexStatus === 'inactive' && plexTestOk !== false)}
@@ -1732,9 +1766,16 @@ export function SettingsPage({
               </div>
 
               {/* TMDB Settings */}
-              <div className={cardClass}>
+              <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
-                  <h2 className={cardTitleClass}>The Movie Database (TMDB)</h2>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#22c55e]">
+                      <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                        <TmdbLogo className="w-8 h-8" />
+                      </span>
+                    </div>
+                    <h2 className={cardTitleClass}>The Movie Database (TMDB)</h2>
+                  </div>
                   <button
                     type="button"
                     disabled={tmdbStatus === 'testing' || (tmdbStatus === 'inactive' && tmdbTestOk !== false)}
@@ -1769,10 +1810,41 @@ export function SettingsPage({
               </div>
 
               {/* Radarr Settings */}
-              <div id="vault-radarr" className={`${cardClass} scroll-mt-24`}>
+              <div id="vault-radarr" className="relative scroll-mt-24">
+                <AnimatePresence initial={false}>
+                  {flashCard?.id === 'vault-radarr' && (
+                    <motion.div
+                      key={`${flashCard.nonce}-glow`}
+                      className="pointer-events-none absolute inset-0 rounded-3xl"
+                      initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+                      animate={{
+                        boxShadow: [
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                          '0 0 30px rgba(250, 204, 21, 0.5)',
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                          '0 0 30px rgba(250, 204, 21, 0.5)',
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                          '0 0 30px rgba(250, 204, 21, 0.5)',
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                        ],
+                      }}
+                      exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+                      transition={{ duration: 3.8, ease: 'easeInOut' }}
+                    />
+                  )}
+                </AnimatePresence>
+
+                <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
-                  <h2 className={cardTitleClass}>Radarr</h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#facc15]">
+                      <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                        <RadarrLogo className="w-7 h-7" />
+                      </span>
+                    </div>
+                    <h2 className={cardTitleClass}>Radarr</h2>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <button
                       type="button"
                       disabled={
@@ -1883,13 +1955,45 @@ export function SettingsPage({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </div>
               </div>
 
               {/* Sonarr Settings */}
-              <div className={cardClass}>
+              <div id="vault-sonarr" className="relative scroll-mt-24">
+                <AnimatePresence initial={false}>
+                  {flashCard?.id === 'vault-sonarr' && (
+                    <motion.div
+                      key={`${flashCard.nonce}-glow-sonarr`}
+                      className="pointer-events-none absolute inset-0 rounded-3xl"
+                      initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+                      animate={{
+                        boxShadow: [
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                          '0 0 30px rgba(250, 204, 21, 0.5)',
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                          '0 0 30px rgba(250, 204, 21, 0.5)',
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                          '0 0 30px rgba(250, 204, 21, 0.5)',
+                          '0 0 0px rgba(250, 204, 21, 0)',
+                        ],
+                      }}
+                      exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+                      transition={{ duration: 3.8, ease: 'easeInOut' }}
+                    />
+                  )}
+                </AnimatePresence>
+
+                <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
-                  <h2 className={cardTitleClass}>Sonarr</h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-400">
+                      <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                        <SonarrLogo className="w-7 h-7" />
+                      </span>
+                    </div>
+                    <h2 className={cardTitleClass}>Sonarr</h2>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <button
                       type="button"
                       disabled={
@@ -2000,13 +2104,21 @@ export function SettingsPage({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </div>
               </div>
 
               {/* Google Settings */}
-              <div className={cardClass}>
+              <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
-                  <h2 className={cardTitleClass}>Google Search</h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#60a5fa]">
+                      <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                        <GoogleLogo className="w-7 h-7" />
+                      </span>
+                    </div>
+                    <h2 className={cardTitleClass}>Google Search</h2>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <button
                       type="button"
                       disabled={
@@ -2121,10 +2233,17 @@ export function SettingsPage({
               </div>
 
               {/* OpenAI Settings */}
-              <div className={cardClass}>
+              <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
-                  <h2 className={cardTitleClass}>OpenAI</h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-300">
+                      <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                        <OpenAiLogo className="w-7 h-7" />
+                      </span>
+                    </div>
+                    <h2 className={cardTitleClass}>OpenAI</h2>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <button
                       type="button"
                       disabled={
@@ -2226,10 +2345,17 @@ export function SettingsPage({
               </div>
 
               {/* Overseerr Settings */}
-              <div className={cardClass}>
+              <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
-                  <h2 className={cardTitleClass}>Overseerr</h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-purple-300">
+                      <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                        <Eye className="w-7 h-7" />
+                      </span>
+                    </div>
+                    <h2 className={cardTitleClass}>Overseerr</h2>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <button
                       type="button"
                       disabled={
