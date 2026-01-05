@@ -68,6 +68,21 @@ export class BasedonLatestWatchedCollectionJob {
     const input = ctx.input ?? {};
     const seedTitle =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
+    const seedRatingKey =
+      typeof input['seedRatingKey'] === 'string'
+        ? input['seedRatingKey'].trim()
+        : '';
+    const seedLibrarySectionIdRaw =
+      typeof input['seedLibrarySectionId'] === 'number' &&
+      Number.isFinite(input['seedLibrarySectionId'])
+        ? String(Math.trunc(input['seedLibrarySectionId']))
+        : typeof input['seedLibrarySectionId'] === 'string'
+          ? input['seedLibrarySectionId'].trim()
+          : '';
+    const seedLibrarySectionTitle =
+      typeof input['seedLibrarySectionTitle'] === 'string'
+        ? input['seedLibrarySectionTitle'].trim()
+        : '';
     const seedYear =
       typeof input['seedYear'] === 'number' && Number.isFinite(input['seedYear'])
         ? Math.trunc(input['seedYear'])
@@ -78,6 +93,9 @@ export class BasedonLatestWatchedCollectionJob {
       trigger: ctx.trigger,
       seedTitle: seedTitle || null,
       seedYear,
+      seedRatingKey: seedRatingKey || null,
+      seedLibrarySectionId: seedLibrarySectionIdRaw || null,
+      seedLibrarySectionTitle: seedLibrarySectionTitle || null,
       source: typeof input['source'] === 'string' ? input['source'] : null,
       plexEvent: typeof input['plexEvent'] === 'string' ? input['plexEvent'] : null,
     });
@@ -98,16 +116,53 @@ export class BasedonLatestWatchedCollectionJob {
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const movieLibraryName =
+    const configuredMovieLibraryName =
       pickString(settings, 'plex.movieLibraryName') ||
       pickString(settings, 'plex.movie_library_name') ||
       'Movies';
+    const configuredMovieLibraryKey =
+      pickString(settings, 'plex.movieLibraryKey') ||
+      pickString(settings, 'plex.movie_library_key') ||
+      '';
 
-    const movieSectionKey = await this.plexServer.findSectionKeyByTitle({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-      title: movieLibraryName,
-    });
+    // Prefer the library section Plex tells us the watched movie belongs to.
+    let movieSectionKey = seedLibrarySectionIdRaw || configuredMovieLibraryKey.trim();
+    let movieLibraryName = seedLibrarySectionTitle || configuredMovieLibraryName;
+
+    if (!movieSectionKey && seedRatingKey) {
+      const meta = await this.plexServer
+        .getMetadataDetails({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          ratingKey: seedRatingKey,
+        })
+        .catch(() => null);
+      if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
+      if (meta?.librarySectionTitle) movieLibraryName = meta.librarySectionTitle;
+    }
+
+    if (!movieSectionKey) {
+      movieSectionKey = await this.plexServer.findSectionKeyByTitle({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+        title: configuredMovieLibraryName,
+      });
+      movieLibraryName = configuredMovieLibraryName;
+    } else {
+      // Best-effort: resolve section title for logging
+      const sections = await this.plexServer
+        .getSections({ baseUrl: plexBaseUrl, token: plexToken })
+        .catch(() => []);
+      const match = sections.find((s) => s.key === movieSectionKey);
+      if (match?.title) movieLibraryName = match.title;
+      if (match?.type && match.type.toLowerCase() !== 'movie') {
+        await ctx.warn('plex: seed librarySectionID is not a movie library (continuing)', {
+          movieSectionKey,
+          libraryTitle: match.title,
+          libraryType: match.type,
+        });
+      }
+    }
     const machineIdentifier = await this.plexServer.getMachineIdentifier({
       baseUrl: plexBaseUrl,
       token: plexToken,
@@ -139,6 +194,7 @@ export class BasedonLatestWatchedCollectionJob {
 
     await ctx.info('watchedMovieRecommendations: config', {
       movieLibraryName,
+      movieSectionKey,
       openAiEnabled,
       googleEnabled,
       recCount,

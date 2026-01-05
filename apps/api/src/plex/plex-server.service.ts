@@ -10,6 +10,7 @@ type PlexSection = {
 type PlexMetadata = Record<string, unknown> & {
   ratingKey?: string;
   title?: string;
+  year?: number | string;
   addedAt?: number | string;
   Guid?: unknown;
   Media?: unknown;
@@ -41,6 +42,8 @@ export type PlexMetadataDetails = {
   type: string | null;
   year: number | null;
   addedAt: number | null;
+  librarySectionId: string | null;
+  librarySectionTitle: string | null;
   grandparentTitle: string | null;
   grandparentRatingKey: string | null;
   parentIndex: number | null;
@@ -268,6 +271,17 @@ export class PlexServerService {
 
     const title = typeof item.title === 'string' ? item.title : '';
     const type = typeof item.type === 'string' ? item.type : null;
+    const librarySectionId = (() => {
+      const raw = (item as Record<string, unknown>)['librarySectionID'];
+      const s = toStringSafe(raw).trim();
+      return s ? s : null;
+    })();
+    const librarySectionTitle = (() => {
+      const raw = (item as Record<string, unknown>)['librarySectionTitle'];
+      if (typeof raw !== 'string') return null;
+      const s = raw.trim();
+      return s ? s : null;
+    })();
     const grandparentTitle = (() => {
       const raw = (item as Record<string, unknown>)['grandparentTitle'];
       if (typeof raw !== 'string') return null;
@@ -358,6 +372,8 @@ export class PlexServerService {
       type,
       year,
       addedAt,
+      librarySectionId,
+      librarySectionTitle,
       grandparentTitle,
       grandparentRatingKey,
       parentIndex,
@@ -536,7 +552,15 @@ export class PlexServerService {
     baseUrl: string;
     token: string;
     movieLibraryName: string;
-  }): Promise<Array<{ ratingKey: string; title: string; tmdbId: number | null; addedAt: number | null }>> {
+  }): Promise<
+    Array<{
+      ratingKey: string;
+      title: string;
+      tmdbId: number | null;
+      addedAt: number | null;
+      year: number | null;
+    }>
+  > {
     const { baseUrl, token, movieLibraryName } = params;
     const sectionKey = await this.findSectionKeyByTitle({
       baseUrl,
@@ -544,10 +568,34 @@ export class PlexServerService {
       title: movieLibraryName,
     });
 
-    const items = await this.listSectionItems({
+    return await this.listMoviesWithTmdbIdsForSectionKey({
       baseUrl,
       token,
       librarySectionKey: sectionKey,
+      sectionTitle: movieLibraryName,
+    });
+  }
+
+  async listMoviesWithTmdbIdsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    sectionTitle?: string;
+  }): Promise<
+    Array<{
+      ratingKey: string;
+      title: string;
+      tmdbId: number | null;
+      addedAt: number | null;
+      year: number | null;
+    }>
+  > {
+    const { baseUrl, token, librarySectionKey } = params;
+
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
       type: 1,
       includeGuids: true,
       duplicate: false,
@@ -559,6 +607,7 @@ export class PlexServerService {
       title: string;
       tmdbId: number | null;
       addedAt: number | null;
+      year: number | null;
     }> = [];
 
     for (const it of items) {
@@ -577,11 +626,52 @@ export class PlexServerService {
                 return Number.isFinite(n) ? n : null;
               })()
             : null;
+      const year =
+        typeof it.year === 'number'
+          ? Number.isFinite(it.year)
+            ? it.year
+            : null
+          : typeof it.year === 'string' && it.year.trim()
+            ? (() => {
+                const n = Number.parseInt(it.year.trim(), 10);
+                return Number.isFinite(n) ? n : null;
+              })()
+            : null;
 
-      out.push({ ratingKey: rk, title, tmdbId, addedAt });
+      out.push({ ratingKey: rk, title, tmdbId, addedAt, year });
     }
 
     return out;
+  }
+
+  async getMovieRatingKeySetForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    sectionTitle?: string;
+  }): Promise<Set<string>> {
+    const { baseUrl, token, librarySectionKey, sectionTitle } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 1,
+      includeGuids: false,
+      duplicate: false,
+      timeoutMs: 60000,
+    });
+
+    const set = new Set<string>();
+    for (const it of items) {
+      const rk = it.ratingKey ? String(it.ratingKey).trim() : '';
+      if (rk) set.add(rk);
+    }
+
+    this.logger.log(
+      `Plex movie ratingKey set size=${set.size} section=${sectionTitle ?? librarySectionKey} items=${items.length}`,
+    );
+
+    return set;
   }
 
   async listDuplicateMovieRatingKeys(params: {
@@ -595,10 +685,23 @@ export class PlexServerService {
       token,
       title: movieLibraryName,
     });
-    const items = await this.listSectionItems({
+    return await this.listDuplicateMovieRatingKeysForSectionKey({
       baseUrl,
       token,
       librarySectionKey: sectionKey,
+    });
+  }
+
+  async listDuplicateMovieRatingKeysForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
       type: 1,
       includeGuids: false,
       duplicate: true,
@@ -623,10 +726,23 @@ export class PlexServerService {
       token,
       title: tvLibraryName,
     });
-    const items = await this.listSectionItems({
+    return await this.listTvShowsForSectionKey({
       baseUrl,
       token,
       librarySectionKey: sectionKey,
+    });
+  }
+
+  async listTvShowsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
       type: 2,
       includeGuids: false,
       duplicate: false,
@@ -651,10 +767,23 @@ export class PlexServerService {
       token,
       title: tvLibraryName,
     });
-    const items = await this.listSectionItems({
+    return await this.listDuplicateEpisodeRatingKeysForSectionKey({
       baseUrl,
       token,
       librarySectionKey: sectionKey,
+    });
+  }
+
+  async listDuplicateEpisodeRatingKeysForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
       type: 4,
       includeGuids: false,
       duplicate: true,
@@ -673,7 +802,14 @@ export class PlexServerService {
     token: string;
     showRatingKey: string;
     duplicateOnly?: boolean;
-  }): Promise<Array<{ ratingKey: string; title: string }>> {
+  }): Promise<
+    Array<{
+      ratingKey: string;
+      title: string;
+      seasonNumber: number | null;
+      episodeNumber: number | null;
+    }>
+  > {
     const { baseUrl, token, showRatingKey, duplicateOnly = false } = params;
     const rk = showRatingKey.trim();
     if (!rk) return [];
@@ -689,6 +825,24 @@ export class PlexServerService {
       .map((it) => ({
         ratingKey: it.ratingKey ? String(it.ratingKey).trim() : '',
         title: typeof it.title === 'string' ? it.title : '',
+        seasonNumber: (() => {
+          const raw = it.parentIndex;
+          if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+          if (typeof raw === 'string' && raw.trim()) {
+            const n = Number.parseInt(raw.trim(), 10);
+            return Number.isFinite(n) ? n : null;
+          }
+          return null;
+        })(),
+        episodeNumber: (() => {
+          const raw = it.index;
+          if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+          if (typeof raw === 'string' && raw.trim()) {
+            const n = Number.parseInt(raw.trim(), 10);
+            return Number.isFinite(n) ? n : null;
+          }
+          return null;
+        })(),
       }))
       .filter((it) => it.ratingKey && it.title);
   }

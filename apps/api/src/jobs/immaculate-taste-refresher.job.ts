@@ -70,6 +70,19 @@ export class ImmaculateTasteRefresherJob {
       typeof limitRaw === 'number' && Number.isFinite(limitRaw)
         ? Math.max(1, Math.trunc(limitRaw))
         : null;
+    const inputMovieSectionKey =
+      typeof input['movieSectionKey'] === 'string'
+        ? input['movieSectionKey'].trim()
+        : '';
+    const seedRatingKey =
+      typeof input['seedRatingKey'] === 'string' ? input['seedRatingKey'].trim() : '';
+    const seedLibrarySectionId =
+      typeof input['seedLibrarySectionId'] === 'number' &&
+      Number.isFinite(input['seedLibrarySectionId'])
+        ? String(Math.trunc(input['seedLibrarySectionId']))
+        : typeof input['seedLibrarySectionId'] === 'string'
+          ? input['seedLibrarySectionId'].trim()
+          : '';
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
@@ -82,16 +95,51 @@ export class ImmaculateTasteRefresherJob {
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const movieLibraryName =
+    const configuredMovieLibraryName =
       pickString(settings, 'plex.movieLibraryName') ||
       pickString(settings, 'plex.movie_library_name') ||
       'Movies';
+    const configuredMovieLibraryKey =
+      pickString(settings, 'plex.movieLibraryKey') ||
+      pickString(settings, 'plex.movie_library_key') ||
+      '';
 
-    const movieSectionKey = await this.plexServer.findSectionKeyByTitle({
+    const preferredMovieSectionKey =
+      inputMovieSectionKey || seedLibrarySectionId || '';
+
+    const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
       token: plexToken,
-      title: movieLibraryName,
     });
+    const movieSections = sections.filter(
+      (s) => (s.type ?? '').toLowerCase() === 'movie',
+    );
+    if (!movieSections.length) {
+      throw new Error('No Plex movie libraries found');
+    }
+
+    const canonicalMovieSectionKey = (() => {
+      const key = configuredMovieLibraryKey.trim();
+      if (key && movieSections.some((s) => s.key === key)) return key;
+      const byTitle = movieSections.find(
+        (s) => s.title.toLowerCase() === configuredMovieLibraryName.toLowerCase(),
+      );
+      if (byTitle) return byTitle.key;
+      return movieSections[0].key;
+    })();
+
+    const canonicalMovieLibraryName =
+      movieSections.find((s) => s.key === canonicalMovieSectionKey)?.title ??
+      configuredMovieLibraryName;
+
+    const orderedMovieSections = movieSections.slice().sort((a, b) => {
+      if (a.key === preferredMovieSectionKey) return -1;
+      if (b.key === preferredMovieSectionKey) return 1;
+      if (a.key === canonicalMovieSectionKey) return -1;
+      if (b.key === canonicalMovieSectionKey) return 1;
+      return a.title.localeCompare(b.title);
+    });
+
     const machineIdentifier = await this.plexServer.getMachineIdentifier({
       baseUrl: plexBaseUrl,
       token: plexToken,
@@ -102,7 +150,9 @@ export class ImmaculateTasteRefresherJob {
 
     await ctx.info('immaculateTasteRefresher: start', {
       dryRun: ctx.dryRun,
-      movieLibraryName,
+      movieLibraries: orderedMovieSections.map((s) => s.title),
+      canonicalMovieLibraryName,
+      canonicalMovieSectionKey,
       collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
       maxPoints,
       limit,
@@ -139,21 +189,108 @@ export class ImmaculateTasteRefresherJob {
       title: titleByKey.get(ratingKey) ?? ratingKey,
     }));
 
-    const desiredLimited =
-      limit && desiredItems.length > limit ? desiredItems.slice(0, limit) : desiredItems;
+    // Build TMDB mapping across all movie libraries so we can refresh the collection in each one.
+    const ratingKeyToTmdbId = new Map<string, number>();
+    const sectionTmdbToItem = new Map<
+      string,
+      Map<number, { ratingKey: string; title: string }>
+    >();
 
-    if (desiredLimited.length !== desiredItems.length) {
-      await ctx.warn('immaculateTasteRefresher: applying limit (manual test)', {
-        limit,
-        totalAvailable: desiredItems.length,
-        totalApplying: desiredLimited.length,
+    for (const sec of orderedMovieSections) {
+      const tmdbMap = new Map<number, { ratingKey: string; title: string }>();
+      const rows = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+        librarySectionKey: sec.key,
+        sectionTitle: sec.title,
       });
+      for (const r of rows) {
+        if (r.tmdbId) {
+          if (!tmdbMap.has(r.tmdbId)) tmdbMap.set(r.tmdbId, { ratingKey: r.ratingKey, title: r.title });
+          ratingKeyToTmdbId.set(r.ratingKey, r.tmdbId);
+        }
+      }
+      sectionTmdbToItem.set(sec.key, tmdbMap);
     }
 
-    await ctx.info('immaculateTasteRefresher: built order', {
-      total: desiredLimited.length,
-      sampleTop10: desiredLimited.slice(0, 10).map((d) => d.title),
+    const desiredTmdbIds: number[] = [];
+    const seenTmdb = new Set<number>();
+    let missingTmdb = 0;
+    for (const it of desiredItems) {
+      const tmdbId = ratingKeyToTmdbId.get(it.ratingKey) ?? null;
+      if (!tmdbId) {
+        missingTmdb += 1;
+        continue;
+      }
+      if (seenTmdb.has(tmdbId)) continue;
+      seenTmdb.add(tmdbId);
+      desiredTmdbIds.push(tmdbId);
+    }
+
+    await ctx.info('immaculateTasteRefresher: built tmdb order', {
+      totalPointsRows: desiredItems.length,
+      totalTmdb: desiredTmdbIds.length,
+      missingTmdb,
+      sampleTmdb: desiredTmdbIds.slice(0, 10),
     });
+
+    // For each movie library, map TMDB → ratingKey and rebuild.
+    const plexByLibrary: JsonObject[] = [];
+    for (const sec of orderedMovieSections) {
+      const tmdbMap = sectionTmdbToItem.get(sec.key) ?? new Map();
+      const desiredInLibrary = desiredTmdbIds
+        .map((id) => tmdbMap.get(id))
+        .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
+      const desiredLimited =
+        limit && desiredInLibrary.length > limit
+          ? desiredInLibrary.slice(0, limit)
+          : desiredInLibrary;
+
+      if (!desiredLimited.length) {
+        await ctx.info('immaculateTasteRefresher: skipping library (no matches)', {
+          library: sec.title,
+          movieSectionKey: sec.key,
+        });
+        plexByLibrary.push({
+          library: sec.title,
+          movieSectionKey: sec.key,
+          totalInLibrary: desiredInLibrary.length,
+          totalApplying: 0,
+          skipped: true,
+          reason: 'no_matches',
+        });
+        continue;
+      }
+
+      await ctx.info('immaculateTasteRefresher: rebuilding library collection', {
+        library: sec.title,
+        movieSectionKey: sec.key,
+        totalInLibrary: desiredInLibrary.length,
+        totalApplying: desiredLimited.length,
+      });
+
+      const plex = ctx.dryRun
+        ? null
+        : await this.plexCurated.rebuildMovieCollection({
+            ctx,
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            machineIdentifier,
+            movieSectionKey: sec.key,
+            collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
+            desiredItems: desiredLimited,
+            randomizeOrder: false,
+          });
+
+      plexByLibrary.push({
+        library: sec.title,
+        movieSectionKey: sec.key,
+        totalInLibrary: desiredInLibrary.length,
+        totalApplying: desiredLimited.length,
+        plex,
+        sampleTop10: desiredLimited.slice(0, 10).map((d) => d.title),
+      });
+    }
 
     // Persist snapshot to curated collections (replace items)
     let dbSaved = false;
@@ -171,7 +308,15 @@ export class ImmaculateTasteRefresherJob {
         where: { collectionId: col.id },
       });
 
-      const batches = chunk(desiredLimited, 200);
+      // Keep a stable snapshot based on the canonical movie library (primary Movies).
+      const canonicalMap = sectionTmdbToItem.get(canonicalMovieSectionKey) ?? new Map();
+      const canonicalItems = desiredTmdbIds
+        .map((id) => canonicalMap.get(id))
+        .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
+      const canonicalLimited =
+        limit && canonicalItems.length > limit ? canonicalItems.slice(0, limit) : canonicalItems;
+
+      const batches = chunk(canonicalLimited, 200);
       for (const batch of batches) {
         await this.prisma.curatedCollectionItem.createMany({
           data: batch.map((it) => ({
@@ -185,31 +330,18 @@ export class ImmaculateTasteRefresherJob {
       dbSaved = true;
       await ctx.info('immaculateTasteRefresher: db snapshot saved', {
         curatedCollectionId,
-        savedItems: desiredLimited.length,
+        movieLibraryName: canonicalMovieLibraryName,
+        movieSectionKey: canonicalMovieSectionKey,
+        savedItems: canonicalLimited.length,
       });
     }
 
-    // Rebuild Plex collection (delete → create → order → artwork → pin)
-    const plex = ctx.dryRun
-      ? null
-      : await this.plexCurated.rebuildMovieCollection({
-          ctx,
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          machineIdentifier,
-          movieSectionKey,
-          collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
-          desiredItems: desiredLimited,
-          randomizeOrder: false,
-        });
-
     const summary: JsonObject = {
       collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
-      totalDesired: desiredLimited.length,
+      totalLibraries: orderedMovieSections.length,
       dbSaved,
       curatedCollectionId,
-      plex,
-      sampleTop10: desiredLimited.slice(0, 10).map((d) => d.title),
+      plexByLibrary,
     };
 
     await ctx.info('immaculateTasteRefresher: done', summary);

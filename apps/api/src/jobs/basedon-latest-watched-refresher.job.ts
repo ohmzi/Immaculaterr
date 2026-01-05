@@ -39,16 +39,17 @@ export class BasedonLatestWatchedRefresherJob {
       this.pickString(secrets, 'plexToken') ??
       this.requireString(secrets, 'plex.token');
 
-    const movieLibraryName =
-      this.pickString(settings, 'plex.movieLibraryName') ??
-      this.pickString(settings, 'plex.movie_library_name') ??
-      'Movies';
-
-    const movieSectionKey = await this.plexServer.findSectionKeyByTitle({
+    const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
       token: plexToken,
-      title: movieLibraryName,
     });
+    const movieSections = sections
+      .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+      .sort((a, b) => a.title.localeCompare(b.title));
+    if (!movieSections.length) {
+      throw new Error('No Plex movie libraries found');
+    }
+
     const machineIdentifier = await this.plexServer.getMachineIdentifier({
       baseUrl: plexBaseUrl,
       token: plexToken,
@@ -56,9 +57,29 @@ export class BasedonLatestWatchedRefresherJob {
 
     await ctx.info('recentlyWatchedRefresher: start', {
       dryRun: ctx.dryRun,
-      movieLibraryName,
+      movieLibraries: movieSections.map((s) => s.title),
       collections: DEFAULT_REFRESH_SOURCES.map((c) => c.collectionName),
     });
+
+    // Build per-library TMDB->ratingKey map once so we can rebuild collections across all libraries.
+    const sectionTmdbToItem = new Map<
+      string,
+      Map<number, { ratingKey: string; title: string }>
+    >();
+    for (const sec of movieSections) {
+      const map = new Map<number, { ratingKey: string; title: string }>();
+      const rows = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+        librarySectionKey: sec.key,
+        sectionTitle: sec.title,
+      });
+      for (const r of rows) {
+        if (!r.tmdbId) continue;
+        if (!map.has(r.tmdbId)) map.set(r.tmdbId, { ratingKey: r.ratingKey, title: r.title });
+      }
+      sectionTmdbToItem.set(sec.key, map);
+    }
 
     const perCollection: JsonObject[] = [];
 
@@ -68,7 +89,8 @@ export class BasedonLatestWatchedRefresherJob {
         baseUrl: plexBaseUrl,
         token: plexToken,
         machineIdentifier,
-        movieSectionKey,
+        movieSections,
+        sectionTmdbToItem,
         collectionName: src.collectionName,
         jsonFile: src.jsonFile,
       });
@@ -89,7 +111,8 @@ export class BasedonLatestWatchedRefresherJob {
     baseUrl: string;
     token: string;
     machineIdentifier: string;
-    movieSectionKey: string;
+    movieSections: Array<{ key: string; title: string }>;
+    sectionTmdbToItem: Map<string, Map<number, { ratingKey: string; title: string }>>;
     collectionName: string;
     jsonFile: string;
   }): Promise<JsonObject> {
@@ -98,7 +121,8 @@ export class BasedonLatestWatchedRefresherJob {
       baseUrl,
       token,
       machineIdentifier,
-      movieSectionKey,
+      movieSections,
+      sectionTmdbToItem,
       collectionName,
       jsonFile,
     } = params;
@@ -146,40 +170,42 @@ export class BasedonLatestWatchedRefresherJob {
       };
     }
 
-    // Resolve entries to Plex ratingKeys (prefer rating_key; fallback to title search)
-    const resolved: Array<{ ratingKey: string; title: string }> = [];
+    // Resolve JSON entries to an ordered list of TMDB ids (best-effort).
+    const desired: Array<{ title: string; tmdbId: number | null }> = [];
     let skippedUnresolved = 0;
+    let tmdbResolved = 0;
+    let missingTmdb = 0;
+
     for (const entry of rawEntries) {
       const rk = pickRatingKey(entry);
       const title = pickTitle(entry);
+      if (!rk && !title) {
+        skippedUnresolved += 1;
+        continue;
+      }
 
       if (rk) {
-        resolved.push({ ratingKey: rk, title: title || rk });
-        continue;
-      }
-
-      if (title) {
-        const found = await this.plexServer
-          .findMovieRatingKeyByTitle({
+        const meta = await this.plexServer
+          .getMetadataDetails({
             baseUrl,
             token,
-            librarySectionKey: movieSectionKey,
-            title,
+            ratingKey: rk,
           })
           .catch(() => null);
-        if (found) {
-          resolved.push({ ratingKey: found.ratingKey, title: found.title });
-        } else {
-          skippedUnresolved += 1;
-        }
+        const tmdbId = meta?.tmdbIds?.[0] ?? null;
+        desired.push({ title: meta?.title?.trim() || title || rk, tmdbId });
+        if (tmdbId) tmdbResolved += 1;
+        else missingTmdb += 1;
         continue;
       }
 
-      skippedUnresolved += 1;
+      // No ratingKey (movie may not be in Plex yet). Keep title as a fallback.
+      desired.push({ title, tmdbId: null });
+      missingTmdb += 1;
     }
 
-    if (!resolved.length) {
-      await ctx.warn('collection: no resolvable items from JSON (skipping)', {
+    if (!desired.length) {
+      await ctx.warn('collection: no usable items from JSON (skipping)', {
         collectionName,
         jsonFile,
         jsonPath,
@@ -201,40 +227,106 @@ export class BasedonLatestWatchedRefresherJob {
       };
     }
 
-    // Deduplicate by ratingKey (keep first title)
-    const uniq = new Map<string, string>();
-    for (const it of resolved) {
-      if (!uniq.has(it.ratingKey)) uniq.set(it.ratingKey, it.title);
+    const perLibrary: JsonObject[] = [];
+
+    for (const sec of movieSections) {
+      const tmdbMap = sectionTmdbToItem.get(sec.key) ?? new Map();
+      const resolvedItems: Array<{ ratingKey: string; title: string }> = [];
+      let skippedMissing = 0;
+      let resolvedByTitle = 0;
+
+      for (const it of desired) {
+        if (it.tmdbId && tmdbMap.has(it.tmdbId)) {
+          resolvedItems.push(tmdbMap.get(it.tmdbId)!);
+          continue;
+        }
+
+        // Fallback: title search in this library (helps when a movie gets added later without tmdb mapping).
+        const t = it.title.trim();
+        if (!t) {
+          skippedMissing += 1;
+          continue;
+        }
+        const found = await this.plexServer
+          .findMovieRatingKeyByTitle({
+            baseUrl,
+            token,
+            librarySectionKey: sec.key,
+            title: t,
+          })
+          .catch(() => null);
+        if (found) {
+          resolvedItems.push({ ratingKey: found.ratingKey, title: found.title });
+          resolvedByTitle += 1;
+        } else {
+          skippedMissing += 1;
+        }
+      }
+
+      // Deduplicate by ratingKey (keep first title)
+      const uniq = new Map<string, string>();
+      for (const it of resolvedItems) {
+        if (!uniq.has(it.ratingKey)) uniq.set(it.ratingKey, it.title);
+      }
+      const desiredItems = Array.from(uniq.entries()).map(([ratingKey, title]) => ({
+        ratingKey,
+        title,
+      }));
+
+      if (!desiredItems.length) {
+        await ctx.warn('collection: no resolvable items for library (skipping)', {
+          collectionName,
+          library: sec.title,
+          movieSectionKey: sec.key,
+          totalEntries: rawEntries.length,
+        });
+        perLibrary.push({
+          library: sec.title,
+          movieSectionKey: sec.key,
+          resolved: 0,
+          skipped: skippedMissing,
+          skippedUnresolved,
+          skippedReason: 'no_resolvable_items',
+        });
+        continue;
+      }
+
+      const applied = await this.plexCuratedCollections.rebuildMovieCollection({
+        ctx,
+        baseUrl,
+        token,
+        machineIdentifier,
+        movieSectionKey: sec.key,
+        collectionName,
+        desiredItems,
+        randomizeOrder: true,
+      });
+
+      const applySkipped =
+        typeof (applied as Record<string, unknown>)['skipped'] === 'number'
+          ? ((applied as Record<string, unknown>)['skipped'] as number)
+          : 0;
+      const skipped = skippedMissing + skippedUnresolved + applySkipped;
+
+      perLibrary.push({
+        library: sec.title,
+        movieSectionKey: sec.key,
+        resolved: desiredItems.length,
+        resolvedByTitle,
+        skipped,
+        ...applied,
+      });
     }
-
-    const desiredItems = Array.from(uniq.entries()).map(([ratingKey, title]) => ({
-      ratingKey,
-      title,
-    }));
-
-    const applied = await this.plexCuratedCollections.rebuildMovieCollection({
-      ctx,
-      baseUrl,
-      token,
-      machineIdentifier,
-      movieSectionKey,
-      collectionName,
-      desiredItems,
-      randomizeOrder: true,
-    });
-
-    const applySkipped =
-      typeof (applied as Record<string, unknown>)['skipped'] === 'number'
-        ? ((applied as Record<string, unknown>)['skipped'] as number)
-        : 0;
-    const skipped = skippedUnresolved + applySkipped;
 
     await ctx.info('collection: done', {
       collectionName,
       jsonFile,
-      ...applied,
+      jsonPath,
+      totalEntries: rawEntries.length,
+      tmdbResolved,
+      missingTmdb,
       skippedUnresolved,
-      skipped,
+      libraries: perLibrary.length,
     });
 
     return {
@@ -244,10 +336,10 @@ export class BasedonLatestWatchedRefresherJob {
       jsonFound: true,
       jsonPath,
       totalEntries: rawEntries.length,
-      resolved: desiredItems.length,
-      ...applied,
-      skipped,
+      tmdbResolved,
+      missingTmdb,
       skippedUnresolved,
+      libraries: perLibrary,
     };
   }
 

@@ -67,31 +67,31 @@ const JOB_CONFIG: Record<
     icon: <CheckCircle2 className="w-8 h-8" />,
     color: 'text-teal-300',
     description:
-      'Auto-run: reacts to Plex library.new to remove from watchlist + unmonitor. Run Now: sweeps Plex for duplicate movies/episodes, deletes lower-quality copies, and unmonitors in Radarr/Sonarr.',
+      'Auto-run: on Plex library.new, checks all Plex libraries for duplicates, deletes lower-quality copies, unmonitors in Radarr/Sonarr, and removes from watchlist (shows only when complete). Run Now: full sweep across all libraries + watchlist reconciliation.',
   },
   recentlyWatchedRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
     color: 'text-emerald-400',
     description:
-      'Refreshes and reshuffles your curated collections based on your latest watched movie.',
+      'Off-peak refresh that reshuffles "Based on your recently watched movie" + "Change of Taste" across all Plex movie libraries.',
   },
   immaculateTastePoints: {
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-yellow-300',
     description:
-      'Triggered when Plex reports you finished a movie. Updates your Immaculate Taste points dataset and optionally sends missing movies to Radarr.',
+      'Triggered when Plex reports you finished a movie. Updates your Immaculate Taste points dataset, rebuilds the collection in the same Plex library you watched from, and optionally sends missing movies to Radarr.',
   },
   immaculateTasteRefresher: {
     icon: <CalendarDays className="w-8 h-8" />,
     color: 'text-sky-300',
     description:
-      'Off-peak refresh of your “Inspired by your Immaculate Taste” collection from the points dataset. This can take a while for large collections.',
+      'Off-peak refresh of your “Inspired by your Immaculate Taste” collection across all Plex movie libraries. This can take a while for large libraries.',
   },
   watchedMovieRecommendations: {
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-violet-400',
     description:
-      'Triggered when Plex reports you finished a movie. Generates fresh recommendations and rebuilds your curated collections.',
+      'Triggered when Plex reports you finished a movie. Generates fresh recommendations and rebuilds curated collections in the Plex movie library you watched from.',
   },
   noop: {
     icon: <Zap className="w-8 h-8" />,

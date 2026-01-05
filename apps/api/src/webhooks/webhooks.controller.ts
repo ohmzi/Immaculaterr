@@ -107,6 +107,12 @@ export class WebhooksController {
         ? pickString(payloadObj, 'Metadata.ratingKey')
         : '';
       const seedYear = payloadObj ? pickNumber(payloadObj, 'Metadata.year') : null;
+      const seedLibrarySectionId = payloadObj
+        ? pickNumber(payloadObj, 'Metadata.librarySectionID')
+        : null;
+      const seedLibrarySectionTitle = payloadObj
+        ? pickString(payloadObj, 'Metadata.librarySectionTitle')
+        : '';
 
       if (seedTitle) {
         const userId = await this.authService.getFirstAdminUserId();
@@ -118,6 +124,8 @@ export class WebhooksController {
               seedTitle,
               seedYear: seedYear ?? null,
               seedRatingKey: seedRatingKey || null,
+              seedLibrarySectionId: seedLibrarySectionId ?? null,
+              seedLibrarySectionTitle: seedLibrarySectionTitle || null,
               persistedPath: persisted.path,
             } as const;
 

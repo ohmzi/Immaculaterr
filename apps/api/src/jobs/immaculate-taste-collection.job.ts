@@ -68,6 +68,15 @@ export class ImmaculateTasteCollectionJob {
     const input = ctx.input ?? {};
     const seedTitle =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
+    const seedRatingKey =
+      typeof input['seedRatingKey'] === 'string' ? input['seedRatingKey'].trim() : '';
+    const seedLibrarySectionIdRaw =
+      typeof input['seedLibrarySectionId'] === 'number' &&
+      Number.isFinite(input['seedLibrarySectionId'])
+        ? String(Math.trunc(input['seedLibrarySectionId']))
+        : typeof input['seedLibrarySectionId'] === 'string'
+          ? input['seedLibrarySectionId'].trim()
+          : '';
     const seedYear =
       typeof input['seedYear'] === 'number' && Number.isFinite(input['seedYear'])
         ? Math.trunc(input['seedYear'])
@@ -78,6 +87,8 @@ export class ImmaculateTasteCollectionJob {
       trigger: ctx.trigger,
       seedTitle: seedTitle || null,
       seedYear,
+      seedRatingKey: seedRatingKey || null,
+      seedLibrarySectionId: seedLibrarySectionIdRaw || null,
       source: typeof input['source'] === 'string' ? input['source'] : null,
       plexEvent: typeof input['plexEvent'] === 'string' ? input['plexEvent'] : null,
     });
@@ -98,16 +109,48 @@ export class ImmaculateTasteCollectionJob {
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const movieLibraryName =
+    const configuredMovieLibraryName =
       pickString(settings, 'plex.movieLibraryName') ||
       pickString(settings, 'plex.movie_library_name') ||
       'Movies';
+    const configuredMovieLibraryKey =
+      pickString(settings, 'plex.movieLibraryKey') ||
+      pickString(settings, 'plex.movie_library_key') ||
+      '';
 
-    const movieSectionKey = await this.plexServer.findSectionKeyByTitle({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-      title: movieLibraryName,
-    });
+    // Prefer the library section Plex tells us the watched movie belongs to.
+    let movieSectionKey =
+      seedLibrarySectionIdRaw ||
+      (configuredMovieLibraryKey ? configuredMovieLibraryKey.trim() : '');
+    let movieLibraryName = configuredMovieLibraryName;
+
+    if (!movieSectionKey && seedRatingKey) {
+      const meta = await this.plexServer
+        .getMetadataDetails({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          ratingKey: seedRatingKey,
+        })
+        .catch(() => null);
+      if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
+      if (meta?.librarySectionTitle) movieLibraryName = meta.librarySectionTitle;
+    }
+
+    if (!movieSectionKey) {
+      movieSectionKey = await this.plexServer.findSectionKeyByTitle({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+        title: configuredMovieLibraryName,
+      });
+      movieLibraryName = configuredMovieLibraryName;
+    } else {
+      // Best-effort: resolve section title for logging
+      const sections = await this.plexServer
+        .getSections({ baseUrl: plexBaseUrl, token: plexToken })
+        .catch(() => []);
+      const match = sections.find((s) => s.key === movieSectionKey);
+      if (match?.title) movieLibraryName = match.title;
+    }
 
     // --- Recommendation + integration config ---
     const tmdbApiKey =
@@ -144,6 +187,7 @@ export class ImmaculateTasteCollectionJob {
 
     await ctx.info('immaculateTastePoints: config', {
       movieLibraryName,
+      movieSectionKey,
       openAiEnabled,
       googleEnabled,
       suggestionsPerRun,
@@ -330,7 +374,14 @@ export class ImmaculateTasteCollectionJob {
       await ctx.info('immaculateTastePoints: running refresher (chained)', {
         jobId: 'immaculateTasteRefresher',
       });
-      const refresherResult = await this.immaculateTasteRefresher.run(ctx);
+      const refresherResult = await this.immaculateTasteRefresher.run({
+        ...ctx,
+        input: {
+          ...(ctx.input ?? {}),
+          movieSectionKey,
+          movieLibraryName,
+        },
+      });
       refresherSummary = refresherResult.summary ?? null;
       await ctx.info('immaculateTastePoints: refresher done (chained)', {
         refresher: refresherSummary,

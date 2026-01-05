@@ -17,7 +17,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'mediaAddedCleanup',
     name: 'Media Added Cleanup',
     description:
-      'Auto-run: triggered by Plex webhooks when new media is added (watchlist removal + unmonitor). Run Now: sweeps Plex duplicates (movies + episodes), deletes lower-quality copies, and unmonitors in Radarr/Sonarr.',
+      'Auto-run: triggered by Plex webhooks when new media is added (duplicate cleanup across all libraries + unmonitor + watchlist removal when complete). Run Now: full sweep across all libraries + watchlist reconciliation.',
     defaultScheduleCron: undefined,
   },
   {
@@ -31,21 +31,21 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'immaculateTasteRefresher',
     name: 'Immaculate Taste Refresher',
     description:
-      'Off-peak refresh of the "Inspired by your Immaculate Taste" Plex collection from the points dataset.',
+      'Off-peak refresh of the "Inspired by your Immaculate Taste" Plex collection across all Plex movie libraries.',
     defaultScheduleCron: '0 3 * * *', // 3am daily (disabled by default)
   },
   {
     id: 'watchedMovieRecommendations',
     name: 'Based on Latest Watched Collection',
     description:
-      'Triggered by Plex webhooks when a movie is finished. Generates recommendations and rebuilds curated Plex collections.',
+      'Triggered by Plex webhooks when a movie is finished. Generates recommendations and rebuilds curated Plex collections in the same Plex movie library you watched from.',
     defaultScheduleCron: undefined,
   },
   {
     id: 'recentlyWatchedRefresher',
     name: 'Based on Latest Watched Refresher',
     description:
-      'Refreshes and reshuffles the curated Plex collections "Based on your recently watched movie" and "Change of Taste".',
+      'Refreshes and reshuffles the curated Plex collections "Based on your recently watched movie" and "Change of Taste" across all Plex movie libraries.',
     defaultScheduleCron: '0 1 * * *', // 1am daily (placeholder)
   },
   {
