@@ -61,7 +61,7 @@ const JOB_CONFIG: Record<
     icon: <MonitorPlay className="w-8 h-8" />,
     color: 'text-blue-400',
     description:
-      'Scans your Plex library and verifies which movies and TV shows should remain monitored.',
+      'Scans all Plex movie/TV libraries and verifies which Radarr/Sonarr items should remain monitored.',
   },
   mediaAddedCleanup: {
     icon: <CheckCircle2 className="w-8 h-8" />,

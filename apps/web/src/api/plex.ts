@@ -31,6 +31,18 @@ export type PlexLibraryGrowthResponse = {
   };
 };
 
+export type PlexLibrarySection = {
+  key: string;
+  title: string;
+  type?: string;
+};
+
+export type PlexLibrariesResponse = {
+  ok: true;
+  movies: PlexLibrarySection[];
+  tv: PlexLibrarySection[];
+};
+
 export async function createPlexPin(): Promise<PlexPinResponse> {
   return fetchJson('/api/plex/pin', { method: 'POST' });
 }
@@ -41,4 +53,8 @@ export async function checkPlexPin(pinId: number): Promise<PlexPinCheckResponse>
 
 export async function getPlexLibraryGrowth(): Promise<PlexLibraryGrowthResponse> {
   return fetchJson('/api/plex/library-growth');
+}
+
+export async function getPlexLibraries(): Promise<PlexLibrariesResponse> {
+  return fetchJson('/api/plex/libraries');
 }

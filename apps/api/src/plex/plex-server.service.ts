@@ -779,6 +779,54 @@ export class PlexServerService {
     return set;
   }
 
+  async getMovieTmdbIdSetForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    sectionTitle?: string;
+  }): Promise<Set<number>> {
+    const { baseUrl, token, librarySectionKey, sectionTitle } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 1,
+      includeGuids: true,
+      duplicate: false,
+      timeoutMs: 60000,
+    });
+
+    const set = new Set<number>();
+    let itemsWithGuids = 0;
+    let itemsWithoutGuids = 0;
+    let totalGuidsProcessed = 0;
+
+    for (const item of items) {
+      if (!item.Guid) {
+        itemsWithoutGuids++;
+        continue;
+      }
+
+      itemsWithGuids++;
+      const ids = extractIdsFromGuids(item.Guid, 'tmdb');
+      totalGuidsProcessed += ids.length;
+      for (const id of ids) set.add(id);
+    }
+
+    this.logger.log(
+      `Plex TMDB set size=${set.size} section=${sectionTitle ?? librarySectionKey} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} totalGuids=${totalGuidsProcessed}`,
+    );
+
+    if (items.length > 0 && items[0]?.Guid) {
+      const sampleGuids = asUnknownArray(items[0].Guid).slice(0, 3);
+      this.logger.debug(
+        `Sample GUID structure: ${JSON.stringify(sampleGuids)}`,
+      );
+    }
+
+    return set;
+  }
+
   async getTvdbShowMap(params: {
     baseUrl: string;
     token: string;
@@ -838,6 +886,67 @@ export class PlexServerService {
     );
 
     // Log a sample of GUIDs for debugging
+    if (items.length > 0 && items[0]?.Guid) {
+      const sampleGuids = asUnknownArray(items[0].Guid).slice(0, 3);
+      this.logger.debug(
+        `Sample GUID structure: ${JSON.stringify(sampleGuids)}`,
+      );
+    }
+
+    return map;
+  }
+
+  async getTvdbShowMapForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    sectionTitle?: string;
+  }): Promise<Map<number, string>> {
+    const { baseUrl, token, librarySectionKey, sectionTitle } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 2,
+      includeGuids: true,
+      duplicate: false,
+      timeoutMs: 60000,
+    });
+
+    const map = new Map<number, string>();
+    let itemsWithGuids = 0;
+    let itemsWithoutGuids = 0;
+    let totalGuidsProcessed = 0;
+    let itemsWithTvdbIds = 0;
+    let itemsWithoutTvdbIds = 0;
+
+    for (const item of items) {
+      const ratingKey = item.ratingKey ? String(item.ratingKey) : '';
+      if (!ratingKey) continue;
+
+      if (!item.Guid) {
+        itemsWithoutGuids++;
+        continue;
+      }
+
+      itemsWithGuids++;
+      const ids = extractIdsFromGuids(item.Guid, 'tvdb');
+      totalGuidsProcessed += ids.length;
+
+      if (ids.length > 0) {
+        itemsWithTvdbIds++;
+        for (const id of ids) {
+          if (!map.has(id)) map.set(id, ratingKey);
+        }
+      } else {
+        itemsWithoutTvdbIds++;
+      }
+    }
+
+    this.logger.log(
+      `Plex TVDB map size=${map.size} section=${sectionTitle ?? librarySectionKey} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} withTvdbIds=${itemsWithTvdbIds} withoutTvdbIds=${itemsWithoutTvdbIds} totalGuids=${totalGuidsProcessed}`,
+    );
+
     if (items.length > 0 && items[0]?.Guid) {
       const sampleGuids = asUnknownArray(items[0].Guid).slice(0, 3);
       this.logger.debug(

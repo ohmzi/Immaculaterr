@@ -12,11 +12,44 @@ import { PlexService } from './plex.service';
 import { PlexServerService } from './plex-server.service';
 import { PlexAnalyticsService } from './plex-analytics.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import { SettingsService } from '../settings/settings.service';
 
 type TestPlexServerBody = {
   baseUrl?: unknown;
   token?: unknown;
 };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pick(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickString(obj: Record<string, unknown>, path: string): string {
+  const v = pick(obj, path);
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function normalizeHttpUrl(raw: string): string {
+  const trimmed = raw.trim();
+  const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  try {
+    const parsed = new URL(baseUrl);
+    if (!/^https?:$/i.test(parsed.protocol))
+      throw new Error('Unsupported protocol');
+  } catch {
+    throw new BadRequestException('baseUrl must be a valid http(s) URL');
+  }
+  return baseUrl;
+}
 
 @Controller('plex')
 export class PlexController {
@@ -24,6 +57,7 @@ export class PlexController {
     private readonly plexService: PlexService,
     private readonly plexServerService: PlexServerService,
     private readonly plexAnalytics: PlexAnalyticsService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   @Post('pin')
@@ -80,5 +114,33 @@ export class PlexController {
   @Get('library-growth')
   async libraryGrowth(@Req() req: AuthenticatedRequest) {
     return await this.plexAnalytics.getLibraryGrowth(req.user.id);
+  }
+
+  @Get('libraries')
+  async libraries(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+
+    if (!baseUrlRaw || !token) {
+      throw new BadRequestException('Plex is not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+    const sections = await this.plexServerService.getSections({ baseUrl, token });
+
+    const movies = sections
+      .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+      .sort((a, b) => a.title.localeCompare(b.title));
+    const tv = sections
+      .filter((s) => (s.type ?? '').toLowerCase() === 'show')
+      .sort((a, b) => a.title.localeCompare(b.title));
+
+    return { ok: true, movies, tv };
   }
 }

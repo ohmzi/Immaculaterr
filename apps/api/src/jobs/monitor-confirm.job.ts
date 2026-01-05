@@ -69,15 +69,6 @@ export class MonitorConfirmJob {
       pickString(secrets, 'plexToken') ??
       requireString(secrets, 'plex.token');
 
-    const movieLibraryName =
-      pickString(settings, 'plex.movieLibraryName') ??
-      pickString(settings, 'plex.movie_library_name') ??
-      'Movies';
-    const tvLibraryName =
-      pickString(settings, 'plex.tvLibraryName') ??
-      pickString(settings, 'plex.tv_library_name') ??
-      'TV Shows';
-
     const radarrBaseUrl =
       pickString(settings, 'radarr.baseUrl') ??
       pickString(settings, 'radarr.url') ??
@@ -103,13 +94,39 @@ export class MonitorConfirmJob {
       plexBaseUrl,
     });
 
-    // --- Plex TMDB set (movies)
-    await ctx.info('plex: building TMDB id set', { movieLibraryName });
-    const plexTmdbIds = await this.plexServer.getMovieTmdbIdSet({
+    // --- Plex libraries (scan ALL movie/show libraries)
+    const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
       token: plexToken,
-      movieLibraryName,
     });
+    const movieSections = sections.filter(
+      (s) => (s.type ?? '').toLowerCase() === 'movie',
+    );
+    const tvSections = sections.filter(
+      (s) => (s.type ?? '').toLowerCase() === 'show',
+    );
+
+    await ctx.info('plex: discovered libraries', {
+      total: sections.length,
+      movieLibraries: movieSections.map((s) => s.title),
+      tvLibraries: tvSections.map((s) => s.title),
+    });
+
+    // --- Plex TMDB set (movies across all movie libraries)
+    await ctx.info('plex: building TMDB id set (all movie libraries)', {
+      libraries: movieSections.map((s) => s.title),
+    });
+
+    const plexTmdbIds = new Set<number>();
+    for (const sec of movieSections) {
+      const ids = await this.plexServer.getMovieTmdbIdSetForSectionKey({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+        librarySectionKey: sec.key,
+        sectionTitle: sec.title,
+      });
+      for (const id of ids) plexTmdbIds.add(id);
+    }
     await ctx.info('plex: TMDB id set built', {
       size: plexTmdbIds.size,
       sample: Array.from(plexTmdbIds).slice(0, 10),
@@ -197,16 +214,27 @@ export class MonitorConfirmJob {
       dryRun: ctx.dryRun,
     });
 
-    // --- Plex TVDB map (shows)
-    await ctx.info('plex: building TVDB show map', { tvLibraryName });
-    const plexTvdbMap = await this.plexServer.getTvdbShowMap({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-      tvLibraryName,
+    // --- Plex TVDB map (shows across all TV libraries)
+    await ctx.info('plex: building TVDB show map (all TV libraries)', {
+      libraries: tvSections.map((s) => s.title),
     });
+    const plexTvdbRatingKeys = new Map<number, string[]>();
+    for (const sec of tvSections) {
+      const map = await this.plexServer.getTvdbShowMapForSectionKey({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+        librarySectionKey: sec.key,
+        sectionTitle: sec.title,
+      });
+      for (const [tvdbId, ratingKey] of map.entries()) {
+        const prev = plexTvdbRatingKeys.get(tvdbId) ?? [];
+        if (!prev.includes(ratingKey)) prev.push(ratingKey);
+        plexTvdbRatingKeys.set(tvdbId, prev);
+      }
+    }
     await ctx.info('plex: TVDB show map built', {
-      size: plexTvdbMap.size,
-      sampleTvdbIds: Array.from(plexTvdbMap.keys()).slice(0, 10),
+      size: plexTvdbRatingKeys.size,
+      sampleTvdbIds: Array.from(plexTvdbRatingKeys.keys()).slice(0, 10),
     });
 
     // --- Sonarr confirm (episodes)
@@ -233,8 +261,8 @@ export class MonitorConfirmJob {
         continue;
       }
 
-      const showRatingKey = plexTvdbMap.get(tvdbId);
-      if (!showRatingKey) {
+      const showRatingKeys = plexTvdbRatingKeys.get(tvdbId) ?? [];
+      if (showRatingKeys.length === 0) {
         await ctx.info('sonarr: series not found in Plex (keep monitored)', {
           title,
           tvdbId,
@@ -242,14 +270,20 @@ export class MonitorConfirmJob {
         continue;
       }
 
-      const plexEpisodes = await this.plexServer.getEpisodesSet({
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        showRatingKey,
-      });
+      // Union episodes across all Plex libraries where the show exists.
+      const plexEpisodes = new Set<string>();
+      for (const ratingKey of showRatingKeys) {
+        const eps = await this.plexServer.getEpisodesSet({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          showRatingKey: ratingKey,
+        });
+        for (const k of eps) plexEpisodes.add(k);
+      }
       await ctx.debug('sonarr: Plex episodes retrieved', {
         title,
         tvdbId,
+        showMatches: showRatingKeys.length,
         episodeCount: plexEpisodes.size,
         sample: Array.from(plexEpisodes).slice(0, 10),
       });
@@ -431,6 +465,13 @@ export class MonitorConfirmJob {
 
     const summary: JsonObject = {
       dryRun: ctx.dryRun,
+      plex: {
+        totalLibraries: sections.length,
+        movieLibraries: movieSections.map((s) => s.title),
+        tvLibraries: tvSections.map((s) => s.title),
+        tmdbIds: plexTmdbIds.size,
+        tvdbShows: plexTvdbRatingKeys.size,
+      },
       radarr: {
         totalMonitored: radarrTotalMonitored,
         alreadyInPlex: radarrAlreadyInPlex,
