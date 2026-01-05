@@ -190,6 +190,71 @@ export class WebhooksController {
       }
     }
 
+    // Trigger post-add cleanup automation on library.new for supported media types.
+    if (
+      plexEvent === 'library.new' &&
+      ['movie', 'show', 'season', 'episode'].includes(mediaType.toLowerCase())
+    ) {
+      const title = payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
+      const ratingKey = payloadObj ? pickString(payloadObj, 'Metadata.ratingKey') : '';
+      const year = payloadObj ? pickNumber(payloadObj, 'Metadata.year') : null;
+      const grandparentTitle = payloadObj
+        ? pickString(payloadObj, 'Metadata.grandparentTitle')
+        : '';
+      const grandparentRatingKey = payloadObj
+        ? pickString(payloadObj, 'Metadata.grandparentRatingKey')
+        : '';
+      const parentIndex = payloadObj ? pickNumber(payloadObj, 'Metadata.parentIndex') : null;
+      const index = payloadObj ? pickNumber(payloadObj, 'Metadata.index') : null;
+
+      const userId = await this.authService.getFirstAdminUserId();
+      if (userId) {
+        const { settings } = await this.settingsService
+          .getInternalSettings(userId)
+          .catch(() => ({ settings: {} as Record<string, unknown>, secrets: {} }));
+        const enabled =
+          pickBool(settings, 'jobs.webhookEnabled.mediaAddedCleanup') ?? true;
+
+        if (!enabled) {
+          return { ok: true, ...persisted, triggered: false, skipped: { mediaAddedCleanup: 'disabled' } };
+        }
+
+        try {
+          const input = {
+            source: 'plexWebhook',
+            plexEvent,
+            mediaType: mediaType.toLowerCase(),
+            title,
+            year: year ?? null,
+            ratingKey: ratingKey || null,
+            showTitle: grandparentTitle || null,
+            showRatingKey: grandparentRatingKey || null,
+            seasonNumber: parentIndex ?? null,
+            episodeNumber: index ?? null,
+            persistedPath: persisted.path,
+          } as const;
+
+          const run = await this.jobsService.runJob({
+            jobId: 'mediaAddedCleanup',
+            trigger: 'manual',
+            dryRun: false,
+            userId,
+            input,
+          });
+
+          return {
+            ok: true,
+            ...persisted,
+            triggered: true,
+            runs: { mediaAddedCleanup: run.id },
+          };
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          return { ok: true, ...persisted, triggered: false, error: msg };
+        }
+      }
+    }
+
     return { ok: true, ...persisted, triggered: false };
   }
 }

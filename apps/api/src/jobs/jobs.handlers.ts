@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { JobContext, JobRunResult } from './jobs.types';
 import { MonitorConfirmJob } from './monitor-confirm.job';
+import { MediaAddedCleanupJob } from './media-added-cleanup.job';
 import { NoopJob } from './noop.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
@@ -12,6 +13,7 @@ export class JobsHandlers {
   constructor(
     private readonly noopJob: NoopJob,
     private readonly monitorConfirmJob: MonitorConfirmJob,
+    private readonly mediaAddedCleanupJob: MediaAddedCleanupJob,
     private readonly immaculateTasteCollectionJob: ImmaculateTasteCollectionJob,
     private readonly immaculateTasteRefresherJob: ImmaculateTasteRefresherJob,
     private readonly basedonLatestWatchedRefresherJob: BasedonLatestWatchedRefresherJob,
@@ -24,6 +26,8 @@ export class JobsHandlers {
         return await this.noopJob.run(ctx);
       case 'monitorConfirm':
         return await this.monitorConfirmJob.run(ctx);
+      case 'mediaAddedCleanup':
+        return await this.mediaAddedCleanupJob.run(ctx);
       case 'immaculateTastePoints':
         return await this.immaculateTasteCollectionJob.run(ctx);
       case 'immaculateTasteRefresher':

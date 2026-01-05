@@ -48,6 +48,7 @@ export class JobsService {
   private readonly runningJobIds = new Set<string>();
   private static readonly UNSCHEDULABLE_JOB_IDS = new Set<string>([
     // Webhook/manual-input jobs (no schedule support)
+    'mediaAddedCleanup',
     'immaculateTastePoints',
     'watchedMovieRecommendations',
   ]);

@@ -13,6 +13,7 @@ import { JobsService } from './jobs.service';
 const REGISTRY_PREFIX = 'job:';
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   // Webhook/manual-input jobs (no schedule support)
+  'mediaAddedCleanup',
   'immaculateTastePoints',
   'watchedMovieRecommendations',
 ]);

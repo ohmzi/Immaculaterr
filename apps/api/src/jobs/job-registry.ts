@@ -14,6 +14,13 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     defaultScheduleCron: '0 3 * * *', // 3am daily (placeholder)
   },
   {
+    id: 'mediaAddedCleanup',
+    name: 'Media Added Cleanup',
+    description:
+      'Auto-run: triggered by Plex webhooks when new media is added (watchlist removal + unmonitor). Run Now: sweeps Plex duplicates (movies + episodes), deletes lower-quality copies, and unmonitors in Radarr/Sonarr.',
+    defaultScheduleCron: undefined,
+  },
+  {
     id: 'immaculateTastePoints',
     name: 'Immaculate Taste Collection',
     description:

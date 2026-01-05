@@ -12,6 +12,7 @@ type PlexMetadata = Record<string, unknown> & {
   title?: string;
   addedAt?: number | string;
   Guid?: unknown;
+  Media?: unknown;
   parentIndex?: number | string;
   index?: number | string;
   type?: string;
@@ -19,6 +20,34 @@ type PlexMetadata = Record<string, unknown> & {
 
 type PlexXml = {
   MediaContainer?: Record<string, unknown>;
+};
+
+export type PlexMediaPart = {
+  id: string | null;
+  key: string | null;
+  file: string | null;
+  size: number | null;
+};
+
+export type PlexMediaVersion = {
+  id: string | null;
+  videoResolution: string | null;
+  parts: PlexMediaPart[];
+};
+
+export type PlexMetadataDetails = {
+  ratingKey: string;
+  title: string;
+  type: string | null;
+  year: number | null;
+  addedAt: number | null;
+  grandparentTitle: string | null;
+  grandparentRatingKey: string | null;
+  parentIndex: number | null;
+  index: number | null;
+  tmdbIds: number[];
+  tvdbIds: number[];
+  media: PlexMediaVersion[];
 };
 
 type PlexDirectory = Record<string, unknown> & {
@@ -68,6 +97,18 @@ function toStringSafe(value: unknown): string {
 
 function asPlexXml(value: unknown): PlexXml {
   return value && typeof value === 'object' ? (value as PlexXml) : {};
+}
+
+function asPlexMediaArray(value: unknown): Array<Record<string, unknown>> {
+  return asUnknownArray(value).filter(
+    (v): v is Record<string, unknown> => Boolean(v) && typeof v === 'object',
+  );
+}
+
+function asPlexPartArray(value: unknown): Array<Record<string, unknown>> {
+  return asUnknownArray(value).filter(
+    (v): v is Record<string, unknown> => Boolean(v) && typeof v === 'object',
+  );
 }
 
 function normalizeBaseUrl(baseUrl: string) {
@@ -203,6 +244,186 @@ export class PlexServerService {
     return machineId;
   }
 
+  async getMetadataDetails(params: {
+    baseUrl: string;
+    token: string;
+    ratingKey: string;
+  }): Promise<PlexMetadataDetails | null> {
+    const { baseUrl, token, ratingKey } = params;
+    const rk = ratingKey.trim();
+    if (!rk) return null;
+
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(rk)}`,
+      normalizeBaseUrl(baseUrl),
+    );
+    // Include GUIDs for tmdb/tvdb extraction (needed for Radarr/Sonarr mapping).
+    url.searchParams.set('includeGuids', '1');
+
+    const xml = asPlexXml(await this.fetchXml(url.toString(), token, 20000));
+    const container = xml.MediaContainer;
+    const items = asPlexMetadataArray(container);
+    const item = items[0];
+    if (!item) return null;
+
+    const title = typeof item.title === 'string' ? item.title : '';
+    const type = typeof item.type === 'string' ? item.type : null;
+    const grandparentTitle = (() => {
+      const raw = (item as Record<string, unknown>)['grandparentTitle'];
+      if (typeof raw !== 'string') return null;
+      const s = raw.trim();
+      return s ? s : null;
+    })();
+    const grandparentRatingKey = (() => {
+      const raw = (item as Record<string, unknown>)['grandparentRatingKey'];
+      const s = toStringSafe(raw).trim();
+      return s ? s : null;
+    })();
+    const year = typeof (item as Record<string, unknown>)['year'] === 'number'
+      ? ((item as Record<string, unknown>)['year'] as number)
+      : (() => {
+          const raw = (item as Record<string, unknown>)['year'];
+          if (typeof raw === 'string' && raw.trim()) {
+            const n = Number.parseInt(raw.trim(), 10);
+            return Number.isFinite(n) ? n : null;
+          }
+          return null;
+        })();
+
+    const addedAtRaw = item.addedAt;
+    const addedAt =
+      typeof addedAtRaw === 'number'
+        ? Number.isFinite(addedAtRaw)
+          ? addedAtRaw
+          : null
+        : typeof addedAtRaw === 'string' && addedAtRaw.trim()
+          ? (() => {
+              const n = Number.parseInt(addedAtRaw.trim(), 10);
+              return Number.isFinite(n) ? n : null;
+            })()
+          : null;
+
+    const parentIndexRaw = item.parentIndex;
+    const parentIndex =
+      typeof parentIndexRaw === 'number'
+        ? Number.isFinite(parentIndexRaw)
+          ? parentIndexRaw
+          : null
+        : typeof parentIndexRaw === 'string' && parentIndexRaw.trim()
+          ? (() => {
+              const n = Number.parseInt(parentIndexRaw.trim(), 10);
+              return Number.isFinite(n) ? n : null;
+            })()
+          : null;
+
+    const indexRaw = item.index;
+    const index =
+      typeof indexRaw === 'number'
+        ? Number.isFinite(indexRaw)
+          ? indexRaw
+          : null
+        : typeof indexRaw === 'string' && indexRaw.trim()
+          ? (() => {
+              const n = Number.parseInt(indexRaw.trim(), 10);
+              return Number.isFinite(n) ? n : null;
+            })()
+          : null;
+
+    const tmdbIds = extractIdsFromGuids(item.Guid, 'tmdb');
+    const tvdbIds = extractIdsFromGuids(item.Guid, 'tvdb');
+
+    const media = asPlexMediaArray((item as PlexMetadata).Media).map((m) => {
+      const mediaId = toStringSafe(m['id']).trim() || null;
+      const videoResolution = toStringSafe(m['videoResolution']).trim() || null;
+      const parts = asPlexPartArray(m['Part']).map((p) => ({
+        id: toStringSafe(p['id']).trim() || null,
+        key: toStringSafe(p['key']).trim() || null,
+        file: toStringSafe(p['file']).trim() || null,
+        size: (() => {
+          const raw = p['size'];
+          if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+          if (typeof raw === 'string' && raw.trim()) {
+            const n = Number.parseInt(raw.trim(), 10);
+            return Number.isFinite(n) ? n : null;
+          }
+          return null;
+        })(),
+      }));
+      return { id: mediaId, videoResolution, parts };
+    });
+
+    const out: PlexMetadataDetails = {
+      ratingKey: rk,
+      title,
+      type,
+      year,
+      addedAt,
+      grandparentTitle,
+      grandparentRatingKey,
+      parentIndex,
+      index,
+      tmdbIds,
+      tvdbIds,
+      media,
+    };
+
+    return out;
+  }
+
+  async deletePartByKey(params: {
+    baseUrl: string;
+    token: string;
+    partKey: string;
+  }): Promise<void> {
+    const { baseUrl, token, partKey } = params;
+    const key = partKey.trim();
+    if (!key) {
+      throw new Error('partKey is required');
+    }
+
+    const toUrl = (pathOrUrl: string) => {
+      if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+      const normalized = pathOrUrl.startsWith('/') ? pathOrUrl.slice(1) : pathOrUrl;
+      return new URL(normalized, normalizeBaseUrl(baseUrl)).toString();
+    };
+
+    const attemptUrls: string[] = [];
+    attemptUrls.push(toUrl(key));
+
+    // Fallback: if the part key includes /library/parts/<id>/..., try /library/parts/<id>
+    const match = key.match(/\/library\/parts\/(\d+)/i);
+    if (match?.[1]) {
+      attemptUrls.push(toUrl(`library/parts/${match[1]}`));
+    }
+
+    let lastErr: unknown = null;
+    for (const u of attemptUrls) {
+      try {
+        await this.fetchNoContent(u, token, 'DELETE', 30000);
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  }
+
+  async deleteMetadataByRatingKey(params: {
+    baseUrl: string;
+    token: string;
+    ratingKey: string;
+  }): Promise<void> {
+    const { baseUrl, token, ratingKey } = params;
+    const rk = ratingKey.trim();
+    if (!rk) throw new Error('ratingKey is required');
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(rk)}`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    await this.fetchNoContent(url, token, 'DELETE', 30000);
+  }
+
   async findMovieRatingKeyByTitle(params: {
     baseUrl: string;
     token: string;
@@ -225,6 +446,39 @@ export class PlexServerService {
     if (!items.length) return null;
 
     // Prefer exact title match, fall back to first result.
+    const exact = items.find(
+      (m) =>
+        typeof m.title === 'string' &&
+        m.title.toLowerCase() === q.toLowerCase(),
+    );
+    const best = exact ?? items[0];
+    const ratingKey = best.ratingKey ? String(best.ratingKey) : '';
+    const bestTitle = typeof best.title === 'string' ? best.title : q;
+    if (!ratingKey) return null;
+    return { ratingKey, title: bestTitle };
+  }
+
+  async findShowRatingKeyByTitle(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    title: string;
+  }): Promise<{ ratingKey: string; title: string } | null> {
+    const { baseUrl, token, librarySectionKey, title } = params;
+    const q = title.trim();
+    if (!q) return null;
+
+    const url = new URL(
+      `library/sections/${librarySectionKey}/search?type=2&query=${encodeURIComponent(q)}`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+
+    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
+    const container = xml.MediaContainer;
+    const items = asPlexMetadataArray(container);
+
+    if (!items.length) return null;
+
     const exact = items.find(
       (m) =>
         typeof m.title === 'string' &&
@@ -276,6 +530,167 @@ export class PlexServerService {
       throw new BadGatewayException(`Plex library section not found: ${title}`);
     }
     return found.key;
+  }
+
+  async listMoviesWithTmdbIds(params: {
+    baseUrl: string;
+    token: string;
+    movieLibraryName: string;
+  }): Promise<Array<{ ratingKey: string; title: string; tmdbId: number | null; addedAt: number | null }>> {
+    const { baseUrl, token, movieLibraryName } = params;
+    const sectionKey = await this.findSectionKeyByTitle({
+      baseUrl,
+      token,
+      title: movieLibraryName,
+    });
+
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey: sectionKey,
+      type: 1,
+      includeGuids: true,
+      duplicate: false,
+      timeoutMs: 60000,
+    });
+
+    const out: Array<{
+      ratingKey: string;
+      title: string;
+      tmdbId: number | null;
+      addedAt: number | null;
+    }> = [];
+
+    for (const it of items) {
+      const rk = it.ratingKey ? String(it.ratingKey).trim() : '';
+      if (!rk) continue;
+      const title = typeof it.title === 'string' ? it.title : rk;
+      const tmdbId = it.Guid ? extractIdsFromGuids(it.Guid, 'tmdb')[0] ?? null : null;
+      const addedAt =
+        typeof it.addedAt === 'number'
+          ? Number.isFinite(it.addedAt)
+            ? it.addedAt
+            : null
+          : typeof it.addedAt === 'string' && it.addedAt.trim()
+            ? (() => {
+                const n = Number.parseInt(it.addedAt.trim(), 10);
+                return Number.isFinite(n) ? n : null;
+              })()
+            : null;
+
+      out.push({ ratingKey: rk, title, tmdbId, addedAt });
+    }
+
+    return out;
+  }
+
+  async listDuplicateMovieRatingKeys(params: {
+    baseUrl: string;
+    token: string;
+    movieLibraryName: string;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, movieLibraryName } = params;
+    const sectionKey = await this.findSectionKeyByTitle({
+      baseUrl,
+      token,
+      title: movieLibraryName,
+    });
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey: sectionKey,
+      type: 1,
+      includeGuids: false,
+      duplicate: true,
+      timeoutMs: 60000,
+    });
+    return items
+      .map((it) => ({
+        ratingKey: it.ratingKey ? String(it.ratingKey).trim() : '',
+        title: typeof it.title === 'string' ? it.title : '',
+      }))
+      .filter((it) => it.ratingKey && it.title);
+  }
+
+  async listTvShows(params: {
+    baseUrl: string;
+    token: string;
+    tvLibraryName: string;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, tvLibraryName } = params;
+    const sectionKey = await this.findSectionKeyByTitle({
+      baseUrl,
+      token,
+      title: tvLibraryName,
+    });
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey: sectionKey,
+      type: 2,
+      includeGuids: false,
+      duplicate: false,
+      timeoutMs: 60000,
+    });
+    return items
+      .map((it) => ({
+        ratingKey: it.ratingKey ? String(it.ratingKey).trim() : '',
+        title: typeof it.title === 'string' ? it.title : '',
+      }))
+      .filter((it) => it.ratingKey && it.title);
+  }
+
+  async listDuplicateEpisodeRatingKeys(params: {
+    baseUrl: string;
+    token: string;
+    tvLibraryName: string;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, tvLibraryName } = params;
+    const sectionKey = await this.findSectionKeyByTitle({
+      baseUrl,
+      token,
+      title: tvLibraryName,
+    });
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey: sectionKey,
+      type: 4,
+      includeGuids: false,
+      duplicate: true,
+      timeoutMs: 60000,
+    });
+    return items
+      .map((it) => ({
+        ratingKey: it.ratingKey ? String(it.ratingKey).trim() : '',
+        title: typeof it.title === 'string' ? it.title : '',
+      }))
+      .filter((it) => it.ratingKey && it.title);
+  }
+
+  async listEpisodesForShow(params: {
+    baseUrl: string;
+    token: string;
+    showRatingKey: string;
+    duplicateOnly?: boolean;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, showRatingKey, duplicateOnly = false } = params;
+    const rk = showRatingKey.trim();
+    if (!rk) return [];
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(rk)}/allLeaves`,
+      normalizeBaseUrl(baseUrl),
+    );
+    if (duplicateOnly) url.searchParams.set('duplicate', '1');
+    const xml = asPlexXml(await this.fetchXml(url.toString(), token, 60000));
+    const container = xml.MediaContainer;
+    const items = asPlexMetadataArray(container);
+    return items
+      .map((it) => ({
+        ratingKey: it.ratingKey ? String(it.ratingKey).trim() : '',
+        title: typeof it.title === 'string' ? it.title : '',
+      }))
+      .filter((it) => it.ratingKey && it.title);
   }
 
   async getAddedAtTimestampsForSection(params: {
@@ -1004,5 +1419,36 @@ export class PlexServerService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async listSectionItems(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    type?: number;
+    includeGuids?: boolean;
+    duplicate?: boolean;
+    timeoutMs: number;
+  }): Promise<PlexMetadata[]> {
+    const { baseUrl, token, librarySectionKey, type, includeGuids, duplicate, timeoutMs } =
+      params;
+
+    const url = new URL(
+      `library/sections/${encodeURIComponent(librarySectionKey)}/all`,
+      normalizeBaseUrl(baseUrl),
+    );
+    if (typeof type === 'number' && Number.isFinite(type)) {
+      url.searchParams.set('type', String(Math.trunc(type)));
+    }
+    if (includeGuids) {
+      url.searchParams.set('includeGuids', '1');
+    }
+    if (duplicate) {
+      url.searchParams.set('duplicate', '1');
+    }
+
+    const xml = asPlexXml(await this.fetchXml(url.toString(), token, timeoutMs));
+    const container = xml.MediaContainer;
+    return asPlexMetadataArray(container);
   }
 }

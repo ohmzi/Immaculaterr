@@ -38,6 +38,7 @@ type ScheduleDraft = {
 };
 
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
+  'mediaAddedCleanup', // webhook/manual input only (Plex library.new)
   'immaculateTastePoints', // webhook/manual input only
   'watchedMovieRecommendations', // webhook/manual input only
 ]);
@@ -61,6 +62,12 @@ const JOB_CONFIG: Record<
     color: 'text-blue-400',
     description:
       'Scans your Plex library and verifies which movies and TV shows should remain monitored.',
+  },
+  mediaAddedCleanup: {
+    icon: <CheckCircle2 className="w-8 h-8" />,
+    color: 'text-teal-300',
+    description:
+      'Auto-run: reacts to Plex library.new to remove from watchlist + unmonitor. Run Now: sweeps Plex for duplicate movies/episodes, deletes lower-quality copies, and unmonitors in Radarr/Sonarr.',
   },
   recentlyWatchedRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
@@ -914,7 +921,9 @@ export function TaskManagerPage() {
                             />
                           </button>
                           <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                            Plex scrobble
+                            {job.id === 'mediaAddedCleanup'
+                              ? 'Plex library.new'
+                              : 'Plex scrobble'}
                           </div>
                         </div>
                       )}
@@ -987,10 +996,10 @@ export function TaskManagerPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const needsTitle =
+                            const needsMovieSeed =
                               job.id === 'watchedMovieRecommendations' ||
                               job.id === 'immaculateTastePoints';
-                            if (needsTitle) {
+                            if (needsMovieSeed) {
                               setMovieSeedError(null);
                               setMovieSeedDialogJobId(job.id);
                               setMovieSeedDialogOpen(true);

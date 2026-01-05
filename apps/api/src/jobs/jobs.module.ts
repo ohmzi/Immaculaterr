@@ -14,6 +14,7 @@ import { JobsService } from './jobs.service';
 import { JobsHandlers } from './jobs.handlers';
 import { NoopJob } from './noop.job';
 import { MonitorConfirmJob } from './monitor-confirm.job';
+import { MediaAddedCleanupJob } from './media-added-cleanup.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
 import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
@@ -38,6 +39,7 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
     JobsHandlers,
     NoopJob,
     MonitorConfirmJob,
+    MediaAddedCleanupJob,
     BasedonLatestWatchedCollectionJob,
     BasedonLatestWatchedRefresherJob,
     ImmaculateTasteCollectionJob,
