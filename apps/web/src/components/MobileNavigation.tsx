@@ -214,7 +214,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             </AnimatePresence>
 
             {/* Navigation buttons */}
-            <div className="relative flex items-center justify-around px-3 py-2">
+            <div className="relative flex items-center justify-around px-3 py-2.5">
               {navItems.map((item, index) => (
                 <button
                   key={item.label}

@@ -250,7 +250,9 @@ export class RadarrService {
       }
 
       const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
 
       const out: RadarrRootFolder[] = [];
       for (const r of rows) {
@@ -299,7 +301,9 @@ export class RadarrService {
       }
 
       const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
 
       const out: RadarrQualityProfile[] = [];
       for (const r of rows) {
@@ -320,7 +324,10 @@ export class RadarrService {
     }
   }
 
-  async listTags(params: { baseUrl: string; apiKey: string }): Promise<RadarrTag[]> {
+  async listTags(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<RadarrTag[]> {
     const { baseUrl, apiKey } = params;
     const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
 
@@ -345,7 +352,9 @@ export class RadarrService {
       }
 
       const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
 
       const out: RadarrTag[] = [];
       for (const r of rows) {
@@ -391,7 +400,9 @@ export class RadarrService {
           : undefined,
       qualityProfileId: Math.trunc(params.qualityProfileId),
       rootFolderPath: params.rootFolderPath,
-      tags: Array.isArray(params.tags) ? params.tags.map((t) => Math.trunc(t)) : undefined,
+      tags: Array.isArray(params.tags)
+        ? params.tags.map((t) => Math.trunc(t))
+        : undefined,
       monitored: params.monitored ?? true,
       minimumAvailability: params.minimumAvailability ?? 'announced',
       addOptions: {

@@ -38,7 +38,9 @@ function asPlexXml(value: unknown): PlexXml {
   return value && typeof value === 'object' ? (value as PlexXml) : {};
 }
 
-function asWatchlistItems(container?: Record<string, unknown>): PlexWatchlistItem[] {
+function asWatchlistItems(
+  container?: Record<string, unknown>,
+): PlexWatchlistItem[] {
   // Similar to PlexServerService: watchlist endpoints can return different element names.
   const items = (container?.Metadata ??
     container?.Video ??
@@ -46,13 +48,6 @@ function asWatchlistItems(container?: Record<string, unknown>): PlexWatchlistIte
     container?.Hub ??
     []) as PlexWatchlistItem | PlexWatchlistItem[];
   return asArray(items);
-}
-
-function toStringSafe(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean')
-    return String(value);
-  return '';
 }
 
 function toInt(value: unknown): number | null {
@@ -122,7 +117,7 @@ function diceCoefficient(a: string, b: string): number {
     const c2 = m2.get(bg) ?? 0;
     intersection += Math.min(c1, c2);
   }
-  return (2 * intersection) / ((s1.length - 1) + (s2.length - 1));
+  return (2 * intersection) / (s1.length - 1 + (s2.length - 1));
 }
 
 @Injectable()
@@ -235,7 +230,7 @@ export class PlexWatchlistService {
         if (!best || score > best.score) best = { item: it, score };
       }
       if (best && best.score >= 0.8) {
-        candidates = wl.items.filter((it) => it.title === best!.item.title);
+        candidates = wl.items.filter((it) => it.title === best.item.title);
         matchedBy = candidates.length > 0 ? 'fuzzy' : 'none';
       }
     }
@@ -303,7 +298,7 @@ export class PlexWatchlistService {
         if (!best || score > best.score) best = { item: it, score };
       }
       if (best && best.score >= 0.8) {
-        candidates = wl.items.filter((it) => it.title === best!.item.title);
+        candidates = wl.items.filter((it) => it.title === best.item.title);
         matchedBy = candidates.length > 0 ? 'fuzzy' : 'none';
       }
     }
@@ -342,18 +337,41 @@ export class PlexWatchlistService {
     ];
 
     // Endpoint shapes vary across Plex versions/backends; try a few known patterns.
-    const candidates: Array<{ path: string; method: 'PUT' | 'POST' | 'DELETE' }> =
-      [
-        { method: 'PUT', path: `actions/removeFromWatchlist?ratingKey=${encodeURIComponent(key)}` },
-        { method: 'PUT', path: `actions/removeFromWatchlist?key=${encodeURIComponent(key)}` },
-        { method: 'PUT', path: `library/metadata/${encodeURIComponent(key)}/actions/removeFromWatchlist` },
-        { method: 'POST', path: `library/metadata/${encodeURIComponent(key)}/actions/removeFromWatchlist` },
-        // Some implementations expose the action directly under /library/metadata/<key>/removeFromWatchlist
-        { method: 'PUT', path: `library/metadata/${encodeURIComponent(key)}/removeFromWatchlist` },
-        { method: 'POST', path: `library/metadata/${encodeURIComponent(key)}/removeFromWatchlist` },
-        // Last resort: some backends accept DELETE on a watchlist metadata endpoint.
-        { method: 'DELETE', path: `library/metadata/${encodeURIComponent(key)}/watchlist` },
-      ];
+    const candidates: Array<{
+      path: string;
+      method: 'PUT' | 'POST' | 'DELETE';
+    }> = [
+      {
+        method: 'PUT',
+        path: `actions/removeFromWatchlist?ratingKey=${encodeURIComponent(key)}`,
+      },
+      {
+        method: 'PUT',
+        path: `actions/removeFromWatchlist?key=${encodeURIComponent(key)}`,
+      },
+      {
+        method: 'PUT',
+        path: `library/metadata/${encodeURIComponent(key)}/actions/removeFromWatchlist`,
+      },
+      {
+        method: 'POST',
+        path: `library/metadata/${encodeURIComponent(key)}/actions/removeFromWatchlist`,
+      },
+      // Some implementations expose the action directly under /library/metadata/<key>/removeFromWatchlist
+      {
+        method: 'PUT',
+        path: `library/metadata/${encodeURIComponent(key)}/removeFromWatchlist`,
+      },
+      {
+        method: 'POST',
+        path: `library/metadata/${encodeURIComponent(key)}/removeFromWatchlist`,
+      },
+      // Last resort: some backends accept DELETE on a watchlist metadata endpoint.
+      {
+        method: 'DELETE',
+        path: `library/metadata/${encodeURIComponent(key)}/watchlist`,
+      },
+    ];
 
     for (const base of bases) {
       for (const c of candidates) {
@@ -419,7 +437,9 @@ export class PlexWatchlistService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.log(`Plex watchlist HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`);
+      this.logger.log(
+        `Plex watchlist HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
+      );
       return true;
     } finally {
       clearTimeout(timeout);
@@ -473,5 +493,3 @@ export class PlexWatchlistService {
     }
   }
 }
-
-

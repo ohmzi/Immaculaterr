@@ -13,6 +13,16 @@ type OpenAiChatCompletionsResponse = {
   choices?: unknown;
 };
 
+type MovieCandidateForSelection = {
+  tmdbId: number;
+  title: string;
+  releaseDate: string | null;
+  voteAverage?: number | null;
+  voteCount?: number | null;
+  popularity?: number | null;
+  sources?: string[] | null;
+};
+
 @Injectable()
 export class OpenAiService {
   private readonly logger = new Logger(OpenAiService.name);
@@ -132,13 +142,15 @@ export class OpenAiService {
       }
 
       const data = (await res.json()) as OpenAiChatCompletionsResponse;
-      const choices = Array.isArray((data as any)?.choices)
-        ? ((data as any).choices as Array<Record<string, unknown>>)
+      const choicesRaw = data.choices;
+      const choices = Array.isArray(choicesRaw)
+        ? (choicesRaw as unknown[])
         : [];
       const first = choices[0];
-      const content = first?.message && typeof first.message === 'object'
-        ? (first.message as Record<string, unknown>)['content']
-        : null;
+      if (!first || typeof first !== 'object') return '';
+      const message = (first as Record<string, unknown>)['message'];
+      if (!message || typeof message !== 'object') return '';
+      const content = (message as Record<string, unknown>)['content'];
       return typeof content === 'string' ? content : '';
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
@@ -252,6 +264,118 @@ export class OpenAiService {
 
     return parseNewlineRecommendations(text, limit);
   }
+
+  async selectFromCandidates(params: {
+    apiKey: string;
+    model?: string | null;
+    seedTitle: string;
+    tmdbSeedMetadata?: Record<string, unknown> | null;
+    releasedTarget: number;
+    upcomingTarget: number;
+    releasedCandidates: MovieCandidateForSelection[];
+    upcomingCandidates: MovieCandidateForSelection[];
+  }): Promise<{ released: number[]; upcoming: number[] }> {
+    const seedTitle = params.seedTitle.trim();
+    const model = (params.model ?? '').trim() || 'gpt-5.2-chat-latest';
+    const releasedTarget = Math.max(0, Math.trunc(params.releasedTarget ?? 0));
+    const upcomingTarget = Math.max(0, Math.trunc(params.upcomingTarget ?? 0));
+
+    const releasedSlim = (params.releasedCandidates ?? []).map((c) => ({
+      tmdbId: c.tmdbId,
+      title: c.title,
+      releaseDate: c.releaseDate,
+      voteAverage: c.voteAverage ?? null,
+      voteCount: c.voteCount ?? null,
+      popularity: c.popularity ?? null,
+      sources: c.sources ?? null,
+    }));
+    const upcomingSlim = (params.upcomingCandidates ?? []).map((c) => ({
+      tmdbId: c.tmdbId,
+      title: c.title,
+      releaseDate: c.releaseDate,
+      popularity: c.popularity ?? null,
+      sources: c.sources ?? null,
+    }));
+
+    const prompt = [
+      `You are a movie recommendation selector.`,
+      ``,
+      `Seed title: ${seedTitle}`,
+      `TMDb seed metadata (JSON): ${safeJsonString(params.tmdbSeedMetadata ?? {})}`,
+      ``,
+      `You MUST select exactly:`,
+      `- released: ${releasedTarget}`,
+      `- upcoming: ${upcomingTarget}`,
+      ``,
+      `You may ONLY select from the candidates provided below.`,
+      `Return STRICT JSON only with this schema:`,
+      `{ "released": [123, 456], "upcoming": [789, 101] }`,
+      ``,
+      `Released candidates (JSON array):`,
+      safeJsonString(releasedSlim),
+      ``,
+      `Upcoming candidates (JSON array):`,
+      safeJsonString(upcomingSlim),
+      ``,
+      `Rules:`,
+      `- Output MUST contain only tmdbId numbers from the candidate lists.`,
+      `- Output MUST contain no duplicates across both arrays.`,
+      `- If you cannot satisfy the exact counts, output empty arrays.`,
+    ].join('\n');
+
+    const text = await this.chatCompletions({
+      apiKey: params.apiKey,
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You select movies from provided candidates.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      timeoutMs: 45000,
+    });
+
+    const parsed = tryParseSelectionJson(text);
+    if (!parsed) return { released: [], upcoming: [] };
+
+    const releasedIds = parsed.released.slice(0, releasedTarget);
+    const upcomingIds = parsed.upcoming.slice(0, upcomingTarget);
+
+    // Validate membership + exact counts.
+    const releasedSet = new Set(
+      (params.releasedCandidates ?? []).map((c) => c.tmdbId),
+    );
+    const upcomingSet = new Set(
+      (params.upcomingCandidates ?? []).map((c) => c.tmdbId),
+    );
+
+    const seen = new Set<number>();
+    const clean = (ids: number[], allow: Set<number>) => {
+      const out: number[] = [];
+      for (const id of ids) {
+        const n = Number.isFinite(id) ? Math.trunc(id) : NaN;
+        if (!Number.isFinite(n) || n <= 0) continue;
+        if (seen.has(n)) continue;
+        if (!allow.has(n)) continue;
+        seen.add(n);
+        out.push(n);
+      }
+      return out;
+    };
+
+    const cleanReleased = clean(releasedIds, releasedSet);
+    const cleanUpcoming = clean(upcomingIds, upcomingSet);
+
+    if (
+      cleanReleased.length !== releasedTarget ||
+      cleanUpcoming.length !== upcomingTarget
+    ) {
+      return { released: [], upcoming: [] };
+    }
+
+    return { released: cleanReleased, upcoming: cleanUpcoming };
+  }
 }
 
 function safeJsonString(value: unknown): string {
@@ -267,15 +391,19 @@ function cleanTitle(line: string): string | null {
   if (!s) return null;
 
   // Remove bullet / numbering prefixes
-  s = s.replace(/^\s*[\-\*\u2022]\s*/, '');
-  s = s.replace(/^\s*\d+[\.\)]\s*/, '');
+  s = s.replace(/^\s*[-*\u2022]\s*/, '');
+  s = s.replace(/^\s*\d+[.)]\s*/, '');
 
   // Remove trailing year patterns
   s = s.replace(/\(\s*\d{4}\s*\)\s*$/, '');
   s = s.replace(/\s*[-–—]\s*\d{4}\s*$/, '');
 
   // Remove surrounding quotes
-  s = s.trim().replace(/^["']+/, '').replace(/["']+$/, '').trim();
+  s = s
+    .trim()
+    .replace(/^["']+/, '')
+    .replace(/["']+$/, '')
+    .trim();
 
   return s || null;
 }
@@ -306,7 +434,10 @@ function stripMarkdownFences(text: string): string {
   return t;
 }
 
-function tryParseJsonRecs(text: string): { primary: string[]; upcoming: string[] } {
+function tryParseJsonRecs(text: string): {
+  primary: string[];
+  upcoming: string[];
+} {
   if (!text || !text.trim()) return { primary: [], upcoming: [] };
   const t = stripMarkdownFences(text);
   let obj: unknown;
@@ -386,4 +517,41 @@ function mergePrimaryAndUpcoming(
   }
 
   return out.slice(0, limit);
+}
+
+function tryParseSelectionJson(
+  text: string,
+): { released: number[]; upcoming: number[] } | null {
+  const t = stripMarkdownFences(text || '');
+  let obj: unknown;
+  try {
+    obj = JSON.parse(t);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const rec = obj as Record<string, unknown>;
+  return {
+    released: coerceNumberList(rec['released']),
+    upcoming: coerceNumberList(rec['upcoming']),
+  };
+}
+
+function coerceNumberList(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const v of value) {
+    const n =
+      typeof v === 'number' && Number.isFinite(v)
+        ? Math.trunc(v)
+        : typeof v === 'string' && v.trim()
+          ? Number.parseInt(v.trim(), 10)
+          : NaN;
+    if (!Number.isFinite(n) || n <= 0) continue;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
 }

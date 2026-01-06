@@ -6,7 +6,6 @@ import {
   Save,
   LogIn,
   LockKeyhole,
-  Sparkles,
   Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';

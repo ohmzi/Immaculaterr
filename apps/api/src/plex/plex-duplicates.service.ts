@@ -126,8 +126,11 @@ export class PlexDuplicatesService {
       preserveQualityTerms,
     } = params;
 
-    const meta =
-      await this.plex.getMetadataDetails({ baseUrl, token, ratingKey });
+    const meta = await this.plex.getMetadataDetails({
+      baseUrl,
+      token,
+      ratingKey,
+    });
     if (!meta) {
       return {
         dryRun,
@@ -208,9 +211,7 @@ export class PlexDuplicatesService {
         );
         return [];
       }
-      return copies.filter(
-        (c) => (c.partKey ?? c.partId ?? null) !== keptKey,
-      );
+      return copies.filter((c) => (c.partKey ?? c.partId ?? null) !== keptKey);
     })();
 
     let deleted = 0;
@@ -288,8 +289,11 @@ export class PlexDuplicatesService {
   }): Promise<PlexDuplicateCleanupResult> {
     const { baseUrl, token, ratingKey, dryRun } = params;
 
-    const meta =
-      await this.plex.getMetadataDetails({ baseUrl, token, ratingKey });
+    const meta = await this.plex.getMetadataDetails({
+      baseUrl,
+      token,
+      ratingKey,
+    });
     if (!meta) {
       return {
         dryRun,
@@ -339,14 +343,12 @@ export class PlexDuplicatesService {
       };
     }
 
-    const ordered = copies
-      .slice()
-      .sort((a, b) => {
-        const pa = resolutionPriority(a.videoResolution);
-        const pb = resolutionPriority(b.videoResolution);
-        if (pa !== pb) return pa - pb; // worst first
-        return sortBySizeAsc(a, b);
-      });
+    const ordered = copies.slice().sort((a, b) => {
+      const pa = resolutionPriority(a.videoResolution);
+      const pb = resolutionPriority(b.videoResolution);
+      if (pa !== pb) return pa - pb; // worst first
+      return sortBySizeAsc(a, b);
+    });
 
     const toDelete = ordered.slice(0, -1);
     const kept = ordered.at(-1) ?? null;
@@ -374,7 +376,11 @@ export class PlexDuplicatesService {
       }
 
       try {
-        await this.plex.deletePartByKey({ baseUrl, token, partKey: copy.partKey });
+        await this.plex.deletePartByKey({
+          baseUrl,
+          token,
+          partKey: copy.partKey,
+        });
         deleted += 1;
         deletions.push({ ...copy, deleted: true });
       } catch (err) {
@@ -409,5 +415,3 @@ export class PlexDuplicatesService {
     };
   }
 }
-
-

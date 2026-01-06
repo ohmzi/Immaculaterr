@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, CircleAlert, Loader2, RotateCcw } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react';
 
 import { listJobs, listRuns, type JobRun } from '@/api/jobs';
 
@@ -44,6 +50,7 @@ export function RewindPage() {
   const [jobId, setJobId] = useState('');
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
@@ -79,6 +86,14 @@ export function RewindPage() {
     return new Map(jobs.map((j) => [j.id, j.name] as const));
   }, [jobsQuery.data?.jobs]);
 
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (jobId) n += 1;
+    if (status) n += 1;
+    if (q.trim()) n += 1;
+    return n;
+  }, [jobId, status, q]);
+
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
   const labelClass = 'block text-sm font-medium text-white/70 mb-2';
@@ -86,6 +101,51 @@ export function RewindPage() {
     'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
   const inputClass = `w-full ${inputBaseClass}`;
   const selectClass = `w-full ${inputBaseClass}`;
+
+  const filtersForm = (
+    <div className="grid gap-4 md:grid-cols-3">
+      <div>
+        <label className={labelClass}>Job</label>
+        <select
+          value={jobId}
+          onChange={(e) => setJobId(e.target.value)}
+          className={selectClass}
+        >
+          <option value="">All jobs</option>
+          {(jobsQuery.data?.jobs ?? []).map((j) => (
+            <option key={j.id} value={j.id}>
+              {j.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className={labelClass}>Status</label>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className={selectClass}
+        >
+          <option value="">Any</option>
+          <option value="RUNNING">RUNNING</option>
+          <option value="SUCCESS">SUCCESS</option>
+          <option value="FAILED">FAILED</option>
+          <option value="PENDING">PENDING</option>
+        </select>
+      </div>
+
+      <div>
+        <label className={labelClass}>Search</label>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="jobId, status, error text…"
+          className={inputClass}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
@@ -181,56 +241,49 @@ export function RewindPage() {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className={cardClass}>
+                {/* Filters (desktop: always expanded) */}
+                <div className={`${cardClass} hidden md:block`}>
                   <div className="mb-6">
                     <div className="text-2xl font-semibold text-white">Filters</div>
                     <div className="mt-2 text-sm text-white/70">
                       Filter by job, status, or a quick text search.
                     </div>
                   </div>
+                  {filtersForm}
+                </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div>
-                      <label className={labelClass}>Job</label>
-                      <select
-                        value={jobId}
-                        onChange={(e) => setJobId(e.target.value)}
-                        className={selectClass}
-                      >
-                        <option value="">All jobs</option>
-                        {(jobsQuery.data?.jobs ?? []).map((j) => (
-                          <option key={j.id} value={j.id}>
-                            {j.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className={labelClass}>Status</label>
-                      <select
-                        value={status}
-                        onChange={(e) => setStatus(e.target.value)}
-                        className={selectClass}
-                      >
-                        <option value="">Any</option>
-                        <option value="RUNNING">RUNNING</option>
-                        <option value="SUCCESS">SUCCESS</option>
-                        <option value="FAILED">FAILED</option>
-                        <option value="PENDING">PENDING</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className={labelClass}>Search</label>
-                      <input
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        placeholder="jobId, status, error text…"
-                        className={inputClass}
+                {/* Filters (mobile: collapsed by default) */}
+                <div className={`${cardClass} md:hidden`}>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFiltersOpen((v) => !v)}
+                    className="w-full text-left focus:outline-none touch-manipulation"
+                    aria-expanded={mobileFiltersOpen}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-2xl font-semibold text-white">
+                          Filters
+                        </div>
+                        <div className="mt-2 text-sm text-white/70">
+                          Filter by job, status, or a quick text search.
+                        </div>
+                        <div className="mt-2 text-xs text-white/60">
+                          {activeFilterCount
+                            ? `${activeFilterCount} active`
+                            : 'Tap to expand'}
+                        </div>
+                      </div>
+                      <ChevronDown
+                        className={[
+                          'mt-1 h-5 w-5 text-white/60 transition-transform',
+                          mobileFiltersOpen ? 'rotate-180' : '',
+                        ].join(' ')}
                       />
                     </div>
-                  </div>
+                  </button>
+
+                  {mobileFiltersOpen ? <div className="mt-6">{filtersForm}</div> : null}
                 </div>
 
                 <div className={cardClass}>

@@ -69,7 +69,9 @@ export class ImmaculateTasteCollectionJob {
     const seedTitle =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
     const seedRatingKey =
-      typeof input['seedRatingKey'] === 'string' ? input['seedRatingKey'].trim() : '';
+      typeof input['seedRatingKey'] === 'string'
+        ? input['seedRatingKey'].trim()
+        : '';
     const seedLibrarySectionIdRaw =
       typeof input['seedLibrarySectionId'] === 'number' &&
       Number.isFinite(input['seedLibrarySectionId'])
@@ -77,8 +79,13 @@ export class ImmaculateTasteCollectionJob {
         : typeof input['seedLibrarySectionId'] === 'string'
           ? input['seedLibrarySectionId'].trim()
           : '';
+    const seedLibrarySectionTitle =
+      typeof input['seedLibrarySectionTitle'] === 'string'
+        ? input['seedLibrarySectionTitle'].trim()
+        : '';
     const seedYear =
-      typeof input['seedYear'] === 'number' && Number.isFinite(input['seedYear'])
+      typeof input['seedYear'] === 'number' &&
+      Number.isFinite(input['seedYear'])
         ? Math.trunc(input['seedYear'])
         : null;
 
@@ -89,8 +96,10 @@ export class ImmaculateTasteCollectionJob {
       seedYear,
       seedRatingKey: seedRatingKey || null,
       seedLibrarySectionId: seedLibrarySectionIdRaw || null,
+      seedLibrarySectionTitle: seedLibrarySectionTitle || null,
       source: typeof input['source'] === 'string' ? input['source'] : null,
-      plexEvent: typeof input['plexEvent'] === 'string' ? input['plexEvent'] : null,
+      plexEvent:
+        typeof input['plexEvent'] === 'string' ? input['plexEvent'] : null,
     });
 
     if (!seedTitle) {
@@ -109,20 +118,18 @@ export class ImmaculateTasteCollectionJob {
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const configuredMovieLibraryName =
-      pickString(settings, 'plex.movieLibraryName') ||
-      pickString(settings, 'plex.movie_library_name') ||
-      'Movies';
-    const configuredMovieLibraryKey =
-      pickString(settings, 'plex.movieLibraryKey') ||
-      pickString(settings, 'plex.movie_library_key') ||
-      '';
+    const sections = await this.plexServer.getSections({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+    });
+    const movieSections = sections
+      .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+      .sort((a, b) => a.title.localeCompare(b.title));
+    if (!movieSections.length) throw new Error('No Plex movie libraries found');
 
     // Prefer the library section Plex tells us the watched movie belongs to.
-    let movieSectionKey =
-      seedLibrarySectionIdRaw ||
-      (configuredMovieLibraryKey ? configuredMovieLibraryKey.trim() : '');
-    let movieLibraryName = configuredMovieLibraryName;
+    let movieSectionKey = seedLibrarySectionIdRaw || '';
+    let movieLibraryName = seedLibrarySectionTitle || '';
 
     if (!movieSectionKey && seedRatingKey) {
       const meta = await this.plexServer
@@ -133,23 +140,26 @@ export class ImmaculateTasteCollectionJob {
         })
         .catch(() => null);
       if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
-      if (meta?.librarySectionTitle) movieLibraryName = meta.librarySectionTitle;
+      if (meta?.librarySectionTitle)
+        movieLibraryName = meta.librarySectionTitle;
     }
 
     if (!movieSectionKey) {
-      movieSectionKey = await this.plexServer.findSectionKeyByTitle({
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        title: configuredMovieLibraryName,
-      });
-      movieLibraryName = configuredMovieLibraryName;
+      const preferred =
+        movieSections.find((s) => s.title.toLowerCase() === 'movies') ??
+        movieSections[0];
+      movieSectionKey = preferred.key;
+      movieLibraryName = preferred.title;
     } else {
-      // Best-effort: resolve section title for logging
-      const sections = await this.plexServer
-        .getSections({ baseUrl: plexBaseUrl, token: plexToken })
-        .catch(() => []);
       const match = sections.find((s) => s.key === movieSectionKey);
       if (match?.title) movieLibraryName = match.title;
+    }
+
+    if (!movieLibraryName) {
+      movieLibraryName =
+        sections.find((s) => s.key === movieSectionKey)?.title ??
+        movieSections.find((s) => s.key === movieSectionKey)?.title ??
+        'Movies';
     }
 
     // --- Recommendation + integration config ---
@@ -168,14 +178,24 @@ export class ImmaculateTasteCollectionJob {
     const googleApiKey = pickString(secrets, 'google.apiKey');
     const googleSearchEngineId = pickString(settings, 'google.searchEngineId');
     const googleEnabled =
-      openAiEnabled &&
       googleEnabledFlag &&
       Boolean(googleApiKey) &&
       Boolean(googleSearchEngineId);
 
-    const suggestionsPerRun =
-      Math.trunc(pickNumber(settings, 'immaculateTaste.suggestionsPerRun') ?? 50) ||
+    const suggestionsPerRunRaw =
+      pickNumber(settings, 'recommendations.count') ??
+      pickNumber(settings, 'immaculateTaste.suggestionsPerRun') ??
       50;
+    const suggestionsPerRun = Math.max(
+      1,
+      Math.min(200, Math.trunc(suggestionsPerRunRaw || 50)),
+    );
+    const upcomingPercentRaw =
+      pickNumber(settings, 'recommendations.upcomingPercent') ?? 25;
+    const upcomingPercent = Math.max(
+      0,
+      Math.min(75, Math.trunc(upcomingPercentRaw || 25)),
+    );
     const maxPoints =
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
     const includeRefresherAfterUpdate =
@@ -191,6 +211,7 @@ export class ImmaculateTasteCollectionJob {
       openAiEnabled,
       googleEnabled,
       suggestionsPerRun,
+      upcomingPercent,
       maxPoints,
       includeRefresherAfterUpdate,
       webContextFraction,
@@ -206,7 +227,10 @@ export class ImmaculateTasteCollectionJob {
       tmdbApiKey,
       count: suggestionsPerRun,
       webContextFraction,
-      openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+      upcomingPercent,
+      openai: openAiEnabled
+        ? { apiKey: openAiApiKey, model: openAiModel }
+        : null,
       google: googleEnabled
         ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
         : null,
@@ -236,7 +260,8 @@ export class ImmaculateTasteCollectionJob {
           title: t,
         })
         .catch(() => null);
-      if (found) resolved.push({ ratingKey: found.ratingKey, title: found.title });
+      if (found)
+        resolved.push({ ratingKey: found.ratingKey, title: found.title });
       else missingTitles.push(t);
     }
 
@@ -245,16 +270,129 @@ export class ImmaculateTasteCollectionJob {
     for (const it of resolved) {
       if (!unique.has(it.ratingKey)) unique.set(it.ratingKey, it.title);
     }
-    const suggestedItems = Array.from(unique.entries()).map(([ratingKey, title]) => ({
-      ratingKey,
-      title,
-    }));
+    const suggestedItems = Array.from(unique.entries()).map(
+      ([ratingKey, title]) => ({
+        ratingKey,
+        title,
+      }),
+    );
 
     await ctx.info('immaculateTastePoints: plex resolve done', {
       resolved: suggestedItems.length,
       missing: missingTitles.length,
       sampleMissing: missingTitles.slice(0, 10),
       sampleResolved: suggestedItems.slice(0, 10).map((d) => d.title),
+    });
+
+    // --- Resolve TMDB ids + ratings for BOTH in-Plex and missing titles (so we can persist pending suggestions)
+    const tmdbDetailsCache = new Map<
+      number,
+      { vote_average: number | null; vote_count: number | null }
+    >();
+    const getVoteStats = async (tmdbId: number) => {
+      const cached = tmdbDetailsCache.get(tmdbId) ?? null;
+      if (cached) return cached;
+
+      const vote = await this.tmdb
+        .getMovieVoteStats({ apiKey: tmdbApiKey, tmdbId })
+        .catch(() => null);
+      const normalized = {
+        vote_average: vote?.vote_average ?? null,
+        vote_count: vote?.vote_count ?? null,
+      };
+      tmdbDetailsCache.set(tmdbId, normalized);
+      return normalized;
+    };
+    const suggestedForPoints: Array<{
+      tmdbId: number;
+      title: string;
+      tmdbVoteAvg: number | null;
+      tmdbVoteCount: number | null;
+      inPlex: boolean;
+    }> = [];
+
+    const missingTitleToTmdb = new Map<
+      string,
+      {
+        tmdbId: number;
+        title: string;
+        year: number | null;
+        vote_average: number | null;
+        vote_count: number | null;
+      }
+    >();
+
+    // In Plex: prefer Plex GUIDs for tmdbId, then fetch rating from TMDB.
+    for (const it of suggestedItems) {
+      const rk = it.ratingKey.trim();
+      if (!rk) continue;
+
+      const meta = await this.plexServer
+        .getMetadataDetails({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          ratingKey: rk,
+        })
+        .catch(() => null);
+
+      let tmdbId = meta?.tmdbIds?.[0] ?? null;
+      const title = (meta?.title ?? it.title ?? '').trim() || it.title;
+
+      if (!tmdbId) {
+        const match = await this.pickBestTmdbMatch({
+          tmdbApiKey,
+          title,
+        }).catch(() => null);
+        tmdbId = match?.tmdbId ?? null;
+      }
+
+      if (!tmdbId) continue;
+
+      const cached = await getVoteStats(tmdbId);
+
+      suggestedForPoints.push({
+        tmdbId,
+        title,
+        tmdbVoteAvg: cached.vote_average,
+        tmdbVoteCount: cached.vote_count,
+        inPlex: true,
+      });
+    }
+
+    // Missing in Plex: resolve via TMDB search (includes vote_average/vote_count).
+    for (const title of missingTitles) {
+      const t = title.trim();
+      if (!t) continue;
+      if (missingTitleToTmdb.has(t)) continue;
+
+      const match = await this.pickBestTmdbMatch({
+        tmdbApiKey,
+        title: t,
+      }).catch(() => null);
+      if (!match) continue;
+
+      const cached = await getVoteStats(match.tmdbId);
+      const resolved = {
+        ...match,
+        vote_average: cached.vote_average ?? match.vote_average,
+        vote_count: cached.vote_count ?? match.vote_count,
+      };
+
+      missingTitleToTmdb.set(t, resolved);
+      suggestedForPoints.push({
+        tmdbId: resolved.tmdbId,
+        title: resolved.title,
+        tmdbVoteAvg: resolved.vote_average,
+        tmdbVoteCount: resolved.vote_count,
+        inPlex: false,
+      });
+    }
+
+    await ctx.info('immaculateTastePoints: tmdb resolve done', {
+      suggestedForPoints: suggestedForPoints.length,
+      withPlex: suggestedForPoints.filter((s) => s.inPlex).length,
+      pending: suggestedForPoints.filter((s) => !s.inPlex).length,
+      sampleTmdb: suggestedForPoints.slice(0, 10).map((s) => s.tmdbId),
     });
 
     // --- Optional Radarr: add missing titles (best-effort) ---
@@ -265,7 +403,9 @@ export class ImmaculateTasteCollectionJob {
       (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
       Boolean(radarrBaseUrlRaw) &&
       Boolean(radarrApiKey);
-    const radarrBaseUrl = radarrEnabled ? normalizeHttpUrl(radarrBaseUrlRaw) : '';
+    const radarrBaseUrl = radarrEnabled
+      ? normalizeHttpUrl(radarrBaseUrlRaw)
+      : '';
 
     const radarrStats = {
       enabled: radarrEnabled,
@@ -307,14 +447,14 @@ export class ImmaculateTasteCollectionJob {
       }).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
 
       if ('error' in defaults) {
-        await ctx.warn('radarr: defaults unavailable (skipping adds)', defaults);
+        await ctx.warn(
+          'radarr: defaults unavailable (skipping adds)',
+          defaults,
+        );
       } else {
         for (const title of missingTitles) {
           radarrStats.attempted += 1;
-          const tmdbMatch = await this.pickBestTmdbMatch({
-            tmdbApiKey,
-            title,
-          }).catch(() => null);
+          const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
           if (!tmdbMatch) {
             radarrStats.skipped += 1;
             continue;
@@ -354,7 +494,7 @@ export class ImmaculateTasteCollectionJob {
       ? ({ dryRun: true } as JsonObject)
       : await this.immaculateTaste.applyPointsUpdate({
           ctx,
-          suggested: suggestedItems,
+          suggested: suggestedForPoints,
           maxPoints,
         });
 
@@ -426,26 +566,35 @@ export class ImmaculateTasteCollectionJob {
       this.radarr.listTags({ baseUrl, apiKey }),
     ]);
 
-    if (!rootFolders.length) throw new Error('Radarr has no root folders configured');
+    if (!rootFolders.length)
+      throw new Error('Radarr has no root folders configured');
     if (!qualityProfiles.length)
       throw new Error('Radarr has no quality profiles configured');
 
     const preferredRoot = (params.preferredRootFolderPath ?? '').trim();
     const rootFolder = preferredRoot
-      ? rootFolders.find((r) => r.path === preferredRoot) ?? rootFolders[0]
+      ? (rootFolders.find((r) => r.path === preferredRoot) ?? rootFolders[0])
       : rootFolders[0];
 
-    const desiredQualityId = Math.max(1, Math.trunc(params.preferredQualityProfileId ?? 1));
+    const desiredQualityId = Math.max(
+      1,
+      Math.trunc(params.preferredQualityProfileId ?? 1),
+    );
     const qualityProfile =
       qualityProfiles.find((p) => p.id === desiredQualityId) ??
-      (desiredQualityId !== 1 ? qualityProfiles.find((p) => p.id === 1) : null) ??
+      (desiredQualityId !== 1
+        ? qualityProfiles.find((p) => p.id === 1)
+        : null) ??
       qualityProfiles[0];
 
     const preferredTagId =
-      typeof params.preferredTagId === 'number' && Number.isFinite(params.preferredTagId)
+      typeof params.preferredTagId === 'number' &&
+      Number.isFinite(params.preferredTagId)
         ? Math.trunc(params.preferredTagId)
         : null;
-    const tag = preferredTagId ? tags.find((t) => t.id === preferredTagId) : null;
+    const tag = preferredTagId
+      ? tags.find((t) => t.id === preferredTagId)
+      : null;
 
     const rootFolderPath = rootFolder.path;
     const qualityProfileId = qualityProfile.id;
@@ -457,8 +606,12 @@ export class ImmaculateTasteCollectionJob {
       qualityProfileName: qualityProfile.name,
       tagIds,
       tagLabel: tag?.label ?? null,
-      usedPreferredRootFolder: Boolean(preferredRoot && rootFolder.path === preferredRoot),
-      usedPreferredQualityProfile: Boolean(qualityProfile.id === desiredQualityId),
+      usedPreferredRootFolder: Boolean(
+        preferredRoot && rootFolder.path === preferredRoot,
+      ),
+      usedPreferredQualityProfile: Boolean(
+        qualityProfile.id === desiredQualityId,
+      ),
       usedPreferredTag: Boolean(tag),
     });
 
@@ -468,7 +621,13 @@ export class ImmaculateTasteCollectionJob {
   private async pickBestTmdbMatch(params: {
     tmdbApiKey: string;
     title: string;
-  }): Promise<{ tmdbId: number; title: string; year: number | null } | null> {
+  }): Promise<{
+    tmdbId: number;
+    title: string;
+    year: number | null;
+    vote_average: number | null;
+    vote_count: number | null;
+  } | null> {
     const results = await this.tmdb.searchMovie({
       apiKey: params.tmdbApiKey,
       query: params.title,
@@ -487,8 +646,15 @@ export class ImmaculateTasteCollectionJob {
       tmdbId: best.id,
       title: best.title,
       year: Number.isFinite(year) ? year : null,
+      vote_average:
+        typeof best.vote_average === 'number' &&
+        Number.isFinite(best.vote_average)
+          ? Number(best.vote_average)
+          : null,
+      vote_count:
+        typeof best.vote_count === 'number' && Number.isFinite(best.vote_count)
+          ? Math.max(0, Math.trunc(best.vote_count))
+          : null,
     };
   }
 }
-
-

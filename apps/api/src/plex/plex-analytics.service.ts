@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from './plex-server.service';
+import { createHash } from 'crypto';
 
 export type PlexLibraryGrowthPoint = {
   month: string; // YYYY-MM (UTC)
@@ -18,6 +19,11 @@ export type PlexLibraryGrowthResponse = {
     tv: number;
     total: number;
   };
+};
+
+export type PlexLibraryGrowthVersionResponse = {
+  ok: true;
+  version: string;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -135,10 +141,44 @@ export class PlexAnalyticsService {
     { signature: string; expiresAt: number; data: PlexLibraryGrowthResponse }
   >();
 
+  private readonly growthBustCounterByUserId = new Map<string, number>();
+
   constructor(
     private readonly settings: SettingsService,
     private readonly plexServer: PlexServerService,
   ) {}
+
+  invalidateLibraryGrowth(userId: string) {
+    this.cache.delete(userId);
+    this.growthBustCounterByUserId.set(
+      userId,
+      (this.growthBustCounterByUserId.get(userId) ?? 0) + 1,
+    );
+  }
+
+  async getLibraryGrowthVersion(
+    userId: string,
+  ): Promise<PlexLibraryGrowthVersionResponse> {
+    const { settings, secrets } =
+      await this.settings.getInternalSettings(userId);
+
+    const baseUrlRaw = pickString(settings, 'plex.baseUrl');
+    const token = pickString(secrets, 'plex.token');
+
+    const signatureSeed = (() => {
+      if (!baseUrlRaw || !token) return 'unconfigured';
+      const baseUrl = normalizeHttpUrl(baseUrlRaw);
+      return baseUrl;
+    })();
+
+    const signatureHash = createHash('sha256')
+      .update(signatureSeed)
+      .digest('hex')
+      .slice(0, 16);
+
+    const counter = this.growthBustCounterByUserId.get(userId) ?? 0;
+    return { ok: true, version: `${signatureHash}:${counter}` };
+  }
 
   async getLibraryGrowth(userId: string): Promise<PlexLibraryGrowthResponse> {
     const { settings, secrets } =
@@ -191,7 +231,7 @@ export class PlexAnalyticsService {
       };
       this.cache.set(userId, {
         signature,
-        expiresAt: now + 10 * 60_000,
+        expiresAt: now + 24 * 60 * 60_000,
         data,
       });
       return data;
@@ -234,8 +274,8 @@ export class PlexAnalyticsService {
       },
     };
 
-    // Cache for 10 minutes
-    this.cache.set(userId, { signature, expiresAt: now + 10 * 60_000, data });
+    // Cache for 24 hours (webhooks will invalidate on library.new)
+    this.cache.set(userId, { signature, expiresAt: now + 24 * 60 * 60_000, data });
     return data;
   }
 }

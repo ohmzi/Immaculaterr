@@ -129,16 +129,67 @@ model CuratedCollectionItem {
   @@index([collectionId])
 }
 
+enum ImmaculateTasteStatus {
+  pending
+  active
+}
+
 model ImmaculateTasteMovie {
-  ratingKey String @id
-  title     String?
-  points    Int
-  tmdbId    Int?
+  tmdbId Int @id
+  title  String?
+
+  status ImmaculateTasteStatus @default(pending)
+  points Int                  @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([status])
   @@index([points])
+  @@index([tmdbVoteAvg])
+}
+
+enum WatchedRecommendationStatus {
+  pending
+  active
+}
+
+model WatchedMovieRecommendation {
+  collectionName String
+  tmdbId          Int
+  title           String?
+
+  status WatchedRecommendationStatus @default(pending)
+  points Int                         @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([collectionName, tmdbId])
+  @@index([collectionName, status])
+  @@index([collectionName, points])
+  @@index([collectionName, tmdbVoteAvg])
+}
+
+// Legacy table preserved by historical migrations (not used by Prisma Client).
+// We keep it in the database for debugging/back-compat reference, so Prisma
+// migrations must NOT attempt to drop it.
+model ImmaculateTasteMovieLegacy {
+  ratingKey String @id
+  title     String?
+  points    Int
+  tmdbId    Int?
+  createdAt DateTime
+  updatedAt DateTime
+
+  @@map("ImmaculateTasteMovieLegacy")
+  @@ignore
 }
 
 

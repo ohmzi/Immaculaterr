@@ -1,9 +1,9 @@
 import { motion } from 'motion/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
-import { getPlexLibraryGrowth } from '@/api/plex';
+import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
 
 type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
 
@@ -162,18 +162,78 @@ function MonthXAxisTick(props: {
   );
 }
 
+const PLEX_GROWTH_STORAGE_KEY = 'tcp.dashboard.plexLibraryGrowth.v1';
+
+type StoredPlexGrowth = {
+  version: string;
+  cachedAt: number;
+  data: PlexLibraryGrowthResponse;
+};
+
+function readStoredPlexGrowth(): StoredPlexGrowth | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(PLEX_GROWTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const obj = parsed as Record<string, unknown>;
+    const version = typeof obj.version === 'string' ? obj.version : '';
+    const cachedAt = typeof obj.cachedAt === 'number' ? obj.cachedAt : NaN;
+    const data = obj.data as PlexLibraryGrowthResponse | undefined;
+    if (!version) return null;
+    if (!Number.isFinite(cachedAt) || cachedAt <= 0) return null;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    if ((data as { ok?: unknown }).ok !== true) return null;
+    return { version, cachedAt, data };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredPlexGrowth(next: StoredPlexGrowth) {
+  try {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(PLEX_GROWTH_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage failures (private mode, quota, etc.)
+  }
+}
+
 export function HeroSection() {
-  const growthQuery = useQuery({
-    queryKey: ['plex', 'library-growth'],
-    queryFn: getPlexLibraryGrowth,
+  const stored = useMemo(() => readStoredPlexGrowth(), []);
+  const lastPersistedVersionRef = useRef<string | null>(stored?.version ?? null);
+
+  const growthVersionQuery = useQuery({
+    queryKey: ['plex', 'library-growth', 'version'],
+    queryFn: getPlexLibraryGrowthVersion,
     staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+
+  const version = growthVersionQuery.data?.version || stored?.version || 'unknown:0';
+
+  const growthQuery = useQuery({
+    queryKey: ['plex', 'library-growth', version],
+    queryFn: getPlexLibraryGrowth,
+    initialData: stored?.version === version ? stored.data : undefined,
+    initialDataUpdatedAt: stored?.version === version ? stored.cachedAt : undefined,
+    staleTime: Infinity,
     refetchOnWindowFocus: false,
     retry: 1,
   });
 
+  useEffect(() => {
+    if (!growthQuery.data) return;
+    if (!version) return;
+    if (lastPersistedVersionRef.current === version) return;
+    lastPersistedVersionRef.current = version;
+    writeStoredPlexGrowth({ version, cachedAt: Date.now(), data: growthQuery.data });
+  }, [growthQuery.data, version]);
+
   const series = growthQuery.data?.series ?? [];
-  const last = series.at(-1) ?? null;
-  const prev = series.length >= 2 ? series.at(-2)! : null;
 
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1Y');
 
@@ -202,13 +262,20 @@ export function HeroSection() {
     return series;
   }, [series, timeRange]);
 
-  const moviesTotal = last?.movies ?? 0;
-  const tvTotal = last?.tv ?? 0;
-  const moviesPrev = prev?.movies ?? 0;
-  const tvPrev = prev?.tv ?? 0;
+  const rangeOpt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
+  const rangeLabel = rangeOpt?.label ?? timeRange;
 
-  const moviesThisMonth = last ? moviesTotal - moviesPrev : 0;
-  const tvThisMonth = last ? tvTotal - tvPrev : 0;
+  const rangeFirst = filteredSeries[0] ?? null;
+  const rangeLast = filteredSeries.at(-1) ?? null;
+  const hasRangeDelta = filteredSeries.length >= 2 && Boolean(rangeFirst) && Boolean(rangeLast);
+
+  const moviesTotal = rangeLast?.movies ?? 0;
+  const tvTotal = rangeLast?.tv ?? 0;
+  const moviesRangeStart = rangeFirst?.movies ?? 0;
+  const tvRangeStart = rangeFirst?.tv ?? 0;
+
+  const moviesRangeDelta = hasRangeDelta ? moviesTotal - moviesRangeStart : 0;
+  const tvRangeDelta = hasRangeDelta ? tvTotal - tvRangeStart : 0;
 
   const hasData = series.length > 0 && (moviesTotal > 0 || tvTotal > 0);
   const showBlur = !hasData;
@@ -219,12 +286,12 @@ export function HeroSection() {
 
   const statsLabel = statsMedia === 'movies' ? 'Movies' : 'TV Shows';
   const statsTotal = statsMedia === 'movies' ? moviesTotal : tvTotal;
-  const statsPrevTotal = statsMedia === 'movies' ? moviesPrev : tvPrev;
-  const statsThisMonth = statsMedia === 'movies' ? moviesThisMonth : tvThisMonth;
+  const statsRangeStartTotal = statsMedia === 'movies' ? moviesRangeStart : tvRangeStart;
+  const statsRangeDelta = statsMedia === 'movies' ? moviesRangeDelta : tvRangeDelta;
   const statsGrowthPct =
-    statsPrevTotal > 0
-      ? Math.round(((statsTotal - statsPrevTotal) / statsPrevTotal) * 100)
-      : 0;
+    hasRangeDelta && statsRangeStartTotal > 0
+      ? Math.round((statsRangeDelta / statsRangeStartTotal) * 100)
+      : null;
 
   const moviesMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.movies), 0);
   const tvMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.tv), 0);
@@ -351,7 +418,7 @@ export function HeroSection() {
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                     <AreaChart
                       data={filteredSeries}
-                      margin={{ top: 8, right: 26, bottom: 8, left: 0 }}
+                      margin={{ top: 8, right: 12, bottom: 8, left: 0 }}
                     >
                       <defs>
                         <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
@@ -379,7 +446,7 @@ export function HeroSection() {
                         interval="preserveStartEnd"
                         minTickGap={16}
                         tickMargin={10}
-                        padding={{ left: 10, right: 22 }}
+                        padding={{ left: 10, right: 10 }}
                       />
                       <YAxis
                         yAxisId="tv"
@@ -486,24 +553,30 @@ export function HeroSection() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">This Month</p>
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">
+                        Change ({rangeLabel})
+                      </p>
                       <p className="text-white font-semibold">
                         {hasData
-                          ? `${statsThisMonth >= 0 ? '+' : ''}${statsThisMonth.toLocaleString()}`
+                          ? `${statsRangeDelta >= 0 ? '+' : ''}${statsRangeDelta.toLocaleString()}`
                           : '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Growth</p>
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">
+                        Growth ({rangeLabel})
+                      </p>
                       <p
                         className={[
                           'font-semibold',
-                          statsMedia === 'movies'
-                            ? 'text-yellow-400 dark:text-yellow-300'
-                            : 'text-blue-300 dark:text-blue-300',
+                          typeof statsGrowthPct === 'number' && statsGrowthPct < 0
+                            ? 'text-rose-400 dark:text-rose-300'
+                            : statsMedia === 'movies'
+                              ? 'text-yellow-400 dark:text-yellow-300'
+                              : 'text-blue-300 dark:text-blue-300',
                         ].join(' ')}
                       >
-                        {hasData && statsPrevTotal > 0
+                        {hasData && typeof statsGrowthPct === 'number'
                           ? `${statsGrowthPct >= 0 ? '+' : ''}${statsGrowthPct}%`
                           : '—'}
                       </p>

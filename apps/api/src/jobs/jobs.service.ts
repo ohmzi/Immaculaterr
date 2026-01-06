@@ -42,6 +42,16 @@ function toIsoString(value: unknown): string | null {
   return null;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getProgressSnapshot(summary: JsonObject | null): JsonObject | null {
+  if (!summary) return null;
+  const raw = (summary as Record<string, unknown>)['progress'];
+  return isPlainObject(raw) ? (raw as JsonObject) : null;
+}
+
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
@@ -119,6 +129,31 @@ export class JobsService {
       },
     });
 
+    // Best-effort live summary snapshot support (persisted to JobRun.summary).
+    // This powers the "Summary" section of the run detail UI while the job is RUNNING.
+    let summaryCache: JsonObject | null = null;
+    let summaryWriteChain: Promise<void> = Promise.resolve();
+    const enqueueSummaryWrite = (snapshot: JsonObject | null) => {
+      summaryWriteChain = summaryWriteChain
+        .catch(() => undefined)
+        .then(async () => {
+          await this.prisma.jobRun.update({
+            where: { id: run.id },
+            data: { summary: snapshot ?? Prisma.DbNull },
+          });
+        })
+        .catch((err) => {
+          // Avoid crashing the job if a summary write fails; logs still persist.
+          this.logger.warn(
+            `[${jobId}#${run.id}] summary write failed: ${errToMessage(err)}`,
+          );
+        });
+      return summaryWriteChain;
+    };
+    const awaitSummaryWrites = async () => {
+      await summaryWriteChain.catch(() => undefined);
+    };
+
     const log = async (
       level: JobLogLevel,
       message: string,
@@ -142,6 +177,15 @@ export class JobsService {
       dryRun,
       trigger,
       input,
+      getSummary: () => summaryCache,
+      setSummary: async (summary) => {
+        summaryCache = summary;
+        await enqueueSummaryWrite(summaryCache);
+      },
+      patchSummary: async (patch) => {
+        summaryCache = { ...(summaryCache ?? {}), ...(patch ?? {}) };
+        await enqueueSummaryWrite(summaryCache);
+      },
       log,
       debug: (m, c) => log('debug', m, c),
       info: (m, c) => log('info', m, c),
@@ -150,20 +194,38 @@ export class JobsService {
     };
 
     // Run in the background so API calls return quickly; status/logs are persisted.
-    void this.executeJobRun({ ctx, runId: run.id }).catch((err) => {
+    void this.executeJobRun({ ctx, runId: run.id, awaitSummaryWrites }).catch(
+      (err) => {
       this.logger.error(
         `Unhandled job execution error jobId=${jobId} runId=${run.id}: ${errToMessage(err)}`,
       );
-    });
+      },
+    );
 
     return run;
   }
 
-  private async executeJobRun(params: { ctx: JobContext; runId: string }) {
-    const { ctx, runId } = params;
+  private async executeJobRun(params: {
+    ctx: JobContext;
+    runId: string;
+    awaitSummaryWrites: () => Promise<void>;
+  }) {
+    const { ctx, runId, awaitSummaryWrites } = params;
     const jobId = ctx.jobId;
 
     try {
+      // Always set a minimal live summary upfront so the UI has something to show while running.
+      // Jobs can overwrite/patch this with richer progress details.
+      await ctx.setSummary({
+        phase: 'starting',
+        dryRun: ctx.dryRun,
+        trigger: ctx.trigger,
+        progress: {
+          step: 'starting',
+          message: 'Starting…',
+          updatedAt: new Date().toISOString(),
+        },
+      });
       await ctx.info('run: started', {
         trigger: ctx.trigger,
         dryRun: ctx.dryRun,
@@ -172,12 +234,54 @@ export class JobsService {
       const result = await this.handlers.run(jobId, ctx);
       await ctx.info('run: finished');
 
+      // Ensure any in-flight summary writes complete before we persist final status/summary.
+      await awaitSummaryWrites();
+
+      const liveSummary = ctx.getSummary();
+      const liveProgress = getProgressSnapshot(liveSummary);
+
+      // Prefer the job's explicit summary, but keep a final "done" progress snapshot
+      // if the job emitted progress updates during execution.
+      let finalSummary: JsonObject | null =
+        result.summary ?? liveSummary ?? null;
+
+      if (finalSummary && liveProgress) {
+        const totalRaw = (liveProgress as Record<string, unknown>)['total'];
+        const total =
+          typeof totalRaw === 'number' && Number.isFinite(totalRaw) && totalRaw >= 0
+            ? totalRaw
+            : null;
+        const currentRaw = (liveProgress as Record<string, unknown>)['current'];
+        const current =
+          typeof currentRaw === 'number' && Number.isFinite(currentRaw) && currentRaw >= 0
+            ? currentRaw
+            : null;
+
+        finalSummary = {
+          ...finalSummary,
+          progress: {
+            ...liveProgress,
+            step: 'done',
+            message: 'Completed.',
+            ...(total !== null
+              ? {
+                  total,
+                  current: total,
+                }
+              : current !== null
+                ? { current }
+                : {}),
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      }
+
       await this.prisma.jobRun.update({
         where: { id: runId },
         data: {
           status: 'SUCCESS',
           finishedAt: new Date(),
-          summary: result.summary ?? Prisma.DbNull,
+          summary: finalSummary ?? Prisma.DbNull,
           errorMessage: null,
         },
       });
@@ -190,6 +294,7 @@ export class JobsService {
           status: 'FAILED',
           finishedAt: new Date(),
           errorMessage: msg,
+          summary: ctx.getSummary() ?? Prisma.DbNull,
         },
       });
     } finally {

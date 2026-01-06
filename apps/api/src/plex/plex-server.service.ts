@@ -293,16 +293,17 @@ export class PlexServerService {
       const s = toStringSafe(raw).trim();
       return s ? s : null;
     })();
-    const year = typeof (item as Record<string, unknown>)['year'] === 'number'
-      ? ((item as Record<string, unknown>)['year'] as number)
-      : (() => {
-          const raw = (item as Record<string, unknown>)['year'];
-          if (typeof raw === 'string' && raw.trim()) {
-            const n = Number.parseInt(raw.trim(), 10);
-            return Number.isFinite(n) ? n : null;
-          }
-          return null;
-        })();
+    const year =
+      typeof (item as Record<string, unknown>)['year'] === 'number'
+        ? ((item as Record<string, unknown>)['year'] as number)
+        : (() => {
+            const raw = (item as Record<string, unknown>)['year'];
+            if (typeof raw === 'string' && raw.trim()) {
+              const n = Number.parseInt(raw.trim(), 10);
+              return Number.isFinite(n) ? n : null;
+            }
+            return null;
+          })();
 
     const addedAtRaw = item.addedAt;
     const addedAt =
@@ -346,7 +347,7 @@ export class PlexServerService {
     const tmdbIds = extractIdsFromGuids(item.Guid, 'tmdb');
     const tvdbIds = extractIdsFromGuids(item.Guid, 'tvdb');
 
-    const media = asPlexMediaArray((item as PlexMetadata).Media).map((m) => {
+    const media = asPlexMediaArray(item.Media).map((m) => {
       const mediaId = toStringSafe(m['id']).trim() || null;
       const videoResolution = toStringSafe(m['videoResolution']).trim() || null;
       const parts = asPlexPartArray(m['Part']).map((p) => ({
@@ -399,7 +400,9 @@ export class PlexServerService {
 
     const toUrl = (pathOrUrl: string) => {
       if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-      const normalized = pathOrUrl.startsWith('/') ? pathOrUrl.slice(1) : pathOrUrl;
+      const normalized = pathOrUrl.startsWith('/')
+        ? pathOrUrl.slice(1)
+        : pathOrUrl;
       return new URL(normalized, normalizeBaseUrl(baseUrl)).toString();
     };
 
@@ -614,7 +617,9 @@ export class PlexServerService {
       const rk = it.ratingKey ? String(it.ratingKey).trim() : '';
       if (!rk) continue;
       const title = typeof it.title === 'string' ? it.title : rk;
-      const tmdbId = it.Guid ? extractIdsFromGuids(it.Guid, 'tmdb')[0] ?? null : null;
+      const tmdbId = it.Guid
+        ? (extractIdsFromGuids(it.Guid, 'tmdb')[0] ?? null)
+        : null;
       const addedAt =
         typeof it.addedAt === 'number'
           ? Number.isFinite(it.addedAt)
@@ -1432,7 +1437,7 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.log(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+      this.logger.debug(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       const ms = Date.now() - startedAt;
@@ -1489,7 +1494,7 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.log(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+      this.logger.debug(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       const ms = Date.now() - startedAt;
@@ -1627,7 +1632,7 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.log(
+      this.logger.debug(
         `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
       );
     } finally {
@@ -1667,7 +1672,7 @@ export class PlexServerService {
         );
       }
 
-      this.logger.log(`Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
+      this.logger.debug(`Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
       const parsed: unknown = parser.parse(text) as unknown;
       return parsed;
     } catch (err) {
@@ -1693,8 +1698,15 @@ export class PlexServerService {
     duplicate?: boolean;
     timeoutMs: number;
   }): Promise<PlexMetadata[]> {
-    const { baseUrl, token, librarySectionKey, type, includeGuids, duplicate, timeoutMs } =
-      params;
+    const {
+      baseUrl,
+      token,
+      librarySectionKey,
+      type,
+      includeGuids,
+      duplicate,
+      timeoutMs,
+    } = params;
 
     const url = new URL(
       `library/sections/${encodeURIComponent(librarySectionKey)}/all`,
@@ -1710,7 +1722,9 @@ export class PlexServerService {
       url.searchParams.set('duplicate', '1');
     }
 
-    const xml = asPlexXml(await this.fetchXml(url.toString(), token, timeoutMs));
+    const xml = asPlexXml(
+      await this.fetchXml(url.toString(), token, timeoutMs),
+    );
     const container = xml.MediaContainer;
     return asPlexMetadataArray(container);
   }

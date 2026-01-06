@@ -40,13 +40,16 @@ export class PlexCuratedCollectionsService {
     const uniq = new Map<string, string>();
     for (const it of desiredItems) {
       if (!it?.ratingKey) continue;
-      if (!uniq.has(it.ratingKey)) uniq.set(it.ratingKey, it.title || it.ratingKey);
+      if (!uniq.has(it.ratingKey))
+        uniq.set(it.ratingKey, it.title || it.ratingKey);
     }
 
-    const desiredBase = Array.from(uniq.entries()).map(([ratingKey, title]) => ({
-      ratingKey,
-      title,
-    }));
+    const desiredBase = Array.from(uniq.entries()).map(
+      ([ratingKey, title]) => ({
+        ratingKey,
+        title,
+      }),
+    );
 
     const desired = randomizeOrder ? shuffle(desiredBase.slice()) : desiredBase;
 
@@ -67,11 +70,14 @@ export class PlexCuratedCollectionsService {
           collectionRatingKey: plexCollectionKey,
         });
       } catch (err) {
-        await ctx.warn('collection: failed to load existing items (continuing)', {
-          collectionName,
-          plexCollectionKey,
-          error: (err as Error)?.message ?? String(err),
-        });
+        await ctx.warn(
+          'collection: failed to load existing items (continuing)',
+          {
+            collectionName,
+            plexCollectionKey,
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
       }
     }
     const existingCount = existingItems.length;
@@ -106,11 +112,14 @@ export class PlexCuratedCollectionsService {
     // If the collection already exists, delete it so we can recreate with a fresh order.
     // This avoids cases where Plex keeps the old ordering even after remove/re-add.
     if (plexCollectionKey) {
-      await ctx.info('collection: deleting existing Plex collection for refresh', {
-        collectionName,
-        plexCollectionKey,
-        existingCount,
-      });
+      await ctx.info(
+        'collection: deleting existing Plex collection for refresh',
+        {
+          collectionName,
+          plexCollectionKey,
+          existingCount,
+        },
+      );
 
       try {
         const oldKey = plexCollectionKey;
@@ -164,7 +173,9 @@ export class PlexCuratedCollectionsService {
 
     // Ensure Plex collection exists (create new if deleted/missing)
     if (!plexCollectionKey) {
-      await ctx.info('collection: creating Plex collection', { collectionName });
+      await ctx.info('collection: creating Plex collection', {
+        collectionName,
+      });
       const first = desired[0]?.ratingKey ?? null;
       if (!first) {
         await ctx.warn('collection: cannot create Plex collection (no items)', {
@@ -206,12 +217,20 @@ export class PlexCuratedCollectionsService {
       }
 
       if (!plexCollectionKey) {
-        throw new Error(`Failed to find or create Plex collection: ${collectionName}`);
+        throw new Error(
+          `Failed to find or create Plex collection: ${collectionName}`,
+        );
       }
 
       // First item was included during createCollection (uri=...), add the rest in order.
       removed = existingCount;
       added = 1;
+      if (desired.length > 1) {
+        await ctx.info('collection: adding items', {
+          collectionName,
+          total: desired.length,
+        });
+      }
       for (const item of desired.slice(1)) {
         try {
           await this.plexServer.addItemToCollection({
@@ -222,6 +241,25 @@ export class PlexCuratedCollectionsService {
             itemRatingKey: item.ratingKey,
           });
           added += 1;
+          if (added % 50 === 0 || added === desired.length) {
+            await ctx.info('collection: add progress', {
+              collectionName,
+              added,
+              total: desired.length,
+            });
+            void ctx
+              .patchSummary({
+                progress: {
+                  step: 'plex_collection_add',
+                  message: `Adding items to Plex collection: ${collectionName}`,
+                  current: added,
+                  total: desired.length,
+                  unit: 'items',
+                  updatedAt: new Date().toISOString(),
+                },
+              })
+              .catch(() => undefined);
+          }
         } catch (err) {
           skipped += 1;
           await ctx.warn('collection: failed to add item (continuing)', {
@@ -243,6 +281,25 @@ export class PlexCuratedCollectionsService {
             itemRatingKey: item.ratingKey,
           });
           removed += 1;
+          if (removed % 100 === 0 || removed === existingItems.length) {
+            await ctx.info('collection: remove progress', {
+              collectionName,
+              removed,
+              total: existingItems.length,
+            });
+            void ctx
+              .patchSummary({
+                progress: {
+                  step: 'plex_collection_remove',
+                  message: `Removing items from Plex collection: ${collectionName}`,
+                  current: removed,
+                  total: existingItems.length,
+                  unit: 'items',
+                  updatedAt: new Date().toISOString(),
+                },
+              })
+              .catch(() => undefined);
+          }
         } catch (err) {
           await ctx.warn('collection: failed to remove item (continuing)', {
             collectionName,
@@ -262,6 +319,25 @@ export class PlexCuratedCollectionsService {
             itemRatingKey: item.ratingKey,
           });
           added += 1;
+          if (added % 50 === 0 || added === desired.length) {
+            await ctx.info('collection: add progress', {
+              collectionName,
+              added,
+              total: desired.length,
+            });
+            void ctx
+              .patchSummary({
+                progress: {
+                  step: 'plex_collection_add',
+                  message: `Adding items to Plex collection: ${collectionName}`,
+                  current: added,
+                  total: desired.length,
+                  unit: 'items',
+                  updatedAt: new Date().toISOString(),
+                },
+              })
+              .catch(() => undefined);
+          }
         } catch (err) {
           skipped += 1;
           await ctx.warn('collection: failed to add item (continuing)', {
@@ -275,7 +351,9 @@ export class PlexCuratedCollectionsService {
     }
 
     if (!plexCollectionKey) {
-      throw new Error(`Failed to find or create Plex collection: ${collectionName}`);
+      throw new Error(
+        `Failed to find or create Plex collection: ${collectionName}`,
+      );
     }
 
     // Force collection order to 'custom' (required for move operations to reflect in Plex UI)
@@ -287,16 +365,35 @@ export class PlexCuratedCollectionsService {
         sort: 'custom',
       });
     } catch (err) {
-      await ctx.warn('collection: failed to set collection sort=custom (continuing)', {
-        collectionName,
-        plexCollectionKey,
-        error: (err as Error)?.message ?? String(err),
-      });
+      await ctx.warn(
+        'collection: failed to set collection sort=custom (continuing)',
+        {
+          collectionName,
+          plexCollectionKey,
+          error: (err as Error)?.message ?? String(err),
+        },
+      );
     }
 
     // Apply custom order by moving items
     let moved = 0;
     let prev: string | null = null;
+    await ctx.info('collection: applying custom order', {
+      collectionName,
+      total: desired.length,
+    });
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_collection_reorder',
+          message: `Ordering Plex collection: ${collectionName}`,
+          current: 0,
+          total: desired.length,
+          unit: 'items',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
     for (const item of desired) {
       try {
         await this.plexServer.moveCollectionItem({
@@ -308,6 +405,25 @@ export class PlexCuratedCollectionsService {
         });
         prev = item.ratingKey;
         moved += 1;
+        if (moved % 25 === 0 || moved === desired.length) {
+          await ctx.info('collection: order progress', {
+            collectionName,
+            moved,
+            total: desired.length,
+          });
+          void ctx
+            .patchSummary({
+              progress: {
+                step: 'plex_collection_reorder',
+                message: `Ordering Plex collection: ${collectionName}`,
+                current: moved,
+                total: desired.length,
+                unit: 'items',
+                updatedAt: new Date().toISOString(),
+              },
+            })
+            .catch(() => undefined);
+        }
       } catch (err) {
         await ctx.warn('collection: failed to move item (continuing)', {
           collectionName,
@@ -339,7 +455,9 @@ export class PlexCuratedCollectionsService {
     // Pin collections to home/library (only if items were added or collection existed)
     if (plexCollectionKey && (added > 0 || existingCount > 0) && !ctx.dryRun) {
       try {
-        await ctx.info('collection: pinning to home/library', { collectionName });
+        await ctx.info('collection: pinning to home/library', {
+          collectionName,
+        });
         await this.pinCuratedCollectionHubs({
           ctx,
           baseUrl,
@@ -628,5 +746,3 @@ function shuffle<T>(items: T[]): T[] {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-

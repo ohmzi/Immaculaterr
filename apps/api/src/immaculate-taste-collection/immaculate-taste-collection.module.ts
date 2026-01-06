@@ -8,5 +8,3 @@ import { ImmaculateTasteCollectionService } from './immaculate-taste-collection.
   exports: [ImmaculateTasteCollectionService],
 })
 export class ImmaculateTasteCollectionModule {}
-
-

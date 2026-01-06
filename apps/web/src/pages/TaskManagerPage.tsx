@@ -25,6 +25,7 @@ import { cn } from '@/components/ui/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
 import { Badge } from '@/components/ui/badge';
+import { SavingPill } from '@/components/SavingPill';
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -290,6 +291,17 @@ export function TaskManagerPage() {
   const [terminalState, setTerminalState] = useState<
     Record<string, { status: 'idle' | 'running' | 'completed'; runId?: string }>
   >({});
+  const [runNowUi, setRunNowUi] = useState<
+    Record<
+      string,
+      | { phase: 'idle' }
+      | { phase: 'running'; runId?: string | null }
+      | { phase: 'finishing'; runId?: string | null }
+      | { phase: 'complete'; runId?: string | null; completedAt: number }
+    >
+  >({});
+  const runNowFinishTimersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
+  const runNowResetTimersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
   const [weeklyDaySelector, setWeeklyDaySelector] = useState<Record<string, boolean>>({});
   const [monthlyDaySelector, setMonthlyDaySelector] = useState<Record<string, boolean>>({});
   const [nextRunsPopup, setNextRunsPopup] = useState<Record<string, boolean>>({});
@@ -439,8 +451,78 @@ export function TaskManagerPage() {
         ...prev,
         [vars.jobId]: { status: 'running', runId: data.run.id },
       }));
+
+      // If the user triggered "Run Now", attach the runId so we can detect completion.
+      setRunNowUi((prev) => {
+        const cur = prev[vars.jobId];
+        if (!cur || cur.phase === 'idle') return prev;
+        if (cur.phase === 'complete') {
+          return { ...prev, [vars.jobId]: { ...cur, runId: data.run.id } };
+        }
+        if (cur.phase === 'running' || cur.phase === 'finishing') {
+          return { ...prev, [vars.jobId]: { phase: cur.phase, runId: data.run.id } };
+        }
+        return prev;
+      });
+    },
+    onError: (_err, vars) => {
+      // If the API call to start the run fails, reset the Run Now button state.
+      setRunNowUi((prev) => ({ ...prev, [vars.jobId]: { phase: 'idle' } }));
     },
   });
+
+  const clearRunNowTimers = (jobId: string) => {
+    const finishTimer = runNowFinishTimersRef.current[jobId];
+    if (finishTimer) clearTimeout(finishTimer);
+    runNowFinishTimersRef.current[jobId] = null;
+
+    const resetTimer = runNowResetTimersRef.current[jobId];
+    if (resetTimer) clearTimeout(resetTimer);
+    runNowResetTimersRef.current[jobId] = null;
+  };
+
+  const startRunNowUi = (jobId: string) => {
+    clearRunNowTimers(jobId);
+    setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'running' } }));
+  };
+
+  // Cleanup timers on unmount (page leave).
+  useEffect(() => {
+    return () => {
+      for (const t of Object.values(runNowFinishTimersRef.current)) {
+        if (t) clearTimeout(t);
+      }
+      for (const t of Object.values(runNowResetTimersRef.current)) {
+        if (t) clearTimeout(t);
+      }
+    };
+  }, []);
+
+  // When a user-triggered run completes, animate to 100%, then turn green and hold "Complete".
+  useEffect(() => {
+    for (const [jobId, ui] of Object.entries(runNowUi)) {
+      if (ui.phase !== 'running') continue;
+      const t = terminalState[jobId];
+      if (!t || t.status !== 'completed') continue;
+      if (ui.runId && t.runId && ui.runId !== t.runId) continue;
+
+      // 80% -> 100% (amber), then switch to green.
+      clearRunNowTimers(jobId);
+      setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'finishing', runId: t.runId ?? ui.runId ?? null } }));
+
+      runNowFinishTimersRef.current[jobId] = setTimeout(() => {
+        setRunNowUi((prev) => ({
+          ...prev,
+          [jobId]: { phase: 'complete', runId: t.runId ?? ui.runId ?? null, completedAt: Date.now() },
+        }));
+
+        // Hold "Complete" for 2 minutes, then reset back to "Run Now" (while staying on page).
+        runNowResetTimersRef.current[jobId] = setTimeout(() => {
+          setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'idle' } }));
+        }, 120_000);
+      }, 650);
+    }
+  }, [runNowUi, terminalState]);
 
   const scheduleMutation = useMutation({
     mutationFn: updateJobSchedule,
@@ -673,8 +755,26 @@ export function TaskManagerPage() {
                   ? (scheduleMutation.error as Error).message
                   : null;
 
-              const isRunningJob =
-                runMutation.isPending && runMutation.variables?.jobId === job.id;
+              const runUiState = runNowUi[job.id] ?? { phase: 'idle' as const };
+              const runUiActive = runUiState.phase !== 'idle';
+              const runUiProgressPct =
+                runUiState.phase === 'running'
+                  ? 80
+                  : runUiState.phase === 'finishing' || runUiState.phase === 'complete'
+                    ? 100
+                    : 0;
+              const runUiFillClass =
+                runUiState.phase === 'complete'
+                  ? 'bg-emerald-500/90'
+                  : 'bg-[#facc15]/90';
+              const runUiLabel =
+                runUiState.phase === 'running'
+                  ? 'Running…'
+                  : runUiState.phase === 'finishing'
+                    ? 'Finalizing…'
+                    : runUiState.phase === 'complete'
+                      ? 'Complete'
+                      : 'Run Now';
               const runError =
                 runMutation.isError && runMutation.variables?.jobId === job.id
                   ? (runMutation.error as Error).message
@@ -791,6 +891,17 @@ export function TaskManagerPage() {
                         <h3 className="text-xl font-bold text-white tracking-tight leading-tight break-words sm:truncate">
                           {job.name}
                         </h3>
+                        <SavingPill
+                          active={
+                            (scheduleMutation.isPending &&
+                              scheduleMutation.variables?.jobId === job.id) ||
+                            (webhookAutoRunMutation.isPending &&
+                              webhookAutoRunMutation.variables?.jobId === job.id) ||
+                            (job.id === 'immaculateTastePoints' &&
+                              immaculateIncludeRefresherMutation.isPending)
+                          }
+                          className="shrink-0"
+                        />
                         {isAutoRunEnabled && (
                           <Badge className="bg-emerald-500/20 text-emerald-400 border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold shrink-0">
                             Active
@@ -940,7 +1051,7 @@ export function TaskManagerPage() {
                           }}
                           disabled={!isTerminalActive}
                           className={cn(
-                            'w-12 h-12 rounded-full transition-all flex items-center justify-center',
+                            'w-12 h-12 rounded-full transition-all duration-200 active:scale-95 flex items-center justify-center',
                             isTerminalActive
                               ? 'bg-gray-500/30 text-white cursor-pointer hover:bg-gray-500/40'
                               : 'bg-white/5 border border-white/10 text-white/40 cursor-not-allowed'
@@ -1006,44 +1117,74 @@ export function TaskManagerPage() {
                               return;
                             }
 
+                            startRunNowUi(job.id);
                             setTerminalState((prev) => ({
                               ...prev,
                               [job.id]: { status: 'running' },
                             }));
                             runMutation.mutate({ jobId: job.id, dryRun: false });
                           }}
-                          disabled={runMutation.isPending}
+                          disabled={runMutation.isPending || runUiActive}
                           className={cn(
-                            'h-12 rounded-full font-bold text-sm shadow-[0_0_20px_rgba(250,204,21,0.2)] transition-all duration-300 overflow-hidden relative',
-                            isRunningJob
-                              ? 'bg-emerald-500 text-white w-12 px-0'
-                              : 'bg-[#facc15] text-black w-32 px-6 hover:bg-[#facc15] hover:scale-105'
+                            'h-12 w-32 rounded-full font-bold text-sm overflow-hidden relative',
+                            'border border-white/10 bg-white/5 text-white shadow-[0_0_20px_rgba(250,204,21,0.18)]',
+                            'transition-all duration-200 active:scale-95 hover:bg-white/10 hover:shadow-[0_0_28px_rgba(250,204,21,0.28)]',
+                            'disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-white/5 disabled:hover:shadow-[0_0_20px_rgba(250,204,21,0.18)]'
                           )}
                         >
-                          <AnimatePresence mode="wait" initial={false}>
-                            {isRunningJob ? (
+                          {/* Progress fill (amber → 80%, hold; then to 100%; then green) */}
+                          <AnimatePresence initial={false}>
+                            {runUiActive && (
                               <motion.div
-                                key="loading"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1, rotate: 360 }}
-                                exit={{ scale: 0 }}
-                                transition={{ type: 'spring', stiffness: 200, damping: 10 }}
-                              >
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                key="idle"
-                                className="flex items-center justify-center"
-                                initial={{ y: 20, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                exit={{ y: -20, opacity: 0 }}
-                              >
-                                <Play className="w-4 h-4 mr-2 fill-current" />
-                                Run Now
-                              </motion.div>
+                                key="fill"
+                                className={cn(
+                                  'absolute inset-y-0 left-0 rounded-full',
+                                  runUiFillClass,
+                                )}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${runUiProgressPct}%` }}
+                                exit={{ opacity: 0 }}
+                                transition={{
+                                  duration: runUiState.phase === 'finishing' ? 0.55 : 0.9,
+                                  ease: 'easeOut',
+                                }}
+                              />
                             )}
                           </AnimatePresence>
+
+                          {/* Label */}
+                          <div className="relative z-10 h-full w-full flex items-center justify-center">
+                            <AnimatePresence mode="wait" initial={false}>
+                              <motion.div
+                                key={runUiLabel}
+                                className="flex items-center justify-center"
+                                initial={{ y: 10, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: -10, opacity: 0 }}
+                                transition={{ duration: 0.18, ease: 'easeOut' }}
+                              >
+                                {runUiState.phase === 'idle' ? (
+                                  <Play className="w-4 h-4 mr-2 fill-current text-[#facc15]" />
+                                ) : runUiState.phase === 'complete' ? (
+                                  <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-200" />
+                                ) : (
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin text-black/70" />
+                                )}
+                                <span
+                                  className={cn(
+                                    'font-bold',
+                                    runUiState.phase === 'idle'
+                                      ? 'text-white'
+                                      : runUiState.phase === 'complete'
+                                        ? 'text-white'
+                                        : 'text-black',
+                                  )}
+                                >
+                                  {runUiLabel}
+                                </span>
+                              </motion.div>
+                            </AnimatePresence>
+                          </div>
                         </button>
                       </div>
                     </div>
@@ -1684,6 +1825,7 @@ export function TaskManagerPage() {
                           return;
                         }
 
+                        if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
                         setTerminalState((prev) => ({
                           ...prev,
                           ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),
@@ -1759,6 +1901,7 @@ export function TaskManagerPage() {
                         return;
                       }
 
+                      if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
                       setTerminalState((prev) => ({
                         ...prev,
                         ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),

@@ -1,43 +1,101 @@
 import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../db/prisma.service';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { SettingsService } from '../settings/settings.service';
+import { WatchedMovieRecommendationsService } from '../watched-movie-recommendations/watched-movie-recommendations.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
-import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 
-const DEFAULT_REFRESH_SOURCES = [
-  {
-    collectionName: 'Based on your recently watched movie',
-    jsonFile: 'recently_watched_collection.json',
-  },
-  {
-    collectionName: 'Change of Taste',
-    jsonFile: 'change_of_taste_collection.json',
-  },
+const DEFAULT_COLLECTIONS = [
+  'Based on your recently watched movie',
+  'Change of Taste',
 ] as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pick(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickString(obj: Record<string, unknown>, path: string): string {
+  const v = pick(obj, path);
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function pickNumber(obj: Record<string, unknown>, path: string): number | null {
+  const v = pick(obj, path);
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number.parseFloat(v.trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function normalizeHttpUrl(raw: string): string {
+  const trimmed = raw.trim();
+  const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const parsed = new URL(baseUrl);
+  if (!/^https?:$/i.test(parsed.protocol)) {
+    throw new Error('baseUrl must be a valid http(s) URL');
+  }
+  return baseUrl;
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function shuffleInPlace<T>(arr: T[]) {
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j]!;
+    arr[j] = tmp!;
+  }
+  return arr;
+}
 
 @Injectable()
 export class BasedonLatestWatchedRefresherJob {
+  private static readonly ACTIVATION_POINTS = 50;
+
   constructor(
+    private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
     private readonly plexCuratedCollections: PlexCuratedCollectionsService,
+    private readonly watchedRecs: WatchedMovieRecommendationsService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
+    const input = ctx.input ?? {};
+    const limitRaw = typeof input['limit'] === 'number' ? input['limit'] : null;
+    const inputLimit =
+      typeof limitRaw === 'number' && Number.isFinite(limitRaw)
+        ? Math.max(1, Math.trunc(limitRaw))
+        : null;
+
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
 
-    const plexBaseUrl =
-      this.pickString(settings, 'plex.baseUrl') ??
-      this.pickString(settings, 'plex.url') ??
-      this.requireString(settings, 'plex.baseUrl');
+    const plexBaseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const plexToken =
-      this.pickString(secrets, 'plex.token') ??
-      this.pickString(secrets, 'plexToken') ??
-      this.requireString(secrets, 'plex.token');
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!plexBaseUrlRaw) throw new Error('Plex baseUrl is not set');
+    if (!plexToken) throw new Error('Plex token is not set');
+    const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
     const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
@@ -55,13 +113,27 @@ export class BasedonLatestWatchedRefresherJob {
       token: plexToken,
     });
 
+    // Collection size is controlled separately; do NOT default it to recommendations.count.
+    const configuredLimitRaw =
+      pickNumber(settings, 'recommendations.collectionLimit') ?? 15;
+    const configuredLimit = Math.max(
+      1,
+      Math.min(200, Math.trunc(configuredLimitRaw || 15)),
+    );
+    const limit = inputLimit ?? configuredLimit;
+
     await ctx.info('recentlyWatchedRefresher: start', {
       dryRun: ctx.dryRun,
       movieLibraries: movieSections.map((s) => s.title),
-      collections: DEFAULT_REFRESH_SOURCES.map((c) => c.collectionName),
+      collections: Array.from(DEFAULT_COLLECTIONS),
+      activationPoints: BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+      limit,
+      inputLimit,
+      configuredLimit,
     });
 
     // Build per-library TMDB->ratingKey map once so we can rebuild collections across all libraries.
+    const plexTmdbIds = new Set<number>();
     const sectionTmdbToItem = new Map<
       string,
       Map<number, { ratingKey: string; title: string }>
@@ -76,350 +148,255 @@ export class BasedonLatestWatchedRefresherJob {
       });
       for (const r of rows) {
         if (!r.tmdbId) continue;
-        if (!map.has(r.tmdbId)) map.set(r.tmdbId, { ratingKey: r.ratingKey, title: r.title });
+        if (!map.has(r.tmdbId))
+          map.set(r.tmdbId, { ratingKey: r.ratingKey, title: r.title });
+        plexTmdbIds.add(r.tmdbId);
       }
       sectionTmdbToItem.set(sec.key, map);
     }
 
+    const canonicalMovieSectionKey = (() => {
+      const movies = movieSections.find(
+        (s) => s.title.toLowerCase() === 'movies',
+      );
+      if (movies) return movies.key;
+      const sorted = movieSections.slice().sort((a, b) => {
+        const aCount = sectionTmdbToItem.get(a.key)?.size ?? 0;
+        const bCount = sectionTmdbToItem.get(b.key)?.size ?? 0;
+        if (aCount !== bCount) return bCount - aCount; // largest first
+        return a.title.localeCompare(b.title);
+      });
+      return sorted[0]?.key ?? movieSections[0].key;
+    })();
+
+    const canonicalMovieLibraryName =
+      movieSections.find((s) => s.key === canonicalMovieSectionKey)?.title ??
+      movieSections[0].title;
+
+    const orderedMovieSections = movieSections.slice().sort((a, b) => {
+      if (a.key === canonicalMovieSectionKey) return -1;
+      if (b.key === canonicalMovieSectionKey) return 1;
+      return a.title.localeCompare(b.title);
+    });
+
+    await ctx.info('recentlyWatchedRefresher: canonical library selected', {
+      canonicalMovieLibraryName,
+      canonicalMovieSectionKey,
+    });
+
     const perCollection: JsonObject[] = [];
 
-    for (const src of DEFAULT_REFRESH_SOURCES) {
-      const colSummary = await this.refreshOneCollectionFromJson({
-        ctx,
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        machineIdentifier,
-        movieSections,
-        sectionTmdbToItem,
-        collectionName: src.collectionName,
-        jsonFile: src.jsonFile,
+    for (const collectionName of DEFAULT_COLLECTIONS) {
+      await ctx.info('recentlyWatchedRefresher: collection start', {
+        collectionName,
       });
-      perCollection.push(colSummary);
+
+      // Activate pending suggestions that now exist in Plex.
+      const pendingRows = await this.prisma.watchedMovieRecommendation.findMany(
+        {
+          where: { collectionName, status: 'pending' },
+          select: { tmdbId: true },
+        },
+      );
+      const toActivate = pendingRows
+        .map((p) => p.tmdbId)
+        .filter((id) => plexTmdbIds.has(id));
+
+      const activatedNow = ctx.dryRun
+        ? toActivate.length
+        : (
+            await this.watchedRecs.activatePendingNowInPlex({
+              ctx,
+              collectionName,
+              tmdbIds: toActivate,
+              pointsOnActivation:
+                BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+            })
+          ).activated;
+
+      if (ctx.dryRun && activatedNow) {
+        await ctx.info(
+          'recentlyWatchedRefresher: dry-run would activate pending titles now in Plex',
+          {
+            collectionName,
+            activated: activatedNow,
+            pointsOnActivation:
+              BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+          },
+        );
+      }
+
+      const activeRows = await this.prisma.watchedMovieRecommendation.findMany({
+        where: { collectionName, status: 'active', points: { gt: 0 } },
+        select: { tmdbId: true },
+      });
+
+      if (!activeRows.length) {
+        await ctx.warn(
+          'recentlyWatchedRefresher: no active rows found (skipping)',
+          {
+            collectionName,
+          },
+        );
+        perCollection.push({
+          collectionName,
+          skipped: true,
+          reason: 'no_active_rows',
+          activatedNow,
+        });
+        continue;
+      }
+
+      const shuffledActiveTmdbIds = shuffleInPlace(
+        activeRows.map((m) => m.tmdbId),
+      );
+
+      const plexByLibrary: JsonObject[] = [];
+      let canonicalSnapshot: Array<{ ratingKey: string; title: string }> = [];
+
+      for (const sec of orderedMovieSections) {
+        const tmdbMap =
+          sectionTmdbToItem.get(sec.key) ??
+          new Map<number, { ratingKey: string; title: string }>();
+        const desiredInLibrary = shuffledActiveTmdbIds
+          .map((id) => tmdbMap.get(id))
+          .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
+
+        // Extra safety: dedupe by ratingKey (preserve order)
+        const uniq = new Map<string, string>();
+        for (const it of desiredInLibrary) {
+          if (!uniq.has(it.ratingKey)) uniq.set(it.ratingKey, it.title);
+        }
+        const desiredInLibraryDeduped = Array.from(uniq.entries()).map(
+          ([ratingKey, title]) => ({ ratingKey, title }),
+        );
+
+        const desiredLimited =
+          limit && desiredInLibraryDeduped.length > limit
+            ? desiredInLibraryDeduped.slice(0, limit)
+            : desiredInLibraryDeduped;
+
+        if (sec.key === canonicalMovieSectionKey) {
+          canonicalSnapshot = desiredLimited;
+        }
+
+        if (!desiredLimited.length) {
+          await ctx.info(
+            'recentlyWatchedRefresher: skipping library (no matches)',
+            {
+              collectionName,
+              library: sec.title,
+              movieSectionKey: sec.key,
+            },
+          );
+          plexByLibrary.push({
+            collectionName,
+            library: sec.title,
+            movieSectionKey: sec.key,
+            totalInLibrary: desiredInLibraryDeduped.length,
+            totalApplying: 0,
+            skipped: true,
+            reason: 'no_matches',
+          });
+          continue;
+        }
+
+        await ctx.info(
+          'recentlyWatchedRefresher: rebuilding library collection',
+          {
+            collectionName,
+            library: sec.title,
+            movieSectionKey: sec.key,
+            totalInLibrary: desiredInLibraryDeduped.length,
+            totalApplying: desiredLimited.length,
+          },
+        );
+
+        const plex = ctx.dryRun
+          ? null
+          : await this.plexCuratedCollections.rebuildMovieCollection({
+              ctx,
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              machineIdentifier,
+              movieSectionKey: sec.key,
+              collectionName,
+              desiredItems: desiredLimited,
+              randomizeOrder: false,
+            });
+
+        plexByLibrary.push({
+          collectionName,
+          library: sec.title,
+          movieSectionKey: sec.key,
+          totalInLibrary: desiredInLibraryDeduped.length,
+          totalApplying: desiredLimited.length,
+          plex,
+          top3: desiredLimited.slice(0, 3).map((d) => d.title),
+          sampleTop10: desiredLimited.slice(0, 10).map((d) => d.title),
+        });
+      }
+
+      // Persist snapshot to curated collections (replace items)
+      let dbSaved = false;
+      let curatedCollectionId: string | null = null;
+      if (!ctx.dryRun) {
+        const col = await this.prisma.curatedCollection.upsert({
+          where: { name: collectionName },
+          update: {},
+          create: { name: collectionName },
+          select: { id: true },
+        });
+        curatedCollectionId = col.id;
+
+        await this.prisma.curatedCollectionItem.deleteMany({
+          where: { collectionId: col.id },
+        });
+
+        const canonicalLimited =
+          limit && canonicalSnapshot.length > limit
+            ? canonicalSnapshot.slice(0, limit)
+            : canonicalSnapshot;
+
+        const batches = chunk(canonicalLimited, 200);
+        for (const batch of batches) {
+          await this.prisma.curatedCollectionItem.createMany({
+            data: batch.map((it) => ({
+              collectionId: col.id,
+              ratingKey: it.ratingKey,
+              title: it.title,
+            })),
+          });
+        }
+
+        dbSaved = true;
+        await ctx.info('recentlyWatchedRefresher: db snapshot saved', {
+          collectionName,
+          curatedCollectionId,
+          movieLibraryName: canonicalMovieLibraryName,
+          movieSectionKey: canonicalMovieSectionKey,
+          savedItems: canonicalLimited.length,
+          activatedNow,
+        });
+      }
+
+      perCollection.push({
+        collectionName,
+        activatedNow,
+        dbSaved,
+        curatedCollectionId,
+        plexByLibrary,
+      });
     }
 
     const summary: JsonObject = {
       dryRun: ctx.dryRun,
+      activationPoints: BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+      limit,
       collections: perCollection,
     };
 
     await ctx.info('recentlyWatchedRefresher: done', summary);
     return { summary };
   }
-
-  private async refreshOneCollectionFromJson(params: {
-    ctx: JobContext;
-    baseUrl: string;
-    token: string;
-    machineIdentifier: string;
-    movieSections: Array<{ key: string; title: string }>;
-    sectionTmdbToItem: Map<string, Map<number, { ratingKey: string; title: string }>>;
-    collectionName: string;
-    jsonFile: string;
-  }): Promise<JsonObject> {
-    const {
-      ctx,
-      baseUrl,
-      token,
-      machineIdentifier,
-      movieSections,
-      sectionTmdbToItem,
-      collectionName,
-      jsonFile,
-    } = params;
-
-    await ctx.info('collection: start', { collectionName, jsonFile });
-
-    const jsonPath = resolveDataFilePath(jsonFile);
-    if (!jsonPath) {
-      await ctx.warn('collection: JSON file not found (skipping)', {
-        collectionName,
-        jsonFile,
-        hint: 'Expected file under APP_DATA_DIR (where tcp.sqlite lives) or ./data relative to project root.',
-      });
-      return {
-        collectionName,
-        source: 'json',
-        jsonFile,
-        jsonFound: false,
-        resolved: 0,
-        skipped: 0,
-        removed: 0,
-        added: 0,
-        moved: 0,
-      };
-    }
-
-    const rawEntries = await this.readCollectionJson(jsonPath);
-    if (!rawEntries.length) {
-      await ctx.warn('collection: JSON has no items (skipping)', {
-        collectionName,
-        jsonFile,
-        jsonPath,
-      });
-      return {
-        collectionName,
-        source: 'json',
-        jsonFile,
-        jsonFound: true,
-        jsonPath,
-        resolved: 0,
-        skipped: 0,
-        removed: 0,
-        added: 0,
-        moved: 0,
-      };
-    }
-
-    // Resolve JSON entries to an ordered list of TMDB ids (best-effort).
-    const desired: Array<{ title: string; tmdbId: number | null }> = [];
-    let skippedUnresolved = 0;
-    let tmdbResolved = 0;
-    let missingTmdb = 0;
-
-    for (const entry of rawEntries) {
-      const rk = pickRatingKey(entry);
-      const title = pickTitle(entry);
-      if (!rk && !title) {
-        skippedUnresolved += 1;
-        continue;
-      }
-
-      if (rk) {
-        const meta = await this.plexServer
-          .getMetadataDetails({
-            baseUrl,
-            token,
-            ratingKey: rk,
-          })
-          .catch(() => null);
-        const tmdbId = meta?.tmdbIds?.[0] ?? null;
-        desired.push({ title: meta?.title?.trim() || title || rk, tmdbId });
-        if (tmdbId) tmdbResolved += 1;
-        else missingTmdb += 1;
-        continue;
-      }
-
-      // No ratingKey (movie may not be in Plex yet). Keep title as a fallback.
-      desired.push({ title, tmdbId: null });
-      missingTmdb += 1;
-    }
-
-    if (!desired.length) {
-      await ctx.warn('collection: no usable items from JSON (skipping)', {
-        collectionName,
-        jsonFile,
-        jsonPath,
-        totalEntries: rawEntries.length,
-        skipped: skippedUnresolved,
-      });
-      return {
-        collectionName,
-        source: 'json',
-        jsonFile,
-        jsonFound: true,
-        jsonPath,
-        totalEntries: rawEntries.length,
-        resolved: 0,
-        skipped: skippedUnresolved,
-        removed: 0,
-        added: 0,
-        moved: 0,
-      };
-    }
-
-    const perLibrary: JsonObject[] = [];
-
-    for (const sec of movieSections) {
-      const tmdbMap = sectionTmdbToItem.get(sec.key) ?? new Map();
-      const resolvedItems: Array<{ ratingKey: string; title: string }> = [];
-      let skippedMissing = 0;
-      let resolvedByTitle = 0;
-
-      for (const it of desired) {
-        if (it.tmdbId && tmdbMap.has(it.tmdbId)) {
-          resolvedItems.push(tmdbMap.get(it.tmdbId)!);
-          continue;
-        }
-
-        // Fallback: title search in this library (helps when a movie gets added later without tmdb mapping).
-        const t = it.title.trim();
-        if (!t) {
-          skippedMissing += 1;
-          continue;
-        }
-        const found = await this.plexServer
-          .findMovieRatingKeyByTitle({
-            baseUrl,
-            token,
-            librarySectionKey: sec.key,
-            title: t,
-          })
-          .catch(() => null);
-        if (found) {
-          resolvedItems.push({ ratingKey: found.ratingKey, title: found.title });
-          resolvedByTitle += 1;
-        } else {
-          skippedMissing += 1;
-        }
-      }
-
-      // Deduplicate by ratingKey (keep first title)
-      const uniq = new Map<string, string>();
-      for (const it of resolvedItems) {
-        if (!uniq.has(it.ratingKey)) uniq.set(it.ratingKey, it.title);
-      }
-      const desiredItems = Array.from(uniq.entries()).map(([ratingKey, title]) => ({
-        ratingKey,
-        title,
-      }));
-
-      if (!desiredItems.length) {
-        await ctx.warn('collection: no resolvable items for library (skipping)', {
-          collectionName,
-          library: sec.title,
-          movieSectionKey: sec.key,
-          totalEntries: rawEntries.length,
-        });
-        perLibrary.push({
-          library: sec.title,
-          movieSectionKey: sec.key,
-          resolved: 0,
-          skipped: skippedMissing,
-          skippedUnresolved,
-          skippedReason: 'no_resolvable_items',
-        });
-        continue;
-      }
-
-      const applied = await this.plexCuratedCollections.rebuildMovieCollection({
-        ctx,
-        baseUrl,
-        token,
-        machineIdentifier,
-        movieSectionKey: sec.key,
-        collectionName,
-        desiredItems,
-        randomizeOrder: true,
-      });
-
-      const applySkipped =
-        typeof (applied as Record<string, unknown>)['skipped'] === 'number'
-          ? ((applied as Record<string, unknown>)['skipped'] as number)
-          : 0;
-      const skipped = skippedMissing + skippedUnresolved + applySkipped;
-
-      perLibrary.push({
-        library: sec.title,
-        movieSectionKey: sec.key,
-        resolved: desiredItems.length,
-        resolvedByTitle,
-        skipped,
-        ...applied,
-      });
-    }
-
-    await ctx.info('collection: done', {
-      collectionName,
-      jsonFile,
-      jsonPath,
-      totalEntries: rawEntries.length,
-      tmdbResolved,
-      missingTmdb,
-      skippedUnresolved,
-      libraries: perLibrary.length,
-    });
-
-    return {
-      collectionName,
-      source: 'json',
-      jsonFile,
-      jsonFound: true,
-      jsonPath,
-      totalEntries: rawEntries.length,
-      tmdbResolved,
-      missingTmdb,
-      skippedUnresolved,
-      libraries: perLibrary,
-    };
-  }
-
-  private async readCollectionJson(jsonPath: string): Promise<unknown[]> {
-    const raw = await readFile(jsonPath, 'utf-8');
-    const parsed: unknown = JSON.parse(raw);
-    return isUnknownArray(parsed) ? parsed : [];
-  }
-
-  private pickString(
-    obj: Record<string, unknown>,
-    path: string,
-  ): string | null {
-    const v = this.pick(obj, path);
-    if (typeof v !== 'string') return null;
-    const s = v.trim();
-    return s ? s : null;
-  }
-
-  private requireString(obj: Record<string, unknown>, path: string): string {
-    const s = this.pickString(obj, path);
-    if (!s) throw new Error(`Missing required setting: ${path}`);
-    return s;
-  }
-
-  private pick(obj: Record<string, unknown>, path: string): unknown {
-    const parts = path.split('.');
-    let cur: unknown = obj;
-    for (const part of parts) {
-      if (!cur || typeof cur !== 'object' || Array.isArray(cur))
-        return undefined;
-      cur = (cur as Record<string, unknown>)[part];
-    }
-    return cur;
-  }
-}
-
-function isUnknownArray(value: unknown): value is unknown[] {
-  return Array.isArray(value);
-}
-
-function resolveDataFilePath(fileName: string): string | null {
-  // First try APP_DATA_DIR (the app's configured data directory)
-  const appDataDir = process.env['APP_DATA_DIR'];
-  if (appDataDir) {
-    const candidate = path.resolve(appDataDir, fileName);
-    if (existsSync(candidate)) return candidate;
-  }
-
-  // Fallback: Try common layouts relative to current working directory
-  // - repo root: ./data/<file>
-  // - apps/api: ../../data/<file>
-  const cwd = process.cwd();
-  const candidates = [
-    path.resolve(cwd, 'data', fileName),
-    path.resolve(cwd, '..', 'data', fileName),
-    path.resolve(cwd, '..', '..', 'data', fileName),
-    path.resolve(cwd, '..', '..', '..', 'data', fileName),
-    path.resolve(cwd, '..', '..', '..', '..', 'data', fileName),
-  ];
-
-  for (const c of candidates) {
-    if (existsSync(c)) return c;
-  }
-  return null;
-}
-
-function pickTitle(entry: unknown): string {
-  if (typeof entry === 'string') return entry.trim();
-  if (!entry || typeof entry !== 'object') return '';
-  const titleRaw = (entry as Record<string, unknown>)['title'];
-  return typeof titleRaw === 'string' ? titleRaw.trim() : '';
-}
-
-function pickRatingKey(entry: unknown): string {
-  if (!entry || typeof entry !== 'object') return '';
-  const obj = entry as Record<string, unknown>;
-  const rkRaw = obj['rating_key'] ?? obj['ratingKey'] ?? obj['ratingkey'];
-  if (typeof rkRaw === 'string') return rkRaw.trim();
-  if (typeof rkRaw === 'number' && Number.isFinite(rkRaw) && rkRaw > 0)
-    return String(rkRaw);
-  return '';
 }

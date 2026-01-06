@@ -23,6 +23,22 @@ export type JobContext = {
   dryRun: boolean;
   trigger: JobRunTrigger;
   input?: JsonObject;
+  /**
+   * Current persisted run summary snapshot (best-effort).
+   * Jobs can use this to keep the UI "Summary" section live while a job runs.
+   */
+  getSummary: () => JsonObject | null;
+  /**
+   * Replace the entire run summary snapshot (persists to DB).
+   * Prefer `patchSummary` for incremental updates.
+   */
+  setSummary: (summary: JsonObject | null) => Promise<void>;
+  /**
+   * Shallow-merge into the current summary snapshot (persists to DB).
+   * Note: This is a shallow merge; callers should provide complete nested objects
+   * when updating `radarr`, `sonarr`, etc.
+   */
+  patchSummary: (patch: JsonObject) => Promise<void>;
   log: (
     level: JobLogLevel,
     message: string,

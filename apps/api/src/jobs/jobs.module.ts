@@ -8,6 +8,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { SonarrModule } from '../sonarr/sonarr.module';
 import { TmdbModule } from '../tmdb/tmdb.module';
 import { ImmaculateTasteCollectionModule } from '../immaculate-taste-collection/immaculate-taste-collection.module';
+import { WatchedMovieRecommendationsModule } from '../watched-movie-recommendations/watched-movie-recommendations.module';
 import { JobsController } from './jobs.controller';
 import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
@@ -30,6 +31,7 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
     RecommendationsModule,
     TmdbModule,
     ImmaculateTasteCollectionModule,
+    WatchedMovieRecommendationsModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [JobsController],

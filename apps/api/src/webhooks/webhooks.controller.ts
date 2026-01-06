@@ -11,6 +11,7 @@ import type { Express } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
+import { PlexAnalyticsService } from '../plex/plex-analytics.service';
 import { SettingsService } from '../settings/settings.service';
 import { WebhooksService } from './webhooks.service';
 
@@ -55,6 +56,7 @@ export class WebhooksController {
     private readonly jobsService: JobsService,
     private readonly authService: AuthService,
     private readonly settingsService: SettingsService,
+    private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
 
   @Post('plex')
@@ -102,11 +104,15 @@ export class WebhooksController {
     const mediaType = payloadObj ? pickString(payloadObj, 'Metadata.type') : '';
 
     if (plexEvent === 'media.scrobble' && mediaType.toLowerCase() === 'movie') {
-      const seedTitle = payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
+      const seedTitle = payloadObj
+        ? pickString(payloadObj, 'Metadata.title')
+        : '';
       const seedRatingKey = payloadObj
         ? pickString(payloadObj, 'Metadata.ratingKey')
         : '';
-      const seedYear = payloadObj ? pickNumber(payloadObj, 'Metadata.year') : null;
+      const seedYear = payloadObj
+        ? pickNumber(payloadObj, 'Metadata.year')
+        : null;
       const seedLibrarySectionId = payloadObj
         ? pickNumber(payloadObj, 'Metadata.librarySectionID')
         : null;
@@ -136,12 +142,18 @@ export class WebhooksController {
             // Respect per-job webhook auto-run toggles (default: enabled)
             const { settings } = await this.settingsService
               .getInternalSettings(userId)
-              .catch(() => ({ settings: {} as Record<string, unknown>, secrets: {} }));
+              .catch(() => ({
+                settings: {} as Record<string, unknown>,
+                secrets: {},
+              }));
             const watchedEnabled =
-              pickBool(settings, 'jobs.webhookEnabled.watchedMovieRecommendations') ??
-              true;
+              pickBool(
+                settings,
+                'jobs.webhookEnabled.watchedMovieRecommendations',
+              ) ?? true;
             const immaculateEnabled =
-              pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ?? true;
+              pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ??
+              true;
 
             // 1) Recently-watched recommendations (two collections)
             if (!watchedEnabled) {
@@ -204,7 +216,9 @@ export class WebhooksController {
       ['movie', 'show', 'season', 'episode'].includes(mediaType.toLowerCase())
     ) {
       const title = payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
-      const ratingKey = payloadObj ? pickString(payloadObj, 'Metadata.ratingKey') : '';
+      const ratingKey = payloadObj
+        ? pickString(payloadObj, 'Metadata.ratingKey')
+        : '';
       const year = payloadObj ? pickNumber(payloadObj, 'Metadata.year') : null;
       const grandparentTitle = payloadObj
         ? pickString(payloadObj, 'Metadata.grandparentTitle')
@@ -212,19 +226,35 @@ export class WebhooksController {
       const grandparentRatingKey = payloadObj
         ? pickString(payloadObj, 'Metadata.grandparentRatingKey')
         : '';
-      const parentIndex = payloadObj ? pickNumber(payloadObj, 'Metadata.parentIndex') : null;
-      const index = payloadObj ? pickNumber(payloadObj, 'Metadata.index') : null;
+      const parentIndex = payloadObj
+        ? pickNumber(payloadObj, 'Metadata.parentIndex')
+        : null;
+      const index = payloadObj
+        ? pickNumber(payloadObj, 'Metadata.index')
+        : null;
 
       const userId = await this.authService.getFirstAdminUserId();
       if (userId) {
+        // New media has been added to Plex; bump the dashboard graph version and clear the
+        // server-side growth cache so the next request recomputes quickly.
+        this.plexAnalytics.invalidateLibraryGrowth(userId);
+
         const { settings } = await this.settingsService
           .getInternalSettings(userId)
-          .catch(() => ({ settings: {} as Record<string, unknown>, secrets: {} }));
+          .catch(() => ({
+            settings: {} as Record<string, unknown>,
+            secrets: {},
+          }));
         const enabled =
           pickBool(settings, 'jobs.webhookEnabled.mediaAddedCleanup') ?? true;
 
         if (!enabled) {
-          return { ok: true, ...persisted, triggered: false, skipped: { mediaAddedCleanup: 'disabled' } };
+          return {
+            ok: true,
+            ...persisted,
+            triggered: false,
+            skipped: { mediaAddedCleanup: 'disabled' },
+          };
         }
 
         try {

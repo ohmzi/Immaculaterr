@@ -321,7 +321,9 @@ export class SonarrService {
       }
 
       const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
 
       const out: SonarrRootFolder[] = [];
       for (const r of rows) {
@@ -370,7 +372,9 @@ export class SonarrService {
       }
 
       const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
 
       const out: SonarrQualityProfile[] = [];
       for (const r of rows) {
@@ -391,7 +395,10 @@ export class SonarrService {
     }
   }
 
-  async listTags(params: { baseUrl: string; apiKey: string }): Promise<SonarrTag[]> {
+  async listTags(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<SonarrTag[]> {
     const { baseUrl, apiKey } = params;
     const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
 
@@ -416,7 +423,9 @@ export class SonarrService {
       }
 
       const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
 
       const out: SonarrTag[] = [];
       for (const r of rows) {

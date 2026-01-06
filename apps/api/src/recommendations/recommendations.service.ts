@@ -4,9 +4,39 @@ import { OpenAiService } from '../openai/openai.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 
+const RECS_MAX_COUNT = 200;
+const RECS_MIN_RELEASED_PERCENT = 25;
+const SERVICE_COOLDOWN_MS = 10 * 60 * 1000;
+
+type RecCandidate = {
+  tmdbId: number;
+  title: string;
+  releaseDate: string | null;
+  voteAverage: number | null;
+  voteCount: number | null;
+  popularity: number | null;
+  sources: string[];
+};
+
 function clamp01(n: number) {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(1, n));
+}
+
+function clampInt(
+  v: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const n =
+    typeof v === 'number' && Number.isFinite(v)
+      ? Math.trunc(v)
+      : typeof v === 'string' && v.trim()
+        ? Number.parseInt(v.trim(), 10)
+        : fallback;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
 }
 
 function cleanTitles(titles: string[], limit: number): string[] {
@@ -26,6 +56,9 @@ function cleanTitles(titles: string[], limit: number): string[] {
 
 @Injectable()
 export class RecommendationsService {
+  private googleDownUntilMs: number | null = null;
+  private openAiDownUntilMs: number | null = null;
+
   constructor(
     private readonly tmdb: TmdbService,
     private readonly google: GoogleService,
@@ -39,6 +72,7 @@ export class RecommendationsService {
     tmdbApiKey: string;
     count: number;
     webContextFraction: number;
+    upcomingPercent?: number | null;
     openai?: { apiKey: string; model?: string | null } | null;
     google?: { apiKey: string; searchEngineId: string } | null;
   }): Promise<{
@@ -48,7 +82,7 @@ export class RecommendationsService {
   }> {
     const { ctx } = params;
     const seedTitle = params.seedTitle.trim();
-    const count = Math.max(1, Math.min(50, Math.trunc(params.count || 15)));
+    const count = clampInt(params.count || 50, 1, RECS_MAX_COUNT, 50);
     const webFrac = clamp01(params.webContextFraction);
 
     const seedMeta = await this.tmdb.getSeedMetadata({
@@ -59,16 +93,66 @@ export class RecommendationsService {
 
     const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
     const googleEnabled =
-      openAiEnabled &&
       Boolean(params.google?.apiKey?.trim()) &&
       Boolean(params.google?.searchEngineId?.trim());
+
+    const upcomingPercent = clampInt(
+      params.upcomingPercent ?? 25,
+      0,
+      100 - RECS_MIN_RELEASED_PERCENT,
+      25,
+    );
+    const upcomingTarget = Math.round((count * upcomingPercent) / 100);
+    const releasedTarget = Math.max(0, count - upcomingTarget);
+
+    await ctx.info('recs: split config', {
+      count,
+      upcomingPercent,
+      upcomingTarget,
+      releasedTarget,
+      webContextFraction: webFrac,
+    });
+
+    // --- Tier 0 (always works): TMDB pools ---
+    await ctx.info('recs: tmdb pools start', {
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+      count,
+    });
+
+    const pools = await this.tmdb.getSplitRecommendationCandidatePools({
+      apiKey: params.tmdbApiKey,
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+      includeAdult: false,
+      timezone: null,
+      upcomingWindowMonths: 24,
+    });
+
+    let releasedPool = pools.released.slice();
+    let upcomingPool = pools.upcoming.slice();
+    let unknownPool = pools.unknown.slice();
+
+    await ctx.info('recs: tmdb pools done', {
+      seed: pools.seed,
+      meta: pools.meta,
+      releasedCandidates: releasedPool.length,
+      upcomingCandidates: upcomingPool.length,
+      unknownCandidates: unknownPool.length,
+    });
 
     let googleContext: string | null = null;
     let googleQuery: string | null = null;
     let googleMeta: JsonObject | null = null;
+    let googleTitlesExtracted = 0;
+    let googleTmdbAdded = 0;
 
-    if (googleEnabled) {
-      const desiredGoogleResults = Math.min(50, Math.max(0, Math.ceil(count * webFrac)));
+    // --- Tier 1 (optional): Google discovery booster (never depends on OpenAI) ---
+    if (googleEnabled && this.canUseGoogle()) {
+      const desiredGoogleResults = Math.min(
+        50,
+        Math.max(0, Math.ceil(count * webFrac)),
+      );
       if (desiredGoogleResults > 0) {
         googleQuery = buildGoogleQuery(seedMeta, new Date().getFullYear());
         await ctx.info('recs: google search', {
@@ -83,80 +167,207 @@ export class RecommendationsService {
             query: googleQuery,
             numResults: desiredGoogleResults,
           });
-          googleContext = results.length ? this.google.formatForPrompt(results) : null;
+          googleContext = results.length
+            ? this.google.formatForPrompt(results)
+            : null;
           googleMeta = { ...meta };
           await ctx.info('recs: google done', { ...meta });
+
+          const extracted = extractMovieTitleCandidatesFromGoogle(results, 60);
+          googleTitlesExtracted = extracted.length;
+          if (extracted.length) {
+            const { added, released, upcoming, unknown } =
+              await this.resolveGoogleTitlesToTmdbCandidates({
+                tmdbApiKey: params.tmdbApiKey,
+                titles: extracted,
+                today: pools.meta.today,
+              });
+
+            googleTmdbAdded = added;
+            releasedPool = mergeCandidatePools(
+              releasedPool,
+              released,
+              'google',
+            );
+            upcomingPool = mergeCandidatePools(
+              upcomingPool,
+              upcoming,
+              'google',
+            );
+            unknownPool = mergeCandidatePools(unknownPool, unknown, 'google');
+          }
+
+          // Google was up; clear any prior cooldown.
+          this.googleDownUntilMs = null;
         } catch (err) {
-          await ctx.warn('recs: google failed (continuing without web context)', {
-            error: (err as Error)?.message ?? String(err),
-          });
+          await ctx.warn(
+            'recs: google failed (continuing without web context)',
+            {
+              error: (err as Error)?.message ?? String(err),
+            },
+          );
           googleContext = null;
           googleMeta = { failed: true };
+          this.googleDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
         }
       } else {
         googleMeta = { skipped: true, reason: 'webContextFraction=0' };
       }
     }
 
-    if (openAiEnabled) {
-      await ctx.info('recs: openai start', {
-        model: (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest',
-        count,
-        googleUsed: Boolean(googleContext),
-        upcomingCapFraction: webFrac,
-      });
-      try {
-        const titles = await this.openai.getRelatedMovieTitles({
-          apiKey: params.openai!.apiKey,
-          model: params.openai!.model ?? null,
-          seedTitle,
-          limit: count,
-          tmdbSeedMetadata: seedMeta,
-          googleSearchContext: googleContext,
-          upcomingCapFraction: webFrac,
+    // --- Phase A: deterministic pre-score + split selection (always available) ---
+    const scoredReleased = scoreAndSortCandidates(releasedPool, {
+      kind: 'released',
+    });
+    const scoredUpcoming = scoreAndSortCandidates(upcomingPool, {
+      kind: 'upcoming',
+    });
+    const scoredUnknown = scoreAndSortCandidates(unknownPool, {
+      kind: 'released',
+    });
+
+    const deterministic = selectWithSplit({
+      count,
+      upcomingTarget,
+      releasedPool: scoredReleased,
+      upcomingPool: scoredUpcoming,
+      unknownPool: scoredUnknown,
+    });
+
+    // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
+    if (openAiEnabled && this.canUseOpenAi()) {
+      const model =
+        (params.openai?.model ?? 'gpt-5.2-chat-latest') ||
+        'gpt-5.2-chat-latest';
+      const topReleased = scoredReleased.slice(
+        0,
+        Math.min(250, Math.max(releasedTarget * 5, releasedTarget)),
+      );
+      const topUpcoming = scoredUpcoming.slice(
+        0,
+        Math.min(250, Math.max(upcomingTarget * 5, upcomingTarget)),
+      );
+
+      // If we don't have enough upcoming candidates to hit target, don't burn OpenAI.
+      const canSatisfySplit =
+        upcomingTarget === 0 || topUpcoming.length >= upcomingTarget;
+
+      if (canSatisfySplit && (topReleased.length || topUpcoming.length)) {
+        await ctx.info('recs: openai select start', {
+          model,
+          count,
+          releasedTarget,
+          upcomingTarget,
+          candidates: {
+            released: topReleased.length,
+            upcoming: topUpcoming.length,
+          },
+          googleUsed: Boolean(googleContext),
+          googleTitlesExtracted,
+          googleTmdbAdded,
         });
 
-        const cleaned = cleanTitles(titles, count);
-        if (cleaned.length) {
-          await ctx.info('recs: openai done', { returned: cleaned.length });
-          return {
-            titles: cleaned,
-            strategy: 'openai',
-            debug: {
-              googleEnabled,
-              googleQuery,
-              googleMeta: googleMeta ?? null,
-              openAiEnabled: true,
+        try {
+          const selection = await this.openai.selectFromCandidates({
+            apiKey: params.openai!.apiKey,
+            model,
+            seedTitle,
+            tmdbSeedMetadata: seedMeta,
+            releasedTarget,
+            upcomingTarget,
+            releasedCandidates: topReleased,
+            upcomingCandidates: topUpcoming,
+          });
+
+          if (
+            selection.released.length === releasedTarget &&
+            selection.upcoming.length === upcomingTarget
+          ) {
+            const releasedById = new Map(topReleased.map((c) => [c.tmdbId, c]));
+            const upcomingById = new Map(topUpcoming.map((c) => [c.tmdbId, c]));
+
+            const titles: string[] = [];
+            for (const id of selection.released) {
+              const t = releasedById.get(id)?.title ?? '';
+              if (t.trim()) titles.push(t.trim());
+            }
+            for (const id of selection.upcoming) {
+              const t = upcomingById.get(id)?.title ?? '';
+              if (t.trim()) titles.push(t.trim());
+            }
+
+            const cleaned = titles.slice(0, releasedTarget + upcomingTarget);
+            if (cleaned.length !== releasedTarget + upcomingTarget) {
+              throw new Error(
+                `OpenAI selection underfilled: expected ${releasedTarget + upcomingTarget}, got ${cleaned.length}`,
+              );
+            }
+            await ctx.info('recs: openai select done', {
+              returned: cleaned.length,
+              released: releasedTarget,
+              upcoming: upcomingTarget,
+            });
+            this.openAiDownUntilMs = null;
+            return {
+              titles: cleaned,
+              strategy: 'openai',
+              debug: {
+                upcomingPercent,
+                upcomingTarget,
+                releasedTarget,
+                googleEnabled,
+                googleQuery,
+                googleMeta: googleMeta ?? null,
+                googleTitlesExtracted,
+                googleTmdbAdded,
+                openAiEnabled: true,
+                openAiModel: model,
+                used: {
+                  tmdb: true,
+                  google: Boolean(googleContext),
+                  openai: true,
+                },
+              },
+            };
+          }
+
+          await ctx.warn(
+            'recs: openai selector returned empty (falling back to deterministic)',
+          );
+        } catch (err) {
+          await ctx.warn(
+            'recs: openai selector failed (falling back to deterministic)',
+            {
+              error: (err as Error)?.message ?? String(err),
             },
-          };
+          );
+          this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
         }
-
-        await ctx.warn('recs: openai returned empty (falling back to tmdb)');
-      } catch (err) {
-        await ctx.warn('recs: openai failed (falling back to tmdb)', {
-          error: (err as Error)?.message ?? String(err),
-        });
       }
     }
 
-    await ctx.info('recs: tmdb fallback start', { count });
-    const tmdbTitles = await this.tmdb.getAdvancedMovieRecommendations({
-      apiKey: params.tmdbApiKey,
-      seedTitle,
-      seedYear: params.seedYear ?? null,
-      limit: count,
-      includeAdult: false,
+    await ctx.info('recs: deterministic select done', {
+      returned: deterministic.titles.length,
+      released: deterministic.releasedCount,
+      upcoming: deterministic.upcomingCount,
+      googleTitlesExtracted,
+      googleTmdbAdded,
     });
-    const cleaned = cleanTitles(tmdbTitles, count);
-    await ctx.info('recs: tmdb fallback done', { returned: cleaned.length });
+
     return {
-      titles: cleaned,
+      titles: deterministic.titles,
       strategy: 'tmdb',
       debug: {
+        upcomingPercent,
+        upcomingTarget,
+        releasedTarget,
         googleEnabled,
         googleQuery,
         googleMeta: googleMeta ?? null,
+        googleTitlesExtracted,
+        googleTmdbAdded,
         openAiEnabled,
+        used: { tmdb: true, google: Boolean(googleContext), openai: false },
       },
     };
   }
@@ -176,7 +387,9 @@ export class RecommendationsService {
     const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
     if (openAiEnabled) {
       await ctx.info('change_of_taste: openai start', {
-        model: (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest',
+        model:
+          (params.openai?.model ?? 'gpt-5.2-chat-latest') ||
+          'gpt-5.2-chat-latest',
         count,
       });
       try {
@@ -187,13 +400,20 @@ export class RecommendationsService {
           limit: count,
         });
         const cleaned = cleanTitles(titles, count);
-        await ctx.info('change_of_taste: openai done', { returned: cleaned.length });
-        if (cleaned.length) return { titles: cleaned, strategy: 'openai' };
-        await ctx.warn('change_of_taste: openai returned empty (falling back to tmdb)');
-      } catch (err) {
-        await ctx.warn('change_of_taste: openai failed (falling back to tmdb)', {
-          error: (err as Error)?.message ?? String(err),
+        await ctx.info('change_of_taste: openai done', {
+          returned: cleaned.length,
         });
+        if (cleaned.length) return { titles: cleaned, strategy: 'openai' };
+        await ctx.warn(
+          'change_of_taste: openai returned empty (falling back to tmdb)',
+        );
+      } catch (err) {
+        await ctx.warn(
+          'change_of_taste: openai failed (falling back to tmdb)',
+          {
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
       }
     }
 
@@ -205,13 +425,99 @@ export class RecommendationsService {
       limit: count,
     });
     const cleaned = cleanTitles(tmdbTitles, count);
-    await ctx.info('change_of_taste: tmdb fallback done', { returned: cleaned.length });
+    await ctx.info('change_of_taste: tmdb fallback done', {
+      returned: cleaned.length,
+    });
     return { titles: cleaned, strategy: 'tmdb' };
+  }
+
+  private canUseGoogle() {
+    return !this.googleDownUntilMs || Date.now() >= this.googleDownUntilMs;
+  }
+
+  private canUseOpenAi() {
+    return !this.openAiDownUntilMs || Date.now() >= this.openAiDownUntilMs;
+  }
+
+  private async resolveGoogleTitlesToTmdbCandidates(params: {
+    tmdbApiKey: string;
+    titles: Array<{ title: string; year: number | null }>;
+    today: string;
+  }): Promise<{
+    added: number;
+    released: RecCandidate[];
+    upcoming: RecCandidate[];
+    unknown: RecCandidate[];
+  }> {
+    const released: RecCandidate[] = [];
+    const upcoming: RecCandidate[] = [];
+    const unknown: RecCandidate[] = [];
+    let added = 0;
+
+    for (const t of params.titles) {
+      const title = (t?.title ?? '').trim();
+      if (!title) continue;
+      const year =
+        typeof t.year === 'number' && Number.isFinite(t.year)
+          ? Math.trunc(t.year)
+          : null;
+
+      const results = await this.tmdb
+        .searchMovie({
+          apiKey: params.tmdbApiKey,
+          query: title,
+          year,
+          includeAdult: false,
+        })
+        .catch(() => []);
+
+      const best = results[0] ?? null;
+      if (!best) continue;
+
+      const releaseDate =
+        typeof best.release_date === 'string' && best.release_date.trim()
+          ? best.release_date.trim()
+          : null;
+      const candidate: RecCandidate = {
+        tmdbId: best.id,
+        title: best.title,
+        releaseDate,
+        voteAverage:
+          typeof best.vote_average === 'number' &&
+          Number.isFinite(best.vote_average)
+            ? Number(best.vote_average)
+            : null,
+        voteCount:
+          typeof best.vote_count === 'number' &&
+          Number.isFinite(best.vote_count)
+            ? Math.max(0, Math.trunc(best.vote_count))
+            : null,
+        popularity:
+          typeof best.popularity === 'number' &&
+          Number.isFinite(best.popularity)
+            ? Number(best.popularity)
+            : null,
+        sources: ['google'],
+      };
+
+      const bucket = classifyReleaseDate(candidate.releaseDate, params.today);
+      if (bucket === 'released') released.push(candidate);
+      else if (bucket === 'upcoming') upcoming.push(candidate);
+      else unknown.push(candidate);
+      added += 1;
+    }
+
+    return { added, released, upcoming, unknown };
   }
 }
 
-function buildGoogleQuery(seedMeta: Record<string, unknown>, currentYear: number): string {
-  const nowYear = Number.isFinite(currentYear) ? currentYear : new Date().getFullYear();
+function buildGoogleQuery(
+  seedMeta: Record<string, unknown>,
+  currentYear: number,
+): string {
+  const nowYear = Number.isFinite(currentYear)
+    ? currentYear
+    : new Date().getFullYear();
   const nextYear = nowYear + 1;
 
   const genresRaw = seedMeta['genres'];
@@ -238,4 +544,217 @@ function buildGoogleQuery(seedMeta: Record<string, unknown>, currentYear: number
   return `most anticipated upcoming movies ${nowYear} ${nextYear}`.trim();
 }
 
+function normalizeTitleKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
+function scoreAndSortCandidates(
+  candidates: Array<{
+    tmdbId: number;
+    title: string;
+    releaseDate: string | null;
+    voteAverage: number | null;
+    voteCount: number | null;
+    popularity: number | null;
+    sources: string[];
+  }>,
+  params: { kind: 'released' | 'upcoming' },
+): Array<{
+  tmdbId: number;
+  title: string;
+  releaseDate: string | null;
+  voteAverage: number | null;
+  voteCount: number | null;
+  popularity: number | null;
+  sources: string[];
+  score: number;
+}> {
+  const sourceBoost = (sources: string[]) => {
+    const s = new Set(sources);
+    let boost = 0;
+    if (s.has('recommendations')) boost += 1.0;
+    if (s.has('similar')) boost += 0.6;
+    if (s.has('discover_released')) boost += 0.25;
+    if (s.has('discover_upcoming')) boost += 0.25;
+    if (s.has('google')) boost += 0.3;
+    return boost;
+  };
+
+  const scored = candidates.map((c) => {
+    const voteAvg = c.voteAverage ?? 0;
+    const voteCount = c.voteCount ?? 0;
+    const pop = c.popularity ?? 0;
+    const votes = Math.log10(Math.max(1, voteCount + 1));
+    const boost = sourceBoost(c.sources ?? []);
+
+    const score =
+      params.kind === 'released'
+        ? voteAvg * 2 + votes + pop * 0.02 + boost
+        : pop * 0.05 + voteAvg + votes * 0.25 + boost;
+
+    return { ...c, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+function selectWithSplit(params: {
+  count: number;
+  upcomingTarget: number;
+  releasedPool: Array<{
+    tmdbId: number;
+    title: string;
+    score: number;
+  }>;
+  upcomingPool: Array<{
+    tmdbId: number;
+    title: string;
+    score: number;
+  }>;
+  unknownPool: Array<{
+    tmdbId: number;
+    title: string;
+    score: number;
+  }>;
+}): { titles: string[]; releasedCount: number; upcomingCount: number } {
+  const selected: string[] = [];
+  const usedIds = new Set<number>();
+  const usedTitleKeys = new Set<string>();
+
+  const add = (c: { tmdbId: number; title: string }) => {
+    const id = Number.isFinite(c.tmdbId) ? Math.trunc(c.tmdbId) : NaN;
+    if (!Number.isFinite(id) || id <= 0) return false;
+    const title = (c.title ?? '').trim();
+    if (!title) return false;
+    if (usedIds.has(id)) return false;
+    const key = normalizeTitleKey(title);
+    if (!key) return false;
+    if (usedTitleKeys.has(key)) return false;
+    usedIds.add(id);
+    usedTitleKeys.add(key);
+    selected.push(title);
+    return true;
+  };
+
+  let upcomingCount = 0;
+  for (const c of params.upcomingPool) {
+    if (upcomingCount >= params.upcomingTarget) break;
+    if (add(c)) upcomingCount += 1;
+  }
+
+  const releasedTargetEffective = Math.max(0, params.count - upcomingCount);
+  let releasedCount = 0;
+  for (const c of params.releasedPool) {
+    if (releasedCount >= releasedTargetEffective) break;
+    if (add(c)) releasedCount += 1;
+  }
+
+  // Backfill if still short: unknown -> released -> upcoming
+  for (const c of params.unknownPool) {
+    if (selected.length >= params.count) break;
+    add(c);
+  }
+  for (const c of params.releasedPool) {
+    if (selected.length >= params.count) break;
+    add(c);
+  }
+  for (const c of params.upcomingPool) {
+    if (selected.length >= params.count) break;
+    add(c);
+  }
+
+  return {
+    titles: selected.slice(0, params.count),
+    releasedCount,
+    upcomingCount,
+  };
+}
+
+function mergeCandidatePools<T extends { tmdbId: number; sources: string[] }>(
+  base: T[],
+  extra: T[],
+  source: string,
+): T[] {
+  const byId = new Map<number, T>();
+  for (const c of base) byId.set(c.tmdbId, c);
+  for (const c of extra) {
+    const existing = byId.get(c.tmdbId);
+    if (!existing) {
+      byId.set(c.tmdbId, {
+        ...c,
+        sources: Array.from(new Set([...(c.sources ?? []), source])),
+      });
+      continue;
+    }
+    byId.set(c.tmdbId, {
+      ...existing,
+      ...c,
+      sources: Array.from(
+        new Set([...(existing.sources ?? []), ...(c.sources ?? []), source]),
+      ),
+    });
+  }
+  return Array.from(byId.values());
+}
+
+function classifyReleaseDate(
+  releaseDate: string | null,
+  today: string,
+): 'released' | 'upcoming' | 'unknown' {
+  const d = (releaseDate ?? '').trim();
+  if (!d) return 'unknown';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'unknown';
+  if (today && /^\d{4}-\d{2}-\d{2}$/.test(today) && d > today)
+    return 'upcoming';
+  return 'released';
+}
+
+function extractMovieTitleCandidatesFromGoogle(
+  results: Array<{ title: string; snippet: string; link: string }>,
+  limit: number,
+): Array<{ title: string; year: number | null }> {
+  const out: Array<{ title: string; year: number | null }> = [];
+  const seen = new Set<string>();
+
+  const push = (title: string, year: number | null) => {
+    const t = title.trim();
+    if (!t) return;
+    const key = normalizeTitleKey(t);
+    if (!key) return;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ title: t, year });
+  };
+
+  const extract = (text: string) => {
+    const t = text || '';
+    const re =
+      /([A-Z][A-Za-z0-9:'’\-&.,! ]{2,80}?)\s*\(\s*(19\d{2}|20\d{2})\s*\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t))) {
+      const title = (m[1] ?? '').trim();
+      const year = m[2] ? Number.parseInt(m[2], 10) : NaN;
+      push(title, Number.isFinite(year) ? year : null);
+      if (out.length >= limit) return;
+    }
+  };
+
+  for (const r of results) {
+    if (out.length >= limit) break;
+    const title = (r?.title ?? '').trim();
+    if (title) {
+      // Prefer anything before separators in page titles
+      const beforeSep = title.split(/[|–—•-]/)[0]?.trim() ?? '';
+      if (beforeSep && beforeSep.length <= 90) push(beforeSep, null);
+      extract(title);
+    }
+    extract(r?.snippet ?? '');
+  }
+
+  return out.slice(0, limit);
+}

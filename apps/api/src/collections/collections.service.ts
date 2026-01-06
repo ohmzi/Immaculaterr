@@ -325,28 +325,33 @@ export class CollectionsService {
     if (!token) throw new BadRequestException('Plex token is not set');
 
     const baseUrl = normalizeHttpUrl(baseUrlRaw);
-    const movieLibraryName =
-      pickString(settings, 'plex.movieLibraryName') ||
-      pickString(settings, 'plex.movie_library_name') ||
-      'Movies';
+    const sections = await this.plexServer.getSections({ baseUrl, token });
+    const movieSections = sections
+      .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+      .sort((a, b) => {
+        const aIsMovies = a.title.toLowerCase() === 'movies';
+        const bIsMovies = b.title.toLowerCase() === 'movies';
+        if (aIsMovies && !bIsMovies) return -1;
+        if (!aIsMovies && bIsMovies) return 1;
+        return a.title.localeCompare(b.title);
+      });
 
-    const sectionKey = await this.plexServer.findSectionKeyByTitle({
-      baseUrl,
-      token,
-      title: movieLibraryName,
-    });
+    if (!movieSections.length) {
+      throw new BadRequestException('No Plex movie libraries found');
+    }
 
-    const found = await this.plexServer.findMovieRatingKeyByTitle({
-      baseUrl,
-      token,
-      librarySectionKey: sectionKey,
-      title,
-    });
+    for (const sec of movieSections) {
+      const found = await this.plexServer.findMovieRatingKeyByTitle({
+        baseUrl,
+        token,
+        librarySectionKey: sec.key,
+        title,
+      });
+      if (found) return found;
+    }
 
-    if (!found)
-      throw new BadRequestException(
-        `Movie not found in Plex library: ${title}`,
-      );
-    return found;
+    throw new BadRequestException(
+      `Movie not found in any Plex movie library: ${title}`,
+    );
   }
 }

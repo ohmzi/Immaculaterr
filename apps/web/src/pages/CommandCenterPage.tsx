@@ -1,12 +1,12 @@
 import { SettingsPage } from '@/pages/VaultPage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleAlert, ExternalLink, Loader2, Settings2 } from 'lucide-react';
+import { CircleAlert, ExternalLink, Film, Loader2, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getRadarrOptions, getSonarrOptions } from '@/api/integrations';
 import { getPublicSettings, putSettings } from '@/api/settings';
-import { getPlexLibraries } from '@/api/plex';
-import { PlexLogo, RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
+import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
+import { SavingPill } from '@/components/SavingPill';
 
 function readBool(obj: unknown, path: string): boolean | null {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
@@ -57,80 +57,6 @@ export function CommandCenterPage() {
   });
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
-
-  // --- Plex
-  const plexBaseUrl = readString(settingsQuery.data?.settings, 'plex.baseUrl');
-  const plexHasSecret = Boolean(secretsPresent.plex);
-  const plexEnabled = Boolean(plexBaseUrl) && plexHasSecret;
-
-  const plexLibrariesQuery = useQuery({
-    queryKey: ['plex', 'libraries'],
-    queryFn: getPlexLibraries,
-    enabled: plexEnabled,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    retry: 1,
-  });
-
-  const configuredMovieLibraryName =
-    readString(settingsQuery.data?.settings, 'plex.movieLibraryName') ||
-    readString(settingsQuery.data?.settings, 'plex.movie_library_name') ||
-    '';
-  const configuredTvLibraryName =
-    readString(settingsQuery.data?.settings, 'plex.tvLibraryName') ||
-    readString(settingsQuery.data?.settings, 'plex.tv_library_name') ||
-    '';
-
-  const didInitPlexLibraries = useRef(false);
-  const [draftMovieLibraryKey, setDraftMovieLibraryKey] = useState('');
-  const [draftTvLibraryKey, setDraftTvLibraryKey] = useState('');
-
-  const savePlexDefaultsMutation = useMutation({
-    mutationFn: async (patch: {
-      movieLibraryName?: string;
-      movieLibraryKey?: string;
-      tvLibraryName?: string;
-      tvLibraryKey?: string;
-    }) =>
-      putSettings({
-        settings: {
-          plex: patch,
-        },
-      }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['settings'], data);
-    },
-  });
-
-  useEffect(() => {
-    if (!plexEnabled) {
-      didInitPlexLibraries.current = false;
-      return;
-    }
-    if (!plexLibrariesQuery.data) return;
-    if (didInitPlexLibraries.current) return;
-    didInitPlexLibraries.current = true;
-
-    const movies = plexLibrariesQuery.data.movies ?? [];
-    const tv = plexLibrariesQuery.data.tv ?? [];
-
-    const pickKey = (list: Array<{ key: string; title: string }>, wanted: string) => {
-      if (!list.length) return '';
-      if (wanted) {
-        const exact = list.find((l) => l.title.toLowerCase() === wanted.toLowerCase());
-        if (exact) return exact.key;
-      }
-      return list[0]?.key ?? '';
-    };
-
-    setDraftMovieLibraryKey(pickKey(movies, configuredMovieLibraryName));
-    setDraftTvLibraryKey(pickKey(tv, configuredTvLibraryName));
-  }, [
-    plexEnabled,
-    plexLibrariesQuery.data,
-    configuredMovieLibraryName,
-    configuredTvLibraryName,
-  ]);
 
   const radarrEnabledFlag = readBool(settingsQuery.data?.settings, 'radarr.enabled');
   const radarrBaseUrl = readString(settingsQuery.data?.settings, 'radarr.baseUrl');
@@ -322,6 +248,41 @@ export function CommandCenterPage() {
     },
   });
 
+  const didInitRecommendations = useRef(false);
+  const savedRecommendationCount =
+    readNumber(settingsQuery.data?.settings, 'recommendations.count') ?? 50;
+  const savedUpcomingPercentRaw =
+    readNumber(settingsQuery.data?.settings, 'recommendations.upcomingPercent') ?? 25;
+  const savedUpcomingPercent = Math.max(0, Math.min(75, Math.trunc(savedUpcomingPercentRaw)));
+
+  const [draftRecommendationCount, setDraftRecommendationCount] = useState<number>(50);
+  const [draftUpcomingPercent, setDraftUpcomingPercent] = useState<number>(25);
+
+  useEffect(() => {
+    if (!settingsQuery.data?.settings) return;
+    if (didInitRecommendations.current) return;
+    didInitRecommendations.current = true;
+    setDraftRecommendationCount(Math.max(1, Math.min(200, Math.trunc(savedRecommendationCount))));
+    setDraftUpcomingPercent(savedUpcomingPercent);
+  }, [settingsQuery.data?.settings, savedRecommendationCount, savedUpcomingPercent]);
+
+  const saveRecommendationsMutation = useMutation({
+    mutationFn: async (patch: { count?: number; upcomingPercent?: number }) =>
+      putSettings({
+        settings: {
+          recommendations: patch,
+        },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['settings'], data);
+    },
+  });
+
+  const effectiveRecommendationCount = Math.max(1, Math.min(200, Math.trunc(draftRecommendationCount || 50)));
+  const effectiveUpcomingPercent = Math.max(0, Math.min(75, Math.trunc(draftUpcomingPercent || 0)));
+  const upcomingTarget = Math.round((effectiveRecommendationCount * effectiveUpcomingPercent) / 100);
+  const releasedTarget = Math.max(0, effectiveRecommendationCount - upcomingTarget);
+
   return (
     <SettingsPage
       pageTitle="Command Center"
@@ -341,145 +302,117 @@ export function CommandCenterPage() {
       subtitleDetails={<>Remember: With great power comes great uptime.</>}
       extraContent={
         <div className="space-y-6">
-          {/* Plex Primary Libraries */}
+          {/* Recommendations */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#facc15]">
+                  <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-purple-300">
                     <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
-                      <PlexLogo className="w-7 h-7" />
+                      <Film className="w-7 h-7" />
                     </span>
                   </div>
-                  <h2 className="text-2xl font-semibold text-white">Plex Libraries</h2>
+                  <h2 className="text-2xl font-semibold text-white">Recommendations</h2>
+
                   {settingsQuery.isLoading ? (
                     <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10">
                       Checking…
                     </span>
-                  ) : plexEnabled ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-emerald-500/15 text-emerald-200 border border-emerald-500/20">
-                      Connected
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-yellow-400/10 text-yellow-200 border border-yellow-400/20">
-                      Not set up
-                    </span>
-                  )}
-
-                  {savePlexDefaultsMutation.isPending ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Saving…
+                  ) : settingsQuery.isError ? (
+                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-red-500/15 text-red-200 border border-red-500/20">
+                      Error
                     </span>
                   ) : null}
+
+                  <SavingPill active={saveRecommendationsMutation.isPending} />
                 </div>
 
-                {!plexEnabled ? (
-                  <p className="mt-3 text-sm text-white/70 leading-relaxed">
-                    Plex isn’t set up yet. Please configure Plex in{' '}
-                    <Link
-                      to="/vault"
-                      className="text-white underline underline-offset-4 hover:text-white/90 transition-colors inline-flex items-center gap-1"
-                    >
-                      Vault <ExternalLink className="w-3.5 h-3.5" />
-                    </Link>
-                    .
-                  </p>
+                {settingsQuery.isError ? (
+                  <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                    <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>Couldn’t load settings. Please refresh and try again.</span>
+                  </div>
                 ) : (
                   <>
                     <p className="mt-3 text-sm text-white/70 leading-relaxed">
-                      Pick the primary libraries this app should treat as{' '}
-                      <span className="text-white/80 font-semibold">Movies</span> and{' '}
-                      <span className="text-white/80 font-semibold">TV Shows</span>. These values
-                      are reused across Task Manager jobs.
+                      Controls how many recommendations are generated per run, plus how many are
+                      <span className="text-white"> upcoming</span> vs already released. Released is
+                      always at least <span className="text-white">25%</span>.
                     </p>
 
-                    <div className="mt-5">
-                      {plexLibrariesQuery.isLoading ? (
-                        <div className="flex items-center gap-3 text-white/70 text-sm">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Loading Plex libraries…
+                    <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                          Recommendation count
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={200}
+                          value={String(effectiveRecommendationCount)}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const next = raw ? Number.parseInt(raw, 10) : 0;
+                            const clamped = Number.isFinite(next) ? Math.max(1, Math.min(200, next)) : 50;
+                            setDraftRecommendationCount(clamped);
+                            saveRecommendationsMutation.mutate({ count: clamped });
+                          }}
+                          disabled={saveRecommendationsMutation.isPending}
+                          className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
+                        />
+                        <div className="mt-2 text-xs text-white/55">
+                          Used by Immaculate Taste + Based on your recently watched movie.
                         </div>
-                      ) : plexLibrariesQuery.isError ? (
-                        <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
-                          <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                          <span>{(plexLibrariesQuery.error as Error).message}</span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
-                              Primary Movies library
-                            </label>
-                            <select
-                              value={draftMovieLibraryKey}
-                              onChange={(e) => {
-                                const key = e.target.value;
-                                setDraftMovieLibraryKey(key);
-                                const lib = (plexLibrariesQuery.data?.movies ?? []).find(
-                                  (l) => l.key === key,
-                                );
-                                if (!lib) return;
-                                savePlexDefaultsMutation.mutate({
-                                  movieLibraryName: lib.title,
-                                  movieLibraryKey: lib.key,
-                                });
-                              }}
-                              disabled={
-                                savePlexDefaultsMutation.isPending ||
-                                !(plexLibrariesQuery.data?.movies ?? []).length
-                              }
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
-                              {(plexLibrariesQuery.data?.movies ?? []).map((l) => (
-                                <option key={l.key} value={l.key}>
-                                  {l.title}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
-                              Primary TV library
-                            </label>
-                            <select
-                              value={draftTvLibraryKey}
-                              onChange={(e) => {
-                                const key = e.target.value;
-                                setDraftTvLibraryKey(key);
-                                const lib = (plexLibrariesQuery.data?.tv ?? []).find(
-                                  (l) => l.key === key,
-                                );
-                                if (!lib) return;
-                                savePlexDefaultsMutation.mutate({
-                                  tvLibraryName: lib.title,
-                                  tvLibraryKey: lib.key,
-                                });
-                              }}
-                              disabled={
-                                savePlexDefaultsMutation.isPending ||
-                                !(plexLibrariesQuery.data?.tv ?? []).length
-                              }
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
-                              {(plexLibrariesQuery.data?.tv ?? []).map((l) => (
-                                <option key={l.key} value={l.key}>
-                                  {l.title}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {savePlexDefaultsMutation.isError ? (
-                      <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
-                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                        <span>{(savePlexDefaultsMutation.error as Error).message}</span>
                       </div>
-                    ) : null}
+
+                      <div className="md:col-span-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <label className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                            Upcoming %
+                          </label>
+                          <div className="text-xs text-white/70">
+                            Upcoming <span className="text-white font-semibold">{effectiveUpcomingPercent}%</span> • Released{' '}
+                            <span className="text-white font-semibold">
+                              {100 - effectiveUpcomingPercent}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mt-2">
+                          <input
+                            type="range"
+                            min={0}
+                            max={75}
+                            step={1}
+                            value={String(effectiveUpcomingPercent)}
+                            onChange={(e) => {
+                              const next = Number.parseInt(e.target.value, 10);
+                              const clamped = Number.isFinite(next) ? Math.max(0, Math.min(75, next)) : 25;
+                              setDraftUpcomingPercent(clamped);
+                              saveRecommendationsMutation.mutate({ upcomingPercent: clamped });
+                            }}
+                            disabled={saveRecommendationsMutation.isPending}
+                            className="w-full accent-purple-300"
+                          />
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-emerald-500/10 text-emerald-200 border border-emerald-500/20">
+                            Released target: {releasedTarget}
+                          </span>
+                          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-purple-500/10 text-purple-200 border border-purple-500/20">
+                            Upcoming target: {upcomingTarget}
+                          </span>
+                        </div>
+
+                        {saveRecommendationsMutation.isError ? (
+                          <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                            <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span>{(saveRecommendationsMutation.error as Error).message}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </>
                 )}
               </div>
@@ -515,12 +448,7 @@ export function CommandCenterPage() {
                     </span>
                   )}
 
-                  {saveRadarrDefaultsMutation.isPending ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Saving…
-                    </span>
-                  ) : null}
+                  <SavingPill active={saveRadarrDefaultsMutation.isPending} />
       </div>
 
                 {settingsQuery.isError ? (
@@ -715,12 +643,7 @@ export function CommandCenterPage() {
                     </span>
                   )}
 
-                  {saveSonarrDefaultsMutation.isPending ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Saving…
-                    </span>
-                  ) : null}
+                  <SavingPill active={saveSonarrDefaultsMutation.isPending} />
                 </div>
 
                 {settingsQuery.isError ? (
