@@ -177,6 +177,50 @@ model WatchedMovieRecommendation {
   @@index([collectionName, tmdbVoteAvg])
 }
 
+model ImmaculateTasteShow {
+  // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
+  tvdbId Int @id
+  tmdbId Int?
+  title  String?
+
+  status ImmaculateTasteStatus @default(pending)
+  points Int                  @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tmdbId])
+  @@index([status])
+  @@index([points])
+  @@index([tmdbVoteAvg])
+}
+
+model WatchedShowRecommendation {
+  // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
+  collectionName String
+  tvdbId         Int
+  tmdbId         Int?
+  title          String?
+
+  status WatchedRecommendationStatus @default(pending)
+  points Int                         @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([collectionName, tvdbId])
+  @@index([tmdbId])
+  @@index([collectionName, status])
+  @@index([collectionName, points])
+  @@index([collectionName, tmdbVoteAvg])
+}
+
 // Legacy table preserved by historical migrations (not used by Prisma Client).
 // We keep it in the database for debugging/back-compat reference, so Prisma
 // migrations must NOT attempt to drop it.

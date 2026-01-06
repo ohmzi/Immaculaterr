@@ -11,6 +11,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Allow any Host header (useful behind reverse proxies / custom domains).
+    // WARNING: this disables Vite's DNS-rebinding protection for the dev server.
+    allowedHosts: true,
     // Allow accessing the dev UI from other devices (phones/tablets) on the LAN.
     // Note: use http://<server-ip>:5174 from other devices (not localhost).
     host: '0.0.0.0',
@@ -22,5 +25,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    // Same rationale as `server.allowedHosts`.
+    allowedHosts: true,
   },
 });

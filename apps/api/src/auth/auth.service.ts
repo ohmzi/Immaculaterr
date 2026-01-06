@@ -93,9 +93,16 @@ export class AuthService {
     if (!normalized || !password)
       throw new UnauthorizedException('Invalid credentials');
 
-    const user = await this.prisma.user.findUnique({
-      where: { username: normalized },
-    });
+    const user =
+      (await this.prisma.user.findUnique({
+        where: { username: normalized },
+      })) ??
+      // SQLite: case-insensitive fallback for username (so "Admin" == "admin").
+      (
+        await this.prisma.$queryRaw<
+          Array<{ id: string; username: string; passwordHash: string }>
+        >`SELECT "id", "username", "passwordHash" FROM "User" WHERE "username" = ${normalized} COLLATE NOCASE LIMIT 1`
+      )[0];
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     const ok = await argon2.verify(user.passwordHash, password);

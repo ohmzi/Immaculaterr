@@ -27,9 +27,6 @@ export const APP_CARD_ROW_CLASS =
 export const APP_CARD_ICON_GLOW_CLASS =
   'transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]';
 
-// Status pill placement:
-// - Mobile: tiny, pinned top-left of the card
-// - Desktop: inline next to the card title
 export const APP_HEADER_STATUS_PILL_BASE_CLASS =
-  'absolute left-6 top-2 z-30 inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-[9px] font-semibold sm:static sm:px-3 sm:py-1 sm:text-xs';
+  'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap shrink-0';
 

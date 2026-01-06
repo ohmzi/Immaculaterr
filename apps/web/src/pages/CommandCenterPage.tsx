@@ -326,43 +326,39 @@ export function CommandCenterPage() {
           {/* Recommendations */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-purple-300">
-                    <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
-                      <Film className="w-7 h-7" />
-                    </span>
-                  </div>
-                  <h2 className="text-2xl font-semibold text-white">Recommendations</h2>
-                  <div className="flex items-center gap-2">
-                    {settingsQuery.isLoading ? (
-                      <span
-                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
-                      >
-                        Checking…
-                      </span>
-                    ) : settingsQuery.isError ? (
-                      <span
-                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}
-                      >
-                        Error
-                      </span>
-                    ) : null}
-
-                    <SavingPill
-                      active={saveRecommendationsMutation.isPending}
-                      className="shrink-0"
-                    />
-                  </div>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-purple-300">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <Film className="w-7 h-7" />
+                  </span>
                 </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Recommendations
+                </h2>
+              </div>
 
-                {settingsQuery.isError ? (
-                  <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
-                    <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                    <span>Couldn’t load settings. Please refresh and try again.</span>
-                  </div>
-                ) : (
-                  <>
+              <div className="flex items-center gap-2 shrink-0">
+                {settingsQuery.isLoading ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}>
+                    Checking…
+                  </span>
+                ) : settingsQuery.isError ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
+                    Error
+                  </span>
+                ) : null}
+
+                <SavingPill active={saveRecommendationsMutation.isPending} className="static" />
+              </div>
+            </div>
+
+            {settingsQuery.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>Couldn’t load settings. Please refresh and try again.</span>
+              </div>
+            ) : (
+              <>
                     <p className="mt-3 text-sm text-white/70 leading-relaxed">
                       Set how many to generate, then slide the mix:{' '}
                       <span className="text-white">released</span> vs{' '}
@@ -469,24 +465,22 @@ export function CommandCenterPage() {
                         ) : null}
                       </div>
                     </div>
-                  </>
-                )}
-              </div>
-            </div>
+              </>
+            )}
           </div>
 
           {/* Radarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start sm:items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#facc15]">
                     <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
                       <RadarrLogo className="w-7 h-7" />
                     </span>
                   </div>
-                  <h2 className="text-2xl font-semibold text-white">Radarr</h2>
-                  <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">Radarr</h2>
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
                     {settingsQuery.isLoading ? (
                       <span
                         className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
@@ -515,7 +509,7 @@ export function CommandCenterPage() {
 
                     <SavingPill
                       active={saveRadarrDefaultsMutation.isPending}
-                      className="shrink-0"
+                      className="static shrink-0"
                     />
                   </div>
                 </div>
@@ -686,15 +680,15 @@ export function CommandCenterPage() {
           {/* Sonarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start sm:items-center justify-between gap-4">
-              <div className="min-w-0">
-                  <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                  <div className="flex items-start gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-400">
                     <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
                       <SonarrLogo className="w-7 h-7" />
                     </span>
                   </div>
-                  <h2 className="text-2xl font-semibold text-white">Sonarr</h2>
-                  <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">Sonarr</h2>
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
                     {settingsQuery.isLoading ? (
                       <span
                         className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
@@ -723,7 +717,7 @@ export function CommandCenterPage() {
 
                     <SavingPill
                       active={saveSonarrDefaultsMutation.isPending}
-                      className="shrink-0"
+                      className="static shrink-0"
                     />
                   </div>
                 </div>

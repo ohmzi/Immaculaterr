@@ -352,14 +352,14 @@ export function HeroSection() {
                     </span>
                   </span>
 
-                  <span className="relative w-10 h-10 -ml-2 transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
-                    <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[8] text-black" />
-                    <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[5] text-[#e5a00d] transition-[filter] duration-300 ease-out group-hover:drop-shadow-[0_0_18px_rgba(229,160,13,0.9)] group-active:drop-shadow-[0_0_22px_rgba(229,160,13,0.95)]" />
+                  <span className="relative w-12 h-12 -ml-3 transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
+                    <ChevronRight className="absolute inset-0 w-12 h-12 stroke-[8] text-black" />
+                    <ChevronRight className="absolute inset-0 w-12 h-12 stroke-[5] text-[#e5a00d] transition-[filter] duration-300 ease-out group-hover:drop-shadow-[0_0_18px_rgba(229,160,13,0.9)] group-active:drop-shadow-[0_0_22px_rgba(229,160,13,0.95)]" />
                   </span>
                 </span>
 
                 {/* Line 2 */}
-                <span className="inline-flex items-baseline gap-1 transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
+                <span className="inline-flex items-baseline gap-[0.35em] ml-[1ch] transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
                   <span className="font-tesla font-bold tracking-tight">on</span>
                   <span className="font-plex font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-black to-neutral-800 animate-pulse">
                     Autopilot.

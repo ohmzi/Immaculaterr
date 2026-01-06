@@ -22,6 +22,31 @@ type TmdbMovieDetails = {
   vote_average?: number;
 };
 
+type TmdbTvSearchResult = {
+  id: number;
+  name: string;
+  first_air_date?: string;
+  genre_ids?: number[];
+  vote_count?: number;
+  vote_average?: number;
+  popularity?: number;
+};
+
+type TmdbTvExternalIds = {
+  tvdb_id?: number | null;
+};
+
+type TmdbTvDetails = {
+  id: number;
+  name?: string;
+  first_air_date?: string;
+  overview?: string;
+  genres?: Array<{ id?: unknown; name?: unknown }>;
+  vote_count?: number;
+  vote_average?: number;
+  external_ids?: TmdbTvExternalIds;
+};
+
 type TmdbPagedResponse = {
   results?: unknown;
   total_pages?: unknown;
@@ -31,6 +56,16 @@ export type TmdbMovieCandidate = {
   tmdbId: number;
   title: string;
   releaseDate: string | null;
+  voteAverage: number | null;
+  voteCount: number | null;
+  popularity: number | null;
+  sources: string[];
+};
+
+export type TmdbTvCandidate = {
+  tmdbId: number;
+  title: string;
+  releaseDate: string | null; // TV: first_air_date
   voteAverage: number | null;
   voteCount: number | null;
   popularity: number | null;
@@ -155,6 +190,76 @@ export class TmdbService {
     return out;
   }
 
+  async searchTv(params: {
+    apiKey: string;
+    query: string;
+    firstAirDateYear?: number | null;
+    includeAdult?: boolean;
+  }): Promise<TmdbTvSearchResult[]> {
+    const apiKey = params.apiKey.trim();
+    const query = params.query.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!query) return [];
+
+    const url = new URL('https://api.themoviedb.org/3/search/tv');
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('query', query);
+    // TMDB supports include_adult on some endpoints; harmless if ignored.
+    url.searchParams.set('include_adult', String(Boolean(params.includeAdult)));
+    if (
+      typeof params.firstAirDateYear === 'number' &&
+      Number.isFinite(params.firstAirDateYear)
+    ) {
+      url.searchParams.set(
+        'first_air_date_year',
+        String(Math.trunc(params.firstAirDateYear)),
+      );
+    }
+
+    const data = (await this.fetchTmdbJson(url, 20000)) as TmdbPagedResponse;
+    const results = Array.isArray(data.results)
+      ? (data.results as unknown[])
+      : [];
+
+    const out: TmdbTvSearchResult[] = [];
+    for (const r of results) {
+      if (!r || typeof r !== 'object') continue;
+      const rec = r as Record<string, unknown>;
+      const id = typeof rec['id'] === 'number' ? rec['id'] : Number(rec['id']);
+      const name = typeof rec['name'] === 'string' ? rec['name'].trim() : '';
+      if (!Number.isFinite(id) || id <= 0) continue;
+      if (!name) continue;
+
+      out.push({
+        id: Math.trunc(id),
+        name,
+        first_air_date:
+          typeof rec['first_air_date'] === 'string'
+            ? rec['first_air_date']
+            : undefined,
+        genre_ids: Array.isArray(rec['genre_ids'])
+          ? (rec['genre_ids'] as unknown[])
+              .map((x) => (typeof x === 'number' ? x : Number(x)))
+              .filter((n) => Number.isFinite(n) && n > 0)
+          : undefined,
+        vote_count:
+          typeof rec['vote_count'] === 'number'
+            ? rec['vote_count']
+            : Number(rec['vote_count']),
+        vote_average:
+          typeof rec['vote_average'] === 'number'
+            ? rec['vote_average']
+            : Number(rec['vote_average']),
+        popularity:
+          typeof rec['popularity'] === 'number'
+            ? rec['popularity']
+            : Number(rec['popularity']),
+      });
+    }
+
+    return out;
+  }
+
   async getMovie(params: {
     apiKey: string;
     tmdbId: number;
@@ -208,11 +313,134 @@ export class TmdbService {
     };
   }
 
+  async getTv(params: {
+    apiKey: string;
+    tmdbId: number;
+    appendExternalIds?: boolean;
+  }): Promise<TmdbTvDetails | null> {
+    const apiKey = params.apiKey.trim();
+    const tmdbId = Math.trunc(params.tmdbId);
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return null;
+
+    const url = new URL(`https://api.themoviedb.org/3/tv/${tmdbId}`);
+    url.searchParams.set('api_key', apiKey);
+    if (params.appendExternalIds) {
+      url.searchParams.set('append_to_response', 'external_ids');
+    }
+
+    const data = await this.fetchTmdbJson(url, 20000);
+    if (!data || typeof data !== 'object') return null;
+    const rec = data as Record<string, unknown>;
+    const id = typeof rec['id'] === 'number' ? rec['id'] : Number(rec['id']);
+    if (!Number.isFinite(id) || id <= 0) return null;
+
+    const voteAverageRaw = rec['vote_average'];
+    const voteAverage =
+      typeof voteAverageRaw === 'number'
+        ? voteAverageRaw
+        : typeof voteAverageRaw === 'string' && voteAverageRaw.trim()
+          ? Number(voteAverageRaw)
+          : NaN;
+
+    const voteCountRaw = rec['vote_count'];
+    const voteCount =
+      typeof voteCountRaw === 'number'
+        ? voteCountRaw
+        : typeof voteCountRaw === 'string' && voteCountRaw.trim()
+          ? Number(voteCountRaw)
+          : NaN;
+
+    const externalIdsRaw = rec['external_ids'];
+    const external_ids: TmdbTvExternalIds | undefined =
+      externalIdsRaw && typeof externalIdsRaw === 'object'
+        ? ({
+            tvdb_id:
+              typeof (externalIdsRaw as Record<string, unknown>)['tvdb_id'] ===
+              'number'
+                ? ((externalIdsRaw as Record<string, unknown>)['tvdb_id'] as number)
+                : typeof (externalIdsRaw as Record<string, unknown>)['tvdb_id'] ===
+                    'string'
+                  ? Number(
+                      (externalIdsRaw as Record<string, unknown>)['tvdb_id'],
+                    )
+                  : null,
+          } as TmdbTvExternalIds)
+        : undefined;
+
+    return {
+      id: Math.trunc(id),
+      name: typeof rec['name'] === 'string' ? rec['name'] : undefined,
+      first_air_date:
+        typeof rec['first_air_date'] === 'string'
+          ? rec['first_air_date']
+          : undefined,
+      overview:
+        typeof rec['overview'] === 'string' ? rec['overview'] : undefined,
+      genres: Array.isArray(rec['genres'])
+        ? (rec['genres'] as Array<{ id?: unknown; name?: unknown }>)
+        : undefined,
+      vote_average: Number.isFinite(voteAverage) ? voteAverage : undefined,
+      vote_count: Number.isFinite(voteCount)
+        ? Math.max(0, Math.trunc(voteCount))
+        : undefined,
+      ...(external_ids ? { external_ids } : {}),
+    };
+  }
+
+  async getTvExternalIds(params: {
+    apiKey: string;
+    tmdbId: number;
+  }): Promise<{ tvdb_id: number | null } | null> {
+    const apiKey = params.apiKey.trim();
+    const tmdbId = Math.trunc(params.tmdbId);
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return null;
+
+    const url = new URL(`https://api.themoviedb.org/3/tv/${tmdbId}/external_ids`);
+    url.searchParams.set('api_key', apiKey);
+    const data = await this.fetchTmdbJson(url, 20000);
+    if (!data || typeof data !== 'object') return null;
+    const rec = data as Record<string, unknown>;
+    const tvdbRaw = rec['tvdb_id'];
+    const tvdb =
+      typeof tvdbRaw === 'number'
+        ? tvdbRaw
+        : typeof tvdbRaw === 'string' && tvdbRaw.trim()
+          ? Number(tvdbRaw)
+          : NaN;
+    return { tvdb_id: Number.isFinite(tvdb) ? Math.trunc(tvdb) : null };
+  }
+
   async getMovieVoteStats(params: { apiKey: string; tmdbId: number }): Promise<{
     vote_average: number | null;
     vote_count: number | null;
   } | null> {
     const details = await this.getMovie({
+      apiKey: params.apiKey,
+      tmdbId: params.tmdbId,
+    });
+    if (!details) return null;
+
+    const vote_average =
+      typeof details.vote_average === 'number' &&
+      Number.isFinite(details.vote_average)
+        ? Number(details.vote_average)
+        : null;
+    const vote_count =
+      typeof details.vote_count === 'number' &&
+      Number.isFinite(details.vote_count)
+        ? Math.max(0, Math.trunc(details.vote_count))
+        : null;
+
+    return { vote_average, vote_count };
+  }
+
+  async getTvVoteStats(params: { apiKey: string; tmdbId: number }): Promise<{
+    vote_average: number | null;
+    vote_count: number | null;
+  } | null> {
+    const details = await this.getTv({
       apiKey: params.apiKey,
       tmdbId: params.tmdbId,
     });
@@ -275,6 +503,54 @@ export class TmdbService {
       };
     } catch {
       return { seed_title: seedTitle };
+    }
+  }
+
+  async getTvSeedMetadata(params: {
+    apiKey: string;
+    seedTitle: string;
+    seedYear?: number | null;
+  }): Promise<Record<string, unknown>> {
+    const seedTitle = params.seedTitle.trim();
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!seedTitle) return { seed_title: '' };
+
+    try {
+      const results = await this.searchTv({
+        apiKey,
+        query: seedTitle,
+        firstAirDateYear: params.seedYear ?? null,
+        includeAdult: false,
+      });
+      const best = bestSeedTvResult(seedTitle, results);
+      if (!best) return { seed_title: seedTitle };
+
+      const details = await this.getTv({
+        apiKey,
+        tmdbId: best.id,
+      }).catch(() => null);
+      const genres = Array.isArray(details?.genres)
+        ? details.genres
+            .map((g) => {
+              if (!g || typeof g !== 'object') return null;
+              const name = typeof g.name === 'string' ? g.name.trim() : '';
+              return name || null;
+            })
+            .filter((x): x is string => Boolean(x))
+        : [];
+
+      return {
+        seed_title: seedTitle,
+        tmdb_id: best.id,
+        title: details?.name ?? best.name ?? seedTitle,
+        year: (details?.first_air_date ?? best.first_air_date ?? '').slice(0, 4),
+        genres,
+        overview: details?.overview ?? '',
+        media_type: 'tv',
+      };
+    } catch {
+      return { seed_title: seedTitle, media_type: 'tv' };
     }
   }
 

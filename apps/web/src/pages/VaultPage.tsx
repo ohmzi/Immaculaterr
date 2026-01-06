@@ -1575,7 +1575,7 @@ export function SettingsPage({
     "group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10";
   const cardHeaderClass =
     'flex items-start sm:items-center justify-between gap-4 mb-6 min-h-[44px]';
-  const cardTitleClass = 'text-2xl font-semibold text-white';
+  const cardTitleClass = 'text-2xl font-semibold text-white min-w-0 leading-tight';
   const labelClass = 'block text-sm font-medium text-white/70 mb-2';
   const inputBaseClass =
     'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
@@ -1825,24 +1825,22 @@ export function SettingsPage({
                         <PlexLogo className="w-7 h-7" />
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <h2 className={cardTitleClass}>Plex Media Server</h2>
-                      <button
-                        type="button"
-                        disabled={plexStatus === 'testing' || (plexStatus === 'inactive' && plexTestOk !== false)}
-                        onClick={() => void runPlexTest('manual')}
-                        className={statusPillClass(plexStatus)}
-                        aria-label={`Plex status: ${statusLabel(plexStatus)}`}
-                      >
-                        {plexStatus === 'testing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <span className={`h-2 w-2 rounded-full ${statusDotClass(plexStatus)}`} />
-                        )}
-                        {statusLabel(plexStatus)}
-                      </button>
-                    </div>
+                    <h2 className={cardTitleClass}>Plex Media Server</h2>
                   </div>
+                  <button
+                    type="button"
+                    disabled={plexStatus === 'testing' || (plexStatus === 'inactive' && plexTestOk !== false)}
+                    onClick={() => void runPlexTest('manual')}
+                    className={statusPillClass(plexStatus)}
+                    aria-label={`Plex status: ${statusLabel(plexStatus)}`}
+                  >
+                    {plexStatus === 'testing' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <span className={`h-2 w-2 rounded-full ${statusDotClass(plexStatus)}`} />
+                    )}
+                    {statusLabel(plexStatus)}
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -1898,20 +1896,6 @@ export function SettingsPage({
                     </div>
                     <div className="flex items-center gap-2 min-w-0">
                       <h2 className={cardTitleClass}>The Movie Database (TMDB)</h2>
-                      <button
-                        type="button"
-                        disabled={tmdbStatus === 'testing' || (tmdbStatus === 'inactive' && tmdbTestOk !== false)}
-                        onClick={() => void runTmdbTest('manual')}
-                        className={statusPillClass(tmdbStatus)}
-                        aria-label={`TMDB status: ${statusLabel(tmdbStatus)}`}
-                      >
-                        {tmdbStatus === 'testing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <span className={`h-2 w-2 rounded-full ${statusDotClass(tmdbStatus)}`} />
-                        )}
-                        {statusLabel(tmdbStatus)}
-                      </button>
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
@@ -1941,6 +1925,20 @@ export function SettingsPage({
                       </Popover>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    disabled={tmdbStatus === 'testing' || (tmdbStatus === 'inactive' && tmdbTestOk !== false)}
+                    onClick={() => void runTmdbTest('manual')}
+                    className={statusPillClass(tmdbStatus)}
+                    aria-label={`TMDB status: ${statusLabel(tmdbStatus)}`}
+                  >
+                    {tmdbStatus === 'testing' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <span className={`h-2 w-2 rounded-full ${statusDotClass(tmdbStatus)}`} />
+                    )}
+                    {statusLabel(tmdbStatus)}
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 gap-6">
                   <div>
@@ -1995,24 +1993,6 @@ export function SettingsPage({
                     </div>
                     <div className="flex items-center gap-2 min-w-0">
                       <h2 className={cardTitleClass}>Radarr</h2>
-                      <button
-                        type="button"
-                        disabled={
-                          !radarrEnabled ||
-                          radarrStatus === 'testing' ||
-                          (radarrStatus === 'inactive' && radarrTestOk !== false)
-                        }
-                        onClick={() => void runRadarrTest('manual')}
-                        className={statusPillClass(radarrStatus)}
-                        aria-label={`Radarr status: ${statusLabel(radarrStatus)}`}
-                      >
-                        {radarrStatus === 'testing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <span className={`h-2 w-2 rounded-full ${statusDotClass(radarrStatus)}`} />
-                        )}
-                        {statusLabel(radarrStatus)}
-                      </button>
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
@@ -2042,7 +2022,25 @@ export function SettingsPage({
                       </Popover>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                    <button
+                      type="button"
+                      disabled={
+                        !radarrEnabled ||
+                        radarrStatus === 'testing' ||
+                        (radarrStatus === 'inactive' && radarrTestOk !== false)
+                      }
+                      onClick={() => void runRadarrTest('manual')}
+                      className={statusPillClass(radarrStatus)}
+                      aria-label={`Radarr status: ${statusLabel(radarrStatus)}`}
+                    >
+                      {radarrStatus === 'testing' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <span className={`h-2 w-2 rounded-full ${statusDotClass(radarrStatus)}`} />
+                      )}
+                      {statusLabel(radarrStatus)}
+                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2175,24 +2173,6 @@ export function SettingsPage({
                     </div>
                     <div className="flex items-center gap-2 min-w-0">
                       <h2 className={cardTitleClass}>Sonarr</h2>
-                      <button
-                        type="button"
-                        disabled={
-                          !sonarrEnabled ||
-                          sonarrStatus === 'testing' ||
-                          (sonarrStatus === 'inactive' && sonarrTestOk !== false)
-                        }
-                        onClick={() => void runSonarrTest('manual')}
-                        className={statusPillClass(sonarrStatus)}
-                        aria-label={`Sonarr status: ${statusLabel(sonarrStatus)}`}
-                      >
-                        {sonarrStatus === 'testing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <span className={`h-2 w-2 rounded-full ${statusDotClass(sonarrStatus)}`} />
-                        )}
-                        {statusLabel(sonarrStatus)}
-                      </button>
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
@@ -2222,7 +2202,25 @@ export function SettingsPage({
                       </Popover>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                    <button
+                      type="button"
+                      disabled={
+                        !sonarrEnabled ||
+                        sonarrStatus === 'testing' ||
+                        (sonarrStatus === 'inactive' && sonarrTestOk !== false)
+                      }
+                      onClick={() => void runSonarrTest('manual')}
+                      className={statusPillClass(sonarrStatus)}
+                      aria-label={`Sonarr status: ${statusLabel(sonarrStatus)}`}
+                    >
+                      {sonarrStatus === 'testing' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <span className={`h-2 w-2 rounded-full ${statusDotClass(sonarrStatus)}`} />
+                      )}
+                      {statusLabel(sonarrStatus)}
+                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2331,24 +2329,6 @@ export function SettingsPage({
                     </div>
                     <div className="flex items-center gap-2 min-w-0">
                       <h2 className={cardTitleClass}>Google Search</h2>
-                      <button
-                        type="button"
-                        disabled={
-                          !googleEnabled ||
-                          googleStatus === 'testing' ||
-                          (googleStatus === 'inactive' && googleTestOk !== false)
-                        }
-                        onClick={() => void runGoogleTest('manual')}
-                        className={statusPillClass(googleStatus)}
-                        aria-label={`Google Search status: ${statusLabel(googleStatus)}`}
-                      >
-                        {googleStatus === 'testing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <span className={`h-2 w-2 rounded-full ${statusDotClass(googleStatus)}`} />
-                        )}
-                        {statusLabel(googleStatus)}
-                      </button>
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
@@ -2378,7 +2358,25 @@ export function SettingsPage({
                       </Popover>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                    <button
+                      type="button"
+                      disabled={
+                        !googleEnabled ||
+                        googleStatus === 'testing' ||
+                        (googleStatus === 'inactive' && googleTestOk !== false)
+                      }
+                      onClick={() => void runGoogleTest('manual')}
+                      className={statusPillClass(googleStatus)}
+                      aria-label={`Google Search status: ${statusLabel(googleStatus)}`}
+                    >
+                      {googleStatus === 'testing' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <span className={`h-2 w-2 rounded-full ${statusDotClass(googleStatus)}`} />
+                      )}
+                      {statusLabel(googleStatus)}
+                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2487,24 +2485,6 @@ export function SettingsPage({
                     </div>
                     <div className="flex items-center gap-2 min-w-0">
                       <h2 className={cardTitleClass}>OpenAI</h2>
-                      <button
-                        type="button"
-                        disabled={
-                          !openAiEnabled ||
-                          openAiStatus === 'testing' ||
-                          (openAiStatus === 'inactive' && openAiTestOk !== false)
-                        }
-                        onClick={() => void runOpenAiTest('manual')}
-                        className={statusPillClass(openAiStatus)}
-                        aria-label={`OpenAI status: ${statusLabel(openAiStatus)}`}
-                      >
-                        {openAiStatus === 'testing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <span className={`h-2 w-2 rounded-full ${statusDotClass(openAiStatus)}`} />
-                        )}
-                        {statusLabel(openAiStatus)}
-                      </button>
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
@@ -2534,7 +2514,25 @@ export function SettingsPage({
                       </Popover>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                    <button
+                      type="button"
+                      disabled={
+                        !openAiEnabled ||
+                        openAiStatus === 'testing' ||
+                        (openAiStatus === 'inactive' && openAiTestOk !== false)
+                      }
+                      onClick={() => void runOpenAiTest('manual')}
+                      className={statusPillClass(openAiStatus)}
+                      aria-label={`OpenAI status: ${statusLabel(openAiStatus)}`}
+                    >
+                      {openAiStatus === 'testing' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <span className={`h-2 w-2 rounded-full ${statusDotClass(openAiStatus)}`} />
+                      )}
+                      {statusLabel(openAiStatus)}
+                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2628,24 +2626,6 @@ export function SettingsPage({
                     </div>
                     <div className="flex items-center gap-2 min-w-0">
                       <h2 className={cardTitleClass}>Overseerr</h2>
-                      <button
-                        type="button"
-                        disabled={
-                          !overseerrEnabled ||
-                          overseerrStatus === 'testing' ||
-                          (overseerrStatus === 'inactive' && overseerrTestOk !== false)
-                        }
-                        onClick={() => void runOverseerrTest('manual')}
-                        className={statusPillClass(overseerrStatus)}
-                        aria-label={`Overseerr status: ${statusLabel(overseerrStatus)}`}
-                      >
-                        {overseerrStatus === 'testing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <span className={`h-2 w-2 rounded-full ${statusDotClass(overseerrStatus)}`} />
-                        )}
-                        {statusLabel(overseerrStatus)}
-                      </button>
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
@@ -2675,7 +2655,25 @@ export function SettingsPage({
                       </Popover>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                    <button
+                      type="button"
+                      disabled={
+                        !overseerrEnabled ||
+                        overseerrStatus === 'testing' ||
+                        (overseerrStatus === 'inactive' && overseerrTestOk !== false)
+                      }
+                      onClick={() => void runOverseerrTest('manual')}
+                      className={statusPillClass(overseerrStatus)}
+                      aria-label={`Overseerr status: ${statusLabel(overseerrStatus)}`}
+                    >
+                      {overseerrStatus === 'testing' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <span className={`h-2 w-2 rounded-full ${statusDotClass(overseerrStatus)}`} />
+                      )}
+                      {statusLabel(overseerrStatus)}
+                    </button>
                     <button
                       type="button"
                       role="switch"

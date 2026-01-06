@@ -894,14 +894,30 @@ export function TaskManagerPage() {
                     </div>
 
                     <div className="flex-1 space-y-1 min-w-0">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-xl font-bold text-white tracking-tight leading-tight break-words sm:truncate">
-                          {job.name}
-                        </h3>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <h3 className="text-xl font-bold text-white tracking-tight leading-tight break-words sm:truncate min-w-0">
+                            {job.name}
+                          </h3>
+                          <SavingPill
+                            active={
+                              (scheduleMutation.isPending &&
+                                scheduleMutation.variables?.jobId === job.id) ||
+                              (webhookAutoRunMutation.isPending &&
+                                webhookAutoRunMutation.variables?.jobId === job.id) ||
+                              (job.id === 'immaculateTastePoints' &&
+                                immaculateIncludeRefresherMutation.isPending)
+                            }
+                            className="static shrink-0 hidden md:inline-flex"
+                          />
+                        </div>
+
+                        {/* Mobile: status inline-right with the title */}
                         <span
                           data-no-card-toggle="true"
                           className={cn(
                             APP_HEADER_STATUS_PILL_BASE_CLASS,
+                            'md:hidden',
                             isAutoRunEnabled
                               ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/20'
                               : 'bg-white/10 text-white/70 border-white/10',
@@ -909,26 +925,15 @@ export function TaskManagerPage() {
                         >
                           {isAutoRunEnabled ? 'Enabled' : 'Disabled'}
                         </span>
-                        <SavingPill
-                          active={
-                            (scheduleMutation.isPending &&
-                              scheduleMutation.variables?.jobId === job.id) ||
-                            (webhookAutoRunMutation.isPending &&
-                              webhookAutoRunMutation.variables?.jobId === job.id) ||
-                            (job.id === 'immaculateTastePoints' &&
-                              immaculateIncludeRefresherMutation.isPending)
-                          }
-                          className="shrink-0"
-                        />
                       </div>
                       <p className="hidden sm:block text-gray-400 leading-relaxed font-medium text-sm md:text-base max-w-lg">
                         {config.description}
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-4 self-end md:self-center w-full md:w-auto justify-between md:justify-end shrink-0">
+                    <div className="flex items-center gap-4 self-end md:self-center w-full md:w-auto justify-between md:justify-end shrink-0 md:items-stretch">
                       {supportsSchedule ? (
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap-2 md:self-center">
                           <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
                             Auto-Run
                           </span>
@@ -1000,7 +1005,7 @@ export function TaskManagerPage() {
                           </button>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap-2 md:self-center">
                           <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
                             Auto-Run
                           </span>
@@ -1047,9 +1052,24 @@ export function TaskManagerPage() {
                         </div>
                       )}
 
-                      <div className="w-px h-10 bg-white/5 hidden md:block" />
+                      <div className="w-px h-10 bg-white/5 hidden md:block md:self-center" />
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col items-end gap-2 md:self-stretch md:justify-between">
+                        {/* Desktop: status above Run Now */}
+                        <span
+                          data-no-card-toggle="true"
+                          className={cn(
+                            APP_HEADER_STATUS_PILL_BASE_CLASS,
+                            'hidden md:inline-flex',
+                            isAutoRunEnabled
+                              ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/20'
+                              : 'bg-white/10 text-white/70 border-white/10',
+                          )}
+                        >
+                          {isAutoRunEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+
+                        <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -1194,6 +1214,7 @@ export function TaskManagerPage() {
                             </AnimatePresence>
                           </div>
                         </button>
+                        </div>
                       </div>
                     </div>
                   </div>
