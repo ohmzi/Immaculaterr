@@ -1,10 +1,15 @@
 import { useMemo, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, useAnimation } from 'motion/react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CircleAlert, Copy, Loader2, RotateCcw } from 'lucide-react';
 
 import { getRun, getRunLogs, listJobs } from '@/api/jobs';
+import {
+  APP_BG_DARK_WASH_CLASS,
+  APP_BG_HIGHLIGHT_CLASS,
+  APP_BG_IMAGE_URL,
+} from '@/lib/ui-classes';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -49,6 +54,8 @@ function levelClass(level: string) {
 export function JobRunDetailPage() {
   const params = useParams();
   const runId = params.runId ?? '';
+  const titleIconControls = useAnimation();
+  const titleIconGlowControls = useAnimation();
   const [showDebug, setShowDebug] = useState(false);
   const [expandedContext, setExpandedContext] = useState<Record<number, boolean>>({});
   const [runIdCopied, setRunIdCopied] = useState(false);
@@ -109,16 +116,17 @@ export function JobRunDetailPage() {
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 sm:p-6 lg:p-8 shadow-2xl';
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, Rewind violet-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          src={APP_BG_IMAGE_URL}
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-400/35 via-violet-700/45 to-indigo-900/65" />
-        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
+        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
+        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
@@ -133,12 +141,35 @@ export function JobRunDetailPage() {
               <div className="mb-10">
                 <div className="flex flex-col gap-4 min-w-0">
                   <div className="flex items-center gap-4">
-                    <div className="relative shrink-0">
-                      <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20" />
-                      <div className="relative p-3 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10">
+                    <motion.button
+                      type="button"
+                      onClick={() => {
+                        titleIconControls.stop();
+                        titleIconGlowControls.stop();
+                        void titleIconControls.start({
+                          scale: [1, 1.06, 1],
+                          transition: { duration: 0.55, ease: 'easeOut' },
+                        });
+                        void titleIconGlowControls.start({
+                          opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+                          transition: { duration: 1.4, ease: 'easeInOut' },
+                        });
+                      }}
+                      animate={titleIconControls}
+                      className="relative group focus:outline-none touch-manipulation shrink-0"
+                      aria-label="Animate Rewind icon"
+                      title="Animate"
+                    >
+                      <motion.div
+                        aria-hidden="true"
+                        animate={titleIconGlowControls}
+                        className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
+                      />
+                      <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
+                      <div className="relative p-3 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10 group-hover:rotate-0 transition-transform duration-300">
                         <RotateCcw className="w-8 h-8 text-black" strokeWidth={2.5} />
                       </div>
-                    </div>
+                    </motion.button>
 
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-3">

@@ -158,9 +158,9 @@ export class BasedonLatestWatchedCollectionJob {
         await ctx.warn(
           'plex: seed librarySectionID is not a movie library (continuing)',
           {
-            movieSectionKey,
-            libraryTitle: match.title,
-            libraryType: match.type,
+          movieSectionKey,
+          libraryTitle: match.title,
+          libraryType: match.type,
           },
         );
       }
@@ -265,15 +265,15 @@ export class BasedonLatestWatchedCollectionJob {
 
     const changeOfTaste =
       await this.recommendations.buildChangeOfTasteMovieTitles({
-        ctx,
-        seedTitle,
-        seedYear,
-        tmdbApiKey,
-        count: recCount,
+      ctx,
+      seedTitle,
+      seedYear,
+      tmdbApiKey,
+      count: recCount,
         openai: openAiEnabled
           ? { apiKey: openAiApiKey, model: openAiModel }
           : null,
-      });
+    });
 
     await ctx.info('watchedMovieRecommendations: recommendations ready', {
       similar: {
@@ -318,35 +318,35 @@ export class BasedonLatestWatchedCollectionJob {
 
     const radarrDefaults =
       !ctx.dryRun && radarrEnabled
-        ? await this.pickRadarrDefaults({
-            ctx,
-            baseUrl: radarrBaseUrl,
-            apiKey: radarrApiKey,
-            preferredRootFolderPath:
-              pickString(settings, 'radarr.defaultRootFolderPath') ||
-              pickString(settings, 'radarr.rootFolderPath'),
-            preferredQualityProfileId:
-              Math.max(
-                1,
-                Math.trunc(
-                  pickNumber(settings, 'radarr.defaultQualityProfileId') ??
-                    pickNumber(settings, 'radarr.qualityProfileId') ??
-                    1,
-                ),
-              ) || 1,
-            preferredTagId: (() => {
-              const v =
-                pickNumber(settings, 'radarr.defaultTagId') ??
-                pickNumber(settings, 'radarr.tagId');
-              return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
-            })(),
-          }).catch(async (err) => {
-            await ctx.warn('radarr: defaults unavailable (skipping adds)', {
-              error: (err as Error)?.message ?? String(err),
-            });
-            return null;
-          })
-        : null;
+      ? await this.pickRadarrDefaults({
+          ctx,
+          baseUrl: radarrBaseUrl,
+          apiKey: radarrApiKey,
+          preferredRootFolderPath:
+            pickString(settings, 'radarr.defaultRootFolderPath') ||
+            pickString(settings, 'radarr.rootFolderPath'),
+          preferredQualityProfileId:
+            Math.max(
+              1,
+              Math.trunc(
+                pickNumber(settings, 'radarr.defaultQualityProfileId') ??
+                  pickNumber(settings, 'radarr.qualityProfileId') ??
+                  1,
+              ),
+            ) || 1,
+          preferredTagId: (() => {
+            const v =
+              pickNumber(settings, 'radarr.defaultTagId') ??
+              pickNumber(settings, 'radarr.tagId');
+            return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+          })(),
+        }).catch(async (err) => {
+          await ctx.warn('radarr: defaults unavailable (skipping adds)', {
+            error: (err as Error)?.message ?? String(err),
+          });
+          return null;
+        })
+      : null;
 
     const perCollection: JsonObject[] = [];
     for (const col of collectionsToBuild) {
@@ -396,13 +396,13 @@ export class BasedonLatestWatchedCollectionJob {
     maxPoints: number;
     collectionLimit: number;
     radarr: {
-      baseUrl: string;
-      apiKey: string;
-      defaults: {
-        rootFolderPath: string;
-        qualityProfileId: number;
-        tagIds: number[];
-      } | null;
+          baseUrl: string;
+          apiKey: string;
+          defaults: {
+            rootFolderPath: string;
+            qualityProfileId: number;
+            tagIds: number[];
+          } | null;
     } | null;
   }): Promise<JsonObject> {
     const {
@@ -467,8 +467,8 @@ export class BasedonLatestWatchedCollectionJob {
     }
     const resolvedItems = Array.from(resolvedUnique.entries()).map(
       ([ratingKey, title]) => ({
-        ratingKey,
-        title,
+      ratingKey,
+      title,
       }),
     );
 
@@ -773,9 +773,9 @@ export class BasedonLatestWatchedCollectionJob {
         await ctx.warn(
           'collection_run: no resolvable Plex items (skipping plex rebuild)',
           {
-            collectionName,
-            generated: recommendationTitles.length,
-            missing: missingTitles.length,
+          collectionName,
+          generated: recommendationTitles.length,
+          missing: missingTitles.length,
           },
         );
         return null;

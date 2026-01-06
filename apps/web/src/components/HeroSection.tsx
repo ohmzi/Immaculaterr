@@ -327,7 +327,7 @@ export function HeroSection() {
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
 
       {/* Content Container */}
-      <div className="relative z-10 container mx-auto px-6 lg:px-8 pt-28 lg:pt-32 pb-24">
+      <div className="relative z-10 container mx-auto px-6 lg:px-8 pt-28 sm:pt-32 lg:pt-40 pb-24">
         <div className="mx-auto w-full max-w-5xl flex flex-col items-center">
           {/* Left Content */}
           <motion.div
@@ -336,28 +336,35 @@ export function HeroSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-center"
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
-              <span className="inline-grid grid-cols-[max-content_max-content] items-center gap-y-2 group leading-none">
-                <span className="flex items-baseline gap-3 justify-center">
-                  <span className="font-tesla font-bold tracking-tight">Your</span>
-                  <span className="font-tesla font-bold tracking-tight group-hover:tracking-normal transition-all duration-300">
-                    library
+            <h1 className="text-5xl md:text-6xl font-black text-gray-900 tracking-tighter leading-tight">
+              <button
+                type="button"
+                className="inline-flex flex-col items-center gap-2 group leading-none bg-transparent border-0 p-0 appearance-none cursor-pointer select-none focus:outline-none"
+                aria-label="Landing title"
+              >
+                {/* Line 1 */}
+                <span className="inline-flex items-center gap-0.5">
+                  <span className="inline-flex items-baseline gap-[0.35em] transition-transform duration-300 ease-out group-hover:-translate-x-3 group-active:-translate-x-3">
+                    <span className="font-tesla font-bold tracking-tight">Your</span>
+                    <span className="font-tesla font-bold tracking-tight group-hover:tracking-normal transition-all duration-300">
+                      Library
+                    </span>
+                  </span>
+
+                  <span className="relative w-10 h-10 -ml-2 transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
+                    <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[8] text-black" />
+                    <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[5] text-[#e5a00d] transition-[filter] duration-300 ease-out group-hover:drop-shadow-[0_0_18px_rgba(229,160,13,0.9)] group-active:drop-shadow-[0_0_22px_rgba(229,160,13,0.95)]" />
                   </span>
                 </span>
 
-                <span className="relative w-10 h-10 -ml-1 transform transition-transform group-hover:translate-x-1 justify-self-center">
-                  <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[8] text-black" />
-                  <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[5] text-[#e5a00d]" />
-                </span>
-
-                <span className="flex justify-center pr-3">
+                {/* Line 2 */}
+                <span className="inline-flex items-baseline gap-1 transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
                   <span className="font-tesla font-bold tracking-tight">on</span>
+                  <span className="font-plex font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-black to-neutral-800 animate-pulse">
+                    Autopilot.
+                  </span>
                 </span>
-
-                <span className="font-plex font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-black to-neutral-800 animate-pulse">
-                  autopilot.
-                </span>
-              </span>
+              </button>
             </h1>
             {/* Placeholder elements - kept for future use */}
             <div className="hidden">

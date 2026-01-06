@@ -24,8 +24,14 @@ import { getPublicSettings, putSettings } from '@/api/settings';
 import { cn } from '@/components/ui/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
-import { Badge } from '@/components/ui/badge';
 import { SavingPill } from '@/components/SavingPill';
+import {
+  APP_BG_DARK_WASH_CLASS,
+  APP_BG_HIGHLIGHT_CLASS,
+  APP_BG_IMAGE_URL,
+  APP_HEADER_STATUS_PILL_BASE_CLASS,
+  APP_PRESSABLE_CLASS,
+} from '@/lib/ui-classes';
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -39,7 +45,7 @@ type ScheduleDraft = {
 };
 
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
-  'mediaAddedCleanup', // webhook/manual input only (Plex library.new)
+  'mediaAddedCleanup', // webhook/manual input only
   'immaculateTastePoints', // webhook/manual input only
   'watchedMovieRecommendations', // webhook/manual input only
 ]);
@@ -62,43 +68,43 @@ const JOB_CONFIG: Record<
     icon: <MonitorPlay className="w-8 h-8" />,
     color: 'text-blue-400',
     description:
-      'Scans all Plex movie/TV libraries and verifies which Radarr/Sonarr items should remain monitored.',
+      'Keeps Radarr/Sonarr monitoring in sync with what’s already in Plex.',
   },
   mediaAddedCleanup: {
     icon: <CheckCircle2 className="w-8 h-8" />,
     color: 'text-teal-300',
     description:
-      'Auto-run: on Plex library.new, checks all Plex libraries for duplicates, deletes lower-quality copies, unmonitors in Radarr/Sonarr, and removes from watchlist (shows only when complete). Run Now: full sweep across all libraries + watchlist reconciliation.',
+      'Cleans up new Plex media: dedupes, unmonitors extras, and tidies your watchlist.',
   },
   recentlyWatchedRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
     color: 'text-emerald-400',
     description:
-      'Off-peak refresh that reshuffles "Based on your recently watched movie" + "Change of Taste" across all Plex movie libraries.',
+      'Off-peak refresh for “Recently Watched” and “Change of Taste” collections.',
   },
   immaculateTastePoints: {
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-yellow-300',
     description:
-      'Triggered when Plex reports you finished a movie. Updates your Immaculate Taste points dataset, rebuilds the collection in the same Plex library you watched from, and optionally sends missing movies to Radarr.',
+      'Updates Immaculate Taste after you finish a movie (and can send missing to Radarr).',
   },
   immaculateTasteRefresher: {
     icon: <CalendarDays className="w-8 h-8" />,
     color: 'text-sky-300',
     description:
-      'Off-peak refresh of your “Inspired by your Immaculate Taste” collection across all Plex movie libraries. This can take a while for large libraries.',
+      'Off-peak rebuild of “Immaculate Taste” across all Plex movie libraries.',
   },
   watchedMovieRecommendations: {
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-violet-400',
     description:
-      'Triggered when Plex reports you finished a movie. Generates fresh recommendations and rebuilds curated collections in the Plex movie library you watched from.',
+      'Generates fresh recommendations after you finish a movie.',
   },
   noop: {
     icon: <Zap className="w-8 h-8" />,
     color: 'text-[#facc15]',
     description:
-      'Runs a quick no-op cycle to validate the job runner, event loop latency, and database connectivity.',
+      'Quick diagnostic run to verify jobs + logging are working.',
   },
 };
 
@@ -646,16 +652,17 @@ export function TaskManagerPage() {
   }, [drafts, jobsQuery.data?.jobs]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, indigo-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          src={APP_BG_IMAGE_URL}
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/55 via-blue-900/65 to-slate-900/75" />
-        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
+        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
+        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       {/* Task Manager Content */}
@@ -861,9 +868,9 @@ export function TaskManagerPage() {
                       }
                       setExpandedCards((prev) => ({ ...prev, [job.id]: !isExpanded }));
                     }}
-                    className="group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10"
+                    className="group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10 active:bg-[#1a1625]/85 active:shadow-2xl active:shadow-purple-500/15"
                   >
-                    <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
+                    <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
 
                     <div className="p-6 md:p-8 flex flex-wrap gap-4 items-start relative z-10">
                     {/* Icon Box */}
@@ -876,7 +883,7 @@ export function TaskManagerPage() {
                       <span
                         className={cn(
                           'transition-[filter] duration-300 will-change-[filter]',
-                          'group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor]',
+                          'group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]',
                           iconPulseActive
                             ? 'drop-shadow-[0_0_18px_currentColor]'
                             : 'drop-shadow-none'
@@ -891,11 +898,17 @@ export function TaskManagerPage() {
                         <h3 className="text-xl font-bold text-white tracking-tight leading-tight break-words sm:truncate">
                           {job.name}
                         </h3>
-                        {isAutoRunEnabled && (
-                          <Badge className="bg-emerald-500/20 text-emerald-400 border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold shrink-0">
-                            Active
-                          </Badge>
-                        )}
+                        <span
+                          data-no-card-toggle="true"
+                          className={cn(
+                            APP_HEADER_STATUS_PILL_BASE_CLASS,
+                            isAutoRunEnabled
+                              ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/20'
+                              : 'bg-white/10 text-white/70 border-white/10',
+                          )}
+                        >
+                          {isAutoRunEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
                         <SavingPill
                           active={
                             (scheduleMutation.isPending &&
@@ -1031,11 +1044,6 @@ export function TaskManagerPage() {
                               )}
                             />
                           </button>
-                          <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                            {job.id === 'mediaAddedCleanup'
-                              ? 'Plex library.new'
-                              : 'Plex scrobble'}
-                          </div>
                         </div>
                       )}
 
@@ -1736,11 +1744,11 @@ export function TaskManagerPage() {
         <div className="mt-12 text-center">
           <Link
             to="/rewind"
-            className="inline-flex items-center gap-3 px-6 py-3 rounded-full hover:bg-white/5 text-gray-400 hover:text-white transition-all border border-white/10 group"
+            className={`${APP_PRESSABLE_CLASS} inline-flex items-center gap-3 px-6 py-3 rounded-full hover:bg-white/5 active:bg-white/10 text-gray-400 hover:text-white transition-all border border-white/10 group`}
           >
             <Clock className="w-4 h-4 group-hover:text-[#facc15] transition-colors" />
             <span className="text-sm font-medium">View Execution History</span>
-            <ChevronRight className="w-4 h-4 opacity-50 group-hover:translate-x-1 transition-transform" />
+            <ChevronRight className="w-4 h-4 opacity-50 group-hover:translate-x-1 group-active:translate-x-1 transition-transform" />
           </Link>
         </div>
         </div>

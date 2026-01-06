@@ -207,7 +207,7 @@ export class RecommendationsService {
           await ctx.warn(
             'recs: google failed (continuing without web context)',
             {
-              error: (err as Error)?.message ?? String(err),
+            error: (err as Error)?.message ?? String(err),
             },
           );
           googleContext = null;
@@ -259,24 +259,24 @@ export class RecommendationsService {
       if (canSatisfySplit && (topReleased.length || topUpcoming.length)) {
         await ctx.info('recs: openai select start', {
           model,
-          count,
+        count,
           releasedTarget,
           upcomingTarget,
           candidates: {
             released: topReleased.length,
             upcoming: topUpcoming.length,
           },
-          googleUsed: Boolean(googleContext),
+        googleUsed: Boolean(googleContext),
           googleTitlesExtracted,
           googleTmdbAdded,
-        });
+      });
 
-        try {
+      try {
           const selection = await this.openai.selectFromCandidates({
-            apiKey: params.openai!.apiKey,
+          apiKey: params.openai!.apiKey,
             model,
-            seedTitle,
-            tmdbSeedMetadata: seedMeta,
+          seedTitle,
+          tmdbSeedMetadata: seedMeta,
             releasedTarget,
             upcomingTarget,
             releasedCandidates: topReleased,
@@ -312,37 +312,37 @@ export class RecommendationsService {
               upcoming: upcomingTarget,
             });
             this.openAiDownUntilMs = null;
-            return {
-              titles: cleaned,
-              strategy: 'openai',
-              debug: {
+          return {
+            titles: cleaned,
+            strategy: 'openai',
+            debug: {
                 upcomingPercent,
                 upcomingTarget,
                 releasedTarget,
-                googleEnabled,
-                googleQuery,
-                googleMeta: googleMeta ?? null,
+              googleEnabled,
+              googleQuery,
+              googleMeta: googleMeta ?? null,
                 googleTitlesExtracted,
                 googleTmdbAdded,
-                openAiEnabled: true,
+              openAiEnabled: true,
                 openAiModel: model,
                 used: {
                   tmdb: true,
                   google: Boolean(googleContext),
                   openai: true,
                 },
-              },
-            };
-          }
+            },
+          };
+        }
 
           await ctx.warn(
             'recs: openai selector returned empty (falling back to deterministic)',
           );
-        } catch (err) {
+      } catch (err) {
           await ctx.warn(
             'recs: openai selector failed (falling back to deterministic)',
             {
-              error: (err as Error)?.message ?? String(err),
+          error: (err as Error)?.message ?? String(err),
             },
           );
           this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
@@ -415,7 +415,7 @@ export class RecommendationsService {
         await ctx.warn(
           'change_of_taste: openai failed (falling back to tmdb)',
           {
-            error: (err as Error)?.message ?? String(err),
+          error: (err as Error)?.message ?? String(err),
           },
         );
       }

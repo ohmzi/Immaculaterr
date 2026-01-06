@@ -272,8 +272,8 @@ export class ImmaculateTasteCollectionJob {
     }
     const suggestedItems = Array.from(unique.entries()).map(
       ([ratingKey, title]) => ({
-        ratingKey,
-        title,
+      ratingKey,
+      title,
       }),
     );
 

@@ -7,10 +7,18 @@ import {
   LogIn,
   LockKeyhole,
   Eye,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { useLocation } from 'react-router-dom';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  APP_BG_DARK_WASH_CLASS,
+  APP_BG_HIGHLIGHT_CLASS,
+  APP_BG_IMAGE_URL,
+  APP_HEADER_STATUS_PILL_BASE_CLASS,
+} from '@/lib/ui-classes';
 import {
   GoogleLogo,
   OpenAiLogo,
@@ -1582,8 +1590,7 @@ export function SettingsPage({
       enabled ? 'translate-x-6' : 'translate-x-1'
     }`;
 
-  const statusPillBaseClass =
-    'inline-flex items-center justify-center gap-2 rounded-full px-4 text-xs font-semibold transition-all duration-200 h-7 min-w-[110px] border active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed';
+  const statusPillBaseClass = `${APP_HEADER_STATUS_PILL_BASE_CLASS} justify-center transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed`;
   const statusPillClass = (variant: StatusPillVariant) => {
     switch (variant) {
       case 'active':
@@ -1714,16 +1721,17 @@ export function SettingsPage({
             : 'inactive';
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, blue-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          src={APP_BG_IMAGE_URL}
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
         <div className={`absolute inset-0 ${backgroundGradientClass}`} />
-        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
+        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
+        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       {/* Settings Content */}
@@ -1817,22 +1825,24 @@ export function SettingsPage({
                         <PlexLogo className="w-7 h-7" />
                       </span>
                     </div>
-                    <h2 className={cardTitleClass}>Plex Media Server</h2>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className={cardTitleClass}>Plex Media Server</h2>
+                      <button
+                        type="button"
+                        disabled={plexStatus === 'testing' || (plexStatus === 'inactive' && plexTestOk !== false)}
+                        onClick={() => void runPlexTest('manual')}
+                        className={statusPillClass(plexStatus)}
+                        aria-label={`Plex status: ${statusLabel(plexStatus)}`}
+                      >
+                        {plexStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full ${statusDotClass(plexStatus)}`} />
+                        )}
+                        {statusLabel(plexStatus)}
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={plexStatus === 'testing' || (plexStatus === 'inactive' && plexTestOk !== false)}
-                    onClick={() => void runPlexTest('manual')}
-                    className={statusPillClass(plexStatus)}
-                    aria-label={`Plex status: ${statusLabel(plexStatus)}`}
-                  >
-                    {plexStatus === 'testing' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <span className={`h-2 w-2 rounded-full ${statusDotClass(plexStatus)}`} />
-                    )}
-                    {statusLabel(plexStatus)}
-                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -1886,22 +1896,51 @@ export function SettingsPage({
                         <TmdbLogo className="w-8 h-8" />
                       </span>
                     </div>
-                    <h2 className={cardTitleClass}>The Movie Database (TMDB)</h2>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className={cardTitleClass}>The Movie Database (TMDB)</h2>
+                      <button
+                        type="button"
+                        disabled={tmdbStatus === 'testing' || (tmdbStatus === 'inactive' && tmdbTestOk !== false)}
+                        onClick={() => void runTmdbTest('manual')}
+                        className={statusPillClass(tmdbStatus)}
+                        aria-label={`TMDB status: ${statusLabel(tmdbStatus)}`}
+                      >
+                        {tmdbStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full ${statusDotClass(tmdbStatus)}`} />
+                        )}
+                        {statusLabel(tmdbStatus)}
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="TMDB API key help"
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                        >
+                          <div className="space-y-2 text-sm text-white/80">
+                            <div>Get your TMDB API key here:</div>
+                            <a
+                              href="https://developer.themoviedb.org/docs/getting-started"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#facc15] hover:text-[#fde68a] underline underline-offset-4"
+                            >
+                              TMDB Getting Started
+                            </a>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={tmdbStatus === 'testing' || (tmdbStatus === 'inactive' && tmdbTestOk !== false)}
-                    onClick={() => void runTmdbTest('manual')}
-                    className={statusPillClass(tmdbStatus)}
-                    aria-label={`TMDB status: ${statusLabel(tmdbStatus)}`}
-                  >
-                    {tmdbStatus === 'testing' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <span className={`h-2 w-2 rounded-full ${statusDotClass(tmdbStatus)}`} />
-                    )}
-                    {statusLabel(tmdbStatus)}
-                  </button>
                 </div>
                 <div className="grid grid-cols-1 gap-6">
                   <div>
@@ -1954,25 +1993,56 @@ export function SettingsPage({
                         <RadarrLogo className="w-7 h-7" />
                       </span>
                     </div>
-                    <h2 className={cardTitleClass}>Radarr</h2>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className={cardTitleClass}>Radarr</h2>
+                      <button
+                        type="button"
+                        disabled={
+                          !radarrEnabled ||
+                          radarrStatus === 'testing' ||
+                          (radarrStatus === 'inactive' && radarrTestOk !== false)
+                        }
+                        onClick={() => void runRadarrTest('manual')}
+                        className={statusPillClass(radarrStatus)}
+                        aria-label={`Radarr status: ${statusLabel(radarrStatus)}`}
+                      >
+                        {radarrStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full ${statusDotClass(radarrStatus)}`} />
+                        )}
+                        {statusLabel(radarrStatus)}
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Radarr API key help"
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                        >
+                          <div className="space-y-2 text-sm text-white/80">
+                            <div>Find your Radarr API key here:</div>
+                            <a
+                              href="http://localhost:7878/settings/general"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#facc15] hover:text-[#fde68a] underline underline-offset-4"
+                            >
+                              Radarr → Settings → General
+                            </a>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <button
-                      type="button"
-                      disabled={
-                        !radarrEnabled || radarrStatus === 'testing' || (radarrStatus === 'inactive' && radarrTestOk !== false)
-                      }
-                      onClick={() => void runRadarrTest('manual')}
-                      className={statusPillClass(radarrStatus)}
-                      aria-label={`Radarr status: ${statusLabel(radarrStatus)}`}
-                    >
-                      {radarrStatus === 'testing' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <span className={`h-2 w-2 rounded-full ${statusDotClass(radarrStatus)}`} />
-                      )}
-                      {statusLabel(radarrStatus)}
-                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2103,25 +2173,56 @@ export function SettingsPage({
                         <SonarrLogo className="w-7 h-7" />
                       </span>
                     </div>
-                    <h2 className={cardTitleClass}>Sonarr</h2>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className={cardTitleClass}>Sonarr</h2>
+                      <button
+                        type="button"
+                        disabled={
+                          !sonarrEnabled ||
+                          sonarrStatus === 'testing' ||
+                          (sonarrStatus === 'inactive' && sonarrTestOk !== false)
+                        }
+                        onClick={() => void runSonarrTest('manual')}
+                        className={statusPillClass(sonarrStatus)}
+                        aria-label={`Sonarr status: ${statusLabel(sonarrStatus)}`}
+                      >
+                        {sonarrStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full ${statusDotClass(sonarrStatus)}`} />
+                        )}
+                        {statusLabel(sonarrStatus)}
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Sonarr API key help"
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                        >
+                          <div className="space-y-2 text-sm text-white/80">
+                            <div>Find your Sonarr API key here:</div>
+                            <a
+                              href="http://localhost:8989/settings/general"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#facc15] hover:text-[#fde68a] underline underline-offset-4"
+                            >
+                              Sonarr → Settings → General
+                            </a>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <button
-                      type="button"
-                      disabled={
-                        !sonarrEnabled || sonarrStatus === 'testing' || (sonarrStatus === 'inactive' && sonarrTestOk !== false)
-                      }
-                      onClick={() => void runSonarrTest('manual')}
-                      className={statusPillClass(sonarrStatus)}
-                      aria-label={`Sonarr status: ${statusLabel(sonarrStatus)}`}
-                    >
-                      {sonarrStatus === 'testing' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <span className={`h-2 w-2 rounded-full ${statusDotClass(sonarrStatus)}`} />
-                      )}
-                      {statusLabel(sonarrStatus)}
-                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2228,25 +2329,56 @@ export function SettingsPage({
                         <GoogleLogo className="w-7 h-7" />
                       </span>
                     </div>
-                    <h2 className={cardTitleClass}>Google Search</h2>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className={cardTitleClass}>Google Search</h2>
+                      <button
+                        type="button"
+                        disabled={
+                          !googleEnabled ||
+                          googleStatus === 'testing' ||
+                          (googleStatus === 'inactive' && googleTestOk !== false)
+                        }
+                        onClick={() => void runGoogleTest('manual')}
+                        className={statusPillClass(googleStatus)}
+                        aria-label={`Google Search status: ${statusLabel(googleStatus)}`}
+                      >
+                        {googleStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full ${statusDotClass(googleStatus)}`} />
+                        )}
+                        {statusLabel(googleStatus)}
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Google Search Engine ID help"
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                        >
+                          <div className="space-y-2 text-sm text-white/80">
+                            <div>Find your Search Engine ID (cx) here:</div>
+                            <a
+                              href="https://support.google.com/programmable-search/answer/12499034"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#facc15] hover:text-[#fde68a] underline underline-offset-4"
+                            >
+                              Programmable Search Engine ID
+                            </a>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <button
-                      type="button"
-                      disabled={
-                        !googleEnabled || googleStatus === 'testing' || (googleStatus === 'inactive' && googleTestOk !== false)
-                      }
-                      onClick={() => void runGoogleTest('manual')}
-                      className={statusPillClass(googleStatus)}
-                      aria-label={`Google Search status: ${statusLabel(googleStatus)}`}
-                    >
-                      {googleStatus === 'testing' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <span className={`h-2 w-2 rounded-full ${statusDotClass(googleStatus)}`} />
-                      )}
-                      {statusLabel(googleStatus)}
-                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2353,27 +2485,56 @@ export function SettingsPage({
                         <OpenAiLogo className="w-7 h-7" />
                       </span>
                     </div>
-                    <h2 className={cardTitleClass}>OpenAI</h2>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className={cardTitleClass}>OpenAI</h2>
+                      <button
+                        type="button"
+                        disabled={
+                          !openAiEnabled ||
+                          openAiStatus === 'testing' ||
+                          (openAiStatus === 'inactive' && openAiTestOk !== false)
+                        }
+                        onClick={() => void runOpenAiTest('manual')}
+                        className={statusPillClass(openAiStatus)}
+                        aria-label={`OpenAI status: ${statusLabel(openAiStatus)}`}
+                      >
+                        {openAiStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full ${statusDotClass(openAiStatus)}`} />
+                        )}
+                        {statusLabel(openAiStatus)}
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="OpenAI API key help"
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                        >
+                          <div className="space-y-2 text-sm text-white/80">
+                            <div>Create or copy your OpenAI API key here:</div>
+                            <a
+                              href="https://platform.openai.com/api-keys"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#facc15] hover:text-[#fde68a] underline underline-offset-4"
+                            >
+                              OpenAI API keys
+                            </a>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <button
-                      type="button"
-                      disabled={
-                        !openAiEnabled ||
-                        openAiStatus === 'testing' ||
-                        (openAiStatus === 'inactive' && openAiTestOk !== false)
-                      }
-                      onClick={() => void runOpenAiTest('manual')}
-                      className={statusPillClass(openAiStatus)}
-                      aria-label={`OpenAI status: ${statusLabel(openAiStatus)}`}
-                    >
-                      {openAiStatus === 'testing' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <span className={`h-2 w-2 rounded-full ${statusDotClass(openAiStatus)}`} />
-                      )}
-                      {statusLabel(openAiStatus)}
-                    </button>
                     <button
                       type="button"
                       role="switch"
@@ -2465,27 +2626,56 @@ export function SettingsPage({
                         <Eye className="w-7 h-7" />
                       </span>
                     </div>
-                    <h2 className={cardTitleClass}>Overseerr</h2>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className={cardTitleClass}>Overseerr</h2>
+                      <button
+                        type="button"
+                        disabled={
+                          !overseerrEnabled ||
+                          overseerrStatus === 'testing' ||
+                          (overseerrStatus === 'inactive' && overseerrTestOk !== false)
+                        }
+                        onClick={() => void runOverseerrTest('manual')}
+                        className={statusPillClass(overseerrStatus)}
+                        aria-label={`Overseerr status: ${statusLabel(overseerrStatus)}`}
+                      >
+                        {overseerrStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full ${statusDotClass(overseerrStatus)}`} />
+                        )}
+                        {statusLabel(overseerrStatus)}
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Overseerr API key help"
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                        >
+                          <div className="space-y-2 text-sm text-white/80">
+                            <div>Find your Overseerr API key here:</div>
+                            <a
+                              href="http://localhost:5055/settings"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#facc15] hover:text-[#fde68a] underline underline-offset-4"
+                            >
+                              Overseerr → Settings
+                            </a>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <button
-                      type="button"
-                      disabled={
-                        !overseerrEnabled ||
-                        overseerrStatus === 'testing' ||
-                        (overseerrStatus === 'inactive' && overseerrTestOk !== false)
-                      }
-                      onClick={() => void runOverseerrTest('manual')}
-                      className={statusPillClass(overseerrStatus)}
-                      aria-label={`Overseerr status: ${statusLabel(overseerrStatus)}`}
-                    >
-                      {overseerrStatus === 'testing' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <span className={`h-2 w-2 rounded-full ${statusDotClass(overseerrStatus)}`} />
-                      )}
-                      {statusLabel(overseerrStatus)}
-                    </button>
                     <button
                       type="button"
                       role="switch"

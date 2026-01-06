@@ -3,11 +3,13 @@ import {
   Body,
   Controller,
   Post,
+  Req,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
+import type { Request } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
@@ -69,6 +71,7 @@ export class WebhooksController {
     }),
   )
   async plexWebhook(
+    @Req() req: Request,
     @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Array<Express.Multer.File>,
   ) {
@@ -96,6 +99,19 @@ export class WebhooksController {
     };
 
     const persisted = await this.webhooksService.persistPlexWebhookEvent(event);
+    this.webhooksService.logPlexWebhookSummary({
+      payload,
+      persistedPath: persisted.path,
+      receivedAtIso: event.receivedAt,
+      files: event.files,
+      source: {
+        ip: req.ip ?? null,
+        userAgent:
+          typeof req.headers['user-agent'] === 'string'
+            ? req.headers['user-agent']
+            : null,
+      },
+    });
 
     // Trigger watched-movie automation on scrobble(movie).
     // NOTE: Plex webhooks can be noisy; we keep the conditions strict.
@@ -194,6 +210,14 @@ export class WebhooksController {
             }
 
             const triggered = Object.keys(runs).length > 0;
+            this.webhooksService.logPlexWebhookAutomation({
+              plexEvent,
+              mediaType,
+              seedTitle,
+              runs,
+              ...(Object.keys(skipped).length ? { skipped } : {}),
+              ...(Object.keys(errors).length ? { errors } : {}),
+            });
             return {
               ok: true,
               ...persisted,
@@ -204,6 +228,12 @@ export class WebhooksController {
             };
           } catch (err) {
             const msg = (err as Error)?.message ?? String(err);
+            this.webhooksService.logPlexWebhookAutomation({
+              plexEvent,
+              mediaType,
+              seedTitle,
+              errors: { webhook: msg },
+            });
             return { ok: true, ...persisted, triggered: false, error: msg };
           }
         }
@@ -249,6 +279,12 @@ export class WebhooksController {
           pickBool(settings, 'jobs.webhookEnabled.mediaAddedCleanup') ?? true;
 
         if (!enabled) {
+          this.webhooksService.logPlexWebhookAutomation({
+            plexEvent,
+            mediaType,
+            seedTitle: title || undefined,
+            skipped: { mediaAddedCleanup: 'disabled' },
+          });
           return {
             ok: true,
             ...persisted,
@@ -280,6 +316,12 @@ export class WebhooksController {
             input,
           });
 
+          this.webhooksService.logPlexWebhookAutomation({
+            plexEvent,
+            mediaType,
+            seedTitle: title || undefined,
+            runs: { mediaAddedCleanup: run.id },
+          });
           return {
             ok: true,
             ...persisted,
@@ -288,6 +330,12 @@ export class WebhooksController {
           };
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
+          this.webhooksService.logPlexWebhookAutomation({
+            plexEvent,
+            mediaType,
+            seedTitle: title || undefined,
+            errors: { mediaAddedCleanup: msg },
+          });
           return { ok: true, ...persisted, triggered: false, error: msg };
         }
       }

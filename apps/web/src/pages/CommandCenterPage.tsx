@@ -10,6 +10,7 @@ import { FunCountSlider } from '@/components/FunCountSlider';
 import { SavingPill } from '@/components/SavingPill';
 import { FunSplitSlider } from '@/components/FunSplitSlider';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { APP_HEADER_STATUS_PILL_BASE_CLASS } from '@/lib/ui-classes';
 
 function readBool(obj: unknown, path: string): boolean | null {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
@@ -333,18 +334,26 @@ export function CommandCenterPage() {
                     </span>
                   </div>
                   <h2 className="text-2xl font-semibold text-white">Recommendations</h2>
+                  <div className="flex items-center gap-2">
+                    {settingsQuery.isLoading ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
+                      >
+                        Checking…
+                      </span>
+                    ) : settingsQuery.isError ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}
+                      >
+                        Error
+                      </span>
+                    ) : null}
 
-                  {settingsQuery.isLoading ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10">
-                      Checking…
-                    </span>
-                  ) : settingsQuery.isError ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-red-500/15 text-red-200 border border-red-500/20">
-                      Error
-                    </span>
-                  ) : null}
-
-                  <SavingPill active={saveRecommendationsMutation.isPending} />
+                    <SavingPill
+                      active={saveRecommendationsMutation.isPending}
+                      className="shrink-0"
+                    />
+                  </div>
                 </div>
 
                 {settingsQuery.isError ? (
@@ -392,7 +401,7 @@ export function CommandCenterPage() {
 
                         <FunCountSlider
                           value={effectiveRecommendationCount}
-                          min={5}
+                          min={0}
                           max={100}
                           disabled={saveRecommendationsMutation.isPending}
                           onValueChange={(next) => {
@@ -468,7 +477,7 @@ export function CommandCenterPage() {
 
           {/* Radarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#facc15]">
@@ -477,26 +486,39 @@ export function CommandCenterPage() {
                     </span>
                   </div>
                   <h2 className="text-2xl font-semibold text-white">Radarr</h2>
-                  {settingsQuery.isLoading ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10">
-                      Checking…
-                    </span>
-                  ) : settingsQuery.isError ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-red-500/15 text-red-200 border border-red-500/20">
-                      Error
-                    </span>
-                  ) : radarrEnabled ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-emerald-500/15 text-emerald-200 border border-emerald-500/20">
-                      Enabled
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-yellow-400/10 text-yellow-200 border border-yellow-400/20">
-                      Not set up
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {settingsQuery.isLoading ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
+                      >
+                        Checking…
+                      </span>
+                    ) : settingsQuery.isError ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}
+                      >
+                        Error
+                      </span>
+                    ) : radarrEnabled ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
+                      >
+                        Enabled
+                      </span>
+                    ) : (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}
+                      >
+                        Not set up
+                      </span>
+                    )}
 
-                  <SavingPill active={saveRadarrDefaultsMutation.isPending} />
-      </div>
+                    <SavingPill
+                      active={saveRadarrDefaultsMutation.isPending}
+                      className="shrink-0"
+                    />
+                  </div>
+                </div>
 
                 {settingsQuery.isError ? (
                   <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
@@ -663,7 +685,7 @@ export function CommandCenterPage() {
 
           {/* Sonarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="min-w-0">
                   <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-400">
@@ -672,25 +694,38 @@ export function CommandCenterPage() {
                     </span>
                   </div>
                   <h2 className="text-2xl font-semibold text-white">Sonarr</h2>
-                  {settingsQuery.isLoading ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10">
-                      Checking…
-                    </span>
-                  ) : settingsQuery.isError ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-red-500/15 text-red-200 border border-red-500/20">
-                      Error
-                    </span>
-                  ) : sonarrEnabled ? (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-emerald-500/15 text-emerald-200 border border-emerald-500/20">
-                      Enabled
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-yellow-400/10 text-yellow-200 border border-yellow-400/20">
-                      Not set up
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {settingsQuery.isLoading ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
+                      >
+                        Checking…
+                      </span>
+                    ) : settingsQuery.isError ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}
+                      >
+                        Error
+                      </span>
+                    ) : sonarrEnabled ? (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
+                      >
+                        Enabled
+                      </span>
+                    ) : (
+                      <span
+                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}
+                      >
+                        Not set up
+                      </span>
+                    )}
 
-                  <SavingPill active={saveSonarrDefaultsMutation.isPending} />
+                    <SavingPill
+                      active={saveSonarrDefaultsMutation.isPending}
+                      className="shrink-0"
+                    />
+                  </div>
                 </div>
 
                 {settingsQuery.isError ? (
@@ -856,9 +891,9 @@ export function CommandCenterPage() {
                   </p>
                 )}
               </div>
+            </div>
           </div>
         </div>
-    </div>
       }
       showCards={false}
     />

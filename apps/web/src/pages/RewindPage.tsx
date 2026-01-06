@@ -11,6 +11,12 @@ import {
 } from 'lucide-react';
 
 import { listJobs, listRuns, type JobRun } from '@/api/jobs';
+import {
+  APP_BG_DARK_WASH_CLASS,
+  APP_BG_HIGHLIGHT_CLASS,
+  APP_BG_IMAGE_URL,
+  APP_CARD_ROW_CLASS,
+} from '@/lib/ui-classes';
 
 function statusPill(status: string) {
   switch (status) {
@@ -140,16 +146,17 @@ export function RewindPage() {
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, violet-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          src={APP_BG_IMAGE_URL}
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-400/35 via-violet-700/45 to-indigo-900/65" />
-        <div className="absolute inset-0 bg-[#0b0c0f]/15" />
+        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
+        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       {/* History Content */}
@@ -299,7 +306,7 @@ export function RewindPage() {
                             <Link
                               key={run.id}
                               to={`/rewind/${run.id}`}
-                              className="block rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 hover:bg-white/10 transition-colors"
+                              className={`${APP_CARD_ROW_CLASS} block p-4`}
                             >
                               <div className="flex items-start justify-between gap-4">
                                 <div className="min-w-0">
@@ -329,7 +336,7 @@ export function RewindPage() {
                                   >
                                     {run.status}
                                   </span>
-                                  <ChevronRight className="h-4 w-4 text-white/40" />
+                                  <ChevronRight className="h-4 w-4 text-white/40 transition-transform group-hover:translate-x-0.5 group-active:translate-x-0.5" />
                                 </div>
                               </div>
                               {errorPreview ? (
