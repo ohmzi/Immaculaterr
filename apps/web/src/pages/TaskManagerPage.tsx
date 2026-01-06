@@ -891,6 +891,11 @@ export function TaskManagerPage() {
                         <h3 className="text-xl font-bold text-white tracking-tight leading-tight break-words sm:truncate">
                           {job.name}
                         </h3>
+                        {isAutoRunEnabled && (
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold shrink-0">
+                            Active
+                          </Badge>
+                        )}
                         <SavingPill
                           active={
                             (scheduleMutation.isPending &&
@@ -902,11 +907,6 @@ export function TaskManagerPage() {
                           }
                           className="shrink-0"
                         />
-                        {isAutoRunEnabled && (
-                          <Badge className="bg-emerald-500/20 text-emerald-400 border-0 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold shrink-0">
-                            Active
-                          </Badge>
-                        )}
                       </div>
                       <p className="hidden sm:block text-gray-400 leading-relaxed font-medium text-sm md:text-base max-w-lg">
                         {config.description}

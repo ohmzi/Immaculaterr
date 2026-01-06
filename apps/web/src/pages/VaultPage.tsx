@@ -68,6 +68,7 @@ export function SettingsPage({
   const didInitServiceStatus = useRef(false);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const didRunLandingHealthCheck = useRef(false);
+  const tmdbLandingRetryTimeoutRef = useRef<number | null>(null);
   const allowCardExpandAnimations = useRef(false);
   const [flashCard, setFlashCard] = useState<{ id: string; nonce: number } | null>(
     null,
@@ -1365,6 +1366,114 @@ export function SettingsPage({
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
     void (async () => {
+      // --- TMDB: avoid false \"Active -> Inactive\" flips on transient failures ---
+      // Policy: if TMDB fails once, wait a cooldown and retry; only then mark inactive + toast.
+      const TMDB_HEALTH_KEY = 'tcp_health_tmdb';
+      const TMDB_COOLDOWN_MS = 5 * 60_000;
+      const TMDB_FAILS_TO_ALERT = 2;
+
+      type TmdbHealthState = {
+        failCount: number;
+        nextRetryAt: number | null;
+        lastAlertAt: number | null;
+      };
+
+      const readTmdbHealth = (): TmdbHealthState => {
+        try {
+          const raw = localStorage.getItem(TMDB_HEALTH_KEY);
+          if (!raw) return { failCount: 0, nextRetryAt: null, lastAlertAt: null };
+          const parsed = JSON.parse(raw) as unknown;
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return { failCount: 0, nextRetryAt: null, lastAlertAt: null };
+          }
+          const rec = parsed as Record<string, unknown>;
+          const failCount =
+            typeof rec.failCount === 'number' && Number.isFinite(rec.failCount)
+              ? Math.max(0, Math.trunc(rec.failCount))
+              : 0;
+          const nextRetryAt =
+            typeof rec.nextRetryAt === 'number' && Number.isFinite(rec.nextRetryAt)
+              ? Math.trunc(rec.nextRetryAt)
+              : null;
+          const lastAlertAt =
+            typeof rec.lastAlertAt === 'number' && Number.isFinite(rec.lastAlertAt)
+              ? Math.trunc(rec.lastAlertAt)
+              : null;
+          return { failCount, nextRetryAt, lastAlertAt };
+        } catch {
+          return { failCount: 0, nextRetryAt: null, lastAlertAt: null };
+        }
+      };
+
+      const writeTmdbHealth = (next: TmdbHealthState) => {
+        try {
+          localStorage.setItem(TMDB_HEALTH_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+      };
+
+      const clearTmdbHealth = () => {
+        try {
+          localStorage.removeItem(TMDB_HEALTH_KEY);
+        } catch {
+          // ignore
+        }
+      };
+
+      const scheduleTmdbRetry = (delayMs: number) => {
+        if (tmdbLandingRetryTimeoutRef.current) {
+          window.clearTimeout(tmdbLandingRetryTimeoutRef.current);
+          tmdbLandingRetryTimeoutRef.current = null;
+        }
+        const delay = Math.max(5000, Math.min(delayMs, TMDB_COOLDOWN_MS));
+        tmdbLandingRetryTimeoutRef.current = window.setTimeout(() => {
+          void runTmdbLandingCheck();
+        }, delay);
+      };
+
+      const runTmdbLandingCheck = async () => {
+        if (!secretsPresent.tmdb) return;
+        const now = Date.now();
+        const state = readTmdbHealth();
+
+        // If we recently failed, wait for cooldown before re-testing (reduces false alerts + rate spikes).
+        if (state.nextRetryAt && now < state.nextRetryAt) {
+          scheduleTmdbRetry(state.nextRetryAt - now);
+          return;
+        }
+
+        const result = await testTmdbConnection('background');
+        if (result === true) {
+          clearTmdbHealth();
+          setTmdbTestOk(true);
+          return;
+        }
+
+        // Failure: enter cooldown and retry later. Only mark inactive once it stays failing.
+        const nextFailCount = (state.failCount ?? 0) + 1;
+        const nextRetryAt = now + TMDB_COOLDOWN_MS;
+        const shouldAlert =
+          nextFailCount >= TMDB_FAILS_TO_ALERT &&
+          (!state.lastAlertAt || now - state.lastAlertAt > TMDB_COOLDOWN_MS);
+
+        writeTmdbHealth({
+          failCount: nextFailCount,
+          nextRetryAt,
+          lastAlertAt: shouldAlert ? now : state.lastAlertAt ?? null,
+        });
+
+        scheduleTmdbRetry(TMDB_COOLDOWN_MS);
+
+        if (shouldAlert) {
+          setTmdbTestOk(false);
+          toast.error('TMDB is still unreachable (retrying didn’t help). Marking it inactive.');
+        }
+      };
+
+      // Kick off TMDB check (best-effort). Other integrations run below.
+      void runTmdbLandingCheck();
+
       const tasks: Array<{
         key: 'plex' | 'tmdb' | 'radarr' | 'sonarr' | 'google' | 'openai' | 'overseerr';
         label: string;
@@ -1374,7 +1483,6 @@ export function SettingsPage({
 
       // Always-configured integrations (active if secrets exist)
       if (secretsPresent.plex) tasks.push({ key: 'plex', label: 'Plex', run: () => runPlexTest('background'), disableOnFail: false });
-      if (secretsPresent.tmdb) tasks.push({ key: 'tmdb', label: 'TMDB', run: () => runTmdbTest('background'), disableOnFail: false });
 
       // Optional integrations (active if enabled in persisted settings)
       if (radarrEnabled) tasks.push({ key: 'radarr', label: 'Radarr', run: () => runRadarrTest('background'), disableOnFail: true });
@@ -1403,7 +1511,6 @@ export function SettingsPage({
         // For non-toggle services, ensure the status pill reflects the failure even if the test
         // couldn't run due to missing fields (null result).
         if (r.key === 'plex') setPlexTestOk(false);
-        if (r.key === 'tmdb') setTmdbTestOk(false);
 
         // For toggleable services, disable them in local state AND persist it (app data) so jobs
         // don't keep trying to use a broken integration.
@@ -1437,6 +1544,12 @@ export function SettingsPage({
         }
       }
     })();
+    return () => {
+      if (tmdbLandingRetryTimeoutRef.current) {
+        window.clearTimeout(tmdbLandingRetryTimeoutRef.current);
+        tmdbLandingRetryTimeoutRef.current = null;
+      }
+    };
   }, [
     settingsHydrated,
     settingsQuery.data?.settings,

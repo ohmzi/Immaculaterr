@@ -86,14 +86,6 @@ export function RewindPage() {
     return new Map(jobs.map((j) => [j.id, j.name] as const));
   }, [jobsQuery.data?.jobs]);
 
-  const activeFilterCount = useMemo(() => {
-    let n = 0;
-    if (jobId) n += 1;
-    if (status) n += 1;
-    if (q.trim()) n += 1;
-    return n;
-  }, [jobId, status, q]);
-
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
   const labelClass = 'block text-sm font-medium text-white/70 mb-2';
@@ -268,18 +260,13 @@ export function RewindPage() {
                         <div className="mt-2 text-sm text-white/70">
                           Filter by job, status, or a quick text search.
                         </div>
-                        <div className="mt-2 text-xs text-white/60">
-                          {activeFilterCount
-                            ? `${activeFilterCount} active`
-                            : 'Tap to expand'}
-                        </div>
                       </div>
                       <ChevronDown
                         className={[
                           'mt-1 h-5 w-5 text-white/60 transition-transform',
                           mobileFiltersOpen ? 'rotate-180' : '',
                         ].join(' ')}
-                      />
+                      />  
                     </div>
                   </button>
 
@@ -346,7 +333,7 @@ export function RewindPage() {
                                 </div>
                               </div>
                               {errorPreview ? (
-                                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200/80 font-mono">
+                                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200/80 font-mono break-words [overflow-wrap:anywhere]">
                                   {errorPreview}
                                 </div>
                               ) : null}

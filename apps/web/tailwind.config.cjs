@@ -11,6 +11,12 @@ module.exports = {
       },
     },
     extend: {
+      fontFamily: {
+        // Closest open/web-safe stand-ins for Plex/Tesla brand fonts.
+        // If you want *exact* brand fonts, you'll need to self-host them with proper licensing.
+        plex: ['Michroma', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        tesla: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

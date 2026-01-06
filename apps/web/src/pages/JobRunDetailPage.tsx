@@ -189,15 +189,25 @@ export function JobRunDetailPage() {
               <div className="grid gap-6">
                 {/* Run Details Card */}
                 <div className={cardClass}>
-                  <div className="text-sm text-white/70 mb-4">
-                    Started: {new Date(run.startedAt).toLocaleString()}
-                    {run.finishedAt ? ` • Finished: ${new Date(run.finishedAt).toLocaleString()}` : ''}
+                  <div className="text-sm text-white/70 mb-4 space-y-1">
+                    <div>
+                      <span className="text-white/80 font-semibold">Started:</span>{' '}
+                      {new Date(run.startedAt).toLocaleString()}
+                    </div>
+                    {run.finishedAt ? (
+                      <div>
+                        <span className="text-white/80 font-semibold">Finished:</span>{' '}
+                        {new Date(run.finishedAt).toLocaleString()}
+                      </div>
+                    ) : null}
                   </div>
 
                   {run.errorMessage ? (
                     <div className="mb-6 rounded-2xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
                       <div className="font-semibold mb-1">Error:</div>
-                      {run.errorMessage}
+                      <div className="max-w-full font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
+                        {run.errorMessage}
+                      </div>
                     </div>
                   ) : null}
 

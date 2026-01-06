@@ -1,12 +1,15 @@
 import { SettingsPage } from '@/pages/VaultPage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleAlert, ExternalLink, Film, Loader2, Settings2 } from 'lucide-react';
+import { CircleAlert, ExternalLink, Film, Info, Loader2, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getRadarrOptions, getSonarrOptions } from '@/api/integrations';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
+import { FunCountSlider } from '@/components/FunCountSlider';
 import { SavingPill } from '@/components/SavingPill';
+import { FunSplitSlider } from '@/components/FunSplitSlider';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 function readBool(obj: unknown, path: string): boolean | null {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
@@ -262,7 +265,9 @@ export function CommandCenterPage() {
     if (!settingsQuery.data?.settings) return;
     if (didInitRecommendations.current) return;
     didInitRecommendations.current = true;
-    setDraftRecommendationCount(Math.max(1, Math.min(200, Math.trunc(savedRecommendationCount))));
+    setDraftRecommendationCount(
+      Math.max(0, Math.min(100, Math.trunc(savedRecommendationCount))),
+    );
     setDraftUpcomingPercent(savedUpcomingPercent);
   }, [settingsQuery.data?.settings, savedRecommendationCount, savedUpcomingPercent]);
 
@@ -278,8 +283,18 @@ export function CommandCenterPage() {
     },
   });
 
-  const effectiveRecommendationCount = Math.max(1, Math.min(200, Math.trunc(draftRecommendationCount || 50)));
-  const effectiveUpcomingPercent = Math.max(0, Math.min(75, Math.trunc(draftUpcomingPercent || 0)));
+  const effectiveRecommendationCount = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.trunc(Number.isFinite(draftRecommendationCount) ? draftRecommendationCount : 50),
+    ),
+  );
+  const effectiveUpcomingPercent = Math.max(
+    0,
+    Math.min(75, Math.trunc(draftUpcomingPercent || 0)),
+  );
+  const effectiveReleasedPercent = 100 - effectiveUpcomingPercent;
   const upcomingTarget = Math.round((effectiveRecommendationCount * effectiveUpcomingPercent) / 100);
   const releasedTarget = Math.max(0, effectiveRecommendationCount - upcomingTarget);
 
@@ -335,68 +350,95 @@ export function CommandCenterPage() {
                 ) : (
                   <>
                     <p className="mt-3 text-sm text-white/70 leading-relaxed">
-                      Controls how many recommendations are generated per run, plus how many are
-                      <span className="text-white"> upcoming</span> vs already released. Released is
-                      always at least <span className="text-white">25%</span>.
+                      Set how many to generate, then slide the mix:{' '}
+                      <span className="text-white">released</span> vs{' '}
+                      <span className="text-white">upcoming</span>.
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Recommendations info"
+                            className="ml-2 inline-flex align-middle items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                        >
+                          <div className="space-y-2 text-sm text-white/80">
+                            <div>Used by Immaculate Taste + Recently Watched.</div>
+                            <div>Released stays ≥ 25%.</div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </p>
 
-                    <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
-                          Recommendation count
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={200}
-                          value={String(effectiveRecommendationCount)}
-                          onChange={(e) => {
-                            const raw = e.target.value;
-                            const next = raw ? Number.parseInt(raw, 10) : 0;
-                            const clamped = Number.isFinite(next) ? Math.max(1, Math.min(200, next)) : 50;
+                    <div className="mt-6 space-y-8">
+                      {/* Count */}
+                      <div className="space-y-3">
+                        <div className="flex items-end justify-between gap-4">
+                          <label className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                            Recommendation count
+                          </label>
+                          <div className="text-xs text-white/60">0–100</div>
+                        </div>
+
+                        <FunCountSlider
+                          value={effectiveRecommendationCount}
+                          min={0}
+                          max={100}
+                          disabled={saveRecommendationsMutation.isPending}
+                          onValueChange={(next) => {
+                            const clamped = Number.isFinite(next)
+                              ? Math.max(0, Math.min(100, Math.trunc(next)))
+                              : 50;
                             setDraftRecommendationCount(clamped);
+                          }}
+                          onValueCommit={(next) => {
+                            const clamped = Number.isFinite(next)
+                              ? Math.max(0, Math.min(100, Math.trunc(next)))
+                              : 50;
                             saveRecommendationsMutation.mutate({ count: clamped });
                           }}
-                          disabled={saveRecommendationsMutation.isPending}
-                          className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
+                          aria-label="Recommendation count"
                         />
-                        <div className="mt-2 text-xs text-white/55">
-                          Used by Immaculate Taste + Based on your recently watched movie.
-                        </div>
                       </div>
 
-                      <div className="md:col-span-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <label className="block text-xs font-bold text-white/60 uppercase tracking-wider">
-                            Upcoming %
-                          </label>
-                          <div className="text-xs text-white/70">
-                            Upcoming <span className="text-white font-semibold">{effectiveUpcomingPercent}%</span> • Released{' '}
-                            <span className="text-white font-semibold">
-                              {100 - effectiveUpcomingPercent}%
-                            </span>
-                          </div>
-                        </div>
+                      {/* Split */}
+                      <div className="space-y-3">
+                        <FunSplitSlider
+                          value={effectiveReleasedPercent}
+                          min={25}
+                          max={100}
+                          disabled={saveRecommendationsMutation.isPending}
+                          onValueChange={(releasedPct) => {
+                            const clampedReleased = Number.isFinite(releasedPct)
+                              ? Math.max(25, Math.min(100, Math.trunc(releasedPct)))
+                              : 75;
+                            const nextUpcoming = Math.max(
+                              0,
+                              Math.min(75, Math.trunc(100 - clampedReleased)),
+                            );
+                            setDraftUpcomingPercent(nextUpcoming);
+                          }}
+                          onValueCommit={(releasedPct) => {
+                            const clampedReleased = Number.isFinite(releasedPct)
+                              ? Math.max(25, Math.min(100, Math.trunc(releasedPct)))
+                              : 75;
+                            const nextUpcoming = Math.max(
+                              0,
+                              Math.min(75, Math.trunc(100 - clampedReleased)),
+                            );
+                            saveRecommendationsMutation.mutate({
+                              upcomingPercent: nextUpcoming,
+                            });
+                          }}
+                          aria-label="Distribution split (released percent)"
+                        />
 
-                        <div className="mt-2">
-                          <input
-                            type="range"
-                            min={0}
-                            max={75}
-                            step={1}
-                            value={String(effectiveUpcomingPercent)}
-                            onChange={(e) => {
-                              const next = Number.parseInt(e.target.value, 10);
-                              const clamped = Number.isFinite(next) ? Math.max(0, Math.min(75, next)) : 25;
-                              setDraftUpcomingPercent(clamped);
-                              saveRecommendationsMutation.mutate({ upcomingPercent: clamped });
-                            }}
-                            disabled={saveRecommendationsMutation.isPending}
-                            className="w-full accent-purple-300"
-                          />
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-emerald-500/10 text-emerald-200 border border-emerald-500/20">
                             Released target: {releasedTarget}
                           </span>

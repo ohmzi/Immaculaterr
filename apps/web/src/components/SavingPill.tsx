@@ -64,12 +64,16 @@ export function SavingPill(props: {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/10 text-white/70 border border-white/10',
+        // Mobile: float in the top-right corner of the card (doesn't affect layout).
+        // Desktop: keep as an inline pill next to the header.
+        'pointer-events-none absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 text-white/70',
+        'px-2 py-0.5 text-[10px] font-semibold sm:static sm:px-3 sm:py-1 sm:text-xs',
         props.className,
       )}
     >
-      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-      {props.label ?? 'Saving…'}
+      <Loader2 className="hidden h-3.5 w-3.5 animate-spin sm:block" />
+      <span className="sm:hidden">Saving</span>
+      <span className="hidden sm:inline">{props.label ?? 'Saving…'}</span>
     </span>
   );
 }

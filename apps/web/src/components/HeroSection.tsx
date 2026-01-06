@@ -336,10 +336,36 @@ export function HeroSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="lg:pr-4 text-center lg:text-left"
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight lg:tracking-normal text-black dark:text-black leading-tight">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-black leading-[1.02]">
               <span className="inline-block text-left">
-                <span className="block">Your Library,</span>
-                <span className="block pl-4 whitespace-nowrap">on Autopilot.</span>
+                <span className="block">
+                  Your{' '}
+                  <span className="font-plex uppercase tracking-[0.12em]">Library</span>,
+                </span>
+                <span className="block pl-4 sm:pl-6 whitespace-nowrap">
+                  <span className="mr-2 align-baseline text-black/70 font-semibold uppercase tracking-[0.22em] text-sm sm:text-base">
+                    on
+                  </span>
+                  <span className="relative inline-block">
+                    {/* Marker underline */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute -inset-x-3 -bottom-1.5 h-3 rounded-full bg-black/15"
+                    />
+                    {/* Outline layer (webkit stroke) */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 text-transparent font-tesla tracking-[0.18em] uppercase [-webkit-text-stroke:2px_rgba(0,0,0,0.9)]"
+                    >
+                      Autopilot
+                    </span>
+                    {/* Fill layer (subtle gradient) */}
+                    <span className="relative z-10 font-tesla tracking-[0.18em] uppercase bg-gradient-to-r from-[#0b0c0f] via-black to-[#111827] bg-clip-text text-transparent">
+                      Autopilot
+                    </span>
+                  </span>
+                  .
+                </span>
               </span>
             </h1>
             {/* Placeholder elements - kept for future use */}
