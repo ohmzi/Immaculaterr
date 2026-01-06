@@ -167,7 +167,6 @@ export class JobsService {
           context: context ?? Prisma.DbNull,
         },
       });
-      this.logger.log(`[${jobId}#${run.id}] ${level}: ${message}`);
     };
 
     const ctx: JobContext = {
@@ -212,6 +211,7 @@ export class JobsService {
   }) {
     const { ctx, runId, awaitSummaryWrites } = params;
     const jobId = ctx.jobId;
+    const startedAt = Date.now();
 
     try {
       // Always set a minimal live summary upfront so the UI has something to show while running.
@@ -231,6 +231,12 @@ export class JobsService {
         dryRun: ctx.dryRun,
         input: ctx.input ?? null,
       });
+
+      // IMPORTANT: keep /logs clean. Only emit high-signal lifecycle events to server logs.
+      this.logger.log(
+        `Job started jobId=${jobId} runId=${runId} trigger=${ctx.trigger} dryRun=${ctx.dryRun}`,
+      );
+
       const result = await this.handlers.run(jobId, ctx);
       await ctx.info('run: finished');
 
@@ -285,6 +291,11 @@ export class JobsService {
           errorMessage: null,
         },
       });
+
+      const ms = Date.now() - startedAt;
+      this.logger.log(
+        `Job passed jobId=${jobId} runId=${runId} ms=${ms} dryRun=${ctx.dryRun}`,
+      );
     } catch (err) {
       const msg = errToMessage(err);
       await ctx.error('run: failed', { error: msg });
@@ -297,6 +308,11 @@ export class JobsService {
           summary: ctx.getSummary() ?? Prisma.DbNull,
         },
       });
+
+      const ms = Date.now() - startedAt;
+      this.logger.error(
+        `Job failed jobId=${jobId} runId=${runId} ms=${ms} error=${JSON.stringify(msg)}`,
+      );
     } finally {
       this.runningJobIds.delete(jobId);
     }

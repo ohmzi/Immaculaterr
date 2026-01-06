@@ -265,10 +265,45 @@ export class OpenAiService {
     return parseNewlineRecommendations(text, limit);
   }
 
+  async getContrastTvTitles(params: {
+    apiKey: string;
+    model?: string | null;
+    seedTitle: string;
+    limit: number;
+  }): Promise<string[]> {
+    const seedTitle = params.seedTitle.trim();
+    const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 15)));
+    const model = (params.model ?? '').trim() || 'gpt-5.2-chat-latest';
+
+    const prompt = [
+      `Recommend ${limit} TV shows that offer a deliberate "change of taste" from "${seedTitle}".`,
+      `These should be opposite in tone, genre, pacing, or style.`,
+      `For example, if the show is dark and serious, recommend light comedies or uplifting series.`,
+      `If it's action-packed, recommend slow-burn dramas or contemplative series.`,
+      `If it's realistic, recommend fantasy or sci-fi.`,
+      ``,
+      `Return ONLY a plain newline-separated list of TV show titles (no extra text, no numbering).`,
+      `Do not include years unless necessary to disambiguate titles.`,
+    ].join('\n');
+
+    const text = await this.chatCompletions({
+      apiKey: params.apiKey,
+      model,
+      messages: [
+        { role: 'system', content: 'You are a TV show recommendation engine.' },
+        { role: 'user', content: prompt },
+      ],
+      timeoutMs: 45000,
+    });
+
+    return parseNewlineRecommendations(text, limit);
+  }
+
   async selectFromCandidates(params: {
     apiKey: string;
     model?: string | null;
     seedTitle: string;
+    mediaType?: 'movie' | 'tv';
     tmdbSeedMetadata?: Record<string, unknown> | null;
     releasedTarget: number;
     upcomingTarget: number;
@@ -277,6 +312,8 @@ export class OpenAiService {
   }): Promise<{ released: number[]; upcoming: number[] }> {
     const seedTitle = params.seedTitle.trim();
     const model = (params.model ?? '').trim() || 'gpt-5.2-chat-latest';
+    const mediaType = params.mediaType === 'tv' ? 'tv' : 'movie';
+    const mediaLabel = mediaType === 'tv' ? 'TV show' : 'movie';
     const releasedTarget = Math.max(0, Math.trunc(params.releasedTarget ?? 0));
     const upcomingTarget = Math.max(0, Math.trunc(params.upcomingTarget ?? 0));
 
@@ -298,7 +335,7 @@ export class OpenAiService {
     }));
 
     const prompt = [
-      `You are a movie recommendation selector.`,
+      `You are a ${mediaLabel} recommendation selector.`,
       ``,
       `Seed title: ${seedTitle}`,
       `TMDb seed metadata (JSON): ${safeJsonString(params.tmdbSeedMetadata ?? {})}`,
@@ -329,7 +366,10 @@ export class OpenAiService {
       messages: [
         {
           role: 'system',
-          content: 'You select movies from provided candidates.',
+          content:
+            mediaType === 'tv'
+              ? 'You select TV shows from provided candidates.'
+              : 'You select movies from provided candidates.',
         },
         { role: 'user', content: prompt },
       ],

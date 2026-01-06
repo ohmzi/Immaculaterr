@@ -736,6 +736,70 @@ export class TmdbService {
     return out;
   }
 
+  async getContrastTvRecommendations(params: {
+    apiKey: string;
+    seedTitle: string;
+    seedYear?: number | null;
+    limit: number;
+  }): Promise<string[]> {
+    const apiKey = params.apiKey.trim();
+    const seedTitle = params.seedTitle.trim();
+    const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 15)));
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!seedTitle) return [];
+
+    const seedResults = await this.searchTv({
+      apiKey,
+      query: seedTitle,
+      firstAirDateYear: params.seedYear ?? null,
+      includeAdult: false,
+    });
+    const seedBest = bestSeedTvResult(seedTitle, seedResults);
+    if (!seedBest) return [];
+
+    const seedDetails = await this.getTv({
+      apiKey,
+      tmdbId: seedBest.id,
+    }).catch(() => null);
+    const seedGenreIds = (seedDetails?.genres ?? [])
+      .map((g) => {
+        const id =
+          typeof g?.id === 'number' ? g.id : g?.id ? Number(g.id) : NaN;
+        return Number.isFinite(id) ? Math.trunc(id) : NaN;
+      })
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    const today = this.formatTodayInTimezone('America/Toronto');
+    const url = new URL('https://api.themoviedb.org/3/discover/tv');
+    if (seedGenreIds.length) {
+      url.searchParams.set('without_genres', seedGenreIds.slice(0, 5).join(','));
+    }
+    url.searchParams.set('first_air_date.lte', today);
+    url.searchParams.set('vote_count.gte', '150');
+    url.searchParams.set('sort_by', 'vote_average.desc');
+
+    const results = await this.pagedTvResults({
+      apiKey,
+      url,
+      includeAdult: false,
+      maxItems: Math.min(250, limit * 6),
+      maxPages: 10,
+    });
+
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const r of results) {
+      const title = r.name?.trim();
+      if (!title) continue;
+      const key = title.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(title);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
   async getSplitRecommendationCandidatePools(params: {
     apiKey: string;
     seedTitle: string;
@@ -1014,6 +1078,278 @@ export class TmdbService {
     };
   }
 
+  async getSplitTvRecommendationCandidatePools(params: {
+    apiKey: string;
+    seedTitle: string;
+    seedYear?: number | null;
+    includeAdult?: boolean;
+    timezone?: string | null;
+    upcomingWindowMonths?: number;
+  }): Promise<{
+    seed: {
+      tmdbId: number;
+      title: string;
+      genreIds: number[];
+      releaseDate: string | null;
+    };
+    meta: { today: string; timezone: string; upcomingWindowEnd: string };
+    released: TmdbTvCandidate[];
+    upcoming: TmdbTvCandidate[];
+    unknown: TmdbTvCandidate[];
+  }> {
+    const apiKey = params.apiKey.trim();
+    const seedTitle = params.seedTitle.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!seedTitle) {
+      return {
+        seed: { tmdbId: 0, title: '', genreIds: [], releaseDate: null },
+        meta: {
+          today: this.formatTodayInTimezone('America/Toronto'),
+          timezone: 'America/Toronto',
+          upcomingWindowEnd: this.formatDateInTimezone(
+            addMonths(new Date(), 24),
+            'America/Toronto',
+          ),
+        },
+        released: [],
+        upcoming: [],
+        unknown: [],
+      };
+    }
+
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+    const upcomingWindowMonthsRaw = params.upcomingWindowMonths ?? 24;
+    const upcomingWindowMonths = Number.isFinite(upcomingWindowMonthsRaw)
+      ? Math.max(1, Math.min(60, Math.trunc(upcomingWindowMonthsRaw)))
+      : 24;
+    const upcomingWindowEnd = this.formatDateInTimezone(
+      addMonths(new Date(), upcomingWindowMonths),
+      tz,
+    );
+    const tomorrow = this.formatDateInTimezone(addDays(new Date(), 1), tz);
+
+    const seedResults = await this.searchTv({
+      apiKey,
+      query: seedTitle,
+      firstAirDateYear: params.seedYear ?? null,
+      includeAdult: Boolean(params.includeAdult),
+    });
+    const seedBest = bestSeedTvResult(seedTitle, seedResults);
+    if (!seedBest) {
+      return {
+        seed: { tmdbId: 0, title: seedTitle, genreIds: [], releaseDate: null },
+        meta: { today, timezone: tz, upcomingWindowEnd },
+        released: [],
+        upcoming: [],
+        unknown: [],
+      };
+    }
+
+    const seedDetails = await this.getTv({
+      apiKey,
+      tmdbId: seedBest.id,
+    }).catch(() => null);
+    const seedGenreIds = new Set(
+      (seedDetails?.genres ?? [])
+        .map((g) => {
+          const id =
+            typeof g?.id === 'number' ? g.id : g?.id ? Number(g.id) : NaN;
+          return Number.isFinite(id) ? Math.trunc(id) : NaN;
+        })
+        .filter((n) => Number.isFinite(n) && n > 0),
+    );
+
+    const candidates = new Map<
+      number,
+      {
+        tmdbId: number;
+        title: string;
+        releaseDate: string | null;
+        voteAverage: number | null;
+        voteCount: number | null;
+        popularity: number | null;
+        sources: Set<string>;
+      }
+    >();
+
+    const addResults = (results: TmdbTvSearchResult[], source: string) => {
+      for (const s of results) {
+        if (!s || !Number.isFinite(s.id) || s.id <= 0) continue;
+        if (s.id === seedBest.id) continue;
+        if (!s.name) continue;
+
+        const tmdbId = Math.trunc(s.id);
+        const title = s.name.trim();
+        if (!title) continue;
+
+        const releaseDate =
+          typeof s.first_air_date === 'string' && s.first_air_date.trim()
+            ? s.first_air_date.trim()
+            : null;
+        const voteAverage =
+          typeof s.vote_average === 'number' && Number.isFinite(s.vote_average)
+            ? Number(s.vote_average)
+            : null;
+        const voteCount =
+          typeof s.vote_count === 'number' && Number.isFinite(s.vote_count)
+            ? Math.max(0, Math.trunc(s.vote_count))
+            : null;
+        const popularity =
+          typeof s.popularity === 'number' && Number.isFinite(s.popularity)
+            ? Number(s.popularity)
+            : null;
+
+        const existing = candidates.get(tmdbId);
+        if (!existing) {
+          candidates.set(tmdbId, {
+            tmdbId,
+            title,
+            releaseDate,
+            voteAverage,
+            voteCount,
+            popularity,
+            sources: new Set([source]),
+          });
+          continue;
+        }
+
+        existing.sources.add(source);
+        if (!existing.title && title) existing.title = title;
+        if (!existing.releaseDate && releaseDate)
+          existing.releaseDate = releaseDate;
+        if (existing.voteAverage === null && voteAverage !== null)
+          existing.voteAverage = voteAverage;
+        if (existing.voteCount === null && voteCount !== null)
+          existing.voteCount = voteCount;
+        if (existing.popularity === null && popularity !== null)
+          existing.popularity = popularity;
+      }
+    };
+
+    const includeAdult = Boolean(params.includeAdult);
+
+    // --- Released pool: recommendations + similar + genre discover ---
+    const recResults = await this.pagedTvResults({
+      apiKey,
+      url: new URL(
+        `https://api.themoviedb.org/3/tv/${seedBest.id}/recommendations`,
+      ),
+      includeAdult,
+      maxItems: 120,
+      maxPages: 6,
+    });
+    addResults(recResults, 'recommendations');
+
+    const simResults = await this.pagedTvResults({
+      apiKey,
+      url: new URL(`https://api.themoviedb.org/3/tv/${seedBest.id}/similar`),
+      includeAdult,
+      maxItems: 120,
+      maxPages: 6,
+    });
+    addResults(simResults, 'similar');
+
+    if (seedGenreIds.size) {
+      const withGenres = Array.from(seedGenreIds).slice(0, 4).join(',');
+
+      const releasedDiscoverUrl = new URL(
+        'https://api.themoviedb.org/3/discover/tv',
+      );
+      releasedDiscoverUrl.searchParams.set('with_genres', withGenres);
+      releasedDiscoverUrl.searchParams.set('first_air_date.lte', today);
+      releasedDiscoverUrl.searchParams.set('vote_count.gte', '150');
+      releasedDiscoverUrl.searchParams.set('sort_by', 'vote_average.desc');
+
+      const discResults = await this.pagedTvResults({
+        apiKey,
+        url: releasedDiscoverUrl,
+        includeAdult,
+        maxItems: 200,
+        maxPages: 10,
+      });
+      addResults(discResults, 'discover_released');
+    }
+
+    // --- Upcoming pool: future-window discover ---
+    if (seedGenreIds.size) {
+      const withGenres = Array.from(seedGenreIds).slice(0, 4).join(',');
+
+      const upcomingDiscoverUrl = new URL(
+        'https://api.themoviedb.org/3/discover/tv',
+      );
+      upcomingDiscoverUrl.searchParams.set('with_genres', withGenres);
+      upcomingDiscoverUrl.searchParams.set('first_air_date.gte', tomorrow);
+      upcomingDiscoverUrl.searchParams.set('first_air_date.lte', upcomingWindowEnd);
+      upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
+
+      const upcomingResults = await this.pagedTvResults({
+        apiKey,
+        url: upcomingDiscoverUrl,
+        includeAdult,
+        maxItems: 200,
+        maxPages: 10,
+      });
+      addResults(upcomingResults, 'discover_upcoming');
+    }
+
+    const released: TmdbTvCandidate[] = [];
+    const upcoming: TmdbTvCandidate[] = [];
+    const unknown: TmdbTvCandidate[] = [];
+
+    for (const c of candidates.values()) {
+      const bucket = classifyByReleaseDate(c.releaseDate, today);
+      const item: TmdbTvCandidate = {
+        tmdbId: c.tmdbId,
+        title: c.title,
+        releaseDate: c.releaseDate,
+        voteAverage: c.voteAverage,
+        voteCount: c.voteCount,
+        popularity: c.popularity,
+        sources: Array.from(c.sources),
+      };
+      if (bucket === 'released') released.push(item);
+      else if (bucket === 'upcoming') upcoming.push(item);
+      else unknown.push(item);
+    }
+
+    released.sort((a, b) => {
+      const av = a.voteAverage ?? 0;
+      const bv = b.voteAverage ?? 0;
+      if (bv !== av) return bv - av;
+      const ac = a.voteCount ?? 0;
+      const bc = b.voteCount ?? 0;
+      if (bc !== ac) return bc - ac;
+      const ap = a.popularity ?? 0;
+      const bp = b.popularity ?? 0;
+      if (bp !== ap) return bp - ap;
+      return a.tmdbId - b.tmdbId;
+    });
+    upcoming.sort((a, b) => {
+      const ap = a.popularity ?? 0;
+      const bp = b.popularity ?? 0;
+      if (bp !== ap) return bp - ap;
+      const ar = a.releaseDate ?? '';
+      const br = b.releaseDate ?? '';
+      if (ar && br && ar !== br) return ar.localeCompare(br);
+      return a.tmdbId - b.tmdbId;
+    });
+
+    return {
+      seed: {
+        tmdbId: seedBest.id,
+        title: seedDetails?.name ?? seedBest.name ?? seedTitle,
+        genreIds: Array.from(seedGenreIds),
+        releaseDate:
+          seedDetails?.first_air_date ?? seedBest.first_air_date ?? null,
+      },
+      meta: { today, timezone: tz, upcomingWindowEnd },
+      released,
+      upcoming,
+      unknown,
+    };
+  }
+
   private async pagedResults(params: {
     apiKey: string;
     url: URL;
@@ -1055,6 +1391,80 @@ export class TmdbService {
           release_date:
             typeof rec['release_date'] === 'string'
               ? rec['release_date']
+              : undefined,
+          genre_ids: Array.isArray(rec['genre_ids'])
+            ? (rec['genre_ids'] as unknown[])
+                .map((x) => (typeof x === 'number' ? x : Number(x)))
+                .filter((n) => Number.isFinite(n) && n > 0)
+            : undefined,
+          vote_count:
+            typeof rec['vote_count'] === 'number'
+              ? rec['vote_count']
+              : Number(rec['vote_count']),
+          vote_average:
+            typeof rec['vote_average'] === 'number'
+              ? rec['vote_average']
+              : Number(rec['vote_average']),
+          popularity:
+            typeof rec['popularity'] === 'number'
+              ? rec['popularity']
+              : Number(rec['popularity']),
+        });
+        if (out.length >= params.maxItems) break;
+      }
+
+      const totalPagesRaw = data.total_pages;
+      const totalPages =
+        typeof totalPagesRaw === 'number'
+          ? totalPagesRaw
+          : Number(totalPagesRaw);
+      if (Number.isFinite(totalPages) && page >= totalPages) break;
+      page += 1;
+    }
+
+    return out.slice(0, params.maxItems);
+  }
+
+  private async pagedTvResults(params: {
+    apiKey: string;
+    url: URL;
+    includeAdult: boolean;
+    maxItems: number;
+    maxPages: number;
+  }): Promise<TmdbTvSearchResult[]> {
+    const out: TmdbTvSearchResult[] = [];
+    let page = 1;
+
+    while (out.length < params.maxItems && page <= params.maxPages) {
+      const url = new URL(params.url.toString());
+      url.searchParams.set('api_key', params.apiKey.trim());
+      url.searchParams.set(
+        'include_adult',
+        String(Boolean(params.includeAdult)),
+      );
+      url.searchParams.set('page', String(page));
+
+      const data = (await this.fetchTmdbJson(url, 20000)) as TmdbPagedResponse;
+      const results = Array.isArray(data.results)
+        ? (data.results as unknown[])
+        : [];
+      if (!results.length) break;
+
+      for (const r of results) {
+        if (!r || typeof r !== 'object') continue;
+        const rec = r as Record<string, unknown>;
+        const id =
+          typeof rec['id'] === 'number' ? rec['id'] : Number(rec['id']);
+        const name = typeof rec['name'] === 'string' ? rec['name'].trim() : '';
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (!name) continue;
+
+        out.push({
+          id: Math.trunc(id),
+          name,
+          first_air_date:
+            typeof rec['first_air_date'] === 'string'
+              ? rec['first_air_date']
               : undefined,
           genre_ids: Array.isArray(rec['genre_ids'])
             ? (rec['genre_ids'] as unknown[])
@@ -1171,6 +1581,34 @@ function bestSeedResult(
 
     const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
     return docPenalty + starts + contains + franchiseBoost + engagement;
+  };
+
+  return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
+}
+
+function bestSeedTvResult(
+  query: string,
+  results: TmdbTvSearchResult[],
+): TmdbTvSearchResult | null {
+  const q = query.trim().toLowerCase();
+  if (!results.length) return null;
+
+  const score = (r: TmdbTvSearchResult): number => {
+    const title = (r.name || '').trim().toLowerCase();
+    const pop = Number.isFinite(r.popularity) ? Number(r.popularity) : 0;
+    const votes = Number.isFinite(r.vote_count) ? Number(r.vote_count) : 0;
+    const vavg = Number.isFinite(r.vote_average) ? Number(r.vote_average) : 0;
+    const genreIds = new Set(r.genre_ids ?? []);
+
+    // Hard penalty for documentaries unless user explicitly asked
+    const isDoc = genreIds.has(99);
+    const docPenalty = isDoc && !q.includes('documentary') ? -1000 : 0;
+
+    const starts = q && title.startsWith(q) ? 80 : 0;
+    const contains = q && title.includes(q) ? 30 : 0;
+
+    const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
+    return docPenalty + starts + contains + engagement;
   };
 
   return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));

@@ -11,7 +11,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     name: 'Monitor Confirm',
     description:
       'Unmonitor items already present in Plex and optionally trigger Sonarr MissingEpisodeSearch.',
-    defaultScheduleCron: '0 3 * * *', // 3am daily (placeholder)
+    defaultScheduleCron: '0 1 * * *', // 1am daily (disabled by default)
   },
   {
     id: 'mediaAddedCleanup',
@@ -46,7 +46,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     name: 'Based on Latest Watched Refresher',
     description:
       'Refreshes and reshuffles the curated Plex collections "Based on your recently watched movie" and "Change of Taste" across all Plex movie libraries.',
-    defaultScheduleCron: '0 1 * * *', // 1am daily (placeholder)
+    defaultScheduleCron: '0 2 * * *', // 2am daily (disabled by default)
   },
   {
     id: 'noop',

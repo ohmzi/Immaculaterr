@@ -53,6 +53,17 @@ export type PlexMetadataDetails = {
   media: PlexMediaVersion[];
 };
 
+export type PlexActivityDetails = {
+  uuid: string;
+  type: string | null;
+  title: string | null;
+  subtitle: string | null;
+  progress: number | null;
+  cancellable: boolean | null;
+  userId: number | null;
+  librarySectionId: string | null;
+};
+
 type PlexDirectory = Record<string, unknown> & {
   key?: unknown;
   title?: unknown;
@@ -245,6 +256,91 @@ export class PlexServerService {
       );
     }
     return machineId;
+  }
+
+  async listActivities(params: {
+    baseUrl: string;
+    token: string;
+  }): Promise<PlexActivityDetails[]> {
+    const { baseUrl, token } = params;
+    const url = new URL('activities', normalizeBaseUrl(baseUrl)).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 15000));
+    const container = xml.MediaContainer;
+    if (!container) return [];
+
+    const activityNodes = asUnknownArray(
+      (container as Record<string, unknown>)['Activity'] ?? [],
+    ).filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === 'object');
+
+    const out: PlexActivityDetails[] = [];
+
+    for (const node of activityNodes) {
+      const uuid = toStringSafe(node['uuid']).trim();
+      if (!uuid) continue;
+
+      const type = (() => {
+        const s = toStringSafe(node['type']).trim();
+        return s ? s : null;
+      })();
+      const title = (() => {
+        const s = toStringSafe(node['title']).trim();
+        return s ? s : null;
+      })();
+      const subtitle = (() => {
+        const s = toStringSafe(node['subtitle']).trim();
+        return s ? s : null;
+      })();
+      const progress = (() => {
+        const raw = node['progress'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+        if (typeof raw === 'string' && raw.trim()) {
+          const n = Number.parseFloat(raw.trim());
+          return Number.isFinite(n) ? n : null;
+        }
+        return null;
+      })();
+      const cancellable = (() => {
+        const raw = node['cancellable'];
+        if (typeof raw === 'boolean') return raw;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return raw !== 0;
+        if (typeof raw === 'string' && raw.trim()) {
+          const s = raw.trim().toLowerCase();
+          if (s === '1' || s === 'true') return true;
+          if (s === '0' || s === 'false') return false;
+        }
+        return null;
+      })();
+      const userId = (() => {
+        const raw = node['userID'];
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
+        if (typeof raw === 'string' && raw.trim()) {
+          const n = Number.parseInt(raw.trim(), 10);
+          return Number.isFinite(n) ? n : null;
+        }
+        return null;
+      })();
+      const librarySectionId = (() => {
+        const ctx = node['Context'];
+        // Plex returns <Context librarySectionID="3" />
+        if (!ctx || typeof ctx !== 'object') return null;
+        const v = toStringSafe((ctx as Record<string, unknown>)['librarySectionID']).trim();
+        return v ? v : null;
+      })();
+
+      out.push({
+        uuid,
+        type,
+        title,
+        subtitle,
+        progress,
+        cancellable,
+        userId,
+        librarySectionId,
+      });
+    }
+
+    return out;
   }
 
   async getMetadataDetails(params: {
@@ -579,6 +675,34 @@ export class PlexServerService {
     });
   }
 
+  async listShowsWithTvdbIds(params: {
+    baseUrl: string;
+    token: string;
+    tvLibraryName: string;
+  }): Promise<
+    Array<{
+      ratingKey: string;
+      title: string;
+      tvdbId: number | null;
+      addedAt: number | null;
+      year: number | null;
+    }>
+  > {
+    const { baseUrl, token, tvLibraryName } = params;
+    const sectionKey = await this.findSectionKeyByTitle({
+      baseUrl,
+      token,
+      title: tvLibraryName,
+    });
+
+    return await this.listShowsWithTvdbIdsForSectionKey({
+      baseUrl,
+      token,
+      librarySectionKey: sectionKey,
+      sectionTitle: tvLibraryName,
+    });
+  }
+
   async listMoviesWithTmdbIdsForSectionKey(params: {
     baseUrl: string;
     token: string;
@@ -644,6 +768,82 @@ export class PlexServerService {
             : null;
 
       out.push({ ratingKey: rk, title, tmdbId, addedAt, year });
+    }
+
+    return out;
+  }
+
+  async listShowsWithTvdbIdsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    sectionTitle?: string;
+  }): Promise<
+    Array<{
+      ratingKey: string;
+      title: string;
+      tvdbId: number | null;
+      addedAt: number | null;
+      year: number | null;
+    }>
+  > {
+    const { baseUrl, token, librarySectionKey } = params;
+
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 2,
+      includeGuids: true,
+      duplicate: false,
+      timeoutMs: 60000,
+    });
+
+    const out: Array<{
+      ratingKey: string;
+      title: string;
+      tvdbId: number | null;
+      addedAt: number | null;
+      year: number | null;
+    }> = [];
+
+    for (const it of items) {
+      const rk = it.ratingKey ? String(it.ratingKey).trim() : '';
+      if (!rk) continue;
+      const title = typeof it.title === 'string' ? it.title : rk;
+      const tvdbId = it.Guid
+        ? (extractIdsFromGuids(it.Guid, 'tvdb')[0] ?? null)
+        : null;
+      const addedAt =
+        typeof it.addedAt === 'number'
+          ? Number.isFinite(it.addedAt)
+            ? it.addedAt
+            : null
+          : typeof it.addedAt === 'string' && it.addedAt.trim()
+            ? (() => {
+                const n = Number.parseInt(it.addedAt.trim(), 10);
+                return Number.isFinite(n) ? n : null;
+              })()
+            : null;
+      const year =
+        typeof it.year === 'number'
+          ? Number.isFinite(it.year)
+            ? it.year
+            : null
+          : typeof it.year === 'string' && it.year.trim()
+            ? (() => {
+                const n = Number.parseInt(it.year.trim(), 10);
+                return Number.isFinite(n) ? n : null;
+              })()
+            : null;
+
+      out.push({ ratingKey: rk, title, tvdbId, addedAt, year });
+    }
+
+    if (params.sectionTitle) {
+      this.logger.debug(
+        `Plex TV list built section=${params.sectionTitle} items=${out.length}`,
+      );
     }
 
     return out;

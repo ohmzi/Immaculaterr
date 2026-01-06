@@ -27,10 +27,129 @@ function levelClass(raw: string) {
   return 'text-white/80';
 }
 
+type ServiceFilter =
+  | 'immaculaterr'
+  | 'plex'
+  | 'tmdb'
+  | 'radarr'
+  | 'sonarr'
+  | 'overseerr'
+  | 'google'
+  | 'openai'
+  | 'errors';
+
+const SERVICE_FILTERS: Array<{
+  id: Exclude<ServiceFilter, 'errors'>;
+  label: string;
+  activeClass: string;
+}> = [
+  {
+    id: 'immaculaterr',
+    label: 'Immaculaterr',
+    activeClass: 'bg-[#facc15]/15 text-[#fde68a] border-[#facc15]/25',
+  },
+  {
+    id: 'plex',
+    label: 'Plex',
+    activeClass: 'bg-emerald-500/15 text-emerald-100 border-emerald-500/25',
+  },
+  {
+    id: 'tmdb',
+    label: 'TMDB',
+    activeClass: 'bg-sky-500/15 text-sky-100 border-sky-500/25',
+  },
+  {
+    id: 'radarr',
+    label: 'Radarr',
+    activeClass: 'bg-orange-500/15 text-orange-100 border-orange-500/25',
+  },
+  {
+    id: 'sonarr',
+    label: 'Sonarr',
+    activeClass: 'bg-violet-500/15 text-violet-100 border-violet-500/25',
+  },
+  {
+    id: 'overseerr',
+    label: 'Overseerr',
+    activeClass: 'bg-teal-500/15 text-teal-100 border-teal-500/25',
+  },
+  {
+    id: 'google',
+    label: 'Google',
+    activeClass: 'bg-blue-500/15 text-blue-100 border-blue-500/25',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    activeClass: 'bg-purple-500/15 text-purple-100 border-purple-500/25',
+  },
+] as const;
+
+function logMatchesAnyService(line: { message?: string; context?: string | null }) {
+  const msg = String(line.message ?? '').toLowerCase();
+  const ctx = String(line.context ?? '').toLowerCase();
+  const hay = `${ctx} ${msg}`;
+  return (
+    hay.includes('plex') ||
+    hay.includes('tmdb') ||
+    hay.includes('themoviedb') ||
+    hay.includes('radarr') ||
+    hay.includes('sonarr') ||
+    hay.includes('overseerr') ||
+    hay.includes('openai') ||
+    hay.includes('open ai') ||
+    hay.includes('google') ||
+    hay.includes('programmable search') ||
+    hay.includes('custom search') ||
+    hay.includes('cse')
+  );
+}
+
+function serviceTagsForLine(line: {
+  message?: string;
+  context?: string | null;
+  level?: string;
+}): Set<ServiceFilter> {
+  const out = new Set<ServiceFilter>();
+  const msg = String(line.message ?? '').toLowerCase();
+  const ctx = String(line.context ?? '').toLowerCase();
+  const hay = `${ctx} ${msg}`;
+
+  if (String(line.level ?? '').toLowerCase() === 'error') out.add('errors');
+
+  if (
+    hay.includes('plex') ||
+    msg.includes('media.scrobble') ||
+    msg.includes('library.new') ||
+    msg.includes('webhook') ||
+    msg.includes('notificationcontainer')
+  ) {
+    out.add('plex');
+  }
+  if (hay.includes('tmdb') || hay.includes('themoviedb')) out.add('tmdb');
+  if (hay.includes('radarr')) out.add('radarr');
+  if (hay.includes('sonarr')) out.add('sonarr');
+  if (hay.includes('overseerr')) out.add('overseerr');
+  if (
+    hay.includes('google') ||
+    hay.includes('programmable search') ||
+    hay.includes('custom search') ||
+    hay.includes('cse')
+  ) {
+    out.add('google');
+  }
+  if (hay.includes('openai') || hay.includes('open ai')) out.add('openai');
+
+  // App-core bucket (Immaculaterr): anything not clearly attributable to an external service.
+  if (!logMatchesAnyService(line)) out.add('immaculaterr');
+
+  return out;
+}
+
 export function LogsPage() {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
-  const [filter, setFilter] = useState<'all' | 'plex' | 'errors'>('all');
+  const [selected, setSelected] = useState<ServiceFilter[]>([]);
   const [query, setQuery] = useState('');
   const logsQuery = useQuery({
     queryKey: ['serverLogs'],
@@ -44,19 +163,28 @@ export function LogsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const byText = q
-      ? logs.filter((l) => (l.message || '').toLowerCase().includes(q))
+      ? logs.filter((l) => {
+          const msg = (l.message || '').toLowerCase();
+          const ctx = (l.context || '').toLowerCase();
+          return msg.includes(q) || ctx.includes(q);
+        })
       : logs;
-    if (filter === 'plex') {
-      return byText.filter((l) => (l.message || '').toLowerCase().includes('plex'));
-    }
-    if (filter === 'errors') {
-      return byText.filter((l) => String(l.level).toLowerCase() === 'error');
-    }
-    return byText;
-  }, [logs, query, filter]);
+
+    const active = selected;
+    if (!active.length) return byText;
+
+    return byText.filter((l) => {
+      const tags = serviceTagsForLine(l);
+      return active.some((f) => tags.has(f));
+    });
+  }, [logs, query, selected]);
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-3 shadow-2xl';
+
+  const toggle = (id: ServiceFilter) => {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -140,40 +268,43 @@ export function LogsPage() {
             ) : filtered.length ? (
               <>
                 <div className="p-3 md:p-4 border-b border-white/10 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setFilter('all')}
+                      onClick={() => setSelected([])}
                       className={[
                         APP_PRESSABLE_CLASS,
                         'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                        filter === 'all'
+                        selected.length === 0
                           ? 'bg-white/15 text-white border-white/20'
                           : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
                       ].join(' ')}
                     >
                       All
                     </button>
+                    {SERVICE_FILTERS.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => toggle(f.id)}
+                        className={[
+                          APP_PRESSABLE_CLASS,
+                          'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
+                          selected.includes(f.id)
+                            ? f.activeClass
+                            : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+                        ].join(' ')}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
                     <button
                       type="button"
-                      onClick={() => setFilter('plex')}
+                      onClick={() => toggle('errors')}
                       className={[
                         APP_PRESSABLE_CLASS,
                         'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                        filter === 'plex'
-                          ? 'bg-emerald-500/15 text-emerald-100 border-emerald-500/25'
-                          : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
-                      ].join(' ')}
-                    >
-                      Plex
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilter('errors')}
-                      className={[
-                        APP_PRESSABLE_CLASS,
-                        'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                        filter === 'errors'
+                        selected.includes('errors')
                           ? 'bg-red-500/15 text-red-100 border-red-500/25'
                           : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
                       ].join(' ')}

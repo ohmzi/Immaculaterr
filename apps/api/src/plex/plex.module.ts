@@ -9,6 +9,7 @@ import { PlexServerService } from './plex-server.service';
 import { PlexWatchlistService } from './plex-watchlist.service';
 import { PlexDuplicatesService } from './plex-duplicates.service';
 import { PlexConnectivityMonitorService } from './plex-connectivity-monitor.service';
+import { PlexActivitiesMonitorService } from './plex-activities-monitor.service';
 
 @Module({
   imports: [DbModule, SettingsModule],
@@ -21,6 +22,7 @@ import { PlexConnectivityMonitorService } from './plex-connectivity-monitor.serv
     PlexWatchlistService,
     PlexDuplicatesService,
     PlexConnectivityMonitorService,
+    PlexActivitiesMonitorService,
   ],
   exports: [
     PlexService,

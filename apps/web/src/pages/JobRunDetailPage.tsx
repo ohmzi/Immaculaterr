@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CircleAlert, Copy, Loader2, RotateCcw } from 'lucide-react';
 
-import { getRun, getRunLogs, listJobs } from '@/api/jobs';
+import { getRun, getRunLogs, listJobs, type JobRun } from '@/api/jobs';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -40,6 +40,24 @@ function statusPill(status: string) {
       return 'bg-amber-500/15 text-amber-200 border border-amber-500/25';
     default:
       return 'bg-white/10 text-white/70 border border-white/10';
+  }
+}
+
+type RunModeLabel = 'Auto-Run' | 'Manual' | 'Dry-Run';
+
+function modeLabel(run: JobRun): RunModeLabel {
+  if (run.dryRun) return 'Dry-Run';
+  return run.trigger === 'schedule' ? 'Auto-Run' : 'Manual';
+}
+
+function modePill(mode: RunModeLabel) {
+  switch (mode) {
+    case 'Dry-Run':
+      return 'bg-[#facc15]/15 text-[#fde68a] border border-[#facc15]/25';
+    case 'Auto-Run':
+      return 'bg-sky-500/15 text-sky-200 border border-sky-500/25';
+    case 'Manual':
+      return 'bg-purple-500/15 text-purple-200 border border-purple-500/25';
   }
 }
 
@@ -181,7 +199,7 @@ export function JobRunDetailPage() {
                   </div>
 
                   <p className="text-purple-200/70 text-lg font-medium max-w-2xl leading-relaxed ml-1">
-                    Execution report with live progress, a full summary, and detailed logs.
+                    Execution report with real-time progress, a full summary, and detailed logs.
                   </p>
 
                   <div className="ml-1">
@@ -252,7 +270,14 @@ export function JobRunDetailPage() {
                           className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusPill(run.status)}`}
                         >
                           {run.status}
-                          {run.dryRun ? ' (dry-run)' : ''}
+                        </span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${modePill(
+                            modeLabel(run),
+                          )}`}
+                          title={run.trigger === 'schedule' ? 'Scheduled run' : 'Manually started'}
+                        >
+                          {modeLabel(run)}
                         </span>
                       </div>
 
@@ -888,7 +913,7 @@ export function JobRunDetailPage() {
                       : ''}
                     {logStats.error ? ` • ${logStats.error} errors` : ''}
                     {logStats.warn ? ` • ${logStats.warn} warnings` : ''}
-                    {isRunning ? ' • live' : ''}
+                    {isRunning ? ' • updating' : ''}
                   </div>
 
                   <div className="mb-4 flex items-center gap-3">

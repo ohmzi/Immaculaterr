@@ -7,6 +7,7 @@ export type ServerLogEntry = {
   time: string;
   level: ServerLogLevel;
   message: string;
+  context?: string | null;
 };
 
 export function listServerLogs(params?: { afterId?: number; limit?: number }) {

@@ -7,7 +7,18 @@ export type ServerLogEntry = {
   time: string; // ISO
   level: ServerLogLevel;
   message: string;
+  context: string | null;
 };
+
+// Ignore chatty Nest boot/framework logs (not useful for Immaculaterr monitoring).
+// Errors are always kept regardless of context.
+const IGNORED_CONTEXTS = new Set<string>([
+  'NestFactory',
+  'InstanceLoader',
+  'RoutesResolver',
+  'RouterExplorer',
+  'MiddlewareModule',
+]);
 
 // Keep the last N messages in-memory (circular buffer).
 // Plex-related operations can be very chatty; keep more history so the UI doesn't
@@ -51,11 +62,26 @@ export function addServerLog(params: {
   level: ServerLogLevel;
   message: unknown;
   stack?: unknown;
+  context?: unknown;
 }) {
   const msg = normalizeMessage(params.message).trim();
   const stack = normalizeMessage(params.stack).trim();
   const combined = stack ? (msg ? `${msg}\n${stack}` : stack) : msg;
   if (!combined) return;
+
+  const contextRaw =
+    typeof params.context === 'string' ? params.context.trim() : '';
+  const context = contextRaw ? contextRaw : null;
+
+  if (
+    params.level !== 'error' &&
+    context &&
+    IGNORED_CONTEXTS.has(context) &&
+    // keep explicit warnings even if emitted by Nest internals
+    params.level !== 'warn'
+  ) {
+    return;
+  }
 
   ring[writeIndex] = {
     id: nextId++,
@@ -63,6 +89,7 @@ export function addServerLog(params: {
     level: params.level,
     message:
       combined.length > 10_000 ? `${combined.slice(0, 10_000)}…` : combined,
+    context,
   };
   writeIndex = (writeIndex + 1) % MAX_ENTRIES;
   count = Math.min(MAX_ENTRIES, count + 1);

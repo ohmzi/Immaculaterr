@@ -376,6 +376,308 @@ export class RecommendationsService {
     };
   }
 
+  async buildSimilarTvTitles(params: {
+    ctx: JobContext;
+    seedTitle: string;
+    seedYear?: number | null;
+    tmdbApiKey: string;
+    count: number;
+    webContextFraction: number;
+    upcomingPercent?: number | null;
+    openai?: { apiKey: string; model?: string | null } | null;
+    google?: { apiKey: string; searchEngineId: string } | null;
+  }): Promise<{
+    titles: string[];
+    strategy: 'openai' | 'tmdb';
+    debug: JsonObject;
+  }> {
+    const { ctx } = params;
+    const seedTitle = params.seedTitle.trim();
+    const count = clampInt(
+      params.count || 50,
+      RECS_MIN_COUNT,
+      RECS_MAX_COUNT,
+      50,
+    );
+    const webFrac = clamp01(params.webContextFraction);
+
+    const seedMeta = await this.tmdb.getTvSeedMetadata({
+      apiKey: params.tmdbApiKey,
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+    });
+
+    const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
+    const googleEnabled =
+      Boolean(params.google?.apiKey?.trim()) &&
+      Boolean(params.google?.searchEngineId?.trim());
+
+    const upcomingPercent = clampInt(
+      params.upcomingPercent ?? 25,
+      0,
+      100 - RECS_MIN_RELEASED_PERCENT,
+      25,
+    );
+    const upcomingTargetRaw = Math.round((count * upcomingPercent) / 100);
+    const minReleasedTarget = Math.ceil(
+      (count * RECS_MIN_RELEASED_PERCENT) / 100,
+    );
+    const maxUpcomingTarget = Math.max(0, count - minReleasedTarget);
+    const upcomingTarget = Math.max(
+      0,
+      Math.min(upcomingTargetRaw, maxUpcomingTarget),
+    );
+    const releasedTarget = Math.max(0, count - upcomingTarget);
+
+    await ctx.info('recs(tv): split config', {
+      count,
+      upcomingPercent,
+      upcomingTarget,
+      releasedTarget,
+      webContextFraction: webFrac,
+    });
+
+    // --- Tier 0 (always works): TMDB pools ---
+    await ctx.info('recs(tv): tmdb pools start', {
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+      count,
+    });
+
+    const pools = await this.tmdb.getSplitTvRecommendationCandidatePools({
+      apiKey: params.tmdbApiKey,
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+      includeAdult: false,
+      timezone: null,
+      upcomingWindowMonths: 24,
+    });
+
+    let releasedPool = pools.released.slice();
+    let upcomingPool = pools.upcoming.slice();
+    let unknownPool = pools.unknown.slice();
+
+    await ctx.info('recs(tv): tmdb pools done', {
+      seed: pools.seed,
+      meta: pools.meta,
+      releasedCandidates: releasedPool.length,
+      upcomingCandidates: upcomingPool.length,
+      unknownCandidates: unknownPool.length,
+    });
+
+    let googleContext: string | null = null;
+    let googleQuery: string | null = null;
+    let googleMeta: JsonObject | null = null;
+    let googleTitlesExtracted = 0;
+    let googleTmdbAdded = 0;
+
+    // --- Tier 1 (optional): Google discovery booster (never depends on OpenAI) ---
+    if (googleEnabled && this.canUseGoogle()) {
+      const desiredGoogleResults = Math.min(
+        50,
+        Math.max(0, Math.ceil(count * webFrac)),
+      );
+      if (desiredGoogleResults > 0) {
+        googleQuery = buildGoogleQueryTv(seedMeta, new Date().getFullYear());
+        await ctx.info('recs(tv): google search', {
+          query: googleQuery,
+          requested: desiredGoogleResults,
+        });
+
+        try {
+          const { results, meta } = await this.google.search({
+            apiKey: params.google!.apiKey,
+            cseId: params.google!.searchEngineId,
+            query: googleQuery,
+            numResults: desiredGoogleResults,
+          });
+          googleContext = results.length
+            ? this.google.formatForPrompt(results)
+            : null;
+          googleMeta = { ...meta };
+          await ctx.info('recs(tv): google done', { ...meta });
+
+          const extracted = extractMovieTitleCandidatesFromGoogle(results, 60);
+          googleTitlesExtracted = extracted.length;
+          if (extracted.length) {
+            const { added, released, upcoming, unknown } =
+              await this.resolveGoogleTitlesToTmdbTvCandidates({
+                tmdbApiKey: params.tmdbApiKey,
+                titles: extracted,
+                today: pools.meta.today,
+              });
+
+            googleTmdbAdded = added;
+            releasedPool = mergeCandidatePools(releasedPool, released, 'google');
+            upcomingPool = mergeCandidatePools(upcomingPool, upcoming, 'google');
+            unknownPool = mergeCandidatePools(unknownPool, unknown, 'google');
+          }
+
+          this.googleDownUntilMs = null;
+        } catch (err) {
+          await ctx.warn(
+            'recs(tv): google failed (continuing without web context)',
+            {
+              error: (err as Error)?.message ?? String(err),
+            },
+          );
+          googleContext = null;
+          googleMeta = { failed: true };
+          this.googleDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
+        }
+      } else {
+        googleMeta = { skipped: true, reason: 'webContextFraction=0' };
+      }
+    }
+
+    // --- Phase A: deterministic pre-score + split selection (always available) ---
+    const scoredReleased = scoreAndSortCandidates(releasedPool, {
+      kind: 'released',
+    });
+    const scoredUpcoming = scoreAndSortCandidates(upcomingPool, {
+      kind: 'upcoming',
+    });
+    const scoredUnknown = scoreAndSortCandidates(unknownPool, {
+      kind: 'released',
+    });
+
+    const deterministic = selectWithSplit({
+      count,
+      upcomingTarget,
+      releasedPool: scoredReleased,
+      upcomingPool: scoredUpcoming,
+      unknownPool: scoredUnknown,
+    });
+
+    // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
+    if (openAiEnabled && this.canUseOpenAi()) {
+      const model =
+        (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
+      const topReleased = scoredReleased.slice(
+        0,
+        Math.min(250, Math.max(releasedTarget * 5, releasedTarget)),
+      );
+      const topUpcoming = scoredUpcoming.slice(
+        0,
+        Math.min(250, Math.max(upcomingTarget * 5, upcomingTarget)),
+      );
+
+      const canSatisfySplit =
+        upcomingTarget === 0 || topUpcoming.length >= upcomingTarget;
+
+      if (canSatisfySplit && (topReleased.length || topUpcoming.length)) {
+        await ctx.info('recs(tv): openai select start', {
+          model,
+          releasedCandidates: topReleased.length,
+          upcomingCandidates: topUpcoming.length,
+          releasedTarget,
+          upcomingTarget,
+        });
+
+        try {
+          const selected = await this.openai.selectFromCandidates({
+            apiKey: params.openai!.apiKey,
+            model,
+            seedTitle,
+            mediaType: 'tv',
+            tmdbSeedMetadata: seedMeta,
+            releasedTarget,
+            upcomingTarget,
+            releasedCandidates: topReleased,
+            upcomingCandidates: topUpcoming,
+          });
+
+          if (
+            selected.released.length === releasedTarget &&
+            selected.upcoming.length === upcomingTarget
+          ) {
+            const selectedIds = new Set<number>([
+              ...selected.released,
+              ...selected.upcoming,
+            ]);
+            const idToTitle = new Map<number, string>();
+            for (const c of [...topReleased, ...topUpcoming]) {
+              if (!idToTitle.has(c.tmdbId)) idToTitle.set(c.tmdbId, c.title);
+            }
+            const ordered = [
+              ...selected.released,
+              ...selected.upcoming,
+            ].map((id) => idToTitle.get(id) ?? String(id));
+            const cleaned = cleanTitles(ordered, count);
+
+            await ctx.info('recs(tv): openai select done', {
+              returned: cleaned.length,
+              released: selected.released.length,
+              upcoming: selected.upcoming.length,
+            });
+
+            this.openAiDownUntilMs = null;
+            return {
+              titles: cleaned,
+              strategy: 'openai',
+              debug: {
+                upcomingPercent,
+                upcomingTarget,
+                releasedTarget,
+                googleEnabled,
+                googleQuery,
+                googleMeta: googleMeta ?? null,
+                googleTitlesExtracted,
+                googleTmdbAdded,
+                openAiEnabled,
+                used: {
+                  tmdb: true,
+                  google: Boolean(googleContext),
+                  openai: true,
+                },
+              },
+            };
+          }
+
+          await ctx.warn('recs(tv): openai invalid selection (fallback)', {
+            releasedReturned: selected.released.length,
+            upcomingReturned: selected.upcoming.length,
+            releasedTarget,
+            upcomingTarget,
+          });
+        } catch (err) {
+          await ctx.warn(
+            'recs(tv): openai selector failed (falling back to deterministic)',
+            {
+              error: (err as Error)?.message ?? String(err),
+            },
+          );
+          this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
+        }
+      }
+    }
+
+    await ctx.info('recs(tv): deterministic select done', {
+      returned: deterministic.titles.length,
+      released: deterministic.releasedCount,
+      upcoming: deterministic.upcomingCount,
+      googleTitlesExtracted,
+      googleTmdbAdded,
+    });
+
+    return {
+      titles: deterministic.titles,
+      strategy: 'tmdb',
+      debug: {
+        upcomingPercent,
+        upcomingTarget,
+        releasedTarget,
+        googleEnabled,
+        googleQuery,
+        googleMeta: googleMeta ?? null,
+        googleTitlesExtracted,
+        googleTmdbAdded,
+        openAiEnabled,
+        used: { tmdb: true, google: Boolean(googleContext), openai: false },
+      },
+    };
+  }
+
   async buildChangeOfTasteMovieTitles(params: {
     ctx: JobContext;
     seedTitle: string;
@@ -430,6 +732,70 @@ export class RecommendationsService {
     });
     const cleaned = cleanTitles(tmdbTitles, count);
     await ctx.info('change_of_taste: tmdb fallback done', {
+      returned: cleaned.length,
+    });
+    return { titles: cleaned, strategy: 'tmdb' };
+  }
+
+  async buildChangeOfTasteTvTitles(params: {
+    ctx: JobContext;
+    seedTitle: string;
+    seedYear?: number | null;
+    tmdbApiKey: string;
+    count: number;
+    openai?: { apiKey: string; model?: string | null } | null;
+  }): Promise<{ titles: string[]; strategy: 'openai' | 'tmdb' }> {
+    const { ctx } = params;
+    const seedTitle = params.seedTitle.trim();
+    const count = clampInt(
+      params.count || 50,
+      RECS_MIN_COUNT,
+      RECS_MAX_COUNT,
+      50,
+    );
+
+    const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
+    if (openAiEnabled) {
+      await ctx.info('change_of_taste(tv): openai start', {
+        model:
+          (params.openai?.model ?? 'gpt-5.2-chat-latest') ||
+          'gpt-5.2-chat-latest',
+        count,
+      });
+      try {
+        const titles = await this.openai.getContrastTvTitles({
+          apiKey: params.openai!.apiKey,
+          model: params.openai!.model ?? null,
+          seedTitle,
+          limit: count,
+        });
+        const cleaned = cleanTitles(titles, count);
+        await ctx.info('change_of_taste(tv): openai done', {
+          returned: cleaned.length,
+        });
+        if (cleaned.length) return { titles: cleaned, strategy: 'openai' };
+        await ctx.warn(
+          'change_of_taste(tv): openai returned empty (falling back to tmdb)',
+        );
+      } catch (err) {
+        await ctx.warn(
+          'change_of_taste(tv): openai failed (falling back to tmdb)',
+          {
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
+      }
+    }
+
+    await ctx.info('change_of_taste(tv): tmdb fallback start', { count });
+    const tmdbTitles = await this.tmdb.getContrastTvRecommendations({
+      apiKey: params.tmdbApiKey,
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+      limit: count,
+    });
+    const cleaned = cleanTitles(tmdbTitles, count);
+    await ctx.info('change_of_taste(tv): tmdb fallback done', {
       returned: cleaned.length,
     });
     return { titles: cleaned, strategy: 'tmdb' };
@@ -513,6 +879,75 @@ export class RecommendationsService {
 
     return { added, released, upcoming, unknown };
   }
+
+  private async resolveGoogleTitlesToTmdbTvCandidates(params: {
+    tmdbApiKey: string;
+    titles: Array<{ title: string; year: number | null }>;
+    today: string;
+  }): Promise<{
+    added: number;
+    released: RecCandidate[];
+    upcoming: RecCandidate[];
+    unknown: RecCandidate[];
+  }> {
+    const released: RecCandidate[] = [];
+    const upcoming: RecCandidate[] = [];
+    const unknown: RecCandidate[] = [];
+    let added = 0;
+
+    for (const t of params.titles) {
+      const title = (t?.title ?? '').trim();
+      if (!title) continue;
+      const year =
+        typeof t.year === 'number' && Number.isFinite(t.year)
+          ? Math.trunc(t.year)
+          : null;
+
+      const results = await this.tmdb
+        .searchTv({
+          apiKey: params.tmdbApiKey,
+          query: title,
+          firstAirDateYear: year,
+          includeAdult: false,
+        })
+        .catch(() => []);
+
+      const best = results[0] ?? null;
+      if (!best) continue;
+
+      const releaseDate =
+        typeof best.first_air_date === 'string' && best.first_air_date.trim()
+          ? best.first_air_date.trim()
+          : null;
+      const candidate: RecCandidate = {
+        tmdbId: best.id,
+        title: best.name,
+        releaseDate,
+        voteAverage:
+          typeof best.vote_average === 'number' &&
+          Number.isFinite(best.vote_average)
+            ? Number(best.vote_average)
+            : null,
+        voteCount:
+          typeof best.vote_count === 'number' && Number.isFinite(best.vote_count)
+            ? Math.max(0, Math.trunc(best.vote_count))
+            : null,
+        popularity:
+          typeof best.popularity === 'number' && Number.isFinite(best.popularity)
+            ? Number(best.popularity)
+            : null,
+        sources: ['google'],
+      };
+
+      const bucket = classifyReleaseDate(candidate.releaseDate, params.today);
+      if (bucket === 'released') released.push(candidate);
+      else if (bucket === 'upcoming') upcoming.push(candidate);
+      else unknown.push(candidate);
+      added += 1;
+    }
+
+    return { added, released, upcoming, unknown };
+  }
 }
 
 function buildGoogleQuery(
@@ -546,6 +981,39 @@ function buildGoogleQuery(
     return `most anticipated upcoming movies like ${seedTitle} ${nowYear} ${nextYear}`.trim();
   }
   return `most anticipated upcoming movies ${nowYear} ${nextYear}`.trim();
+}
+
+function buildGoogleQueryTv(
+  seedMeta: Record<string, unknown>,
+  currentYear: number,
+): string {
+  const nowYear = Number.isFinite(currentYear)
+    ? currentYear
+    : new Date().getFullYear();
+  const nextYear = nowYear + 1;
+
+  const genresRaw = seedMeta['genres'];
+  const genres = Array.isArray(genresRaw)
+    ? genresRaw
+        .map((g) => (typeof g === 'string' ? g.trim() : ''))
+        .filter(Boolean)
+    : [];
+
+  const seedTitle =
+    typeof seedMeta['title'] === 'string'
+      ? seedMeta['title'].trim()
+      : typeof seedMeta['seed_title'] === 'string'
+        ? seedMeta['seed_title'].trim()
+        : '';
+
+  if (genres.length) {
+    const g = genres.slice(0, 2).join(' ');
+    return `most anticipated upcoming ${g} tv shows ${nowYear} ${nextYear}`.trim();
+  }
+  if (seedTitle) {
+    return `most anticipated upcoming tv shows like ${seedTitle} ${nowYear} ${nextYear}`.trim();
+  }
+  return `most anticipated upcoming tv shows ${nowYear} ${nextYear}`.trim();
 }
 
 function normalizeTitleKey(title: string): string {

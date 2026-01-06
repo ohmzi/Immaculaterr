@@ -5,8 +5,10 @@ import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { SettingsService } from '../settings/settings.service';
+import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedMovieRecommendationsService } from '../watched-movie-recommendations/watched-movie-recommendations.service';
+import { WatchedShowRecommendationsService } from '../watched-movie-recommendations/watched-show-recommendations.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -63,11 +65,19 @@ export class BasedonLatestWatchedCollectionJob {
     private readonly recommendations: RecommendationsService,
     private readonly tmdb: TmdbService,
     private readonly watchedRecs: WatchedMovieRecommendationsService,
+    private readonly watchedShowRecs: WatchedShowRecommendationsService,
     private readonly radarr: RadarrService,
+    private readonly sonarr: SonarrService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
     const input = ctx.input ?? {};
+    const mediaTypeRaw =
+      typeof input['mediaType'] === 'string' ? input['mediaType'].trim() : '';
+    const mediaType = mediaTypeRaw.toLowerCase();
+    const isTv =
+      mediaType === 'episode' || mediaType === 'show' || mediaType === 'tv';
+
     const seedTitle =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
     const seedRatingKey =
@@ -94,6 +104,8 @@ export class BasedonLatestWatchedCollectionJob {
     await ctx.info('watchedMovieRecommendations: start', {
       dryRun: ctx.dryRun,
       trigger: ctx.trigger,
+      mediaType: mediaType || null,
+      mode: isTv ? 'tv' : 'movie',
       seedTitle: seedTitle || null,
       seedYear,
       seedRatingKey: seedRatingKey || null,
@@ -106,6 +118,17 @@ export class BasedonLatestWatchedCollectionJob {
 
     if (!seedTitle) {
       throw new Error('Missing required job input: seedTitle');
+    }
+
+    if (isTv) {
+      return await this.runTv({
+        ctx,
+        seedTitle,
+        seedYear,
+        seedRatingKey,
+        seedLibrarySectionIdRaw,
+        seedLibrarySectionTitle,
+      });
     }
 
     const { settings, secrets } =
@@ -828,6 +851,651 @@ export class BasedonLatestWatchedCollectionJob {
     return summary;
   }
 
+  private async runTv(params: {
+    ctx: JobContext;
+    seedTitle: string;
+    seedYear: number | null;
+    seedRatingKey: string;
+    seedLibrarySectionIdRaw: string;
+    seedLibrarySectionTitle: string;
+  }): Promise<JobRunResult> {
+    const {
+      ctx,
+      seedTitle,
+      seedYear,
+      seedRatingKey,
+      seedLibrarySectionIdRaw,
+      seedLibrarySectionTitle,
+    } = params;
+
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(ctx.userId);
+
+    // --- Plex settings ---
+    const plexBaseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const plexToken =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!plexBaseUrlRaw) throw new Error('Plex baseUrl is not set');
+    if (!plexToken) throw new Error('Plex token is not set');
+    const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
+
+    const sections = await this.plexServer.getSections({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+    });
+    const tvSections = sections
+      .filter((s) => (s.type ?? '').toLowerCase() === 'show')
+      .sort((a, b) => a.title.localeCompare(b.title));
+    if (!tvSections.length) throw new Error('No Plex TV libraries found');
+
+    // Prefer the library section Plex tells us the watched episode belongs to.
+    let tvSectionKey = seedLibrarySectionIdRaw || '';
+    let tvLibraryName = seedLibrarySectionTitle || '';
+
+    if (!tvSectionKey && seedRatingKey) {
+      const meta = await this.plexServer
+        .getMetadataDetails({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          ratingKey: seedRatingKey,
+        })
+        .catch(() => null);
+      if (meta?.librarySectionId) tvSectionKey = meta.librarySectionId;
+      if (meta?.librarySectionTitle) tvLibraryName = meta.librarySectionTitle;
+    }
+
+    if (!tvSectionKey) {
+      const preferred =
+        tvSections.find((s) => s.title.toLowerCase() === 'tv shows') ??
+        tvSections.find((s) => s.title.toLowerCase() === 'shows') ??
+        tvSections[0];
+      tvSectionKey = preferred.key;
+      tvLibraryName = preferred.title;
+    } else {
+      const match = sections.find((s) => s.key === tvSectionKey);
+      if (match?.title) tvLibraryName = match.title;
+      if (match?.type && match.type.toLowerCase() !== 'show') {
+        await ctx.warn(
+          'plex: seed librarySectionID is not a TV library (continuing)',
+          {
+            tvSectionKey,
+            libraryTitle: match.title,
+            libraryType: match.type,
+          },
+        );
+      }
+    }
+
+    if (!tvLibraryName) {
+      tvLibraryName =
+        sections.find((s) => s.key === tvSectionKey)?.title ??
+        tvSections.find((s) => s.key === tvSectionKey)?.title ??
+        'TV Shows';
+    }
+
+    const machineIdentifier = await this.plexServer.getMachineIdentifier({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+    });
+
+    // --- Recommendation + integration config ---
+    const tmdbApiKey =
+      pickString(secrets, 'tmdb.apiKey') ||
+      pickString(secrets, 'tmdbApiKey') ||
+      pickString(secrets, 'tmdb.api_key');
+    if (!tmdbApiKey) throw new Error('TMDB apiKey is not set');
+
+    const openAiEnabledFlag = pickBool(settings, 'openai.enabled') ?? false;
+    const openAiApiKey = pickString(secrets, 'openai.apiKey');
+    const openAiModel = pickString(settings, 'openai.model') || null;
+    const openAiEnabled = openAiEnabledFlag && Boolean(openAiApiKey);
+
+    const googleEnabledFlag = pickBool(settings, 'google.enabled') ?? false;
+    const googleApiKey = pickString(secrets, 'google.apiKey');
+    const googleSearchEngineId = pickString(settings, 'google.searchEngineId');
+    const googleEnabled =
+      googleEnabledFlag &&
+      Boolean(googleApiKey) &&
+      Boolean(googleSearchEngineId);
+
+    const recCountRaw = pickNumber(settings, 'recommendations.count') ?? 50;
+    const recCount = Math.max(
+      5,
+      Math.min(
+        100,
+        Math.trunc(Number.isFinite(recCountRaw) ? recCountRaw : 50) || 50,
+      ),
+    );
+    const upcomingPercentRaw =
+      pickNumber(settings, 'recommendations.upcomingPercent') ?? 25;
+    const upcomingPercent = Math.max(
+      0,
+      Math.min(
+        75,
+        Math.trunc(Number.isFinite(upcomingPercentRaw) ? upcomingPercentRaw : 25) ||
+          25,
+      ),
+    );
+    const webContextFraction =
+      pickNumber(settings, 'recommendations.webContextFraction') ??
+      pickNumber(settings, 'recommendations.web_context_fraction') ??
+      0.3;
+    const maxPoints =
+      Math.trunc(pickNumber(settings, 'recommendations.maxPoints') ?? 50) || 50;
+    const collectionLimitRaw =
+      pickNumber(settings, 'recommendations.collectionLimit') ?? 15;
+    const collectionLimit = Math.max(
+      1,
+      Math.min(
+        200,
+        Math.trunc(Number.isFinite(collectionLimitRaw) ? collectionLimitRaw : 15) ||
+          15,
+      ),
+    );
+
+    await ctx.info('watchedShowRecommendations: config', {
+      tvLibraryName,
+      tvSectionKey,
+      openAiEnabled,
+      googleEnabled,
+      recCount,
+      upcomingPercent,
+      maxPoints,
+      collectionLimit,
+      webContextFraction,
+    });
+
+    const similar = await this.recommendations.buildSimilarTvTitles({
+      ctx,
+      seedTitle,
+      seedYear,
+      tmdbApiKey,
+      count: recCount,
+      webContextFraction,
+      upcomingPercent,
+      openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+      google: googleEnabled
+        ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
+        : null,
+    });
+
+    const changeOfTaste = await this.recommendations.buildChangeOfTasteTvTitles({
+      ctx,
+      seedTitle,
+      seedYear,
+      tmdbApiKey,
+      count: recCount,
+      openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+    });
+
+    await ctx.info('watchedShowRecommendations: recommendations ready', {
+      similar: {
+        strategy: similar.strategy,
+        returned: similar.titles.length,
+        sample: similar.titles.slice(0, 10),
+      },
+      changeOfTaste: {
+        strategy: changeOfTaste.strategy,
+        returned: changeOfTaste.titles.length,
+        sample: changeOfTaste.titles.slice(0, 10),
+      },
+    });
+
+    const collectionsToBuild: Array<{
+      name: string;
+      titles: string[];
+      strategy: string;
+    }> = [
+      {
+        name: 'Based on your recently watched show',
+        titles: similar.titles,
+        strategy: similar.strategy,
+      },
+      {
+        name: 'Change of Taste',
+        titles: changeOfTaste.titles,
+        strategy: changeOfTaste.strategy,
+      },
+    ];
+
+    const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
+    const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
+    const sonarrEnabled =
+      (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
+      Boolean(sonarrBaseUrlRaw) &&
+      Boolean(sonarrApiKey);
+    const sonarrBaseUrl = sonarrEnabled
+      ? normalizeHttpUrl(sonarrBaseUrlRaw)
+      : '';
+
+    const sonarrDefaults =
+      !ctx.dryRun && sonarrEnabled
+        ? await this.pickSonarrDefaults({
+            ctx,
+            baseUrl: sonarrBaseUrl,
+            apiKey: sonarrApiKey,
+            preferredRootFolderPath:
+              pickString(settings, 'sonarr.defaultRootFolderPath') ||
+              pickString(settings, 'sonarr.rootFolderPath'),
+            preferredQualityProfileId:
+              Math.max(
+                1,
+                Math.trunc(
+                  pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
+                    pickNumber(settings, 'sonarr.qualityProfileId') ??
+                    1,
+                ),
+              ) || 1,
+            preferredTagId: (() => {
+              const v =
+                pickNumber(settings, 'sonarr.defaultTagId') ??
+                pickNumber(settings, 'sonarr.tagId');
+              return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+            })(),
+          }).catch(async (err) => {
+            await ctx.warn('sonarr: defaults unavailable (skipping adds)', {
+              error: (err as Error)?.message ?? String(err),
+            });
+            return null;
+          })
+        : null;
+
+    const perCollection: JsonObject[] = [];
+    for (const col of collectionsToBuild) {
+      const summary = await this.processOneTvCollection({
+        ctx,
+        tmdbApiKey,
+        plexBaseUrl,
+        plexToken,
+        machineIdentifier,
+        tvSectionKey,
+        collectionName: col.name,
+        recommendationTitles: col.titles,
+        recommendationStrategy: col.strategy,
+        maxPoints,
+        collectionLimit,
+        sonarr: sonarrEnabled
+          ? {
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
+              defaults: sonarrDefaults,
+            }
+          : null,
+      });
+      perCollection.push(summary);
+    }
+
+    const summary: JsonObject = {
+      seedTitle,
+      seedYear,
+      tvLibraryName,
+      tvSectionKey,
+      collections: perCollection,
+    };
+
+    await ctx.info('watchedShowRecommendations: done', summary);
+    return { summary };
+  }
+
+  private async processOneTvCollection(params: {
+    ctx: JobContext;
+    tmdbApiKey: string;
+    plexBaseUrl: string;
+    plexToken: string;
+    machineIdentifier: string;
+    tvSectionKey: string;
+    collectionName: string;
+    recommendationTitles: string[];
+    recommendationStrategy: string;
+    maxPoints: number;
+    collectionLimit: number;
+    sonarr: {
+      baseUrl: string;
+      apiKey: string;
+      defaults: {
+        rootFolderPath: string;
+        qualityProfileId: number;
+        tagIds: number[];
+      } | null;
+    } | null;
+  }): Promise<JsonObject> {
+    const {
+      ctx,
+      tmdbApiKey,
+      plexBaseUrl,
+      plexToken,
+      machineIdentifier,
+      tvSectionKey,
+      collectionName,
+      recommendationTitles,
+      recommendationStrategy,
+      maxPoints,
+      collectionLimit,
+      sonarr,
+    } = params;
+
+    await ctx.info('collection_run(tv): start', {
+      collectionName,
+      recommendationStrategy,
+      generated: recommendationTitles.length,
+    });
+
+    await ctx.info('collection_run(tv): recommendations sample', {
+      collectionName,
+      sample: recommendationTitles.slice(0, 10),
+    });
+
+    await ctx.info('collection_run(tv): resolving titles in Plex', {
+      collectionName,
+      requested: recommendationTitles.length,
+    });
+
+    const effectiveCollectionLimit = Math.max(
+      1,
+      Math.min(200, Math.trunc(collectionLimit || 15)),
+    );
+
+    const resolved: Array<{ ratingKey: string; title: string }> = [];
+    const missingTitles: string[] = [];
+    for (const title of recommendationTitles) {
+      const t = title.trim();
+      if (!t) continue;
+      const found = await this.plexServer
+        .findShowRatingKeyByTitle({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          librarySectionKey: tvSectionKey,
+          title: t,
+        })
+        .catch(() => null);
+      if (found) resolved.push({ ratingKey: found.ratingKey, title: found.title });
+      else missingTitles.push(t);
+    }
+
+    const resolvedUnique = new Map<string, string>();
+    for (const it of resolved) {
+      if (!resolvedUnique.has(it.ratingKey)) resolvedUnique.set(it.ratingKey, it.title);
+    }
+    const resolvedItems = Array.from(resolvedUnique.entries()).map(
+      ([ratingKey, title]) => ({ ratingKey, title }),
+    );
+
+    await ctx.info('collection_run(tv): plex resolve done', {
+      collectionName,
+      resolved: resolvedItems.length,
+      missing: missingTitles.length,
+      sampleMissing: missingTitles.slice(0, 10),
+      sampleResolved: resolvedItems.slice(0, 10).map((d) => d.title),
+    });
+
+    // --- Resolve TMDB ids + tvdb ids + ratings for BOTH in-Plex and missing titles
+    const matchCache = new Map<
+      string,
+      | {
+          tmdbId: number;
+          tvdbId: number | null;
+          title: string;
+          year: number | null;
+          vote_average: number | null;
+          vote_count: number | null;
+        }
+      | null
+    >();
+    const getMatch = async (title: string) => {
+      const key = title.trim().toLowerCase();
+      if (!key) return null;
+      if (matchCache.has(key)) return matchCache.get(key) ?? null;
+      const match = await this.pickBestTmdbTvMatch({
+        tmdbApiKey,
+        title,
+      }).catch(() => null);
+      matchCache.set(key, match);
+      return match;
+    };
+
+    const suggestedForPoints: Array<{
+      tvdbId: number;
+      tmdbId: number | null;
+      title: string;
+      tmdbVoteAvg: number | null;
+      tmdbVoteCount: number | null;
+      inPlex: boolean;
+    }> = [];
+
+    const missingTitleToIds = new Map<
+      string,
+      {
+        tmdbId: number;
+        tvdbId: number | null;
+        title: string;
+      }
+    >();
+
+    const pushSuggested = (match: {
+      tmdbId: number;
+      tvdbId: number | null;
+      title: string;
+      vote_average: number | null;
+      vote_count: number | null;
+    }, inPlex: boolean) => {
+      if (!match.tvdbId) return;
+      suggestedForPoints.push({
+        tvdbId: match.tvdbId,
+        tmdbId: match.tmdbId,
+        title: match.title,
+        tmdbVoteAvg: match.vote_average,
+        tmdbVoteCount: match.vote_count,
+        inPlex,
+      });
+    };
+
+    for (const it of resolvedItems) {
+      const match = await getMatch(it.title);
+      if (!match) continue;
+      pushSuggested(match, true);
+    }
+    for (const title of missingTitles) {
+      const match = await getMatch(title);
+      if (!match) continue;
+      pushSuggested(match, false);
+      missingTitleToIds.set(title.trim(), {
+        tmdbId: match.tmdbId,
+        tvdbId: match.tvdbId,
+        title: match.title,
+      });
+    }
+
+    // --- Sonarr add missing series (best-effort)
+    const sonarrStats = {
+      enabled: Boolean(sonarr),
+      attempted: 0,
+      added: 0,
+      exists: 0,
+      skipped: 0,
+      failed: 0,
+    };
+
+    if (!ctx.dryRun && sonarr && missingTitles.length) {
+      const defaults = sonarr.defaults;
+      if (!defaults) {
+        await ctx.warn('sonarr: defaults unavailable (skipping adds)', {
+          reason: 'defaults_not_resolved',
+        });
+      } else {
+        for (const title of missingTitles) {
+          sonarrStats.attempted += 1;
+          const ids = missingTitleToIds.get(title.trim()) ?? null;
+          if (!ids || !ids.tvdbId) {
+            sonarrStats.skipped += 1;
+            continue;
+          }
+
+          try {
+            const result = await this.sonarr.addSeries({
+              baseUrl: sonarr.baseUrl,
+              apiKey: sonarr.apiKey,
+              title: ids.title,
+              tvdbId: ids.tvdbId,
+              qualityProfileId: defaults.qualityProfileId,
+              rootFolderPath: defaults.rootFolderPath,
+              tags: defaults.tagIds,
+              monitored: true,
+              searchForMissingEpisodes: true,
+              searchForCutoffUnmetEpisodes: true,
+            });
+            if (result.status === 'added')
+              sonarrStats.added += 1;
+            else sonarrStats.exists += 1;
+          } catch (err) {
+            sonarrStats.failed += 1;
+            await ctx.warn('sonarr: add failed (continuing)', {
+              title,
+              error: (err as Error)?.message ?? String(err),
+            });
+          }
+        }
+      }
+
+      await ctx.info('sonarr: done', { collectionName, ...sonarrStats });
+    }
+
+    // Update points dataset (DB) by tvdbId
+    const pointsSummary = ctx.dryRun
+      ? ({ dryRun: true } as JsonObject)
+      : await this.watchedShowRecs.applyPointsUpdate({
+          ctx,
+          collectionName,
+          suggested: suggestedForPoints,
+          maxPoints,
+        });
+
+    // Build desired Plex ordering from active points dataset.
+    const activeRows = await this.watchedShowRecs.getActiveShows({
+      collectionName,
+      minPoints: 1,
+      take: Math.min(
+        250,
+        Math.max(effectiveCollectionLimit * 4, effectiveCollectionLimit),
+      ),
+    });
+    const activeByTvdbId = new Map(
+      activeRows.map((s) => [
+        s.tvdbId,
+        {
+          tvdbId: s.tvdbId,
+          title: (s.title ?? '').trim() || null,
+          tmdbVoteAvg: s.tmdbVoteAvg ?? null,
+          tmdbVoteCount: s.tmdbVoteCount ?? null,
+        },
+      ]),
+    );
+
+    const orderedTvdb = this.watchedShowRecs.buildThreeTierTmdbRatingShuffleOrder({
+      shows: activeRows.map((s) => ({
+        tvdbId: s.tvdbId,
+        tmdbVoteAvg: s.tmdbVoteAvg ?? null,
+        tmdbVoteCount: s.tmdbVoteCount ?? null,
+      })),
+    });
+
+    const desiredItems: Array<{ ratingKey: string; title: string }> = [];
+    const seenRatingKeys = new Set<string>();
+    let skippedNotInPlex = 0;
+
+    for (const tvdbId of orderedTvdb) {
+      if (desiredItems.length >= effectiveCollectionLimit) break;
+      const row = activeByTvdbId.get(tvdbId);
+      const title = (row?.title ?? '').trim();
+      if (!title) continue;
+
+      const found = await this.plexServer
+        .findShowRatingKeyByTitle({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          librarySectionKey: tvSectionKey,
+          title,
+        })
+        .catch(() => null);
+
+      if (!found) {
+        skippedNotInPlex += 1;
+        continue;
+      }
+      if (seenRatingKeys.has(found.ratingKey)) continue;
+      seenRatingKeys.add(found.ratingKey);
+      desiredItems.push({ ratingKey: found.ratingKey, title: found.title });
+    }
+
+    await ctx.info('collection_run(tv): desired list built from points dataset', {
+      collectionName,
+      activeCandidates: activeRows.length,
+      applying: desiredItems.length,
+      collectionLimit: effectiveCollectionLimit,
+      skippedNotInPlex,
+      sampleTop10: desiredItems.slice(0, 10).map((d) => d.title),
+    });
+
+    // NOTE: For TV we do NOT persist to CuratedCollection table yet (movie-only UI).
+    const dbSaved = false;
+    const curatedCollectionId: string | null = null;
+
+    // Rebuild Plex collection (delete → create → order → artwork → pin)
+    const plexResult = await (async () => {
+      if (!desiredItems.length) {
+        await ctx.warn(
+          'collection_run(tv): no resolvable Plex items (skipping plex rebuild)',
+          {
+            collectionName,
+            generated: recommendationTitles.length,
+            missing: missingTitles.length,
+          },
+        );
+        return { skipped: true, reason: 'no_resolvable_items' } as JsonObject;
+      }
+
+      await ctx.info('plex: rebuilding curated collection (tv)', {
+        collectionName,
+        tvSectionKey,
+        desiredItems: desiredItems.length,
+      });
+
+      return await this.plexCurated.rebuildMovieCollection({
+        ctx,
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+        machineIdentifier,
+        movieSectionKey: tvSectionKey,
+        collectionName,
+        desiredItems,
+        randomizeOrder: false,
+      });
+    })();
+
+    await ctx.info('plex: rebuild done (tv)', {
+      collectionName,
+      result: plexResult,
+    });
+
+    const summary: JsonObject = {
+      collectionName,
+      recommendationStrategy,
+      generated: recommendationTitles.length,
+      resolvedInPlex: desiredItems.length,
+      missingInPlex: missingTitles.length,
+      dbSaved,
+      curatedCollectionId,
+      sonarr: sonarrStats,
+      points: pointsSummary,
+      plex: plexResult,
+      sampleMissing: missingTitles.slice(0, 10),
+      sampleResolved: desiredItems.slice(0, 10).map((d) => d.title),
+    };
+
+    await ctx.info('collection_run(tv): done', summary);
+    return summary;
+  }
+
   private async pickRadarrDefaults(params: {
     ctx: JobContext;
     baseUrl: string;
@@ -902,6 +1570,74 @@ export class BasedonLatestWatchedCollectionJob {
     return { rootFolderPath, qualityProfileId, tagIds };
   }
 
+  private async pickSonarrDefaults(params: {
+    ctx: JobContext;
+    baseUrl: string;
+    apiKey: string;
+    preferredRootFolderPath?: string;
+    preferredQualityProfileId?: number;
+    preferredTagId?: number | null;
+  }): Promise<{
+    rootFolderPath: string;
+    qualityProfileId: number;
+    tagIds: number[];
+  }> {
+    const { ctx, baseUrl, apiKey } = params;
+
+    const [rootFolders, qualityProfiles, tags] = await Promise.all([
+      this.sonarr.listRootFolders({ baseUrl, apiKey }),
+      this.sonarr.listQualityProfiles({ baseUrl, apiKey }),
+      this.sonarr.listTags({ baseUrl, apiKey }),
+    ]);
+
+    if (!rootFolders.length)
+      throw new Error('Sonarr has no root folders configured');
+    if (!qualityProfiles.length)
+      throw new Error('Sonarr has no quality profiles configured');
+
+    const preferredRoot = (params.preferredRootFolderPath ?? '').trim();
+    const rootFolder = preferredRoot
+      ? (rootFolders.find((r) => r.path === preferredRoot) ?? rootFolders[0])
+      : rootFolders[0];
+
+    const desiredQualityId = Math.max(
+      1,
+      Math.trunc(params.preferredQualityProfileId ?? 1),
+    );
+    const qualityProfile =
+      qualityProfiles.find((p) => p.id === desiredQualityId) ??
+      (desiredQualityId !== 1
+        ? qualityProfiles.find((p) => p.id === 1)
+        : null) ??
+      qualityProfiles[0];
+
+    const preferredTagId =
+      typeof params.preferredTagId === 'number' &&
+      Number.isFinite(params.preferredTagId)
+        ? Math.trunc(params.preferredTagId)
+        : null;
+    const tag = preferredTagId ? tags.find((t) => t.id === preferredTagId) : null;
+
+    const rootFolderPath = rootFolder.path;
+    const qualityProfileId = qualityProfile.id;
+    const tagIds = tag ? [tag.id] : [];
+
+    await ctx.info('sonarr: defaults selected', {
+      rootFolderPath,
+      qualityProfileId,
+      qualityProfileName: qualityProfile.name,
+      tagIds,
+      tagLabel: tag?.label ?? null,
+      usedPreferredRootFolder: Boolean(
+        preferredRoot && rootFolder.path === preferredRoot,
+      ),
+      usedPreferredQualityProfile: Boolean(qualityProfile.id === desiredQualityId),
+      usedPreferredTag: Boolean(tag),
+    });
+
+    return { rootFolderPath, qualityProfileId, tagIds };
+  }
+
   private async pickBestTmdbMatch(params: {
     tmdbApiKey: string;
     title: string;
@@ -939,6 +1675,71 @@ export class BasedonLatestWatchedCollectionJob {
         typeof best.vote_count === 'number' && Number.isFinite(best.vote_count)
           ? Math.max(0, Math.trunc(best.vote_count))
           : null,
+    };
+  }
+
+  private async pickBestTmdbTvMatch(params: {
+    tmdbApiKey: string;
+    title: string;
+  }): Promise<{
+    tmdbId: number;
+    tvdbId: number | null;
+    title: string;
+    year: number | null;
+    vote_average: number | null;
+    vote_count: number | null;
+  } | null> {
+    const results = await this.tmdb.searchTv({
+      apiKey: params.tmdbApiKey,
+      query: params.title,
+      includeAdult: false,
+      firstAirDateYear: null,
+    });
+    if (!results.length) return null;
+
+    const q = params.title.trim().toLowerCase();
+    const exact = results.find((r) => r.name.trim().toLowerCase() === q);
+    const best = exact ?? results[0];
+
+    const details = await this.tmdb
+      .getTv({
+        apiKey: params.tmdbApiKey,
+        tmdbId: best.id,
+        appendExternalIds: true,
+      })
+      .catch(() => null);
+
+    const tvdbIdRaw = details?.external_ids?.tvdb_id ?? null;
+    const tvdbId =
+      typeof tvdbIdRaw === 'number' && Number.isFinite(tvdbIdRaw)
+        ? Math.trunc(tvdbIdRaw)
+        : null;
+
+    const yearRaw = (details?.first_air_date ?? best.first_air_date ?? '').slice(
+      0,
+      4,
+    );
+    const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
+
+    const voteAverageRaw = details?.vote_average ?? best.vote_average ?? null;
+    const voteCountRaw = details?.vote_count ?? best.vote_count ?? null;
+
+    const vote_average =
+      typeof voteAverageRaw === 'number' && Number.isFinite(voteAverageRaw)
+        ? Number(voteAverageRaw)
+        : null;
+    const vote_count =
+      typeof voteCountRaw === 'number' && Number.isFinite(voteCountRaw)
+        ? Math.max(0, Math.trunc(voteCountRaw))
+        : null;
+
+    return {
+      tmdbId: best.id,
+      tvdbId,
+      title: details?.name ?? best.name,
+      year: Number.isFinite(year) ? year : null,
+      vote_average,
+      vote_count,
     };
   }
 }

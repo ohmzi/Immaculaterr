@@ -113,22 +113,49 @@ export class WebhooksController {
       },
     });
 
-    // Trigger watched-movie automation on scrobble(movie).
+    // Trigger watched automation on scrobble(movie|episode).
     // NOTE: Plex webhooks can be noisy; we keep the conditions strict.
     const payloadObj = isPlainObject(payload) ? payload : null;
     const plexEvent = payloadObj ? pickString(payloadObj, 'event') : '';
     const mediaType = payloadObj ? pickString(payloadObj, 'Metadata.type') : '';
 
-    if (plexEvent === 'media.scrobble' && mediaType.toLowerCase() === 'movie') {
-      const seedTitle = payloadObj
-        ? pickString(payloadObj, 'Metadata.title')
-        : '';
-      const seedRatingKey = payloadObj
-        ? pickString(payloadObj, 'Metadata.ratingKey')
-        : '';
-      const seedYear = payloadObj
-        ? pickNumber(payloadObj, 'Metadata.year')
-        : null;
+    const mediaTypeLower = mediaType.toLowerCase();
+
+    if (
+      plexEvent === 'media.scrobble' &&
+      (mediaTypeLower === 'movie' || mediaTypeLower === 'episode')
+    ) {
+      const showTitle =
+        mediaTypeLower === 'episode' && payloadObj
+          ? pickString(payloadObj, 'Metadata.grandparentTitle')
+          : '';
+      const episodeTitle =
+        mediaTypeLower === 'episode' && payloadObj
+          ? pickString(payloadObj, 'Metadata.title')
+          : '';
+
+      // For TV, we use the SHOW title as the seed (not the episode title).
+      const seedTitle =
+        mediaTypeLower === 'episode' ? showTitle : payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
+
+      const seedRatingKey = payloadObj ? pickString(payloadObj, 'Metadata.ratingKey') : '';
+      const showRatingKey =
+        mediaTypeLower === 'episode' && payloadObj
+          ? pickString(payloadObj, 'Metadata.grandparentRatingKey')
+          : '';
+      const seasonNumber =
+        mediaTypeLower === 'episode' && payloadObj
+          ? pickNumber(payloadObj, 'Metadata.parentIndex')
+          : null;
+      const episodeNumber =
+        mediaTypeLower === 'episode' && payloadObj
+          ? pickNumber(payloadObj, 'Metadata.index')
+          : null;
+
+      const seedYear =
+        mediaTypeLower === 'movie' && payloadObj
+          ? pickNumber(payloadObj, 'Metadata.year')
+          : null;
       const seedLibrarySectionId = payloadObj
         ? pickNumber(payloadObj, 'Metadata.librarySectionID')
         : null;
@@ -143,11 +170,21 @@ export class WebhooksController {
             const payloadInput = {
               source: 'plexWebhook',
               plexEvent,
+              mediaType: mediaTypeLower,
               seedTitle,
               seedYear: seedYear ?? null,
               seedRatingKey: seedRatingKey || null,
               seedLibrarySectionId: seedLibrarySectionId ?? null,
               seedLibrarySectionTitle: seedLibrarySectionTitle || null,
+              ...(mediaTypeLower === 'episode'
+                ? {
+                    showTitle: showTitle || null,
+                    showRatingKey: showRatingKey || null,
+                    seasonNumber: seasonNumber ?? null,
+                    episodeNumber: episodeNumber ?? null,
+                    episodeTitle: episodeTitle || null,
+                  }
+                : {}),
               persistedPath: persisted.path,
             } as const;
 

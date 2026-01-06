@@ -147,6 +147,31 @@ export class JobsScheduler implements OnModuleInit {
     const existing = await this.prisma.jobSchedule.findMany();
     const existingIds = new Set(existing.map((s) => s.jobId));
 
+    // If we tweak defaults over time, gently migrate existing schedules that were
+    // never customized (i.e., still on the old default cron).
+    //
+    // We intentionally DO NOT override user-edited crons; we only change known
+    // previous defaults for specific job IDs.
+    const defaultCronMigrations: Array<{ jobId: string; from: string; to: string }> = [
+      // Monitor Confirm default moved from 3am -> 1am
+      { jobId: 'monitorConfirm', from: '0 3 * * *', to: '0 1 * * *' },
+      // Based on Latest Watched Refresher default moved from 1am -> 2am
+      { jobId: 'recentlyWatchedRefresher', from: '0 1 * * *', to: '0 2 * * *' },
+    ];
+
+    const migrationUpdates = await Promise.all(
+      defaultCronMigrations.map((m) =>
+        this.prisma.jobSchedule.updateMany({
+          where: {
+            jobId: m.jobId,
+            cron: m.from,
+          },
+          data: { cron: m.to },
+        }),
+      ),
+    );
+    const migratedCount = migrationUpdates.reduce((sum, r) => sum + r.count, 0);
+
     const toCreate = JOB_DEFINITIONS.filter(
       (j) => j.defaultScheduleCron && !existingIds.has(j.id),
     ).map((j) => ({
@@ -156,9 +181,14 @@ export class JobsScheduler implements OnModuleInit {
       timezone: null as string | null,
     }));
 
-    if (!toCreate.length) return;
+    if (!toCreate.length && migratedCount === 0) return;
 
-    await this.prisma.jobSchedule.createMany({ data: toCreate });
-    this.logger.log(`Seeded ${toCreate.length} default schedules (disabled).`);
+    if (toCreate.length) {
+      await this.prisma.jobSchedule.createMany({ data: toCreate });
+    }
+
+    this.logger.log(
+      `Default schedules ensured: seeded=${toCreate.length} migrated=${migratedCount}`,
+    );
   }
 }

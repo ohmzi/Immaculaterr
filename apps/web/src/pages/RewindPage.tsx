@@ -50,6 +50,11 @@ function formatDuration(ms: number): string {
   return `${h}h ${mm}m`;
 }
 
+function modeLabel(run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' {
+  if (run.dryRun) return 'Dry-Run';
+  return run.trigger === 'schedule' ? 'Auto-Run' : 'Manual';
+}
+
 export function RewindPage() {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
@@ -323,7 +328,7 @@ export function RewindPage() {
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
-                                      {run.dryRun ? 'dry-run' : 'live'}
+                                      {modeLabel(run)}
                                     </span>
                                   </div>
                                 </div>
@@ -391,7 +396,7 @@ export function RewindPage() {
                                     </span>
                                   </td>
                                   <td className="px-3 py-3 text-white/60">
-                                    {run.dryRun ? 'dry-run' : 'live'}
+                                    {modeLabel(run)}
                                   </td>
                                   <td className="px-3 py-3 text-white/60">
                                     {ms === null ? '—' : formatDuration(ms)}

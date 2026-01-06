@@ -190,9 +190,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   placeholder="admin"
                   className={inputClass}
                 />
-                <div className="text-xs text-white/50">
-                  Not case-sensitive.
-                </div>
               </div>
 
               <div className="space-y-2">
@@ -259,10 +256,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   'Sign in'
                 )}
               </button>
-
-              <div className="pt-2 text-xs text-white/50 leading-relaxed">
-                Uses a secure session cookie stored by your browser.
-              </div>
             </form>
           </div>
         </div>

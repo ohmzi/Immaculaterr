@@ -446,6 +446,131 @@ export class SonarrService {
     }
   }
 
+  async lookupSeries(params: {
+    baseUrl: string;
+    apiKey: string;
+    term: string;
+  }): Promise<SonarrSeries[]> {
+    const { baseUrl, apiKey } = params;
+    const term = (params.term ?? '').trim();
+    if (!term) return [];
+
+    const url = this.buildApiUrl(
+      baseUrl,
+      `api/v3/series/lookup?term=${encodeURIComponent(term)}`,
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr lookup series failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      return Array.isArray(data) ? (data as SonarrSeries[]) : [];
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr lookup series failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async addSeries(params: {
+    baseUrl: string;
+    apiKey: string;
+    title: string;
+    tvdbId: number;
+    qualityProfileId: number;
+    rootFolderPath: string;
+    tags?: number[];
+    monitored?: boolean;
+    searchForMissingEpisodes?: boolean;
+    searchForCutoffUnmetEpisodes?: boolean;
+  }): Promise<{ status: 'added' | 'exists'; series: SonarrSeries | null }> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/series');
+
+    const payload = {
+      title: params.title,
+      tvdbId: Math.trunc(params.tvdbId),
+      qualityProfileId: Math.trunc(params.qualityProfileId),
+      rootFolderPath: params.rootFolderPath,
+      tags: Array.isArray(params.tags)
+        ? params.tags.map((t) => Math.trunc(t))
+        : undefined,
+      monitored: params.monitored ?? true,
+      addOptions: {
+        searchForMissingEpisodes: params.searchForMissingEpisodes ?? true,
+        searchForCutoffUnmetEpisodes: params.searchForCutoffUnmetEpisodes ?? true,
+      },
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as unknown;
+        return { status: 'added', series: (data as SonarrSeries) ?? null };
+      }
+
+      const body = await res.text().catch(() => '');
+      const lower = body.toLowerCase();
+      if (
+        res.status === 400 &&
+        (lower.includes('already been added') ||
+          lower.includes('already exists') ||
+          lower.includes('series exists'))
+      ) {
+        this.logger.log(
+          `Sonarr add series: already exists tvdbId=${params.tvdbId} title=${JSON.stringify(
+            params.title,
+          )}`,
+        );
+        return { status: 'exists', series: null };
+      }
+
+      throw new BadGatewayException(
+        `Sonarr add series failed: HTTP ${res.status} ${body}`.trim(),
+      );
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr add series failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private buildApiUrl(baseUrl: string, path: string) {
     const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     return new URL(path, normalized).toString();
