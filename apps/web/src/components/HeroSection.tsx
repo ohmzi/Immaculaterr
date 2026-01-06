@@ -341,6 +341,7 @@ export function HeroSection() {
                 type="button"
                 className="inline-flex flex-col items-center gap-2 group leading-none bg-transparent border-0 p-0 appearance-none cursor-pointer select-none focus:outline-none"
                 aria-label="Landing title"
+                style={{ fontSize: 'inherit' }}
               >
                 {/* Line 1 */}
                 <span className="inline-flex items-center gap-0.5">
