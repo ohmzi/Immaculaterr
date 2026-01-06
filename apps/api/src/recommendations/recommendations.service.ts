@@ -4,7 +4,8 @@ import { OpenAiService } from '../openai/openai.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 
-const RECS_MAX_COUNT = 200;
+const RECS_MIN_COUNT = 5;
+const RECS_MAX_COUNT = 100;
 const RECS_MIN_RELEASED_PERCENT = 25;
 const SERVICE_COOLDOWN_MS = 10 * 60 * 1000;
 
@@ -82,7 +83,7 @@ export class RecommendationsService {
   }> {
     const { ctx } = params;
     const seedTitle = params.seedTitle.trim();
-    const count = clampInt(params.count || 50, 1, RECS_MAX_COUNT, 50);
+    const count = clampInt(params.count || 50, RECS_MIN_COUNT, RECS_MAX_COUNT, 50);
     const webFrac = clamp01(params.webContextFraction);
 
     const seedMeta = await this.tmdb.getSeedMetadata({
@@ -102,7 +103,10 @@ export class RecommendationsService {
       100 - RECS_MIN_RELEASED_PERCENT,
       25,
     );
-    const upcomingTarget = Math.round((count * upcomingPercent) / 100);
+    const upcomingTargetRaw = Math.round((count * upcomingPercent) / 100);
+    const minReleasedTarget = Math.ceil((count * RECS_MIN_RELEASED_PERCENT) / 100);
+    const maxUpcomingTarget = Math.max(0, count - minReleasedTarget);
+    const upcomingTarget = Math.max(0, Math.min(upcomingTargetRaw, maxUpcomingTarget));
     const releasedTarget = Math.max(0, count - upcomingTarget);
 
     await ctx.info('recs: split config', {
@@ -382,7 +386,7 @@ export class RecommendationsService {
   }): Promise<{ titles: string[]; strategy: 'openai' | 'tmdb' }> {
     const { ctx } = params;
     const seedTitle = params.seedTitle.trim();
-    const count = Math.max(1, Math.min(50, Math.trunc(params.count || 15)));
+    const count = clampInt(params.count || 50, RECS_MIN_COUNT, RECS_MAX_COUNT, 50);
 
     const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
     if (openAiEnabled) {

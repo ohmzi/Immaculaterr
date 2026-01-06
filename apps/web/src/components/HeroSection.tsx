@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Lock } from 'lucide-react';
+import { ArrowRight, ChevronRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
@@ -327,44 +327,35 @@ export function HeroSection() {
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
 
       {/* Content Container */}
-      <div className="relative z-10 container mx-auto px-6 lg:px-8 pt-32 lg:pt-48 pb-24 flex items-center min-h-[calc(100vh-200px)]">
-        <div className="grid lg:grid-cols-[1fr_560px] gap-8 lg:gap-12 items-center w-full">
+      <div className="relative z-10 container mx-auto px-6 lg:px-8 pt-28 lg:pt-32 pb-24">
+        <div className="mx-auto w-full max-w-5xl flex flex-col items-center">
           {/* Left Content */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="lg:pr-4 text-center lg:text-left"
+            className="text-center"
           >
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-black leading-[1.02]">
-              <span className="inline-block text-left">
-                <span className="block">
-                  Your{' '}
-                  <span className="font-plex uppercase tracking-[0.12em]">Library</span>,
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
+              <span className="inline-grid grid-cols-[max-content_max-content] items-center gap-y-2 group leading-none">
+                <span className="flex items-baseline gap-3 justify-center">
+                  <span className="font-tesla font-bold tracking-tight">Your</span>
+                  <span className="font-tesla font-bold tracking-tight group-hover:tracking-normal transition-all duration-300">
+                    library
+                  </span>
                 </span>
-                <span className="block pl-4 sm:pl-6 whitespace-nowrap">
-                  <span className="mr-2 align-baseline text-black/70 font-semibold uppercase tracking-[0.22em] text-sm sm:text-base">
-                    on
-                  </span>
-                  <span className="relative inline-block">
-                    {/* Marker underline */}
-                    <span
-                      aria-hidden="true"
-                      className="absolute -inset-x-3 -bottom-1.5 h-3 rounded-full bg-black/15"
-                    />
-                    {/* Outline layer (webkit stroke) */}
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-0 text-transparent font-tesla tracking-[0.18em] uppercase [-webkit-text-stroke:2px_rgba(0,0,0,0.9)]"
-                    >
-                      Autopilot
-                    </span>
-                    {/* Fill layer (subtle gradient) */}
-                    <span className="relative z-10 font-tesla tracking-[0.18em] uppercase bg-gradient-to-r from-[#0b0c0f] via-black to-[#111827] bg-clip-text text-transparent">
-                      Autopilot
-                    </span>
-                  </span>
-                  .
+
+                <span className="relative w-10 h-10 -ml-1 transform transition-transform group-hover:translate-x-1 justify-self-center">
+                  <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[8] text-black" />
+                  <ChevronRight className="absolute inset-0 w-10 h-10 stroke-[5] text-[#e5a00d]" />
+                </span>
+
+                <span className="flex justify-center pr-3">
+                  <span className="font-tesla font-bold tracking-tight">on</span>
+                </span>
+
+                <span className="font-plex font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-black to-neutral-800 animate-pulse">
+                  autopilot.
                 </span>
               </span>
             </h1>
@@ -385,12 +376,12 @@ export function HeroSection() {
             </div>
           </motion.div>
 
-          {/* Right Content - Card */}
+          {/* Graph */}
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="flex justify-center lg:justify-end items-center w-full"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.35 }}
+            className="mt-10 flex justify-center w-full"
           >
             <div className="relative w-full max-w-[560px]">
               {/* Analytics Card */}

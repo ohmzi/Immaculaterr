@@ -199,9 +199,9 @@ export class BasedonLatestWatchedCollectionJob {
 
     const recCountRaw = pickNumber(settings, 'recommendations.count') ?? 50;
     const recCount = Math.max(
-      1,
+      5,
       Math.min(
-        200,
+        100,
         Math.trunc(Number.isFinite(recCountRaw) ? recCountRaw : 50) || 50,
       ),
     );

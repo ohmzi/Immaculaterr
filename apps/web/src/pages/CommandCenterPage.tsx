@@ -266,7 +266,7 @@ export function CommandCenterPage() {
     if (didInitRecommendations.current) return;
     didInitRecommendations.current = true;
     setDraftRecommendationCount(
-      Math.max(0, Math.min(100, Math.trunc(savedRecommendationCount))),
+      Math.max(5, Math.min(100, Math.trunc(savedRecommendationCount))),
     );
     setDraftUpcomingPercent(savedUpcomingPercent);
   }, [settingsQuery.data?.settings, savedRecommendationCount, savedUpcomingPercent]);
@@ -284,7 +284,7 @@ export function CommandCenterPage() {
   });
 
   const effectiveRecommendationCount = Math.max(
-    0,
+    5,
     Math.min(
       100,
       Math.trunc(Number.isFinite(draftRecommendationCount) ? draftRecommendationCount : 50),
@@ -295,7 +295,12 @@ export function CommandCenterPage() {
     Math.min(75, Math.trunc(draftUpcomingPercent || 0)),
   );
   const effectiveReleasedPercent = 100 - effectiveUpcomingPercent;
-  const upcomingTarget = Math.round((effectiveRecommendationCount * effectiveUpcomingPercent) / 100);
+  const upcomingTargetRaw = Math.round(
+    (effectiveRecommendationCount * effectiveUpcomingPercent) / 100,
+  );
+  const minReleasedTarget = Math.ceil((effectiveRecommendationCount * 25) / 100);
+  const maxUpcomingTarget = Math.max(0, effectiveRecommendationCount - minReleasedTarget);
+  const upcomingTarget = Math.max(0, Math.min(upcomingTargetRaw, maxUpcomingTarget));
   const releasedTarget = Math.max(0, effectiveRecommendationCount - upcomingTarget);
 
   return (
@@ -370,6 +375,7 @@ export function CommandCenterPage() {
                           <div className="space-y-2 text-sm text-white/80">
                             <div>Used by Immaculate Taste + Recently Watched.</div>
                             <div>Released stays ≥ 25%.</div>
+                            <div>Count can’t go below 5.</div>
                           </div>
                         </PopoverContent>
                       </Popover>
@@ -382,23 +388,22 @@ export function CommandCenterPage() {
                           <label className="block text-xs font-bold text-white/60 uppercase tracking-wider">
                             Recommendation count
                           </label>
-                          <div className="text-xs text-white/60">0–100</div>
                         </div>
 
                         <FunCountSlider
                           value={effectiveRecommendationCount}
-                          min={0}
+                          min={5}
                           max={100}
                           disabled={saveRecommendationsMutation.isPending}
                           onValueChange={(next) => {
                             const clamped = Number.isFinite(next)
-                              ? Math.max(0, Math.min(100, Math.trunc(next)))
+                              ? Math.max(5, Math.min(100, Math.trunc(next)))
                               : 50;
                             setDraftRecommendationCount(clamped);
                           }}
                           onValueCommit={(next) => {
                             const clamped = Number.isFinite(next)
-                              ? Math.max(0, Math.min(100, Math.trunc(next)))
+                              ? Math.max(5, Math.min(100, Math.trunc(next)))
                               : 50;
                             saveRecommendationsMutation.mutate({ count: clamped });
                           }}

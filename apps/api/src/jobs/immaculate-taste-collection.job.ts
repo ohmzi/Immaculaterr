@@ -187,8 +187,8 @@ export class ImmaculateTasteCollectionJob {
       pickNumber(settings, 'immaculateTaste.suggestionsPerRun') ??
       50;
     const suggestionsPerRun = Math.max(
-      1,
-      Math.min(200, Math.trunc(suggestionsPerRunRaw || 50)),
+      5,
+      Math.min(100, Math.trunc(suggestionsPerRunRaw || 50)),
     );
     const upcomingPercentRaw =
       pickNumber(settings, 'recommendations.upcomingPercent') ?? 25;
