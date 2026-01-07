@@ -117,7 +117,7 @@ async function main() {
     throw new Error('TMDB apiKey is not set (Vault → TMDB).');
   }
 
-  const count = clampInt(pickNumber(settings, 'recommendations.count') ?? 50, 5, 100, 50);
+  const count = clampInt(pickNumber(settings, 'recommendations.count') ?? 10, 5, 100, 10);
   const upcomingPercent = clampInt(
     pickNumber(settings, 'recommendations.upcomingPercent') ?? 25,
     0,

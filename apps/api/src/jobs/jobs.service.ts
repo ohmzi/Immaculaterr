@@ -359,4 +359,43 @@ export class JobsService {
       skip,
     });
   }
+
+  async clearRuns(params: { userId: string; jobId?: string }) {
+    const { userId, jobId } = params;
+
+    const where = {
+      userId,
+      ...(jobId ? { jobId } : {}),
+    };
+
+    const runs = await this.prisma.jobRun.findMany({
+      where,
+      select: { id: true },
+    });
+    const ids = runs.map((r) => r.id);
+    if (!ids.length) {
+      return { deletedRuns: 0, deletedLogs: 0 };
+    }
+
+    // Delete in chunks to avoid very large IN() lists.
+    const chunkSize = 500;
+    let deletedLogs = 0;
+    let deletedRuns = 0;
+
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const batch = ids.slice(i, i + chunkSize);
+      const [logsRes, runsRes] = await this.prisma.$transaction([
+        this.prisma.jobLogLine.deleteMany({ where: { runId: { in: batch } } }),
+        this.prisma.jobRun.deleteMany({ where: { id: { in: batch } } }),
+      ]);
+      deletedLogs += logsRes.count;
+      deletedRuns += runsRes.count;
+    }
+
+    this.logger.log(
+      `Rewind cleared userId=${userId} scope=${jobId ? `jobId=${jobId}` : 'all'} runs=${deletedRuns} logs=${deletedLogs}`,
+    );
+
+    return { deletedRuns, deletedLogs };
+  }
 }

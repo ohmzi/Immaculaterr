@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Zap,
   Sparkles,
+  Search,
 } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
@@ -70,6 +71,12 @@ const JOB_CONFIG: Record<
     description:
       'Keeps Radarr/Sonarr monitoring in sync with what’s already in Plex.',
   },
+  arrMonitoredSearch: {
+    icon: <Search className="w-8 h-8" />,
+    color: 'text-fuchsia-300',
+    description:
+      'Runs missing searches for monitored items.',
+  },
   mediaAddedCleanup: {
     icon: <CheckCircle2 className="w-8 h-8" />,
     color: 'text-teal-300',
@@ -78,7 +85,7 @@ const JOB_CONFIG: Record<
   },
   recentlyWatchedRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
-    color: 'text-emerald-400',
+    color: 'text-violet-400',
     description:
       'Off-peak refresh for “Recently Watched” and “Change of Taste” collections.',
   },
@@ -86,13 +93,13 @@ const JOB_CONFIG: Record<
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-yellow-300',
     description:
-      'Updates Immaculate Taste after you finish a movie (and can send missing to Radarr).',
+      'Updates your Immaculate Taste collection after you finish watching, and can send missing titles to Radarr/Sonarr.',
   },
   immaculateTasteRefresher: {
-    icon: <CalendarDays className="w-8 h-8" />,
-    color: 'text-sky-300',
+    icon: <RotateCw className="w-8 h-8" />,
+    color: 'text-yellow-300',
     description:
-      'Off-peak rebuild of “Immaculate Taste” across all Plex movie libraries.',
+      'Off-peak rebuild of “Immaculate Taste” across all Plex movie and TV libraries.',
   },
   watchedMovieRecommendations: {
     icon: <Sparkles className="w-8 h-8" />,
@@ -313,9 +320,10 @@ export function TaskManagerPage() {
   const [nextRunsPopup, setNextRunsPopup] = useState<Record<string, boolean>>({});
   const [timePickerOpen, setTimePickerOpen] = useState<Record<string, boolean>>({});
 
-  // Manual test harness (movie-seeded jobs)
+  // Manual run harness (media-seeded jobs)
   const [movieSeedDialogOpen, setMovieSeedDialogOpen] = useState(false);
   const [movieSeedDialogJobId, setMovieSeedDialogJobId] = useState<string | null>(null);
+  const [movieSeedMediaType, setMovieSeedMediaType] = useState<'movie' | 'tv'>('movie');
   const [movieSeedTitle, setMovieSeedTitle] = useState('');
   const [movieSeedYear, setMovieSeedYear] = useState('');
   const [movieSeedError, setMovieSeedError] = useState<string | null>(null);
@@ -332,6 +340,18 @@ export function TaskManagerPage() {
     immaculateIncludeRefresherAfterUpdate,
     setImmaculateIncludeRefresherAfterUpdate,
   ] = useState(true);
+  const [
+    immaculateStartSearchImmediately,
+    setImmaculateStartSearchImmediately,
+  ] = useState(false);
+  const [
+    immaculateStartSearchDialogOpen,
+    setImmaculateStartSearchDialogOpen,
+  ] = useState(false);
+  const [
+    immaculateStartSearchDetailsOpen,
+    setImmaculateStartSearchDetailsOpen,
+  ] = useState(false);
   const [immaculateRefresherDetailsOpen, setImmaculateRefresherDetailsOpen] =
     useState(false);
   const [cardIconPulse, setCardIconPulse] = useState<{
@@ -342,10 +362,22 @@ export function TaskManagerPage() {
     null,
   );
   const [webhookAutoRun, setWebhookAutoRun] = useState<Record<string, boolean>>({});
+  const [arrMonitoredIncludeRadarr, setArrMonitoredIncludeRadarr] = useState(true);
+  const [arrMonitoredIncludeSonarr, setArrMonitoredIncludeSonarr] = useState(true);
   const immaculateIncludeRefresherMutation = useMutation({
     mutationFn: async (enabled: boolean) =>
       putSettings({
         settings: { immaculateTaste: { includeRefresherAfterUpdate: enabled } },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
+  const immaculateStartSearchMutation = useMutation({
+    mutationFn: async (enabled: boolean) =>
+      putSettings({
+        settings: { jobs: { immaculateTastePoints: { searchImmediately: enabled } } },
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(['publicSettings'], data);
@@ -359,6 +391,15 @@ export function TaskManagerPage() {
     );
     setImmaculateIncludeRefresherAfterUpdate(saved ?? true);
   }, [settingsQuery.data?.settings, immaculateIncludeRefresherMutation.isPending]);
+
+  useEffect(() => {
+    if (immaculateStartSearchMutation.isPending) return;
+    const saved = readBool(
+      settingsQuery.data?.settings,
+      'jobs.immaculateTastePoints.searchImmediately',
+    );
+    setImmaculateStartSearchImmediately(saved ?? false);
+  }, [settingsQuery.data?.settings, immaculateStartSearchMutation.isPending]);
 
   useEffect(() => {
     if (immaculateIncludeRefresherMutation.isError) {
@@ -377,7 +418,7 @@ export function TaskManagerPage() {
   });
 
   useEffect(() => {
-    // Initialize webhook-only auto-run toggles from settings (default: enabled).
+    // Initialize webhook-only auto-run toggles from settings (default: disabled).
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
     if (webhookAutoRunMutation.isPending) return;
@@ -388,12 +429,32 @@ export function TaskManagerPage() {
       for (const jobId of UNSCHEDULABLE_JOB_IDS) {
         if (next[jobId] !== undefined) continue;
         const saved = readBool(settings, `jobs.webhookEnabled.${jobId}`);
-        next[jobId] = saved ?? true;
+        next[jobId] = saved ?? false;
         changed = true;
       }
       return changed ? next : prev;
     });
   }, [settingsQuery.data?.settings, webhookAutoRunMutation.isPending]);
+
+  const arrMonitoredSearchOptionsMutation = useMutation({
+    mutationFn: async (patch: { includeRadarr?: boolean; includeSonarr?: boolean }) =>
+      putSettings({
+        settings: { jobs: { arrMonitoredSearch: patch } },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
+  useEffect(() => {
+    if (arrMonitoredSearchOptionsMutation.isPending) return;
+    const settings = settingsQuery.data?.settings;
+    if (!settings) return;
+    const includeRadarr = readBool(settings, 'jobs.arrMonitoredSearch.includeRadarr');
+    const includeSonarr = readBool(settings, 'jobs.arrMonitoredSearch.includeSonarr');
+    setArrMonitoredIncludeRadarr(includeRadarr ?? true);
+    setArrMonitoredIncludeSonarr(includeSonarr ?? true);
+  }, [settingsQuery.data?.settings, arrMonitoredSearchOptionsMutation.isPending]);
 
   useEffect(() => {
     if (!flashJob) return;
@@ -805,7 +866,7 @@ export function TaskManagerPage() {
               const webhookEnabled =
                 webhookAutoRun[job.id] ??
                 (readBool(settingsQuery.data?.settings, `jobs.webhookEnabled.${job.id}`) ??
-                  true);
+                  false);
               const isAutoRunEnabled = supportsSchedule ? draft.enabled : webhookEnabled;
               const iconPulseActive = cardIconPulse?.jobId === job.id;
               const isExpanded = expandedCards[job.id] ?? false;
@@ -946,8 +1007,11 @@ export function TaskManagerPage() {
 
                               if (newEnabled) {
                                 setExpandedCards((prev) => ({ ...prev, [job.id]: true }));
-                                // If enabling, auto-save with default daily 3am schedule
-                                const defaultCron = '0 3 * * *'; // Daily at 3am
+                                // If enabling, auto-save with the job's default schedule (or keep existing cron)
+                                const defaultCron =
+                                  job.schedule?.cron ??
+                                  job.defaultScheduleCron ??
+                                  '0 3 * * *'; // fallback: daily at 3am
 
                                 const defaultDraft = defaultDraftFromCron({
                                   cron: defaultCron,
@@ -1135,10 +1199,10 @@ export function TaskManagerPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const needsMovieSeed =
+                            const needsSeedInput =
                               job.id === 'watchedMovieRecommendations' ||
                               job.id === 'immaculateTastePoints';
-                            if (needsMovieSeed) {
+                            if (needsSeedInput) {
                               setMovieSeedError(null);
                               setMovieSeedDialogJobId(job.id);
                               setMovieSeedDialogOpen(true);
@@ -1238,130 +1302,241 @@ export function TaskManagerPage() {
                         >
                           <div className="px-6 md:px-8 py-5">
                             {job.id === 'immaculateTastePoints' && (
-                              <div
-                                role="button"
-                                tabIndex={0}
-                                aria-expanded={immaculateRefresherDetailsOpen}
-                                onClick={() =>
-                                  setImmaculateRefresherDetailsOpen((v) => !v)
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    setImmaculateRefresherDetailsOpen((v) => !v);
+                              <div className="flex flex-col gap-3">
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-expanded={immaculateRefresherDetailsOpen}
+                                  onClick={() =>
+                                    setImmaculateRefresherDetailsOpen((v) => !v)
                                   }
-                                }}
-                                className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5 cursor-pointer select-none hover:bg-[#0F0B15]/45 transition-colors"
-                              >
-                                <div className="flex items-start justify-between gap-4">
-                                  <div className="min-w-0">
-                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                                      <RotateCw className="w-3 h-3 text-sky-300" />
-                                      Immaculate Taste Refresher
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      setImmaculateRefresherDetailsOpen((v) => !v);
+                                    }
+                                  }}
+                                  className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5 cursor-pointer select-none hover:bg-[#0F0B15]/45 transition-colors"
+                                >
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                      <RotateCw className="w-3 h-3 text-yellow-300" />
+                                        Immaculate Taste Refresher
+                                      </div>
+
+                                      <AnimatePresence initial={false}>
+                                        {immaculateRefresherDetailsOpen && (
+                                          <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: 'auto', opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            transition={{
+                                              type: 'spring',
+                                              stiffness: 240,
+                                              damping: 26,
+                                              mass: 0.85,
+                                            }}
+                                            className="overflow-hidden"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <p className="mt-2 text-sm text-gray-400 leading-relaxed">
+                                              After updating points, automatically rebuild your{' '}
+                                              <span className="text-white/80 font-semibold">
+                                                Inspired by your Immaculate Taste
+                                              </span>{' '}
+                                              Plex collection.
+                                            </p>
+                                            <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                                              If disabled, you can still{' '}
+                                              <a
+                                                href="#job-immaculateTasteRefresher"
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  document
+                                                    .getElementById(
+                                                      'job-immaculateTasteRefresher',
+                                                    )
+                                                    ?.scrollIntoView({
+                                                      behavior: 'smooth',
+                                                      block: 'start',
+                                                    });
+                                                  setFlashJob({
+                                                    jobId: 'immaculateTasteRefresher',
+                                                    nonce: Date.now(),
+                                                  });
+                                                }}
+                                                className="text-sky-200/90 underline underline-offset-4 hover:text-sky-100 transition-colors"
+                                              >
+                                                run/schedule the refresher from its own card
+                                              </a>{' '}
+                                              independently.
+                                            </p>
+
+                                            {immaculateIncludeRefresherMutation.isError && (
+                                              <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
+                                                <CircleAlert className="w-4 h-4" />
+                                                {(immaculateIncludeRefresherMutation.error as Error)
+                                                  .message}
+                                              </div>
+                                            )}
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
                                     </div>
 
-                                    <AnimatePresence initial={false}>
-                                      {immaculateRefresherDetailsOpen && (
-                                        <motion.div
-                                          initial={{ height: 0, opacity: 0 }}
-                                          animate={{ height: 'auto', opacity: 1 }}
-                                          exit={{ height: 0, opacity: 0 }}
-                                          transition={{
-                                            type: 'spring',
-                                            stiffness: 240,
-                                            damping: 26,
-                                            mass: 0.85,
-                                          }}
-                                          className="overflow-hidden"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <p className="mt-2 text-sm text-gray-400 leading-relaxed">
-                                            After updating points, automatically rebuild your{' '}
-                                            <span className="text-white/80 font-semibold">
-                                              Inspired by your Immaculate Taste
-                                            </span>{' '}
-                                            Plex collection.
-                                          </p>
-                                          <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                                            If disabled, you can still{' '}
-                                            <a
-                                              href="#job-immaculateTasteRefresher"
-                                              onClick={(e) => {
-                                                e.preventDefault();
-                                                document
-                                                  .getElementById(
-                                                    'job-immaculateTasteRefresher',
-                                                  )
-                                                  ?.scrollIntoView({
-                                                    behavior: 'smooth',
-                                                    block: 'start',
-                                                  });
-                                                setFlashJob({
-                                                  jobId: 'immaculateTasteRefresher',
-                                                  nonce: Date.now(),
-                                                });
-                                              }}
-                                              className="text-sky-200/90 underline underline-offset-4 hover:text-sky-100 transition-colors"
-                                            >
-                                              run/schedule the refresher from its own card
-                                            </a>{' '}
-                                            independently.
-                                          </p>
-
-                                          {immaculateIncludeRefresherMutation.isError && (
-                                            <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
-                                              <CircleAlert className="w-4 h-4" />
-                                              {(immaculateIncludeRefresherMutation.error as Error)
-                                                .message}
-                                            </div>
-                                          )}
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-
-                                  <div
-                                    className="flex flex-col items-end gap-2 shrink-0"
-                                    onClick={(e) => e.stopPropagation()}
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                  >
-                                    <button
-                                      type="button"
-                                      role="switch"
-                                      aria-checked={immaculateIncludeRefresherAfterUpdate}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const next = !immaculateIncludeRefresherAfterUpdate;
-                                        setImmaculateIncludeRefresherAfterUpdate(next);
-                                        immaculateIncludeRefresherMutation.mutate(next);
-                                      }}
+                                    <div
+                                      className="flex flex-col items-end gap-2 shrink-0"
+                                      onClick={(e) => e.stopPropagation()}
                                       onPointerDown={(e) => e.stopPropagation()}
-                                      disabled={
-                                        settingsQuery.isLoading ||
-                                        immaculateIncludeRefresherMutation.isPending
-                                      }
-                                      className={cn(
-                                        'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                        immaculateIncludeRefresherAfterUpdate
-                                          ? 'bg-sky-400'
-                                          : 'bg-[#2a2438] border-2 border-white/10'
-                                      )}
-                                      aria-label="Toggle Immaculate Taste Refresher after update"
                                     >
-                                      <span
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={immaculateIncludeRefresherAfterUpdate}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const next = !immaculateIncludeRefresherAfterUpdate;
+                                          setImmaculateIncludeRefresherAfterUpdate(next);
+                                          immaculateIncludeRefresherMutation.mutate(next);
+                                        }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          immaculateIncludeRefresherMutation.isPending
+                                        }
                                         className={cn(
-                                          'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
                                           immaculateIncludeRefresherAfterUpdate
-                                            ? 'translate-x-6'
-                                            : 'translate-x-1'
+                                            ? 'bg-sky-400'
+                                            : 'bg-[#2a2438] border-2 border-white/10'
                                         )}
+                                        aria-label="Toggle Immaculate Taste Refresher after update"
                                       >
-                                        {immaculateIncludeRefresherMutation.isPending && (
-                                          <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                        )}
-                                      </span>
-                                    </button>
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            immaculateIncludeRefresherAfterUpdate
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1'
+                                          )}
+                                        >
+                                          {immaculateIncludeRefresherMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
                                   </div>
+                                </div>
+
+                                <div className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5">
+                                  <div
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-expanded={immaculateStartSearchDetailsOpen}
+                                    onClick={() =>
+                                      setImmaculateStartSearchDetailsOpen((v) => !v)
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        setImmaculateStartSearchDetailsOpen((v) => !v);
+                                      }
+                                    }}
+                                    className="cursor-pointer select-none"
+                                  >
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="min-w-0">
+                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                          <Search className="w-3 h-3 text-fuchsia-300" />
+                                          Start search immediately
+                                        </div>
+
+                                        <AnimatePresence initial={false}>
+                                          {immaculateStartSearchDetailsOpen && (
+                                            <motion.div
+                                              initial={{ height: 0, opacity: 0 }}
+                                              animate={{ height: 'auto', opacity: 1 }}
+                                              exit={{ height: 0, opacity: 0 }}
+                                              transition={{
+                                                type: 'spring',
+                                                stiffness: 240,
+                                                damping: 26,
+                                                mass: 0.85,
+                                              }}
+                                              className="overflow-hidden"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <div className="mt-2 text-sm text-gray-400 leading-relaxed">
+                                                When enabled, Radarr/Sonarr will start searching as
+                                                soon as this job adds missing titles.
+                                              </div>
+                                            </motion.div>
+                                          )}
+                                        </AnimatePresence>
+                                      </div>
+
+                                      <div
+                                        className="flex flex-col items-end gap-2 shrink-0"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                      >
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={immaculateStartSearchImmediately}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!immaculateStartSearchImmediately) {
+                                              setImmaculateStartSearchDialogOpen(true);
+                                              return;
+                                            }
+
+                                            const prev = immaculateStartSearchImmediately;
+                                            const next = false;
+                                            setImmaculateStartSearchImmediately(next);
+                                            immaculateStartSearchMutation.mutate(next, {
+                                              onError: () =>
+                                                setImmaculateStartSearchImmediately(prev),
+                                            });
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            immaculateStartSearchMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            immaculateStartSearchImmediately
+                                              ? 'bg-fuchsia-400'
+                                              : 'bg-[#2a2438] border-2 border-white/10'
+                                          )}
+                                          aria-label="Toggle immediate Radarr/Sonarr search for Immaculate Taste Collection"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              immaculateStartSearchImmediately
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1'
+                                            )}
+                                          >
+                                            {immaculateStartSearchMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {immaculateStartSearchMutation.isError && (
+                                    <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
+                                      <CircleAlert className="w-4 h-4" />
+                                      {(immaculateStartSearchMutation.error as Error).message}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -1389,6 +1564,131 @@ export function TaskManagerPage() {
                       >
                         <div className="p-4 md:p-6">
                           <div className="p-4 rounded-2xl bg-[#0F0B15]/50 border border-white/5 flex flex-col gap-4">
+                            {job.id === 'arrMonitoredSearch' && (
+                              <div className="rounded-2xl bg-[#0F0B15]/40 border border-white/5 p-4">
+                                <div className="flex flex-col gap-3">
+                                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                    Includes
+                                  </div>
+
+                                  <div className="flex flex-col sm:flex-row gap-3">
+                                    <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Radarr
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={arrMonitoredIncludeRadarr}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const prev = arrMonitoredIncludeRadarr;
+                                          const next = !arrMonitoredIncludeRadarr;
+                                          setArrMonitoredIncludeRadarr(next);
+                                          arrMonitoredSearchOptionsMutation.mutate(
+                                            { includeRadarr: next },
+                                            {
+                                              onError: () => {
+                                                setArrMonitoredIncludeRadarr(prev);
+                                              },
+                                            },
+                                          );
+                                        }}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          arrMonitoredSearchOptionsMutation.isPending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          arrMonitoredIncludeRadarr
+                                            ? 'bg-[#facc15]'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle Radarr for Monitored Search"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            arrMonitoredIncludeRadarr
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {arrMonitoredSearchOptionsMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Sonarr
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={arrMonitoredIncludeSonarr}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const prev = arrMonitoredIncludeSonarr;
+                                          const next = !arrMonitoredIncludeSonarr;
+                                          setArrMonitoredIncludeSonarr(next);
+                                          arrMonitoredSearchOptionsMutation.mutate(
+                                            { includeSonarr: next },
+                                            {
+                                              onError: () => {
+                                                setArrMonitoredIncludeSonarr(prev);
+                                              },
+                                            },
+                                          );
+                                        }}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          arrMonitoredSearchOptionsMutation.isPending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          arrMonitoredIncludeSonarr
+                                            ? 'bg-[#facc15]'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle Sonarr for Monitored Search"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            arrMonitoredIncludeSonarr
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {arrMonitoredSearchOptionsMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="text-xs text-white/50">
+                                    If both are enabled, Sonarr starts 1 hour after the scheduled time.
+                                  </div>
+
+                                  {arrMonitoredSearchOptionsMutation.isError && (
+                                    <div className="flex items-center gap-2 text-sm text-red-300">
+                                      <CircleAlert className="w-4 h-4" />
+                                      {(arrMonitoredSearchOptionsMutation.error as Error).message}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
                             <div className="flex flex-col md:flex-row gap-4 md:items-start">
                               {/* Frequency Selector */}
                               <div className="flex-1 min-w-[200px] h-[106px] flex flex-col">
@@ -1775,11 +2075,11 @@ export function TaskManagerPage() {
         </div>
       </section>
 
-      {/* Based on Latest Watched Collection - Manual Test Dialog */}
+      {/* Immaculate Taste / Based on Latest Watched - Run Now Dialog */}
       <AnimatePresence>
         {movieSeedDialogOpen && (
           <motion.div
-            className="fixed inset-0 z-[100000] flex items-end sm:items-center justify-center p-4 sm:p-6"
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1796,23 +2096,19 @@ export function TaskManagerPage() {
               exit={{ opacity: 0, y: 24, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 260, damping: 26 }}
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
+              className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
             >
               <div className="p-6 sm:p-7">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
-                      Manual test
+                      Run now
                     </div>
                     <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
                       {movieSeedDialogJobId === 'immaculateTastePoints'
                         ? 'Immaculate Taste Collection'
                         : 'Based on Latest Watched Collection'}
                     </h2>
-                    <p className="mt-2 text-sm text-white/70 leading-relaxed">
-                      Enter a movie title to run as if Plex sent a{' '}
-                      <span className="text-white font-semibold">media.scrobble</span> event.
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -1827,10 +2123,28 @@ export function TaskManagerPage() {
                   </button>
                 </div>
 
-                <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div className="sm:col-span-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      Media type
+                    </label>
+                    <select
+                      value={movieSeedMediaType}
+                      onChange={(e) => {
+                        const v = e.target.value === 'tv' ? 'tv' : 'movie';
+                        setMovieSeedError(null);
+                        setMovieSeedMediaType(v);
+                      }}
+                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                    >
+                      <option value="movie">Movie</option>
+                      <option value="tv">TV show</option>
+                    </select>
+                  </div>
+
                   <div className="sm:col-span-2">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Movie title
+                      Content title
                     </label>
                     <input
                       ref={movieSeedTitleRef}
@@ -1844,7 +2158,7 @@ export function TaskManagerPage() {
                         e.preventDefault();
                         const title = movieSeedTitle.trim();
                         if (!title) {
-                          setMovieSeedError('Please enter a movie title.');
+                          setMovieSeedError('Please enter a title.');
                           return;
                         }
                         const yearRaw = movieSeedYear.trim();
@@ -1857,15 +2171,18 @@ export function TaskManagerPage() {
                         if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
                         setTerminalState((prev) => ({
                           ...prev,
-                          ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),
+                          ...(movieSeedDialogJobId
+                            ? { [movieSeedDialogJobId]: { status: 'running' } }
+                            : {}),
                         }));
                         if (movieSeedDialogJobId) {
                           runMutation.mutate({
                             jobId: movieSeedDialogJobId,
                             dryRun: false,
                             input: {
-                              source: 'manualTest',
+                              source: 'manualRun',
                               plexEvent: 'media.scrobble',
+                              mediaType: movieSeedMediaType,
                               seedTitle: title,
                               seedYear: Number.isFinite(year) ? year : null,
                               seedRatingKey: null,
@@ -1875,12 +2192,12 @@ export function TaskManagerPage() {
                         setMovieSeedDialogOpen(false);
                         setMovieSeedDialogJobId(null);
                       }}
-                      placeholder="Inception"
+                      placeholder={movieSeedMediaType === 'tv' ? 'Breaking Bad' : 'Inception'}
                       className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     />
                   </div>
 
-                  <div>
+                  <div className="sm:col-span-1">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                       Year (optional)
                     </label>
@@ -1919,7 +2236,7 @@ export function TaskManagerPage() {
                     onClick={() => {
                       const title = movieSeedTitle.trim();
                       if (!title) {
-                        setMovieSeedError('Please enter a movie title.');
+                        setMovieSeedError('Please enter a title.');
                         return;
                       }
 
@@ -1940,8 +2257,9 @@ export function TaskManagerPage() {
                           jobId: movieSeedDialogJobId,
                           dryRun: false,
                           input: {
-                            source: 'manualTest',
+                            source: 'manualRun',
                             plexEvent: 'media.scrobble',
+                            mediaType: movieSeedMediaType,
                             seedTitle: title,
                             seedYear: Number.isFinite(year) ? year : null,
                             seedRatingKey: null,
@@ -1962,16 +2280,134 @@ export function TaskManagerPage() {
                     ) : (
                       <>
                         <Play className="w-4 h-4 fill-current" />
-                        Run test
+                        Run now
                       </>
                     )}
                   </button>
                 </div>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-              <div className="px-6 sm:px-7 pb-6 sm:pb-7 pt-0">
-                <div className="rounded-2xl bg-[#0F0B15]/40 border border-white/5 p-4 text-xs text-white/55 leading-relaxed">
-                  Tip: after starting the run, click the <span className="text-white/80 font-semibold">terminal</span> button on the job card to open the execution report.
+      {/* Immaculate Taste - Immediate Search Confirmation */}
+      <AnimatePresence>
+        {immaculateStartSearchDialogOpen && (
+          <motion.div
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setImmaculateStartSearchDialogOpen(false)}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-fuchsia-500/10 overflow-hidden"
+            >
+              <div className="p-6 sm:p-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                      Immaculate Taste Collection
+                    </div>
+                    <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                      Start search immediately?
+                    </h2>
+                    <p className="mt-2 text-sm text-white/70 leading-relaxed">
+                      This will tell Radarr/Sonarr to start searching as soon as titles are added by
+                      the Immaculate Taste job (after each watch event). If you prefer off-peak
+                      execution, schedule the monitored search instead.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setImmaculateStartSearchDialogOpen(false)}
+                    className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center"
+                    aria-label="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImmaculateStartSearchDialogOpen(false);
+                      const arrJob =
+                        jobsQuery.data?.jobs?.find((j) => j.id === 'arrMonitoredSearch') ??
+                        null;
+                      const baseCron =
+                        arrJob?.schedule?.cron ??
+                        arrJob?.defaultScheduleCron ??
+                        '0 4 * * 0';
+                      const defaultCron = baseCron || '0 4 * * 0';
+
+                      // Turn on Auto-Run immediately (and open the card).
+                      setExpandedCards((p) => ({ ...p, arrMonitoredSearch: true }));
+                      setDrafts((prev) => ({
+                        ...prev,
+                        arrMonitoredSearch: defaultDraftFromCron({
+                          cron: defaultCron,
+                          enabled: true,
+                        }),
+                      }));
+                      scheduleMutation.mutate({
+                        jobId: 'arrMonitoredSearch',
+                        cron: defaultCron,
+                        enabled: true,
+                      });
+
+                      // Glow + scroll so the card lands ~25% from the top of the viewport.
+                      setFlashJob({ jobId: 'arrMonitoredSearch', nonce: Date.now() });
+                      setTimeout(() => {
+                        const el = document.getElementById('job-arrMonitoredSearch');
+                        if (!el) return;
+                        const rect = el.getBoundingClientRect();
+                        const target = window.scrollY + rect.top - window.innerHeight * 0.25;
+                        window.scrollTo({
+                          top: Math.max(0, Math.trunc(target)),
+                          behavior: 'smooth',
+                        });
+                      }, 50);
+                    }}
+                    className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98]"
+                  >
+                    Schedule instead
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImmaculateStartSearchDialogOpen(false);
+                      const prev = immaculateStartSearchImmediately;
+                      const next = true;
+                      setImmaculateStartSearchImmediately(next);
+                      immaculateStartSearchMutation.mutate(next, {
+                        onError: () => setImmaculateStartSearchImmediately(prev),
+                      });
+                    }}
+                    className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2"
+                    disabled={immaculateStartSearchMutation.isPending}
+                  >
+                    {immaculateStartSearchMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-current" />
+                        Run immediately
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </motion.div>

@@ -1,6 +1,6 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Delete, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { listServerLogs } from './server-logs.store';
+import { clearServerLogs, listServerLogs } from './server-logs.store';
 
 @Controller('logs')
 @ApiTags('logs')
@@ -17,5 +17,11 @@ export class LogsController {
       limit: Number.isFinite(limit) ? limit : undefined,
     });
     return { ok: true, ...data };
+  }
+
+  @Delete()
+  clear() {
+    clearServerLogs();
+    return { ok: true };
   }
 }

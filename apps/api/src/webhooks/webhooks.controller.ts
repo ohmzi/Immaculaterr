@@ -192,7 +192,7 @@ export class WebhooksController {
             const errors: Record<string, string> = {};
             const skipped: Record<string, string> = {};
 
-            // Respect per-job webhook auto-run toggles (default: enabled)
+            // Respect per-job webhook auto-run toggles (default: disabled)
             const { settings } = await this.settingsService
               .getInternalSettings(userId)
               .catch(() => ({
@@ -203,10 +203,10 @@ export class WebhooksController {
               pickBool(
                 settings,
                 'jobs.webhookEnabled.watchedMovieRecommendations',
-              ) ?? true;
+              ) ?? false;
             const immaculateEnabled =
               pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ??
-              true;
+              false;
 
             // 1) Recently-watched recommendations (two collections)
             if (!watchedEnabled) {
@@ -313,7 +313,7 @@ export class WebhooksController {
             secrets: {},
           }));
         const enabled =
-          pickBool(settings, 'jobs.webhookEnabled.mediaAddedCleanup') ?? true;
+          pickBool(settings, 'jobs.webhookEnabled.mediaAddedCleanup') ?? false;
 
         if (!enabled) {
           this.webhooksService.logPlexWebhookAutomation({

@@ -18,4 +18,8 @@ export function listServerLogs(params?: { afterId?: number; limit?: number }) {
   return fetchJson<{ ok: true; logs: ServerLogEntry[]; latestId: number }>(`/api/logs${suffix}`);
 }
 
+export function clearServerLogs() {
+  return fetchJson<{ ok: true }>('/api/logs', { method: 'DELETE' });
+}
+
 

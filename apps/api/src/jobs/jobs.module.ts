@@ -13,8 +13,10 @@ import { JobsController } from './jobs.controller';
 import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
 import { JobsHandlers } from './jobs.handlers';
+import { JobsRetentionService } from './jobs-retention.service';
 import { NoopJob } from './noop.job';
 import { MonitorConfirmJob } from './monitor-confirm.job';
+import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { MediaAddedCleanupJob } from './media-added-cleanup.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
 import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
@@ -39,8 +41,10 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
     JobsService,
     JobsScheduler,
     JobsHandlers,
+    JobsRetentionService,
     NoopJob,
     MonitorConfirmJob,
+    ArrMonitoredSearchJob,
     MediaAddedCleanupJob,
     BasedonLatestWatchedCollectionJob,
     BasedonLatestWatchedRefresherJob,

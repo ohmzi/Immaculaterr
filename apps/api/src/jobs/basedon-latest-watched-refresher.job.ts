@@ -6,6 +6,8 @@ import { SettingsService } from '../settings/settings.service';
 import { WatchedMovieRecommendationsService } from '../watched-movie-recommendations/watched-movie-recommendations.service';
 import { WatchedShowRecommendationsService } from '../watched-movie-recommendations/watched-show-recommendations.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobReportV1 } from './job-report-v1';
+import { issue, metricRow } from './job-report-v1';
 
 const DEFAULT_COLLECTIONS = [
   'Based on your recently watched movie',
@@ -96,6 +98,16 @@ export class BasedonLatestWatchedRefresherJob {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
 
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'dataset',
+          message: 'Locating curated recommendation datasets…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const plexToken =
@@ -103,6 +115,22 @@ export class BasedonLatestWatchedRefresherJob {
     if (!plexBaseUrlRaw) throw new Error('Plex baseUrl is not set');
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
+
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_libraries',
+          message: 'Scanning Plex movie + TV libraries…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
+    const tmdbApiKey =
+      pickString(secrets, 'tmdb.apiKey') ||
+      pickString(secrets, 'tmdbApiKey') ||
+      pickString(secrets, 'tmdb.api_key') ||
+      '';
 
     const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
@@ -149,7 +177,6 @@ export class BasedonLatestWatchedRefresherJob {
 
     if (movieSections.length) {
       // Build per-library TMDB->ratingKey map once so we can rebuild collections across all libraries.
-      const plexTmdbIds = new Set<number>();
       const sectionTmdbToItem = new Map<
         string,
         Map<number, { ratingKey: string; title: string }>
@@ -166,7 +193,6 @@ export class BasedonLatestWatchedRefresherJob {
           if (!r.tmdbId) continue;
           if (!map.has(r.tmdbId))
             map.set(r.tmdbId, { ratingKey: r.ratingKey, title: r.title });
-          plexTmdbIds.add(r.tmdbId);
         }
         sectionTmdbToItem.set(sec.key, map);
       }
@@ -205,73 +231,138 @@ export class BasedonLatestWatchedRefresherJob {
         collectionName,
       });
 
-      // Activate pending suggestions that now exist in Plex.
-      const pendingRows = await this.prisma.watchedMovieRecommendation.findMany(
-        {
-          where: { collectionName, status: 'pending' },
-          select: { tmdbId: true },
-        },
-      );
-      const toActivate = pendingRows
-        .map((p) => p.tmdbId)
-        .filter((id) => plexTmdbIds.has(id));
+      // One-time best-effort bootstrap: copy older global dataset into the new per-library tables
+      // so existing setups don't look empty right after upgrading.
+      if (!ctx.dryRun) {
+        const legacyRows = await this.prisma.watchedMovieRecommendation
+          .findMany({
+            where: { collectionName },
+            select: {
+              tmdbId: true,
+              title: true,
+              status: true,
+              points: true,
+              tmdbVoteAvg: true,
+              tmdbVoteCount: true,
+            },
+          })
+          .catch(() => []);
 
-      const activatedNow = ctx.dryRun
-        ? toActivate.length
-        : (
-            await this.watchedRecs.activatePendingNowInPlex({
-              ctx,
+        if (legacyRows.length) {
+          let bootstrapped = 0;
+          for (const sec of orderedMovieSections) {
+            const existing =
+              await this.prisma.watchedMovieRecommendationLibrary.count({
+                where: { collectionName, librarySectionKey: sec.key },
+              });
+            if (existing > 0) continue;
+
+            const batches = chunk(legacyRows, 200);
+            for (const batch of batches) {
+              await this.prisma.watchedMovieRecommendationLibrary.createMany({
+                data: batch.map((r) => ({
+                  collectionName,
+                  librarySectionKey: sec.key,
+                  tmdbId: r.tmdbId,
+                  title: r.title ?? undefined,
+                  status: r.status,
+                  points: r.points,
+                  tmdbVoteAvg: r.tmdbVoteAvg ?? undefined,
+                  tmdbVoteCount: r.tmdbVoteCount ?? undefined,
+                })),
+              });
+            }
+            bootstrapped += 1;
+          }
+
+          if (bootstrapped) {
+            await ctx.info('recentlyWatchedRefresher: bootstrapped per-library movie datasets', {
               collectionName,
-              tmdbIds: toActivate,
-              pointsOnActivation:
-                BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
-            })
-          ).activated;
-
-      if (ctx.dryRun && activatedNow) {
-        await ctx.info(
-          'recentlyWatchedRefresher: dry-run would activate pending titles now in Plex',
-          {
-            collectionName,
-            activated: activatedNow,
-            pointsOnActivation:
-              BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
-          },
-        );
+              librariesBootstrapped: bootstrapped,
+              legacyRows: legacyRows.length,
+            });
+          }
+        }
       }
 
-      const activeRows = await this.prisma.watchedMovieRecommendation.findMany({
-        where: { collectionName, status: 'active', points: { gt: 0 } },
-        select: { tmdbId: true },
-      });
-
-      if (!activeRows.length) {
-        await ctx.warn(
-          'recentlyWatchedRefresher: no active rows found (skipping)',
-          {
-            collectionName,
-          },
-        );
-        perCollection.push({
-          collectionName,
-          skipped: true,
-          reason: 'no_active_rows',
-          activatedNow,
-        });
-        continue;
-      }
-
-      const shuffledActiveTmdbIds = shuffleInPlace(
-        activeRows.map((m) => m.tmdbId),
-      );
-
+      // Use library-specific datasets so multi-library setups don't override each other.
       const plexByLibrary: JsonObject[] = [];
       let canonicalSnapshot: Array<{ ratingKey: string; title: string }> = [];
+      let activatedNowTotal = 0;
 
       for (const sec of orderedMovieSections) {
         const tmdbMap =
           sectionTmdbToItem.get(sec.key) ??
           new Map<number, { ratingKey: string; title: string }>();
+
+        // Activate pending suggestions that now exist in THIS library.
+        const pendingRows =
+          await this.prisma.watchedMovieRecommendationLibrary.findMany({
+            where: { collectionName, librarySectionKey: sec.key, status: 'pending' },
+            select: { tmdbId: true },
+          });
+        const toActivate = pendingRows
+          .map((p) => p.tmdbId)
+          .filter((id) => tmdbMap.has(id));
+
+        const activatedNow = ctx.dryRun
+          ? toActivate.length
+          : (
+              await this.watchedRecs.activatePendingNowInPlex({
+                ctx,
+                collectionName,
+                librarySectionKey: sec.key,
+                tmdbIds: toActivate,
+                pointsOnActivation:
+                  BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+                tmdbApiKey,
+              })
+            ).activated;
+        activatedNowTotal += activatedNow;
+
+        if (ctx.dryRun && activatedNow) {
+          await ctx.info(
+            'recentlyWatchedRefresher: dry-run would activate pending titles now in Plex',
+            {
+              collectionName,
+              library: sec.title,
+              movieSectionKey: sec.key,
+              activated: activatedNow,
+              pointsOnActivation:
+                BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+            },
+          );
+        }
+
+        const activeRows =
+          await this.prisma.watchedMovieRecommendationLibrary.findMany({
+            where: {
+              collectionName,
+              librarySectionKey: sec.key,
+              status: 'active',
+              points: { gt: 0 },
+            },
+            select: { tmdbId: true },
+          });
+
+        if (!activeRows.length) {
+          plexByLibrary.push({
+            collectionName,
+            library: sec.title,
+            movieSectionKey: sec.key,
+            totalInLibrary: 0,
+            totalApplying: 0,
+            skipped: true,
+            reason: 'no_active_rows_for_library',
+            activatedNow,
+          });
+          continue;
+        }
+
+        const shuffledActiveTmdbIds = shuffleInPlace(
+          activeRows.map((m) => m.tmdbId),
+        );
+
         const desiredInLibrary = shuffledActiveTmdbIds
           .map((id) => tmdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
@@ -311,6 +402,7 @@ export class BasedonLatestWatchedRefresherJob {
             totalApplying: 0,
             skipped: true,
             reason: 'no_matches',
+            activatedNow,
           });
           continue;
         }
@@ -334,6 +426,7 @@ export class BasedonLatestWatchedRefresherJob {
               token: plexToken,
               machineIdentifier,
               movieSectionKey: sec.key,
+              itemType: 2,
               collectionName,
               desiredItems: desiredLimited,
               randomizeOrder: false,
@@ -346,6 +439,7 @@ export class BasedonLatestWatchedRefresherJob {
           totalInLibrary: desiredInLibraryDeduped.length,
           totalApplying: desiredLimited.length,
           plex,
+          activatedNow,
           top3: desiredLimited.slice(0, 3).map((d) => d.title),
           sampleTop10: desiredLimited.slice(0, 10).map((d) => d.title),
         });
@@ -390,13 +484,13 @@ export class BasedonLatestWatchedRefresherJob {
           movieLibraryName: canonicalMovieLibraryName,
           movieSectionKey: canonicalMovieSectionKey,
           savedItems: canonicalLimited.length,
-          activatedNow,
+          activatedNow: activatedNowTotal,
         });
       }
 
       perCollection.push({
         collectionName,
-        activatedNow,
+        activatedNow: activatedNowTotal,
         dbSaved,
         curatedCollectionId,
         plexByLibrary,
@@ -410,7 +504,6 @@ export class BasedonLatestWatchedRefresherJob {
 
     if (tvSections.length) {
       // Build per-library TVDB->ratingKey map once so we can rebuild collections across all TV libraries.
-      const plexTvdbIds = new Set<number>();
       const sectionTvdbToItem = new Map<
         string,
         Map<number, { ratingKey: string; title: string }>
@@ -427,7 +520,6 @@ export class BasedonLatestWatchedRefresherJob {
           if (!r.tvdbId) continue;
           if (!map.has(r.tvdbId))
             map.set(r.tvdbId, { ratingKey: r.ratingKey, title: r.title });
-          plexTvdbIds.add(r.tvdbId);
         }
         sectionTvdbToItem.set(sec.key, map);
       }
@@ -467,72 +559,141 @@ export class BasedonLatestWatchedRefresherJob {
           collectionName,
         });
 
-        const pendingRows = await this.prisma.watchedShowRecommendation.findMany({
-          where: { collectionName, status: 'pending' },
-          select: { tvdbId: true },
-        });
-        const toActivate = pendingRows
-          .map((p) => p.tvdbId)
-          .filter((id) => plexTvdbIds.has(id));
+        if (!ctx.dryRun) {
+          const legacyRows = await this.prisma.watchedShowRecommendation
+            .findMany({
+              where: { collectionName },
+              select: {
+                tvdbId: true,
+                tmdbId: true,
+                title: true,
+                status: true,
+                points: true,
+                tmdbVoteAvg: true,
+                tmdbVoteCount: true,
+              },
+            })
+            .catch(() => []);
 
-        const activatedNow = ctx.dryRun
-          ? toActivate.length
-          : (
-              await this.watchedShowRecs.activatePendingNowInPlex({
-                ctx,
+          if (legacyRows.length) {
+            let bootstrapped = 0;
+            for (const sec of orderedTvSections) {
+              const existing =
+                await this.prisma.watchedShowRecommendationLibrary.count({
+                  where: { collectionName, librarySectionKey: sec.key },
+                });
+              if (existing > 0) continue;
+
+              const batches = chunk(legacyRows, 200);
+              for (const batch of batches) {
+                await this.prisma.watchedShowRecommendationLibrary.createMany({
+                  data: batch.map((r) => ({
+                    collectionName,
+                    librarySectionKey: sec.key,
+                    tvdbId: r.tvdbId,
+                    tmdbId: r.tmdbId ?? undefined,
+                    title: r.title ?? undefined,
+                    status: r.status,
+                    points: r.points,
+                    tmdbVoteAvg: r.tmdbVoteAvg ?? undefined,
+                    tmdbVoteCount: r.tmdbVoteCount ?? undefined,
+                  })),
+                });
+              }
+              bootstrapped += 1;
+            }
+
+            if (bootstrapped) {
+              await ctx.info('recentlyWatchedRefresher: bootstrapped per-library tv datasets', {
                 collectionName,
-                tvdbIds: toActivate,
-                pointsOnActivation:
-                  BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
-              })
-            ).activated;
-
-        if (ctx.dryRun && activatedNow) {
-          await ctx.info(
-            'recentlyWatchedRefresher(tv): dry-run would activate pending shows now in Plex',
-            {
-              collectionName,
-              activated: activatedNow,
-              pointsOnActivation:
-                BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
-            },
-          );
+                librariesBootstrapped: bootstrapped,
+                legacyRows: legacyRows.length,
+              });
+            }
+          }
         }
 
-        const activeRows = await this.prisma.watchedShowRecommendation.findMany({
-          where: { collectionName, status: 'active', points: { gt: 0 } },
-          select: { tvdbId: true },
-        });
-
-        if (!activeRows.length) {
-          await ctx.warn(
-            'recentlyWatchedRefresher(tv): no active rows found (skipping)',
-            {
-              collectionName,
-            },
-          );
-          tvCollections.push({
-            collectionName,
-            skipped: true,
-            reason: 'no_active_rows',
-            activatedNow,
-          });
-          continue;
-        }
-
-        const shuffledActiveTvdbIds = shuffleInPlace(
-          activeRows.map((s) => s.tvdbId),
-        );
-
+        // Use library-specific datasets so multi-library setups don't override each other.
         const plexByLibrary: JsonObject[] = [];
+        let activatedNowTotal = 0;
 
         for (const sec of orderedTvSections) {
           const tvdbMap =
             sectionTvdbToItem.get(sec.key) ??
             new Map<number, { ratingKey: string; title: string }>();
+
+          const pendingRows =
+            await this.prisma.watchedShowRecommendationLibrary.findMany({
+              where: { collectionName, librarySectionKey: sec.key, status: 'pending' },
+              select: { tvdbId: true },
+            });
+          const toActivate = pendingRows
+            .map((p) => p.tvdbId)
+            .filter((id) => tvdbMap.has(id));
+
+          const activatedNow = ctx.dryRun
+            ? toActivate.length
+            : (
+                await this.watchedShowRecs.activatePendingNowInPlex({
+                  ctx,
+                  collectionName,
+                  librarySectionKey: sec.key,
+                  tvdbIds: toActivate,
+                  pointsOnActivation:
+                    BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+                  tmdbApiKey,
+                })
+              ).activated;
+          activatedNowTotal += activatedNow;
+
+          if (ctx.dryRun && activatedNow) {
+            await ctx.info(
+              'recentlyWatchedRefresher(tv): dry-run would activate pending shows now in Plex',
+              {
+                collectionName,
+                library: sec.title,
+                tvSectionKey: sec.key,
+                activated: activatedNow,
+                pointsOnActivation:
+                  BasedonLatestWatchedRefresherJob.ACTIVATION_POINTS,
+              },
+            );
+          }
+
+          const activeRows =
+            await this.prisma.watchedShowRecommendationLibrary.findMany({
+              where: {
+                collectionName,
+                librarySectionKey: sec.key,
+                status: 'active',
+                points: { gt: 0 },
+              },
+              select: { tvdbId: true },
+            });
+
+          if (!activeRows.length) {
+            plexByLibrary.push({
+              collectionName,
+              library: sec.title,
+              tvSectionKey: sec.key,
+              totalInLibrary: 0,
+              totalApplying: 0,
+              skipped: true,
+              reason: 'no_active_rows_for_library',
+              activatedNow,
+            });
+            continue;
+          }
+
+          const shuffledActiveTvdbIds = shuffleInPlace(
+            activeRows.map((s) => s.tvdbId),
+          );
+
           const desiredInLibrary = shuffledActiveTvdbIds
             .map((id) => tvdbMap.get(id))
-            .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
+            .filter(
+              (v): v is { ratingKey: string; title: string } => Boolean(v),
+            );
 
           const uniq = new Map<string, string>();
           for (const it of desiredInLibrary) {
@@ -564,6 +725,7 @@ export class BasedonLatestWatchedRefresherJob {
               totalApplying: 0,
               skipped: true,
               reason: 'no_matches',
+              activatedNow,
             });
             continue;
           }
@@ -599,6 +761,7 @@ export class BasedonLatestWatchedRefresherJob {
             totalInLibrary: desiredInLibraryDeduped.length,
             totalApplying: desiredLimited.length,
             plex,
+            activatedNow,
             top3: desiredLimited.slice(0, 3).map((d) => d.title),
             sampleTop10: desiredLimited.slice(0, 10).map((d) => d.title),
           });
@@ -607,7 +770,7 @@ export class BasedonLatestWatchedRefresherJob {
         // NOTE: We do not persist TV snapshots to CuratedCollection (movie-only UI).
         tvCollections.push({
           collectionName,
-          activatedNow,
+          activatedNow: activatedNowTotal,
           plexByLibrary,
         });
       }
@@ -626,6 +789,130 @@ export class BasedonLatestWatchedRefresherJob {
     };
 
     await ctx.info('recentlyWatchedRefresher: done', summary);
-    return { summary };
+    const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
+    return { summary: report as unknown as JsonObject };
   }
+}
+
+function asNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function buildRecentlyWatchedRefresherReport(params: {
+  ctx: JobContext;
+  raw: JsonObject;
+}): JobReportV1 {
+  const { ctx, raw } = params;
+
+  const movieCollections = Array.isArray(raw.collections)
+    ? raw.collections.filter(
+        (c): c is JsonObject =>
+          Boolean(c) && typeof c === 'object' && !Array.isArray(c),
+      )
+    : [];
+  const tvCollections = Array.isArray(raw.tvCollections)
+    ? raw.tvCollections.filter(
+        (c): c is JsonObject =>
+          Boolean(c) && typeof c === 'object' && !Array.isArray(c),
+      )
+    : [];
+
+  const tasks: JobReportV1['tasks'] = [];
+  const issues: JobReportV1['issues'] = [];
+
+  const addCollectionTasks = (params: {
+    prefix: string;
+    list: Array<JsonObject>;
+  }) => {
+    for (const col of params.list) {
+      const collectionName = String(col.collectionName ?? 'Collection');
+      const plexByLibrary = Array.isArray(col.plexByLibrary)
+        ? col.plexByLibrary.filter(
+            (x): x is JsonObject =>
+              Boolean(x) && typeof x === 'object' && !Array.isArray(x),
+          )
+        : [];
+
+      tasks.push({
+        id: `${params.prefix}_${collectionName}`,
+        title: `Collection: ${collectionName}`,
+        status: 'success',
+        rows: [
+          metricRow({ label: 'Activated now', end: asNum(col.activatedNow), unit: 'items' }),
+          metricRow({ label: 'Libraries', end: plexByLibrary.length, unit: 'libraries' }),
+        ],
+      });
+
+      for (const lib of plexByLibrary) {
+        const library = String(lib.library ?? lib.tvSectionKey ?? lib.movieSectionKey ?? 'Library');
+        const plex = isPlainObject(lib.plex) ? lib.plex : null;
+        const existingCount = plex ? asNum(plex.existingCount) : null;
+        const desiredCount = plex ? asNum(plex.desiredCount) : asNum(lib.totalApplying);
+        const skipped = Boolean(lib.skipped) || (plex ? Boolean((plex as Record<string, unknown>).skipped) : false);
+        const reason =
+          typeof lib.reason === 'string'
+            ? lib.reason
+            : plex && typeof (plex as Record<string, unknown>).reason === 'string'
+              ? String((plex as Record<string, unknown>).reason)
+              : null;
+
+        if (skipped) {
+          issues.push(
+            issue(
+              'warn',
+              `${collectionName}: ${library} skipped${reason ? ` (${reason})` : ''}.`,
+            ),
+          );
+        }
+
+        tasks.push({
+          id: `${params.prefix}_${collectionName}_${library}`,
+          title: `- ${library}`,
+          status: skipped ? 'skipped' : 'success',
+          rows: [
+            metricRow({
+              label: 'Plex collection items',
+              start: existingCount,
+              changed:
+                existingCount !== null && desiredCount !== null
+                  ? desiredCount - existingCount
+                  : null,
+              end: desiredCount,
+              unit: 'items',
+            }),
+            metricRow({ label: 'Total in library', end: asNum(lib.totalInLibrary), unit: 'items' }),
+            metricRow({ label: 'Applying', end: asNum(lib.totalApplying), unit: 'items' }),
+            metricRow({ label: 'Activated now', end: asNum(lib.activatedNow), unit: 'items' }),
+          ],
+        });
+      }
+    }
+  };
+
+  addCollectionTasks({ prefix: 'movie', list: movieCollections });
+  addCollectionTasks({ prefix: 'tv', list: tvCollections });
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: ctx.jobId,
+    dryRun: ctx.dryRun,
+    trigger: ctx.trigger,
+    headline: 'Refresher complete.',
+    sections: [
+      {
+        id: 'overview',
+        title: 'Overview',
+        rows: [
+          metricRow({ label: 'Movie collections', end: movieCollections.length, unit: 'collections' }),
+          metricRow({ label: 'TV collections', end: tvCollections.length, unit: 'collections' }),
+          metricRow({ label: 'Limit', end: asNum(raw.limit), unit: 'items' }),
+          metricRow({ label: 'Activation points', end: asNum(raw.activationPoints), unit: 'points' }),
+        ],
+      },
+    ],
+    tasks,
+    issues,
+    raw,
+  };
 }

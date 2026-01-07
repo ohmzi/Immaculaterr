@@ -33,6 +33,40 @@ const ring: Array<ServerLogEntry | null> = Array.from(
 let writeIndex = 0;
 let count = 0;
 
+export function clearServerLogs() {
+  for (let i = 0; i < ring.length; i += 1) ring[i] = null;
+  writeIndex = 0;
+  count = 0;
+  // Intentionally do not reset nextId: it avoids UI/client confusion with afterId.
+}
+
+export function pruneServerLogsOlderThan(cutoff: Date): {
+  removed: number;
+  kept: number;
+} {
+  if (!count) return { removed: 0, kept: 0 };
+  const cutoffMs = cutoff.getTime();
+  if (!Number.isFinite(cutoffMs)) return { removed: 0, kept: count };
+
+  const { logs } = listServerLogs({ limit: MAX_ENTRIES });
+  const kept = logs.filter((l) => {
+    const ms = Date.parse(l.time);
+    return Number.isFinite(ms) ? ms >= cutoffMs : true;
+  });
+
+  // Rebuild ring from kept logs.
+  for (let i = 0; i < ring.length; i += 1) ring[i] = null;
+  writeIndex = 0;
+  count = 0;
+  for (const entry of kept.slice(-MAX_ENTRIES)) {
+    ring[writeIndex] = entry;
+    writeIndex = (writeIndex + 1) % MAX_ENTRIES;
+    count = Math.min(MAX_ENTRIES, count + 1);
+  }
+
+  return { removed: Math.max(0, logs.length - kept.length), kept: kept.length };
+}
+
 function normalizeMessage(input: unknown): string {
   if (input instanceof Error) return input.stack ?? input.message;
   if (typeof input === 'string') return input;

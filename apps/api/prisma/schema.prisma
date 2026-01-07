@@ -177,6 +177,53 @@ model WatchedMovieRecommendation {
   @@index([collectionName, tmdbVoteAvg])
 }
 
+// Library-specific points dataset for Immaculate Taste (movies).
+// This prevents multi-library setups from overriding each other.
+model ImmaculateTasteMovieLibrary {
+  librarySectionKey String
+  tmdbId            Int
+  title             String?
+
+  status ImmaculateTasteStatus @default(pending)
+  points Int                  @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([librarySectionKey, tmdbId])
+  @@index([librarySectionKey])
+  @@index([librarySectionKey, status])
+  @@index([librarySectionKey, points])
+  @@index([librarySectionKey, tmdbVoteAvg])
+}
+
+// Library-specific points dataset for "Based on Latest Watched" collections (movies).
+model WatchedMovieRecommendationLibrary {
+  collectionName     String
+  librarySectionKey  String
+  tmdbId             Int
+  title              String?
+
+  status WatchedRecommendationStatus @default(pending)
+  points Int                         @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([collectionName, librarySectionKey, tmdbId])
+  @@index([librarySectionKey])
+  @@index([librarySectionKey, collectionName, status])
+  @@index([librarySectionKey, collectionName, points])
+  @@index([librarySectionKey, collectionName, tmdbVoteAvg])
+  @@index([tmdbId])
+}
+
 model ImmaculateTasteShow {
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
   tvdbId Int @id
@@ -196,6 +243,31 @@ model ImmaculateTasteShow {
   @@index([status])
   @@index([points])
   @@index([tmdbVoteAvg])
+}
+
+// Library-specific points dataset for Immaculate Taste (TV).
+model ImmaculateTasteShowLibrary {
+  librarySectionKey String
+  // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
+  tvdbId Int
+  tmdbId Int?
+  title  String?
+
+  status ImmaculateTasteStatus @default(pending)
+  points Int                  @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([librarySectionKey, tvdbId])
+  @@index([librarySectionKey])
+  @@index([tmdbId])
+  @@index([librarySectionKey, status])
+  @@index([librarySectionKey, points])
+  @@index([librarySectionKey, tmdbVoteAvg])
 }
 
 model WatchedShowRecommendation {
@@ -219,6 +291,32 @@ model WatchedShowRecommendation {
   @@index([collectionName, status])
   @@index([collectionName, points])
   @@index([collectionName, tmdbVoteAvg])
+}
+
+// Library-specific points dataset for "Based on Latest Watched" collections (TV).
+model WatchedShowRecommendationLibrary {
+  collectionName    String
+  librarySectionKey String
+  // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
+  tvdbId Int
+  tmdbId Int?
+  title  String?
+
+  status WatchedRecommendationStatus @default(pending)
+  points Int                         @default(0)
+
+  tmdbVoteAvg   Float?
+  tmdbVoteCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([collectionName, librarySectionKey, tvdbId])
+  @@index([librarySectionKey])
+  @@index([tmdbId])
+  @@index([librarySectionKey, collectionName, status])
+  @@index([librarySectionKey, collectionName, points])
+  @@index([librarySectionKey, collectionName, tmdbVoteAvg])
 }
 
 // Legacy table preserved by historical migrations (not used by Prisma Client).

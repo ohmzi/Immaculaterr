@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -83,6 +84,18 @@ export class JobsController {
     const skip = Math.max(0, Number.parseInt(skipRaw ?? '0', 10) || 0);
     const runs = await this.jobsService.listRuns({ userId, jobId, take, skip });
     return { runs };
+  }
+
+  @Delete('runs')
+  async clearRuns(
+    @Req() req: AuthenticatedRequest,
+    @Query('jobId') jobIdRaw?: string,
+  ) {
+    const userId = req.user.id;
+    const jobId =
+      typeof jobIdRaw === 'string' && jobIdRaw.trim() ? jobIdRaw.trim() : undefined;
+    const result = await this.jobsService.clearRuns({ userId, jobId });
+    return { ok: true, ...result };
   }
 
   @Get('runs/:runId')

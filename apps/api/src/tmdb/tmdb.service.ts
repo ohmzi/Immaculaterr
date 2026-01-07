@@ -1078,6 +1078,265 @@ export class TmdbService {
     };
   }
 
+  async getSplitContrastRecommendationCandidatePools(params: {
+    apiKey: string;
+    seedTitle: string;
+    seedYear?: number | null;
+    includeAdult?: boolean;
+    timezone?: string | null;
+    upcomingWindowMonths?: number;
+  }): Promise<{
+    seed: {
+      tmdbId: number;
+      title: string;
+      genreIds: number[];
+      releaseDate: string | null;
+    };
+    meta: { today: string; timezone: string; upcomingWindowEnd: string };
+    released: TmdbMovieCandidate[];
+    upcoming: TmdbMovieCandidate[];
+    unknown: TmdbMovieCandidate[];
+  }> {
+    const apiKey = params.apiKey.trim();
+    const seedTitle = params.seedTitle.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!seedTitle) {
+      return {
+        seed: { tmdbId: 0, title: '', genreIds: [], releaseDate: null },
+        meta: {
+          today: this.formatTodayInTimezone('America/Toronto'),
+          timezone: 'America/Toronto',
+          upcomingWindowEnd: this.formatDateInTimezone(
+            addMonths(new Date(), 24),
+            'America/Toronto',
+          ),
+        },
+        released: [],
+        upcoming: [],
+        unknown: [],
+      };
+    }
+
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+    const upcomingWindowMonthsRaw = params.upcomingWindowMonths ?? 24;
+    const upcomingWindowMonths = Number.isFinite(upcomingWindowMonthsRaw)
+      ? Math.max(1, Math.min(60, Math.trunc(upcomingWindowMonthsRaw)))
+      : 24;
+    const upcomingWindowEnd = this.formatDateInTimezone(
+      addMonths(new Date(), upcomingWindowMonths),
+      tz,
+    );
+    const tomorrow = this.formatDateInTimezone(addDays(new Date(), 1), tz);
+
+    const seedResults = await this.searchMovie({
+      apiKey,
+      query: seedTitle,
+      year: params.seedYear ?? null,
+      includeAdult: Boolean(params.includeAdult),
+    });
+    const seedBest = bestSeedResult(seedTitle, seedResults);
+    if (!seedBest) {
+      return {
+        seed: { tmdbId: 0, title: seedTitle, genreIds: [], releaseDate: null },
+        meta: { today, timezone: tz, upcomingWindowEnd },
+        released: [],
+        upcoming: [],
+        unknown: [],
+      };
+    }
+
+    const seedDetails = await this.getMovie({
+      apiKey,
+      tmdbId: seedBest.id,
+    }).catch(() => null);
+    const seedGenreIds = new Set(
+      (seedDetails?.genres ?? [])
+        .map((g) => {
+          const id =
+            typeof g?.id === 'number' ? g.id : g?.id ? Number(g.id) : NaN;
+          return Number.isFinite(id) ? Math.trunc(id) : NaN;
+        })
+        .filter((n) => Number.isFinite(n) && n > 0),
+    );
+
+    const candidates = new Map<
+      number,
+      {
+        tmdbId: number;
+        title: string;
+        releaseDate: string | null;
+        voteAverage: number | null;
+        voteCount: number | null;
+        popularity: number | null;
+        sources: Set<string>;
+      }
+    >();
+
+    const addResults = (results: TmdbMovieSearchResult[], source: string) => {
+      for (const m of results) {
+        if (!m || !Number.isFinite(m.id) || m.id <= 0) continue;
+        if (m.id === seedBest.id) continue;
+        if (!m.title) continue;
+
+        const tmdbId = Math.trunc(m.id);
+        const title = m.title.trim();
+        if (!title) continue;
+
+        const releaseDate =
+          typeof m.release_date === 'string' && m.release_date.trim()
+            ? m.release_date.trim()
+            : null;
+        const voteAverage =
+          typeof m.vote_average === 'number' && Number.isFinite(m.vote_average)
+            ? Number(m.vote_average)
+            : null;
+        const voteCount =
+          typeof m.vote_count === 'number' && Number.isFinite(m.vote_count)
+            ? Math.max(0, Math.trunc(m.vote_count))
+            : null;
+        const popularity =
+          typeof m.popularity === 'number' && Number.isFinite(m.popularity)
+            ? Number(m.popularity)
+            : null;
+
+        const existing = candidates.get(tmdbId);
+        if (!existing) {
+          candidates.set(tmdbId, {
+            tmdbId,
+            title,
+            releaseDate,
+            voteAverage,
+            voteCount,
+            popularity,
+            sources: new Set([source]),
+          });
+          continue;
+        }
+
+        existing.sources.add(source);
+        if (!existing.title && title) existing.title = title;
+        if (!existing.releaseDate && releaseDate) existing.releaseDate = releaseDate;
+        if (existing.voteAverage === null && voteAverage !== null)
+          existing.voteAverage = voteAverage;
+        if (existing.voteCount === null && voteCount !== null)
+          existing.voteCount = voteCount;
+        if (existing.popularity === null && popularity !== null)
+          existing.popularity = popularity;
+      }
+    };
+
+    const includeAdult = Boolean(params.includeAdult);
+
+    // --- Released pool: discover excluding the seed genres ---
+    {
+      const releasedDiscoverUrl = new URL(
+        'https://api.themoviedb.org/3/discover/movie',
+      );
+      if (seedGenreIds.size) {
+        releasedDiscoverUrl.searchParams.set(
+          'without_genres',
+          Array.from(seedGenreIds).slice(0, 5).join(','),
+        );
+      }
+      releasedDiscoverUrl.searchParams.set('primary_release_date.lte', today);
+      releasedDiscoverUrl.searchParams.set('vote_count.gte', '150');
+      releasedDiscoverUrl.searchParams.set('sort_by', 'vote_average.desc');
+
+      const discResults = await this.pagedResults({
+        apiKey,
+        url: releasedDiscoverUrl,
+        includeAdult,
+        maxItems: 300,
+        maxPages: 10,
+      });
+      addResults(discResults, 'discover_released');
+    }
+
+    // --- Upcoming pool: future-window discover excluding the seed genres ---
+    {
+      const upcomingDiscoverUrl = new URL(
+        'https://api.themoviedb.org/3/discover/movie',
+      );
+      if (seedGenreIds.size) {
+        upcomingDiscoverUrl.searchParams.set(
+          'without_genres',
+          Array.from(seedGenreIds).slice(0, 5).join(','),
+        );
+      }
+      upcomingDiscoverUrl.searchParams.set('primary_release_date.gte', tomorrow);
+      upcomingDiscoverUrl.searchParams.set(
+        'primary_release_date.lte',
+        upcomingWindowEnd,
+      );
+      upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
+
+      const upcomingResults = await this.pagedResults({
+        apiKey,
+        url: upcomingDiscoverUrl,
+        includeAdult,
+        maxItems: 300,
+        maxPages: 10,
+      });
+      addResults(upcomingResults, 'discover_upcoming');
+    }
+
+    const released: TmdbMovieCandidate[] = [];
+    const upcoming: TmdbMovieCandidate[] = [];
+    const unknown: TmdbMovieCandidate[] = [];
+
+    for (const c of candidates.values()) {
+      const bucket = classifyByReleaseDate(c.releaseDate, today);
+      const item: TmdbMovieCandidate = {
+        tmdbId: c.tmdbId,
+        title: c.title,
+        releaseDate: c.releaseDate,
+        voteAverage: c.voteAverage,
+        voteCount: c.voteCount,
+        popularity: c.popularity,
+        sources: Array.from(c.sources),
+      };
+      if (bucket === 'released') released.push(item);
+      else if (bucket === 'upcoming') upcoming.push(item);
+      else unknown.push(item);
+    }
+
+    released.sort((a, b) => {
+      const av = a.voteAverage ?? 0;
+      const bv = b.voteAverage ?? 0;
+      if (bv !== av) return bv - av;
+      const ac = a.voteCount ?? 0;
+      const bc = b.voteCount ?? 0;
+      if (bc !== ac) return bc - ac;
+      const ap = a.popularity ?? 0;
+      const bp = b.popularity ?? 0;
+      if (bp !== ap) return bp - ap;
+      return a.tmdbId - b.tmdbId;
+    });
+    upcoming.sort((a, b) => {
+      const ap = a.popularity ?? 0;
+      const bp = b.popularity ?? 0;
+      if (bp !== ap) return bp - ap;
+      const ar = a.releaseDate ?? '';
+      const br = b.releaseDate ?? '';
+      if (ar && br && ar !== br) return ar.localeCompare(br);
+      return a.tmdbId - b.tmdbId;
+    });
+
+    return {
+      seed: {
+        tmdbId: seedBest.id,
+        title: seedDetails?.title ?? seedBest.title ?? seedTitle,
+        genreIds: Array.from(seedGenreIds),
+        releaseDate: seedDetails?.release_date ?? seedBest.release_date ?? null,
+      },
+      meta: { today, timezone: tz, upcomingWindowEnd },
+      released,
+      upcoming,
+      unknown,
+    };
+  }
+
   async getSplitTvRecommendationCandidatePools(params: {
     apiKey: string;
     seedTitle: string;
@@ -1342,6 +1601,258 @@ export class TmdbService {
         genreIds: Array.from(seedGenreIds),
         releaseDate:
           seedDetails?.first_air_date ?? seedBest.first_air_date ?? null,
+      },
+      meta: { today, timezone: tz, upcomingWindowEnd },
+      released,
+      upcoming,
+      unknown,
+    };
+  }
+
+  async getSplitContrastTvRecommendationCandidatePools(params: {
+    apiKey: string;
+    seedTitle: string;
+    seedYear?: number | null;
+    includeAdult?: boolean;
+    timezone?: string | null;
+    upcomingWindowMonths?: number;
+  }): Promise<{
+    seed: {
+      tmdbId: number;
+      title: string;
+      genreIds: number[];
+      releaseDate: string | null;
+    };
+    meta: { today: string; timezone: string; upcomingWindowEnd: string };
+    released: TmdbTvCandidate[];
+    upcoming: TmdbTvCandidate[];
+    unknown: TmdbTvCandidate[];
+  }> {
+    const apiKey = params.apiKey.trim();
+    const seedTitle = params.seedTitle.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!seedTitle) {
+      return {
+        seed: { tmdbId: 0, title: '', genreIds: [], releaseDate: null },
+        meta: {
+          today: this.formatTodayInTimezone('America/Toronto'),
+          timezone: 'America/Toronto',
+          upcomingWindowEnd: this.formatDateInTimezone(
+            addMonths(new Date(), 24),
+            'America/Toronto',
+          ),
+        },
+        released: [],
+        upcoming: [],
+        unknown: [],
+      };
+    }
+
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+    const upcomingWindowMonthsRaw = params.upcomingWindowMonths ?? 24;
+    const upcomingWindowMonths = Number.isFinite(upcomingWindowMonthsRaw)
+      ? Math.max(1, Math.min(60, Math.trunc(upcomingWindowMonthsRaw)))
+      : 24;
+    const upcomingWindowEnd = this.formatDateInTimezone(
+      addMonths(new Date(), upcomingWindowMonths),
+      tz,
+    );
+    const tomorrow = this.formatDateInTimezone(addDays(new Date(), 1), tz);
+
+    const seedResults = await this.searchTv({
+      apiKey,
+      query: seedTitle,
+      firstAirDateYear: params.seedYear ?? null,
+      includeAdult: Boolean(params.includeAdult),
+    });
+    const seedBest = bestSeedTvResult(seedTitle, seedResults);
+    if (!seedBest) {
+      return {
+        seed: { tmdbId: 0, title: seedTitle, genreIds: [], releaseDate: null },
+        meta: { today, timezone: tz, upcomingWindowEnd },
+        released: [],
+        upcoming: [],
+        unknown: [],
+      };
+    }
+
+    const seedDetails = await this.getTv({
+      apiKey,
+      tmdbId: seedBest.id,
+    }).catch(() => null);
+    const seedGenreIds = new Set(
+      (seedDetails?.genres ?? [])
+        .map((g) => {
+          const id =
+            typeof g?.id === 'number' ? g.id : g?.id ? Number(g.id) : NaN;
+          return Number.isFinite(id) ? Math.trunc(id) : NaN;
+        })
+        .filter((n) => Number.isFinite(n) && n > 0),
+    );
+
+    const candidates = new Map<
+      number,
+      {
+        tmdbId: number;
+        title: string;
+        releaseDate: string | null;
+        voteAverage: number | null;
+        voteCount: number | null;
+        popularity: number | null;
+        sources: Set<string>;
+      }
+    >();
+
+    const addResults = (results: TmdbTvSearchResult[], source: string) => {
+      for (const s of results) {
+        if (!s || !Number.isFinite(s.id) || s.id <= 0) continue;
+        if (s.id === seedBest.id) continue;
+        if (!s.name) continue;
+
+        const tmdbId = Math.trunc(s.id);
+        const title = s.name.trim();
+        if (!title) continue;
+
+        const releaseDate =
+          typeof s.first_air_date === 'string' && s.first_air_date.trim()
+            ? s.first_air_date.trim()
+            : null;
+        const voteAverage =
+          typeof s.vote_average === 'number' && Number.isFinite(s.vote_average)
+            ? Number(s.vote_average)
+            : null;
+        const voteCount =
+          typeof s.vote_count === 'number' && Number.isFinite(s.vote_count)
+            ? Math.max(0, Math.trunc(s.vote_count))
+            : null;
+        const popularity =
+          typeof s.popularity === 'number' && Number.isFinite(s.popularity)
+            ? Number(s.popularity)
+            : null;
+
+        const existing = candidates.get(tmdbId);
+        if (!existing) {
+          candidates.set(tmdbId, {
+            tmdbId,
+            title,
+            releaseDate,
+            voteAverage,
+            voteCount,
+            popularity,
+            sources: new Set([source]),
+          });
+          continue;
+        }
+
+        existing.sources.add(source);
+        if (!existing.title && title) existing.title = title;
+        if (!existing.releaseDate && releaseDate) existing.releaseDate = releaseDate;
+        if (existing.voteAverage === null && voteAverage !== null)
+          existing.voteAverage = voteAverage;
+        if (existing.voteCount === null && voteCount !== null)
+          existing.voteCount = voteCount;
+        if (existing.popularity === null && popularity !== null)
+          existing.popularity = popularity;
+      }
+    };
+
+    const includeAdult = Boolean(params.includeAdult);
+
+    // --- Released pool: discover excluding the seed genres ---
+    {
+      const releasedDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
+      if (seedGenreIds.size) {
+        releasedDiscoverUrl.searchParams.set(
+          'without_genres',
+          Array.from(seedGenreIds).slice(0, 5).join(','),
+        );
+      }
+      releasedDiscoverUrl.searchParams.set('first_air_date.lte', today);
+      releasedDiscoverUrl.searchParams.set('vote_count.gte', '150');
+      releasedDiscoverUrl.searchParams.set('sort_by', 'vote_average.desc');
+
+      const discResults = await this.pagedTvResults({
+        apiKey,
+        url: releasedDiscoverUrl,
+        includeAdult,
+        maxItems: 300,
+        maxPages: 10,
+      });
+      addResults(discResults, 'discover_released');
+    }
+
+    // --- Upcoming pool: future-window discover excluding the seed genres ---
+    {
+      const upcomingDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
+      if (seedGenreIds.size) {
+        upcomingDiscoverUrl.searchParams.set(
+          'without_genres',
+          Array.from(seedGenreIds).slice(0, 5).join(','),
+        );
+      }
+      upcomingDiscoverUrl.searchParams.set('first_air_date.gte', tomorrow);
+      upcomingDiscoverUrl.searchParams.set('first_air_date.lte', upcomingWindowEnd);
+      upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
+
+      const upcomingResults = await this.pagedTvResults({
+        apiKey,
+        url: upcomingDiscoverUrl,
+        includeAdult,
+        maxItems: 300,
+        maxPages: 10,
+      });
+      addResults(upcomingResults, 'discover_upcoming');
+    }
+
+    const released: TmdbTvCandidate[] = [];
+    const upcoming: TmdbTvCandidate[] = [];
+    const unknown: TmdbTvCandidate[] = [];
+
+    for (const c of candidates.values()) {
+      const bucket = classifyByReleaseDate(c.releaseDate, today);
+      const item: TmdbTvCandidate = {
+        tmdbId: c.tmdbId,
+        title: c.title,
+        releaseDate: c.releaseDate,
+        voteAverage: c.voteAverage,
+        voteCount: c.voteCount,
+        popularity: c.popularity,
+        sources: Array.from(c.sources),
+      };
+      if (bucket === 'released') released.push(item);
+      else if (bucket === 'upcoming') upcoming.push(item);
+      else unknown.push(item);
+    }
+
+    released.sort((a, b) => {
+      const av = a.voteAverage ?? 0;
+      const bv = b.voteAverage ?? 0;
+      if (bv !== av) return bv - av;
+      const ac = a.voteCount ?? 0;
+      const bc = b.voteCount ?? 0;
+      if (bc !== ac) return bc - ac;
+      const ap = a.popularity ?? 0;
+      const bp = b.popularity ?? 0;
+      if (bp !== ap) return bp - ap;
+      return a.tmdbId - b.tmdbId;
+    });
+    upcoming.sort((a, b) => {
+      const ap = a.popularity ?? 0;
+      const bp = b.popularity ?? 0;
+      if (bp !== ap) return bp - ap;
+      const ar = a.releaseDate ?? '';
+      const br = b.releaseDate ?? '';
+      if (ar && br && ar !== br) return ar.localeCompare(br);
+      return a.tmdbId - b.tmdbId;
+    });
+
+    return {
+      seed: {
+        tmdbId: seedBest.id,
+        title: seedDetails?.name ?? seedBest.name ?? seedTitle,
+        genreIds: Array.from(seedGenreIds),
+        releaseDate: seedDetails?.first_air_date ?? seedBest.first_air_date ?? null,
       },
       meta: { today, timezone: tz, upcomingWindowEnd },
       released,

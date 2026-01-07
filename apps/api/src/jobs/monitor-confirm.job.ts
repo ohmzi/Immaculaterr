@@ -8,6 +8,8 @@ import {
   type SonarrSeries,
 } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobReportV1 } from './job-report-v1';
+import { issue, metricRow } from './job-report-v1';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -95,6 +97,7 @@ export class MonitorConfirmJob {
       radarr: {
         totalMonitored: 0,
         checked: 0,
+        missingTmdbId: 0,
         alreadyInPlex: 0,
         keptMonitored: 0,
         unmonitored: 0,
@@ -104,6 +107,7 @@ export class MonitorConfirmJob {
       sonarr: {
         totalSeries: 0,
         seriesProcessed: 0,
+        episodesMonitoredBefore: 0,
         episodesChecked: 0,
         episodesInPlex: 0,
         episodesUnmonitored: 0,
@@ -255,10 +259,12 @@ export class MonitorConfirmJob {
     let radarrSkippedPathConflicts = 0;
     let radarrChecked = 0;
     let radarrKeptMonitored = 0;
+    let radarrMissingTmdbId = 0;
     const radarrSample: string[] = [];
     summary.radarr = {
       totalMonitored: radarrTotalMonitored,
       checked: 0,
+      missingTmdbId: 0,
       alreadyInPlex: 0,
       keptMonitored: 0,
       unmonitored: 0,
@@ -278,6 +284,7 @@ export class MonitorConfirmJob {
       radarrChecked += 1;
       const tmdbId = toInt(movie.tmdbId);
       if (!tmdbId) {
+        radarrMissingTmdbId += 1;
         await ctx.warn('radarr: movie missing tmdbId (skipping)', {
           title:
             typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
@@ -335,6 +342,7 @@ export class MonitorConfirmJob {
         summary.radarr = {
           totalMonitored: radarrTotalMonitored,
           checked: radarrChecked,
+          missingTmdbId: radarrMissingTmdbId,
           alreadyInPlex: radarrAlreadyInPlex,
           keptMonitored: radarrKeptMonitored,
           unmonitored: radarrUnmonitored,
@@ -364,6 +372,7 @@ export class MonitorConfirmJob {
     summary.radarr = {
       totalMonitored: radarrTotalMonitored,
       checked: radarrChecked,
+      missingTmdbId: radarrMissingTmdbId,
       alreadyInPlex: radarrAlreadyInPlex,
       keptMonitored: radarrKeptMonitored,
       unmonitored: radarrUnmonitored,
@@ -442,10 +451,12 @@ export class MonitorConfirmJob {
     let sonarrSeriesUnmonitored = 0;
     let sonarrSeasonsUnmonitored = 0;
     let sonarrSeriesProcessed = 0;
+    let sonarrEpisodesMonitoredBefore = 0;
 
     summary.sonarr = {
       totalSeries: sonarrSeriesTotal,
       seriesProcessed: 0,
+      episodesMonitoredBefore: 0,
       episodesChecked: 0,
       episodesInPlex: 0,
       episodesUnmonitored: 0,
@@ -522,6 +533,7 @@ export class MonitorConfirmJob {
           const epKey = episodeKey(season, epNum);
           const isInPlex = plexEpisodes.has(epKey);
           const isMonitored = Boolean(ep.monitored);
+          if (isMonitored) sonarrEpisodesMonitoredBefore += 1;
 
           if (isInPlex) {
             sonarrEpisodesInPlex += 1;
@@ -634,6 +646,7 @@ export class MonitorConfirmJob {
         summary.sonarr = {
           totalSeries: sonarrSeriesTotal,
           seriesProcessed: sonarrSeriesProcessed,
+          episodesMonitoredBefore: sonarrEpisodesMonitoredBefore,
           episodesChecked: sonarrEpisodesChecked,
           episodesInPlex: sonarrEpisodesInPlex,
           episodesUnmonitored: sonarrEpisodesUnmonitored,
@@ -679,6 +692,7 @@ export class MonitorConfirmJob {
     summary.radarr = {
       totalMonitored: radarrTotalMonitored,
       checked: radarrChecked,
+      missingTmdbId: radarrMissingTmdbId,
       alreadyInPlex: radarrAlreadyInPlex,
       keptMonitored: radarrKeptMonitored,
       unmonitored: radarrUnmonitored,
@@ -688,6 +702,7 @@ export class MonitorConfirmJob {
     summary.sonarr = {
       totalSeries: sonarrSeriesTotal,
       seriesProcessed: sonarrSeriesProcessed,
+      episodesMonitoredBefore: sonarrEpisodesMonitoredBefore,
       episodesChecked: sonarrEpisodesChecked,
       episodesInPlex: sonarrEpisodesInPlex,
       episodesUnmonitored: sonarrEpisodesUnmonitored,
@@ -708,6 +723,217 @@ export class MonitorConfirmJob {
     });
 
     await ctx.info('monitorConfirm: done', summary);
-    return { summary };
+    const report = buildMonitorConfirmReport({ ctx, raw: summary });
+    return { summary: report as unknown as JsonObject };
   }
+}
+
+function asNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function buildMonitorConfirmReport(params: {
+  ctx: JobContext;
+  raw: JsonObject;
+}): JobReportV1 {
+  const { ctx, raw } = params;
+
+  const plex = isPlainObject(raw.plex) ? raw.plex : {};
+  const radarr = isPlainObject(raw.radarr) ? raw.radarr : {};
+  const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : {};
+
+  const plexMovieLibraries = Array.isArray(plex.movieLibraries)
+    ? plex.movieLibraries.length
+    : null;
+  const plexTvLibraries = Array.isArray(plex.tvLibraries) ? plex.tvLibraries.length : null;
+
+  const radarrTotalMonitored = asNum(radarr.totalMonitored) ?? 0;
+  const radarrUnmonitored = asNum(radarr.unmonitored) ?? 0;
+  const radarrEndMonitored = Math.max(0, radarrTotalMonitored - radarrUnmonitored);
+  const radarrAlreadyInPlex = asNum(radarr.alreadyInPlex) ?? 0;
+  const radarrSkippedPathConflicts = asNum(radarr.skippedPathConflicts) ?? 0;
+  const radarrMissingTmdbId = asNum(radarr.missingTmdbId) ?? 0;
+
+  const sonarrTotalSeries = asNum(sonarr.totalSeries) ?? 0;
+  const sonarrSeriesUnmonitored = asNum(sonarr.seriesUnmonitored) ?? 0;
+  const sonarrEndSeriesMonitored = Math.max(0, sonarrTotalSeries - sonarrSeriesUnmonitored);
+  const sonarrEpisodesMonitoredBefore = asNum(sonarr.episodesMonitoredBefore) ?? null;
+  const sonarrEpisodesUnmonitored = asNum(sonarr.episodesUnmonitored) ?? 0;
+  const sonarrEpisodesMonitoredAfter =
+    sonarrEpisodesMonitoredBefore !== null
+      ? Math.max(0, sonarrEpisodesMonitoredBefore - sonarrEpisodesUnmonitored)
+      : null;
+  const sonarrSearchQueued =
+    typeof sonarr.missingEpisodeSearchQueued === 'boolean'
+      ? sonarr.missingEpisodeSearchQueued
+      : null;
+
+  const issues = [
+    ...(radarrMissingTmdbId
+      ? [
+          issue(
+            'warn',
+            `Radarr: ${radarrMissingTmdbId} monitored movie(s) missing TMDB id (skipped).`,
+          ),
+        ]
+      : []),
+    ...(radarrSkippedPathConflicts
+      ? [
+          issue(
+            'warn',
+            `Radarr: ${radarrSkippedPathConflicts} unmonitor(s) skipped due to path conflicts.`,
+          ),
+        ]
+      : []),
+    ...(!ctx.dryRun && sonarrSearchQueued === false
+      ? [issue('warn', 'Sonarr: MissingEpisodeSearch was not queued.')]
+      : []),
+  ];
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: ctx.jobId,
+    dryRun: ctx.dryRun,
+    trigger: ctx.trigger,
+    headline: ctx.dryRun ? 'Dry-run complete.' : 'Monitor confirm complete.',
+    sections: [
+      {
+        id: 'plex',
+        title: 'Plex',
+        rows: [
+          metricRow({
+            label: 'Movie libraries',
+            end: plexMovieLibraries,
+            unit: 'libraries',
+          }),
+          metricRow({ label: 'TV libraries', end: plexTvLibraries, unit: 'libraries' }),
+          metricRow({ label: 'TMDB ids indexed', end: asNum(plex.tmdbIds), unit: 'ids' }),
+          metricRow({ label: 'TVDB shows indexed', end: asNum(plex.tvdbShows), unit: 'shows' }),
+        ],
+      },
+      {
+        id: 'radarr',
+        title: 'Radarr',
+        rows: [
+          metricRow({
+            label: 'Monitored movies',
+            start: radarrTotalMonitored,
+            changed: -radarrUnmonitored,
+            end: radarrEndMonitored,
+            unit: 'movies',
+          }),
+          metricRow({
+            label: 'Already in Plex',
+            end: radarrAlreadyInPlex,
+            unit: 'movies',
+          }),
+          metricRow({
+            label: 'Skipped (missing TMDB id)',
+            end: radarrMissingTmdbId,
+            unit: 'movies',
+          }),
+          metricRow({
+            label: 'Skipped (path conflicts)',
+            end: radarrSkippedPathConflicts,
+            unit: 'movies',
+          }),
+        ],
+      },
+      {
+        id: 'sonarr',
+        title: 'Sonarr',
+        rows: [
+          metricRow({
+            label: 'Monitored series',
+            start: sonarrTotalSeries,
+            changed: -sonarrSeriesUnmonitored,
+            end: sonarrEndSeriesMonitored,
+            unit: 'series',
+          }),
+          metricRow({
+            label: 'Monitored episodes',
+            start: sonarrEpisodesMonitoredBefore,
+            changed: -sonarrEpisodesUnmonitored,
+            end: sonarrEpisodesMonitoredAfter,
+            unit: 'episodes',
+          }),
+          metricRow({
+            label: 'Episodes checked',
+            end: asNum(sonarr.episodesChecked),
+            unit: 'episodes',
+          }),
+          metricRow({
+            label: 'Episodes found in Plex',
+            end: asNum(sonarr.episodesInPlex),
+            unit: 'episodes',
+          }),
+        ],
+      },
+    ],
+    tasks: [
+      {
+        id: 'plex_inventory',
+        title: 'Plex inventory',
+        status: 'success',
+        rows: [
+          metricRow({ label: 'TMDB ids indexed', end: asNum(plex.tmdbIds), unit: 'ids' }),
+          metricRow({ label: 'TVDB shows indexed', end: asNum(plex.tvdbShows), unit: 'shows' }),
+        ],
+      },
+      {
+        id: 'radarr_monitor_confirm',
+        title: 'Radarr: unmonitor movies already in Plex',
+        status: 'success',
+        rows: [
+          metricRow({
+            label: 'Monitored movies',
+            start: radarrTotalMonitored,
+            changed: -radarrUnmonitored,
+            end: radarrEndMonitored,
+            unit: 'movies',
+          }),
+          metricRow({ label: 'Already in Plex', end: radarrAlreadyInPlex, unit: 'movies' }),
+        ],
+        issues: [
+          ...(radarrMissingTmdbId
+            ? [issue('warn', `${radarrMissingTmdbId} missing TMDB id (skipped).`)]
+            : []),
+          ...(radarrSkippedPathConflicts
+            ? [issue('warn', `${radarrSkippedPathConflicts} path conflicts.`)]
+            : []),
+        ],
+      },
+      {
+        id: 'sonarr_monitor_confirm',
+        title: 'Sonarr: unmonitor episodes already in Plex',
+        status: 'success',
+        rows: [
+          metricRow({
+            label: 'Monitored episodes',
+            start: sonarrEpisodesMonitoredBefore,
+            changed: -sonarrEpisodesUnmonitored,
+            end: sonarrEpisodesMonitoredAfter,
+            unit: 'episodes',
+          }),
+          metricRow({ label: 'Episodes checked', end: asNum(sonarr.episodesChecked), unit: 'episodes' }),
+        ],
+      },
+      {
+        id: 'sonarr_missing_episode_search',
+        title: 'Sonarr: MissingEpisodeSearch',
+        status: ctx.dryRun ? 'skipped' : sonarrSearchQueued ? 'success' : 'failed',
+        facts: [
+          { label: 'queued', value: sonarrSearchQueued },
+          { label: 'dryRun', value: ctx.dryRun },
+        ],
+        issues:
+          !ctx.dryRun && sonarrSearchQueued === false
+            ? [issue('error', 'Search was not queued.')]
+            : [],
+      },
+    ],
+    issues,
+    raw,
+  };
 }

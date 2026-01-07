@@ -1,9 +1,20 @@
 import { SettingsPage } from '@/pages/VaultPage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleAlert, ExternalLink, Film, Info, Loader2, Settings2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  CircleAlert,
+  ExternalLink,
+  Film,
+  Info,
+  Loader2,
+  RotateCcw,
+  Settings2,
+  X,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getRadarrOptions, getSonarrOptions } from '@/api/integrations';
+import { getImmaculateTasteCollections, resetImmaculateTasteCollection } from '@/api/immaculate';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { FunCountSlider } from '@/components/FunCountSlider';
@@ -52,12 +63,38 @@ function readNumber(obj: unknown, path: string): number | null {
 
 export function CommandCenterPage() {
   const queryClient = useQueryClient();
+  const [immaculateResetTarget, setImmaculateResetTarget] = useState<{
+    mediaType: 'movie' | 'tv';
+    librarySectionKey: string;
+    libraryTitle: string;
+    dataset: { total: number; active: number; pending: number };
+    plex: {
+      collectionName: string;
+      collectionRatingKey: string | null;
+      itemCount: number | null;
+    };
+  } | null>(null);
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: getPublicSettings,
     staleTime: 10_000,
     refetchOnWindowFocus: false,
     retry: 1,
+  });
+
+  const immaculateCollectionsQuery = useQuery({
+    queryKey: ['immaculateTaste', 'collections'],
+    queryFn: getImmaculateTasteCollections,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
+  const resetImmaculateMutation = useMutation({
+    mutationFn: resetImmaculateTasteCollection,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'collections'] });
+    },
   });
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
@@ -254,12 +291,12 @@ export function CommandCenterPage() {
 
   const didInitRecommendations = useRef(false);
   const savedRecommendationCount =
-    readNumber(settingsQuery.data?.settings, 'recommendations.count') ?? 50;
+    readNumber(settingsQuery.data?.settings, 'recommendations.count') ?? 10;
   const savedUpcomingPercentRaw =
     readNumber(settingsQuery.data?.settings, 'recommendations.upcomingPercent') ?? 25;
   const savedUpcomingPercent = Math.max(0, Math.min(75, Math.trunc(savedUpcomingPercentRaw)));
 
-  const [draftRecommendationCount, setDraftRecommendationCount] = useState<number>(50);
+  const [draftRecommendationCount, setDraftRecommendationCount] = useState<number>(10);
   const [draftUpcomingPercent, setDraftUpcomingPercent] = useState<number>(25);
 
   useEffect(() => {
@@ -288,7 +325,7 @@ export function CommandCenterPage() {
     5,
     Math.min(
       100,
-      Math.trunc(Number.isFinite(draftRecommendationCount) ? draftRecommendationCount : 50),
+      Math.trunc(Number.isFinite(draftRecommendationCount) ? draftRecommendationCount : 10),
     ),
   );
   const effectiveUpcomingPercent = Math.max(
@@ -450,10 +487,10 @@ export function CommandCenterPage() {
 
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-emerald-500/10 text-emerald-200 border border-emerald-500/20">
-                            Released target: {releasedTarget}
+                            Ready to watch: {releasedTarget}
                           </span>
                           <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-purple-500/10 text-purple-200 border border-purple-500/20">
-                            Upcoming target: {upcomingTarget}
+                            On the horizon: {upcomingTarget}
                           </span>
                         </div>
 
@@ -468,6 +505,240 @@ export function CommandCenterPage() {
               </>
             )}
           </div>
+
+          {/* Reset Immaculate Taste */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-amber-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <RotateCcw className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Reset Immaculate Taste Collection
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {immaculateCollectionsQuery.isLoading ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}>
+                    Checking…
+                  </span>
+                ) : immaculateCollectionsQuery.isError ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
+                    Error
+                  </span>
+                ) : null}
+
+                <SavingPill active={resetImmaculateMutation.isPending} className="static" />
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Pick a library to reset. This removes the Plex collection and clears its dataset.
+            </p>
+
+            {immaculateCollectionsQuery.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>Couldn’t load Immaculate Taste status. Check Plex settings.</span>
+              </div>
+            ) : null}
+
+            <div className="mt-5 space-y-3">
+              {(immaculateCollectionsQuery.data?.collections ?? []).map((c) => {
+                const typeLabel = c.mediaType === 'movie' ? 'Movie' : 'TV';
+                const plexLabel =
+                  c.plex.collectionRatingKey
+                    ? typeof c.plex.itemCount === 'number'
+                      ? `${c.plex.itemCount} items`
+                      : '—'
+                    : 'Not found';
+
+                return (
+                  <div
+                    key={`${c.mediaType}:${c.librarySectionKey}`}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white/70">
+                          {typeLabel}
+                        </span>
+                        <div className="truncate text-sm font-semibold text-white">
+                          {c.libraryTitle}
+                        </div>
+                      </div>
+                      <div className="mt-1 text-xs text-white/60">
+                        Plex: {plexLabel} • Dataset: {c.dataset.total} tracked ({c.dataset.active} active,{' '}
+                        {c.dataset.pending} pending) • Key: {c.librarySectionKey}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={resetImmaculateMutation.isPending}
+                      onClick={() => {
+                        setImmaculateResetTarget({
+                          mediaType: c.mediaType,
+                          librarySectionKey: c.librarySectionKey,
+                          libraryTitle: c.libraryTitle,
+                          dataset: c.dataset,
+                          plex: c.plex,
+                        });
+                      }}
+                      className="inline-flex items-center gap-2 shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                    >
+                      {resetImmaculateMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="w-4 h-4" />
+                      )}
+                      Reset
+                    </button>
+                  </div>
+                );
+              })}
+
+              {!immaculateCollectionsQuery.isLoading &&
+              !immaculateCollectionsQuery.isError &&
+              (immaculateCollectionsQuery.data?.collections ?? []).length === 0 ? (
+                <div className="text-sm text-white/60">No Plex libraries found.</div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Reset Immaculate Taste - Confirm Dialog */}
+          <AnimatePresence>
+            {immaculateResetTarget && (
+              <motion.div
+                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  if (resetImmaculateMutation.isPending) return;
+                  setImmaculateResetTarget(null);
+                }}
+              >
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+                <motion.div
+                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-amber-500/10 overflow-hidden"
+                >
+                  <div className="p-6 sm:p-7">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                          Reset
+                        </div>
+                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                          Immaculate Taste Collection
+                        </h2>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white/10 text-white/75 border border-white/10">
+                            {immaculateResetTarget.mediaType === 'movie' ? 'Movie' : 'TV'}
+                          </span>
+                          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white/10 text-white/75 border border-white/10">
+                            {immaculateResetTarget.libraryTitle}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetImmaculateMutation.isPending) return;
+                          setImmaculateResetTarget(null);
+                        }}
+                        className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                        aria-label="Close"
+                        disabled={resetImmaculateMutation.isPending}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                      <div className="flex items-start gap-3">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-200" />
+                        <div className="min-w-0">
+                          <div className="text-white/85 font-semibold">
+                            This will delete the Plex collection and clear the dataset for this
+                            library.
+                          </div>
+                          <div className="mt-2 text-xs text-white/55">
+                            Dataset: {immaculateResetTarget.dataset.total} tracked (
+                            {immaculateResetTarget.dataset.active} active,{' '}
+                            {immaculateResetTarget.dataset.pending} pending) • Plex:{' '}
+                            {immaculateResetTarget.plex.collectionRatingKey
+                              ? typeof immaculateResetTarget.plex.itemCount === 'number'
+                                ? `${immaculateResetTarget.plex.itemCount} items`
+                                : 'Found'
+                              : 'Not found'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {resetImmaculateMutation.isError ? (
+                      <div className="mt-4 flex items-start gap-2 text-sm text-red-200/90">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>{(resetImmaculateMutation.error as Error).message}</span>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setImmaculateResetTarget(null)}
+                        className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetImmaculateMutation.isPending}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetImmaculateMutation.isPending) return;
+                          const target = immaculateResetTarget;
+                          if (!target) return;
+                          resetImmaculateMutation.mutate(
+                            {
+                              mediaType: target.mediaType,
+                              librarySectionKey: target.librarySectionKey,
+                            },
+                            {
+                              onSuccess: () => setImmaculateResetTarget(null),
+                            },
+                          );
+                        }}
+                        className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetImmaculateMutation.isPending}
+                      >
+                        {resetImmaculateMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Resetting…
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="w-4 h-4" />
+                            Reset
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Radarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">

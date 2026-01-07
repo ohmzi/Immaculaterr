@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CircleAlert, Copy, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CircleAlert, Loader2, RotateCcw } from 'lucide-react';
 
 import { getRun, getRunLogs, listJobs, type JobRun } from '@/api/jobs';
 import {
@@ -69,14 +69,91 @@ function levelClass(level: string) {
   return 'text-white/80';
 }
 
+function taskStatusPill(status: string) {
+  const s = status.toLowerCase();
+  if (s === 'success') return 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25';
+  if (s === 'failed') return 'bg-red-500/15 text-red-200 border border-red-500/25';
+  if (s === 'skipped') return 'bg-white/10 text-white/70 border border-white/10';
+  return 'bg-white/10 text-white/70 border border-white/10';
+}
+
+type ProgressPlan = {
+  total: number;
+  getStage: (params: {
+    stepId: string;
+    progress: Record<string, unknown> | null;
+  }) => number | null;
+};
+
+function getProgressPlan(jobId: string): ProgressPlan | null {
+  const id = (jobId ?? '').trim();
+  if (!id) return null;
+
+  // Refresher-style jobs: fewer, high-signal stages (movie → TV)
+  if (id === 'immaculateTasteRefresher' || id === 'recentlyWatchedRefresher') {
+    return {
+      total: 4,
+      getStage: ({ stepId, progress }) => {
+        if (!stepId) return null;
+        if (stepId === 'starting' || stepId === 'dataset') return 1;
+        if (stepId === 'plex_libraries') return 2;
+        if (stepId.startsWith('plex_collection_')) {
+          const mt = progress ? (pickString(progress, 'mediaType') ?? 'movie') : 'movie';
+          return mt.toLowerCase() === 'tv' ? 4 : 3;
+        }
+        if (stepId === 'done') return 4;
+        return null;
+      },
+    };
+  }
+
+  // Collection-building jobs: TMDB → Google → AI → Plex
+  if (id === 'watchedMovieRecommendations') {
+    return {
+      total: 5,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'starting' || stepId === 'dataset' || stepId === 'plex_libraries') return 1;
+        if (stepId === 'recs_tmdb_pools') return 2;
+        if (stepId === 'recs_google') return 3;
+        if (stepId === 'recs_openai') return 4;
+        if (stepId === 'plex_match') return 5;
+        if (stepId.startsWith('plex_collection_')) return 5;
+        if (stepId === 'done') return 5;
+        return null;
+      },
+    };
+  }
+
+  // Immaculate Taste points job: dataset → recs → Plex
+  if (id === 'immaculateTastePoints') {
+    return {
+      total: 6,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'starting' || stepId === 'dataset') return 1;
+        if (stepId === 'plex_libraries') return 2;
+        if (stepId === 'recs_tmdb_pools') return 3;
+        if (stepId === 'recs_google') return 4;
+        if (stepId === 'recs_openai') return 5;
+        if (stepId === 'plex_match') return 6;
+        if (stepId.startsWith('plex_collection_')) return 6;
+        if (stepId === 'done') return 6;
+        return null;
+      },
+    };
+  }
+
+  return null;
+}
+
 export function JobRunDetailPage() {
   const params = useParams();
   const runId = params.runId ?? '';
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
-  const [showDebug, setShowDebug] = useState(false);
   const [expandedContext, setExpandedContext] = useState<Record<number, boolean>>({});
-  const [runIdCopied, setRunIdCopied] = useState(false);
+  const [showRawResponse, setShowRawResponse] = useState(false);
 
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
@@ -108,6 +185,14 @@ export function JobRunDetailPage() {
   });
 
   const run = runQuery.data?.run;
+  const reportV1 = useMemo(() => {
+    const s = run?.summary;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    const obj = s as Record<string, unknown>;
+    if (obj.template !== 'jobReportV1') return null;
+    if (Number(obj.version) !== 1) return null;
+    return obj;
+  }, [run?.summary]);
   const jobName = useMemo(() => {
     const jobId = run?.jobId ?? '';
     if (!jobId) return null;
@@ -116,10 +201,7 @@ export function JobRunDetailPage() {
     return def?.name ?? null;
   }, [jobsQuery.data?.jobs, run?.jobId]);
   const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs]);
-  const visibleLogs = useMemo(() => {
-    if (showDebug) return logs;
-    return logs.filter((l) => String(l.level ?? '').toLowerCase() !== 'debug');
-  }, [logs, showDebug]);
+  const visibleLogs = logs;
   const logStats = useMemo(() => {
     const counts = { error: 0, warn: 0 };
     for (const l of visibleLogs) {
@@ -238,6 +320,10 @@ export function JobRunDetailPage() {
               <div className="grid gap-6">
                 {/* Run Details Card */}
                 <div className={cardClass}>
+                  <div className="mb-3 text-sm font-medium text-white/85">
+                    Summary
+                  </div>
+
                   <div className="text-sm text-white/70 mb-4 space-y-1">
                     <div>
                       <span className="text-white/80 font-semibold">Started:</span>{' '}
@@ -261,9 +347,7 @@ export function JobRunDetailPage() {
                   ) : null}
 
                   <div>
-                    <div className="mb-3 text-sm font-medium text-white/85">Summary</div>
-
-                    {/* Summary meta (status + run id) */}
+                    {/* Summary meta (status) */}
                     <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2">
                         <span
@@ -280,35 +364,6 @@ export function JobRunDetailPage() {
                           {modeLabel(run)}
                         </span>
                       </div>
-
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
-                        <div className="text-xs text-white/60">Run ID</div>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-[11px] text-white/85 break-all">
-                            {runId}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(runId);
-                                setRunIdCopied(true);
-                                window.setTimeout(() => setRunIdCopied(false), 1400);
-                              } catch {
-                                // ignore
-                              }
-                            }}
-                            className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 transition-all duration-200 active:scale-95 hover:bg-white/10 touch-manipulation"
-                            aria-label="Copy run ID"
-                            title="Copy run ID"
-                          >
-                            <Copy className="h-4 w-4" />
-                            <span className="hidden sm:inline">
-                              {runIdCopied ? 'Copied' : 'Copy'}
-                            </span>
-                          </button>
-                        </div>
-                      </div>
                     </div>
 
                     {run.summary && typeof run.summary === 'object' ? (
@@ -316,6 +371,18 @@ export function JobRunDetailPage() {
                         const s = run.summary as Record<string, unknown>;
 
                         const jobId = String(run.jobId ?? '');
+                        const isReportV1 =
+                          s.template === 'jobReportV1' && Number(s.version) === 1;
+                        const reportIssuesCount =
+                          isReportV1 && Array.isArray(s.issues)
+                            ? s.issues.filter(
+                                (i): i is Record<string, unknown> =>
+                                  Boolean(i) &&
+                                  typeof i === 'object' &&
+                                  !Array.isArray(i),
+                              ).length
+                            : 0;
+                        const isRefreshJob = jobId.toLowerCase().includes('refresher');
 
                         const progressRaw = s.progress;
                         const progress = isPlainObject(progressRaw) ? progressRaw : null;
@@ -323,18 +390,28 @@ export function JobRunDetailPage() {
                         const progressStep = progress ? pickString(progress, 'step') : null;
                         const progressCurrent = progress ? pickNumber(progress, 'current') : null;
                         const progressTotal = progress ? pickNumber(progress, 'total') : null;
+                        const progressUnit =
+                          progress && typeof (progress as Record<string, unknown>).unit === 'string'
+                            ? String((progress as Record<string, unknown>).unit)
+                            : null;
                         const progressPct =
                           progressCurrent !== null && progressTotal !== null && progressTotal > 0
                             ? Math.max(0, Math.min(100, (progressCurrent / progressTotal) * 100))
                             : null;
 
                         const isFinished = run.status === 'SUCCESS' || run.status === 'FAILED';
-                        const displayProgressMessage =
-                          isFinished && run.status === 'SUCCESS'
-                            ? 'Completed.'
-                            : isFinished && run.status === 'FAILED'
-                              ? 'Failed.'
-                              : progressMessage;
+                        const displayProgressMessage = (() => {
+                          if (!isFinished) return progressMessage;
+                          if (run.status === 'FAILED')
+                            return isRefreshJob ? 'Refresh failed.' : 'Failed.';
+                          if (run.status === 'SUCCESS') {
+                            if (!isRefreshJob) return 'Completed.';
+                            return reportIssuesCount
+                              ? 'Refresh complete with some hiccups.'
+                              : 'Refresh complete.';
+                          }
+                          return progressMessage;
+                        })();
                         // When the run is finished, the status pill already conveys state; don't show step noise.
                         const displayProgressStep = isFinished ? null : progressStep;
                         const displayProgressTotal = progressTotal;
@@ -342,16 +419,67 @@ export function JobRunDetailPage() {
                           isFinished && run.status === 'SUCCESS' && progressTotal !== null
                             ? progressTotal
                             : progressCurrent;
-                        const displayProgressPct =
-                          isFinished && run.status === 'SUCCESS' && progressTotal !== null
-                            ? 100
-                            : progressPct;
                         const progressBarClass =
                           run.status === 'SUCCESS'
                             ? 'bg-emerald-400/90'
                             : run.status === 'FAILED'
                               ? 'bg-red-400/90'
                               : 'bg-[#facc15]/90';
+
+                        const stepId = (progressStep ?? '').toLowerCase();
+                        const plan = getProgressPlan(jobId);
+                        const stepStage =
+                          plan && stepId ? plan.getStage({ stepId, progress }) : null;
+
+                        const subProgress = (() => {
+                          if (isFinished) return null;
+                          if (!stepId) return null;
+                          if (
+                            stepId !== 'plex_collection_add' &&
+                            stepId !== 'plex_collection_remove' &&
+                            stepId !== 'plex_collection_reorder'
+                          ) {
+                            return null;
+                          }
+                          if (
+                            progressCurrent === null ||
+                            progressTotal === null ||
+                            progressTotal <= 0
+                          ) {
+                            return null;
+                          }
+                          const verb =
+                            stepId === 'plex_collection_add'
+                              ? 'added'
+                              : stepId === 'plex_collection_remove'
+                                ? 'removed'
+                                : 'ordered';
+                          const unit = (progressUnit ?? 'items').trim() || 'items';
+                          return {
+                            current: Math.max(0, Math.trunc(progressCurrent)),
+                            total: Math.max(0, Math.trunc(progressTotal)),
+                            verb,
+                            unit,
+                          };
+                        })();
+
+                        const stepCounterText =
+                          stepStage !== null && plan ? `${stepStage}/${plan.total}` : null;
+
+                        const barPct = (() => {
+                          if (isFinished) return 100;
+                          if (stepStage === null || !plan) return progressPct;
+                          const stage0 = Math.max(0, Math.min(plan.total - 1, stepStage - 1));
+                          const frac =
+                            subProgress && subProgress.total > 0
+                              ? Math.max(
+                                  0,
+                                  Math.min(1, subProgress.current / subProgress.total),
+                                )
+                              : 0;
+                          const pct = ((stage0 + frac) / plan.total) * 100;
+                          return Math.max(0, Math.min(100, pct));
+                        })();
 
                         const radarrRaw = s.radarr;
                         const sonarrRaw = s.sonarr;
@@ -386,26 +514,37 @@ export function JobRunDetailPage() {
                               <div className="min-w-0">
                                 <div className="text-sm font-semibold text-white">
                                   {displayProgressMessage}
+                                  {subProgress ? (
+                                    <span className="ml-2 text-[11px] text-white/65 font-mono">
+                                      ({subProgress.current}/{subProgress.total} {subProgress.unit}{' '}
+                                      {subProgress.verb})
+                                    </span>
+                                  ) : null}
                                 </div>
-                                {displayProgressStep ? (
+                                {!stepCounterText && displayProgressStep ? (
                                   <div className="mt-1 text-xs text-white/60 font-mono">
                                     step: {displayProgressStep}
                                   </div>
                                 ) : null}
                               </div>
-                              {displayProgressCurrent !== null && displayProgressTotal !== null ? (
+                              {stepCounterText ? (
+                                <div className="shrink-0 text-xs text-white/70 font-mono">
+                                  {stepCounterText} steps
+                                </div>
+                              ) : displayProgressCurrent !== null &&
+                                displayProgressTotal !== null ? (
                                 <div className="shrink-0 text-xs text-white/70 font-mono">
                                   {Math.trunc(displayProgressCurrent)}/{Math.trunc(displayProgressTotal)}
                                 </div>
                               ) : null}
                             </div>
 
-                            {displayProgressPct !== null ? (
+                            {barPct !== null ? (
                               <div className="mt-4">
                                 <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                                   <div
                                     className={`h-full ${progressBarClass}`}
-                                    style={{ width: `${displayProgressPct}%` }}
+                                    style={{ width: `${barPct}%` }}
                                   />
                                 </div>
                               </div>
@@ -413,16 +552,176 @@ export function JobRunDetailPage() {
                           </div>
                         ) : null;
 
-                        const rawSummary = (
-                          <details className="mt-4 rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-4">
-                            <summary className="cursor-pointer text-sm text-white/80">
-                              Raw summary (JSON)
-                            </summary>
-                            <pre className="mt-3 overflow-auto rounded bg-white/5 p-3 text-[11px] text-white/60">
-{JSON.stringify(run.summary, null, 2)}
-                            </pre>
-                          </details>
-                        );
+                        if (isReportV1) {
+                          const headline = pickString(s, 'headline');
+                          const issuesRaw = s.issues;
+                          const issues = Array.isArray(issuesRaw)
+                            ? issuesRaw.filter(
+                                (i): i is Record<string, unknown> =>
+                                  Boolean(i) &&
+                                  typeof i === 'object' &&
+                                  !Array.isArray(i),
+                              )
+                            : [];
+
+                          const sectionsRaw = s.sections;
+                          const sections = Array.isArray(sectionsRaw)
+                            ? sectionsRaw.filter(
+                                (sec): sec is Record<string, unknown> =>
+                                  Boolean(sec) &&
+                                  typeof sec === 'object' &&
+                                  !Array.isArray(sec),
+                              )
+                            : [];
+
+                          const formatMetric = (value: number | null, unit?: string | null) => {
+                            if (value === null) return '—';
+                            const s = Number.isInteger(value)
+                              ? value.toLocaleString()
+                              : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                            const u = (unit ?? '').trim();
+                            return u ? `${s} ${u}` : s;
+                          };
+
+                          const formatDelta = (value: number | null, unit?: string | null) => {
+                            if (value === null) return '—';
+                            const abs = Math.abs(value);
+                            const s = Number.isInteger(abs)
+                              ? abs.toLocaleString()
+                              : abs.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                            const prefix = value > 0 ? '+' : value < 0 ? '-' : '';
+                            const u = (unit ?? '').trim();
+                            return u ? `${prefix}${s} ${u}` : `${prefix}${s}`;
+                          };
+
+                          return (
+                            <div>
+                              {progressBlock}
+
+                              {headline && !isRefreshJob ? (
+                                <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-5">
+                                  <div className="text-sm font-semibold text-white">
+                                    {headline}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {issues.length ? (
+                                <div className="mb-6 rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-5">
+                                  <div className="text-sm font-semibold text-white mb-3">
+                                    Issues ({issues.length})
+                                  </div>
+                                  <ul className="space-y-2 text-sm">
+                                    {issues.slice(0, 50).map((it, idx) => {
+                                      const level = String(it.level ?? 'warn').toLowerCase();
+                                      const msg = String(it.message ?? '').trim();
+                                      const cls =
+                                        level === 'error'
+                                          ? 'text-red-200'
+                                          : 'text-amber-200';
+                                      return (
+                                        <li
+                                          key={`${idx}-${level}-${msg.slice(0, 24)}`}
+                                          className={`${cls} font-mono text-xs whitespace-pre-wrap break-words`}
+                                        >
+                                          {level.toUpperCase()}: {msg}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </div>
+                              ) : null}
+
+                              {!isRefreshJob && sections.length ? (
+                                <div className="space-y-4">
+                                  {sections.map((sec, idx) => {
+                                    const title = pickString(sec, 'title') ?? `Section ${idx + 1}`;
+                                    const rowsRaw = sec.rows;
+                                    const rows = Array.isArray(rowsRaw)
+                                      ? rowsRaw.filter(
+                                          (r): r is Record<string, unknown> =>
+                                            Boolean(r) &&
+                                            typeof r === 'object' &&
+                                            !Array.isArray(r),
+                                        )
+                                      : [];
+
+                                    return (
+                                      <div
+                                        key={`${idx}-${title}`}
+                                        className="rounded-2xl border border-white/10 bg-white/5 p-6"
+                                      >
+                                        <div className="text-sm font-semibold text-white mb-4">
+                                          {title}
+                                        </div>
+                                        {rows.length ? (
+                                          <div className="overflow-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
+                                            <table className="w-full text-sm">
+                                              <thead className="text-left text-xs text-white/60">
+                                                <tr>
+                                                  <th className="px-4 py-3">Metric</th>
+                                                  <th className="px-4 py-3">Start</th>
+                                                  <th className="px-4 py-3">Change</th>
+                                                  <th className="px-4 py-3">End</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {rows.map((r, rIdx) => {
+                                                  const label = pickString(r, 'label') ?? 'Metric';
+                                                  const unit = pickString(r, 'unit');
+                                                  const note = pickString(r, 'note');
+
+                                                  const start = pickNumber(r, 'start');
+                                                  const changed = pickNumber(r, 'changed');
+                                                  const end = pickNumber(r, 'end');
+
+                                                  const deltaClass =
+                                                    changed === null
+                                                      ? 'text-white/60'
+                                                      : changed > 0
+                                                        ? 'text-emerald-200'
+                                                        : changed < 0
+                                                          ? 'text-red-200'
+                                                          : 'text-white/70';
+
+                                                  return (
+                                                    <tr key={`${rIdx}-${label}`} className="border-t border-white/10">
+                                                      <td className="px-4 py-3 text-white/85">
+                                                        <div className="font-semibold">{label}</div>
+                                                        {note ? (
+                                                          <div className="mt-1 text-xs text-white/60 font-mono">
+                                                            {note}
+                                                          </div>
+                                                        ) : null}
+                                                      </td>
+                                                      <td className="px-4 py-3 font-mono text-xs text-white/70 whitespace-nowrap">
+                                                        {formatMetric(start, unit)}
+                                                      </td>
+                                                      <td className={`px-4 py-3 font-mono text-xs whitespace-nowrap ${deltaClass}`}>
+                                                        {formatDelta(changed, unit)}
+                                                      </td>
+                                                      <td className="px-4 py-3 font-mono text-xs text-white/80 whitespace-nowrap">
+                                                        {formatMetric(end, unit)}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        ) : (
+                                          <div className="text-sm text-white/70">
+                                            No metrics.
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        }
 
                         if (jobId === 'monitorConfirm') {
                           const plexRaw = s.plex;
@@ -590,7 +889,6 @@ export function JobRunDetailPage() {
                                 ) : null}
                               </div>
 
-                              {rawSummary}
                             </div>
                           );
                         }
@@ -776,7 +1074,6 @@ export function JobRunDetailPage() {
                                 ) : null}
                               </div>
 
-                              {rawSummary}
                             </div>
                           );
                         }
@@ -843,13 +1140,7 @@ export function JobRunDetailPage() {
                         }
 
                         return (
-                          <div>
-                            {progressBlock}
-                            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
-                              No specialized summary view for this job yet.
-                            </div>
-                            {rawSummary}
-                          </div>
+                          <div>{progressBlock}</div>
                         );
                       })()
                     ) : isRunning ? (
@@ -904,26 +1195,233 @@ export function JobRunDetailPage() {
                   </div>
                 </div>
 
+                {/* Steps Card */}
+                {reportV1 ? (
+                  <div className={cardClass}>
+                    <div className="mb-4 text-sm text-white/70">
+                      Step-by-step breakdown
+                    </div>
+
+                    {Array.isArray(reportV1.tasks) && reportV1.tasks.length ? (
+                      <div className="space-y-3">
+                        {reportV1.tasks
+                          .filter(
+                            (t): t is Record<string, unknown> =>
+                              Boolean(t) &&
+                              typeof t === 'object' &&
+                              !Array.isArray(t),
+                          )
+                          // Older runs may include redundant overview tasks like "Movie refresh" / "TV refresh".
+                          // Hide these in the step list for refresher-style jobs to keep the breakdown focused.
+                          .filter((t) => {
+                            const jobId = String(run?.jobId ?? '').toLowerCase();
+                            const isRefresher = jobId.includes('refresher');
+                            if (!isRefresher) return true;
+                            const title = (pickString(t, 'title') ?? '').toLowerCase();
+                            return title !== 'movie refresh' && title !== 'tv refresh';
+                          })
+                          .map((t, idx) => {
+                            const title = pickString(t, 'title') ?? `Step ${idx + 1}`;
+                            const status = pickString(t, 'status') ?? 'success';
+                            const rowsRaw = t.rows;
+                            const rows = Array.isArray(rowsRaw)
+                              ? rowsRaw.filter(
+                                  (r): r is Record<string, unknown> =>
+                                    Boolean(r) &&
+                                    typeof r === 'object' &&
+                                    !Array.isArray(r),
+                                )
+                              : [];
+                            const factsRaw = t.facts;
+                            const facts = Array.isArray(factsRaw)
+                              ? factsRaw.filter(
+                                  (f): f is Record<string, unknown> =>
+                                    Boolean(f) &&
+                                    typeof f === 'object' &&
+                                    !Array.isArray(f),
+                                )
+                              : [];
+                            const issuesRaw = t.issues;
+                            const issues = Array.isArray(issuesRaw)
+                              ? issuesRaw.filter(
+                                  (i): i is Record<string, unknown> =>
+                                    Boolean(i) &&
+                                    typeof i === 'object' &&
+                                    !Array.isArray(i),
+                                )
+                              : [];
+
+                            const formatMetric = (value: number | null, unit?: string | null) => {
+                              if (value === null) return '—';
+                              const s = Number.isInteger(value)
+                                ? value.toLocaleString()
+                                : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                              const u = (unit ?? '').trim();
+                              return u ? `${s} ${u}` : s;
+                            };
+                            const formatDelta = (value: number | null, unit?: string | null) => {
+                              if (value === null) return '—';
+                              const abs = Math.abs(value);
+                              const s = Number.isInteger(abs)
+                                ? abs.toLocaleString()
+                                : abs.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                              const prefix = value > 0 ? '+' : value < 0 ? '-' : '';
+                              const u = (unit ?? '').trim();
+                              return u ? `${prefix}${s} ${u}` : `${prefix}${s}`;
+                            };
+
+                            return (
+                              <details
+                                key={`${idx}-${title}`}
+                                className="rounded-2xl border border-white/10 bg-white/5 p-5"
+                                open={idx === 0}
+                              >
+                                <summary className="cursor-pointer list-none">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-semibold text-white truncate">
+                                        {title}
+                                      </div>
+                                      {issues.length ? (
+                                        <div className="mt-1 text-xs text-amber-200">
+                                          {issues.length} issue(s)
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    <span
+                                      className={`shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${taskStatusPill(
+                                        status,
+                                      )}`}
+                                    >
+                                      {status}
+                                    </span>
+                                  </div>
+                                </summary>
+
+                                {issues.length ? (
+                                  <div className="mt-4 rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-4">
+                                    <div className="text-xs font-semibold text-white/80 mb-2">
+                                      Issues
+                                    </div>
+                                    <ul className="space-y-1 text-xs font-mono">
+                                      {issues.slice(0, 50).map((it, ii) => {
+                                        const level = String(it.level ?? 'warn').toLowerCase();
+                                        const msg = String(it.message ?? '').trim();
+                                        const cls =
+                                          level === 'error'
+                                            ? 'text-red-200'
+                                            : 'text-amber-200';
+                                        return (
+                                          <li
+                                            key={`${idx}-${ii}-${level}-${msg.slice(0, 24)}`}
+                                            className={`${cls} whitespace-pre-wrap break-words`}
+                                          >
+                                            {level.toUpperCase()}: {msg}
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  </div>
+                                ) : null}
+
+                                {rows.length ? (
+                                  <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
+                                    <table className="w-full text-sm">
+                                      <thead className="text-left text-xs text-white/60">
+                                        <tr>
+                                          <th className="px-4 py-3">Metric</th>
+                                          <th className="px-4 py-3">Start</th>
+                                          <th className="px-4 py-3">Change</th>
+                                          <th className="px-4 py-3">End</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {rows.map((r, rIdx) => {
+                                          const label = pickString(r, 'label') ?? 'Metric';
+                                          const unit = pickString(r, 'unit');
+                                          const start = pickNumber(r, 'start');
+                                          const changed = pickNumber(r, 'changed');
+                                          const end = pickNumber(r, 'end');
+                                          const deltaClass =
+                                            changed === null
+                                              ? 'text-white/60'
+                                              : changed > 0
+                                                ? 'text-emerald-200'
+                                                : changed < 0
+                                                  ? 'text-red-200'
+                                                  : 'text-white/70';
+                                          return (
+                                            <tr
+                                              key={`${idx}-${rIdx}-${label}`}
+                                              className="border-t border-white/10"
+                                            >
+                                              <td className="px-4 py-3 text-white/85 font-semibold">
+                                                {label}
+                                              </td>
+                                              <td className="px-4 py-3 font-mono text-xs text-white/70 whitespace-nowrap">
+                                                {formatMetric(start, unit)}
+                                              </td>
+                                              <td className={`px-4 py-3 font-mono text-xs whitespace-nowrap ${deltaClass}`}>
+                                                {formatDelta(changed, unit)}
+                                              </td>
+                                              <td className="px-4 py-3 font-mono text-xs text-white/80 whitespace-nowrap">
+                                                {formatMetric(end, unit)}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : null}
+
+                                {facts.length ? (
+                                  <div className="mt-4 rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-4">
+                                    <div className="text-xs font-semibold text-white/80 mb-2">
+                                      Facts
+                                    </div>
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      {facts.slice(0, 50).map((f, fi) => (
+                                        <div
+                                          key={`${idx}-${fi}-${String(f.label ?? '')}`}
+                                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                                        >
+                                          <div className="text-[11px] text-white/60 font-mono">
+                                            {String(f.label ?? '')}
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/80 font-mono break-words">
+                                            {typeof f.value === 'string'
+                                              ? f.value
+                                              : JSON.stringify(f.value)}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </details>
+                            );
+                          })}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-white/70">
+                        No structured steps available.
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
                 {/* Logs Card */}
                 <div className={cardClass}>
                   <div className="text-sm text-white/70 mb-4">
-                    {logsQuery.isLoading ? 'Loading…' : `${visibleLogs.length} lines`}
-                    {!showDebug && logs.length !== visibleLogs.length
-                      ? ` • ${logs.length - visibleLogs.length} debug hidden`
-                      : ''}
-                    {logStats.error ? ` • ${logStats.error} errors` : ''}
-                    {logStats.warn ? ` • ${logStats.warn} warnings` : ''}
-                    {isRunning ? ' • updating' : ''}
-                  </div>
-
-                  <div className="mb-4 flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowDebug((v) => !v)}
-                      className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/80 transition-all duration-200 active:scale-95 hover:bg-white/10"
-                    >
-                      {showDebug ? 'Hide debug' : 'Show debug'}
-                    </button>
+                    {(() => {
+                      if (logsQuery.isLoading) return 'Loading…';
+                      const parts: string[] = [];
+                      if (logStats.error) parts.push(`${logStats.error} errors`);
+                      if (logStats.warn) parts.push(`${logStats.warn} warnings`);
+                      if (isRunning) parts.push('updating');
+                      return parts.length ? parts.join(' • ') : 'Logs';
+                    })()}
                   </div>
 
                   {logsQuery.error ? (
@@ -1051,6 +1549,38 @@ export function JobRunDetailPage() {
                   ) : (
                     <div className="text-sm text-white/70">No logs yet.</div>
                   )}
+
+                  {/* Raw Response (inline) */}
+                  <div className="mt-5">
+                    <button
+                      type="button"
+                      onClick={() => setShowRawResponse((v) => !v)}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition-all duration-200 active:scale-95 hover:bg-white/10 touch-manipulation"
+                    >
+                      {showRawResponse ? 'Hide raw response' : 'See raw response'}
+                    </button>
+
+                    {showRawResponse ? (
+                      <div className="mt-4 space-y-4">
+                        <div>
+                          <div className="text-xs text-white/60 mb-2">
+                            Run summary (JSON)
+                          </div>
+                          <pre className="overflow-auto rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] text-white/60">
+{JSON.stringify(run.summary, null, 2)}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="text-xs text-white/60 mb-2">
+                            Logs response (JSON)
+                          </div>
+                          <pre className="overflow-auto rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] text-white/60">
+{JSON.stringify(logs, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ) : (

@@ -459,6 +459,50 @@ export class RadarrService {
     }
   }
 
+  async searchMonitoredMovies(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/command');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({
+          name: 'MissingMoviesSearch',
+          filterKey: 'monitored',
+          filterValue: 'true',
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr search monitored failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr search monitored failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private buildApiUrl(baseUrl: string, path: string) {
     const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     return new URL(path, normalized).toString();

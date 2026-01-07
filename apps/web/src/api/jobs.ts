@@ -83,6 +83,18 @@ export function listRuns(params?: { jobId?: string; take?: number; skip?: number
   return fetchJson<{ runs: JobRun[] }>(`/api/jobs/runs${suffix}`);
 }
 
+export function clearRuns(params?: { jobId?: string }) {
+  const q = new URLSearchParams();
+  if (params?.jobId) q.set('jobId', params.jobId);
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  return fetchJson<{ ok: true; deletedRuns: number; deletedLogs: number }>(
+    `/api/jobs/runs${suffix}`,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
 export function getRun(runId: string) {
   return fetchJson<{ run: JobRun }>(`/api/jobs/runs/${encodeURIComponent(runId)}`);
 }

@@ -28,7 +28,9 @@ const staticImports = existsSync(webDistPath)
       ServeStaticModule.forRoot({
         rootPath: webDistPath,
         // Keep API routes on the Nest side.
-        exclude: ['/api*'],
+        // NOTE: path-to-regexp v6 does NOT accept "/api*" (it throws "Missing parameter name").
+        // Use explicit patterns instead.
+        exclude: ['/api', '/api/(.*)'],
       }),
     ]
   : [];

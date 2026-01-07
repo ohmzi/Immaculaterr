@@ -22,6 +22,14 @@ export class PlexCuratedCollectionsService {
     machineIdentifier: string;
     movieSectionKey: string;
     collectionName: string;
+    /**
+     * Plex item type for the target library.
+     * - 1 = movie
+     * - 2 = show
+     *
+     * Default is 1 for backwards compatibility.
+     */
+    itemType?: 1 | 2;
     desiredItems: Array<{ ratingKey: string; title: string }>;
     randomizeOrder?: boolean;
   }): Promise<JsonObject> {
@@ -32,9 +40,24 @@ export class PlexCuratedCollectionsService {
       machineIdentifier,
       movieSectionKey,
       collectionName,
+      itemType = 1,
       desiredItems,
       randomizeOrder = false,
     } = params;
+
+    const mediaType = itemType === 2 ? 'tv' : 'movie';
+    const unitLabel = itemType === 2 ? 'shows' : 'movies';
+
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_collection_sync',
+          message: `Locating Plex collection: ${collectionName}…`,
+          mediaType,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
 
     // Deduplicate by ratingKey (keep first title)
     const uniq = new Map<string, string>();
@@ -112,6 +135,16 @@ export class PlexCuratedCollectionsService {
     // If the collection already exists, delete it so we can recreate with a fresh order.
     // This avoids cases where Plex keeps the old ordering even after remove/re-add.
     if (plexCollectionKey) {
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'plex_collection_sync',
+            message: `Recreating Plex collection: ${collectionName}…`,
+            mediaType,
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
       await ctx.info(
         'collection: deleting existing Plex collection for refresh',
         {
@@ -173,6 +206,16 @@ export class PlexCuratedCollectionsService {
 
     // Ensure Plex collection exists (create new if deleted/missing)
     if (!plexCollectionKey) {
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'plex_collection_sync',
+            message: `Creating Plex collection: ${collectionName}…`,
+            mediaType,
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
       await ctx.info('collection: creating Plex collection', {
         collectionName,
       });
@@ -200,7 +243,7 @@ export class PlexCuratedCollectionsService {
         machineIdentifier,
         librarySectionKey: movieSectionKey,
         collectionName,
-        type: 1,
+        type: itemType,
         initialItemRatingKey: first,
       });
 
@@ -254,7 +297,8 @@ export class PlexCuratedCollectionsService {
                   message: `Adding items to Plex collection: ${collectionName}`,
                   current: added,
                   total: desired.length,
-                  unit: 'items',
+                  unit: unitLabel,
+                  mediaType,
                   updatedAt: new Date().toISOString(),
                 },
               })
@@ -294,7 +338,8 @@ export class PlexCuratedCollectionsService {
                   message: `Removing items from Plex collection: ${collectionName}`,
                   current: removed,
                   total: existingItems.length,
-                  unit: 'items',
+                  unit: unitLabel,
+                  mediaType,
                   updatedAt: new Date().toISOString(),
                 },
               })
@@ -332,7 +377,8 @@ export class PlexCuratedCollectionsService {
                   message: `Adding items to Plex collection: ${collectionName}`,
                   current: added,
                   total: desired.length,
-                  unit: 'items',
+                  unit: unitLabel,
+                  mediaType,
                   updatedAt: new Date().toISOString(),
                 },
               })
@@ -389,7 +435,8 @@ export class PlexCuratedCollectionsService {
           message: `Ordering Plex collection: ${collectionName}`,
           current: 0,
           total: desired.length,
-          unit: 'items',
+          unit: unitLabel,
+          mediaType,
           updatedAt: new Date().toISOString(),
         },
       })
@@ -418,7 +465,8 @@ export class PlexCuratedCollectionsService {
                 message: `Ordering Plex collection: ${collectionName}`,
                 current: moved,
                 total: desired.length,
-                unit: 'items',
+                unit: unitLabel,
+                mediaType,
                 updatedAt: new Date().toISOString(),
               },
             })

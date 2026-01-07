@@ -10,6 +10,8 @@ import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedMovieRecommendationsService } from '../watched-movie-recommendations/watched-movie-recommendations.service';
 import { WatchedShowRecommendationsService } from '../watched-movie-recommendations/watched-show-recommendations.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobReportV1 } from './job-report-v1';
+import { metricRow } from './job-report-v1';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -220,12 +222,12 @@ export class BasedonLatestWatchedCollectionJob {
       Boolean(googleApiKey) &&
       Boolean(googleSearchEngineId);
 
-    const recCountRaw = pickNumber(settings, 'recommendations.count') ?? 50;
+    const recCountRaw = pickNumber(settings, 'recommendations.count') ?? 10;
     const recCount = Math.max(
       5,
       Math.min(
         100,
-        Math.trunc(Number.isFinite(recCountRaw) ? recCountRaw : 50) || 50,
+        Math.trunc(Number.isFinite(recCountRaw) ? recCountRaw : 10) || 10,
       ),
     );
     const upcomingPercentRaw =
@@ -270,6 +272,16 @@ export class BasedonLatestWatchedCollectionJob {
       webContextFraction,
     });
 
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_libraries',
+          message: 'Searching Plex movie libraries…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
     const similar = await this.recommendations.buildSimilarMovieTitles({
       ctx,
       seedTitle,
@@ -293,6 +305,7 @@ export class BasedonLatestWatchedCollectionJob {
       seedYear,
       tmdbApiKey,
       count: recCount,
+        upcomingPercent,
         openai: openAiEnabled
           ? { apiKey: openAiApiKey, model: openAiModel }
           : null,
@@ -403,7 +416,8 @@ export class BasedonLatestWatchedCollectionJob {
     };
 
     await ctx.info('watchedMovieRecommendations: done', summary);
-    return { summary };
+    const report = buildWatchedLatestCollectionReport({ ctx, raw: summary });
+    return { summary: report as unknown as JsonObject };
   }
 
   private async processOneCollection(params: {
@@ -453,6 +467,16 @@ export class BasedonLatestWatchedCollectionJob {
       collectionName,
       sample: recommendationTitles.slice(0, 10),
     });
+
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_match',
+          message: `Matching titles in Plex… (${collectionName})`,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
 
     await ctx.info('collection_run: resolving titles in Plex', {
       collectionName,
@@ -682,6 +706,7 @@ export class BasedonLatestWatchedCollectionJob {
       : await this.watchedRecs.applyPointsUpdate({
           ctx,
           collectionName,
+          librarySectionKey: movieSectionKey,
           suggested: suggestedForPoints,
           maxPoints,
         });
@@ -689,6 +714,7 @@ export class BasedonLatestWatchedCollectionJob {
     // Build the desired Plex ordering from the active points dataset (limited for UX).
     const activeRows = await this.watchedRecs.getActiveMovies({
       collectionName,
+      librarySectionKey: movieSectionKey,
       minPoints: 1,
       take: Math.min(
         250,
@@ -803,6 +829,16 @@ export class BasedonLatestWatchedCollectionJob {
         );
         return null;
       }
+
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'plex_collection_sync',
+            message: `Syncing Plex collection… (${collectionName})`,
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
 
       await ctx.info('plex: rebuild start', {
         collectionName,
@@ -959,12 +995,12 @@ export class BasedonLatestWatchedCollectionJob {
       Boolean(googleApiKey) &&
       Boolean(googleSearchEngineId);
 
-    const recCountRaw = pickNumber(settings, 'recommendations.count') ?? 50;
+    const recCountRaw = pickNumber(settings, 'recommendations.count') ?? 10;
     const recCount = Math.max(
       5,
       Math.min(
         100,
-        Math.trunc(Number.isFinite(recCountRaw) ? recCountRaw : 50) || 50,
+        Math.trunc(Number.isFinite(recCountRaw) ? recCountRaw : 10) || 10,
       ),
     );
     const upcomingPercentRaw =
@@ -1006,6 +1042,16 @@ export class BasedonLatestWatchedCollectionJob {
       webContextFraction,
     });
 
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_libraries',
+          message: 'Searching Plex TV libraries…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
     const similar = await this.recommendations.buildSimilarTvTitles({
       ctx,
       seedTitle,
@@ -1026,6 +1072,7 @@ export class BasedonLatestWatchedCollectionJob {
       seedYear,
       tmdbApiKey,
       count: recCount,
+      upcomingPercent,
       openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
     });
 
@@ -1135,7 +1182,8 @@ export class BasedonLatestWatchedCollectionJob {
     };
 
     await ctx.info('watchedShowRecommendations: done', summary);
-    return { summary };
+    const report = buildWatchedLatestCollectionReport({ ctx, raw: summary });
+    return { summary: report as unknown as JsonObject };
   }
 
   private async processOneTvCollection(params: {
@@ -1185,6 +1233,16 @@ export class BasedonLatestWatchedCollectionJob {
       collectionName,
       sample: recommendationTitles.slice(0, 10),
     });
+
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_match',
+          message: `Matching titles in Plex… (${collectionName})`,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
 
     await ctx.info('collection_run(tv): resolving titles in Plex', {
       collectionName,
@@ -1366,6 +1424,7 @@ export class BasedonLatestWatchedCollectionJob {
       : await this.watchedShowRecs.applyPointsUpdate({
           ctx,
           collectionName,
+          librarySectionKey: tvSectionKey,
           suggested: suggestedForPoints,
           maxPoints,
         });
@@ -1373,6 +1432,7 @@ export class BasedonLatestWatchedCollectionJob {
     // Build desired Plex ordering from active points dataset.
     const activeRows = await this.watchedShowRecs.getActiveShows({
       collectionName,
+      librarySectionKey: tvSectionKey,
       minPoints: 1,
       take: Math.min(
         250,
@@ -1454,6 +1514,16 @@ export class BasedonLatestWatchedCollectionJob {
         return { skipped: true, reason: 'no_resolvable_items' } as JsonObject;
       }
 
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'plex_collection_sync',
+            message: `Syncing Plex collection… (${collectionName})`,
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
+
       await ctx.info('plex: rebuilding curated collection (tv)', {
         collectionName,
         tvSectionKey,
@@ -1466,6 +1536,7 @@ export class BasedonLatestWatchedCollectionJob {
         token: plexToken,
         machineIdentifier,
         movieSectionKey: tvSectionKey,
+        itemType: 2,
         collectionName,
         desiredItems,
         randomizeOrder: false,
@@ -1742,4 +1813,145 @@ export class BasedonLatestWatchedCollectionJob {
       vote_count,
     };
   }
+}
+
+function asNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function buildWatchedLatestCollectionReport(params: {
+  ctx: JobContext;
+  raw: JsonObject;
+}): JobReportV1 {
+  const { ctx, raw } = params;
+
+  const collectionsRaw = raw.collections;
+  const collections = Array.isArray(collectionsRaw)
+    ? collectionsRaw.filter(
+        (c): c is JsonObject =>
+          Boolean(c) && typeof c === 'object' && !Array.isArray(c),
+      )
+    : [];
+
+  const totals = {
+    collections: collections.length,
+    generated: 0,
+    resolvedInPlex: 0,
+    missingInPlex: 0,
+  };
+
+  for (const c of collections) {
+    totals.generated += asNum(c.generated) ?? 0;
+    totals.resolvedInPlex += asNum(c.resolvedInPlex) ?? 0;
+    totals.missingInPlex += asNum(c.missingInPlex) ?? 0;
+  }
+
+  const tasks = collections.map((c, idx) => {
+    const name = String(c.collectionName ?? `Collection ${idx + 1}`);
+    const plex = isPlainObject(c.plex) ? c.plex : null;
+    const points = isPlainObject(c.points) ? c.points : null;
+    const radarr = isPlainObject(c.radarr) ? c.radarr : null;
+    const sonarr = isPlainObject(c.sonarr) ? c.sonarr : null;
+
+    const existingCount = plex ? asNum(plex.existingCount) : null;
+    const desiredCount = plex ? asNum(plex.desiredCount) : null;
+    const plexSkipped = plex ? Boolean((plex as Record<string, unknown>).skipped) : false;
+
+    const totalBefore = points ? asNum(points.totalBefore) : null;
+    const totalAfter = points ? asNum(points.totalAfter) : null;
+    const activeBefore = points ? asNum(points.totalActiveBefore) : null;
+    const activeAfter = points ? asNum(points.totalActiveAfter) : null;
+    const pendingBefore = points ? asNum(points.totalPendingBefore) : null;
+    const pendingAfter = points ? asNum(points.totalPendingAfter) : null;
+
+    return {
+      id: `collection_${idx}_${name}`,
+      title: `Collection: ${name}`,
+      status: plexSkipped ? ('skipped' as const) : ('success' as const),
+      rows: [
+        metricRow({ label: 'Recommendations generated', end: asNum(c.generated), unit: 'titles' }),
+        metricRow({ label: 'Resolved in Plex', end: asNum(c.resolvedInPlex), unit: 'items' }),
+        metricRow({ label: 'Missing in Plex', end: asNum(c.missingInPlex), unit: 'titles' }),
+        metricRow({
+          label: 'Points rows (total)',
+          start: totalBefore,
+          changed:
+            totalBefore !== null && totalAfter !== null ? totalAfter - totalBefore : null,
+          end: totalAfter,
+          unit: 'rows',
+        }),
+        metricRow({
+          label: 'Points rows (active)',
+          start: activeBefore,
+          changed:
+            activeBefore !== null && activeAfter !== null ? activeAfter - activeBefore : null,
+          end: activeAfter,
+          unit: 'rows',
+        }),
+        metricRow({
+          label: 'Points rows (pending)',
+          start: pendingBefore,
+          changed:
+            pendingBefore !== null && pendingAfter !== null ? pendingAfter - pendingBefore : null,
+          end: pendingAfter,
+          unit: 'rows',
+        }),
+        metricRow({
+          label: 'Plex collection items',
+          start: existingCount,
+          changed:
+            existingCount !== null && desiredCount !== null
+              ? desiredCount - existingCount
+              : null,
+          end: desiredCount,
+          unit: 'items',
+        }),
+      ],
+      facts: [
+        { label: 'recommendationStrategy', value: String(c.recommendationStrategy ?? '') },
+        ...(radarr
+          ? [
+              { label: 'radarrEnabled', value: Boolean(radarr.enabled) },
+              { label: 'radarrAdded', value: asNum(radarr.added) ?? 0 },
+              { label: 'radarrExists', value: asNum(radarr.exists) ?? 0 },
+              { label: 'radarrFailed', value: asNum(radarr.failed) ?? 0 },
+              { label: 'radarrSkipped', value: asNum(radarr.skipped) ?? 0 },
+            ]
+          : []),
+        ...(sonarr
+          ? [
+              { label: 'sonarrEnabled', value: Boolean(sonarr.enabled) },
+              { label: 'sonarrAdded', value: asNum(sonarr.added) ?? 0 },
+              { label: 'sonarrExists', value: asNum(sonarr.exists) ?? 0 },
+              { label: 'sonarrFailed', value: asNum(sonarr.failed) ?? 0 },
+              { label: 'sonarrSkipped', value: asNum(sonarr.skipped) ?? 0 },
+            ]
+          : []),
+      ],
+    };
+  });
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: ctx.jobId,
+    dryRun: ctx.dryRun,
+    trigger: ctx.trigger,
+    headline: 'Collection build complete.',
+    sections: [
+      {
+        id: 'totals',
+        title: 'Totals',
+        rows: [
+          metricRow({ label: 'Collections', end: totals.collections, unit: 'collections' }),
+          metricRow({ label: 'Recommendations generated', end: totals.generated, unit: 'titles' }),
+          metricRow({ label: 'Resolved in Plex', end: totals.resolvedInPlex, unit: 'items' }),
+          metricRow({ label: 'Missing in Plex', end: totals.missingInPlex, unit: 'titles' }),
+        ],
+      },
+    ],
+    tasks,
+    issues: [],
+    raw,
+  };
 }

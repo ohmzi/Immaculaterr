@@ -9,6 +9,8 @@ import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
+import type { JobReportV1 } from './job-report-v1';
+import { issue, metricRow } from './job-report-v1';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -132,6 +134,16 @@ export class ImmaculateTasteCollectionJob {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
 
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'dataset',
+          message: 'Locating Immaculate Taste dataset…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
     // --- Plex settings ---
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
@@ -140,6 +152,16 @@ export class ImmaculateTasteCollectionJob {
     if (!plexBaseUrlRaw) throw new Error('Plex baseUrl is not set');
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
+
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_libraries',
+          message: 'Searching Plex movie libraries…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
 
     const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
@@ -208,10 +230,10 @@ export class ImmaculateTasteCollectionJob {
     const suggestionsPerRunRaw =
       pickNumber(settings, 'recommendations.count') ??
       pickNumber(settings, 'immaculateTaste.suggestionsPerRun') ??
-      50;
+      10;
     const suggestionsPerRun = Math.max(
       5,
-      Math.min(100, Math.trunc(suggestionsPerRunRaw || 50)),
+      Math.min(100, Math.trunc(suggestionsPerRunRaw || 10)),
     );
     const upcomingPercentRaw =
       pickNumber(settings, 'recommendations.upcomingPercent') ?? 25;
@@ -223,6 +245,8 @@ export class ImmaculateTasteCollectionJob {
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
     const includeRefresherAfterUpdate =
       pickBool(settings, 'immaculateTaste.includeRefresherAfterUpdate') ?? true;
+    const startSearchImmediately =
+      pickBool(settings, 'jobs.immaculateTastePoints.searchImmediately') ?? false;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -237,10 +261,15 @@ export class ImmaculateTasteCollectionJob {
       upcomingPercent,
       maxPoints,
       includeRefresherAfterUpdate,
+      startSearchImmediately,
       webContextFraction,
     });
 
-    await this.immaculateTaste.ensureLegacyImported({ ctx, maxPoints });
+    await this.immaculateTaste.ensureLegacyImported({
+      ctx,
+      librarySectionKey: movieSectionKey,
+      maxPoints,
+    });
 
     // --- Recommend (tiered pipeline: Google -> OpenAI -> TMDb) ---
     const recs = await this.recommendations.buildSimilarMovieTitles({
@@ -266,6 +295,16 @@ export class ImmaculateTasteCollectionJob {
     });
 
     // --- Resolve in Plex ---
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_match',
+          message: 'Matching recommended titles in Plex…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
     await ctx.info('immaculateTastePoints: resolving titles in Plex', {
       requested: recs.titles.length,
     });
@@ -495,7 +534,7 @@ export class ImmaculateTasteCollectionJob {
               tags: defaults.tagIds,
               monitored: true,
               minimumAvailability: 'announced',
-              searchForMovie: true,
+              searchForMovie: startSearchImmediately,
             });
             if (result.status === 'added') radarrStats.added += 1;
             else radarrStats.exists += 1;
@@ -517,6 +556,7 @@ export class ImmaculateTasteCollectionJob {
       ? ({ dryRun: true } as JsonObject)
       : await this.immaculateTaste.applyPointsUpdate({
           ctx,
+          librarySectionKey: movieSectionKey,
           suggested: suggestedForPoints,
           maxPoints,
         });
@@ -537,10 +577,21 @@ export class ImmaculateTasteCollectionJob {
       await ctx.info('immaculateTastePoints: running refresher (chained)', {
         jobId: 'immaculateTasteRefresher',
       });
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'plex_collection_sync',
+            message: 'Refreshing Plex collection…',
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
       const refresherResult = await this.immaculateTasteRefresher.run({
         ...ctx,
         input: {
           ...(ctx.input ?? {}),
+          includeMovies: true,
+          includeTv: false,
           movieSectionKey,
           movieLibraryName,
         },
@@ -559,6 +610,7 @@ export class ImmaculateTasteCollectionJob {
       resolvedInPlex: suggestedItems.length,
       missingInPlex: missingTitles.length,
       radarr: radarrStats,
+      startSearchImmediately,
       points: pointsSummary,
       refresher: refresherSummary,
       sampleMissing: missingTitles.slice(0, 10),
@@ -566,7 +618,8 @@ export class ImmaculateTasteCollectionJob {
     };
 
     await ctx.info('immaculateTastePoints: done', summary);
-    return { summary };
+    const report = buildImmaculateTastePointsReport({ ctx, raw: summary });
+    return { summary: report as unknown as JsonObject };
   }
 
   private async runTv(params: {
@@ -589,6 +642,16 @@ export class ImmaculateTasteCollectionJob {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
 
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'dataset',
+          message: 'Locating Immaculate Taste dataset…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
     // --- Plex settings ---
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
@@ -597,6 +660,16 @@ export class ImmaculateTasteCollectionJob {
     if (!plexBaseUrlRaw) throw new Error('Plex baseUrl is not set');
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
+
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_libraries',
+          message: 'Searching Plex TV libraries…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
 
     const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
@@ -674,10 +747,10 @@ export class ImmaculateTasteCollectionJob {
     const suggestionsPerRunRaw =
       pickNumber(settings, 'recommendations.count') ??
       pickNumber(settings, 'immaculateTaste.suggestionsPerRun') ??
-      50;
+      10;
     const suggestionsPerRun = Math.max(
       5,
-      Math.min(100, Math.trunc(suggestionsPerRunRaw || 50)),
+      Math.min(100, Math.trunc(suggestionsPerRunRaw || 10)),
     );
     const upcomingPercentRaw =
       pickNumber(settings, 'recommendations.upcomingPercent') ?? 25;
@@ -689,6 +762,8 @@ export class ImmaculateTasteCollectionJob {
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
     const includeRefresherAfterUpdate =
       pickBool(settings, 'immaculateTaste.includeRefresherAfterUpdate') ?? true;
+    const startSearchImmediately =
+      pickBool(settings, 'jobs.immaculateTastePoints.searchImmediately') ?? false;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -703,6 +778,7 @@ export class ImmaculateTasteCollectionJob {
       upcomingPercent,
       maxPoints,
       includeRefresherAfterUpdate,
+      startSearchImmediately,
       webContextFraction,
     });
 
@@ -729,6 +805,16 @@ export class ImmaculateTasteCollectionJob {
     });
 
     // --- Resolve in Plex ---
+    void ctx
+      .patchSummary({
+        progress: {
+          step: 'plex_match',
+          message: 'Matching recommended titles in Plex…',
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .catch(() => undefined);
+
     await ctx.info('immaculateTastePoints(tv): resolving titles in Plex', {
       requested: recs.titles.length,
     });
@@ -906,8 +992,8 @@ export class ImmaculateTasteCollectionJob {
               rootFolderPath: defaults.rootFolderPath,
               tags: defaults.tagIds,
               monitored: true,
-              searchForMissingEpisodes: true,
-              searchForCutoffUnmetEpisodes: true,
+              searchForMissingEpisodes: startSearchImmediately,
+              searchForCutoffUnmetEpisodes: startSearchImmediately,
             });
             if (result.status === 'added') sonarrStats.added += 1;
             else sonarrStats.exists += 1;
@@ -929,6 +1015,7 @@ export class ImmaculateTasteCollectionJob {
       ? ({ dryRun: true } as JsonObject)
       : await this.immaculateTasteTv.applyPointsUpdate({
           ctx,
+          librarySectionKey: tvSectionKey,
           suggested: suggestedForPoints,
           maxPoints,
         });
@@ -949,10 +1036,21 @@ export class ImmaculateTasteCollectionJob {
       await ctx.info('immaculateTastePoints(tv): running refresher (chained)', {
         jobId: 'immaculateTasteRefresher',
       });
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'plex_collection_sync',
+            message: 'Refreshing Plex collection…',
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
       const refresherResult = await this.immaculateTasteRefresher.run({
         ...ctx,
         input: {
           ...(ctx.input ?? {}),
+          includeMovies: false,
+          includeTv: true,
           tvSectionKey,
           tvLibraryName,
         },
@@ -971,6 +1069,7 @@ export class ImmaculateTasteCollectionJob {
       resolvedInPlex: suggestedItems.length,
       missingInPlex: missingTitles.length,
       sonarr: sonarrStats,
+      startSearchImmediately,
       points: pointsSummary,
       refresher: refresherSummary,
       sampleMissing: missingTitles.slice(0, 10),
@@ -978,7 +1077,8 @@ export class ImmaculateTasteCollectionJob {
     };
 
     await ctx.info('immaculateTastePoints(tv): done', summary);
-    return { summary };
+    const report = buildImmaculateTastePointsReport({ ctx, raw: summary });
+    return { summary: report as unknown as JsonObject };
   }
 
   private async pickRadarrDefaults(params: {
@@ -1225,4 +1325,193 @@ export class ImmaculateTasteCollectionJob {
       vote_count,
     };
   }
+}
+
+function asNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function buildImmaculateTastePointsReport(params: {
+  ctx: JobContext;
+  raw: JsonObject;
+}): JobReportV1 {
+  const { ctx, raw } = params;
+
+  const radarr = isPlainObject(raw.radarr) ? raw.radarr : null;
+  const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : null;
+  const points = isPlainObject(raw.points) ? raw.points : null;
+
+  const generated = asNum(raw.generated) ?? 0;
+  const resolvedInPlex = asNum(raw.resolvedInPlex) ?? 0;
+  const missingInPlex = asNum(raw.missingInPlex) ?? 0;
+
+  const totalBefore = points ? asNum(points.totalBefore) : null;
+  const totalAfter = points ? asNum(points.totalAfter) : null;
+  const activeBefore = points ? asNum(points.totalActiveBefore) : null;
+  const activeAfter = points ? asNum(points.totalActiveAfter) : null;
+  const pendingBefore = points ? asNum(points.totalPendingBefore) : null;
+  const pendingAfter = points ? asNum(points.totalPendingAfter) : null;
+
+  const radarrFailed = radarr ? (asNum(radarr.failed) ?? 0) : 0;
+  const sonarrFailed = sonarr ? (asNum(sonarr.failed) ?? 0) : 0;
+
+  const refresher = raw.refresher;
+  const refresherObj =
+    refresher && typeof refresher === 'object' && !Array.isArray(refresher)
+      ? (refresher as Record<string, unknown>)
+      : null;
+  const refresherSkipped =
+    refresherObj && typeof refresherObj.skipped === 'boolean' ? refresherObj.skipped : null;
+  const refresherReason =
+    refresherObj && typeof refresherObj.reason === 'string' ? refresherObj.reason : null;
+
+  const issues = [
+    ...(radarrFailed ? [issue('warn', `Radarr: ${radarrFailed} add(s) failed.`)] : []),
+    ...(sonarrFailed ? [issue('warn', `Sonarr: ${sonarrFailed} add(s) failed.`)] : []),
+  ];
+
+  const mode = sonarr ? 'tv' : 'movie';
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: ctx.jobId,
+    dryRun: ctx.dryRun,
+    trigger: ctx.trigger,
+    headline: mode === 'tv' ? 'Immaculate Taste (TV) updated.' : 'Immaculate Taste updated.',
+    sections: [
+      {
+        id: 'totals',
+        title: 'Totals',
+        rows: [
+          metricRow({ label: 'Recommendations generated', end: generated, unit: 'titles' }),
+          metricRow({ label: 'Resolved in Plex', end: resolvedInPlex, unit: 'items' }),
+          metricRow({ label: 'Missing in Plex', end: missingInPlex, unit: 'titles' }),
+        ],
+      },
+      {
+        id: 'points',
+        title: 'Points dataset',
+        rows: [
+          metricRow({
+            label: 'Rows (total)',
+            start: totalBefore,
+            changed:
+              totalBefore !== null && totalAfter !== null ? totalAfter - totalBefore : null,
+            end: totalAfter,
+            unit: 'rows',
+          }),
+          metricRow({
+            label: 'Rows (active)',
+            start: activeBefore,
+            changed:
+              activeBefore !== null && activeAfter !== null ? activeAfter - activeBefore : null,
+            end: activeAfter,
+            unit: 'rows',
+          }),
+          metricRow({
+            label: 'Rows (pending)',
+            start: pendingBefore,
+            changed:
+              pendingBefore !== null && pendingAfter !== null ? pendingAfter - pendingBefore : null,
+            end: pendingAfter,
+            unit: 'rows',
+          }),
+          metricRow({ label: 'Created active', end: points ? asNum(points.createdActive) : null, unit: 'rows' }),
+          metricRow({ label: 'Created pending', end: points ? asNum(points.createdPending) : null, unit: 'rows' }),
+          metricRow({ label: 'Activated from pending', end: points ? asNum(points.activatedFromPending) : null, unit: 'rows' }),
+          metricRow({ label: 'Decayed', end: points ? asNum(points.decayed) : null, unit: 'rows' }),
+          metricRow({ label: 'Removed', end: points ? asNum(points.removed) : null, unit: 'rows' }),
+        ],
+      },
+    ],
+    tasks: [
+      {
+        id: 'recommendations',
+        title: 'Generate recommendations',
+        status: 'success',
+        rows: [metricRow({ label: 'Generated', end: generated, unit: 'titles' })],
+        facts: [
+          { label: 'strategy', value: String(raw.recommendationStrategy ?? '') },
+          { label: 'seedTitle', value: String(raw.seedTitle ?? '') },
+          { label: 'seedYear', value: asNum(raw.seedYear) },
+        ],
+      },
+      {
+        id: 'plex_resolve',
+        title: 'Resolve titles in Plex',
+        status: 'success',
+        rows: [
+          metricRow({ label: 'Resolved', end: resolvedInPlex, unit: 'items' }),
+          metricRow({ label: 'Missing', end: missingInPlex, unit: 'titles' }),
+        ],
+      },
+      ...(radarr
+        ? [
+            {
+              id: 'radarr_add',
+              title: 'Radarr: add missing movies',
+              status:
+                ctx.dryRun || !Boolean(radarr.enabled)
+                  ? ('skipped' as const)
+                  : radarrFailed
+                    ? ('failed' as const)
+                    : ('success' as const),
+              rows: [
+                metricRow({ label: 'Attempted', end: asNum(radarr.attempted), unit: 'movies' }),
+                metricRow({ label: 'Added', end: asNum(radarr.added), unit: 'movies' }),
+                metricRow({ label: 'Exists', end: asNum(radarr.exists), unit: 'movies' }),
+                metricRow({ label: 'Failed', end: asNum(radarr.failed), unit: 'movies' }),
+              ],
+            },
+          ]
+        : []),
+      ...(sonarr
+        ? [
+            {
+              id: 'sonarr_add',
+              title: 'Sonarr: add missing series',
+              status:
+                ctx.dryRun || !Boolean(sonarr.enabled)
+                  ? ('skipped' as const)
+                  : sonarrFailed
+                    ? ('failed' as const)
+                    : ('success' as const),
+              rows: [
+                metricRow({ label: 'Attempted', end: asNum(sonarr.attempted), unit: 'shows' }),
+                metricRow({ label: 'Added', end: asNum(sonarr.added), unit: 'shows' }),
+                metricRow({ label: 'Exists', end: asNum(sonarr.exists), unit: 'shows' }),
+                metricRow({ label: 'Failed', end: asNum(sonarr.failed), unit: 'shows' }),
+              ],
+            },
+          ]
+        : []),
+      {
+        id: 'points_update',
+        title: 'Update points dataset',
+        status: ctx.dryRun ? 'skipped' : 'success',
+        rows: [
+          metricRow({
+            label: 'Rows (total)',
+            start: totalBefore,
+            changed:
+              totalBefore !== null && totalAfter !== null ? totalAfter - totalBefore : null,
+            end: totalAfter,
+            unit: 'rows',
+          }),
+        ],
+      },
+      {
+        id: 'refresher',
+        title: 'Refresh Plex collection (chained)',
+        status: refresherSkipped === true ? 'skipped' : 'success',
+        facts: [
+          { label: 'skipped', value: refresherSkipped },
+          { label: 'reason', value: refresherReason },
+        ],
+      },
+    ],
+    issues,
+    raw,
+  };
 }

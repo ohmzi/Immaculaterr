@@ -1,16 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
+import { TmdbService } from '../tmdb/tmdb.service';
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 @Injectable()
 export class WatchedShowRecommendationsService {
   static readonly DEFAULT_MAX_POINTS = 50;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tmdb: TmdbService,
+  ) {}
 
   async applyPointsUpdate(params: {
     ctx: JobContext;
     collectionName: string;
+    librarySectionKey: string;
     suggested: Array<{
       tvdbId: number;
       tmdbId?: number | null;
@@ -24,6 +35,8 @@ export class WatchedShowRecommendationsService {
     const { ctx } = params;
     const collectionName = params.collectionName.trim();
     if (!collectionName) throw new Error('collectionName is required');
+    const librarySectionKey = params.librarySectionKey.trim();
+    if (!librarySectionKey) throw new Error('librarySectionKey is required');
 
     const maxPoints = clampMaxPoints(params.maxPoints);
 
@@ -88,14 +101,33 @@ export class WatchedShowRecommendationsService {
 
     await ctx.info('watchedShowRecs: points update start', {
       collectionName,
+      librarySectionKey,
       maxPoints,
       suggestedNow: suggestedTvdbIds.length,
       sampleSuggested: suggestedTvdbIds.slice(0, 10),
     });
 
+    const [totalBefore, totalActiveBefore, totalPendingBefore] = await Promise.all(
+      [
+        this.prisma.watchedShowRecommendationLibrary.count({
+          where: { collectionName, librarySectionKey },
+        }),
+        this.prisma.watchedShowRecommendationLibrary.count({
+          where: { collectionName, librarySectionKey, status: 'active' },
+        }),
+        this.prisma.watchedShowRecommendationLibrary.count({
+          where: { collectionName, librarySectionKey, status: 'pending' },
+        }),
+      ],
+    );
+
     const existing = suggestedTvdbIds.length
-      ? await this.prisma.watchedShowRecommendation.findMany({
-          where: { collectionName, tvdbId: { in: suggestedTvdbIds } },
+      ? await this.prisma.watchedShowRecommendationLibrary.findMany({
+          where: {
+            collectionName,
+            librarySectionKey,
+            tvdbId: { in: suggestedTvdbIds },
+          },
           select: { tvdbId: true, status: true },
         })
       : [];
@@ -116,9 +148,10 @@ export class WatchedShowRecommendationsService {
 
       if (!prev) {
         const status = s.inPlex ? 'active' : 'pending';
-        await this.prisma.watchedShowRecommendation.create({
+        await this.prisma.watchedShowRecommendationLibrary.create({
           data: {
             collectionName,
+            librarySectionKey,
             tvdbId: s.tvdbId,
             tmdbId: tmdbId ?? undefined,
             title,
@@ -134,9 +167,13 @@ export class WatchedShowRecommendationsService {
       }
 
       if (prev === 'active') {
-        await this.prisma.watchedShowRecommendation.update({
+        await this.prisma.watchedShowRecommendationLibrary.update({
           where: {
-            collectionName_tvdbId: { collectionName, tvdbId: s.tvdbId },
+            collectionName_librarySectionKey_tvdbId: {
+              collectionName,
+              librarySectionKey,
+              tvdbId: s.tvdbId,
+            },
           },
           data: {
             points: maxPoints,
@@ -152,9 +189,13 @@ export class WatchedShowRecommendationsService {
 
       // prev === 'pending'
       if (s.inPlex) {
-        await this.prisma.watchedShowRecommendation.update({
+        await this.prisma.watchedShowRecommendationLibrary.update({
           where: {
-            collectionName_tvdbId: { collectionName, tvdbId: s.tvdbId },
+            collectionName_librarySectionKey_tvdbId: {
+              collectionName,
+              librarySectionKey,
+              tvdbId: s.tvdbId,
+            },
           },
           data: {
             status: 'active',
@@ -167,9 +208,13 @@ export class WatchedShowRecommendationsService {
         });
         activatedFromPending += 1;
       } else {
-        await this.prisma.watchedShowRecommendation.update({
+        await this.prisma.watchedShowRecommendationLibrary.update({
           where: {
-            collectionName_tvdbId: { collectionName, tvdbId: s.tvdbId },
+            collectionName_librarySectionKey_tvdbId: {
+              collectionName,
+              librarySectionKey,
+              tvdbId: s.tvdbId,
+            },
           },
           data: {
             ...(title ? { title } : {}),
@@ -182,9 +227,11 @@ export class WatchedShowRecommendationsService {
       }
     }
 
-    const decayed = await this.prisma.watchedShowRecommendation.updateMany({
+    const decayed = await this.prisma.watchedShowRecommendationLibrary.updateMany(
+      {
       where: {
         collectionName,
+        librarySectionKey,
         status: 'active',
         points: { gt: 0 },
         ...(suggestedTvdbIds.length
@@ -192,28 +239,40 @@ export class WatchedShowRecommendationsService {
           : {}),
       },
       data: { points: { decrement: 1 } },
-    });
-
-    const removed = await this.prisma.watchedShowRecommendation.deleteMany({
-      where: { collectionName, status: 'active', points: { lte: 0 } },
-    });
-
-    const [totalAfter, totalActiveAfter, totalPendingAfter] = await Promise.all(
-      [
-        this.prisma.watchedShowRecommendation.count({ where: { collectionName } }),
-        this.prisma.watchedShowRecommendation.count({
-          where: { collectionName, status: 'active' },
-        }),
-        this.prisma.watchedShowRecommendation.count({
-          where: { collectionName, status: 'pending' },
-        }),
-      ],
+      },
     );
+
+    const removed = await this.prisma.watchedShowRecommendationLibrary.deleteMany(
+      {
+        where: {
+          collectionName,
+          librarySectionKey,
+          status: 'active',
+          points: { lte: 0 },
+        },
+      },
+    );
+
+    const [totalAfter, totalActiveAfter, totalPendingAfter] = await Promise.all([
+      this.prisma.watchedShowRecommendationLibrary.count({
+        where: { collectionName, librarySectionKey },
+      }),
+      this.prisma.watchedShowRecommendationLibrary.count({
+        where: { collectionName, librarySectionKey, status: 'active' },
+      }),
+      this.prisma.watchedShowRecommendationLibrary.count({
+        where: { collectionName, librarySectionKey, status: 'pending' },
+      }),
+    ]);
 
     const summary: JsonObject = {
       collectionName,
+      librarySectionKey,
       maxPoints,
       suggestedNow: suggestedTvdbIds.length,
+      totalBefore,
+      totalActiveBefore,
+      totalPendingBefore,
       createdActive,
       createdPending,
       refreshedActive,
@@ -233,12 +292,17 @@ export class WatchedShowRecommendationsService {
   async activatePendingNowInPlex(params: {
     ctx: JobContext;
     collectionName: string;
+    librarySectionKey: string;
     tvdbIds: number[];
     pointsOnActivation?: number;
-  }): Promise<{ activated: number }> {
+    tmdbApiKey?: string | null;
+  }): Promise<{ activated: number; tmdbRatingsUpdated: number }> {
     const { ctx } = params;
     const collectionName = params.collectionName.trim();
     if (!collectionName) throw new Error('collectionName is required');
+    const librarySectionKey = params.librarySectionKey.trim();
+    if (!librarySectionKey) throw new Error('librarySectionKey is required');
+    const tmdbApiKey = (params.tmdbApiKey ?? '').trim();
 
     const tvdbIds = Array.from(
       new Set(
@@ -253,13 +317,27 @@ export class WatchedShowRecommendationsService {
       params.pointsOnActivation ?? WatchedShowRecommendationsService.DEFAULT_MAX_POINTS,
     );
 
-    if (!tvdbIds.length) return { activated: 0 };
+    if (!tvdbIds.length) return { activated: 0, tmdbRatingsUpdated: 0 };
 
-    const res = await this.prisma.watchedShowRecommendation.updateMany({
+    const pendingRows =
+      await this.prisma.watchedShowRecommendationLibrary.findMany({
       where: {
         collectionName,
+        librarySectionKey,
         status: 'pending',
         tvdbId: { in: tvdbIds },
+      },
+      select: { tvdbId: true, tmdbId: true },
+    });
+    const pendingTvdbIds = pendingRows.map((r) => r.tvdbId);
+    if (!pendingTvdbIds.length) return { activated: 0, tmdbRatingsUpdated: 0 };
+
+    const res = await this.prisma.watchedShowRecommendationLibrary.updateMany({
+      where: {
+        collectionName,
+        librarySectionKey,
+        status: 'pending',
+        tvdbId: { in: pendingTvdbIds },
       },
       data: {
         status: 'active',
@@ -275,22 +353,82 @@ export class WatchedShowRecommendationsService {
       });
     }
 
-    return { activated: res.count };
+    let tmdbRatingsUpdated = 0;
+    if (res.count && tmdbApiKey) {
+      const tmdbPairs = pendingRows
+        .map((r) => ({
+          tvdbId: r.tvdbId,
+          tmdbId:
+            typeof r.tmdbId === 'number' && Number.isFinite(r.tmdbId)
+              ? Math.trunc(r.tmdbId)
+              : null,
+        }))
+        .filter((p) => p.tmdbId && p.tmdbId > 0);
+
+      const batches = chunk(tmdbPairs, 6);
+      for (const batch of batches) {
+        await Promise.all(
+          batch.map(async (p) => {
+            const stats = await this.tmdb
+              .getTvVoteStats({ apiKey: tmdbApiKey, tmdbId: p.tmdbId! })
+              .catch(() => null);
+            const voteAvg = stats?.vote_average ?? null;
+            const voteCount = stats?.vote_count ?? null;
+            if (voteAvg === null && voteCount === null) return;
+
+            await this.prisma.watchedShowRecommendationLibrary.update({
+              where: {
+                collectionName_librarySectionKey_tvdbId: {
+                  collectionName,
+                  librarySectionKey,
+                  tvdbId: p.tvdbId,
+                },
+              },
+              data: { tmdbVoteAvg: voteAvg, tmdbVoteCount: voteCount },
+            });
+            tmdbRatingsUpdated += 1;
+          }),
+        );
+      }
+
+      if (tmdbRatingsUpdated) {
+        await ctx.info('watchedShowRecs: refreshed TMDB ratings on activation', {
+          collectionName,
+          updated: tmdbRatingsUpdated,
+          activated: res.count,
+        });
+      }
+    } else if (res.count && !tmdbApiKey) {
+      await ctx.warn(
+        'watchedShowRecs: TMDB apiKey missing; skipping rating refresh on activation',
+        { collectionName, activated: res.count },
+      );
+    }
+
+    return { activated: res.count, tmdbRatingsUpdated };
   }
 
   async getActiveShows(params: {
     collectionName: string;
+    librarySectionKey: string;
     minPoints?: number;
     take?: number;
   }) {
     const collectionName = params.collectionName.trim();
     if (!collectionName) throw new Error('collectionName is required');
+    const librarySectionKey = params.librarySectionKey.trim();
+    if (!librarySectionKey) throw new Error('librarySectionKey is required');
 
     const minPoints = Math.max(1, Math.trunc(params.minPoints ?? 1));
     const take = params.take ? Math.max(1, Math.trunc(params.take)) : undefined;
 
-    return await this.prisma.watchedShowRecommendation.findMany({
-      where: { collectionName, status: 'active', points: { gte: minPoints } },
+    return await this.prisma.watchedShowRecommendationLibrary.findMany({
+      where: {
+        collectionName,
+        librarySectionKey,
+        status: 'active',
+        points: { gte: minPoints },
+      },
       orderBy: [{ points: 'desc' }, { updatedAt: 'desc' }],
       ...(take ? { take } : {}),
     });

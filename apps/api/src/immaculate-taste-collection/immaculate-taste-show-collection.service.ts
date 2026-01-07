@@ -1,12 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
+import { TmdbService } from '../tmdb/tmdb.service';
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 @Injectable()
 export class ImmaculateTasteShowCollectionService {
   static readonly DEFAULT_MAX_POINTS = 50;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tmdb: TmdbService,
+  ) {}
 
   // TV has no legacy JSON import (movie-only historical artifact).
   async ensureLegacyImported(_params: {
@@ -18,6 +28,7 @@ export class ImmaculateTasteShowCollectionService {
 
   async applyPointsUpdate(params: {
     ctx: JobContext;
+    librarySectionKey: string;
     suggested: Array<{
       tvdbId: number;
       tmdbId?: number | null;
@@ -29,6 +40,8 @@ export class ImmaculateTasteShowCollectionService {
     maxPoints?: number;
   }): Promise<JsonObject> {
     const { ctx } = params;
+    const librarySectionKey = params.librarySectionKey.trim();
+    if (!librarySectionKey) throw new Error('librarySectionKey is required');
     const maxPoints = clampMaxPoints(params.maxPoints);
 
     const suggestedByTvdbId = new Map<
@@ -91,14 +104,25 @@ export class ImmaculateTasteShowCollectionService {
     const suggestedTvdbIds = Array.from(suggestedByTvdbId.keys());
 
     await ctx.info('immaculateTaste(tv): points update start', {
+      librarySectionKey,
       maxPoints,
       suggestedNow: suggestedTvdbIds.length,
       sampleSuggested: suggestedTvdbIds.slice(0, 10),
     });
 
+    const [totalBefore, totalActiveBefore, totalPendingBefore] = await Promise.all([
+      this.prisma.immaculateTasteShowLibrary.count({ where: { librarySectionKey } }),
+      this.prisma.immaculateTasteShowLibrary.count({
+        where: { librarySectionKey, status: 'active' },
+      }),
+      this.prisma.immaculateTasteShowLibrary.count({
+        where: { librarySectionKey, status: 'pending' },
+      }),
+    ]);
+
     const existing = suggestedTvdbIds.length
-      ? await this.prisma.immaculateTasteShow.findMany({
-          where: { tvdbId: { in: suggestedTvdbIds } },
+      ? await this.prisma.immaculateTasteShowLibrary.findMany({
+          where: { librarySectionKey, tvdbId: { in: suggestedTvdbIds } },
           select: { tvdbId: true, status: true },
         })
       : [];
@@ -119,8 +143,9 @@ export class ImmaculateTasteShowCollectionService {
 
       if (!prev) {
         const status = s.inPlex ? 'active' : 'pending';
-        await this.prisma.immaculateTasteShow.create({
+        await this.prisma.immaculateTasteShowLibrary.create({
           data: {
+            librarySectionKey,
             tvdbId: s.tvdbId,
             tmdbId: tmdbId ?? undefined,
             title,
@@ -136,8 +161,10 @@ export class ImmaculateTasteShowCollectionService {
       }
 
       if (prev === 'active') {
-        await this.prisma.immaculateTasteShow.update({
-          where: { tvdbId: s.tvdbId },
+        await this.prisma.immaculateTasteShowLibrary.update({
+          where: {
+            librarySectionKey_tvdbId: { librarySectionKey, tvdbId: s.tvdbId },
+          },
           data: {
             points: maxPoints,
             ...(title ? { title } : {}),
@@ -152,8 +179,10 @@ export class ImmaculateTasteShowCollectionService {
 
       // prev === 'pending'
       if (s.inPlex) {
-        await this.prisma.immaculateTasteShow.update({
-          where: { tvdbId: s.tvdbId },
+        await this.prisma.immaculateTasteShowLibrary.update({
+          where: {
+            librarySectionKey_tvdbId: { librarySectionKey, tvdbId: s.tvdbId },
+          },
           data: {
             status: 'active',
             points: maxPoints,
@@ -165,8 +194,10 @@ export class ImmaculateTasteShowCollectionService {
         });
         activatedFromPending += 1;
       } else {
-        await this.prisma.immaculateTasteShow.update({
-          where: { tvdbId: s.tvdbId },
+        await this.prisma.immaculateTasteShowLibrary.update({
+          where: {
+            librarySectionKey_tvdbId: { librarySectionKey, tvdbId: s.tvdbId },
+          },
           data: {
             ...(title ? { title } : {}),
             ...(tmdbId !== null ? { tmdbId } : {}),
@@ -178,8 +209,9 @@ export class ImmaculateTasteShowCollectionService {
       }
     }
 
-    const decayed = await this.prisma.immaculateTasteShow.updateMany({
+    const decayed = await this.prisma.immaculateTasteShowLibrary.updateMany({
       where: {
+        librarySectionKey,
         status: 'active',
         points: { gt: 0 },
         ...(suggestedTvdbIds.length ? { tvdbId: { notIn: suggestedTvdbIds } } : {}),
@@ -187,19 +219,27 @@ export class ImmaculateTasteShowCollectionService {
       data: { points: { decrement: 1 } },
     });
 
-    const removed = await this.prisma.immaculateTasteShow.deleteMany({
-      where: { status: 'active', points: { lte: 0 } },
+    const removed = await this.prisma.immaculateTasteShowLibrary.deleteMany({
+      where: { librarySectionKey, status: 'active', points: { lte: 0 } },
     });
 
     const [totalAfter, totalActiveAfter, totalPendingAfter] = await Promise.all([
-      this.prisma.immaculateTasteShow.count(),
-      this.prisma.immaculateTasteShow.count({ where: { status: 'active' } }),
-      this.prisma.immaculateTasteShow.count({ where: { status: 'pending' } }),
+      this.prisma.immaculateTasteShowLibrary.count({ where: { librarySectionKey } }),
+      this.prisma.immaculateTasteShowLibrary.count({
+        where: { librarySectionKey, status: 'active' },
+      }),
+      this.prisma.immaculateTasteShowLibrary.count({
+        where: { librarySectionKey, status: 'pending' },
+      }),
     ]);
 
     const summary: JsonObject = {
+      librarySectionKey,
       maxPoints,
       suggestedNow: suggestedTvdbIds.length,
+      totalBefore,
+      totalActiveBefore,
+      totalPendingBefore,
       createdActive,
       createdPending,
       refreshedActive,
@@ -218,10 +258,15 @@ export class ImmaculateTasteShowCollectionService {
 
   async activatePendingNowInPlex(params: {
     ctx: JobContext;
+    librarySectionKey: string;
     tvdbIds: number[];
     pointsOnActivation?: number;
-  }): Promise<{ activated: number }> {
+    tmdbApiKey?: string | null;
+  }): Promise<{ activated: number; tmdbRatingsUpdated: number }> {
     const { ctx } = params;
+    const librarySectionKey = params.librarySectionKey.trim();
+    if (!librarySectionKey) throw new Error('librarySectionKey is required');
+    const tmdbApiKey = (params.tmdbApiKey ?? '').trim();
     const tvdbIds = Array.from(
       new Set(
         (params.tvdbIds ?? [])
@@ -235,10 +280,17 @@ export class ImmaculateTasteShowCollectionService {
       params.pointsOnActivation ?? ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS,
     );
 
-    if (!tvdbIds.length) return { activated: 0 };
+    if (!tvdbIds.length) return { activated: 0, tmdbRatingsUpdated: 0 };
 
-    const res = await this.prisma.immaculateTasteShow.updateMany({
-      where: { status: 'pending', tvdbId: { in: tvdbIds } },
+    const pendingRows = await this.prisma.immaculateTasteShowLibrary.findMany({
+      where: { librarySectionKey, status: 'pending', tvdbId: { in: tvdbIds } },
+      select: { tvdbId: true, tmdbId: true },
+    });
+    const pendingTvdbIds = pendingRows.map((r) => r.tvdbId);
+    if (!pendingTvdbIds.length) return { activated: 0, tmdbRatingsUpdated: 0 };
+
+    const res = await this.prisma.immaculateTasteShowLibrary.updateMany({
+      where: { librarySectionKey, status: 'pending', tvdbId: { in: pendingTvdbIds } },
       data: { status: 'active', points: pointsOnActivation },
     });
 
@@ -249,15 +301,68 @@ export class ImmaculateTasteShowCollectionService {
       });
     }
 
-    return { activated: res.count };
+    let tmdbRatingsUpdated = 0;
+    if (res.count && tmdbApiKey) {
+      const tmdbPairs = pendingRows
+        .map((r) => ({
+          tvdbId: r.tvdbId,
+          tmdbId:
+            typeof r.tmdbId === 'number' && Number.isFinite(r.tmdbId)
+              ? Math.trunc(r.tmdbId)
+              : null,
+        }))
+        .filter((p) => p.tmdbId && p.tmdbId > 0);
+
+      const batches = chunk(tmdbPairs, 6);
+      for (const batch of batches) {
+        await Promise.all(
+          batch.map(async (p) => {
+            const stats = await this.tmdb
+              .getTvVoteStats({ apiKey: tmdbApiKey, tmdbId: p.tmdbId! })
+              .catch(() => null);
+            const voteAvg = stats?.vote_average ?? null;
+            const voteCount = stats?.vote_count ?? null;
+            if (voteAvg === null && voteCount === null) return;
+
+            await this.prisma.immaculateTasteShowLibrary.update({
+              where: {
+                librarySectionKey_tvdbId: { librarySectionKey, tvdbId: p.tvdbId },
+              },
+              data: { tmdbVoteAvg: voteAvg, tmdbVoteCount: voteCount },
+            });
+            tmdbRatingsUpdated += 1;
+          }),
+        );
+      }
+
+      if (tmdbRatingsUpdated) {
+        await ctx.info('immaculateTaste(tv): refreshed TMDB ratings on activation', {
+          updated: tmdbRatingsUpdated,
+          activated: res.count,
+        });
+      }
+    } else if (res.count && !tmdbApiKey) {
+      await ctx.warn(
+        'immaculateTaste(tv): TMDB apiKey missing; skipping rating refresh on activation',
+        { activated: res.count },
+      );
+    }
+
+    return { activated: res.count, tmdbRatingsUpdated };
   }
 
-  async getActiveShows(params: { minPoints?: number; take?: number }) {
+  async getActiveShows(params: {
+    librarySectionKey: string;
+    minPoints?: number;
+    take?: number;
+  }) {
+    const librarySectionKey = params.librarySectionKey.trim();
+    if (!librarySectionKey) throw new Error('librarySectionKey is required');
     const minPoints = Math.max(1, Math.trunc(params.minPoints ?? 1));
     const take = params.take ? Math.max(1, Math.trunc(params.take)) : undefined;
 
-    return await this.prisma.immaculateTasteShow.findMany({
-      where: { status: 'active', points: { gte: minPoints } },
+    return await this.prisma.immaculateTasteShowLibrary.findMany({
+      where: { librarySectionKey, status: 'active', points: { gte: minPoints } },
       orderBy: [{ points: 'desc' }, { updatedAt: 'desc' }],
       ...(take ? { take } : {}),
     });

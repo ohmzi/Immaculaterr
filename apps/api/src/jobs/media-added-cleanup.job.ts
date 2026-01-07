@@ -13,6 +13,8 @@ import {
   type SonarrSeries,
 } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobReportV1 } from './job-report-v1';
+import { issue, issuesFromWarnings, metricRow } from './job-report-v1';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -270,6 +272,11 @@ export class MediaAddedCleanupJob {
       duplicates: null,
       skipped: false,
       warnings: [] as string[],
+    };
+
+    const toReport = (rawSummary: JsonObject): JobRunResult => {
+      const report = buildMediaAddedCleanupReport({ ctx, raw: rawSummary });
+      return { summary: report as unknown as JsonObject };
     };
 
     if (!mediaType) {
@@ -1555,7 +1562,7 @@ export class MediaAddedCleanupJob {
         ...watchlistWarnings,
       );
       await ctx.info('mediaAddedCleanup(duplicatesSweep): done', summary);
-      return { summary };
+      return toReport(summary);
     }
 
     // --- Helpers for Sonarr matching
@@ -1668,7 +1675,7 @@ export class MediaAddedCleanupJob {
           'mediaAddedCleanup(movie): missing title and ratingKey (skipping)',
         );
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       // 1) Duplicate cleanup (across ALL Plex movie libraries)
@@ -2056,7 +2063,7 @@ export class MediaAddedCleanupJob {
       }
 
       await ctx.info('mediaAddedCleanup(movie): done', summary);
-      return { summary };
+      return toReport(summary);
     }
 
     // --- Show flow
@@ -2067,7 +2074,7 @@ export class MediaAddedCleanupJob {
           'mediaAddedCleanup(show): missing title and ratingKey (skipping)',
         );
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       // Determine TVDB id if possible (best-effort)
@@ -2100,7 +2107,7 @@ export class MediaAddedCleanupJob {
           {},
         );
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       const series = await findSonarrSeries({ tvdbId, title: seriesTitle });
@@ -2110,7 +2117,7 @@ export class MediaAddedCleanupJob {
           tvdbId,
         });
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       const seriesTvdbId = toInt(series.tvdbId) ?? tvdbId ?? null;
@@ -2119,7 +2126,7 @@ export class MediaAddedCleanupJob {
           title: seriesTitle,
         });
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       // Resolve Plex show ratingKeys across ALL TV libraries for this TVDB id.
@@ -2138,7 +2145,7 @@ export class MediaAddedCleanupJob {
           },
         );
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       // Union Plex episodes across all matching show ratingKeys.
@@ -2169,7 +2176,7 @@ export class MediaAddedCleanupJob {
           },
         );
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       // Show is complete in Plex -> unmonitor in Sonarr and remove from watchlist.
@@ -2218,7 +2225,7 @@ export class MediaAddedCleanupJob {
       }
 
       await ctx.info('mediaAddedCleanup(show): done', summary);
-      return { summary };
+      return toReport(summary);
     }
 
     // --- Season flow
@@ -2237,14 +2244,14 @@ export class MediaAddedCleanupJob {
           },
         );
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       // Find series in Sonarr (required for safety check + unmonitor)
       if (!sonarrBaseUrl || !sonarrApiKey) {
         await ctx.warn('sonarr: not configured (skipping season flow)', {});
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       try {
@@ -2258,7 +2265,7 @@ export class MediaAddedCleanupJob {
             tvdbId: tvdbIdInput ?? null,
           });
           summary.skipped = true;
-          return { summary };
+          return toReport(summary);
         }
 
         // Resolve Plex show ratingKeys across ALL TV libraries (required for safety checks)
@@ -2279,7 +2286,7 @@ export class MediaAddedCleanupJob {
             },
           );
           summary.skipped = true;
-          return { summary };
+          return toReport(summary);
         }
 
         // Union Plex episodes across all matching shows/libraries.
@@ -2323,7 +2330,7 @@ export class MediaAddedCleanupJob {
             },
           );
           summary.skipped = true;
-          return { summary };
+          return toReport(summary);
         }
 
         // Unmonitor monitored episodes in this season.
@@ -2430,7 +2437,7 @@ export class MediaAddedCleanupJob {
         }
 
         await ctx.info('mediaAddedCleanup(season): done', summary);
-        return { summary };
+        return toReport(summary);
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
         (summary.warnings as string[]).push(
@@ -2440,7 +2447,7 @@ export class MediaAddedCleanupJob {
           error: msg,
         });
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
     }
 
@@ -2461,7 +2468,7 @@ export class MediaAddedCleanupJob {
           },
         );
         summary.skipped = true;
-        return { summary };
+        return toReport(summary);
       }
 
       if (sonarrBaseUrl && sonarrApiKey) {
@@ -2709,13 +2716,183 @@ export class MediaAddedCleanupJob {
       summary.duplicates = dupMeta as unknown as JsonObject;
 
       await ctx.info('mediaAddedCleanup(episode): done', summary);
-      return { summary };
+      return toReport(summary);
     }
 
     await ctx.warn('mediaAddedCleanup: unsupported mediaType (skipping)', {
       mediaType,
     });
     summary.skipped = true;
-    return { summary };
+    return toReport(summary);
   }
+}
+
+function asNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function buildMediaAddedCleanupReport(params: {
+  ctx: JobContext;
+  raw: JsonObject;
+}): JobReportV1 {
+  const { ctx, raw } = params;
+
+  const issues: JobReportV1['issues'] = [];
+  issues.push(...issuesFromWarnings((raw as Record<string, unknown>).warnings));
+
+  const duplicates = isPlainObject((raw as Record<string, unknown>).duplicates)
+    ? ((raw as Record<string, unknown>).duplicates as Record<string, unknown>)
+    : null;
+  const watchlist = isPlainObject((raw as Record<string, unknown>).watchlist)
+    ? ((raw as Record<string, unknown>).watchlist as Record<string, unknown>)
+    : null;
+
+  // Duplicate warnings (if present)
+  if (duplicates && Array.isArray(duplicates.warnings)) {
+    issues.push(...issuesFromWarnings(duplicates.warnings));
+  }
+
+  const mode =
+    (duplicates && typeof duplicates.mode === 'string' && duplicates.mode.trim()
+      ? duplicates.mode.trim()
+      : typeof (raw as Record<string, unknown>).mediaType === 'string'
+        ? String((raw as Record<string, unknown>).mediaType).trim()
+        : '') || 'unknown';
+
+  // --- Duplicates (best-effort numeric extraction)
+  const movieDup =
+    duplicates && isPlainObject(duplicates.movie)
+      ? (duplicates.movie as Record<string, unknown>)
+      : null;
+  const episodeDup =
+    duplicates && isPlainObject(duplicates.episode)
+      ? (duplicates.episode as Record<string, unknown>)
+      : null;
+
+  // --- Watchlist (best-effort numeric extraction)
+  const watchlistMode = watchlist && typeof watchlist.mode === 'string' ? watchlist.mode : null;
+  const wlMovies =
+    watchlist && isPlainObject(watchlist.movies)
+      ? (watchlist.movies as Record<string, unknown>)
+      : null;
+  const wlShows =
+    watchlist && isPlainObject(watchlist.shows)
+      ? (watchlist.shows as Record<string, unknown>)
+      : null;
+
+  const wlMovieTotal = wlMovies ? (asNum(wlMovies.total) ?? 0) : null;
+  const wlMovieRemoved = wlMovies
+    ? (ctx.dryRun ? asNum(wlMovies.wouldRemove) : asNum(wlMovies.removed)) ?? 0
+    : null;
+  const wlShowTotal = wlShows ? (asNum(wlShows.total) ?? 0) : null;
+  const wlShowRemoved = wlShows
+    ? (ctx.dryRun ? asNum(wlShows.wouldRemove) : asNum(wlShows.removed)) ?? 0
+    : null;
+
+  const tasks: JobReportV1['tasks'] = [
+    {
+      id: 'duplicates',
+      title: 'Duplicate cleanup',
+      status: 'success',
+      rows: [
+        metricRow({ label: 'Movie scanned', end: movieDup ? asNum(movieDup.scanned) : null, unit: 'items' }),
+        metricRow({ label: 'Movie duplicate groups', end: movieDup ? asNum(movieDup.groupsWithDuplicates) : null, unit: 'groups' }),
+        metricRow({ label: 'Movie metadata deleted', end: movieDup ? asNum(movieDup.metadataDeleted) : null, unit: 'items' }),
+        metricRow({ label: 'Movie parts deleted', end: movieDup ? asNum(movieDup.partsDeleted) : null, unit: 'parts' }),
+        metricRow({ label: 'Movie failures', end: movieDup ? asNum(movieDup.failures) : null, unit: 'errors' }),
+        metricRow({ label: 'Episode candidates', end: episodeDup ? asNum(episodeDup.candidates) : null, unit: 'items' }),
+        metricRow({ label: 'Episode duplicate groups', end: episodeDup ? asNum(episodeDup.groupsWithDuplicates) : null, unit: 'groups' }),
+        metricRow({ label: 'Episode metadata deleted', end: episodeDup ? asNum(episodeDup.metadataDeleted) : null, unit: 'items' }),
+        metricRow({ label: 'Episode parts deleted', end: episodeDup ? asNum(episodeDup.partsDeleted) : null, unit: 'parts' }),
+        metricRow({ label: 'Episode failures', end: episodeDup ? asNum(episodeDup.failures) : null, unit: 'errors' }),
+      ],
+      issues: [],
+    },
+    {
+      id: 'watchlist',
+      title: watchlistMode === 'reconcile' ? 'Watchlist reconciliation' : 'Watchlist cleanup',
+      status: watchlist ? 'success' : 'skipped',
+      rows: [
+        metricRow({
+          label: 'Movie watchlist items',
+          start: wlMovieTotal,
+          changed: wlMovieTotal !== null && wlMovieRemoved !== null ? -wlMovieRemoved : null,
+          end: wlMovieTotal !== null && wlMovieRemoved !== null ? Math.max(0, wlMovieTotal - wlMovieRemoved) : null,
+          unit: 'items',
+          note: ctx.dryRun ? 'dry-run (would remove)' : null,
+        }),
+        metricRow({
+          label: 'Show watchlist items',
+          start: wlShowTotal,
+          changed: wlShowTotal !== null && wlShowRemoved !== null ? -wlShowRemoved : null,
+          end: wlShowTotal !== null && wlShowRemoved !== null ? Math.max(0, wlShowTotal - wlShowRemoved) : null,
+          unit: 'items',
+          note: ctx.dryRun ? 'dry-run (would remove)' : null,
+        }),
+        metricRow({
+          label: 'Removed (movie)',
+          end:
+            watchlistMode === 'reconcile'
+              ? wlMovieRemoved
+              : watchlist && asNum(watchlist.removed),
+          unit: 'items',
+        }),
+        metricRow({
+          label: 'Removed (show)',
+          end:
+            watchlistMode === 'reconcile'
+              ? wlShowRemoved
+              : null,
+          unit: 'items',
+        }),
+      ],
+      issues: watchlist && Array.isArray(watchlist.warnings) ? issuesFromWarnings(watchlist.warnings) : [],
+    },
+  ];
+
+  // Surface common failure counts as issues (so they appear in the top summary)
+  const movieFailures = movieDup ? (asNum(movieDup.failures) ?? 0) : 0;
+  const episodeFailures = episodeDup ? (asNum(episodeDup.failures) ?? 0) : 0;
+  if (movieFailures) issues.push(issue('warn', `Movie duplicate cleanup failures: ${movieFailures}.`));
+  if (episodeFailures) issues.push(issue('warn', `Episode duplicate cleanup failures: ${episodeFailures}.`));
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: ctx.jobId,
+    dryRun: ctx.dryRun,
+    trigger: ctx.trigger,
+    headline: `Cleanup complete (${mode}).`,
+    sections: [
+      {
+        id: 'summary',
+        title: 'Summary',
+        rows: [
+          metricRow({ label: 'Warnings', end: issues.filter((i) => i.level === 'warn').length, unit: 'warnings' }),
+          metricRow({ label: 'Errors', end: issues.filter((i) => i.level === 'error').length, unit: 'errors' }),
+        ],
+      },
+      {
+        id: 'duplicates',
+        title: 'Duplicates',
+        rows: [
+          metricRow({ label: 'Movie metadata deleted', end: movieDup ? asNum(movieDup.metadataDeleted) : null, unit: 'items' }),
+          metricRow({ label: 'Movie parts deleted', end: movieDup ? asNum(movieDup.partsDeleted) : null, unit: 'parts' }),
+          metricRow({ label: 'Episode metadata deleted', end: episodeDup ? asNum(episodeDup.metadataDeleted) : null, unit: 'items' }),
+          metricRow({ label: 'Episode parts deleted', end: episodeDup ? asNum(episodeDup.partsDeleted) : null, unit: 'parts' }),
+        ],
+      },
+      {
+        id: 'watchlist',
+        title: 'Watchlist',
+        rows: [
+          metricRow({ label: 'Movie removed', end: wlMovieRemoved, unit: 'items' }),
+          metricRow({ label: 'Show removed', end: wlShowRemoved, unit: 'items' }),
+        ],
+      },
+    ],
+    tasks,
+    issues,
+    raw,
+  };
 }

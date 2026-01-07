@@ -8,7 +8,7 @@ export type JobDefinitionInfo = {
 export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
   {
     id: 'monitorConfirm',
-    name: 'Monitor Confirm',
+    name: 'Confirm Monitored',
     description:
       'Unmonitor items already present in Plex and optionally trigger Sonarr MissingEpisodeSearch.',
     defaultScheduleCron: '0 1 * * *', // 1am daily (disabled by default)
@@ -21,6 +21,13 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     defaultScheduleCron: undefined,
   },
   {
+    id: 'arrMonitoredSearch',
+    name: 'Search Monitored',
+    description:
+      'Scheduled missing-search for monitored items: Radarr MissingMoviesSearch, then Sonarr MissingEpisodeSearch (Sonarr starts 1 hour later when both are enabled).',
+    defaultScheduleCron: '0 4 * * 0', // Sunday at 4am weekly (disabled by default)
+  },
+  {
     id: 'immaculateTastePoints',
     name: 'Immaculate Taste Collection',
     description:
@@ -31,7 +38,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'immaculateTasteRefresher',
     name: 'Immaculate Taste Refresher',
     description:
-      'Off-peak refresh of the "Inspired by your Immaculate Taste" Plex collection across all Plex movie libraries.',
+      'Off-peak refresh of the "Inspired by your Immaculate Taste" Plex collection across all Plex movie and TV libraries.',
     defaultScheduleCron: '0 3 * * *', // 3am daily (disabled by default)
   },
   {

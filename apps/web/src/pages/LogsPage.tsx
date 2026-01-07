@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
-import { useQuery } from '@tanstack/react-query';
-import { CircleAlert, Loader2, ScrollText } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CircleAlert, Loader2, ScrollText, Trash2 } from 'lucide-react';
 
-import { listServerLogs } from '@/api/logs';
+import { clearServerLogs, listServerLogs } from '@/api/logs';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -147,6 +147,7 @@ function serviceTagsForLine(line: {
 }
 
 export function LogsPage() {
+  const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
   const [selected, setSelected] = useState<ServiceFilter[]>([]);
@@ -179,11 +180,23 @@ export function LogsPage() {
     });
   }, [logs, query, selected]);
 
+  const clearMutation = useMutation({
+    mutationFn: clearServerLogs,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['serverLogs'] });
+    },
+  });
+
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-3 shadow-2xl';
 
   const toggle = (id: ServiceFilter) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const clearFilters = () => {
+    setSelected([]);
+    setQuery('');
   };
 
   return (
@@ -265,7 +278,7 @@ export function LogsPage() {
                 <CircleAlert className="mt-0.5 h-4 w-4" />
                 <div>{(logsQuery.error as Error).message}</div>
               </div>
-            ) : filtered.length ? (
+            ) : (
               <>
                 <div className="p-3 md:p-4 border-b border-white/10 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
                   <div className="flex flex-wrap items-center gap-2">
@@ -313,52 +326,124 @@ export function LogsPage() {
                     </button>
                   </div>
 
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Filter… (e.g. scrobble, library.new, OFFLINE)"
-                    className="w-full md:w-[360px] px-4 py-2 rounded-full border border-white/15 bg-white/5 text-white placeholder-white/40 outline-none focus:ring-2 focus:ring-white/15"
-                  />
+                  <div className="flex items-center gap-2 w-full md:w-auto">
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Filter… (e.g. scrobble, library.new, OFFLINE)"
+                      className="flex-1 md:w-[360px] px-4 py-2 rounded-full border border-white/15 bg-white/5 text-white placeholder-white/40 outline-none focus:ring-2 focus:ring-white/15"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const total = logs.length;
+                        if (!total) return;
+                        if (
+                          !confirm(
+                            `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        clearMutation.mutate();
+                      }}
+                      disabled={clearMutation.isPending || logs.length === 0}
+                      className={[
+                        APP_PRESSABLE_CLASS,
+                        'inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border transition whitespace-nowrap',
+                        clearMutation.isPending
+                          ? 'bg-red-500/10 text-red-100/70 border-red-500/15 cursor-not-allowed'
+                          : logs.length > 0
+                            ? 'bg-red-500/10 text-red-100 border-red-500/25 hover:bg-red-500/15'
+                            : 'bg-white/5 text-white/40 border-white/10 cursor-not-allowed',
+                      ].join(' ')}
+                      title="Clear all logs"
+                    >
+                      {clearMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Clearing…
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="h-4 w-4" />
+                          Clear all
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-                <table className="w-full text-sm">
-                  <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
-                    <tr>
-                      <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
-                        Timestamp
-                      </th>
-                      <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
-                        Level
-                      </th>
-                      <th className="border-b border-white/10 px-4 py-3">
-                        Message
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((line) => (
-                      <tr key={line.id} className="border-t border-white/10 hover:bg-white/5">
-                        <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60">
-                          {new Date(line.time).toLocaleTimeString()}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span
-                            className={['font-mono text-xs font-semibold', levelClass(line.level)].join(' ')}
+
+                {filtered.length ? (
+                  <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
+                        <tr>
+                          <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
+                            Timestamp
+                          </th>
+                          <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
+                            Level
+                          </th>
+                          <th className="border-b border-white/10 px-4 py-3">Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((line) => (
+                          <tr
+                            key={line.id}
+                            className="border-t border-white/10 hover:bg-white/5"
                           >
-                            {formatLevel(line.level)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs text-white/85">
-                          {line.message}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60">
+                              {new Date(line.time).toLocaleTimeString()}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span
+                                className={[
+                                  'font-mono text-xs font-semibold',
+                                  levelClass(line.level),
+                                ].join(' ')}
+                              >
+                                {formatLevel(line.level)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs text-white/85">
+                              {line.message}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4">
+                    <div className="text-sm text-white/80 font-semibold">
+                      {logs.length === 0
+                        ? 'No logs yet.'
+                        : selected.length === 1 &&
+                            selected[0] === 'errors' &&
+                            query.trim().length === 0
+                          ? 'No error logs yet.'
+                          : 'No logs match your current filters.'}
+                    </div>
+                    {(selected.length > 0 || query.trim().length > 0) && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className={[
+                            APP_PRESSABLE_CLASS,
+                            'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
+                            'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+                          ].join(' ')}
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
-            ) : (
-              <div className="text-sm text-white/70 p-4">No logs yet.</div>
             )}
           </div>
         </div>

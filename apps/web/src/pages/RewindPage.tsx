@@ -1,16 +1,17 @@
 import { useMemo, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
   Loader2,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 
-import { listJobs, listRuns, type JobRun } from '@/api/jobs';
+import { clearRuns, listJobs, listRuns, type JobRun } from '@/api/jobs';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -56,6 +57,7 @@ function modeLabel(run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' {
 }
 
 export function RewindPage() {
+  const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
   const [jobId, setJobId] = useState('');
@@ -96,6 +98,13 @@ export function RewindPage() {
     const jobs = jobsQuery.data?.jobs ?? [];
     return new Map(jobs.map((j) => [j.id, j.name] as const));
   }, [jobsQuery.data?.jobs]);
+
+  const clearAllMutation = useMutation({
+    mutationFn: async () => clearRuns(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['jobRuns', 'rewind'] });
+    },
+  });
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
@@ -293,6 +302,48 @@ export function RewindPage() {
                         {`${filtered.length.toLocaleString()} shown`}
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const total = historyQuery.data?.runs?.length ?? 0;
+                        if (!total) return;
+                        if (
+                          !confirm(
+                            `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        clearAllMutation.mutate();
+                      }}
+                      disabled={
+                        clearAllMutation.isPending ||
+                        !(historyQuery.data?.runs?.length ?? 0)
+                      }
+                      className={[
+                        'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation',
+                        'border',
+                        clearAllMutation.isPending
+                          ? 'border-red-500/15 bg-red-500/10 text-red-100/70 cursor-not-allowed'
+                          : (historyQuery.data?.runs?.length ?? 0) > 0
+                            ? 'border-red-500/25 bg-red-500/10 text-red-100 hover:bg-red-500/15'
+                            : 'border-white/10 bg-white/5 text-white/40 cursor-not-allowed',
+                      ].join(' ')}
+                      title="Clear all Rewind history"
+                    >
+                      {clearAllMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Clearing…
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="h-4 w-4" />
+                          Clear all
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   {filtered.length ? (
