@@ -1,8 +1,9 @@
 // Shared Tailwind class strings for consistent UX across pages.
 // Keep this file export-only (no React components) to preserve fast refresh behavior.
 
-export const APP_BG_IMAGE_URL =
-  "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral";
+import appBgUrl from '../assets/app-bg.png';
+
+export const APP_BG_IMAGE_URL = appBgUrl;
 
 // Bright top-left highlight (uniform across pages).
 export const APP_BG_HIGHLIGHT_CLASS =
