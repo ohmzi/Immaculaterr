@@ -48,6 +48,9 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/api/prisma apps/api/prisma
 RUN npm ci --omit=dev && npm cache clean --force
 
+# Ensure Prisma client exists at runtime (the Nest app imports @prisma/client).
+RUN npm -w apps/api run db:generate
+
 # Copy built artifacts
 COPY --from=builder /app/apps/api/dist /app/apps/api/dist
 COPY --from=builder /app/apps/web/dist /app/apps/web/dist
