@@ -7,6 +7,8 @@ import {
   Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { SettingsService } from './settings.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 
@@ -27,6 +29,39 @@ export class SettingsController {
   @Get()
   get(@Req() req: AuthenticatedRequest) {
     return this.settingsService.getPublicSettings(req.user.id);
+  }
+
+  @Get('backup-info')
+  backupInfo() {
+    const appDataDir = process.env.APP_DATA_DIR?.trim() || null;
+    const databaseUrl = process.env.DATABASE_URL?.trim() || null;
+
+    const envMasterKeySet = Boolean(process.env.APP_MASTER_KEY?.trim());
+    const keyFilePath = appDataDir ? join(appDataDir, 'app-master.key') : null;
+    const keyFileExists = keyFilePath ? existsSync(keyFilePath) : false;
+
+    const dbFilePath =
+      databaseUrl && databaseUrl.startsWith('file:')
+        ? databaseUrl.slice('file:'.length)
+        : null;
+
+    const whatToBackup = [
+      ...(appDataDir ? [appDataDir] : []),
+      ...(dbFilePath ? [dbFilePath] : []),
+      ...(!envMasterKeySet && keyFilePath ? [keyFilePath] : []),
+    ];
+
+    return {
+      appDataDir,
+      databaseUrl,
+      masterKey: {
+        source: envMasterKeySet ? ('env' as const) : ('file' as const),
+        envSet: envMasterKeySet,
+        keyFilePath,
+        keyFileExists,
+      },
+      whatToBackup,
+    };
   }
 
   @Put()
