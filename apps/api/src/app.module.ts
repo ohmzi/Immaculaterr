@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DbModule } from './db/db.module';
 import { PlexModule } from './plex/plex.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { RadarrModule } from './radarr/radarr.module';
@@ -38,6 +39,7 @@ const staticImports = existsSync(webDistPath)
 @Module({
   imports: [
     ...staticImports,
+    DbModule,
     CryptoModule,
     AuthModule,
     SettingsModule,
