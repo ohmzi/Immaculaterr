@@ -37,6 +37,10 @@ export class SettingsController {
     const databaseUrl = process.env.DATABASE_URL?.trim() || null;
 
     const envMasterKeySet = Boolean(process.env.APP_MASTER_KEY?.trim());
+    const envMasterKeyFilePath = process.env.APP_MASTER_KEY_FILE?.trim() || null;
+    const envMasterKeyFileExists = envMasterKeyFilePath
+      ? existsSync(envMasterKeyFilePath)
+      : false;
     const keyFilePath = appDataDir ? join(appDataDir, 'app-master.key') : null;
     const keyFileExists = keyFilePath ? existsSync(keyFilePath) : false;
 
@@ -45,20 +49,28 @@ export class SettingsController {
         ? databaseUrl.slice('file:'.length)
         : null;
 
+    const masterKeySource = envMasterKeySet
+      ? ('env' as const)
+      : envMasterKeyFilePath
+        ? ('file' as const)
+        : ('dataDirFile' as const);
+
     const whatToBackup = [
       ...(appDataDir ? [appDataDir] : []),
       ...(dbFilePath ? [dbFilePath] : []),
-      ...(!envMasterKeySet && keyFilePath ? [keyFilePath] : []),
+      ...(masterKeySource === 'dataDirFile' && keyFilePath ? [keyFilePath] : []),
     ];
 
     return {
       appDataDir,
       databaseUrl,
       masterKey: {
-        source: envMasterKeySet ? ('env' as const) : ('file' as const),
+        source: masterKeySource,
         envSet: envMasterKeySet,
-        keyFilePath,
-        keyFileExists,
+        envFilePath: envMasterKeyFilePath,
+        envFileExists: envMasterKeyFileExists,
+        dataDirKeyFilePath: keyFilePath,
+        dataDirKeyFileExists: keyFileExists,
       },
       whatToBackup,
     };

@@ -9,13 +9,18 @@ services:
       # Persist DB + runtime state outside the container
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
+      # Preferred: inject via deployment secrets
+      - APP_MASTER_KEY=${APP_MASTER_KEY:-}
+      - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
+      # Optional: override default secure umask (octal). Default is 077.
+      - APP_UMASK=${APP_UMASK:-}
     ports:
       # Host port is configurable because dev boxes often already use 3000.
       - "${HOST_PORT:-3210}:3210"
     volumes:
       - tautulli-curated-plex-data:/data
+    restart: unless-stopped
 
 volumes:
   tautulli-curated-plex-data:
-
 

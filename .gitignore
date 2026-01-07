@@ -41,3 +41,6 @@ pnpm-debug.log*
 agent.md
 design_system.md
 UI_COMPONENTS.md
+
+# Local deployment secrets (do NOT commit)
+docker/tautulli-curated-plex/secrets/

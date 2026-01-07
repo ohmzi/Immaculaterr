@@ -83,6 +83,18 @@ export class CryptoService implements OnModuleInit {
       return decodeMasterKey(envKey);
     }
 
+    const envKeyFile = process.env.APP_MASTER_KEY_FILE?.trim();
+    if (envKeyFile) {
+      try {
+        const raw = await readFile(envKeyFile, 'utf8');
+        this.logger.log(`Using APP_MASTER_KEY from file (${envKeyFile}).`);
+        return decodeMasterKey(raw);
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        throw new Error(`Failed to read APP_MASTER_KEY_FILE (${envKeyFile}): ${msg}`);
+      }
+    }
+
     const dataDir = process.env.APP_DATA_DIR?.trim();
     if (!dataDir) {
       throw new Error(
@@ -93,6 +105,8 @@ export class CryptoService implements OnModuleInit {
     const keyPath = join(dataDir, 'app-master.key');
     try {
       const existing = await readFile(keyPath, 'utf8');
+      // Best-effort: keep the key file locked down (owner read/write only).
+      await chmod(keyPath, 0o600).catch(() => undefined);
       this.logger.log(`Loaded master key from ${keyPath}`);
       return decodeMasterKey(existing);
     } catch (err) {
