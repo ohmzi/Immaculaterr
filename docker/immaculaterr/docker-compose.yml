@@ -1,8 +1,8 @@
 services:
-  tautulli-curated-plex:
+  immaculaterr:
     build:
       context: ../..
-      dockerfile: docker/tautulli-curated-plex/Dockerfile
+      dockerfile: docker/immaculaterr/Dockerfile
     environment:
       - HOST=0.0.0.0
       - PORT=3210
@@ -18,9 +18,9 @@ services:
       # Host port is configurable because dev boxes often already use 3000.
       - "${HOST_PORT:-3210}:3210"
     volumes:
-      - tautulli-curated-plex-data:/data
+      - immaculaterr-data:/data
     restart: unless-stopped
 
 volumes:
-  tautulli-curated-plex-data:
+  immaculaterr-data:
 

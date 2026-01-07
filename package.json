@@ -1,5 +1,5 @@
 {
-  "name": "tautulli-curated-plex",
+  "name": "immaculaterr",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -15,8 +15,8 @@
     "dev": "npm run dev:preflight && concurrently --kill-others-on-fail -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
     "gen:master-key": "node scripts/gen-master-key.mjs",
     "gen:openapi": "npm -w apps/api run openapi:generate && npm -w apps/web run openapi:types",
-    "docker:up": "docker compose -f docker/tautulli-curated-plex/docker-compose.yml up --build",
-    "docker:down": "docker compose -f docker/tautulli-curated-plex/docker-compose.yml down",
+    "docker:up": "docker compose -f docker/immaculaterr/docker-compose.yml up --build",
+    "docker:down": "docker compose -f docker/immaculaterr/docker-compose.yml down",
     "build": "npm --workspaces --if-present run build",
     "lint": "npm --workspaces --if-present run lint",
     "test": "npm --workspaces --if-present run test"

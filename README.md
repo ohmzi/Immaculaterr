@@ -1,8 +1,8 @@
-## Immaculaterr (Tautulli Curated Plex Collection)
+## Immaculaterr
 
 This repo contains a **NestJS API** (`apps/api`) and a **React (Vite) web UI** (`apps/web`) for managing curated Plex collections and integrations (Plex/Radarr/Sonarr/TMDB/OpenAI/Google/Overseerr).
 
-Legacy **Python / Tautulli script** automation (including `tautulli_immaculate_taste_collection.py`) has been removed in favor of the webapp-driven system.
+Legacy **Python / Tautulli script** automation has been removed in favor of the webapp-driven system.
 
 ### Development
 
@@ -11,7 +11,7 @@ Legacy **Python / Tautulli script** automation (including `tautulli_immaculate_t
 
 ### Production (Docker)
 
-- `docker compose -f docker/tautulli-curated-plex/docker-compose.yml up --build`
+- `docker compose -f docker/immaculaterr/docker-compose.yml up --build`
 
 ### Master key (recommended hardening)
 
@@ -32,13 +32,13 @@ node scripts/gen-master-key.mjs
 #### Docker secrets (recommended)
 
 ```bash
-mkdir -p docker/tautulli-curated-plex/secrets
-node scripts/gen-master-key.mjs > docker/tautulli-curated-plex/secrets/app_master_key
-chmod 600 docker/tautulli-curated-plex/secrets/app_master_key
+mkdir -p docker/immaculaterr/secrets
+node scripts/gen-master-key.mjs > docker/immaculaterr/secrets/app_master_key
+chmod 600 docker/immaculaterr/secrets/app_master_key
 
 docker compose \
-  -f docker/tautulli-curated-plex/docker-compose.yml \
-  -f docker/tautulli-curated-plex/docker-compose.secrets.yml \
+  -f docker/immaculaterr/docker-compose.yml \
+  -f docker/immaculaterr/docker-compose.secrets.yml \
   up --build
 ```
 

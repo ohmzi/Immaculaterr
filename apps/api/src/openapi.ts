@@ -13,8 +13,8 @@ async function generateOpenApi() {
   app.setGlobalPrefix('api');
 
   const config = new DocumentBuilder()
-    .setTitle('Tautulli Curated Plex API')
-    .setDescription('Local API for the Tautulli Curated Plex webapp.')
+    .setTitle('Immaculaterr API')
+    .setDescription('Local API for the Immaculaterr webapp.')
     .setVersion('0.0.0')
     .build();
 

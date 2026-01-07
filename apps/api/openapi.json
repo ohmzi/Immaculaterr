@@ -383,8 +383,8 @@
     }
   },
   "info": {
-    "title": "Tautulli Curated Plex API",
-    "description": "Local API for the Tautulli Curated Plex webapp.",
+    "title": "Immaculaterr API",
+    "description": "Local API for the Immaculaterr webapp.",
     "version": "0.0.0",
     "contact": {}
   },

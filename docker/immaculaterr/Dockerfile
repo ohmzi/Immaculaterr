@@ -45,7 +45,7 @@ COPY --from=builder /app/apps/api/dist /app/apps/api/dist
 COPY --from=builder /app/apps/web/dist /app/apps/web/dist
 
 # Entrypoint script (handles /data perms then starts the app as non-root).
-COPY docker/tautulli-curated-plex/entrypoint.sh /entrypoint.sh
+COPY docker/immaculaterr/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 3210

@@ -395,10 +395,10 @@ export class PlexWatchlistService {
     return {
       Accept: 'application/xml',
       'X-Plex-Client-Identifier': this.clientIdentifier,
-      'X-Plex-Product': 'Tautulli Curated Plex',
+      'X-Plex-Product': 'Immaculaterr',
       'X-Plex-Version': '0.0.0',
       'X-Plex-Device': 'Server',
-      'X-Plex-Device-Name': 'Tautulli Curated Plex',
+      'X-Plex-Device-Name': 'Immaculaterr',
       'X-Plex-Platform': 'Web',
       'X-Plex-Platform-Version': process.version,
       ...(params.token ? { 'X-Plex-Token': params.token } : {}),

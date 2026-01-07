@@ -67,7 +67,7 @@ export class PlexService {
     const authUrl = `https://app.plex.tv/auth#?clientID=${encodeURIComponent(
       this.clientIdentifier,
     )}&code=${encodeURIComponent(data.code)}&context%5Bdevice%5D%5Bproduct%5D=${encodeURIComponent(
-      'Tautulli Curated Plex',
+      'Immaculaterr',
     )}`;
 
     return {
@@ -154,10 +154,10 @@ export class PlexService {
     return {
       Accept: 'application/json',
       'X-Plex-Client-Identifier': this.clientIdentifier,
-      'X-Plex-Product': 'Tautulli Curated Plex',
+      'X-Plex-Product': 'Immaculaterr',
       'X-Plex-Version': '0.0.0',
       'X-Plex-Device': 'Server',
-      'X-Plex-Device-Name': 'Tautulli Curated Plex',
+      'X-Plex-Device-Name': 'Immaculaterr',
       'X-Plex-Platform': 'Web',
       'X-Plex-Platform-Version': process.version,
     };
