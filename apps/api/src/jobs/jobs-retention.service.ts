@@ -14,6 +14,8 @@ export class JobsRetentionService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   onModuleInit() {
+    // Best-effort cleanup of orphaned RUNNING runs from previous process lifetimes.
+    setTimeout(() => void this.cleanupOrphanedRunningRuns(), 5_000);
     // Run once shortly after startup.
     setTimeout(() => void this.cleanupOnce(), 20_000);
   }
@@ -66,6 +68,51 @@ export class JobsRetentionService implements OnModuleInit {
     } catch (err) {
       this.logger.warn(
         `Rewind retention failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    }
+  }
+
+  private async cleanupOrphanedRunningRuns() {
+    // Approximate process start time using uptime so we only touch runs from a previous process.
+    const bootTime = new Date(Date.now() - process.uptime() * 1000);
+    const now = new Date();
+
+    try {
+      const runs = await this.prisma.jobRun.findMany({
+        where: { status: 'RUNNING', startedAt: { lt: bootTime } },
+        select: { id: true, jobId: true, startedAt: true },
+      });
+      if (!runs.length) return;
+
+      const ids = runs.map((r) => r.id);
+      const message = `Orphaned RUNNING job detected after restart (bootTime=${bootTime.toISOString()}); marking as FAILED.`;
+
+      const [updateRes, logsRes] = await this.prisma.$transaction([
+        this.prisma.jobRun.updateMany({
+          where: { id: { in: ids } },
+          data: { status: 'FAILED', finishedAt: now, errorMessage: message },
+        }),
+        this.prisma.jobLogLine.createMany({
+          data: runs.map((r) => ({
+            runId: r.id,
+            level: 'error',
+            message,
+            context: {
+              reason: 'orphaned_running',
+              jobId: r.jobId,
+              startedAt: r.startedAt.toISOString(),
+              bootTime: bootTime.toISOString(),
+            },
+          })),
+        }),
+      ]);
+
+      this.logger.warn(
+        `Orphaned job runs: marked FAILED runs=${updateRes.count} logs=${logsRes.count} bootTime=${bootTime.toISOString()}`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Orphaned job run cleanup failed: ${(err as Error)?.message ?? String(err)}`,
       );
     }
   }
