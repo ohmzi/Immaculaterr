@@ -2,12 +2,20 @@ FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
+# Prisma engines need OpenSSL available during generation/build.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/*
+
 # 1) Install deps (cached)
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/api/prisma apps/api/prisma
 RUN npm ci
+
+# Ensure Prisma client/types exist for `nest build` in CI/Docker.
+RUN npm -w apps/api run db:generate
 
 # 2) Build
 COPY apps/api apps/api

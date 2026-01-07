@@ -1,5 +1,9 @@
+name: immaculaterr
+
 services:
   immaculaterr:
+    container_name: immaculaterr
+    image: immaculaterr:latest
     build:
       context: ../..
       dockerfile: docker/immaculaterr/Dockerfile
@@ -23,4 +27,5 @@ services:
 
 volumes:
   immaculaterr-data:
+    name: immaculaterr-data
 
