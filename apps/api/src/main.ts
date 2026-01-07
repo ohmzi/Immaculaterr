@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { ensureBootstrapEnv } from './bootstrap-env';
 import { BufferedLogger } from './logs/buffered-logger';
+import { createOriginCheckMiddleware } from './security/origin-check.middleware';
 
 function parseTrustProxyEnv(
   raw: string | undefined,
@@ -77,6 +78,9 @@ async function bootstrap() {
       credentials: true,
     });
   }
+
+  // Lightweight CSRF/origin defense for state-changing requests.
+  app.use('/api', createOriginCheckMiddleware({ allowedOrigins: corsOrigins }));
 
   // Lightweight request logging (only warnings/errors/slow requests)
   const httpLoggingEnabled =
