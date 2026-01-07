@@ -60,11 +60,23 @@ async function bootstrap() {
   // Keep the API surface separate from the UI routes we’ll serve later.
   app.setGlobalPrefix('api');
 
-  // Dev-friendly defaults (Vite proxy, etc.)
-  app.enableCors({
-    origin: true,
-    credentials: true,
-  });
+  // CORS: in production default to same-origin (no CORS). Enable only via CORS_ORIGINS allowlist.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (process.env.NODE_ENV !== 'production') {
+    // Dev-friendly defaults (Vite proxy, etc.)
+    app.enableCors({
+      origin: true,
+      credentials: true,
+    });
+  } else if (corsOrigins.length > 0) {
+    app.enableCors({
+      origin: corsOrigins,
+      credentials: true,
+    });
+  }
 
   // Lightweight request logging (only warnings/errors/slow requests)
   const httpLoggingEnabled =
