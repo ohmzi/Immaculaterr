@@ -8,6 +8,7 @@ import { ensureBootstrapEnv } from './bootstrap-env';
 import { BufferedLogger } from './logs/buffered-logger';
 import { createOriginCheckMiddleware } from './security/origin-check.middleware';
 import { createIpRateLimitMiddleware } from './security/ip-rate-limit.middleware';
+import { securityHeadersMiddleware } from './security/security-headers.middleware';
 
 function parseTrustProxyEnv(
   raw: string | undefined,
@@ -57,6 +58,7 @@ async function bootstrap() {
     );
   }
 
+  app.use(securityHeadersMiddleware);
   app.use(cookieParser());
 
   // Keep the API surface separate from the UI routes we’ll serve later.
