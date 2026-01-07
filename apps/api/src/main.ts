@@ -7,6 +7,24 @@ import { AppModule } from './app.module';
 import { ensureBootstrapEnv } from './bootstrap-env';
 import { BufferedLogger } from './logs/buffered-logger';
 
+function parseTrustProxyEnv(
+  raw: string | undefined,
+): boolean | number | string | undefined {
+  const value = raw?.trim();
+  if (!value) return undefined;
+
+  const lower = value.toLowerCase();
+  if (lower === 'true' || lower === 'yes' || lower === 'on') return true;
+  if (lower === 'false' || lower === 'no' || lower === 'off') return false;
+
+  if (/^\d+$/.test(value)) return Number.parseInt(value, 10);
+
+  // Allow Express "trust proxy" presets like:
+  // - "loopback, linklocal, uniquelocal"
+  // - "172.16.0.0/12"
+  return value;
+}
+
 async function bootstrap() {
   await ensureBootstrapEnv();
   const bootstrapLogger = new Logger('Bootstrap');
@@ -22,6 +40,21 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: new BufferedLogger(),
   });
+
+  // Reverse-proxy correctness (req.ip, req.secure, etc.). Configurable via TRUST_PROXY.
+  // Defaults to 1 hop in production to support typical single reverse-proxy deployments.
+  const trustProxy =
+    parseTrustProxyEnv(process.env.TRUST_PROXY) ??
+    (process.env.NODE_ENV === 'production' ? 1 : undefined);
+  if (trustProxy !== undefined) {
+    const httpAdapter = app.getHttpAdapter();
+    // Nest uses Express by default; set trust proxy on the underlying Express app instance.
+    (httpAdapter.getInstance() as { set?: (k: string, v: unknown) => void })?.set?.(
+      'trust proxy',
+      trustProxy,
+    );
+  }
+
   app.use(cookieParser());
 
   // Keep the API surface separate from the UI routes we’ll serve later.
