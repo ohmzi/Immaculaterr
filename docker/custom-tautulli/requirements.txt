@@ -1,8 +1,0 @@
-requests==2.31.0
-plexapi==4.16.1
-openai==1.61.1
-tmdbv3api==1.9.0
-arrapi==1.4.13
-setuptools==68.1.2
-PyYAML==6.0.1
-typing_extensions>=4.10.0
