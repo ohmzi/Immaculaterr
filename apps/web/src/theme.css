@@ -39,6 +39,10 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* App-specific tokens (used by shared UI class strings) */
+  --tcp-surface-rgb: 11, 12, 15;
+  --tcp-accent-rgb: 250, 204, 21;
 }
 
 .dark {
@@ -76,6 +80,10 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
+
+  /* App-specific tokens (used by shared UI class strings) */
+  --tcp-surface-rgb: 11, 12, 15;
+  --tcp-accent-rgb: 250, 204, 21;
 }
 
 @theme inline {
