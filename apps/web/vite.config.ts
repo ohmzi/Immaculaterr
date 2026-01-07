@@ -22,7 +22,10 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: `http://127.0.0.1:${Number.parseInt(process.env.API_PORT ?? process.env.PORT ?? '3210', 10)}`,
-        changeOrigin: true,
+        // Preserve the original Host header so API Origin checks work for LAN IPs / tunnels.
+        // Also forward X-Forwarded-* so the API can make correct decisions behind proxies.
+        changeOrigin: false,
+        xfwd: true,
       },
     },
   },

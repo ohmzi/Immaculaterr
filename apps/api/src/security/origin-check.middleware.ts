@@ -24,6 +24,25 @@ export function createOriginCheckMiddleware(options: OriginCheckOptions = {}) {
     if (normalized) allowed.add(normalized);
   }
 
+  const getExpectedHost = (req: Request): string | null => {
+    // Prefer the original host when behind a proxy (Cloudflare/Nginx/Vite dev proxy, etc.).
+    const xfHostRaw = req.headers['x-forwarded-host'];
+    const xfHost =
+      typeof xfHostRaw === 'string'
+        ? xfHostRaw
+        : Array.isArray(xfHostRaw)
+          ? xfHostRaw.join(',')
+          : '';
+    const forwardedHost = xfHost.split(',')[0]?.trim().toLowerCase() || '';
+
+    const hostHeader =
+      typeof req.headers.host === 'string'
+        ? req.headers.host.trim().toLowerCase()
+        : '';
+
+    return forwardedHost || hostHeader || null;
+  };
+
   return function originCheck(req: Request, res: Response, next: NextFunction) {
     if (!STATE_CHANGING_METHODS.has(req.method.toUpperCase())) return next();
 
@@ -43,10 +62,8 @@ export function createOriginCheckMiddleware(options: OriginCheckOptions = {}) {
     }
 
     const hostHeader =
-      typeof req.headers.host === 'string'
-        ? req.headers.host.trim().toLowerCase()
-        : '';
-    if (!hostHeader) {
+      getExpectedHost(req) ?? '';
+    if (!hostHeader.trim()) {
       res.status(403).json({
         statusCode: 403,
         message: 'Forbidden',
