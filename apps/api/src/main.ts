@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 import { ensureBootstrapEnv } from './bootstrap-env';
 import { BufferedLogger } from './logs/buffered-logger';
 import { createOriginCheckMiddleware } from './security/origin-check.middleware';
+import { createIpRateLimitMiddleware } from './security/ip-rate-limit.middleware';
 
 function parseTrustProxyEnv(
   raw: string | undefined,
@@ -81,6 +82,53 @@ async function bootstrap() {
 
   // Lightweight CSRF/origin defense for state-changing requests.
   app.use('/api', createOriginCheckMiddleware({ allowedOrigins: corsOrigins }));
+
+  // Auth rate limiting (in-memory, per-IP).
+  const authRateLimitWindowMsRaw = Number.parseInt(
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? '60000',
+    10,
+  );
+  const authRateLimitWindowMs =
+    Number.isFinite(authRateLimitWindowMsRaw) && authRateLimitWindowMsRaw > 0
+      ? authRateLimitWindowMsRaw
+      : 60_000;
+
+  const authLoginMaxRaw = Number.parseInt(
+    process.env.AUTH_RATE_LIMIT_MAX_LOGIN ?? '10',
+    10,
+  );
+  const authLoginMax =
+    Number.isFinite(authLoginMaxRaw) && authLoginMaxRaw > 0
+      ? authLoginMaxRaw
+      : 10;
+
+  const authRegisterMaxRaw = Number.parseInt(
+    process.env.AUTH_RATE_LIMIT_MAX_REGISTER ?? '3',
+    10,
+  );
+  const authRegisterMax =
+    Number.isFinite(authRegisterMaxRaw) && authRegisterMaxRaw > 0
+      ? authRegisterMaxRaw
+      : 3;
+
+  app.use(
+    '/api/auth/login',
+    createIpRateLimitMiddleware({
+      windowMs: authRateLimitWindowMs,
+      max: authLoginMax,
+      keyPrefix: 'auth_login',
+      methods: ['POST'],
+    }),
+  );
+  app.use(
+    '/api/auth/register',
+    createIpRateLimitMiddleware({
+      windowMs: authRateLimitWindowMs,
+      max: authRegisterMax,
+      keyPrefix: 'auth_register',
+      methods: ['POST'],
+    }),
+  );
 
   // Lightweight request logging (only warnings/errors/slow requests)
   const httpLoggingEnabled =
