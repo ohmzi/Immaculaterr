@@ -21,13 +21,17 @@ export function AppShell() {
     retry: false,
   });
 
-  const onboardingCompleted = useMemo(() => {
+  // Tri-state: null = unknown (loading/error), boolean = known value.
+  // This prevents the setup wizard from flashing open during initial settings fetch.
+  const onboardingCompleted = useMemo<null | boolean>(() => {
+    if (settingsQuery.status !== 'success') return null;
+
     const s = settingsQuery.data?.settings;
     if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
     const onboarding = (s as Record<string, unknown>)['onboarding'];
     if (!onboarding || typeof onboarding !== 'object' || Array.isArray(onboarding)) return false;
     return Boolean((onboarding as Record<string, unknown>)['completed']);
-  }, [settingsQuery.data?.settings]);
+  }, [settingsQuery.status, settingsQuery.data?.settings]);
 
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -60,8 +64,8 @@ export function AppShell() {
 
       {/* Setup Wizard Modal */}
       <SetupWizardModal
-        open={wizardOpen || !onboardingCompleted}
-        required={!onboardingCompleted}
+        open={wizardOpen || onboardingCompleted === false}
+        required={onboardingCompleted === false}
         onClose={() => setWizardOpen(false)}
         onFinished={() => setWizardOpen(false)}
       />
