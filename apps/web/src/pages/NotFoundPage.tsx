@@ -3,6 +3,7 @@ import { ArrowLeft, Home } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
+import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
 
 export function NotFoundPage() {
   const navigate = useNavigate();
@@ -12,7 +13,7 @@ export function NotFoundPage() {
       {/* Background (match landing page) */}
       <div className="pointer-events-none fixed inset-0">
         <img
-          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+          src={APP_BG_IMAGE_URL}
           alt="Movie posters collection"
           className="h-full w-full object-cover object-center"
         />

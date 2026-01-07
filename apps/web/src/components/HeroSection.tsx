@@ -4,6 +4,7 @@ import { ArrowRight, ChevronRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
+import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
 
 type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
 
@@ -316,8 +317,8 @@ export function HeroSection() {
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8 select-none [-webkit-touch-callout:none]">
       {/* Background Image */}
       <div className="pointer-events-none fixed inset-0">
-        <img 
-          src="https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3ZpZSUyMHBvc3RlcnMlMjB3YWxsJTIwZGlhZ29uYWx8ZW58MXx8fHwxNzY3MzY5MDYwfDA&ixlib=rb-4.1.0&q=80&w=1920&utm_source=figma&utm_medium=referral"
+        <img
+          src={APP_BG_IMAGE_URL}
           alt="Movie posters collection"
           className="h-full w-full object-cover object-center"
         />

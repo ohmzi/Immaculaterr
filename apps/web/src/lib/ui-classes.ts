@@ -1,7 +1,7 @@
 // Shared Tailwind class strings for consistent UX across pages.
 // Keep this file export-only (no React components) to preserve fast refresh behavior.
 
-import appBgUrl from '../assets/app-bg.png';
+import appBgUrl from '../assets/app-bg.jpg';
 
 export const APP_BG_IMAGE_URL = appBgUrl;
 
