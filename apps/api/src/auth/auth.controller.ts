@@ -131,20 +131,34 @@ export class AuthController {
   }
 
   private setSessionCookie(res: Response, sessionId: string) {
-    const secure = process.env.COOKIE_SECURE === 'true';
     res.cookie(this.authService.getSessionCookieName(), sessionId, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure,
+      ...this.getSessionCookieOptions(),
       // session cookie (no maxAge) => cleared when browser closes
     });
   }
 
   private clearSessionCookie(res: Response) {
     res.clearCookie(this.authService.getSessionCookieName(), {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.COOKIE_SECURE === 'true',
+      ...this.getSessionCookieOptions(),
     });
+  }
+
+  private getSessionCookieOptions() {
+    // In production we default secure cookies ON (HTTPS behind reverse proxy).
+    // Override with COOKIE_SECURE=true|false for special deployments/dev.
+    const raw = process.env.COOKIE_SECURE?.trim().toLowerCase();
+    const secure =
+      raw === 'true'
+        ? true
+        : raw === 'false'
+          ? false
+          : process.env.NODE_ENV === 'production';
+
+    return {
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      secure,
+      path: '/',
+    };
   }
 }
