@@ -64,6 +64,31 @@ export type PlexActivityDetails = {
   librarySectionId: string | null;
 };
 
+export type PlexNowPlayingSession = {
+  sessionKey: string;
+  type: 'movie' | 'episode' | 'track' | 'unknown';
+  ratingKey: string | null;
+
+  title: string | null;
+  year: number | null;
+
+  // TV-only fields (for episodes)
+  grandparentTitle: string | null;
+  grandparentRatingKey: string | null;
+  parentIndex: number | null; // season number
+  index: number | null; // episode number
+
+  librarySectionId: number | null;
+  librarySectionTitle: string | null;
+
+  viewOffsetMs: number | null;
+  durationMs: number | null;
+
+  // Best-effort user identity from Plex session XML
+  userTitle: string | null;
+  userId: number | null;
+};
+
 type PlexDirectory = Record<string, unknown> & {
   key?: unknown;
   title?: unknown;
@@ -100,6 +125,23 @@ function asPlexMetadataArray(
     container?.Track ??
     []) as PlexMetadata | PlexMetadata[];
   return asArray(items);
+}
+
+function asPlexSessionItemArray(
+  container: Record<string, unknown> | undefined,
+): Array<Record<string, unknown>> {
+  // /status/sessions returns current sessions under:
+  // - MediaContainer.Video
+  // - MediaContainer.Track
+  // Some servers may return Metadata/Directory-like nodes; be defensive.
+  const items = (container?.Video ??
+    container?.Track ??
+    container?.Metadata ??
+    container?.Directory ??
+    []) as unknown;
+  return asUnknownArray(items).filter(
+    (v): v is Record<string, unknown> => Boolean(v) && typeof v === 'object',
+  );
 }
 
 function toStringSafe(value: unknown): string {
@@ -337,6 +379,148 @@ export class PlexServerService {
         cancellable,
         userId,
         librarySectionId,
+      });
+    }
+
+    return out;
+  }
+
+  async listNowPlayingSessions(params: {
+    baseUrl: string;
+    token: string;
+  }): Promise<PlexNowPlayingSession[]> {
+    const { baseUrl, token } = params;
+    const url = new URL('status/sessions', normalizeBaseUrl(baseUrl)).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 15000));
+    const container = xml.MediaContainer;
+    if (!container) return [];
+
+    const items = asPlexSessionItemArray(container);
+    const out: PlexNowPlayingSession[] = [];
+
+    for (const it of items) {
+      const rawSessionKey = toStringSafe(it['sessionKey']).trim();
+      const sessionKey = rawSessionKey || toStringSafe(it['session']).trim();
+      if (!sessionKey) continue;
+
+      const rawType = toStringSafe(it['type']).trim().toLowerCase();
+      const type: PlexNowPlayingSession['type'] =
+        rawType === 'movie'
+          ? 'movie'
+          : rawType === 'episode'
+            ? 'episode'
+            : rawType === 'track'
+              ? 'track'
+              : 'unknown';
+
+      const ratingKey = (() => {
+        const s = toStringSafe(it['ratingKey']).trim();
+        return s ? s : null;
+      })();
+
+      const title = (() => {
+        const s = toStringSafe(it['title']).trim();
+        return s ? s : null;
+      })();
+
+      const year = (() => {
+        const raw = it['year'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+
+      const grandparentTitle = (() => {
+        const s = toStringSafe(it['grandparentTitle']).trim();
+        return s ? s : null;
+      })();
+      const grandparentRatingKey = (() => {
+        const s = toStringSafe(it['grandparentRatingKey']).trim();
+        return s ? s : null;
+      })();
+      const parentIndex = (() => {
+        const raw = it['parentIndex'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+      const index = (() => {
+        const raw = it['index'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+
+      const librarySectionId = (() => {
+        const raw = it['librarySectionID'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+      const librarySectionTitle = (() => {
+        const s = toStringSafe(it['librarySectionTitle']).trim();
+        return s ? s : null;
+      })();
+
+      const viewOffsetMs = (() => {
+        const raw = it['viewOffset'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.trunc(raw));
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? Math.max(0, n) : null;
+      })();
+      const durationMs = (() => {
+        const raw = it['duration'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.trunc(raw));
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? Math.max(0, n) : null;
+      })();
+
+      // Best-effort user info (Plex includes <User title="..."> in some session payloads)
+      const userTitle = (() => {
+        const user = it['User'];
+        if (!user || typeof user !== 'object') return null;
+        const s = toStringSafe((user as Record<string, unknown>)['title']).trim();
+        return s ? s : null;
+      })();
+      const userId = (() => {
+        const user = it['User'];
+        if (!user || typeof user !== 'object') return null;
+        const raw = (user as Record<string, unknown>)['id'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+
+      out.push({
+        sessionKey,
+        type,
+        ratingKey,
+        title,
+        year,
+        grandparentTitle,
+        grandparentRatingKey,
+        parentIndex,
+        index,
+        librarySectionId,
+        librarySectionTitle,
+        viewOffsetMs,
+        durationMs,
+        userTitle,
+        userId,
       });
     }
 

@@ -68,22 +68,28 @@ Plex: `http://localhost:32400`).
 If you switch Immaculaterr to Docker **bridge** networking later, then `localhost` will refer to the
 container — use your service’s **LAN IP** instead (example: `http://192.168.1.10:32400`).
 
-### Plex webhook (required for “auto-run on watched/added”)
+### Auto-run on watched (no Plex webhook setup required)
 
-Immaculaterr can only auto-run jobs when it receives Plex webhook events.
-
-In Plex Web UI:
-
-- Settings → **Webhooks** → Add webhook URL:
-  - `http://<host-ip>:3210/api/webhooks/plex`
-  - (Also works: `http://<host-ip>:3210/webhooks/plex`)
+Immaculaterr can detect “finished watching” by **polling Plex now-playing sessions** (Tautulli-style),
+so you do **not** need to configure Plex Webhooks.
 
 Then in Immaculaterr:
 
-- Task Manager → enable **Auto-run** for the webhook-driven jobs you want
+- Task Manager → enable **Auto-run** for the jobs you want
   - “Based on Latest Watched Collection” (`watchedMovieRecommendations`)
   - “Immaculate Taste Collection” (`immaculateTastePoints`)
-  - “Media Added Cleanup” (`mediaAddedCleanup`)
+
+Optional: if you *do* want Plex to push events instead of polling, you can configure Plex Webhooks:
+
+- Plex Settings → **Webhooks** → Add:
+  - `http://<host-ip>:3210/api/webhooks/plex`
+  - (Also works: `http://<host-ip>:3210/webhooks/plex`)
+
+#### Polling settings (optional)
+
+- `PLEX_POLLING_ENABLED` (default: `true`)
+- `PLEX_POLLING_INTERVAL_MS` (default: `5000`)
+- `PLEX_POLLING_SCROBBLE_THRESHOLD` (default: `0.9` i.e. 90%)
 
 ### Stop
 

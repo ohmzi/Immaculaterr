@@ -4,11 +4,12 @@ import { JobsModule } from '../jobs/jobs.module';
 import { PlexModule } from '../plex/plex.module';
 import { SettingsModule } from '../settings/settings.module';
 import { WebhooksController } from './webhooks.controller';
+import { PlexPollingService } from './plex-polling.service';
 import { WebhooksService } from './webhooks.service';
 
 @Module({
   imports: [AuthModule, JobsModule, SettingsModule, PlexModule],
   controllers: [WebhooksController],
-  providers: [WebhooksService],
+  providers: [WebhooksService, PlexPollingService],
 })
 export class WebhooksModule {}
