@@ -10,12 +10,9 @@ __pycache__/
 *.py[cod]
 
 # Runtime outputs (can contain sensitive info and are machine-specific)
-data/*
-!data/.gitkeep
-.idea/
-
-# App runtime outputs (generated DB/data)
+data/
 apps/data/
+.idea/
 
 # Node / web build artifacts
 node_modules/
