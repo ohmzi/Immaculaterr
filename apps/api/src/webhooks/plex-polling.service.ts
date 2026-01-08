@@ -87,6 +87,9 @@ export class PlexPollingService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
+    this.logger.log(
+      `Plex polling ${this.enabled ? 'ENABLED' : 'disabled'} intervalMs=${this.intervalMs} scrobbleThreshold=${this.scrobbleThreshold} minDurationMs=${this.minDurationMs}`,
+    );
     // Let the app fully boot first.
     setTimeout(() => void this.pollOnce(), 15_000);
   }
