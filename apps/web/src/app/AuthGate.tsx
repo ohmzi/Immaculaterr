@@ -34,6 +34,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [postAuthError, setPostAuthError] = useState<string | null>(null);
 
   const mode = useMemo<'register' | 'login'>(() => {
     if (bootstrapQuery.data?.needsAdminSetup) return 'register';
@@ -42,6 +43,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   const authMutation = useMutation({
     mutationFn: async () => {
+      setPostAuthError(null);
       const u = username.trim();
       const p = password;
       if (mode === 'register') return register({ username: u, password: p });
@@ -50,7 +52,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     onSuccess: async () => {
       setPassword('');
       await queryClient.invalidateQueries({ queryKey: ['auth', 'bootstrap'] });
-      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      // Confirm the session actually works (cookie set + accepted).
+      // If this fails (e.g., cookies blocked or Secure cookie on HTTP), show a visible error
+      // instead of silently doing nothing.
+      const me = await queryClient.fetchQuery({
+        queryKey: ['auth', 'me'],
+        queryFn: getMeOrNull,
+      });
+      if (!me) {
+        setPostAuthError(
+          'Sign-in failed to establish a session. Please try again. If you are using HTTP, ensure the server is allowed to set non-secure cookies (set COOKIE_SECURE=false) or access the app over HTTPS.',
+        );
+      }
     },
   });
 
@@ -228,10 +241,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 ) : null}
               </div>
 
-              {authMutation.error ? (
+              {authMutation.error || postAuthError ? (
                 <div className="flex items-start gap-2 text-sm text-red-200/90">
                   <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>{(authMutation.error as Error).message}</div>
+                  <div>
+                    {postAuthError ?? (authMutation.error as Error).message ?? 'Sign-in failed.'}
+                  </div>
                 </div>
               ) : null}
 

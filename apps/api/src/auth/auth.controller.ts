@@ -61,7 +61,7 @@ export class AuthController {
 
     // Auto-login after registration
     const login = await this.authService.login({ username, password });
-    this.setSessionCookie(res, login.sessionId);
+    this.setSessionCookie(req, res, login.sessionId);
     this.logger.log(
       `auth: register success userId=${login.user.id} username=${JSON.stringify(login.user.username)} ip=${JSON.stringify(ip)}`,
     );
@@ -88,7 +88,7 @@ export class AuthController {
     );
     try {
       const result = await this.authService.login({ username, password });
-      this.setSessionCookie(res, result.sessionId);
+      this.setSessionCookie(req, res, result.sessionId);
       this.logger.log(
         `auth: login success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(ip)}`,
       );
@@ -106,7 +106,7 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const sid = this.authService.readSessionIdFromRequest(req);
     if (sid) await this.authService.logout(sid);
-    this.clearSessionCookie(res);
+    this.clearSessionCookie(req, res);
     const ip = req.ip ?? null;
     this.logger.log(`auth: logout ip=${JSON.stringify(ip)} hadSession=${Boolean(sid)}`);
     return { ok: true };
@@ -126,33 +126,35 @@ export class AuthController {
     await this.authService.resetAllDataForDev();
     const sid = this.authService.readSessionIdFromRequest(req);
     if (sid) await this.authService.logout(sid).catch(() => undefined);
-    this.clearSessionCookie(res);
+    this.clearSessionCookie(req, res);
     return { ok: true };
   }
 
-  private setSessionCookie(res: Response, sessionId: string) {
+  private setSessionCookie(req: Request, res: Response, sessionId: string) {
     res.cookie(this.authService.getSessionCookieName(), sessionId, {
-      ...this.getSessionCookieOptions(),
+      ...this.getSessionCookieOptions(req),
       // session cookie (no maxAge) => cleared when browser closes
     });
   }
 
-  private clearSessionCookie(res: Response) {
+  private clearSessionCookie(req: Request, res: Response) {
     res.clearCookie(this.authService.getSessionCookieName(), {
-      ...this.getSessionCookieOptions(),
+      ...this.getSessionCookieOptions(req),
     });
   }
 
-  private getSessionCookieOptions() {
-    // In production we default secure cookies ON (HTTPS behind reverse proxy).
-    // Override with COOKIE_SECURE=true|false for special deployments/dev.
+  private getSessionCookieOptions(req: Request) {
+    // Secure cookies:
+    // - If COOKIE_SECURE is set, it ALWAYS wins.
+    // - Otherwise, follow req.secure (trust proxy handles X-Forwarded-Proto).
+    // This makes local HTTP work out of the box while keeping HTTPS deployments secure.
     const raw = process.env.COOKIE_SECURE?.trim().toLowerCase();
     const secure =
       raw === 'true'
         ? true
         : raw === 'false'
           ? false
-          : process.env.NODE_ENV === 'production';
+          : Boolean(req.secure);
 
     return {
       httpOnly: true,
