@@ -61,6 +61,16 @@ async function bootstrap() {
   app.use(securityHeadersMiddleware);
   app.use(cookieParser());
 
+  // Compatibility: people (and some guides) often paste Plex webhook URLs without the `/api` prefix.
+  // Accept `/webhooks/plex` as an alias for `/api/webhooks/plex`.
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    const url = req.url || '';
+    if (/^\/webhooks\/plex(?:\/)?(?:\?|$)/.test(url)) {
+      req.url = url.replace(/^\/webhooks\/plex(?:\/)?/, '/api/webhooks/plex');
+    }
+    next();
+  });
+
   // Keep the API surface separate from the UI routes we’ll serve later.
   app.setGlobalPrefix('api');
 
