@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { clearRuns, listJobs, listRuns, type JobRun } from '@/api/jobs';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -66,6 +67,7 @@ export function RewindPage() {
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
 
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
@@ -105,6 +107,7 @@ export function RewindPage() {
     mutationFn: async () => clearRuns(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['jobRuns', 'rewind'] });
+      setClearAllOpen(false);
     },
   });
 
@@ -296,8 +299,8 @@ export function RewindPage() {
                 </div>
 
                 <div className={cardClass}>
-                  <div className="mb-6 flex items-end justify-between gap-4">
-                    <div>
+                  <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                    <div className="min-w-0">
                       <div className="text-2xl font-semibold text-white">Recent history</div>
                       <div className="mt-2 text-sm text-white/70">
                         {`${filtered.length.toLocaleString()} shown`}
@@ -309,21 +312,15 @@ export function RewindPage() {
                       onClick={() => {
                         const total = historyQuery.data?.runs?.length ?? 0;
                         if (!total) return;
-                        if (
-                          !confirm(
-                            `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`,
-                          )
-                        ) {
-                          return;
-                        }
-                        clearAllMutation.mutate();
+                        setClearAllOpen(true);
                       }}
                       disabled={
                         clearAllMutation.isPending ||
                         !(historyQuery.data?.runs?.length ?? 0)
                       }
                       className={[
-                        'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation',
+                        'inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation',
+                        'w-full sm:w-auto',
                         'border',
                         clearAllMutation.isPending
                           ? 'border-red-500/15 bg-red-500/10 text-red-100/70 cursor-not-allowed'
@@ -475,6 +472,28 @@ export function RewindPage() {
             )}
         </div>
       </section>
+
+      <ConfirmDialog
+        open={clearAllOpen}
+        onClose={() => setClearAllOpen(false)}
+        onConfirm={() => clearAllMutation.mutate()}
+        label="Clear"
+        title="Clear all execution history"
+        description={
+          <>
+            This will delete{' '}
+            <span className="text-white font-semibold">
+              {(historyQuery.data?.runs?.length ?? 0).toLocaleString()}
+            </span>{' '}
+            run(s) and their logs.
+            <div className="mt-2 text-xs text-white/55">This cannot be undone.</div>
+          </>
+        }
+        confirmText="Clear all"
+        cancelText="Cancel"
+        variant="danger"
+        confirming={clearAllMutation.isPending}
+      />
     </div>
   );
 }

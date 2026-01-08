@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Loader2, ScrollText, Trash2 } from 'lucide-react';
 
 import { clearServerLogs, listServerLogs } from '@/api/logs';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -152,6 +153,7 @@ export function LogsPage() {
   const titleIconGlowControls = useAnimation();
   const [selected, setSelected] = useState<ServiceFilter[]>([]);
   const [query, setQuery] = useState('');
+  const [clearAllOpen, setClearAllOpen] = useState(false);
   const logsQuery = useQuery({
     queryKey: ['serverLogs'],
     queryFn: () => listServerLogs({ limit: 5000 }),
@@ -184,6 +186,7 @@ export function LogsPage() {
     mutationFn: clearServerLogs,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['serverLogs'] });
+      setClearAllOpen(false);
     },
   });
 
@@ -326,31 +329,25 @@ export function LogsPage() {
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto min-w-0">
                     <input
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Filter… (e.g. scrobble, library.new, OFFLINE)"
-                      className="flex-1 md:w-[360px] px-4 py-2 rounded-full border border-white/15 bg-white/5 text-white placeholder-white/40 outline-none focus:ring-2 focus:ring-white/15"
+                      className="w-full sm:flex-1 sm:min-w-0 md:w-[360px] px-4 py-2 rounded-full border border-white/15 bg-white/5 text-white placeholder-white/40 outline-none focus:ring-2 focus:ring-white/15"
                     />
                     <button
                       type="button"
                       onClick={() => {
                         const total = logs.length;
                         if (!total) return;
-                        if (
-                          !confirm(
-                            `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
-                          )
-                        ) {
-                          return;
-                        }
-                        clearMutation.mutate();
+                        setClearAllOpen(true);
                       }}
                       disabled={clearMutation.isPending || logs.length === 0}
                       className={[
                         APP_PRESSABLE_CLASS,
                         'inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border transition whitespace-nowrap',
+                        'w-full sm:w-auto',
                         clearMutation.isPending
                           ? 'bg-red-500/10 text-red-100/70 border-red-500/15 cursor-not-allowed'
                           : logs.length > 0
@@ -448,6 +445,28 @@ export function LogsPage() {
           </div>
         </div>
       </section>
+
+      <ConfirmDialog
+        open={clearAllOpen}
+        onClose={() => setClearAllOpen(false)}
+        onConfirm={() => clearMutation.mutate()}
+        label="Clear"
+        title="Clear all logs"
+        description={
+          <>
+            This will remove{' '}
+            <span className="text-white font-semibold">
+              {logs.length.toLocaleString()}
+            </span>{' '}
+            log line(s).
+            <div className="mt-2 text-xs text-white/55">This cannot be undone.</div>
+          </>
+        }
+        confirmText="Clear all"
+        cancelText="Cancel"
+        variant="danger"
+        confirming={clearMutation.isPending}
+      />
     </div>
   );
 }
