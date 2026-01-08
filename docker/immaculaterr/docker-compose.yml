@@ -7,10 +7,14 @@ services:
     build:
       context: ../..
       dockerfile: docker/immaculaterr/Dockerfile
+    # Default to host networking (Linux), so Immaculaterr can reach host services like Plex/Radarr/Sonarr
+    # via localhost (same pattern as many media-stack containers).
+    # NOTE: host networking is Linux-only (not supported the same way on Docker Desktop).
+    network_mode: host
     environment:
       - HOST=0.0.0.0
       # Internal listen port (inside the container). In most cases you can leave this at 3210.
-      # If you do change it, make sure the port mapping below matches.
+      # With host networking, the host port is the same as this listen port.
       - PORT=${APP_PORT:-3210}
       # Persist DB + runtime state outside the container
       - APP_DATA_DIR=/data
@@ -20,15 +24,6 @@ services:
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
       # Optional: override default secure umask (octal). Default is 077.
       - APP_UMASK=${APP_UMASK:-}
-    ports:
-      # Single port for BOTH the UI and the API (Radarr-style).
-      # - Change HOST_PORT to pick the external port (what you connect to).
-      # - Change APP_PORT only if you want the app to listen on a different internal port.
-      - "${HOST_PORT:-3210}:${APP_PORT:-3210}"
-    # On Linux, this makes `host.docker.internal` resolve to the Docker host.
-    # Useful when connecting to services running on the host (e.g., Plex on :32400).
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - immaculaterr-data:/data
     restart: unless-stopped

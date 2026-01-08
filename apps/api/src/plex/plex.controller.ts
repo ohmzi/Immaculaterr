@@ -71,7 +71,7 @@ export class PlexController {
     })();
     const dockerLocalhostHint =
       baseUrlHost === 'localhost' || baseUrlHost === '127.0.0.1'
-        ? " If you're running Immaculaterr in Docker, `localhost` points to the container. Use `host.docker.internal` (recommended) or your Plex server's LAN IP."
+        ? " In Docker bridge networking, `localhost` points to the container. Use your Plex server's LAN IP (recommended) or switch Immaculaterr to Docker host networking so `localhost` works."
         : '';
     try {
       const parsed = new URL(baseUrl);

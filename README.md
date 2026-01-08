@@ -54,14 +54,19 @@ Open:
 
 - `http://<server-ip>:3210/`
 
+This Docker Compose runs Immaculaterr with **host networking by default** (Linux), so it behaves like
+many media-stack containers (Radarr/Sonarr/etc):
+
+- No port publishing/mapping needed
+- The app binds directly to the host network on `PORT` (default `3210`)
+
 ### Connecting to Plex/Radarr/Sonarr when Immaculaterr runs in Docker
 
-If another service (like Plex) is running **on the Docker host**, do **not** use `http://localhost:...` as the Base URL inside Immaculaterr — in Docker, `localhost` means **inside the container**.
+With **host networking**, you can usually use `http://localhost:<port>` as the Base URL (example:
+Plex: `http://localhost:32400`).
 
-Use one of:
-
-- `http://host.docker.internal:<port>` (recommended; supported by this compose file on Linux)
-- `http://<host-lan-ip>:<port>` (example: `http://192.168.1.10:32400`)
+If you switch Immaculaterr to Docker **bridge** networking later, then `localhost` will refer to the
+container — use your service’s **LAN IP** instead (example: `http://192.168.1.10:32400`).
 
 ### Stop
 
@@ -71,12 +76,13 @@ docker compose -f docker/immaculaterr/docker-compose.yml down
 
 ### Change the external port (Radarr-style)
 
-Set `HOST_PORT` to pick the port you connect to (host-side). The container still listens on `3210` internally.
+With host networking, the “external port” is just the app listen port. Set `APP_PORT` (or `PORT`)
+to change it.
 
 Example: expose on `13378`:
 
 ```bash
-HOST_PORT=13378 docker compose -f docker/immaculaterr/docker-compose.yml up -d --build
+APP_PORT=13378 docker compose -f docker/immaculaterr/docker-compose.yml up -d --build
 ```
 
 Then open:
@@ -85,8 +91,8 @@ Then open:
 
 ### Portainer mapping tip
 
-If you’re mapping ports manually:
+If you use Portainer:
 
-- **Container port**: `3210` (or whatever you set as `APP_PORT`)
-- **Host port**: whatever you want (e.g. `13378`)
+- Set the container **network mode** to **host**
+- Set env **`APP_PORT`** (or `PORT`) if you want a non-default port
 

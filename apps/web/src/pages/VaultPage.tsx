@@ -96,10 +96,7 @@ export function SettingsPage({
   );
 
   // Service setup state
-  const defaultPlexBaseUrl = import.meta.env.DEV
-    ? 'http://localhost:32400'
-    : 'http://host.docker.internal:32400';
-  const [plexBaseUrl, setPlexBaseUrl] = useState(defaultPlexBaseUrl);
+  const [plexBaseUrl, setPlexBaseUrl] = useState('http://localhost:32400');
   const [plexToken, setPlexToken] = useState('');
 
   // Load existing settings when data is available
@@ -1870,17 +1867,12 @@ export function SettingsPage({
                         setPlexTestOk(null);
                         setPlexBaseUrl(e.target.value);
                       }}
-                      placeholder={
-                        import.meta.env.DEV
-                          ? 'http://localhost:32400'
-                          : 'http://host.docker.internal:32400'
-                      }
+                      placeholder="http://localhost:32400"
                       className={inputClass}
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {import.meta.env.DEV
-                        ? 'Tip: Plex usually runs on http://localhost:32400.'
-                        : "Tip: If Plex is on the same machine, use http://host.docker.internal:32400 (Linux Docker supported)."}
+                      Tip: in Docker host networking (recommended), localhost works. In Docker bridge
+                      networking, use your Plex server’s LAN IP.
                     </p>
                   </div>
                   <div>
