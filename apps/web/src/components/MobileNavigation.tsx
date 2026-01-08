@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Search } from 'lucide-react';
 
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+
 interface MobileNavigationProps {
   onLogout: () => void;
 }
@@ -40,6 +42,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const navigate = useNavigate();
@@ -75,39 +80,36 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     }
   };
 
-  const handleResetAccount = async () => {
-    setIsHelpOpen(false);
-    if (
-      !confirm(
-        'Are you sure you want to reset your account? This will:\n\n• Delete all settings and setup data\n• Delete all secrets (API keys)\n• Force you through setup wizard again\n• Log you out\n\nThis action CANNOT be undone!',
-      )
-    ) {
-      return;
-    }
-
+  const doResetAccount = async () => {
+    if (resetting) return;
+    setResetError(null);
+    setResetting(true);
     try {
       const response = await fetch('/api/auth/reset-dev', {
         method: 'POST',
         credentials: 'include',
       });
 
-      if (response.ok) {
-        try {
-          localStorage.clear();
-        } catch {
-          // ignore
-        }
-        try {
-          sessionStorage.clear();
-        } catch {
-          // ignore
-        }
-        window.location.href = '/';
-      } else {
-        alert('Failed to reset account. Please try logging out and back in.');
+      if (!response.ok) {
+        setResetError('Failed to reset account. Please try logging out and back in.');
+        return;
       }
+
+      try {
+        localStorage.clear();
+      } catch {
+        // ignore
+      }
+      try {
+        sessionStorage.clear();
+      } catch {
+        // ignore
+      }
+      window.location.href = '/';
     } catch {
-      alert('Network error while resetting account.');
+      setResetError('Network error while resetting account.');
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -347,7 +349,11 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
                   <div className="space-y-2">
                     <button
-                      onClick={handleResetAccount}
+                      onClick={() => {
+                        setIsHelpOpen(false);
+                        setResetError(null);
+                        setResetOpen(true);
+                      }}
                       className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium"
                     >
                       Reset Account to Fresh Setup
@@ -372,6 +378,31 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
           </>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        onConfirm={() => void doResetAccount()}
+        label="Reset"
+        title="Reset account?"
+        description={
+          <div className="space-y-2">
+            <div>This will:</div>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Delete all settings and setup data</li>
+              <li>Delete all secrets (API keys)</li>
+              <li>Force you through setup wizard again</li>
+              <li>Log you out</li>
+            </ul>
+            <div className="text-xs text-white/55">This action cannot be undone.</div>
+          </div>
+        }
+        confirmText="Reset account"
+        cancelText="Cancel"
+        variant="danger"
+        confirming={resetting}
+        error={resetError}
+      />
     </>
   );
 }

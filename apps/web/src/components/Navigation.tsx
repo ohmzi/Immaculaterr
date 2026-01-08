@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { logout } from '@/api/auth';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface NavItem {
   label: string;
@@ -38,6 +39,8 @@ export function Navigation() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -127,39 +130,39 @@ export function Navigation() {
 
   const handleResetAccount = async () => {
     setIsHelpOpen(false);
-    if (!confirm('Are you sure you want to reset your account? This will:\n\n• Delete all settings and setup data\n• Delete all secrets (API keys)\n• Force you through setup wizard again\n• Log you out\n\nThis action CANNOT be undone!')) {
-      return;
-    }
+    setResetError(null);
+    setResetOpen(true);
+  };
 
-    try {
+  const resetMutation = useMutation({
+    mutationFn: async () => {
       const response = await fetch('/api/auth/reset-dev', {
         method: 'POST',
         credentials: 'include',
       });
-
-      if (response.ok) {
-        // Clear everything like logout
-        queryClient.clear();
-        try {
-          localStorage.clear();
-        } catch (e) {
-          void e;
-        }
-        try {
-          sessionStorage.clear();
-        } catch (e) {
-          void e;
-        }
-
-        // Reload to force fresh state
-        window.location.href = '/';
-      } else {
-        alert('Failed to reset account. Please try logging out and back in.');
+      if (!response.ok) {
+        throw new Error('Failed to reset account. Please try logging out and back in.');
       }
-    } catch {
-      alert('Network error while resetting account.');
-    }
-  };
+    },
+    onSuccess: () => {
+      // Clear everything like logout
+      queryClient.clear();
+      try {
+        localStorage.clear();
+      } catch (e) {
+        void e;
+      }
+      try {
+        sessionStorage.clear();
+      } catch (e) {
+        void e;
+      }
+      window.location.href = '/';
+    },
+    onError: (err) => {
+      setResetError(err instanceof Error ? err.message : String(err));
+    },
+  });
 
   return (
     <>
@@ -356,7 +359,7 @@ export function Navigation() {
                           <div className="space-y-2">
                             <button
                               onClick={handleResetAccount}
-                              disabled={logoutMutation.isPending}
+                              disabled={logoutMutation.isPending || resetMutation.isPending}
                               className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium disabled:opacity-50"
                             >
                               Reset Account to Fresh Setup
@@ -383,6 +386,31 @@ export function Navigation() {
           </div>
         </div>
       </nav>
+
+      <ConfirmDialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        onConfirm={() => resetMutation.mutate()}
+        label="Reset"
+        title="Reset account?"
+        description={
+          <div className="space-y-2">
+            <div>This will:</div>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Delete all settings and setup data</li>
+              <li>Delete all secrets (API keys)</li>
+              <li>Force you through setup wizard again</li>
+              <li>Log you out</li>
+            </ul>
+            <div className="text-xs text-white/55">This action cannot be undone.</div>
+          </div>
+        }
+        confirmText="Reset account"
+        cancelText="Cancel"
+        variant="danger"
+        confirming={resetMutation.isPending}
+        error={resetError}
+      />
     </>
   );
 }
