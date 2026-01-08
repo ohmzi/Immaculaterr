@@ -54,8 +54,12 @@ function parseFloatEnv(raw: string | undefined, defaultValue: number): number {
 }
 
 type SessionSnapshot = PlexNowPlayingSession & {
+  firstSeenAtMs: number;
   lastSeenAtMs: number;
+  firstViewOffsetMs: number | null;
   lastViewOffsetMs: number | null;
+  scrobbleTriggered: boolean;
+  scrobbleTriggeredAtMs: number | null;
 };
 
 @Injectable()
@@ -167,7 +171,11 @@ export class PlexPollingService implements OnModuleInit {
     for (const [key, prev] of this.lastBySessionKey) {
       const current = sessions.find((s) => s.sessionKey === key) ?? null;
       if (!current) {
-        await this.handleEndedSession({ userId, prev, settings: settings as Record<string, unknown> });
+        await this.handleEndedSession({
+          userId,
+          prev,
+          settings: settings as Record<string, unknown>,
+        });
         this.lastBySessionKey.delete(key);
         continue;
       }
@@ -175,17 +183,42 @@ export class PlexPollingService implements OnModuleInit {
       const prevRatingKey = prev.ratingKey ?? '';
       const curRatingKey = current.ratingKey ?? '';
       if (prevRatingKey && curRatingKey && prevRatingKey !== curRatingKey) {
-        await this.handleEndedSession({ userId, prev, settings: settings as Record<string, unknown> });
-        this.lastBySessionKey.set(key, this.toSnapshot(current, now));
+        await this.handleEndedSession({
+          userId,
+          prev,
+          settings: settings as Record<string, unknown>,
+        });
+        const nextSnap = this.toSnapshot(current, now);
+        const nextWithTrigger = await this.maybeTriggerWatchedAutomation({
+          userId,
+          snap: nextSnap,
+          settings: settings as Record<string, unknown>,
+          reason: 'progress',
+        });
+        this.lastBySessionKey.set(key, nextWithTrigger);
       } else {
-        this.lastBySessionKey.set(key, this.mergeSnapshot(prev, current, now));
+        const merged = this.mergeSnapshot(prev, current, now);
+        const mergedWithTrigger = await this.maybeTriggerWatchedAutomation({
+          userId,
+          snap: merged,
+          settings: settings as Record<string, unknown>,
+          reason: 'progress',
+        });
+        this.lastBySessionKey.set(key, mergedWithTrigger);
       }
     }
 
     // Add new sessions.
     for (const s of sessions) {
       if (!this.lastBySessionKey.has(s.sessionKey)) {
-        this.lastBySessionKey.set(s.sessionKey, this.toSnapshot(s, now));
+        const snap = this.toSnapshot(s, now);
+        const snapWithTrigger = await this.maybeTriggerWatchedAutomation({
+          userId,
+          snap,
+          settings: settings as Record<string, unknown>,
+          reason: 'progress',
+        });
+        this.lastBySessionKey.set(s.sessionKey, snapWithTrigger);
       }
     }
 
@@ -345,10 +378,15 @@ export class PlexPollingService implements OnModuleInit {
   }
 
   private toSnapshot(s: PlexNowPlayingSession, nowMs: number): SessionSnapshot {
+    const firstViewOffsetMs = s.viewOffsetMs ?? null;
     return {
       ...s,
+      firstSeenAtMs: nowMs,
       lastSeenAtMs: nowMs,
-      lastViewOffsetMs: s.viewOffsetMs ?? null,
+      firstViewOffsetMs,
+      lastViewOffsetMs: firstViewOffsetMs,
+      scrobbleTriggered: false,
+      scrobbleTriggeredAtMs: null,
     };
   }
 
@@ -369,65 +407,84 @@ export class PlexPollingService implements OnModuleInit {
     return {
       ...prev,
       ...cur,
+      firstSeenAtMs: prev.firstSeenAtMs,
+      firstViewOffsetMs: prev.firstViewOffsetMs ?? viewOffset ?? null,
       lastSeenAtMs: nowMs,
       lastViewOffsetMs,
+      scrobbleTriggered: prev.scrobbleTriggered,
+      scrobbleTriggeredAtMs: prev.scrobbleTriggeredAtMs,
     };
   }
 
-  private async handleEndedSession(params: {
+  private getProgressRatio(snapshot: SessionSnapshot): number | null {
+    const duration = snapshot.durationMs ?? null;
+    const viewOffset =
+      snapshot.lastViewOffsetMs ?? snapshot.viewOffsetMs ?? null;
+    if (!duration || duration <= 0) return null;
+    if (viewOffset === null || viewOffset <= 0) return null;
+    return Math.min(1, viewOffset / duration);
+  }
+
+  private async maybeTriggerWatchedAutomation(params: {
     userId: string;
-    prev: SessionSnapshot;
+    snap: SessionSnapshot;
     settings: Record<string, unknown>;
-  }) {
-    const { userId, prev, settings } = params;
+    reason: 'progress' | 'ended';
+  }): Promise<SessionSnapshot> {
+    const { userId, snap, settings } = params;
 
     // Only trigger for video scrobbles (movie/episode).
-    if (prev.type !== 'movie' && prev.type !== 'episode') return;
+    if (snap.type !== 'movie' && snap.type !== 'episode') return snap;
+    if (snap.scrobbleTriggered) return snap;
 
-    const duration = prev.durationMs ?? null;
-    const viewOffset = prev.lastViewOffsetMs ?? prev.viewOffsetMs ?? null;
+    const duration = snap.durationMs ?? null;
+    if (!duration || duration < this.minDurationMs) return snap;
 
-    if (!duration || duration < this.minDurationMs) return;
-    if (!viewOffset || viewOffset <= 0) return;
-
-    const ratio = Math.min(1, viewOffset / duration);
-    if (ratio < this.scrobbleThreshold) return;
-
-    // De-dupe across short time windows (protects against both polling quirks and "double triggers"
-    // if the user ever enables Plex webhooks too).
-    const dedupeKey = `${prev.type}:${prev.ratingKey ?? 'unknown'}:${prev.librarySectionId ?? 'unknown'}`;
-    const now = Date.now();
-    const last = this.recentTriggers.get(dedupeKey) ?? 0;
-    if (now - last < PlexPollingService.RECENT_TRIGGER_TTL_MS) return;
-    this.recentTriggers.set(dedupeKey, now);
+    const ratio = this.getProgressRatio(snap);
+    if (ratio === null) return snap;
+    if (ratio < this.scrobbleThreshold) return snap;
 
     // Respect per-job auto-run toggles (same settings as webhooks).
     const watchedEnabled =
-      pickBool(settings, 'jobs.webhookEnabled.watchedMovieRecommendations') ?? false;
+      pickBool(settings, 'jobs.webhookEnabled.watchedMovieRecommendations') ??
+      false;
     const immaculateEnabled =
       pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ?? false;
+    if (!watchedEnabled && !immaculateEnabled) return snap;
 
-    if (!watchedEnabled && !immaculateEnabled) return;
+    // De-dupe across short time windows (protects against both polling quirks and "double triggers"
+    // if the user ever enables Plex webhooks too).
+    const dedupeKey = `${snap.type}:${snap.ratingKey ?? 'unknown'}:${snap.librarySectionId ?? 'unknown'}`;
+    const now = Date.now();
+    const last = this.recentTriggers.get(dedupeKey) ?? 0;
+    if (now - last < PlexPollingService.RECENT_TRIGGER_TTL_MS) return snap;
+    this.recentTriggers.set(dedupeKey, now);
+
+    const viewOffset =
+      snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
 
     const payload: Record<string, unknown> = {
       event: 'media.scrobble',
       Metadata: {
-        type: prev.type,
-        title: prev.title ?? undefined,
-        year: prev.year ?? undefined,
-        ratingKey: prev.ratingKey ?? undefined,
-        grandparentTitle: prev.grandparentTitle ?? undefined,
-        grandparentRatingKey: prev.grandparentRatingKey ?? undefined,
-        parentIndex: prev.parentIndex ?? undefined,
-        index: prev.index ?? undefined,
-        librarySectionID: prev.librarySectionId ?? undefined,
-        librarySectionTitle: prev.librarySectionTitle ?? undefined,
-        viewOffset: viewOffset,
+        type: snap.type,
+        title: snap.title ?? undefined,
+        year: snap.year ?? undefined,
+        ratingKey: snap.ratingKey ?? undefined,
+        grandparentTitle: snap.grandparentTitle ?? undefined,
+        grandparentRatingKey: snap.grandparentRatingKey ?? undefined,
+        parentIndex: snap.parentIndex ?? undefined,
+        index: snap.index ?? undefined,
+        librarySectionID: snap.librarySectionId ?? undefined,
+        librarySectionTitle: snap.librarySectionTitle ?? undefined,
+        viewOffset: viewOffset ?? undefined,
         duration: duration,
+        progress: ratio,
+        source: params.reason,
+        threshold: this.scrobbleThreshold,
       },
       Account: {
-        title: prev.userTitle ?? undefined,
-        id: prev.userId ?? undefined,
+        title: snap.userTitle ?? undefined,
+        id: snap.userId ?? undefined,
       },
     };
 
@@ -446,33 +503,37 @@ export class PlexPollingService implements OnModuleInit {
     });
 
     // Build the same "seed" input structure the webhook controller uses.
-    const mediaTypeLower = prev.type;
-    const showTitle = mediaTypeLower === 'episode' ? (prev.grandparentTitle ?? '') : '';
-    const episodeTitle = mediaTypeLower === 'episode' ? (prev.title ?? '') : '';
-    const seedTitle = mediaTypeLower === 'episode' ? showTitle : (prev.title ?? '');
-
-    if (!seedTitle) return;
+    const mediaTypeLower = snap.type;
+    const showTitle =
+      mediaTypeLower === 'episode' ? (snap.grandparentTitle ?? '') : '';
+    const episodeTitle =
+      mediaTypeLower === 'episode' ? (snap.title ?? '') : '';
+    const seedTitle =
+      mediaTypeLower === 'episode' ? showTitle : (snap.title ?? '');
+    if (!seedTitle) return snap;
 
     const payloadInput = {
       source: 'plexPolling',
       plexEvent: 'media.scrobble',
       mediaType: mediaTypeLower,
       seedTitle,
-      seedYear: mediaTypeLower === 'movie' ? (prev.year ?? null) : null,
-      seedRatingKey: prev.ratingKey ?? null,
-      seedLibrarySectionId: prev.librarySectionId ?? null,
-      seedLibrarySectionTitle: prev.librarySectionTitle ?? null,
+      seedYear: mediaTypeLower === 'movie' ? (snap.year ?? null) : null,
+      seedRatingKey: snap.ratingKey ?? null,
+      seedLibrarySectionId: snap.librarySectionId ?? null,
+      seedLibrarySectionTitle: snap.librarySectionTitle ?? null,
       ...(mediaTypeLower === 'episode'
         ? {
             showTitle: showTitle || null,
-            showRatingKey: prev.grandparentRatingKey ?? null,
-            seasonNumber: prev.parentIndex ?? null,
-            episodeNumber: prev.index ?? null,
+            showRatingKey: snap.grandparentRatingKey ?? null,
+            seasonNumber: snap.parentIndex ?? null,
+            episodeNumber: snap.index ?? null,
             episodeTitle: episodeTitle || null,
           }
         : {}),
       persistedPath: persisted.path,
       progress: ratio,
+      threshold: this.scrobbleThreshold,
+      reason: params.reason,
     } as const;
 
     const runs: Record<string, string> = {};
@@ -492,7 +553,8 @@ export class PlexPollingService implements OnModuleInit {
         });
         runs.watchedMovieRecommendations = run.id;
       } catch (err) {
-        errors.watchedMovieRecommendations = (err as Error)?.message ?? String(err);
+        errors.watchedMovieRecommendations =
+          (err as Error)?.message ?? String(err);
       }
     }
 
@@ -509,17 +571,38 @@ export class PlexPollingService implements OnModuleInit {
         });
         runs.immaculateTastePoints = run.id;
       } catch (err) {
-        errors.immaculateTastePoints = (err as Error)?.message ?? String(err);
+        errors.immaculateTastePoints =
+          (err as Error)?.message ?? String(err);
       }
     }
 
     this.webhooksService.logPlexWebhookAutomation({
       plexEvent: 'media.scrobble',
-      mediaType: prev.type,
+      mediaType: snap.type,
       seedTitle,
       ...(Object.keys(runs).length ? { runs } : {}),
       ...(Object.keys(skipped).length ? { skipped } : {}),
       ...(Object.keys(errors).length ? { errors } : {}),
+    });
+
+    return {
+      ...snap,
+      scrobbleTriggered: true,
+      scrobbleTriggeredAtMs: now,
+    };
+  }
+
+  private async handleEndedSession(params: {
+    userId: string;
+    prev: SessionSnapshot;
+    settings: Record<string, unknown>;
+  }) {
+    const { userId, prev, settings } = params;
+    await this.maybeTriggerWatchedAutomation({
+      userId,
+      snap: prev,
+      settings,
+      reason: 'ended',
     });
   }
 }
