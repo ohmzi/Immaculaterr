@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5174 --strictPort",
+    "dev": "vite --host 0.0.0.0 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "openapi:types": "openapi-typescript ../api/openapi.json -o src/api/generated.ts",

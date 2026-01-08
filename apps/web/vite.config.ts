@@ -15,9 +15,9 @@ export default defineConfig({
     // WARNING: this disables Vite's DNS-rebinding protection for the dev server.
     allowedHosts: true,
     // Allow accessing the dev UI from other devices (phones/tablets) on the LAN.
-    // Note: use http://<server-ip>:5174 from other devices (not localhost).
+    // Note: use http://<server-ip>:5175 from other devices (not localhost).
     host: '0.0.0.0',
-    port: Number.parseInt(process.env.WEB_PORT ?? '5174', 10),
+    port: Number.parseInt(process.env.WEB_PORT ?? '5175', 10),
     strictPort: true,
     proxy: {
       '/api': {

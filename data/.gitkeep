@@ -1,5 +1,0 @@
-# Keep the `data/` directory in git.
-#
-# All runtime outputs under `data/` (logs, caches, generated JSON) are intentionally
-# git-ignored (see `.gitignore`).
-

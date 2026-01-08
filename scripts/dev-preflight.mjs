@@ -44,7 +44,7 @@ function printPortOwner(port) {
 }
 
 const apiPort = Number.parseInt(process.env.PORT ?? '3210', 10);
-const webPort = Number.parseInt(process.env.WEB_PORT ?? '5174', 10);
+const webPort = Number.parseInt(process.env.WEB_PORT ?? '5175', 10);
 
 if (!Number.isFinite(apiPort) || apiPort <= 0) {
   console.error(`Invalid API port: PORT=${process.env.PORT}`);
