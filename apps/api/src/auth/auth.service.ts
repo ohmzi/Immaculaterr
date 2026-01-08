@@ -73,15 +73,31 @@ export class AuthService {
     });
 
     // Initialize empty settings/secrets rows (per-user)
+    // Default posture: all automation OFF until the admin explicitly enables it in Task Manager.
+    const defaultUserSettings = {
+      onboarding: { completed: false },
+      jobs: {
+        // Webhook/polling-triggered jobs (Auto-Run toggles)
+        webhookEnabled: {
+          watchedMovieRecommendations: false,
+          immaculateTastePoints: false,
+          mediaAddedCleanup: false,
+        },
+      },
+    };
     await this.prisma.userSettings.create({
       data: {
         userId: user.id,
-        value: JSON.stringify({ onboarding: { completed: false } }),
+        value: JSON.stringify(defaultUserSettings),
       },
     });
     await this.prisma.userSecrets.create({
       data: { userId: user.id, value: '' },
     });
+
+    // Safety: if schedules exist (e.g. seeded by a previous version), disable them for a fresh admin.
+    // Scheduled jobs are global (not per-user), and we don't want surprise auto-runs on first setup.
+    await this.prisma.jobSchedule.updateMany({ data: { enabled: false } });
 
     this.logger.log(`Created admin user=${user.username}`);
     return user;

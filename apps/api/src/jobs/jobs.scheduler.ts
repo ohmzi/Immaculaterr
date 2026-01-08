@@ -91,6 +91,19 @@ export class JobsScheduler implements OnModuleInit {
           cron,
           async () => {
             try {
+              // Defensive: schedules can be toggled/disabled by other code paths (e.g. first-admin setup).
+              // If the DB says it's disabled, do not run even if a CronJob is still registered.
+              const stillEnabled = await this.prisma.jobSchedule.findUnique({
+                where: { jobId },
+                select: { enabled: true },
+              });
+              if (!stillEnabled?.enabled) {
+                this.logger.warn(
+                  `Skipping scheduled run; schedule disabled jobId=${jobId}`,
+                );
+                return;
+              }
+
               const user = await this.prisma.user.findFirst({
                 orderBy: { createdAt: 'asc' },
                 select: { id: true },
