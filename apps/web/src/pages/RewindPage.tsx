@@ -176,9 +176,8 @@ export function RewindPage() {
       </div>
 
       {/* History Content */}
-      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
-        <div className="container mx-auto px-6 lg:px-8">
-          <div className="max-w-5xl mx-auto">
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <div className="container mx-auto px-4 pb-20 max-w-5xl">
             {/* Page Header */}
             <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex flex-col gap-4">
@@ -216,7 +215,7 @@ export function RewindPage() {
                     initial={{ opacity: 0, y: 18 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6, ease: 'easeOut' }}
-                    className="text-5xl sm:text-6xl font-black tracking-tighter text-white drop-shadow-xl"
+                    className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl"
                   >
                     Rewind
                   </motion.h1>
@@ -474,7 +473,6 @@ export function RewindPage() {
                 </div>
               </div>
             )}
-          </div>
         </div>
       </section>
     </div>

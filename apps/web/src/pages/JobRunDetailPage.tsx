@@ -231,9 +231,8 @@ export function JobRunDetailPage() {
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
-      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-10">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-5xl mx-auto">
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <div className="container mx-auto px-4 pb-20 max-w-5xl">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -275,7 +274,7 @@ export function JobRunDetailPage() {
 
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-3">
-                        <h1 className="text-5xl sm:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
+                        <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
                           {(jobName ?? run?.jobId ?? 'Rewind') + ' Report'}
                         </h1>
                       </div>
@@ -1594,7 +1593,6 @@ export function JobRunDetailPage() {
                 <div className="text-white font-semibold">Run not found</div>
               </div>
             )}
-          </div>
         </div>
       </section>
     </div>
