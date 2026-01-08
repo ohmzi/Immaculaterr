@@ -2,7 +2,12 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
-import { PlexServerService, PlexNowPlayingSession } from '../plex/plex-server.service';
+import { PlexAnalyticsService } from '../plex/plex-analytics.service';
+import {
+  PlexNowPlayingSession,
+  PlexRecentlyAddedItem,
+  PlexServerService,
+} from '../plex/plex-server.service';
 import { SettingsService } from '../settings/settings.service';
 import { WebhooksService } from './webhooks.service';
 
@@ -74,9 +79,22 @@ export class PlexPollingService implements OnModuleInit {
     60_000,
   );
 
+  private readonly recentlyAddedIntervalMs = parseNumberEnv(
+    process.env.PLEX_POLLING_RECENTLY_ADDED_INTERVAL_MS,
+    60_000,
+  );
+  private readonly libraryNewDebounceMs = parseNumberEnv(
+    process.env.PLEX_POLLING_LIBRARY_NEW_DEBOUNCE_MS,
+    120_000,
+  );
+
   private readonly lastBySessionKey = new Map<string, SessionSnapshot>();
   private readonly recentTriggers = new Map<string, number>();
   private static readonly RECENT_TRIGGER_TTL_MS = 10 * 60_000;
+
+  private lastRecentlyAddedPollAtMs: number | null = null;
+  private lastSeenAddedAtSec: number | null = null;
+  private lastLibraryNewTriggeredAtMs: number | null = null;
 
   constructor(
     private readonly authService: AuthService,
@@ -84,6 +102,7 @@ export class PlexPollingService implements OnModuleInit {
     private readonly jobsService: JobsService,
     private readonly plexServer: PlexServerService,
     private readonly webhooksService: WebhooksService,
+    private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
 
   onModuleInit() {
@@ -122,6 +141,14 @@ export class PlexPollingService implements OnModuleInit {
     const token = pickString(secrets as Record<string, unknown>, 'plex.token');
 
     if (!baseUrl || !token) return;
+
+    // Poll recently-added on a slower cadence (for library.new-style triggers).
+    await this.pollRecentlyAdded({
+      userId,
+      baseUrl,
+      token,
+      settings: settings as Record<string, unknown>,
+    });
 
     let sessions: PlexNowPlayingSession[] = [];
     try {
@@ -171,6 +198,150 @@ export class PlexPollingService implements OnModuleInit {
 
     // Defensive: if Plex returns no sessions, currentKeys is empty; that's fine.
     void currentKeys;
+  }
+
+  private async pollRecentlyAdded(params: {
+    userId: string;
+    baseUrl: string;
+    token: string;
+    settings: Record<string, unknown>;
+  }) {
+    const { userId, baseUrl, token, settings } = params;
+
+    const enabled =
+      pickBool(settings, 'jobs.webhookEnabled.mediaAddedCleanup') ?? false;
+    if (!enabled) return;
+
+    const now = Date.now();
+    const last = this.lastRecentlyAddedPollAtMs ?? 0;
+    if (this.lastRecentlyAddedPollAtMs !== null && now - last < this.recentlyAddedIntervalMs) {
+      return;
+    }
+    this.lastRecentlyAddedPollAtMs = now;
+
+    let items: PlexRecentlyAddedItem[] = [];
+    try {
+      items = await this.plexServer.listRecentlyAdded({ baseUrl, token, take: 50 });
+    } catch (err) {
+      this.logger.debug(
+        `Polling /library/recentlyAdded failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+      return;
+    }
+
+    const maxAddedAt =
+      items.reduce((max, it) => Math.max(max, it.addedAt ?? 0), 0) || 0;
+    if (!maxAddedAt) return;
+
+    // Baseline on first successful poll (avoid "startup storm" runs).
+    if (this.lastSeenAddedAtSec === null) {
+      this.lastSeenAddedAtSec = maxAddedAt;
+      return;
+    }
+
+    const since = this.lastSeenAddedAtSec;
+    const newItems = items.filter((it) => (it.addedAt ?? 0) > since);
+    this.lastSeenAddedAtSec = Math.max(this.lastSeenAddedAtSec, maxAddedAt);
+
+    if (!newItems.length) return;
+
+    // Debounce "library.new" cleanup runs.
+    const lastRun = this.lastLibraryNewTriggeredAtMs ?? 0;
+    if (this.lastLibraryNewTriggeredAtMs !== null && now - lastRun < this.libraryNewDebounceMs) {
+      return;
+    }
+    this.lastLibraryNewTriggeredAtMs = now;
+
+    // Use the newest item as representative metadata for logs + job input.
+    const newest = [...newItems].sort(
+      (a, b) => (a.addedAt ?? 0) - (b.addedAt ?? 0),
+    )[newItems.length - 1]!;
+
+    const mediaType = (newest.type ?? '').toLowerCase();
+    if (!['movie', 'show', 'season', 'episode'].includes(mediaType)) return;
+
+    const title = newest.title ?? '';
+    const ratingKey = newest.ratingKey ?? '';
+
+    const payload: Record<string, unknown> = {
+      event: 'library.new',
+      Metadata: {
+        type: mediaType,
+        title: title || undefined,
+        ratingKey: ratingKey || undefined,
+        year: newest.year ?? undefined,
+        grandparentTitle: newest.grandparentTitle ?? undefined,
+        grandparentRatingKey: newest.grandparentRatingKey ?? undefined,
+        parentIndex: newest.parentIndex ?? undefined,
+        index: newest.index ?? undefined,
+        addedAt: newest.addedAt ?? undefined,
+        librarySectionID: newest.librarySectionId ?? undefined,
+        librarySectionTitle: newest.librarySectionTitle ?? undefined,
+      },
+      source: {
+        type: 'plexPolling',
+        newlyAddedCount: newItems.length,
+      },
+    };
+
+    const event = {
+      receivedAt: new Date().toISOString(),
+      payload,
+      files: [],
+      source: { type: 'plexPolling' as const },
+    };
+    const persisted = await this.webhooksService.persistPlexWebhookEvent(event);
+    this.webhooksService.logPlexWebhookSummary({
+      payload,
+      persistedPath: persisted.path,
+      receivedAtIso: event.receivedAt,
+      source: { ip: 'plexPolling', userAgent: null },
+    });
+
+    // New media has been added to Plex; bump the dashboard graph version and clear the
+    // server-side growth cache so the next request recomputes quickly.
+    this.plexAnalytics.invalidateLibraryGrowth(userId);
+
+    try {
+      const input = {
+        source: 'plexPolling',
+        plexEvent: 'library.new',
+        mediaType,
+        title,
+        year: newest.year ?? null,
+        ratingKey: ratingKey || null,
+        showTitle: newest.grandparentTitle || null,
+        showRatingKey: newest.grandparentRatingKey || null,
+        seasonNumber: newest.parentIndex ?? null,
+        episodeNumber: newest.index ?? null,
+        persistedPath: persisted.path,
+        newlyAddedCount: newItems.length,
+        newestAddedAt: newest.addedAt ?? null,
+      } as const;
+
+      const run = await this.jobsService.runJob({
+        jobId: 'mediaAddedCleanup',
+        trigger: 'manual',
+        dryRun: false,
+        userId,
+        input,
+      });
+
+      this.webhooksService.logPlexWebhookAutomation({
+        plexEvent: 'library.new',
+        mediaType,
+        seedTitle: title || undefined,
+        runs: { mediaAddedCleanup: run.id },
+      });
+    } catch (err) {
+      const msg = (err as Error)?.message ?? String(err);
+      this.webhooksService.logPlexWebhookAutomation({
+        plexEvent: 'library.new',
+        mediaType,
+        seedTitle: title || undefined,
+        errors: { mediaAddedCleanup: msg },
+      });
+    }
   }
 
   private toSnapshot(s: PlexNowPlayingSession, nowMs: number): SessionSnapshot {

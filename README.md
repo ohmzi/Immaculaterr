@@ -78,6 +78,7 @@ Then in Immaculaterr:
 - Task Manager → enable **Auto-run** for the jobs you want
   - “Based on Latest Watched Collection” (`watchedMovieRecommendations`)
   - “Immaculate Taste Collection” (`immaculateTastePoints`)
+  - “Media Added Cleanup” (`mediaAddedCleanup`) *(optional; runs when new items are added)*
 
 Optional: if you *do* want Plex to push events instead of polling, you can configure Plex Webhooks:
 
@@ -90,6 +91,8 @@ Optional: if you *do* want Plex to push events instead of polling, you can confi
 - `PLEX_POLLING_ENABLED` (default: `true`)
 - `PLEX_POLLING_INTERVAL_MS` (default: `5000`)
 - `PLEX_POLLING_SCROBBLE_THRESHOLD` (default: `0.9` i.e. 90%)
+- `PLEX_POLLING_RECENTLY_ADDED_INTERVAL_MS` (default: `60000`)
+- `PLEX_POLLING_LIBRARY_NEW_DEBOUNCE_MS` (default: `120000`)
 
 ### Stop
 
