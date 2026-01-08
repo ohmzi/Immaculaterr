@@ -18,6 +18,9 @@ In **Docker / production**, the API serves the built UI too, so there is **one p
 
 ```bash
 npm install
+npm -w apps/api run db:generate
+# First run only: create the dev DB + tables (SQLite)
+APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite npm -w apps/api run db:migrate
 npm run dev
 ```
 
