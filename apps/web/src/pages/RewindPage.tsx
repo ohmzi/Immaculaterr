@@ -183,7 +183,12 @@ export function RewindPage() {
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
             {/* Page Header */}
             <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex flex-col gap-4">
+              <motion.div
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+                className="flex flex-col gap-4"
+              >
                 <div className="flex items-center gap-4">
                   <motion.button
                     type="button"
@@ -214,20 +219,15 @@ export function RewindPage() {
                       <RotateCcw className="w-8 h-8 text-black" strokeWidth={2.5} />
                     </div>
                   </motion.button>
-                  <motion.h1
-                    initial={{ opacity: 0, y: 18 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, ease: 'easeOut' }}
-                    className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl"
-                  >
+                  <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
                     Rewind
-                  </motion.h1>
+                  </h1>
                 </div>
                 <p className="text-purple-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
                   A look back at what your server has been up to. Logs, errors, and
                   everything in between.
                 </p>
-              </div>
+              </motion.div>
 
               <Link
                 to="/"
