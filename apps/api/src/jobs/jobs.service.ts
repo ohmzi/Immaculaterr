@@ -9,6 +9,7 @@ import { CronTime } from 'cron';
 import { PrismaService } from '../db/prisma.service';
 import { findJobDefinition, JOB_DEFINITIONS } from './job-registry';
 import { JobsHandlers } from './jobs.handlers';
+import type { JobReportV1 } from './job-report-v1';
 import type {
   JobContext,
   JobLogLevel,
@@ -44,6 +45,43 @@ function toIsoString(value: unknown): string | null {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isJobReportV1(value: unknown): value is JobReportV1 {
+  if (!isPlainObject(value)) return false;
+  return value['template'] === 'jobReportV1' && value['version'] === 1;
+}
+
+function evaluateJobReportFailure(report: JobReportV1): {
+  failed: boolean;
+  reason: string | null;
+} {
+  const tasksRaw = report.tasks;
+  const tasks = Array.isArray(tasksRaw)
+    ? tasksRaw.filter(
+        (t): t is JobReportV1['tasks'][number] =>
+          Boolean(t) && typeof t === 'object' && !Array.isArray(t),
+      )
+    : [];
+
+  const failedTasks = tasks.filter((t) => t.status === 'failed');
+  if (!failedTasks.length) return { failed: false, reason: null };
+
+  const parts = failedTasks.slice(0, 3).map((t) => {
+    const title = String(t.title ?? t.id ?? 'task').trim() || 'task';
+    const issues = Array.isArray(t.issues) ? t.issues : [];
+    const firstIssue = issues.find((i) => i && typeof i === 'object') as
+      | { message?: unknown }
+      | undefined;
+    const msg =
+      firstIssue && typeof firstIssue.message === 'string'
+        ? firstIssue.message.trim()
+        : '';
+    return msg ? `${title}: ${msg}` : title;
+  });
+  const more = failedTasks.length > 3 ? ` (+${failedTasks.length - 3} more)` : '';
+  const reason = `Job reported failed task(s): ${parts.join(' | ')}${more}`;
+  return { failed: true, reason };
 }
 
 function getProgressSnapshot(summary: JsonObject | null): JsonObject | null {
@@ -251,6 +289,10 @@ export class JobsService {
       let finalSummary: JsonObject | null =
         result.summary ?? liveSummary ?? null;
 
+      const reportFailure = finalSummary && isJobReportV1(finalSummary)
+        ? evaluateJobReportFailure(finalSummary)
+        : { failed: false, reason: null as string | null };
+
       if (finalSummary && liveProgress) {
         const totalRaw = (liveProgress as Record<string, unknown>)['total'];
         const total =
@@ -267,8 +309,10 @@ export class JobsService {
           ...finalSummary,
           progress: {
             ...liveProgress,
-            step: 'done',
-            message: 'Completed.',
+            step: reportFailure.failed ? 'failed' : 'done',
+            message: reportFailure.failed
+              ? 'Failed.'
+              : 'Completed.',
             ...(total !== null
               ? {
                   total,
@@ -280,6 +324,32 @@ export class JobsService {
             updatedAt: new Date().toISOString(),
           },
         };
+      }
+
+      if (reportFailure.failed) {
+        if (reportFailure.reason) {
+          await ctx.error('run: reported failed', { reason: reportFailure.reason });
+        } else {
+          await ctx.error('run: reported failed');
+        }
+
+        await this.prisma.jobRun.update({
+          where: { id: runId },
+          data: {
+            status: 'FAILED',
+            finishedAt: new Date(),
+            summary: finalSummary ?? Prisma.DbNull,
+            errorMessage: reportFailure.reason ?? 'Job reported failure.',
+          },
+        });
+
+        const ms = Date.now() - startedAt;
+        this.logger.error(
+          `Job failed jobId=${jobId} runId=${runId} ms=${ms} error=${JSON.stringify(
+            reportFailure.reason ?? 'reported_failure',
+          )}`,
+        );
+        return;
       }
 
       await this.prisma.jobRun.update({
