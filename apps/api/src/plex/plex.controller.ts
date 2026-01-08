@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  BadGatewayException,
   Body,
   Controller,
   Get,
@@ -61,6 +62,17 @@ export class PlexController {
     const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
       ? baseUrlRaw
       : `http://${baseUrlRaw}`;
+    const baseUrlHost = (() => {
+      try {
+        return new URL(baseUrl).hostname;
+      } catch {
+        return '';
+      }
+    })();
+    const dockerLocalhostHint =
+      baseUrlHost === 'localhost' || baseUrlHost === '127.0.0.1'
+        ? " If you're running Immaculaterr in Docker, `localhost` points to the container. Use `host.docker.internal` (recommended) or your Plex server's LAN IP."
+        : '';
     try {
       const parsed = new URL(baseUrl);
       if (!/^https?:$/i.test(parsed.protocol)) {
@@ -70,9 +82,33 @@ export class PlexController {
       throw new BadRequestException('baseUrl must be a valid http(s) URL');
     }
 
-    const machineIdentifier = await this.plexServerService.getMachineIdentifier(
-      { baseUrl, token },
-    );
+    // Validate:
+    // - token works against the Plex server (library/sections requires auth)
+    // - baseUrl is reachable from the API process (common Docker pitfall: localhost)
+    try {
+      const sections = await this.plexServerService.getSections({ baseUrl, token });
+      if (!sections.length) {
+        throw new BadGatewayException(
+          `Plex responded but returned no library sections.${dockerLocalhostHint}`.trim(),
+        );
+      }
+    } catch (err) {
+      const msg = (err as Error)?.message ?? String(err);
+      // Plex returns 401 when token is invalid or doesn't grant access.
+      if (/HTTP\\s+401\\b/.test(msg) || msg.includes('401 Unauthorized')) {
+        throw new BadRequestException(
+          `Plex token was rejected by the server (401 Unauthorized).${dockerLocalhostHint}`.trim(),
+        );
+      }
+      throw new BadGatewayException(
+        `Could not connect to Plex at ${baseUrl}.${dockerLocalhostHint}`.trim(),
+      );
+    }
+
+    const machineIdentifier =
+      await this.plexServerService
+        .getMachineIdentifier({ baseUrl, token })
+        .catch(() => null);
 
     return { ok: true, machineIdentifier };
   }

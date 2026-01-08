@@ -96,7 +96,10 @@ export function SettingsPage({
   );
 
   // Service setup state
-  const [plexBaseUrl, setPlexBaseUrl] = useState('http://localhost:32400');
+  const defaultPlexBaseUrl = import.meta.env.DEV
+    ? 'http://localhost:32400'
+    : 'http://host.docker.internal:32400';
+  const [plexBaseUrl, setPlexBaseUrl] = useState(defaultPlexBaseUrl);
   const [plexToken, setPlexToken] = useState('');
 
   // Load existing settings when data is available
@@ -552,7 +555,21 @@ export function SettingsPage({
             });
 
         if (!res.ok) {
-          throw new Error('Plex credentials are incorrect.');
+          let msg = 'Plex connection test failed.';
+          try {
+            const data = (await res.json()) as { message?: unknown };
+            if (typeof data?.message === 'string' && data.message.trim()) {
+              msg = data.message.trim();
+            } else if (Array.isArray(data?.message)) {
+              const parts = (data.message as unknown[]).filter(
+                (v): v is string => typeof v === 'string' && v.trim().length > 0,
+              );
+              if (parts.length) msg = parts.join(', ');
+            }
+          } catch {
+            // ignore
+          }
+          throw new Error(msg);
         }
       }
 
@@ -1853,9 +1870,18 @@ export function SettingsPage({
                         setPlexTestOk(null);
                         setPlexBaseUrl(e.target.value);
                       }}
-                      placeholder="http://localhost:32400"
+                      placeholder={
+                        import.meta.env.DEV
+                          ? 'http://localhost:32400'
+                          : 'http://host.docker.internal:32400'
+                      }
                       className={inputClass}
                     />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {import.meta.env.DEV
+                        ? 'Tip: Plex usually runs on http://localhost:32400.'
+                        : "Tip: If Plex is on the same machine, use http://host.docker.internal:32400 (Linux Docker supported)."}
+                    </p>
                   </div>
                   <div>
                     <label className={labelClass}>Token</label>

@@ -51,6 +51,15 @@ Open:
 
 - `http://<server-ip>:3210/`
 
+### Connecting to Plex/Radarr/Sonarr when Immaculaterr runs in Docker
+
+If another service (like Plex) is running **on the Docker host**, do **not** use `http://localhost:...` as the Base URL inside Immaculaterr — in Docker, `localhost` means **inside the container**.
+
+Use one of:
+
+- `http://host.docker.internal:<port>` (recommended; supported by this compose file on Linux)
+- `http://<host-lan-ip>:<port>` (example: `http://192.168.1.10:32400`)
+
 ### Stop
 
 ```bash

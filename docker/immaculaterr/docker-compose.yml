@@ -25,6 +25,10 @@ services:
       # - Change HOST_PORT to pick the external port (what you connect to).
       # - Change APP_PORT only if you want the app to listen on a different internal port.
       - "${HOST_PORT:-3210}:${APP_PORT:-3210}"
+    # On Linux, this makes `host.docker.internal` resolve to the Docker host.
+    # Useful when connecting to services running on the host (e.g., Plex on :32400).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - immaculaterr-data:/data
     restart: unless-stopped
