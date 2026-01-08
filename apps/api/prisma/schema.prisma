@@ -66,6 +66,7 @@ enum JobRunStatus {
 enum JobRunTrigger {
   manual
   schedule
+  auto
 }
 
 model JobSchedule {

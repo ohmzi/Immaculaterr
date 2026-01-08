@@ -19,7 +19,7 @@ export type JobDefinition = {
 };
 
 export type JobRunStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
-export type JobRunTrigger = 'manual' | 'schedule';
+export type JobRunTrigger = 'manual' | 'schedule' | 'auto';
 
 export type JobRun = {
   id: string;

@@ -1,4 +1,4 @@
-export type JobRunTrigger = 'manual' | 'schedule';
+export type JobRunTrigger = 'manual' | 'schedule' | 'auto';
 
 export type JsonValue =
   | string

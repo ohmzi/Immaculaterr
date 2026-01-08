@@ -53,7 +53,9 @@ function formatDuration(ms: number): string {
 
 function modeLabel(run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' {
   if (run.dryRun) return 'Dry-Run';
-  return run.trigger === 'schedule' ? 'Auto-Run' : 'Manual';
+  return run.trigger === 'schedule' || run.trigger === 'auto'
+    ? 'Auto-Run'
+    : 'Manual';
 }
 
 export function RewindPage() {

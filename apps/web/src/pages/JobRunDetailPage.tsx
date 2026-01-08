@@ -47,7 +47,9 @@ type RunModeLabel = 'Auto-Run' | 'Manual' | 'Dry-Run';
 
 function modeLabel(run: JobRun): RunModeLabel {
   if (run.dryRun) return 'Dry-Run';
-  return run.trigger === 'schedule' ? 'Auto-Run' : 'Manual';
+  return run.trigger === 'schedule' || run.trigger === 'auto'
+    ? 'Auto-Run'
+    : 'Manual';
 }
 
 function modePill(mode: RunModeLabel) {
@@ -359,7 +361,11 @@ export function JobRunDetailPage() {
                           className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${modePill(
                             modeLabel(run),
                           )}`}
-                          title={run.trigger === 'schedule' ? 'Scheduled run' : 'Manually started'}
+                          title={
+                            run.trigger === 'schedule' || run.trigger === 'auto'
+                              ? 'Auto run'
+                              : 'Manually started'
+                          }
                         >
                           {modeLabel(run)}
                         </span>

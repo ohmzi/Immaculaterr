@@ -215,7 +215,7 @@ export class WebhooksController {
               try {
                 const run = await this.jobsService.runJob({
                   jobId: 'watchedMovieRecommendations',
-                  trigger: 'manual',
+                  trigger: 'auto',
                   dryRun: false,
                   userId,
                   input: payloadInput,
@@ -234,7 +234,7 @@ export class WebhooksController {
               try {
                 const run = await this.jobsService.runJob({
                   jobId: 'immaculateTastePoints',
-                  trigger: 'manual',
+                  trigger: 'auto',
                   dryRun: false,
                   userId,
                   input: payloadInput,
@@ -347,7 +347,7 @@ export class WebhooksController {
 
           const run = await this.jobsService.runJob({
             jobId: 'mediaAddedCleanup',
-            trigger: 'manual',
+            trigger: 'auto',
             dryRun: false,
             userId,
             input,

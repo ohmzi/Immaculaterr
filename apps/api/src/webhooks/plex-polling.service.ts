@@ -71,7 +71,7 @@ export class PlexPollingService implements OnModuleInit {
     5_000,
   );
   private readonly scrobbleThreshold = (() => {
-    const v = parseFloatEnv(process.env.PLEX_POLLING_SCROBBLE_THRESHOLD, 0.9);
+    const v = parseFloatEnv(process.env.PLEX_POLLING_SCROBBLE_THRESHOLD, 0.7);
     return v > 1 ? v / 100 : v;
   })();
   private readonly minDurationMs = parseNumberEnv(
@@ -321,7 +321,7 @@ export class PlexPollingService implements OnModuleInit {
 
       const run = await this.jobsService.runJob({
         jobId: 'mediaAddedCleanup',
-        trigger: 'manual',
+        trigger: 'auto',
         dryRun: false,
         userId,
         input,
@@ -485,7 +485,7 @@ export class PlexPollingService implements OnModuleInit {
       try {
         const run = await this.jobsService.runJob({
           jobId: 'watchedMovieRecommendations',
-          trigger: 'manual',
+          trigger: 'auto',
           dryRun: false,
           userId,
           input: payloadInput,
@@ -502,7 +502,7 @@ export class PlexPollingService implements OnModuleInit {
       try {
         const run = await this.jobsService.runJob({
           jobId: 'immaculateTastePoints',
-          trigger: 'manual',
+          trigger: 'auto',
           dryRun: false,
           userId,
           input: payloadInput,

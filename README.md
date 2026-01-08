@@ -90,7 +90,7 @@ Optional: if you *do* want Plex to push events instead of polling, you can confi
 
 - `PLEX_POLLING_ENABLED` (default: `true`)
 - `PLEX_POLLING_INTERVAL_MS` (default: `5000`)
-- `PLEX_POLLING_SCROBBLE_THRESHOLD` (default: `0.9` i.e. 90%)
+- `PLEX_POLLING_SCROBBLE_THRESHOLD` (default: `0.7` i.e. 70%)
 - `PLEX_POLLING_RECENTLY_ADDED_INTERVAL_MS` (default: `60000`)
 - `PLEX_POLLING_LIBRARY_NEW_DEBOUNCE_MS` (default: `120000`)
 
