@@ -779,10 +779,54 @@ export function JobRunDetailPage() {
                             );
 
                             const tvRowLabel = (() => {
-                              if (mediaType === 'episode') return 'TV (Episode)';
-                              if (mediaType === 'season') return 'TV (Season)';
-                              if (mediaType === 'show') return 'TV (Show)';
+                              if (mediaType === 'episode') return 'TV Episode';
+                              if (mediaType === 'season') return 'TV Season';
+                              if (mediaType === 'show') return 'TV Show';
                               return 'TV';
+                            })();
+
+                            const summaryRows = (() => {
+                              if (mediaType === 'movie') {
+                                return [
+                                  {
+                                    label: 'Movie',
+                                    unmonitored: movieUnmonitored,
+                                    duplicates: movieDuplicatesDeleted,
+                                    watchlist: movieWatchlistRemoved,
+                                  },
+                                ] as const;
+                              }
+
+                              if (
+                                mediaType === 'episode' ||
+                                mediaType === 'season' ||
+                                mediaType === 'show'
+                              ) {
+                                return [
+                                  {
+                                    label: tvRowLabel,
+                                    unmonitored: tvUnmonitored,
+                                    duplicates: tvDuplicatesDeleted,
+                                    watchlist: tvWatchlistRemoved,
+                                  },
+                                ] as const;
+                              }
+
+                              // Fallback: unknown type, show both for visibility.
+                              return [
+                                {
+                                  label: 'Movie',
+                                  unmonitored: movieUnmonitored,
+                                  duplicates: movieDuplicatesDeleted,
+                                  watchlist: movieWatchlistRemoved,
+                                },
+                                {
+                                  label: tvRowLabel,
+                                  unmonitored: tvUnmonitored,
+                                  duplicates: tvDuplicatesDeleted,
+                                  watchlist: tvWatchlistRemoved,
+                                },
+                              ] as const;
                             })();
 
                             return (
@@ -828,34 +872,25 @@ export function JobRunDetailPage() {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        <tr className="border-t border-white/10">
-                                          <td className="px-4 py-3 text-white/85 font-semibold">
-                                            Movie
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
-                                            {asCount(movieUnmonitored)}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
-                                            {asCount(movieDuplicatesDeleted)}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
-                                            {asCount(movieWatchlistRemoved)}
-                                          </td>
-                                        </tr>
-                                        <tr className="border-t border-white/10">
-                                          <td className="px-4 py-3 text-white/85 font-semibold">
-                                            {tvRowLabel}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
-                                            {asCount(tvUnmonitored)}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
-                                            {asCount(tvDuplicatesDeleted)}
-                                          </td>
-                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
-                                            {asCount(tvWatchlistRemoved)}
-                                          </td>
-                                        </tr>
+                                        {summaryRows.map((r) => (
+                                          <tr
+                                            key={r.label}
+                                            className="border-t border-white/10"
+                                          >
+                                            <td className="px-4 py-3 text-white/85 font-semibold">
+                                              {r.label}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                              {asCount(r.unmonitored)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                              {asCount(r.duplicates)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                              {asCount(r.watchlist)}
+                                            </td>
+                                          </tr>
+                                        ))}
                                       </tbody>
                                     </table>
                                   </div>
