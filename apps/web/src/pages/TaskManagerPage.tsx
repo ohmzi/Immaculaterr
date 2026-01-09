@@ -302,15 +302,18 @@ export function TaskManagerPage() {
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [terminalState, setTerminalState] = useState<
-    Record<string, { status: 'idle' | 'running' | 'completed'; runId?: string }>
+    Record<
+      string,
+      { status: 'idle' | 'running' | 'completed'; runId?: string; result?: 'SUCCESS' | 'FAILED' }
+    >
   >({});
   const [runNowUi, setRunNowUi] = useState<
     Record<
       string,
       | { phase: 'idle' }
       | { phase: 'running'; runId?: string | null }
-      | { phase: 'finishing'; runId?: string | null }
-      | { phase: 'complete'; runId?: string | null; completedAt: number }
+      | { phase: 'finishing'; runId?: string | null; result?: 'SUCCESS' | 'FAILED' }
+      | { phase: 'complete'; runId?: string | null; completedAt: number; result: 'SUCCESS' | 'FAILED' }
     >
   >({});
   const runNowFinishTimersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
@@ -526,8 +529,14 @@ export function TaskManagerPage() {
         if (cur.phase === 'complete') {
           return { ...prev, [vars.jobId]: { ...cur, runId: data.run.id } };
         }
-        if (cur.phase === 'running' || cur.phase === 'finishing') {
+        if (cur.phase === 'running') {
           return { ...prev, [vars.jobId]: { phase: cur.phase, runId: data.run.id } };
+        }
+        if (cur.phase === 'finishing') {
+          return {
+            ...prev,
+            [vars.jobId]: { phase: cur.phase, runId: data.run.id, result: cur.result },
+          };
         }
         return prev;
       });
@@ -573,14 +582,24 @@ export function TaskManagerPage() {
       if (!t || t.status !== 'completed') continue;
       if (ui.runId && t.runId && ui.runId !== t.runId) continue;
 
-      // 80% -> 100% (amber), then switch to green.
+      const result: 'SUCCESS' | 'FAILED' = t.result ?? 'SUCCESS';
+
+      // 80% -> 100% (amber), then switch to green (SUCCESS) or red (FAILED).
       clearRunNowTimers(jobId);
-      setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'finishing', runId: t.runId ?? ui.runId ?? null } }));
+      setRunNowUi((prev) => ({
+        ...prev,
+        [jobId]: { phase: 'finishing', runId: t.runId ?? ui.runId ?? null, result },
+      }));
 
       runNowFinishTimersRef.current[jobId] = setTimeout(() => {
         setRunNowUi((prev) => ({
           ...prev,
-          [jobId]: { phase: 'complete', runId: t.runId ?? ui.runId ?? null, completedAt: Date.now() },
+          [jobId]: {
+            phase: 'complete',
+            runId: t.runId ?? ui.runId ?? null,
+            completedAt: Date.now(),
+            result,
+          },
         }));
 
         // Hold "Complete" for 2 minutes, then reset back to "Run Now" (while staying on page).
@@ -632,7 +651,11 @@ export function TaskManagerPage() {
           } else if (latestRun.status === 'SUCCESS' || latestRun.status === 'FAILED') {
             setTerminalState((prev) => ({
               ...prev,
-              [job.id]: { status: 'completed', runId: latestRun.id },
+              [job.id]: {
+                status: 'completed',
+                runId: latestRun.id,
+                result: latestRun.status === 'FAILED' ? 'FAILED' : 'SUCCESS',
+              },
             }));
           }
         } catch (error) {
@@ -667,7 +690,11 @@ export function TaskManagerPage() {
           if (latestRun.status === 'SUCCESS' || latestRun.status === 'FAILED') {
             setTerminalState((prev) => ({
               ...prev,
-              [jobId]: { status: 'completed', runId: latestRun.id },
+              [jobId]: {
+                status: 'completed',
+                runId: latestRun.id,
+                result: latestRun.status === 'FAILED' ? 'FAILED' : 'SUCCESS',
+              },
             }));
           }
         } catch (error) {
@@ -833,7 +860,9 @@ export function TaskManagerPage() {
                     : 0;
               const runUiFillClass =
                 runUiState.phase === 'complete'
-                  ? 'bg-emerald-500/90'
+                  ? runUiState.result === 'FAILED'
+                    ? 'bg-red-500/90'
+                    : 'bg-emerald-500/90'
                   : 'bg-[#facc15]/90';
               const runUiLabel =
                 runUiState.phase === 'running'
@@ -841,7 +870,9 @@ export function TaskManagerPage() {
                   : runUiState.phase === 'finishing'
                     ? 'Finalizing…'
                     : runUiState.phase === 'complete'
-                      ? 'Complete'
+                      ? runUiState.result === 'FAILED'
+                        ? 'Failed'
+                        : 'Complete'
                       : 'Run Now';
               const runError =
                 runMutation.isError && runMutation.variables?.jobId === job.id
@@ -858,6 +889,8 @@ export function TaskManagerPage() {
               const isTerminalActive =
                 terminalInfo?.status === 'running' || terminalInfo?.status === 'completed';
               const isTerminalRunning = terminalInfo?.status === 'running';
+              const isTerminalFailed =
+                terminalInfo?.status === 'completed' && terminalInfo.result === 'FAILED';
               const weeklyOpen = weeklyDaySelector[job.id] ?? false;
               const monthlyOpen = monthlyDaySelector[job.id] ?? false;
               const nextRunsOpen = nextRunsPopup[job.id] ?? false;
@@ -1190,7 +1223,12 @@ export function TaskManagerPage() {
                                 </motion.span>
                               </motion.span>
                             ) : (
-                              <TerminalIcon className="w-5 h-5 text-emerald-400" />
+                              <TerminalIcon
+                                className={cn(
+                                  'w-5 h-5',
+                                  isTerminalFailed ? 'text-red-300' : 'text-emerald-400',
+                                )}
+                              />
                             )
                           ) : (
                             <TerminalIcon className="w-5 h-5" />
@@ -1258,7 +1296,11 @@ export function TaskManagerPage() {
                                 {runUiState.phase === 'idle' ? (
                                   <Play className="w-4 h-4 mr-2 fill-current text-[#facc15]" />
                                 ) : runUiState.phase === 'complete' ? (
-                                  <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-200" />
+                                  runUiState.result === 'FAILED' ? (
+                                    <X className="w-4 h-4 mr-2 text-red-200" />
+                                  ) : (
+                                    <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-200" />
+                                  )
                                 ) : (
                                   <Loader2 className="w-4 h-4 mr-2 animate-spin text-black/70" />
                                 )}
