@@ -12,7 +12,7 @@ import {
   type SonarrEpisode,
   type SonarrSeries,
 } from '../sonarr/sonarr.service';
-import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, issuesFromWarnings, metricRow } from './job-report-v1';
 
@@ -266,8 +266,20 @@ export class CleanupAfterAddingNewContentJob {
       showRatingKey,
       seasonNumber,
       episodeNumber,
-      radarr: { configured: Boolean(radarrBaseUrl && radarrApiKey) },
-      sonarr: { configured: Boolean(sonarrBaseUrl && sonarrApiKey) },
+      radarr: {
+        configured: Boolean(radarrBaseUrl && radarrApiKey),
+        connected: null as boolean | null,
+        moviesUnmonitored: 0,
+        moviesWouldUnmonitor: 0,
+        error: null as string | null,
+      },
+      sonarr: {
+        configured: Boolean(sonarrBaseUrl && sonarrApiKey),
+        connected: null as boolean | null,
+        episodesUnmonitored: 0,
+        episodesWouldUnmonitor: 0,
+        error: null as string | null,
+      },
       watchlist: { removed: 0, attempted: 0, matchedBy: 'none' as const },
       duplicates: null,
       skipped: false,
@@ -1970,6 +1982,18 @@ export class CleanupAfterAddingNewContentJob {
       summary.year = resolvedYear;
 
       // 2) Unmonitor in Radarr (best-effort)
+      const radarrSummary: JsonObject = {
+        configured: Boolean(radarrBaseUrl && radarrApiKey),
+        connected: null as boolean | null,
+        movieFound: null as boolean | null,
+        movieId: null as number | null,
+        monitoredBefore: null as boolean | null,
+        unmonitored: false,
+        wouldUnmonitor: false,
+        moviesUnmonitored: 0,
+        moviesWouldUnmonitor: 0,
+        error: null as string | null,
+      };
       if (radarrBaseUrl && radarrApiKey) {
         try {
           const movieTitle = resolvedTitle || title;
@@ -1980,6 +2004,7 @@ export class CleanupAfterAddingNewContentJob {
             baseUrl: radarrBaseUrl,
             apiKey: radarrApiKey,
           });
+          radarrSummary.connected = true;
 
           const tmdbIdForRadarr = tmdbId;
 
@@ -1997,11 +2022,15 @@ export class CleanupAfterAddingNewContentJob {
             null;
 
           if (!candidate) {
+            radarrSummary.movieFound = false;
             await ctx.warn('radarr: movie not found (skipping unmonitor)', {
               title: movieTitle,
               tmdbId: tmdbIdForRadarr ?? null,
             });
           } else if (!candidate.monitored) {
+            radarrSummary.movieFound = true;
+            radarrSummary.movieId = typeof candidate.id === 'number' ? candidate.id : null;
+            radarrSummary.monitoredBefore = false;
             await ctx.info('radarr: already unmonitored', {
               title:
                 typeof candidate.title === 'string'
@@ -2010,6 +2039,11 @@ export class CleanupAfterAddingNewContentJob {
               id: candidate.id,
             });
           } else if (ctx.dryRun) {
+            radarrSummary.movieFound = true;
+            radarrSummary.movieId = typeof candidate.id === 'number' ? candidate.id : null;
+            radarrSummary.monitoredBefore = true;
+            radarrSummary.wouldUnmonitor = true;
+            radarrSummary.moviesWouldUnmonitor = 1;
             await ctx.info('radarr: dry-run would unmonitor', {
               title:
                 typeof candidate.title === 'string'
@@ -2024,6 +2058,11 @@ export class CleanupAfterAddingNewContentJob {
               movie: candidate,
               monitored: false,
             });
+            radarrSummary.movieFound = true;
+            radarrSummary.movieId = typeof candidate.id === 'number' ? candidate.id : null;
+            radarrSummary.monitoredBefore = true;
+            radarrSummary.unmonitored = Boolean(ok);
+            radarrSummary.moviesUnmonitored = ok ? 1 : 0;
             await ctx.info('radarr: unmonitor result', {
               ok,
               title:
@@ -2036,14 +2075,18 @@ export class CleanupAfterAddingNewContentJob {
           }
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
+          radarrSummary.connected = false;
+          radarrSummary.error = msg;
           (summary.warnings as string[]).push(
             `radarr: failed (continuing): ${msg}`,
           );
           await ctx.warn('radarr: failed (continuing)', { error: msg });
         }
       } else {
+        radarrSummary.connected = null;
         await ctx.info('radarr: not configured (skipping)', {});
       }
+      summary.radarr = radarrSummary as unknown as JsonObject;
 
       // 3) Remove from Plex watchlist (best-effort)
       {
@@ -2123,18 +2166,50 @@ export class CleanupAfterAddingNewContentJob {
         }
       }
 
+      const sonarrSummary: JsonObject = {
+        configured: Boolean(sonarrBaseUrl && sonarrApiKey),
+        connected: null as boolean | null,
+        seriesFound: null as boolean | null,
+        seriesId: null as number | null,
+        monitoredBefore: null as boolean | null,
+        seriesUnmonitored: false,
+        wouldUnmonitor: false,
+        error: null as string | null,
+      };
+
       // Only remove show from watchlist if Plex has ALL episodes (per Sonarr).
       if (!sonarrBaseUrl || !sonarrApiKey || !seriesTitle) {
         await ctx.info(
           'sonarr: not configured or missing title (skipping show flow)',
           {},
         );
+        summary.sonarr = sonarrSummary as unknown as JsonObject;
         summary.skipped = true;
         return toReport(summary);
       }
 
-      const series = await findSonarrSeries({ tvdbId, title: seriesTitle });
+      let series: SonarrSeries | null = null;
+      try {
+        series = await findSonarrSeries({ tvdbId, title: seriesTitle });
+        sonarrSummary.connected = true;
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        sonarrSummary.connected = false;
+        sonarrSummary.error = msg;
+        (summary.warnings as string[]).push(
+          `sonarr: failed to load series list (skipping show flow): ${msg}`,
+        );
+        await ctx.warn('sonarr: failed to load series list (skipping show flow)', {
+          error: msg,
+        });
+        summary.sonarr = sonarrSummary as unknown as JsonObject;
+        summary.skipped = true;
+        return toReport(summary);
+      }
+
       if (!series) {
+        sonarrSummary.seriesFound = false;
+        summary.sonarr = sonarrSummary as unknown as JsonObject;
         await ctx.warn('sonarr: series not found (skipping show flow)', {
           title: seriesTitle,
           tvdbId,
@@ -2143,8 +2218,12 @@ export class CleanupAfterAddingNewContentJob {
         return toReport(summary);
       }
 
+      sonarrSummary.seriesFound = true;
+      sonarrSummary.seriesId = typeof series.id === 'number' ? series.id : null;
+
       const seriesTvdbId = toInt(series.tvdbId) ?? tvdbId ?? null;
       if (!seriesTvdbId) {
+        summary.sonarr = sonarrSummary as unknown as JsonObject;
         await ctx.warn('sonarr: series missing tvdbId (skipping show flow)', {
           title: seriesTitle,
         });
@@ -2160,6 +2239,7 @@ export class CleanupAfterAddingNewContentJob {
       }
 
       if (plexShowRatingKeys.length === 0) {
+        summary.sonarr = sonarrSummary as unknown as JsonObject;
         await ctx.warn(
           'plex: show not found in any Plex TV library (skipping)',
           {
@@ -2189,6 +2269,7 @@ export class CleanupAfterAddingNewContentJob {
       }
       const missing = desired.filter((k) => !plexEpisodes.has(k));
       if (missing.length > 0) {
+        summary.sonarr = sonarrSummary as unknown as JsonObject;
         await ctx.info(
           'plex: show not complete; skipping watchlist removal + unmonitor',
           {
@@ -2204,26 +2285,52 @@ export class CleanupAfterAddingNewContentJob {
 
       // Show is complete in Plex -> unmonitor in Sonarr and remove from watchlist.
       if (!series.monitored) {
+        sonarrSummary.monitoredBefore = false;
         await ctx.info('sonarr: already unmonitored', {
           title: typeof series.title === 'string' ? series.title : seriesTitle,
           id: series.id,
         });
       } else if (ctx.dryRun) {
+        sonarrSummary.monitoredBefore = true;
+        sonarrSummary.wouldUnmonitor = true;
         await ctx.info('sonarr: dry-run would unmonitor series', {
           title: typeof series.title === 'string' ? series.title : seriesTitle,
           id: series.id,
         });
       } else {
-        await this.sonarr.updateSeries({
-          baseUrl: sonarrBaseUrl,
-          apiKey: sonarrApiKey,
-          series: { ...series, monitored: false },
-        });
-        await ctx.info('sonarr: series unmonitored', {
-          title: typeof series.title === 'string' ? series.title : seriesTitle,
-          id: series.id,
-        });
+        sonarrSummary.monitoredBefore = true;
+        const ok = await this.sonarr
+          .updateSeries({
+            baseUrl: sonarrBaseUrl,
+            apiKey: sonarrApiKey,
+            series: { ...series, monitored: false },
+          })
+          .then(() => true)
+          .catch((err) => {
+            const msg = (err as Error)?.message ?? String(err);
+            sonarrSummary.error = msg;
+            (summary.warnings as string[]).push(
+              `sonarr: failed to unmonitor series (continuing): ${msg}`,
+            );
+            return false;
+          });
+
+        if (ok) {
+          sonarrSummary.seriesUnmonitored = true;
+          await ctx.info('sonarr: series unmonitored', {
+            title: typeof series.title === 'string' ? series.title : seriesTitle,
+            id: series.id,
+          });
+        } else {
+          await ctx.warn('sonarr: series unmonitor failed (continuing)', {
+            title: typeof series.title === 'string' ? series.title : seriesTitle,
+            id: series.id,
+            error: sonarrSummary.error,
+          });
+        }
       }
+
+      summary.sonarr = sonarrSummary as unknown as JsonObject;
 
       await ctx.info('plex: removing show from watchlist (show complete)', {
         title: seriesTitle,
@@ -2410,10 +2517,14 @@ export class CleanupAfterAddingNewContentJob {
 
         summary.sonarr = {
           configured: true,
+          connected: true,
+          seriesFound: true,
           seriesId: series.id,
           season: seasonNum,
-          episodesUnmonitored: episodeUnmonitored,
-          seasonUnmonitored: seasonWasMonitored ? true : false,
+          episodesUnmonitored: ctx.dryRun ? 0 : episodeUnmonitored,
+          episodesWouldUnmonitor: ctx.dryRun ? episodeUnmonitored : 0,
+          seasonUnmonitored: !ctx.dryRun && seasonWasMonitored ? true : false,
+          seasonWouldUnmonitor: ctx.dryRun && seasonWasMonitored ? true : false,
         } as unknown as JsonObject;
 
         // Remove show from watchlist ONLY if Plex has ALL episodes for the series.
@@ -2494,6 +2605,22 @@ export class CleanupAfterAddingNewContentJob {
         return toReport(summary);
       }
 
+      const sonarrSummary: JsonObject = {
+        configured: Boolean(sonarrBaseUrl && sonarrApiKey),
+        connected: null as boolean | null,
+        seriesFound: null as boolean | null,
+        seriesId: null as number | null,
+        episodeFound: null as boolean | null,
+        season: seasonNum,
+        episode: epNum,
+        monitoredBefore: null as boolean | null,
+        episodeUnmonitored: false,
+        wouldUnmonitor: false,
+        episodesUnmonitored: 0,
+        episodesWouldUnmonitor: 0,
+        error: null as string | null,
+      };
+
       if (sonarrBaseUrl && sonarrApiKey) {
         try {
           const series = await findSonarrSeries({
@@ -2501,6 +2628,8 @@ export class CleanupAfterAddingNewContentJob {
             title: seriesTitle,
           });
           if (!series) {
+            sonarrSummary.connected = true;
+            sonarrSummary.seriesFound = false;
             await ctx.warn(
               'sonarr: series not found (skipping episode unmonitor)',
               {
@@ -2509,6 +2638,9 @@ export class CleanupAfterAddingNewContentJob {
               },
             );
           } else {
+            sonarrSummary.connected = true;
+            sonarrSummary.seriesFound = true;
+            sonarrSummary.seriesId = typeof series.id === 'number' ? series.id : null;
             const episodes = await this.sonarr.getEpisodesBySeries({
               baseUrl: sonarrBaseUrl,
               apiKey: sonarrApiKey,
@@ -2520,18 +2652,25 @@ export class CleanupAfterAddingNewContentJob {
                 toInt(ep.episodeNumber) === epNum,
             );
             if (!episode) {
+              sonarrSummary.episodeFound = false;
               await ctx.warn('sonarr: episode not found (skipping)', {
                 title: seriesTitle,
                 season: seasonNum,
                 episode: epNum,
               });
             } else if (!episode.monitored) {
+              sonarrSummary.episodeFound = true;
+              sonarrSummary.monitoredBefore = false;
               await ctx.info('sonarr: episode already unmonitored', {
                 title: seriesTitle,
                 season: seasonNum,
                 episode: epNum,
               });
             } else if (ctx.dryRun) {
+              sonarrSummary.episodeFound = true;
+              sonarrSummary.monitoredBefore = true;
+              sonarrSummary.wouldUnmonitor = true;
+              sonarrSummary.episodesWouldUnmonitor = 1;
               await ctx.info('sonarr: dry-run would unmonitor episode', {
                 title: seriesTitle,
                 season: seasonNum,
@@ -2544,6 +2683,10 @@ export class CleanupAfterAddingNewContentJob {
                 episode,
                 monitored: false,
               });
+              sonarrSummary.episodeFound = true;
+              sonarrSummary.monitoredBefore = true;
+              sonarrSummary.episodeUnmonitored = true;
+              sonarrSummary.episodesUnmonitored = 1;
               await ctx.info('sonarr: episode unmonitored', {
                 title: seriesTitle,
                 season: seasonNum,
@@ -2553,6 +2696,8 @@ export class CleanupAfterAddingNewContentJob {
           }
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
+          sonarrSummary.connected = false;
+          sonarrSummary.error = msg;
           (summary.warnings as string[]).push(
             `sonarr: episode unmonitor failed (continuing): ${msg}`,
           );
@@ -2561,11 +2706,13 @@ export class CleanupAfterAddingNewContentJob {
           });
         }
       } else {
+        sonarrSummary.connected = null;
         await ctx.info(
           'sonarr: not configured (skipping episode unmonitor)',
           {},
         );
       }
+      summary.sonarr = sonarrSummary as unknown as JsonObject;
 
       // Duplicate cleanup for this episode within its Plex show (same library as the added episode):
       // - If multiple Plex metadata items exist for the same SxxEyy within that show, keep the best and delete the rest.
@@ -2768,124 +2915,429 @@ function buildMediaAddedCleanupReport(params: {
 }): JobReportV1 {
   const { ctx, raw } = params;
 
+  const rawRec = raw as Record<string, unknown>;
+
   const issues: JobReportV1['issues'] = [];
-  issues.push(...issuesFromWarnings((raw as Record<string, unknown>).warnings));
+  issues.push(...issuesFromWarnings(rawRec.warnings));
 
-  const duplicates = isPlainObject((raw as Record<string, unknown>).duplicates)
-    ? ((raw as Record<string, unknown>).duplicates as Record<string, unknown>)
+  const mediaType = (pickString(rawRec, 'mediaType') ?? '').toLowerCase();
+  const plexEvent = pickString(rawRec, 'plexEvent') ?? null;
+  const title = pickString(rawRec, 'title') ?? '';
+  const year = pickNumber(rawRec, 'year');
+  const ratingKey = pickString(rawRec, 'ratingKey') ?? null;
+  const showTitle = pickString(rawRec, 'showTitle') ?? null;
+  const showRatingKey = pickString(rawRec, 'showRatingKey') ?? null;
+  const seasonNumber = pickNumber(rawRec, 'seasonNumber');
+  const episodeNumber = pickNumber(rawRec, 'episodeNumber');
+
+  const duplicates = isPlainObject(rawRec.duplicates)
+    ? (rawRec.duplicates as Record<string, unknown>)
     : null;
-  const watchlist = isPlainObject((raw as Record<string, unknown>).watchlist)
-    ? ((raw as Record<string, unknown>).watchlist as Record<string, unknown>)
+  const watchlist = isPlainObject(rawRec.watchlist)
+    ? (rawRec.watchlist as Record<string, unknown>)
     : null;
 
-  // Duplicate warnings (if present)
-  if (duplicates && Array.isArray(duplicates.warnings)) {
-    issues.push(...issuesFromWarnings(duplicates.warnings));
+  const radarr = isPlainObject(rawRec.radarr)
+    ? (rawRec.radarr as Record<string, unknown>)
+    : null;
+  const sonarr = isPlainObject(rawRec.sonarr)
+    ? (rawRec.sonarr as Record<string, unknown>)
+    : null;
+
+  const asBool = (v: unknown): boolean | null =>
+    typeof v === 'boolean' ? v : null;
+
+  const num = (v: unknown): number | null => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim()) {
+      const n = Number.parseInt(v.trim(), 10);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  };
+
+  const versionDeletedCount = (vc: unknown) => {
+    if (!isPlainObject(vc)) return 0;
+    const rec = vc as Record<string, unknown>;
+    const deleted = num(rec.deleted) ?? 0;
+    const wouldDelete = num(rec.wouldDelete) ?? 0;
+    return ctx.dryRun ? wouldDelete : deleted;
+  };
+
+  const versionCopiesCount = (vc: unknown): number | null => {
+    if (!isPlainObject(vc)) return null;
+    return num((vc as Record<string, unknown>).copies);
+  };
+
+  // Duplicates: compute per-type "copies deleted" (metadata deletions + part deletions).
+  let movieDuplicatesDeleted = 0;
+  let episodeDuplicatesDeleted = 0;
+  let movieDuplicatesFound: boolean | null = null;
+  let episodeDuplicatesFound: boolean | null = null;
+
+  if (duplicates) {
+    const mode = typeof duplicates.mode === 'string' ? duplicates.mode.trim() : '';
+
+    // Full sweep mode (has nested movie/episode stats)
+    if (isPlainObject(duplicates.movie) || isPlainObject(duplicates.episode)) {
+      const m = isPlainObject(duplicates.movie)
+        ? (duplicates.movie as Record<string, unknown>)
+        : null;
+      const e = isPlainObject(duplicates.episode)
+        ? (duplicates.episode as Record<string, unknown>)
+        : null;
+
+      const mMeta = m
+        ? (ctx.dryRun ? num(m.metadataWouldDelete) : num(m.metadataDeleted)) ?? 0
+        : 0;
+      const mParts = m
+        ? (ctx.dryRun ? num(m.partsWouldDelete) : num(m.partsDeleted)) ?? 0
+        : 0;
+      movieDuplicatesDeleted = mMeta + mParts;
+      movieDuplicatesFound = m ? (num(m.groupsWithDuplicates) ?? 0) > 0 : null;
+
+      const eMeta = e
+        ? (ctx.dryRun ? num(e.metadataWouldDelete) : num(e.metadataDeleted)) ?? 0
+        : 0;
+      const eParts = e
+        ? (ctx.dryRun ? num(e.partsWouldDelete) : num(e.partsDeleted)) ?? 0
+        : 0;
+      episodeDuplicatesDeleted = eMeta + eParts;
+      episodeDuplicatesFound = e ? (num(e.groupsWithDuplicates) ?? 0) > 0 : null;
+    } else if (mode.startsWith('movie')) {
+      const metaDeleted = (ctx.dryRun
+        ? num(duplicates.wouldDeleteMetadata)
+        : num(duplicates.deletedMetadata)) ?? 0;
+      const partsDeleted = versionDeletedCount(duplicates.versionCleanup);
+      movieDuplicatesDeleted = metaDeleted + partsDeleted;
+
+      const candidates = num(duplicates.candidates) ?? 0;
+      const copies = versionCopiesCount(duplicates.versionCleanup);
+      movieDuplicatesFound =
+        movieDuplicatesDeleted > 0 || candidates > 1 || (copies !== null && copies > 1);
+    } else if (mode.startsWith('episode')) {
+      const metaDeleted = (ctx.dryRun
+        ? num(duplicates.wouldDeleteMetadata)
+        : num(duplicates.deletedMetadata)) ?? 0;
+      const partsDeleted = versionDeletedCount(duplicates.versionCleanup);
+      episodeDuplicatesDeleted = metaDeleted + partsDeleted;
+
+      const candidates = num(duplicates.candidates) ?? 0;
+      const copies = versionCopiesCount(duplicates.versionCleanup);
+      episodeDuplicatesFound =
+        episodeDuplicatesDeleted > 0 || candidates > 1 || (copies !== null && copies > 1);
+    }
+
+    // Collect warnings into issues (so they show up in the UI Issues section)
+    if (Array.isArray(duplicates.warnings)) {
+      issues.push(...issuesFromWarnings(duplicates.warnings));
+    }
   }
 
-  const mode =
-    (duplicates && typeof duplicates.mode === 'string' && duplicates.mode.trim()
-      ? duplicates.mode.trim()
-      : typeof (raw as Record<string, unknown>).mediaType === 'string'
-        ? String((raw as Record<string, unknown>).mediaType).trim()
-        : '') || 'unknown';
+  // Watchlist summary:
+  // - For reconciliation mode: includes both movies + shows
+  // - For single-item mode: infer which bucket to attribute to based on mediaType
+  let watchlistMovieRemoved = 0;
+  let watchlistShowRemoved = 0;
+  let watchlistChecked = false;
+  let watchlistAttempted: number | null = null;
+  let watchlistRemoved: number | null = null;
+  let watchlistMatchedBy: string | null = null;
+  let watchlistError: string | null = null;
 
-  // --- Duplicates (best-effort numeric extraction)
-  const movieDup =
-    duplicates && isPlainObject(duplicates.movie)
-      ? (duplicates.movie as Record<string, unknown>)
-      : null;
-  const episodeDup =
-    duplicates && isPlainObject(duplicates.episode)
-      ? (duplicates.episode as Record<string, unknown>)
-      : null;
+  if (watchlist) {
+    const mode = typeof watchlist.mode === 'string' ? watchlist.mode.trim() : null;
+    if (mode === 'reconcile') {
+      watchlistChecked = true;
+      const wlMovies = isPlainObject(watchlist.movies)
+        ? (watchlist.movies as Record<string, unknown>)
+        : null;
+      const wlShows = isPlainObject(watchlist.shows)
+        ? (watchlist.shows as Record<string, unknown>)
+        : null;
+      watchlistMovieRemoved =
+        wlMovies && (ctx.dryRun ? num(wlMovies.wouldRemove) : num(wlMovies.removed))
+          ? ((ctx.dryRun ? num(wlMovies.wouldRemove) : num(wlMovies.removed)) ?? 0)
+          : 0;
+      watchlistShowRemoved =
+        wlShows && (ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed))
+          ? ((ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed)) ?? 0)
+          : 0;
 
-  // --- Watchlist (best-effort numeric extraction)
-  const watchlistMode = watchlist && typeof watchlist.mode === 'string' ? watchlist.mode : null;
-  const wlMovies =
-    watchlist && isPlainObject(watchlist.movies)
-      ? (watchlist.movies as Record<string, unknown>)
-      : null;
-  const wlShows =
-    watchlist && isPlainObject(watchlist.shows)
-      ? (watchlist.shows as Record<string, unknown>)
-      : null;
+      if (Array.isArray(watchlist.warnings)) {
+        issues.push(...issuesFromWarnings(watchlist.warnings));
+      }
+    } else {
+      // Per-item watchlist removal result shape.
+      if ('baseUrlTried' in watchlist || 'error' in watchlist) {
+        watchlistChecked = true;
+      }
 
-  const wlMovieTotal = wlMovies ? (asNum(wlMovies.total) ?? 0) : null;
-  const wlMovieRemoved = wlMovies
-    ? (ctx.dryRun ? asNum(wlMovies.wouldRemove) : asNum(wlMovies.removed)) ?? 0
-    : null;
-  const wlShowTotal = wlShows ? (asNum(wlShows.total) ?? 0) : null;
-  const wlShowRemoved = wlShows
-    ? (ctx.dryRun ? asNum(wlShows.wouldRemove) : asNum(wlShows.removed)) ?? 0
-    : null;
+      watchlistAttempted = num(watchlist.attempted);
+      watchlistRemoved = num(watchlist.removed);
+      watchlistMatchedBy =
+        typeof watchlist.matchedBy === 'string' ? watchlist.matchedBy : null;
+      watchlistError = typeof watchlist.error === 'string' ? watchlist.error : null;
+
+      const removed = watchlistRemoved ?? 0;
+      if (mediaType === 'movie') watchlistMovieRemoved = removed;
+      else if (mediaType === 'show' || mediaType === 'season')
+        watchlistShowRemoved = removed;
+    }
+  }
+
+  // Unmonitor counts (summary wants only: Radarr(movie) + Sonarr(episode))
+  const radarrMovieUnmonitored = (() => {
+    if (!radarr) return 0;
+    if (ctx.dryRun) {
+      const n = num(radarr.moviesWouldUnmonitor);
+      if (n !== null) return n;
+      return asBool(radarr.wouldUnmonitor) ? 1 : 0;
+    }
+    const n = num(radarr.moviesUnmonitored);
+    if (n !== null) return n;
+    return asBool(radarr.unmonitored) ? 1 : 0;
+  })();
+
+  const sonarrEpisodeUnmonitored = (() => {
+    if (!sonarr) return 0;
+    if (ctx.dryRun) {
+      const n = num(sonarr.episodesWouldUnmonitor);
+      if (n !== null) return n;
+      return asBool(sonarr.wouldUnmonitor) ? 1 : 0;
+    }
+    const n = num(sonarr.episodesUnmonitored);
+    if (n !== null) return n;
+    return asBool(sonarr.episodeUnmonitored) ? 1 : 0;
+  })();
+
+  // Step-by-step tasks
+  const pad2 = (n: number | null) =>
+    typeof n === 'number' && Number.isFinite(n) ? String(n).padStart(2, '0') : '??';
+
+  const addedLabel = (() => {
+    if (mediaType === 'movie') {
+      return `${title || 'Movie'}${year ? ` (${year})` : ''}`;
+    }
+    if (mediaType === 'episode') {
+      const ep = `S${pad2(seasonNumber)}E${pad2(episodeNumber)}`;
+      const show = showTitle || 'Show';
+      return `${show} ${ep}${title ? ` — ${title}` : ''}`;
+    }
+    if (mediaType === 'season') {
+      const show = showTitle || title || 'Show';
+      return `${show} — Season ${seasonNumber ?? '??'}`;
+    }
+    if (mediaType === 'show') return title || 'Show';
+    return title || mediaType || 'Unknown';
+  })();
+
+  const duplicatesApplicable = mediaType === 'movie' || mediaType === 'episode';
+  const duplicatesFound =
+    mediaType === 'movie'
+      ? movieDuplicatesFound ?? movieDuplicatesDeleted > 0
+      : mediaType === 'episode'
+        ? episodeDuplicatesFound ?? episodeDuplicatesDeleted > 0
+        : null;
+  const duplicatesDeleted =
+    mediaType === 'movie'
+      ? movieDuplicatesDeleted
+      : mediaType === 'episode'
+        ? episodeDuplicatesDeleted
+        : 0;
+
+  const watchlistApplicable =
+    mediaType === 'movie' || mediaType === 'show' || mediaType === 'season';
+
+  const arrService =
+    mediaType === 'movie'
+      ? ('radarr' as const)
+      : mediaType === 'episode' || mediaType === 'show' || mediaType === 'season'
+        ? ('sonarr' as const)
+        : null;
+
+  const arrTask = (() => {
+    if (!arrService) {
+      return {
+        status: 'skipped' as const,
+        facts: [
+          { label: 'Service', value: 'n/a' },
+          { label: 'Note', value: 'Not applicable for this media type.' },
+        ],
+        issues: [],
+      };
+    }
+
+    const rec = arrService === 'radarr' ? radarr : sonarr;
+    const configured = rec ? asBool(rec.configured) : null;
+    const connected = rec ? asBool(rec.connected) : null;
+    const error = rec && typeof rec.error === 'string' ? rec.error : null;
+
+    // Unmonitor counts (movie: Radarr movies; TV: Sonarr episodes/season best-effort)
+    const unmonitored = (() => {
+      if (!rec) return null;
+      if (arrService === 'radarr') {
+        const c = ctx.dryRun ? num(rec.moviesWouldUnmonitor) : num(rec.moviesUnmonitored);
+        if (c !== null) return c;
+        return asBool(ctx.dryRun ? rec.wouldUnmonitor : rec.unmonitored) ? 1 : 0;
+      }
+      const c = ctx.dryRun ? num(rec.episodesWouldUnmonitor) : num(rec.episodesUnmonitored);
+      if (c !== null) return c;
+      return asBool(ctx.dryRun ? rec.wouldUnmonitor : rec.episodeUnmonitored) ? 1 : 0;
+    })();
+
+    const facts: Array<{ label: string; value: JsonValue }> = [
+      { label: 'Service', value: arrService === 'radarr' ? 'Radarr' : 'Sonarr' },
+      { label: 'Configured', value: configured },
+      { label: 'Connected', value: connected },
+      ...(error ? [{ label: 'Error', value: error }] : []),
+    ];
+
+    if (arrService === 'radarr' && rec) {
+      facts.push(
+        { label: 'Movie found', value: asBool(rec.movieFound) },
+        { label: 'Unmonitored', value: unmonitored },
+      );
+    }
+    if (arrService === 'sonarr' && rec) {
+      facts.push(
+        { label: 'Series found', value: asBool(rec.seriesFound) },
+        ...(mediaType === 'episode' ? [{ label: 'Episode found', value: asBool(rec.episodeFound) }] : []),
+        { label: 'Unmonitored', value: unmonitored },
+      );
+    }
+
+    const failReasons: string[] = [];
+    if (configured === false) {
+      failReasons.push(
+        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} is not configured.`,
+      );
+    } else if (configured === true && connected === false) {
+      failReasons.push(
+        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} connection failed.`,
+      );
+    }
+
+    const status = failReasons.length ? ('failed' as const) : ('success' as const);
+    const issues = failReasons.length
+      ? failReasons.map((m) => issue('error', m))
+      : [];
+
+    return { status, facts, issues };
+  })();
 
   const tasks: JobReportV1['tasks'] = [
     {
-      id: 'duplicates',
-      title: 'Duplicate cleanup',
+      id: 'added',
+      title: 'Added content',
       status: 'success',
-      rows: [
-        metricRow({ label: 'Movie scanned', end: movieDup ? asNum(movieDup.scanned) : null, unit: 'items' }),
-        metricRow({ label: 'Movie duplicate groups', end: movieDup ? asNum(movieDup.groupsWithDuplicates) : null, unit: 'groups' }),
-        metricRow({ label: 'Movie metadata deleted', end: movieDup ? asNum(movieDup.metadataDeleted) : null, unit: 'items' }),
-        metricRow({ label: 'Movie parts deleted', end: movieDup ? asNum(movieDup.partsDeleted) : null, unit: 'parts' }),
-        metricRow({ label: 'Movie failures', end: movieDup ? asNum(movieDup.failures) : null, unit: 'errors' }),
-        metricRow({ label: 'Episode candidates', end: episodeDup ? asNum(episodeDup.candidates) : null, unit: 'items' }),
-        metricRow({ label: 'Episode duplicate groups', end: episodeDup ? asNum(episodeDup.groupsWithDuplicates) : null, unit: 'groups' }),
-        metricRow({ label: 'Episode metadata deleted', end: episodeDup ? asNum(episodeDup.metadataDeleted) : null, unit: 'items' }),
-        metricRow({ label: 'Episode parts deleted', end: episodeDup ? asNum(episodeDup.partsDeleted) : null, unit: 'parts' }),
-        metricRow({ label: 'Episode failures', end: episodeDup ? asNum(episodeDup.failures) : null, unit: 'errors' }),
+      facts: [
+        ...(plexEvent ? [{ label: 'Plex event', value: plexEvent }] : []),
+        { label: 'Media', value: addedLabel },
+        ...(ratingKey ? [{ label: 'Plex ratingKey', value: ratingKey }] : []),
       ],
       issues: [],
     },
     {
+      id: 'duplicates',
+      title: 'Scanned for duplicates',
+      status: duplicatesApplicable ? 'success' : 'skipped',
+      facts: duplicatesApplicable
+        ? [
+            { label: 'Found', value: duplicatesFound ? 'found' : 'not found' },
+            { label: ctx.dryRun ? 'Would delete' : 'Deleted', value: duplicatesDeleted },
+            ...(mediaType === 'movie' && duplicates && typeof duplicates.librarySectionTitle === 'string'
+              ? [{ label: 'Library', value: duplicates.librarySectionTitle }]
+              : mediaType === 'episode' && duplicates && typeof duplicates.showRatingKey === 'string'
+                ? [{ label: 'Show ratingKey', value: duplicates.showRatingKey }]
+                : []),
+          ]
+        : [{ label: 'Note', value: 'Not scanned for this media type.' }],
+      issues: [],
+    },
+    {
       id: 'watchlist',
-      title: watchlistMode === 'reconcile' ? 'Watchlist reconciliation' : 'Watchlist cleanup',
-      status: watchlist ? 'success' : 'skipped',
-      rows: [
-        metricRow({
-          label: 'Movie watchlist items',
-          start: wlMovieTotal,
-          changed: wlMovieTotal !== null && wlMovieRemoved !== null ? -wlMovieRemoved : null,
-          end: wlMovieTotal !== null && wlMovieRemoved !== null ? Math.max(0, wlMovieTotal - wlMovieRemoved) : null,
-          unit: 'items',
-          note: ctx.dryRun ? 'dry-run (would remove)' : null,
-        }),
-        metricRow({
-          label: 'Show watchlist items',
-          start: wlShowTotal,
-          changed: wlShowTotal !== null && wlShowRemoved !== null ? -wlShowRemoved : null,
-          end: wlShowTotal !== null && wlShowRemoved !== null ? Math.max(0, wlShowTotal - wlShowRemoved) : null,
-          unit: 'items',
-          note: ctx.dryRun ? 'dry-run (would remove)' : null,
-        }),
-        metricRow({
-          label: 'Removed (movie)',
-          end:
-            watchlistMode === 'reconcile'
-              ? wlMovieRemoved
-              : watchlist && asNum(watchlist.removed),
-          unit: 'items',
-        }),
-        metricRow({
-          label: 'Removed (show)',
-          end:
-            watchlistMode === 'reconcile'
-              ? wlShowRemoved
-              : null,
-          unit: 'items',
-        }),
-      ],
-      issues: watchlist && Array.isArray(watchlist.warnings) ? issuesFromWarnings(watchlist.warnings) : [],
+      title: 'Checked Plex watchlist',
+      status: watchlistApplicable ? (watchlistChecked ? 'success' : 'failed') : 'skipped',
+      facts: watchlistApplicable
+        ? [
+            { label: 'Found', value: (watchlistAttempted ?? 0) > 0 ? 'found' : 'not found' },
+            { label: ctx.dryRun ? 'Would remove' : 'Removed', value: watchlistRemoved ?? 0 },
+            ...(watchlistMatchedBy ? [{ label: 'Matched by', value: watchlistMatchedBy }] : []),
+            ...(watchlistError ? [{ label: 'Error', value: watchlistError }] : []),
+          ]
+        : [{ label: 'Note', value: 'Not checked for episodes.' }],
+      issues:
+        watchlistApplicable && !watchlistChecked
+          ? [issue('error', 'Plex watchlist check was not executed.')]
+          : [],
+    },
+    {
+      id: 'arr',
+      title: 'Scanned in Radarr/Sonarr',
+      status: arrTask.status,
+      facts: arrTask.facts,
+      issues: arrTask.issues,
     },
   ];
 
-  // Surface common failure counts as issues (so they appear in the top summary)
-  const movieFailures = movieDup ? (asNum(movieDup.failures) ?? 0) : 0;
-  const episodeFailures = episodeDup ? (asNum(episodeDup.failures) ?? 0) : 0;
-  if (movieFailures) issues.push(issue('warn', `Movie duplicate cleanup failures: ${movieFailures}.`));
-  if (episodeFailures) issues.push(issue('warn', `Episode duplicate cleanup failures: ${episodeFailures}.`));
+  // Summary sections (requested)
+  const sections: JobReportV1['sections'] = [
+    {
+      id: 'unmonitored',
+      title: 'Unmonitored',
+      rows: [
+        metricRow({
+          label: 'Radarr (movie)',
+          end: radarrMovieUnmonitored,
+          unit: 'items',
+          note: ctx.dryRun ? 'dry-run (would unmonitor)' : null,
+        }),
+        metricRow({
+          label: 'Sonarr (episode)',
+          end: sonarrEpisodeUnmonitored,
+          unit: 'items',
+          note: ctx.dryRun ? 'dry-run (would unmonitor)' : null,
+        }),
+      ],
+    },
+    {
+      id: 'duplicates',
+      title: 'Duplicates',
+      rows: [
+        metricRow({
+          label: 'Movie deleted',
+          end: movieDuplicatesDeleted,
+          unit: 'copies',
+          note: ctx.dryRun ? 'dry-run (would delete)' : null,
+        }),
+        metricRow({
+          label: 'Episode deleted',
+          end: episodeDuplicatesDeleted,
+          unit: 'copies',
+          note: ctx.dryRun ? 'dry-run (would delete)' : null,
+        }),
+      ],
+    },
+    {
+      id: 'watchlist',
+      title: 'Watchlist',
+      rows: [
+        metricRow({
+          label: 'Movie removed',
+          end: watchlistMovieRemoved,
+          unit: 'items',
+          note: ctx.dryRun ? 'dry-run (would remove)' : null,
+        }),
+        metricRow({
+          label: 'Show removed',
+          end: watchlistShowRemoved,
+          unit: 'items',
+          note: ctx.dryRun ? 'dry-run (would remove)' : null,
+        }),
+      ],
+    },
+  ];
 
   return {
     template: 'jobReportV1',
@@ -2893,35 +3345,9 @@ function buildMediaAddedCleanupReport(params: {
     jobId: ctx.jobId,
     dryRun: ctx.dryRun,
     trigger: ctx.trigger,
-    headline: `Cleanup complete (${mode}).`,
-    sections: [
-      {
-        id: 'summary',
-        title: 'Summary',
-        rows: [
-          metricRow({ label: 'Warnings', end: issues.filter((i) => i.level === 'warn').length, unit: 'warnings' }),
-          metricRow({ label: 'Errors', end: issues.filter((i) => i.level === 'error').length, unit: 'errors' }),
-        ],
-      },
-      {
-        id: 'duplicates',
-        title: 'Duplicates',
-        rows: [
-          metricRow({ label: 'Movie metadata deleted', end: movieDup ? asNum(movieDup.metadataDeleted) : null, unit: 'items' }),
-          metricRow({ label: 'Movie parts deleted', end: movieDup ? asNum(movieDup.partsDeleted) : null, unit: 'parts' }),
-          metricRow({ label: 'Episode metadata deleted', end: episodeDup ? asNum(episodeDup.metadataDeleted) : null, unit: 'items' }),
-          metricRow({ label: 'Episode parts deleted', end: episodeDup ? asNum(episodeDup.partsDeleted) : null, unit: 'parts' }),
-        ],
-      },
-      {
-        id: 'watchlist',
-        title: 'Watchlist',
-        rows: [
-          metricRow({ label: 'Movie removed', end: wlMovieRemoved, unit: 'items' }),
-          metricRow({ label: 'Show removed', end: wlShowRemoved, unit: 'items' }),
-        ],
-      },
-    ],
+    // Hide the redundant headline card in the UI by using an empty string.
+    headline: '',
+    sections,
     tasks,
     issues,
     raw,
