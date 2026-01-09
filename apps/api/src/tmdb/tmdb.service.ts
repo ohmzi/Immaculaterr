@@ -2031,8 +2031,19 @@ export class TmdbService {
       return (await res.json()) as unknown;
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
+      const cause = (err as { cause?: unknown } | null)?.cause;
+      const causeMsg =
+        cause instanceof Error
+          ? cause.message
+          : typeof cause === 'string'
+            ? cause
+            : cause
+              ? String(cause)
+              : '';
       throw new BadGatewayException(
-        `TMDB request failed: ${(err as Error)?.message ?? String(err)}`,
+        `TMDB request failed: ${(err as Error)?.message ?? String(err)}${
+          causeMsg ? ` (cause: ${causeMsg})` : ''
+        }`,
       );
     } finally {
       clearTimeout(timeout);

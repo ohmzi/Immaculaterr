@@ -293,34 +293,38 @@ export class BasedonLatestWatchedCollectionJob {
       })
       .catch(() => undefined);
 
-    const similar = await this.recommendations.buildSimilarMovieTitles({
-      ctx,
-      seedTitle,
-      seedYear,
-      tmdbApiKey,
-      count: recCount,
-      webContextFraction,
-      upcomingPercent,
-      openai: openAiEnabled
-        ? { apiKey: openAiApiKey, model: openAiModel }
-        : null,
-      google: googleEnabled
-        ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
-        : null,
-    });
+    const similar = await withJobRetry(
+      () =>
+        this.recommendations.buildSimilarMovieTitles({
+          ctx,
+          seedTitle,
+          seedYear,
+          tmdbApiKey,
+          count: recCount,
+          webContextFraction,
+          upcomingPercent,
+          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          google: googleEnabled
+            ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
+            : null,
+        }),
+      { ctx, label: 'recommendations: build similar movie titles' },
+    );
 
     const changeOfTaste =
-      await this.recommendations.buildChangeOfTasteMovieTitles({
-      ctx,
-      seedTitle,
-      seedYear,
-      tmdbApiKey,
-      count: recCount,
-        upcomingPercent,
-        openai: openAiEnabled
-          ? { apiKey: openAiApiKey, model: openAiModel }
-          : null,
-    });
+      await withJobRetry(
+        () =>
+          this.recommendations.buildChangeOfTasteMovieTitles({
+            ctx,
+            seedTitle,
+            seedYear,
+            tmdbApiKey,
+            count: recCount,
+            upcomingPercent,
+            openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          }),
+        { ctx, label: 'recommendations: build change of taste movie titles' },
+      );
 
     await ctx.info('watchedMovieRecommendations: recommendations ready', {
       similar: {
@@ -1111,29 +1115,37 @@ export class BasedonLatestWatchedCollectionJob {
       })
       .catch(() => undefined);
 
-    const similar = await this.recommendations.buildSimilarTvTitles({
-      ctx,
-      seedTitle,
-      seedYear,
-      tmdbApiKey,
-      count: recCount,
-      webContextFraction,
-      upcomingPercent,
-      openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
-      google: googleEnabled
-        ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
-        : null,
-    });
+    const similar = await withJobRetry(
+      () =>
+        this.recommendations.buildSimilarTvTitles({
+          ctx,
+          seedTitle,
+          seedYear,
+          tmdbApiKey,
+          count: recCount,
+          webContextFraction,
+          upcomingPercent,
+          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          google: googleEnabled
+            ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
+            : null,
+        }),
+      { ctx, label: 'recommendations: build similar tv titles' },
+    );
 
-    const changeOfTaste = await this.recommendations.buildChangeOfTasteTvTitles({
-      ctx,
-      seedTitle,
-      seedYear,
-      tmdbApiKey,
-      count: recCount,
-      upcomingPercent,
-      openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
-    });
+    const changeOfTaste = await withJobRetry(
+      () =>
+        this.recommendations.buildChangeOfTasteTvTitles({
+          ctx,
+          seedTitle,
+          seedYear,
+          tmdbApiKey,
+          count: recCount,
+          upcomingPercent,
+          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+        }),
+      { ctx, label: 'recommendations: build change of taste tv titles' },
+    );
 
     await ctx.info('watchedShowRecommendations: recommendations ready', {
       similar: {
