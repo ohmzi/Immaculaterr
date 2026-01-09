@@ -62,6 +62,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const updateAvailable =
     Boolean(updatesQuery.data?.updateAvailable) && Boolean(updatesQuery.data?.latestVersion);
   const updateLabel = updatesQuery.data?.latestVersion ? `v${updatesQuery.data.latestVersion}` : null;
+  const currentLabel = updatesQuery.data?.currentVersion ? `v${updatesQuery.data.currentVersion}` : null;
 
   useEffect(() => {
     const updatePositions = () => {
@@ -370,6 +371,10 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   </p>
 
                   <div className="space-y-2">
+                    <div className="w-full px-4 py-2.5 text-left text-sm text-white/70 rounded-xl border border-white/10 bg-white/5 font-mono">
+                      Version: {currentLabel ?? '—'}
+                    </div>
+
                     {updateAvailable && updateLabel ? (
                       <button
                         type="button"
@@ -378,9 +383,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                           const url = updatesQuery.data?.latestUrl;
                           if (url) window.open(url, '_blank', 'noopener,noreferrer');
                         }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold"
+                        className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                       >
-                        {updateLabel} available — update container
+                        Update available: {updateLabel}
                       </button>
                     ) : null}
 

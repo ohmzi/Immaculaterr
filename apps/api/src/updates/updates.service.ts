@@ -11,7 +11,7 @@ type LatestInfo = {
   url: string | null;
 };
 
-const DEFAULT_UPDATE_REPO = 'ohmz/Immaculaterr';
+const DEFAULT_UPDATE_REPO = 'ohmzi/Immaculaterr';
 
 function normalizeVersion(raw: string): string | null {
   const s = raw.trim();

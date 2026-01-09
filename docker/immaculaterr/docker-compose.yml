@@ -17,11 +17,16 @@ services:
       # Internal listen port (inside the container). In most cases you can leave this at 3210.
       # With host networking, the host port is the same as this listen port.
       - PORT=${APP_PORT:-3210}
+      # Optional: override version metadata at runtime (useful for testing update notifications)
+      - APP_VERSION=${APP_VERSION:-}
       # Persist DB + runtime state outside the container
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
       # Update check (UI toast + Help menu indicator). Defaults to the upstream repo.
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
+      - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
+      # Optional: GitHub token for private repos (enables /repos/.../releases/latest).
+      - UPDATE_CHECK_GITHUB_TOKEN=${UPDATE_CHECK_GITHUB_TOKEN:-}
       # Preferred: inject via deployment secrets
       - APP_MASTER_KEY=${APP_MASTER_KEY:-}
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
