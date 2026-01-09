@@ -22,6 +22,7 @@ import { AuthGuard } from './auth/auth.guard';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { CollectionsModule } from './collections/collections.module';
 import { LogsModule } from './logs/logs.module';
+import { UpdatesModule } from './updates/updates.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -46,6 +47,7 @@ const staticImports = existsSync(webDistPath)
     IntegrationsModule,
     CollectionsModule,
     LogsModule,
+    UpdatesModule,
     JobsModule,
     PlexModule,
     WebhooksModule,
