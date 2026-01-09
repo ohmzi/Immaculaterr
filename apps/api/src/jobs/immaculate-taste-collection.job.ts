@@ -544,13 +544,13 @@ export class ImmaculateTasteCollectionJob {
         };
 
         for (const title of missingTitles) {
-          radarrStats.attempted += 1;
           const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
           if (!tmdbMatch) {
             radarrStats.skipped += 1;
             radarrLists.skipped.push(title.trim());
             continue;
           }
+          radarrStats.attempted += 1;
           radarrLists.attempted.push(tmdbMatch.title);
 
           try {
@@ -1060,13 +1060,13 @@ export class ImmaculateTasteCollectionJob {
         };
 
         for (const title of missingTitles) {
-          sonarrStats.attempted += 1;
           const ids = missingTitleToIds.get(title.trim()) ?? null;
           if (!ids || !ids.tvdbId) {
             sonarrStats.skipped += 1;
             sonarrLists.skipped.push(title.trim());
             continue;
           }
+          sonarrStats.attempted += 1;
           sonarrLists.attempted.push(ids.title);
 
           try {
