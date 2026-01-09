@@ -59,6 +59,25 @@ function modeLabel(run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' {
     : 'Manual';
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function issueSummary(run: JobRun): string {
+  if (run.errorMessage) return run.errorMessage;
+  const s = run.summary;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return '';
+  const obj = s as Record<string, unknown>;
+  if (obj.template !== 'jobReportV1' || Number(obj.version) !== 1) return '';
+  const issuesRaw = obj.issues;
+  if (!Array.isArray(issuesRaw)) return '';
+  const msgs = issuesRaw
+    .filter(isPlainObject)
+    .map((it) => (typeof it.message === 'string' ? it.message.trim() : ''))
+    .filter(Boolean);
+  return msgs[0] ?? '';
+}
+
 export function RewindPage() {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
@@ -93,7 +112,7 @@ export function RewindPage() {
       if (jobId && r.jobId !== jobId) return false;
       if (status && r.status !== status) return false;
       if (!query) return true;
-      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''}`.toLowerCase();
+      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)}`.toLowerCase();
       return hay.includes(query);
     });
   }, [historyQuery.data?.runs, jobId, status, q]);
@@ -351,10 +370,11 @@ export function RewindPage() {
                         {filtered.map((run) => {
                           const ms = durationMs(run);
                           const jobName = jobNameById.get(run.jobId) ?? run.jobId;
-                          const errorPreview = run.errorMessage
-                            ? run.errorMessage.length > 140
-                              ? `${run.errorMessage.slice(0, 140)}…`
-                              : run.errorMessage
+                          const errorText = issueSummary(run);
+                          const errorPreview = errorText
+                            ? errorText.length > 140
+                              ? `${errorText.slice(0, 140)}…`
+                              : errorText
                             : '';
                           return (
                             <Link
@@ -451,11 +471,11 @@ export function RewindPage() {
                                     {ms === null ? '—' : formatDuration(ms)}
                                   </td>
                                   <td className="px-3 py-3 text-red-200/80">
-                                    {run.errorMessage
-                                      ? run.errorMessage.length > 80
-                                        ? `${run.errorMessage.slice(0, 80)}…`
-                                        : run.errorMessage
-                                      : ''}
+                                    {(() => {
+                                      const msg = issueSummary(run);
+                                      if (!msg) return '';
+                                      return msg.length > 80 ? `${msg.slice(0, 80)}…` : msg;
+                                    })()}
                                   </td>
                                 </tr>
                               );

@@ -2918,7 +2918,11 @@ function buildMediaAddedCleanupReport(params: {
   const rawRec = raw as Record<string, unknown>;
 
   const issues: JobReportV1['issues'] = [];
-  issues.push(...issuesFromWarnings(rawRec.warnings));
+  const warningsRaw = Array.isArray(rawRec.warnings)
+    ? rawRec.warnings
+        .map((w) => String(w ?? '').trim())
+        .filter(Boolean)
+    : [];
 
   const mediaType = (pickString(rawRec, 'mediaType') ?? '').toLowerCase();
   const plexEvent = pickString(rawRec, 'plexEvent') ?? null;
@@ -2946,6 +2950,31 @@ function buildMediaAddedCleanupReport(params: {
 
   const asBool = (v: unknown): boolean | null =>
     typeof v === 'boolean' ? v : null;
+
+  // Friendly, deduped integration issues (avoid leaking low-level error text into the UI).
+  // We still preserve raw warnings in `raw`, but the report "Issues" card should show
+  // high-signal summaries like "Unable to connect to Radarr".
+  const radarrConfigured = radarr ? asBool(radarr.configured) : null;
+  const radarrConnected = radarr ? asBool(radarr.connected) : null;
+  const sonarrConfigured = sonarr ? asBool(sonarr.configured) : null;
+  const sonarrConnected = sonarr ? asBool(sonarr.connected) : null;
+
+  const hasRadarrIssue =
+    (radarrConfigured === true && radarrConnected === false) ||
+    warningsRaw.some((w) => w.toLowerCase().startsWith('radarr:'));
+  const hasSonarrIssue =
+    (sonarrConfigured === true && sonarrConnected === false) ||
+    warningsRaw.some((w) => w.toLowerCase().startsWith('sonarr:'));
+
+  if (hasRadarrIssue) issues.push(issue('warn', 'Unable to connect to Radarr.'));
+  if (hasSonarrIssue) issues.push(issue('warn', 'Unable to connect to Sonarr.'));
+
+  for (const w of warningsRaw) {
+    const lower = w.toLowerCase();
+    if (lower.startsWith('radarr:')) continue;
+    if (lower.startsWith('sonarr:')) continue;
+    issues.push(issue('warn', w));
+  }
 
   const num = (v: unknown): number | null => {
     if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -3063,10 +3092,8 @@ function buildMediaAddedCleanupReport(params: {
         wlShows && (ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed))
           ? ((ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed)) ?? 0)
           : 0;
-
-      if (Array.isArray(watchlist.warnings)) {
-        issues.push(...issuesFromWarnings(watchlist.warnings));
-      }
+      // Note: warnings are already surfaced via rawRec.warnings (and filtered above) to avoid
+      // duplicating/noising up the Issues list.
     } else {
       // Per-item watchlist removal result shape.
       if ('baseUrlTried' in watchlist || 'error' in watchlist) {
@@ -3210,11 +3237,11 @@ function buildMediaAddedCleanupReport(params: {
     const failReasons: string[] = [];
     if (configured === false) {
       failReasons.push(
-        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} not configured; skipping this step.`,
+        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} not configured.`,
       );
     } else if (configured === true && connected === false) {
       failReasons.push(
-        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} connection failed; skipping this step.`,
+        `Unable to connect to ${arrService === 'radarr' ? 'Radarr' : 'Sonarr'}.`,
       );
     }
 
