@@ -1502,6 +1502,7 @@ function buildImmaculateTastePointsReport(params: {
   const generatedTitles = uniqueStrings(asStringArray(raw.generatedTitles));
   const resolvedTitles = uniqueStrings(asStringArray(raw.resolvedTitles));
   const missingTitles = uniqueStrings(asStringArray(raw.missingTitles));
+  const seedTitle = String(raw.seedTitle ?? '').trim();
 
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
   const sonarrLists = isPlainObject(raw.sonarrLists) ? raw.sonarrLists : null;
@@ -1512,7 +1513,14 @@ function buildImmaculateTastePointsReport(params: {
     jobId: ctx.jobId,
     dryRun: ctx.dryRun,
     trigger: ctx.trigger,
-    headline: mode === 'tv' ? 'Immaculate Taste (TV) updated.' : 'Immaculate Taste updated.',
+    headline:
+      mode === 'tv'
+        ? seedTitle
+          ? `Immaculate Taste (TV) updated by ${seedTitle}.`
+          : 'Immaculate Taste (TV) updated.'
+        : seedTitle
+          ? `Immaculate Taste updated by ${seedTitle}.`
+          : 'Immaculate Taste updated.',
     sections: [
       {
         id: 'totals',
