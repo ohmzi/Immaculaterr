@@ -1458,6 +1458,7 @@ export class BasedonLatestWatchedCollectionJob {
             sonarrLists.skipped.push(title);
             continue;
           }
+          const tvdbId = ids.tvdbId;
 
           try {
             const result = await withJobRetry(
@@ -1466,7 +1467,7 @@ export class BasedonLatestWatchedCollectionJob {
                   baseUrl: sonarr.baseUrl,
                   apiKey: sonarr.apiKey,
                   title: ids.title,
-                  tvdbId: ids.tvdbId,
+                  tvdbId,
                   qualityProfileId: defaults.qualityProfileId,
                   rootFolderPath: defaults.rootFolderPath,
                   tags: defaults.tagIds,
@@ -1477,7 +1478,7 @@ export class BasedonLatestWatchedCollectionJob {
               {
                 ctx,
                 label: 'sonarr: add series',
-                meta: { title: ids.title, tvdbId: ids.tvdbId },
+                meta: { title: ids.title, tvdbId },
               },
             );
             if (result.status === 'added') {

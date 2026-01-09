@@ -1118,6 +1118,7 @@ export class ImmaculateTasteCollectionJob {
             sonarrLists.skipped.push(title.trim());
             continue;
           }
+          const tvdbId = ids.tvdbId;
           sonarrStats.attempted += 1;
           sonarrLists.attempted.push(ids.title);
 
@@ -1128,7 +1129,7 @@ export class ImmaculateTasteCollectionJob {
                   baseUrl: sonarrBaseUrl,
                   apiKey: sonarrApiKey,
                   title: ids.title,
-                  tvdbId: ids.tvdbId,
+                  tvdbId,
                   qualityProfileId: defaults.qualityProfileId,
                   rootFolderPath: defaults.rootFolderPath,
                   tags: defaults.tagIds,
@@ -1139,7 +1140,7 @@ export class ImmaculateTasteCollectionJob {
               {
                 ctx,
                 label: 'sonarr: add series',
-                meta: { title: ids.title, tvdbId: ids.tvdbId },
+                meta: { title: ids.title, tvdbId },
               },
             );
             if (result.status === 'added') {
