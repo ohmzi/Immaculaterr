@@ -2222,18 +2222,12 @@ export class CleanupAfterAddingNewContentJob {
       sonarrSummary.seriesId = typeof series.id === 'number' ? series.id : null;
 
       const seriesTvdbId = toInt(series.tvdbId) ?? tvdbId ?? null;
-      if (!seriesTvdbId) {
-        summary.sonarr = sonarrSummary as unknown as JsonObject;
-        await ctx.warn('sonarr: series missing tvdbId (skipping show flow)', {
-          title: seriesTitle,
-        });
-        summary.skipped = true;
-        return toReport(summary);
-      }
 
-      // Resolve Plex show ratingKeys across ALL TV libraries for this TVDB id.
-      let plexShowRatingKeys =
-        (await getPlexTvdbRatingKeys()).get(seriesTvdbId) ?? [];
+      // Resolve Plex show ratingKeys across ALL TV libraries for this TVDB id (if present).
+      // Fall back to the webhook/poller ratingKey when TVDB isn't available.
+      let plexShowRatingKeys = seriesTvdbId
+        ? ((await getPlexTvdbRatingKeys()).get(seriesTvdbId) ?? [])
+        : [];
       if (plexShowRatingKeys.length === 0 && plexShowKeyForMeta) {
         plexShowRatingKeys = [plexShowKeyForMeta];
       }
@@ -2244,7 +2238,7 @@ export class CleanupAfterAddingNewContentJob {
           'plex: show not found in any Plex TV library (skipping)',
           {
             title: seriesTitle,
-            tvdbId: seriesTvdbId,
+            tvdbId: seriesTvdbId ?? tvdbId ?? null,
           },
         );
         summary.skipped = true;
@@ -2260,98 +2254,150 @@ export class CleanupAfterAddingNewContentJob {
         apiKey: sonarrApiKey,
         seriesId: series.id,
       });
-      const desired: string[] = [];
-      for (const ep of episodes) {
-        const season = toInt(ep.seasonNumber);
-        const epNum = toInt(ep.episodeNumber);
-        if (!season || !epNum) continue; // ignore specials
-        desired.push(episodeKey(season, epNum));
-      }
-      const missing = desired.filter((k) => !plexEpisodes.has(k));
-      if (missing.length > 0) {
-        summary.sonarr = sonarrSummary as unknown as JsonObject;
-        await ctx.info(
-          'plex: show not complete; skipping watchlist removal + unmonitor',
-          {
-            title: seriesTitle,
-            tvdbId: seriesTvdbId,
-            missingCount: missing.length,
-            sampleMissing: missing.slice(0, 25),
-          },
-        );
-        summary.skipped = true;
-        return toReport(summary);
-      }
 
-      // Show is complete in Plex -> unmonitor in Sonarr and remove from watchlist.
-      if (!series.monitored) {
-        sonarrSummary.monitoredBefore = false;
-        await ctx.info('sonarr: already unmonitored', {
-          title: typeof series.title === 'string' ? series.title : seriesTitle,
-          id: series.id,
-        });
-      } else if (ctx.dryRun) {
-        sonarrSummary.monitoredBefore = true;
-        sonarrSummary.wouldUnmonitor = true;
-        await ctx.info('sonarr: dry-run would unmonitor series', {
-          title: typeof series.title === 'string' ? series.title : seriesTitle,
-          id: series.id,
-        });
-      } else {
-        sonarrSummary.monitoredBefore = true;
+      // Desired Sonarr behavior:
+      // - If an episode exists in Plex -> unmonitor it in Sonarr
+      // - If an episode is missing from Plex -> monitor it in Sonarr
+      //
+      // This keeps Sonarr tracking only the missing bits, and avoids "skipping" the whole job
+      // just because the show isn't complete.
+      const episodeRows = episodes
+        .map((ep) => {
+          const season = toInt(ep.seasonNumber);
+          const epNum = toInt(ep.episodeNumber);
+          if (!season || !epNum) return null; // ignore specials/unknown
+          if (season <= 0 || epNum <= 0) return null;
+          const key = episodeKey(season, epNum);
+          return {
+            ep,
+            key,
+            inPlex: plexEpisodes.has(key),
+            monitored: Boolean(ep.monitored),
+          };
+        })
+        .filter(Boolean) as Array<{
+        ep: SonarrEpisode;
+        key: string;
+        inPlex: boolean;
+        monitored: boolean;
+      }>;
+
+      const missingKeys = episodeRows.filter((r) => !r.inPlex).map((r) => r.key);
+      const showCompleteInPlex = missingKeys.length === 0;
+
+      const toUnmonitor = episodeRows.filter((r) => r.inPlex && r.monitored);
+      const toMonitor = episodeRows.filter((r) => !r.inPlex && !r.monitored);
+
+      await ctx.info('sonarr: syncing episode monitoring vs Plex availability', {
+        title: seriesTitle,
+        seriesId: series.id,
+        tvdbId: seriesTvdbId ?? tvdbId ?? null,
+        episodesTotal: episodeRows.length,
+        episodesInPlex: episodeRows.length - missingKeys.length,
+        episodesMissing: missingKeys.length,
+        willUnmonitor: toUnmonitor.length,
+        willMonitor: toMonitor.length,
+        dryRun: ctx.dryRun,
+      });
+
+      let episodesUnmonitored = 0;
+      let episodesMonitored = 0;
+      let failures = 0;
+
+      // Unmonitor episodes that are present in Plex.
+      for (const r of toUnmonitor) {
+        if (ctx.dryRun) {
+          episodesUnmonitored += 1;
+          continue;
+        }
         const ok = await this.sonarr
-          .updateSeries({
+          .setEpisodeMonitored({
             baseUrl: sonarrBaseUrl,
             apiKey: sonarrApiKey,
-            series: { ...series, monitored: false },
+            episode: r.ep,
+            monitored: false,
           })
           .then(() => true)
           .catch((err) => {
+            failures += 1;
             const msg = (err as Error)?.message ?? String(err);
-            sonarrSummary.error = msg;
             (summary.warnings as string[]).push(
-              `sonarr: failed to unmonitor series (continuing): ${msg}`,
+              `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
             );
             return false;
           });
-
-        if (ok) {
-          sonarrSummary.seriesUnmonitored = true;
-          await ctx.info('sonarr: series unmonitored', {
-            title: typeof series.title === 'string' ? series.title : seriesTitle,
-            id: series.id,
-          });
-        } else {
-          await ctx.warn('sonarr: series unmonitor failed (continuing)', {
-            title: typeof series.title === 'string' ? series.title : seriesTitle,
-            id: series.id,
-            error: sonarrSummary.error,
-          });
-        }
+        if (ok) episodesUnmonitored += 1;
       }
 
-      summary.sonarr = sonarrSummary as unknown as JsonObject;
+      // Monitor episodes that are missing from Plex.
+      for (const r of toMonitor) {
+        if (ctx.dryRun) {
+          episodesMonitored += 1;
+          continue;
+        }
+        const ok = await this.sonarr
+          .setEpisodeMonitored({
+            baseUrl: sonarrBaseUrl,
+            apiKey: sonarrApiKey,
+            episode: r.ep,
+            monitored: true,
+          })
+          .then(() => true)
+          .catch((err) => {
+            failures += 1;
+            const msg = (err as Error)?.message ?? String(err);
+            (summary.warnings as string[]).push(
+              `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
+            );
+            return false;
+          });
+        if (ok) episodesMonitored += 1;
+      }
 
-      await ctx.info('plex: removing show from watchlist (show complete)', {
-        title: seriesTitle,
-        dryRun: ctx.dryRun,
-      });
-      try {
-        const wl = await this.plexWatchlist.removeShowFromWatchlistByTitle({
-          token: plexToken,
-          title: seriesTitle,
-          dryRun: ctx.dryRun,
-        });
-        summary.watchlist = wl as unknown as JsonObject;
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        (summary.warnings as string[]).push(
-          `plex: watchlist removal failed (non-critical): ${msg}`,
+      summary.sonarr = {
+        ...sonarrSummary,
+        connected: true,
+        seriesFound: true,
+        seriesId: series.id,
+        tvdbId: seriesTvdbId ?? tvdbId ?? null,
+        showCompleteInPlex,
+        episodesInPlex: episodeRows.length - missingKeys.length,
+        episodesMissing: missingKeys.length,
+        episodesUnmonitored: ctx.dryRun ? 0 : episodesUnmonitored,
+        episodesWouldUnmonitor: ctx.dryRun ? episodesUnmonitored : 0,
+        episodesMonitored: ctx.dryRun ? 0 : episodesMonitored,
+        episodesWouldMonitor: ctx.dryRun ? episodesMonitored : 0,
+        failures,
+      } as unknown as JsonObject;
+
+      // Watchlist behavior:
+      // - If show is complete in Plex -> remove from watchlist (respect ctx.dryRun)
+      // - Otherwise -> check-only (dry-run) so the UI can still show "found / not found"
+      if (seriesTitle) {
+        const watchlistDryRun = showCompleteInPlex ? ctx.dryRun : true;
+        await ctx.info(
+          showCompleteInPlex
+            ? 'plex: removing show from watchlist (show complete)'
+            : 'plex: checking show watchlist (show incomplete; keeping)',
+          { title: seriesTitle, dryRun: watchlistDryRun },
         );
-        await ctx.warn('plex: watchlist removal failed (non-critical)', {
-          error: msg,
-        });
-        summary.watchlist = { ok: false, error: msg } as unknown as JsonObject;
+        try {
+          const wl = await this.plexWatchlist.removeShowFromWatchlistByTitle({
+            token: plexToken,
+            title: seriesTitle,
+            dryRun: watchlistDryRun,
+          });
+          summary.watchlist = wl as unknown as JsonObject;
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          (summary.warnings as string[]).push(
+            `plex: watchlist check/removal failed (non-critical): ${msg}`,
+          );
+          await ctx.warn('plex: watchlist check/removal failed (non-critical)', {
+            error: msg,
+          });
+          summary.watchlist = { ok: false, error: msg } as unknown as JsonObject;
+        }
       }
 
       await ctx.info('mediaAddedCleanup(show): done', summary);
@@ -2449,65 +2495,110 @@ export class CleanupAfterAddingNewContentJob {
         const missingSeason = Array.from(desiredSeason).filter(
           (k) => !plexEpisodes.has(k),
         );
-        if (missingSeason.length > 0) {
-          await ctx.warn(
-            'sonarr: season incomplete in Plex; skipping unmonitor for safety',
-            {
-              title: seriesTitle,
-              season: seasonNum,
-              missingCount: missingSeason.length,
-              missing: missingSeason.slice(0, 25),
-            },
-          );
-          summary.skipped = true;
-          return toReport(summary);
-        }
+        const seasonCompleteInPlex = missingSeason.length === 0;
 
-        // Unmonitor monitored episodes in this season.
-        const monitoredEpisodes = seasonEpisodes.filter((ep) =>
-          Boolean(ep.monitored),
-        );
-        await ctx.info(
-          'sonarr: season complete; unmonitoring episodes + season',
-          {
-            title: seriesTitle,
-            season: seasonNum,
-            monitoredEpisodes: monitoredEpisodes.length,
-            dryRun: ctx.dryRun,
-          },
-        );
+        // Desired Sonarr behavior (season-scoped):
+        // - If an episode exists in Plex -> unmonitor it in Sonarr
+        // - If an episode is missing from Plex -> monitor it in Sonarr
+        const seasonEpisodeRows = seasonEpisodes
+          .map((ep) => {
+            const epNum = toInt(ep.episodeNumber);
+            if (!epNum || epNum <= 0) return null;
+            const key = episodeKey(seasonNum, epNum);
+            return {
+              ep,
+              key,
+              inPlex: plexEpisodes.has(key),
+              monitored: Boolean(ep.monitored),
+            };
+          })
+          .filter(Boolean) as Array<{
+          ep: SonarrEpisode;
+          key: string;
+          inPlex: boolean;
+          monitored: boolean;
+        }>;
 
-        let episodeUnmonitored = 0;
-        for (const ep of monitoredEpisodes) {
+        const toUnmonitor = seasonEpisodeRows.filter((r) => r.inPlex && r.monitored);
+        const toMonitor = seasonEpisodeRows.filter((r) => !r.inPlex && !r.monitored);
+
+        await ctx.info('sonarr: syncing season episode monitoring vs Plex availability', {
+          title: seriesTitle,
+          seriesId: series.id,
+          season: seasonNum,
+          seasonCompleteInPlex,
+          seasonEpisodes: seasonEpisodeRows.length,
+          seasonEpisodesInPlex: seasonEpisodeRows.length - missingSeason.length,
+          seasonEpisodesMissing: missingSeason.length,
+          willUnmonitor: toUnmonitor.length,
+          willMonitor: toMonitor.length,
+          dryRun: ctx.dryRun,
+        });
+
+        let episodesUnmonitored = 0;
+        let episodesMonitored = 0;
+        let failures = 0;
+
+        for (const r of toUnmonitor) {
           if (ctx.dryRun) {
-            episodeUnmonitored += 1;
+            episodesUnmonitored += 1;
             continue;
           }
           const ok = await this.sonarr
             .setEpisodeMonitored({
               baseUrl: sonarrBaseUrl,
               apiKey: sonarrApiKey,
-              episode: ep,
+              episode: r.ep,
               monitored: false,
             })
             .then(() => true)
-            .catch(() => false);
-          if (ok) episodeUnmonitored += 1;
+            .catch((err) => {
+              failures += 1;
+              const msg = (err as Error)?.message ?? String(err);
+              (summary.warnings as string[]).push(
+                `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
+              );
+              return false;
+            });
+          if (ok) episodesUnmonitored += 1;
         }
 
-        // Unmonitor the season itself via series update.
+        for (const r of toMonitor) {
+          if (ctx.dryRun) {
+            episodesMonitored += 1;
+            continue;
+          }
+          const ok = await this.sonarr
+            .setEpisodeMonitored({
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
+              episode: r.ep,
+              monitored: true,
+            })
+            .then(() => true)
+            .catch((err) => {
+              failures += 1;
+              const msg = (err as Error)?.message ?? String(err);
+              (summary.warnings as string[]).push(
+                `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
+              );
+              return false;
+            });
+          if (ok) episodesMonitored += 1;
+        }
+
+        // Optional: if the season is fully present in Plex, unmonitor the season itself via series update.
         const updatedSeries: SonarrSeries = { ...series };
         const seasons = Array.isArray(series.seasons)
           ? series.seasons.map((s) => ({ ...s }))
           : [];
-        const seasonObj = seasons.find(
-          (s) => toInt(s.seasonNumber) === seasonNum,
-        );
+        const seasonObj = seasons.find((s) => toInt(s.seasonNumber) === seasonNum);
         const seasonWasMonitored = Boolean(seasonObj?.monitored);
-        if (seasonObj) seasonObj.monitored = false;
+        if (seasonObj && seasonCompleteInPlex) seasonObj.monitored = false;
         updatedSeries.seasons = seasons;
 
-        if (!ctx.dryRun && seasonWasMonitored) {
+        const seasonChanged = seasonCompleteInPlex && seasonWasMonitored;
+        if (!ctx.dryRun && seasonChanged) {
           await this.sonarr.updateSeries({
             baseUrl: sonarrBaseUrl,
             apiKey: sonarrApiKey,
@@ -2521,53 +2612,54 @@ export class CleanupAfterAddingNewContentJob {
           seriesFound: true,
           seriesId: series.id,
           season: seasonNum,
-          episodesUnmonitored: ctx.dryRun ? 0 : episodeUnmonitored,
-          episodesWouldUnmonitor: ctx.dryRun ? episodeUnmonitored : 0,
-          seasonUnmonitored: !ctx.dryRun && seasonWasMonitored ? true : false,
-          seasonWouldUnmonitor: ctx.dryRun && seasonWasMonitored ? true : false,
+          seasonCompleteInPlex,
+          episodesInPlex: seasonEpisodeRows.length - missingSeason.length,
+          episodesMissing: missingSeason.length,
+          episodesUnmonitored: ctx.dryRun ? 0 : episodesUnmonitored,
+          episodesWouldUnmonitor: ctx.dryRun ? episodesUnmonitored : 0,
+          episodesMonitored: ctx.dryRun ? 0 : episodesMonitored,
+          episodesWouldMonitor: ctx.dryRun ? episodesMonitored : 0,
+          seasonUnmonitored: !ctx.dryRun && seasonChanged ? true : false,
+          seasonWouldUnmonitor: ctx.dryRun && seasonChanged ? true : false,
+          failures,
         } as unknown as JsonObject;
 
         // Remove show from watchlist ONLY if Plex has ALL episodes for the series.
         const missingAll = Array.from(desiredAll).filter(
           (k) => !plexEpisodes.has(k),
         );
-        if (missingAll.length > 0) {
-          await ctx.info(
-            'plex: series not complete; skipping watchlist removal',
-            {
-              title: seriesTitle,
-              missingCount: missingAll.length,
-              sampleMissing: missingAll.slice(0, 25),
-            },
+        const seriesCompleteInPlex = missingAll.length === 0;
+        const watchlistDryRun = seriesCompleteInPlex ? ctx.dryRun : true;
+        await ctx.info(
+          seriesCompleteInPlex
+            ? 'plex: removing show from watchlist (series complete)'
+            : 'plex: checking show watchlist (series incomplete; keeping)',
+          {
+            title: seriesTitle,
+            missingCount: missingAll.length,
+            sampleMissing: missingAll.slice(0, 25),
+            dryRun: watchlistDryRun,
+          },
+        );
+        try {
+          const wl = await this.plexWatchlist.removeShowFromWatchlistByTitle({
+            token: plexToken,
+            title: seriesTitle,
+            dryRun: watchlistDryRun,
+          });
+          summary.watchlist = wl as unknown as JsonObject;
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          (summary.warnings as string[]).push(
+            `plex: watchlist check/removal failed (non-critical): ${msg}`,
           );
-        } else {
-          await ctx.info(
-            'plex: removing show from watchlist (series complete)',
-            {
-              title: seriesTitle,
-              dryRun: ctx.dryRun,
-            },
-          );
-          try {
-            const wl = await this.plexWatchlist.removeShowFromWatchlistByTitle({
-              token: plexToken,
-              title: seriesTitle,
-              dryRun: ctx.dryRun,
-            });
-            summary.watchlist = wl as unknown as JsonObject;
-          } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
-            (summary.warnings as string[]).push(
-              `plex: watchlist removal failed (non-critical): ${msg}`,
-            );
-            await ctx.warn('plex: watchlist removal failed (non-critical)', {
-              error: msg,
-            });
-            summary.watchlist = {
-              ok: false,
-              error: msg,
-            } as unknown as JsonObject;
-          }
+          await ctx.warn('plex: watchlist check/removal failed (non-critical)', {
+            error: msg,
+          });
+          summary.watchlist = {
+            ok: false,
+            error: msg,
+          } as unknown as JsonObject;
         }
 
         await ctx.info('mediaAddedCleanup(season): done', summary);
