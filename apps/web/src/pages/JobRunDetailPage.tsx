@@ -842,7 +842,9 @@ export function JobRunDetailPage() {
 
                             return (
                               <div className="mb-6 space-y-4">
-                                {run.trigger !== 'manual' && mediaType ? (
+                                {run.trigger !== 'manual' &&
+                                addedTypeLabel !== 'Unknown' &&
+                                addedName !== '—' ? (
                                   <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                                     <div className="text-xs text-white/60 font-mono">
                                       Added content
