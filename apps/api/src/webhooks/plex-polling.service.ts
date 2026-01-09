@@ -102,6 +102,7 @@ export class PlexPollingService implements OnModuleInit {
   private pendingLibraryNew: {
     newest: PlexRecentlyAddedItem;
     newlyAddedCount: number;
+    sinceSec: number;
   } | null = null;
 
   constructor(
@@ -337,11 +338,13 @@ export class PlexPollingService implements OnModuleInit {
     if (newItems.length > 0 && !canRunNow) {
       const newest = newItems.reduce((best, it) => pickNewer(best, it), newItems[0]!);
       if (!this.pendingLibraryNew) {
-        this.pendingLibraryNew = { newest, newlyAddedCount: newItems.length };
+        this.pendingLibraryNew = { newest, newlyAddedCount: newItems.length, sinceSec: since };
       } else {
         this.pendingLibraryNew = {
           newest: pickNewer(this.pendingLibraryNew.newest, newest),
           newlyAddedCount: Math.max(this.pendingLibraryNew.newlyAddedCount, newItems.length),
+          // Keep the earliest window start so we can derive TV types from episodes later.
+          sinceSec: this.pendingLibraryNew.sinceSec,
         };
       }
       return;
@@ -368,24 +371,137 @@ export class PlexPollingService implements OnModuleInit {
       newItems.length > 0
         ? Math.max(newItems.length, this.pendingLibraryNew?.newlyAddedCount ?? 0)
         : (this.pendingLibraryNew?.newlyAddedCount ?? 1);
+    const windowSinceSec =
+      newItems.length > 0
+        ? (this.pendingLibraryNew?.sinceSec ?? since)
+        : this.pendingLibraryNew!.sinceSec;
 
     // Clear pending now that we're going to run.
     this.pendingLibraryNew = null;
     this.lastLibraryNewTriggeredAtMs = now;
 
-    const mediaType = (newest.type ?? '').toLowerCase();
-    if (!['movie', 'show', 'season', 'episode'].includes(mediaType)) return;
+    const mediaTypeRaw = (newest.type ?? '').toLowerCase();
+    if (!['movie', 'show', 'season', 'episode'].includes(mediaTypeRaw)) return;
 
-    const title = newest.title ?? '';
-    const ratingKey = newest.ratingKey ?? '';
-    const showTitle = newest.grandparentTitle || newest.parentTitle || null;
-    const showRatingKey = newest.grandparentRatingKey || newest.parentRatingKey || null;
-    const seasonNumber =
-      mediaType === 'season'
+    // Derive accurate TV type from the *section-specific* recentlyAdded feed.
+    // Plex's global /library/recentlyAdded often reports TV changes as "season" even
+    // when a single episode was added. For reports and job routing, we want:
+    // - 1 new episode => episode
+    // - multiple new episodes within one season => season
+    // - multiple new episodes across multiple seasons => show
+    const librarySectionKey =
+      typeof newest.librarySectionId === 'number' && Number.isFinite(newest.librarySectionId)
+        ? String(Math.trunc(newest.librarySectionId))
+        : null;
+    const derivedTv = await (async () => {
+      if (!librarySectionKey) return null;
+      // Only attempt this for TV-ish items (and only when we can identify the section).
+      if (mediaTypeRaw === 'movie') return null;
+
+      let sectionItems: PlexRecentlyAddedItem[] = [];
+      try {
+        sectionItems = await this.plexServer.listRecentlyAddedForSectionKey({
+          baseUrl,
+          token,
+          librarySectionKey,
+          take: 200,
+        });
+      } catch (err) {
+        this.logger.debug(
+          `Polling /library/sections/${librarySectionKey}/recentlyAdded failed: ${(err as Error)?.message ?? String(err)}`,
+        );
+        return null;
+      }
+
+      const episodeItems = sectionItems.filter(
+        (it) => (it.type ?? '').toLowerCase() === 'episode',
+      );
+      const newEpisodes = episodeItems.filter(
+        (it) => (itemTimestampSec(it) ?? 0) > windowSinceSec,
+      );
+      if (newEpisodes.length === 0) return null;
+
+      const newestEpisode = newEpisodes.reduce((best, it) => pickNewer(best, it), newEpisodes[0]!);
+
+      const showRatingKey =
+        newestEpisode.grandparentRatingKey ?? newestEpisode.parentRatingKey ?? null;
+      const showTitle =
+        newestEpisode.grandparentTitle ?? newestEpisode.parentTitle ?? null;
+
+      const belongsToSameShow = (it: PlexRecentlyAddedItem) => {
+        const rk = it.grandparentRatingKey ?? it.parentRatingKey ?? null;
+        if (showRatingKey && rk) return rk === showRatingKey;
+        const t = (it.grandparentTitle ?? it.parentTitle ?? '').trim().toLowerCase();
+        return showTitle ? t === showTitle.trim().toLowerCase() : false;
+      };
+
+      const episodesForShow = newEpisodes.filter(belongsToSameShow);
+      const seasons = new Set<number>();
+      for (const it of episodesForShow) {
+        const s =
+          typeof it.parentIndex === 'number' && Number.isFinite(it.parentIndex)
+            ? Math.trunc(it.parentIndex)
+            : null;
+        if (s && s > 0) seasons.add(s);
+      }
+
+      if (episodesForShow.length === 1) {
+        const s = newestEpisode.parentIndex ?? null;
+        const e = newestEpisode.index ?? null;
+        return {
+          mediaType: 'episode' as const,
+          title: newestEpisode.title ?? '',
+          ratingKey: newestEpisode.ratingKey,
+          showTitle,
+          showRatingKey,
+          seasonNumber: typeof s === 'number' && Number.isFinite(s) ? Math.trunc(s) : null,
+          episodeNumber: typeof e === 'number' && Number.isFinite(e) ? Math.trunc(e) : null,
+          newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
+          newlyAddedCount: episodesForShow.length,
+        };
+      }
+
+      if (seasons.size === 1) {
+        const seasonNumber = Array.from(seasons)[0] ?? null;
+        return {
+          mediaType: 'season' as const,
+          title: newestEpisode.parentTitle ?? (seasonNumber ? `Season ${seasonNumber}` : ''),
+          ratingKey: newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
+          showTitle,
+          showRatingKey,
+          seasonNumber,
+          episodeNumber: null,
+          newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
+          newlyAddedCount: episodesForShow.length,
+        };
+      }
+
+      return {
+        mediaType: 'show' as const,
+        title: showTitle ?? newestEpisode.grandparentTitle ?? '',
+        ratingKey: newestEpisode.grandparentRatingKey ?? newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
+        showTitle,
+        showRatingKey,
+        seasonNumber: null,
+        episodeNumber: null,
+        newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
+        newlyAddedCount: episodesForShow.length,
+      };
+    })();
+
+    const mediaType = derivedTv?.mediaType ?? mediaTypeRaw;
+
+    const title = derivedTv?.title ?? (newest.title ?? '');
+    const ratingKey = derivedTv?.ratingKey ?? (newest.ratingKey ?? '');
+    const showTitle = derivedTv?.showTitle ?? (newest.grandparentTitle || newest.parentTitle || null);
+    const showRatingKey = derivedTv?.showRatingKey ?? (newest.grandparentRatingKey || newest.parentRatingKey || null);
+    const seasonNumber = derivedTv
+      ? derivedTv.seasonNumber
+      : mediaType === 'season'
         ? (newest.index ?? newest.parentIndex ?? null)
         : newest.parentIndex ?? null;
-    const episodeNumber = mediaType === 'episode' ? newest.index ?? null : null;
-    const newestAddedAt = itemTimestampSec(newest);
+    const episodeNumber = derivedTv ? derivedTv.episodeNumber : mediaType === 'episode' ? newest.index ?? null : null;
+    const newestAddedAt = derivedTv?.newestAddedAt ?? itemTimestampSec(newest);
 
     const payload: Record<string, unknown> = {
       event: 'library.new',
@@ -439,7 +555,7 @@ export class PlexPollingService implements OnModuleInit {
         seasonNumber,
         episodeNumber,
         persistedPath: persisted.path,
-        newlyAddedCount,
+        newlyAddedCount: derivedTv?.newlyAddedCount ?? newlyAddedCount,
         newestAddedAt: newestAddedAt ?? null,
       } as const;
 

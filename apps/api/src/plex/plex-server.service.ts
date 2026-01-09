@@ -683,6 +683,149 @@ export class PlexServerService {
     return out;
   }
 
+  async listRecentlyAddedForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    take?: number;
+  }): Promise<PlexRecentlyAddedItem[]> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const take = Number.isFinite(params.take ?? NaN) ? (params.take as number) : 50;
+
+    const u = new URL(
+      `library/sections/${encodeURIComponent(librarySectionKey)}/recentlyAdded`,
+      normalizeBaseUrl(baseUrl),
+    );
+    // Plex uses these query params for pagination.
+    u.searchParams.set('X-Plex-Container-Start', '0');
+    u.searchParams.set('X-Plex-Container-Size', String(Math.max(1, Math.min(200, take))));
+    const url = u.toString();
+
+    const xml = asPlexXml(await this.fetchXml(url, token, 15000));
+    const container = xml.MediaContainer;
+    if (!container) return [];
+
+    const items = asPlexMetadataArray(container);
+    const out: PlexRecentlyAddedItem[] = [];
+
+    for (const it of items) {
+      const ratingKey = toStringSafe(it.ratingKey).trim();
+      if (!ratingKey) continue;
+
+      const type = (() => {
+        const s = toStringSafe(it.type).trim();
+        return s ? s : null;
+      })();
+
+      const title = (() => {
+        const s = toStringSafe(it.title).trim();
+        return s ? s : null;
+      })();
+
+      const year = (() => {
+        const raw = it.year;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+
+      const addedAt = (() => {
+        const raw = it.addedAt;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+      const updatedAt = (() => {
+        const raw = (it as Record<string, unknown>)['updatedAt'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+
+      const librarySectionId = (() => {
+        const raw = (it as Record<string, unknown>)['librarySectionID'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+      const librarySectionTitle = (() => {
+        const s = toStringSafe(
+          (it as Record<string, unknown>)['librarySectionTitle'],
+        ).trim();
+        return s ? s : null;
+      })();
+
+      const grandparentTitle = (() => {
+        const s = toStringSafe(
+          (it as Record<string, unknown>)['grandparentTitle'],
+        ).trim();
+        return s ? s : null;
+      })();
+      const grandparentRatingKey = (() => {
+        const s = toStringSafe(
+          (it as Record<string, unknown>)['grandparentRatingKey'],
+        ).trim();
+        return s ? s : null;
+      })();
+      const parentTitle = (() => {
+        const s = toStringSafe(
+          (it as Record<string, unknown>)['parentTitle'],
+        ).trim();
+        return s ? s : null;
+      })();
+      const parentRatingKey = (() => {
+        const s = toStringSafe(
+          (it as Record<string, unknown>)['parentRatingKey'],
+        ).trim();
+        return s ? s : null;
+      })();
+
+      const parentIndex = (() => {
+        const raw = it.parentIndex;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+      const index = (() => {
+        const raw = it.index;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+
+      out.push({
+        type,
+        ratingKey,
+        title,
+        year,
+        addedAt,
+        updatedAt,
+        librarySectionId,
+        librarySectionTitle,
+        grandparentTitle,
+        grandparentRatingKey,
+        parentTitle,
+        parentRatingKey,
+        parentIndex,
+        index,
+      });
+    }
+
+    return out;
+  }
+
   async getMetadataDetails(params: {
     baseUrl: string;
     token: string;
