@@ -22,6 +22,7 @@ import {
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
 import { getPublicSettings, putSettings } from '@/api/settings';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { cn } from '@/components/ui/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
@@ -299,6 +300,7 @@ export function TaskManagerPage() {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
+  const [arrRequiresSetupOpen, setArrRequiresSetupOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [terminalState, setTerminalState] = useState<
@@ -367,6 +369,19 @@ export function TaskManagerPage() {
   const [webhookAutoRun, setWebhookAutoRun] = useState<Record<string, boolean>>({});
   const [arrMonitoredIncludeRadarr, setArrMonitoredIncludeRadarr] = useState(true);
   const [arrMonitoredIncludeSonarr, setArrMonitoredIncludeSonarr] = useState(true);
+
+  const isRadarrEnabled = (() => {
+    const settings = settingsQuery.data?.settings;
+    const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
+    const saved = readBool(settings, 'radarr.enabled');
+    return (saved ?? Boolean(secretsPresent.radarr)) === true;
+  })();
+  const isSonarrEnabled = (() => {
+    const settings = settingsQuery.data?.settings;
+    const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
+    const saved = readBool(settings, 'sonarr.enabled');
+    return (saved ?? Boolean(secretsPresent.sonarr)) === true;
+  })();
   const immaculateIncludeRefresherMutation = useMutation({
     mutationFn: async (enabled: boolean) =>
       putSettings({
@@ -891,6 +906,12 @@ export function TaskManagerPage() {
               const isTerminalRunning = terminalInfo?.status === 'running';
               const isTerminalFailed =
                 terminalInfo?.status === 'completed' && terminalInfo.result === 'FAILED';
+
+              const arrMonitoredSearchBlocked =
+                job.id === 'arrMonitoredSearch' &&
+                settingsQuery.status === 'success' &&
+                !isRadarrEnabled &&
+                !isSonarrEnabled;
               const weeklyOpen = weeklyDaySelector[job.id] ?? false;
               const monthlyOpen = monthlyDaySelector[job.id] ?? false;
               const nextRunsOpen = nextRunsPopup[job.id] ?? false;
@@ -946,10 +967,15 @@ export function TaskManagerPage() {
 
                   <motion.div
                     layout
+                    aria-disabled={arrMonitoredSearchBlocked ? true : undefined}
                     onPointerDownCapture={() => {
                       setCardIconPulse({ jobId: job.id, nonce: Date.now() });
                     }}
                     onClick={(e) => {
+                      if (arrMonitoredSearchBlocked) {
+                        setArrRequiresSetupOpen(true);
+                        return;
+                      }
                       if (!canExpand) return;
                       const t = e.target as HTMLElement | null;
                       if (!t) return;
@@ -962,9 +988,24 @@ export function TaskManagerPage() {
                       }
                       setExpandedCards((prev) => ({ ...prev, [job.id]: !isExpanded }));
                     }}
-                    className="group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10 active:bg-[#1a1625]/85 active:shadow-2xl active:shadow-purple-500/15"
+                    className={cn(
+                      'group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10 active:bg-[#1a1625]/85 active:shadow-2xl active:shadow-purple-500/15',
+                      arrMonitoredSearchBlocked
+                        ? 'opacity-60 grayscale hover:bg-[#1a1625]/60 active:bg-[#1a1625]/60 hover:shadow-none active:shadow-none'
+                        : null,
+                    )}
                   >
                     <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
+                    {arrMonitoredSearchBlocked ? (
+                      <button
+                        type="button"
+                        data-no-card-toggle="true"
+                        onClick={() => setArrRequiresSetupOpen(true)}
+                        className="absolute inset-0 z-20 rounded-[32px] bg-transparent cursor-not-allowed"
+                        aria-label="Enable Radarr or Sonarr in Vault to use this task"
+                        title="Enable Radarr or Sonarr in Vault to use this task"
+                      />
+                    ) : null}
 
                     <div className="p-6 md:p-8 flex flex-wrap gap-4 items-start relative z-10">
                     {/* Icon Box */}
@@ -2456,6 +2497,48 @@ export function TaskManagerPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={arrRequiresSetupOpen}
+        onClose={() => setArrRequiresSetupOpen(false)}
+        onConfirm={() => {
+          setArrRequiresSetupOpen(false);
+          navigate('/vault');
+        }}
+        label="Setup required"
+        title="Enable Radarr or Sonarr"
+        description={
+          <div className="space-y-2">
+            <div className="text-white/85 font-semibold">
+              The <span className="text-white">Search Monitored</span> task needs Radarr or Sonarr
+              enabled to monitor and search for content.
+            </div>
+            <div className="text-sm text-white/70">
+              Enable and configure{' '}
+              <Link
+                to="/vault#vault-radarr"
+                className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+              >
+                Radarr
+              </Link>{' '}
+              or{' '}
+              <Link
+                to="/vault#vault-sonarr"
+                className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+              >
+                Sonarr
+              </Link>{' '}
+              in the Vault.
+            </div>
+            <div className="text-xs text-white/55">
+              Tip: tap the Radarr/Sonarr links above to jump straight to the right Vault card.
+            </div>
+          </div>
+        }
+        confirmText="Open Vault"
+        cancelText="Close"
+        variant="primary"
+      />
     </div>
   );
 }
