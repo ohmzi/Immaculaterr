@@ -99,6 +99,10 @@ export class PlexPollingService implements OnModuleInit {
   private lastRecentlyAddedPollAtMs: number | null = null;
   private lastSeenAddedAtSec: number | null = null;
   private lastLibraryNewTriggeredAtMs: number | null = null;
+  private pendingLibraryNew: {
+    newest: PlexRecentlyAddedItem;
+    newlyAddedCount: number;
+  } | null = null;
 
   constructor(
     private readonly authService: AuthService,
@@ -254,7 +258,8 @@ export class PlexPollingService implements OnModuleInit {
 
     let items: PlexRecentlyAddedItem[] = [];
     try {
-      items = await this.plexServer.listRecentlyAdded({ baseUrl, token, take: 50 });
+      // Request a deeper window so TV items aren't pushed out by frequent movie imports.
+      items = await this.plexServer.listRecentlyAdded({ baseUrl, token, take: 200 });
     } catch (err) {
       this.logger.debug(
         `Polling /library/recentlyAdded failed: ${(err as Error)?.message ?? String(err)}`,
@@ -262,9 +267,46 @@ export class PlexPollingService implements OnModuleInit {
       return;
     }
 
+    // Plex should provide `addedAt` as a unix timestamp in seconds. Some servers/libraries
+    // occasionally emit bogus "future" timestamps (e.g. year 2098), which would permanently
+    // break our watermark logic. Clamp those out and self-heal if the watermark was poisoned.
+    const nowSec = Math.floor(now / 1000);
+    const MAX_FUTURE_SKEW_SEC = 24 * 60 * 60;
+    const safeAddedAt = (addedAtSec: number | null): number | null => {
+      if (addedAtSec === null) return null;
+      if (!Number.isFinite(addedAtSec)) return null;
+      const n = Math.trunc(addedAtSec);
+      if (n <= 0) return null;
+      if (n > nowSec + MAX_FUTURE_SKEW_SEC) return null;
+      return n;
+    };
+
+    const invalidFutureCount = items.reduce((acc, it) => {
+      const raw = it.addedAt;
+      if (raw === null) return acc;
+      if (!Number.isFinite(raw)) return acc;
+      return Math.trunc(raw) > nowSec + MAX_FUTURE_SKEW_SEC ? acc + 1 : acc;
+    }, 0);
+    if (invalidFutureCount > 0) {
+      this.logger.debug(
+        `Plex recentlyAdded: ignoring ${invalidFutureCount} item(s) with invalid future addedAt`,
+      );
+    }
+
     const maxAddedAt =
-      items.reduce((max, it) => Math.max(max, it.addedAt ?? 0), 0) || 0;
+      items.reduce((max, it) => Math.max(max, safeAddedAt(it.addedAt) ?? 0), 0) ||
+      0;
     if (!maxAddedAt) return;
+
+    if (
+      this.lastSeenAddedAtSec !== null &&
+      this.lastSeenAddedAtSec > nowSec + MAX_FUTURE_SKEW_SEC
+    ) {
+      this.logger.warn(
+        `Plex recentlyAdded watermark was in the future (lastSeenAddedAtSec=${this.lastSeenAddedAtSec}); resetting to ${maxAddedAt}`,
+      );
+      this.lastSeenAddedAtSec = maxAddedAt;
+    }
 
     // Baseline on first successful poll (avoid "startup storm" runs).
     if (this.lastSeenAddedAtSec === null) {
@@ -273,28 +315,73 @@ export class PlexPollingService implements OnModuleInit {
     }
 
     const since = this.lastSeenAddedAtSec;
-    const newItems = items.filter((it) => (it.addedAt ?? 0) > since);
+    const newItems = items.filter((it) => (safeAddedAt(it.addedAt) ?? 0) > since);
+
+    // Always advance the "seen" watermark so we don't repeatedly treat the same items as new.
     this.lastSeenAddedAtSec = Math.max(this.lastSeenAddedAtSec, maxAddedAt);
 
-    if (!newItems.length) return;
+    const canRunNow =
+      this.lastLibraryNewTriggeredAtMs === null ||
+      now - this.lastLibraryNewTriggeredAtMs >= this.libraryNewDebounceMs;
 
-    // Debounce "library.new" cleanup runs.
-    const lastRun = this.lastLibraryNewTriggeredAtMs ?? 0;
-    if (this.lastLibraryNewTriggeredAtMs !== null && now - lastRun < this.libraryNewDebounceMs) {
+    const pickNewer = (a: PlexRecentlyAddedItem, b: PlexRecentlyAddedItem) => {
+      const aa = a.addedAt ?? 0;
+      const bb = b.addedAt ?? 0;
+      return bb > aa ? b : a;
+    };
+
+    // If we saw new items but are within the debounce window, stash the newest one and run later.
+    if (newItems.length > 0 && !canRunNow) {
+      const newest = newItems.reduce((best, it) => pickNewer(best, it), newItems[0]!);
+      if (!this.pendingLibraryNew) {
+        this.pendingLibraryNew = { newest, newlyAddedCount: newItems.length };
+      } else {
+        this.pendingLibraryNew = {
+          newest: pickNewer(this.pendingLibraryNew.newest, newest),
+          newlyAddedCount: Math.max(this.pendingLibraryNew.newlyAddedCount, newItems.length),
+        };
+      }
       return;
     }
-    this.lastLibraryNewTriggeredAtMs = now;
 
-    // Use the newest item as representative metadata for logs + job input.
-    const newest = [...newItems].sort(
-      (a, b) => (a.addedAt ?? 0) - (b.addedAt ?? 0),
-    )[newItems.length - 1]!;
+    // If no new items were detected in this poll, but we have a pending item and debounce has passed,
+    // run it now so TV additions don't get dropped.
+    if (newItems.length === 0) {
+      if (!canRunNow || !this.pendingLibraryNew) return;
+    }
+
+    // Use the newest item (from this poll or pending) as representative metadata for logs + job input.
+    const newest = (() => {
+      const newestFromPoll =
+        newItems.length > 0
+          ? newItems.reduce((best, it) => pickNewer(best, it), newItems[0]!)
+          : null;
+      if (newestFromPoll && this.pendingLibraryNew) {
+        return pickNewer(this.pendingLibraryNew.newest, newestFromPoll);
+      }
+      return newestFromPoll ?? this.pendingLibraryNew!.newest;
+    })();
+    const newlyAddedCount =
+      newItems.length > 0
+        ? Math.max(newItems.length, this.pendingLibraryNew?.newlyAddedCount ?? 0)
+        : (this.pendingLibraryNew?.newlyAddedCount ?? 1);
+
+    // Clear pending now that we're going to run.
+    this.pendingLibraryNew = null;
+    this.lastLibraryNewTriggeredAtMs = now;
 
     const mediaType = (newest.type ?? '').toLowerCase();
     if (!['movie', 'show', 'season', 'episode'].includes(mediaType)) return;
 
     const title = newest.title ?? '';
     const ratingKey = newest.ratingKey ?? '';
+    const showTitle = newest.grandparentTitle || newest.parentTitle || null;
+    const showRatingKey = newest.grandparentRatingKey || newest.parentRatingKey || null;
+    const seasonNumber =
+      mediaType === 'season'
+        ? (newest.index ?? newest.parentIndex ?? null)
+        : newest.parentIndex ?? null;
+    const episodeNumber = mediaType === 'episode' ? newest.index ?? null : null;
 
     const payload: Record<string, unknown> = {
       event: 'library.new',
@@ -313,7 +400,7 @@ export class PlexPollingService implements OnModuleInit {
       },
       source: {
         type: 'plexPolling',
-        newlyAddedCount: newItems.length,
+        newlyAddedCount,
       },
     };
 
@@ -343,12 +430,12 @@ export class PlexPollingService implements OnModuleInit {
         title,
         year: newest.year ?? null,
         ratingKey: ratingKey || null,
-        showTitle: newest.grandparentTitle || null,
-        showRatingKey: newest.grandparentRatingKey || null,
-        seasonNumber: newest.parentIndex ?? null,
-        episodeNumber: newest.index ?? null,
+        showTitle,
+        showRatingKey,
+        seasonNumber,
+        episodeNumber,
         persistedPath: persisted.path,
-        newlyAddedCount: newItems.length,
+        newlyAddedCount,
         newestAddedAt: newest.addedAt ?? null,
       } as const;
 
