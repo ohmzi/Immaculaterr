@@ -753,6 +753,7 @@ function buildMonitorConfirmReport(params: {
   const radarrAlreadyInPlex = asNum(radarr.alreadyInPlex) ?? 0;
   const radarrSkippedPathConflicts = asNum(radarr.skippedPathConflicts) ?? 0;
   const radarrMissingTmdbId = asNum(radarr.missingTmdbId) ?? 0;
+  const radarrSkipped = radarrMissingTmdbId + radarrSkippedPathConflicts;
 
   const sonarrTotalSeries = asNum(sonarr.totalSeries) ?? 0;
   const sonarrSeriesUnmonitored = asNum(sonarr.seriesUnmonitored) ?? 0;
@@ -824,20 +825,11 @@ function buildMonitorConfirmReport(params: {
             unit: 'movies',
           }),
           metricRow({
-            label: 'Already in Plex',
+            label: radarrAlreadyInPlex === 1 ? 'Movie found in Plex' : 'Movies found in Plex',
             end: radarrAlreadyInPlex,
             unit: 'movies',
           }),
-          metricRow({
-            label: 'Skipped (missing TMDB id)',
-            end: radarrMissingTmdbId,
-            unit: 'movies',
-          }),
-          metricRow({
-            label: 'Skipped (path conflicts)',
-            end: radarrSkippedPathConflicts,
-            unit: 'movies',
-          }),
+          metricRow({ label: 'Skipped', end: radarrSkipped, unit: 'movies' }),
         ],
       },
       {
@@ -893,7 +885,12 @@ function buildMonitorConfirmReport(params: {
             end: radarrEndMonitored,
             unit: 'movies',
           }),
-          metricRow({ label: 'Already in Plex', end: radarrAlreadyInPlex, unit: 'movies' }),
+          metricRow({
+            label: radarrAlreadyInPlex === 1 ? 'Movie found in Plex' : 'Movies found in Plex',
+            end: radarrAlreadyInPlex,
+            unit: 'movies',
+          }),
+          metricRow({ label: 'Skipped', end: radarrSkipped, unit: 'movies' }),
         ],
         issues: [
           ...(radarrMissingTmdbId

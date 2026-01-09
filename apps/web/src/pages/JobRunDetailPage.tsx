@@ -1142,6 +1142,8 @@ export function JobRunDetailPage() {
                             radarr && typeof radarr.checked === 'number' ? radarr.checked : null;
                           const radarrAlreadyInPlex =
                             radarr && typeof radarr.alreadyInPlex === 'number' ? radarr.alreadyInPlex : 0;
+                          const radarrMissingTmdbId =
+                            radarr && typeof radarr.missingTmdbId === 'number' ? radarr.missingTmdbId : 0;
                           const radarrKeptMonitored =
                             radarr && typeof radarr.keptMonitored === 'number' ? radarr.keptMonitored : null;
                           const radarrUnmonitored =
@@ -1208,27 +1210,21 @@ export function JobRunDetailPage() {
                                     <div className="text-sm font-semibold text-white mb-3">Radarr</div>
                                     <div className="space-y-1 text-sm text-white/70">
                                       <div>
-                                        <span className="text-white font-semibold">{radarrUnmonitored}</span> unmonitored
+                                        <span className="text-white font-semibold">{radarrTotalMonitored}</span>{' '}
+                                        monitored movies
                                       </div>
                                       <div>
-                                        <span className="text-white font-semibold">{radarrAlreadyInPlex}</span> were already in Plex
+                                        <span className="text-white font-semibold">{radarrAlreadyInPlex}</span>{' '}
+                                        {radarrAlreadyInPlex === 1
+                                          ? 'Movie found in Plex'
+                                          : 'Movies found in Plex'}
                                       </div>
                                       <div>
-                                        <span className="text-white font-semibold">{radarrTotalMonitored}</span> monitored scanned
-                                        {radarrChecked !== null ? (
-                                          <span className="text-white/60"> (checked {radarrChecked})</span>
-                                        ) : null}
+                                        <span className="text-white font-semibold">
+                                          {radarrMissingTmdbId + radarrSkippedPathConflicts}
+                                        </span>{' '}
+                                        skipped
                                       </div>
-                                      {radarrKeptMonitored !== null ? (
-                                        <div>
-                                          <span className="text-white font-semibold">{radarrKeptMonitored}</span> kept monitored
-                                        </div>
-                                      ) : null}
-                                      {radarrSkippedPathConflicts ? (
-                                        <div>
-                                          <span className="text-white font-semibold">{radarrSkippedPathConflicts}</span> skipped (path conflicts)
-                                        </div>
-                                      ) : null}
                                     </div>
                                   </div>
 
