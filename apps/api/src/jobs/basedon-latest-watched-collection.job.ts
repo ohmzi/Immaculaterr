@@ -648,6 +648,13 @@ export class BasedonLatestWatchedCollectionJob {
       failed: 0,
       skipped: 0,
     };
+    const radarrLists = {
+      attempted: [] as string[],
+      added: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
 
     if (!ctx.dryRun && radarr && missingTitles.length) {
       await ctx.info('radarr: start', {
@@ -666,10 +673,12 @@ export class BasedonLatestWatchedCollectionJob {
       } else {
         for (const title of missingTitles) {
           radarrStats.attempted += 1;
+          radarrLists.attempted.push(title);
 
           const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
           if (!tmdbMatch) {
             radarrStats.skipped += 1;
+            radarrLists.skipped.push(title);
             continue;
           }
 
@@ -687,10 +696,16 @@ export class BasedonLatestWatchedCollectionJob {
               minimumAvailability: 'announced',
               searchForMovie: true,
             });
-            if (result.status === 'added') radarrStats.added += 1;
-            else radarrStats.exists += 1;
+            if (result.status === 'added') {
+              radarrStats.added += 1;
+              radarrLists.added.push(tmdbMatch.title);
+            } else {
+              radarrStats.exists += 1;
+              radarrLists.exists.push(tmdbMatch.title);
+            }
           } catch (err) {
             radarrStats.failed += 1;
+            radarrLists.failed.push(title);
             await ctx.warn('radarr: add failed (continuing)', {
               title,
               error: (err as Error)?.message ?? String(err),
@@ -874,9 +889,14 @@ export class BasedonLatestWatchedCollectionJob {
       generated: recommendationTitles.length,
       resolvedInPlex: desiredItems.length,
       missingInPlex: missingTitles.length,
+      generatedTitles: uniqueStrings(recommendationTitles),
+      resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
+      missingTitles: uniqueStrings(missingTitles),
+      plexDesiredTitles: uniqueStrings(desiredItems.map((d) => d.title)),
       dbSaved,
       curatedCollectionId,
       radarr: radarrStats,
+      radarrLists,
       points: pointsSummary,
       plex: plexResult,
       sampleMissing: missingTitles.slice(0, 10),
@@ -1373,6 +1393,13 @@ export class BasedonLatestWatchedCollectionJob {
       skipped: 0,
       failed: 0,
     };
+    const sonarrLists = {
+      attempted: [] as string[],
+      added: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
 
     if (!ctx.dryRun && sonarr && missingTitles.length) {
       const defaults = sonarr.defaults;
@@ -1383,9 +1410,11 @@ export class BasedonLatestWatchedCollectionJob {
       } else {
         for (const title of missingTitles) {
           sonarrStats.attempted += 1;
+          sonarrLists.attempted.push(title);
           const ids = missingTitleToIds.get(title.trim()) ?? null;
           if (!ids || !ids.tvdbId) {
             sonarrStats.skipped += 1;
+            sonarrLists.skipped.push(title);
             continue;
           }
 
@@ -1402,11 +1431,16 @@ export class BasedonLatestWatchedCollectionJob {
               searchForMissingEpisodes: true,
               searchForCutoffUnmetEpisodes: true,
             });
-            if (result.status === 'added')
+            if (result.status === 'added') {
               sonarrStats.added += 1;
-            else sonarrStats.exists += 1;
+              sonarrLists.added.push(ids.title);
+            } else {
+              sonarrStats.exists += 1;
+              sonarrLists.exists.push(ids.title);
+            }
           } catch (err) {
             sonarrStats.failed += 1;
+            sonarrLists.failed.push(title);
             await ctx.warn('sonarr: add failed (continuing)', {
               title,
               error: (err as Error)?.message ?? String(err),
@@ -1554,9 +1588,14 @@ export class BasedonLatestWatchedCollectionJob {
       generated: recommendationTitles.length,
       resolvedInPlex: desiredItems.length,
       missingInPlex: missingTitles.length,
+      generatedTitles: uniqueStrings(recommendationTitles),
+      resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
+      missingTitles: uniqueStrings(missingTitles),
+      plexDesiredTitles: uniqueStrings(desiredItems.map((d) => d.title)),
       dbSaved,
       curatedCollectionId,
       sonarr: sonarrStats,
+      sonarrLists,
       points: pointsSummary,
       plex: plexResult,
       sampleMissing: missingTitles.slice(0, 10),
@@ -1819,6 +1858,31 @@ function asNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+function asStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const it of v) {
+    if (typeof it !== 'string') continue;
+    const s = it.trim();
+    if (!s) continue;
+    out.push(s);
+  }
+  return out;
+}
+
+function uniqueStrings(list: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const it of list) {
+    const s = String(it ?? '').trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
 function buildWatchedLatestCollectionReport(params: {
   ctx: JobContext;
   raw: JsonObject;
@@ -1846,89 +1910,179 @@ function buildWatchedLatestCollectionReport(params: {
     totals.missingInPlex += asNum(c.missingInPlex) ?? 0;
   }
 
-  const tasks = collections.map((c, idx) => {
-    const name = String(c.collectionName ?? `Collection ${idx + 1}`);
-    const plex = isPlainObject(c.plex) ? c.plex : null;
-    const points = isPlainObject(c.points) ? c.points : null;
-    const radarr = isPlainObject(c.radarr) ? c.radarr : null;
-    const sonarr = isPlainObject(c.sonarr) ? c.sonarr : null;
+  const isTv = Boolean(String((raw as Record<string, unknown>).tvSectionKey ?? '').trim());
+  const unit = isTv ? 'shows' : 'movies';
+  const seedTitle = String((raw as Record<string, unknown>).seedTitle ?? '').trim();
+  const seedYear = asNum((raw as Record<string, unknown>).seedYear);
 
-    const existingCount = plex ? asNum(plex.existingCount) : null;
-    const desiredCount = plex ? asNum(plex.desiredCount) : null;
-    const plexSkipped = plex ? Boolean((plex as Record<string, unknown>).skipped) : false;
+  const tasks: JobReportV1['tasks'] = [];
 
-    const totalBefore = points ? asNum(points.totalBefore) : null;
-    const totalAfter = points ? asNum(points.totalAfter) : null;
-    const activeBefore = points ? asNum(points.totalActiveBefore) : null;
-    const activeAfter = points ? asNum(points.totalActiveAfter) : null;
-    const pendingBefore = points ? asNum(points.totalPendingBefore) : null;
-    const pendingAfter = points ? asNum(points.totalPendingAfter) : null;
+  // 1) Generate recommendations
+  const recFacts: Array<{ label: string; value: unknown }> = [];
+  if (seedTitle) recFacts.push({ label: 'Seed', value: seedTitle });
+  if (seedYear !== null) recFacts.push({ label: 'Seed year', value: seedYear });
 
-    return {
-      id: `collection_${idx}_${name}`,
-      title: `Collection: ${name}`,
-      status: plexSkipped ? ('skipped' as const) : ('success' as const),
-      rows: [
-        metricRow({ label: 'Recommendations generated', end: asNum(c.generated), unit: 'titles' }),
-        metricRow({ label: 'Resolved in Plex', end: asNum(c.resolvedInPlex), unit: 'items' }),
-        metricRow({ label: 'Missing in Plex', end: asNum(c.missingInPlex), unit: 'titles' }),
-        metricRow({
-          label: 'Points rows (total)',
-          start: totalBefore,
-          changed:
-            totalBefore !== null && totalAfter !== null ? totalAfter - totalBefore : null,
-          end: totalAfter,
-          unit: 'rows',
-        }),
-        metricRow({
-          label: 'Points rows (active)',
-          start: activeBefore,
-          changed:
-            activeBefore !== null && activeAfter !== null ? activeAfter - activeBefore : null,
-          end: activeAfter,
-          unit: 'rows',
-        }),
-        metricRow({
-          label: 'Points rows (pending)',
-          start: pendingBefore,
-          changed:
-            pendingBefore !== null && pendingAfter !== null ? pendingAfter - pendingBefore : null,
-          end: pendingAfter,
-          unit: 'rows',
-        }),
-        metricRow({
-          label: 'Plex collection items',
-          start: existingCount,
-          changed:
-            existingCount !== null && desiredCount !== null
-              ? desiredCount - existingCount
-              : null,
-          end: desiredCount,
-          unit: 'items',
-        }),
-      ],
+  for (const [idx, c] of collections.entries()) {
+    const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+    const generatedTitles = uniqueStrings(asStringArray(c.generatedTitles));
+    const generatedCount = asNum(c.generated) ?? generatedTitles.length;
+    recFacts.push({
+      label: name,
+      value: { count: generatedCount, unit, items: generatedTitles },
+    });
+    const strategy = String(c.recommendationStrategy ?? '').trim();
+    if (strategy) recFacts.push({ label: `${name} — Strategy`, value: strategy });
+  }
+
+  tasks.push({
+    id: 'recommendations',
+    title: 'Generate recommendations',
+    status: 'success',
+    facts: recFacts,
+  });
+
+  // 2) Resolve titles in Plex
+  const resolveFacts: Array<{ label: string; value: unknown }> = [];
+  for (const [idx, c] of collections.entries()) {
+    const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+    const resolvedTitles = uniqueStrings(asStringArray(c.resolvedTitles ?? c.sampleResolved));
+    const missingTitles = uniqueStrings(asStringArray(c.missingTitles ?? c.sampleMissing));
+    resolveFacts.push({
+      label: `${name} — Resolved`,
+      value: { count: resolvedTitles.length, unit, items: resolvedTitles },
+    });
+    resolveFacts.push({
+      label: `${name} — Missing`,
+      value: { count: missingTitles.length, unit, items: missingTitles },
+    });
+  }
+
+  tasks.push({
+    id: 'plex_resolve',
+    title: 'Resolve titles in Plex',
+    status: 'success',
+    facts: resolveFacts,
+  });
+
+  // 3) Radarr/Sonarr add missing
+  if (isTv) {
+    const sonarrFacts: Array<{ label: string; value: unknown }> = [];
+    let sonarrEnabled = false;
+    let sonarrFailed = 0;
+
+    for (const [idx, c] of collections.entries()) {
+      const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+      const sonarr = isPlainObject(c.sonarr) ? c.sonarr : null;
+      const enabled = sonarr ? Boolean((sonarr as Record<string, unknown>).enabled) : false;
+      if (enabled) sonarrEnabled = true;
+      if (enabled) sonarrFailed += asNum((sonarr as Record<string, unknown>)?.failed) ?? 0;
+
+      const lists = isPlainObject(c.sonarrLists) ? c.sonarrLists : null;
+      const attempted = uniqueStrings(asStringArray(lists?.attempted));
+      const added = uniqueStrings(asStringArray(lists?.added));
+      const exists = uniqueStrings(asStringArray(lists?.exists));
+      const failed = uniqueStrings(asStringArray(lists?.failed));
+      const skipped = uniqueStrings(asStringArray(lists?.skipped));
+
+      const attemptedCount = sonarr ? asNum((sonarr as Record<string, unknown>).attempted) : null;
+      const addedCount = sonarr ? asNum((sonarr as Record<string, unknown>).added) : null;
+      const existsCount = sonarr ? asNum((sonarr as Record<string, unknown>).exists) : null;
+      const failedCount = sonarr ? asNum((sonarr as Record<string, unknown>).failed) : null;
+      const skippedCount = sonarr ? asNum((sonarr as Record<string, unknown>).skipped) : null;
+
+      sonarrFacts.push(
+        { label: `${name} — Attempted`, value: { count: attemptedCount, unit, items: attempted } },
+        { label: `${name} — Added`, value: { count: addedCount, unit, items: added } },
+        { label: `${name} — Exists`, value: { count: existsCount, unit, items: exists } },
+        { label: `${name} — Failed`, value: { count: failedCount, unit, items: failed } },
+        { label: `${name} — Skipped`, value: { count: skippedCount, unit, items: skipped } },
+      );
+    }
+
+    tasks.push({
+      id: 'sonarr_add',
+      title: 'Sonarr: add missing shows',
+      status:
+        ctx.dryRun || !sonarrEnabled
+          ? 'skipped'
+          : sonarrFailed
+            ? 'failed'
+            : 'success',
       facts: [
-        { label: 'recommendationStrategy', value: String(c.recommendationStrategy ?? '') },
-        ...(radarr
-          ? [
-              { label: 'radarrEnabled', value: Boolean(radarr.enabled) },
-              { label: 'radarrAdded', value: asNum(radarr.added) ?? 0 },
-              { label: 'radarrExists', value: asNum(radarr.exists) ?? 0 },
-              { label: 'radarrFailed', value: asNum(radarr.failed) ?? 0 },
-              { label: 'radarrSkipped', value: asNum(radarr.skipped) ?? 0 },
-            ]
-          : []),
-        ...(sonarr
-          ? [
-              { label: 'sonarrEnabled', value: Boolean(sonarr.enabled) },
-              { label: 'sonarrAdded', value: asNum(sonarr.added) ?? 0 },
-              { label: 'sonarrExists', value: asNum(sonarr.exists) ?? 0 },
-              { label: 'sonarrFailed', value: asNum(sonarr.failed) ?? 0 },
-              { label: 'sonarrSkipped', value: asNum(sonarr.skipped) ?? 0 },
-            ]
-          : []),
+        { label: 'Enabled', value: sonarrEnabled },
+        { label: 'Dry run', value: ctx.dryRun },
+        ...sonarrFacts,
       ],
-    };
+    });
+  } else {
+    const radarrFacts: Array<{ label: string; value: unknown }> = [];
+    let radarrEnabled = false;
+    let radarrFailed = 0;
+
+    for (const [idx, c] of collections.entries()) {
+      const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+      const radarr = isPlainObject(c.radarr) ? c.radarr : null;
+      const enabled = radarr ? Boolean((radarr as Record<string, unknown>).enabled) : false;
+      if (enabled) radarrEnabled = true;
+      if (enabled) radarrFailed += asNum((radarr as Record<string, unknown>)?.failed) ?? 0;
+
+      const lists = isPlainObject(c.radarrLists) ? c.radarrLists : null;
+      const attempted = uniqueStrings(asStringArray(lists?.attempted));
+      const added = uniqueStrings(asStringArray(lists?.added));
+      const exists = uniqueStrings(asStringArray(lists?.exists));
+      const failed = uniqueStrings(asStringArray(lists?.failed));
+      const skipped = uniqueStrings(asStringArray(lists?.skipped));
+
+      const attemptedCount = radarr ? asNum((radarr as Record<string, unknown>).attempted) : null;
+      const addedCount = radarr ? asNum((radarr as Record<string, unknown>).added) : null;
+      const existsCount = radarr ? asNum((radarr as Record<string, unknown>).exists) : null;
+      const failedCount = radarr ? asNum((radarr as Record<string, unknown>).failed) : null;
+      const skippedCount = radarr ? asNum((radarr as Record<string, unknown>).skipped) : null;
+
+      radarrFacts.push(
+        { label: `${name} — Attempted`, value: { count: attemptedCount, unit, items: attempted } },
+        { label: `${name} — Added`, value: { count: addedCount, unit, items: added } },
+        { label: `${name} — Exists`, value: { count: existsCount, unit, items: exists } },
+        { label: `${name} — Failed`, value: { count: failedCount, unit, items: failed } },
+        { label: `${name} — Skipped`, value: { count: skippedCount, unit, items: skipped } },
+      );
+    }
+
+    tasks.push({
+      id: 'radarr_add',
+      title: 'Radarr: add missing movies',
+      status:
+        ctx.dryRun || !radarrEnabled
+          ? 'skipped'
+          : radarrFailed
+            ? 'failed'
+            : 'success',
+      facts: [
+        { label: 'Enabled', value: radarrEnabled },
+        { label: 'Dry run', value: ctx.dryRun },
+        ...radarrFacts,
+      ],
+    });
+  }
+
+  // 4) Refresh Plex collection
+  const plexFacts: Array<{ label: string; value: unknown }> = [];
+  let anyDesired = false;
+  for (const [idx, c] of collections.entries()) {
+    const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+    const desiredTitles = uniqueStrings(asStringArray(c.plexDesiredTitles ?? c.sampleResolved));
+    if (desiredTitles.length) anyDesired = true;
+    plexFacts.push({
+      label: name,
+      value: { count: desiredTitles.length, unit, items: desiredTitles },
+    });
+  }
+
+  tasks.push({
+    id: 'plex_collection',
+    title: 'Refresh Plex collection',
+    status: anyDesired ? 'success' : 'skipped',
+    facts: plexFacts,
   });
 
   return {
