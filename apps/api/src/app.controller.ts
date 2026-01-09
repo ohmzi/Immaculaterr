@@ -2,7 +2,7 @@ import { Controller, Get, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AppService } from './app.service';
-import { HealthResponseDto } from './app.dto';
+import { AppMetaResponseDto, HealthResponseDto } from './app.dto';
 import { Public } from './auth/public.decorator';
 
 @Controller()
@@ -15,6 +15,13 @@ export class AppController {
   @ApiOkResponse({ type: HealthResponseDto })
   getHealth() {
     return this.appService.getHealth();
+  }
+
+  @Get('meta')
+  @Public()
+  @ApiOkResponse({ type: AppMetaResponseDto })
+  getMeta() {
+    return this.appService.getMeta();
   }
 
   @Get('ready')

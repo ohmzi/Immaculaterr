@@ -7,3 +7,17 @@ export class HealthResponseDto {
   @ApiProperty({ example: '2026-01-02T00:00:00.000Z' })
   time!: string;
 }
+
+export class AppMetaResponseDto {
+  @ApiProperty({ example: 'immaculaterr' })
+  name!: string;
+
+  @ApiProperty({ example: '0.0.0.100' })
+  version!: string;
+
+  @ApiProperty({ example: '41fb2cb', nullable: true })
+  buildSha!: string | null;
+
+  @ApiProperty({ example: '2026-01-09T15:54:13.000Z', nullable: true })
+  buildTime!: string | null;
+}

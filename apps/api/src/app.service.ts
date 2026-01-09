@@ -3,6 +3,7 @@ import { constants as fsConstants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import type { HealthResponseDto } from './app.dto';
 import { PrismaService } from './db/prisma.service';
+import { readAppMeta } from './app.meta';
 
 export type ReadinessCheck =
   | { ok: true }
@@ -29,6 +30,10 @@ export class AppService {
       status: 'ok' as const,
       time: new Date().toISOString(),
     };
+  }
+
+  getMeta() {
+    return readAppMeta();
   }
 
   async getReadiness(): Promise<ReadinessResponse> {

@@ -9,6 +9,7 @@ import { BufferedLogger } from './logs/buffered-logger';
 import { createOriginCheckMiddleware } from './security/origin-check.middleware';
 import { createIpRateLimitMiddleware } from './security/ip-rate-limit.middleware';
 import { securityHeadersMiddleware } from './security/security-headers.middleware';
+import { readAppMeta } from './app.meta';
 
 function parseTrustProxyEnv(
   raw: string | undefined,
@@ -168,10 +169,11 @@ async function bootstrap() {
     process.env.SWAGGER_ENABLED === 'true' ||
     process.env.NODE_ENV !== 'production';
   if (swaggerEnabled) {
+    const meta = readAppMeta();
     const config = new DocumentBuilder()
       .setTitle('Immaculaterr API')
       .setDescription('Local API for the Immaculaterr webapp.')
-      .setVersion('0.0.0')
+      .setVersion(meta.version)
       .build();
 
     const document = SwaggerModule.createDocument(app, config);
