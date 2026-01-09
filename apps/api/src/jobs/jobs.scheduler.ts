@@ -98,9 +98,21 @@ export class JobsScheduler implements OnModuleInit {
                 select: { enabled: true },
               });
               if (!stillEnabled?.enabled) {
-                this.logger.warn(
+                // The DB is the source of truth. If a schedule is disabled while a CronJob is still
+                // registered (e.g. settings-driven enforcement), skip and remove it to avoid future ticks.
+                this.logger.debug(
                   `Skipping scheduled run; schedule disabled jobId=${jobId}`,
                 );
+                try {
+                  job.stop();
+                } catch {
+                  // ignore
+                }
+                try {
+                  this.schedulerRegistry.deleteCronJob(name);
+                } catch {
+                  // ignore
+                }
                 return;
               }
 

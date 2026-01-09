@@ -94,6 +94,56 @@ export class SettingsService {
     return Object.fromEntries(Object.entries(merged).map(([k]) => [k, true]));
   }
 
+  /**
+   * Enforce cross-setting constraints that impact background automation.
+   *
+   * Current rules:
+   * - If BOTH Radarr and Sonarr are disabled/unconfigured, auto-run schedules for ARR-dependent jobs
+   *   are force-disabled (even if they were previously enabled).
+   */
+  async enforceAutomationConstraints(userId: string) {
+    const settings = await this.getSettingsDoc(userId);
+    const secrets = await this.getSecretsDoc(userId);
+
+    const readBool = (obj: Record<string, unknown>, path: string): boolean | null => {
+      const parts = path.split('.');
+      let cur: unknown = obj;
+      for (const p of parts) {
+        if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return null;
+        cur = (cur as Record<string, unknown>)[p];
+      }
+      return typeof cur === 'boolean' ? cur : null;
+    };
+
+    const radarrEnabledSetting = readBool(settings, 'radarr.enabled');
+    const sonarrEnabledSetting = readBool(settings, 'sonarr.enabled');
+
+    const radarrSecretsPresent = Boolean(secrets['radarr']);
+    const sonarrSecretsPresent = Boolean(secrets['sonarr']);
+
+    // Match the web UI's semantics:
+    // - if enabled flag exists, it wins
+    // - otherwise, presence of secrets implies enabled
+    const radarrEnabled = (radarrEnabledSetting ?? radarrSecretsPresent) === true;
+    const sonarrEnabled = (sonarrEnabledSetting ?? sonarrSecretsPresent) === true;
+
+    if (radarrEnabled || sonarrEnabled) return;
+
+    const res = await this.prisma.jobSchedule.updateMany({
+      where: {
+        jobId: { in: ['monitorConfirm', 'arrMonitoredSearch'] },
+        enabled: true,
+      },
+      data: { enabled: false },
+    });
+
+    if (res.count > 0) {
+      this.logger.log(
+        `Disabled ARR-dependent schedules (Radarr+Sonarr disabled) userId=${userId} count=${res.count}`,
+      );
+    }
+  }
+
   private async getSettingsDoc(
     userId: string,
   ): Promise<Record<string, unknown>> {

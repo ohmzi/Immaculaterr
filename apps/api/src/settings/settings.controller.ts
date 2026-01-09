@@ -99,6 +99,9 @@ export class SettingsController {
       await this.settingsService.updateSecrets(userId, secretsPatch);
     }
 
+    // Enforce automation constraints (e.g. disable ARR-dependent schedules when ARR is disabled).
+    await this.settingsService.enforceAutomationConstraints(userId);
+
     return await this.settingsService.getPublicSettings(userId);
   }
 }
