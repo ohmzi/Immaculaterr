@@ -2085,13 +2085,25 @@ function buildWatchedLatestCollectionReport(params: {
     facts: plexFacts,
   });
 
+  const headlineSeed = seedTitle ? ` by ${seedTitle}` : '';
+  const collectionNames = uniqueStrings(
+    collections.map((c) => String(c.collectionName ?? '').trim()).filter(Boolean),
+  );
+  const hasChangeOfTaste = collectionNames.some((n) => n.toLowerCase().includes('change of taste'));
+  const hasRecentlyWatched = collectionNames.some((n) => n.toLowerCase().includes('recently watched'));
+
   return {
     template: 'jobReportV1',
     version: 1,
     jobId: ctx.jobId,
     dryRun: ctx.dryRun,
     trigger: ctx.trigger,
-    headline: 'Collection build complete.',
+    headline:
+      hasChangeOfTaste && hasRecentlyWatched
+        ? `Based on your recently watched and Change of Taste updated${headlineSeed}.`
+        : collectionNames.length
+          ? `${collectionNames.join(' • ')} updated${headlineSeed}.`
+          : `Collections updated${headlineSeed}.`,
     sections: [
       {
         id: 'totals',
