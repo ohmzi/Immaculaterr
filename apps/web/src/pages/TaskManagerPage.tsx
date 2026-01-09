@@ -342,6 +342,7 @@ export function TaskManagerPage() {
   const [movieSeedYear, setMovieSeedYear] = useState('');
   const [movieSeedError, setMovieSeedError] = useState<string | null>(null);
   const movieSeedTitleRef = useRef<HTMLInputElement | null>(null);
+  const resetMovieSeedDialogOnCloseRef = useRef(false);
 
   // Immaculate Taste flow config (persisted in Settings)
   const settingsQuery = useQuery({
@@ -2260,7 +2261,16 @@ export function TaskManagerPage() {
       </section>
 
       {/* Immaculate Taste / Based on Latest Watched - Run Now Dialog */}
-      <AnimatePresence>
+      <AnimatePresence
+        onExitComplete={() => {
+          if (!resetMovieSeedDialogOnCloseRef.current) return;
+          resetMovieSeedDialogOnCloseRef.current = false;
+          setMovieSeedMediaType('movie');
+          setMovieSeedTitle('');
+          setMovieSeedYear('');
+          setMovieSeedError(null);
+        }}
+      >
         {movieSeedDialogOpen && (
           <motion.div
             className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
@@ -2373,6 +2383,7 @@ export function TaskManagerPage() {
                             },
                           });
                         }
+                        resetMovieSeedDialogOnCloseRef.current = true;
                         setMovieSeedDialogOpen(false);
                         setMovieSeedDialogJobId(null);
                       }}
@@ -2450,6 +2461,7 @@ export function TaskManagerPage() {
                           },
                         });
                       }
+                      resetMovieSeedDialogOnCloseRef.current = true;
                       setMovieSeedDialogOpen(false);
                       setMovieSeedDialogJobId(null);
                     }}
