@@ -1138,16 +1138,10 @@ export function JobRunDetailPage() {
 
                           const radarrTotalMonitored =
                             radarr && typeof radarr.totalMonitored === 'number' ? radarr.totalMonitored : 0;
-                          const radarrChecked =
-                            radarr && typeof radarr.checked === 'number' ? radarr.checked : null;
                           const radarrAlreadyInPlex =
                             radarr && typeof radarr.alreadyInPlex === 'number' ? radarr.alreadyInPlex : 0;
                           const radarrMissingTmdbId =
                             radarr && typeof radarr.missingTmdbId === 'number' ? radarr.missingTmdbId : 0;
-                          const radarrKeptMonitored =
-                            radarr && typeof radarr.keptMonitored === 'number' ? radarr.keptMonitored : null;
-                          const radarrUnmonitored =
-                            radarr && typeof radarr.unmonitored === 'number' ? radarr.unmonitored : 0;
                           const radarrSkippedPathConflicts =
                             radarr && typeof radarr.skippedPathConflicts === 'number'
                               ? radarr.skippedPathConflicts
