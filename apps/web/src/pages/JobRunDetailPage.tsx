@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -156,6 +156,7 @@ export function JobRunDetailPage() {
   const titleIconGlowControls = useAnimation();
   const [expandedContext, setExpandedContext] = useState<Record<number, boolean>>({});
   const [showRawResponse, setShowRawResponse] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
@@ -187,6 +188,22 @@ export function JobRunDetailPage() {
   });
 
   const run = runQuery.data?.run;
+
+  // The progress bar is a live "while you watch" indicator. Hide it shortly after completion so
+  // old reports don't show a permanent "Completed" bar.
+  useEffect(() => {
+    const finishedAt = run?.finishedAt ?? null;
+    if (!finishedAt) return;
+    const finishedAtMs = Date.parse(finishedAt);
+    if (!Number.isFinite(finishedAtMs)) return;
+
+    const hideAtMs = finishedAtMs + 2 * 60_000;
+    const delay = hideAtMs - Date.now();
+    if (delay <= 0) return;
+
+    const t = window.setTimeout(() => setNowMs(Date.now()), delay + 25);
+    return () => window.clearTimeout(t);
+  }, [run?.finishedAt]);
   const reportV1 = useMemo(() => {
     const s = run?.summary;
     if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
@@ -388,6 +405,7 @@ export function JobRunDetailPage() {
                               ).length
                             : 0;
                         const isRefreshJob = jobId.toLowerCase().includes('refresher');
+                        const isMediaAddedCleanup = jobId === 'mediaAddedCleanup';
 
                         const progressRaw = s.progress;
                         const progress = isPlainObject(progressRaw) ? progressRaw : null;
@@ -513,7 +531,20 @@ export function JobRunDetailPage() {
                             )
                           : null;
 
-                        const progressBlock = displayProgressMessage ? (
+                        const finishedAtMs =
+                          isFinished && typeof run.finishedAt === 'string'
+                            ? Date.parse(run.finishedAt)
+                            : null;
+                        const hideProgressAfterMs =
+                          finishedAtMs && Number.isFinite(finishedAtMs)
+                            ? finishedAtMs + 2 * 60_000
+                            : null;
+                        const shouldShowProgressBlock =
+                          Boolean(displayProgressMessage) &&
+                          (!isFinished ||
+                            (hideProgressAfterMs !== null && nowMs < hideProgressAfterMs));
+
+                        const progressBlock = shouldShowProgressBlock ? (
                           <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-5">
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
@@ -603,7 +634,7 @@ export function JobRunDetailPage() {
                             <div>
                               {progressBlock}
 
-                              {headline && !isRefreshJob ? (
+                              {headline && !isRefreshJob && !isMediaAddedCleanup ? (
                                 <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-5">
                                   <div className="text-sm font-semibold text-white">
                                     {headline}
