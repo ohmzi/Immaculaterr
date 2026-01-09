@@ -25,7 +25,7 @@ RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
 
-ARG APP_VERSION=0.0.0.100
+ARG APP_VERSION=0.0.0.101
 ARG APP_BUILD_SHA=
 ARG APP_BUILD_TIME=
 
