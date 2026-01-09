@@ -436,7 +436,10 @@ export function JobRunDetailPage() {
                           if (run.status === 'FAILED')
                             return isRefreshJob ? 'Refresh failed.' : 'Failed.';
                           if (run.status === 'SUCCESS') {
-                            if (!isRefreshJob) return 'Completed.';
+                            if (!isRefreshJob) {
+                              if (jobId === 'monitorConfirm') return 'Monitor confirm complete.';
+                              return 'Completed.';
+                            }
                             return reportIssuesCount
                               ? 'Refresh complete with some hiccups.'
                               : 'Refresh complete.';
@@ -912,7 +915,10 @@ export function JobRunDetailPage() {
                               {progressBlock}
                               {mediaAddedSummaryBlock}
 
-                              {headline && !isRefreshJob && !isMediaAddedCleanup ? (
+                              {headline &&
+                              !isRefreshJob &&
+                              !isMediaAddedCleanup &&
+                              jobId !== 'monitorConfirm' ? (
                                 <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-5">
                                   <div className="text-sm font-semibold text-white">
                                     {headline}
@@ -949,6 +955,7 @@ export function JobRunDetailPage() {
                               {!isRefreshJob && sections.length && !isMediaAddedCleanup ? (
                                 <div className="space-y-4">
                                   {sections.map((sec, idx) => {
+                                    const sectionId = pickString(sec, 'id');
                                     const title = pickString(sec, 'title') ?? `Section ${idx + 1}`;
                                     const rowsRaw = sec.rows;
                                     const rows = Array.isArray(rowsRaw)
@@ -959,6 +966,86 @@ export function JobRunDetailPage() {
                                             !Array.isArray(r),
                                         )
                                       : [];
+
+                                    if (jobId === 'monitorConfirm' && (sectionId ?? '') === 'plex') {
+                                      const getEnd = (label: string): number | null => {
+                                        const row = rows.find(
+                                          (r) => (pickString(r, 'label') ?? '') === label,
+                                        );
+                                        return row ? pickNumber(row, 'end') : null;
+                                      };
+
+                                      const plural = (
+                                        n: number | null,
+                                        singular: string,
+                                        pluralWord: string,
+                                      ) => {
+                                        if (n === null) return '—';
+                                        const nn = Math.max(0, Math.trunc(n));
+                                        const word = nn === 1 ? singular : pluralWord;
+                                        return `${nn.toLocaleString()} ${word}`;
+                                      };
+
+                                      const movieLibraries = getEnd('Movie libraries');
+                                      const tvLibraries = getEnd('TV libraries');
+                                      const totalMovies = getEnd('TMDB ids indexed');
+                                      const totalShows = getEnd('TVDB shows indexed');
+
+                                      const plexRows = [
+                                        {
+                                          label: 'Movie libraries',
+                                          value: plural(movieLibraries, 'library', 'libraries'),
+                                        },
+                                        {
+                                          label: 'TV libraries',
+                                          value: plural(tvLibraries, 'library', 'libraries'),
+                                        },
+                                        {
+                                          label: 'Total movies',
+                                          value: plural(totalMovies, 'movie', 'movies'),
+                                        },
+                                        {
+                                          label: 'Total shows',
+                                          value: plural(totalShows, 'show', 'shows'),
+                                        },
+                                      ] as const;
+
+                                      return (
+                                        <div
+                                          key={`${idx}-${title}`}
+                                          className="rounded-2xl border border-white/10 bg-white/5 p-6"
+                                        >
+                                          <div className="text-sm font-semibold text-white mb-4">
+                                            {title}
+                                          </div>
+                                          <div className="overflow-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
+                                            <table className="w-full text-sm">
+                                              <thead className="text-left text-xs text-white/60">
+                                                <tr>
+                                                  <th className="px-4 py-3">Metric</th>
+                                                  <th className="px-4 py-3">Indexed</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {plexRows.map((r) => (
+                                                  <tr
+                                                    key={r.label}
+                                                    className="border-t border-white/10"
+                                                  >
+                                                    <td className="px-4 py-3 text-white/85">
+                                                      <div className="font-semibold">{r.label}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 font-mono text-xs text-white/80 whitespace-nowrap">
+                                                      {r.value}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
 
                                     return (
                                       <div
