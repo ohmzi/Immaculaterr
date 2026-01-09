@@ -3210,18 +3210,18 @@ function buildMediaAddedCleanupReport(params: {
     const failReasons: string[] = [];
     if (configured === false) {
       failReasons.push(
-        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} is not configured.`,
+        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} not configured; skipping this step.`,
       );
     } else if (configured === true && connected === false) {
       failReasons.push(
-        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} connection failed.`,
+        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} connection failed; skipping this step.`,
       );
     }
 
-    const status = failReasons.length ? ('failed' as const) : ('success' as const);
-    const issues = failReasons.length
-      ? failReasons.map((m) => issue('error', m))
-      : [];
+    // This job still provides value (duplicates + watchlist) even if ARR isn't reachable.
+    // Treat ARR problems as "hiccups" (warnings), not a hard failure that flips the run red.
+    const status = failReasons.length ? ('skipped' as const) : ('success' as const);
+    const issues = failReasons.length ? failReasons.map((m) => issue('warn', m)) : [];
 
     return { status, facts, issues };
   })();
