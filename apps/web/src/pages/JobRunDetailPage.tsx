@@ -1310,7 +1310,6 @@ export function JobRunDetailPage() {
                               <details
                                 key={`${idx}-${title}`}
                                 className="rounded-2xl border border-white/10 bg-white/5 p-5"
-                                open={idx === 0}
                               >
                                 <summary className="cursor-pointer list-none">
                                   <div className="flex items-start justify-between gap-3">
