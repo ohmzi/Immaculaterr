@@ -15,6 +15,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function pickStringArray(obj: Record<string, unknown>, key: string): string[] {
+  const v = obj[key];
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x) => String(x ?? '').trim())
+    .filter(Boolean);
+}
+
 function pickNumber(obj: Record<string, unknown>, key: string): number | null {
   const v = obj[key];
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -1686,21 +1694,89 @@ export function JobRunDetailPage() {
                                       Facts
                                     </div>
                                     <div className="grid gap-2 sm:grid-cols-2">
-                                      {facts.slice(0, 50).map((f, fi) => (
-                                        <div
-                                          key={`${idx}-${fi}-${String(f.label ?? '')}`}
-                                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
-                                        >
-                                          <div className="text-[11px] text-white/60 font-mono">
-                                            {String(f.label ?? '')}
+                                      {facts.slice(0, 50).map((f, fi) => {
+                                        const label = String(f.label ?? '').trim() || 'Fact';
+                                        const rawValue = (f as Record<string, unknown>).value;
+
+                                        const expandable = (() => {
+                                          if (!isPlainObject(rawValue)) return null;
+                                          const count = pickNumber(rawValue, 'count');
+                                          const unit = pickString(rawValue, 'unit');
+                                          const items = pickStringArray(rawValue, 'items');
+                                          if (count === null && items.length === 0) return null;
+                                          return { count, unit, items };
+                                        })();
+
+                                        const formatCount = (count: number | null, unit?: string | null) => {
+                                          if (count === null) return '—';
+                                          const s = Number.isInteger(count)
+                                            ? count.toLocaleString()
+                                            : count.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                                          const u = (unit ?? '').trim();
+                                          return u ? `${s} ${u}` : s;
+                                        };
+
+                                        if (expandable) {
+                                          return (
+                                            <details
+                                              key={`${idx}-${fi}-${label}`}
+                                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                                            >
+                                              <summary className="cursor-pointer list-none">
+                                                <div className="text-[11px] text-white/60 font-mono">
+                                                  {label}
+                                                </div>
+                                                <div className="mt-1 text-xs text-white/80 font-mono break-words">
+                                                  {formatCount(expandable.count, expandable.unit)}
+                                                  {expandable.items.length ? (
+                                                    <span className="ml-2 text-white/50">
+                                                      (tap to view)
+                                                    </span>
+                                                  ) : null}
+                                                </div>
+                                              </summary>
+
+                                              {expandable.items.length ? (
+                                                <div className="mt-3 rounded-xl border border-white/10 bg-[#0b0c0f]/30 p-3">
+                                                  <div className="mb-2 text-[11px] text-white/60 font-mono">
+                                                    Items ({expandable.items.length})
+                                                  </div>
+                                                  <div className="max-h-64 overflow-auto pr-1">
+                                                    <ul className="space-y-1 text-xs text-white/80 font-mono">
+                                                      {expandable.items.slice(0, 300).map((it, ii) => (
+                                                        <li
+                                                          key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
+                                                          className="whitespace-pre-wrap break-words"
+                                                        >
+                                                          {it}
+                                                        </li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                </div>
+                                              ) : null}
+                                            </details>
+                                          );
+                                        }
+
+                                        return (
+                                          <div
+                                            key={`${idx}-${fi}-${label}`}
+                                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                                          >
+                                            <div className="text-[11px] text-white/60 font-mono">
+                                              {label}
+                                            </div>
+                                            <div className="mt-1 text-xs text-white/80 font-mono break-words">
+                                              {typeof rawValue === 'string'
+                                                ? rawValue
+                                                : rawValue === null || rawValue === undefined
+                                                  ? '—'
+                                                  : JSON.stringify(rawValue)}
+                                            </div>
                                           </div>
-                                          <div className="mt-1 text-xs text-white/80 font-mono break-words">
-                                            {typeof f.value === 'string'
-                                              ? f.value
-                                              : JSON.stringify(f.value)}
-                                          </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 ) : null}

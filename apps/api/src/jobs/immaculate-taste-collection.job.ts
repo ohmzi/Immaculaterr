@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PlexServerService } from '../plex/plex-server.service';
-import { RadarrService } from '../radarr/radarr.service';
+import { RadarrService, type RadarrMovie } from '../radarr/radarr.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { SettingsService } from '../settings/settings.service';
-import { SonarrService } from '../sonarr/sonarr.service';
+import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
@@ -293,6 +293,9 @@ export class ImmaculateTasteCollectionJob {
       returned: recs.titles.length,
       sample: recs.titles.slice(0, 12),
     });
+    const generatedTitles = recs.titles
+      .map((t) => String(t ?? '').trim())
+      .filter(Boolean);
 
     // --- Resolve in Plex ---
     void ctx
@@ -338,6 +341,7 @@ export class ImmaculateTasteCollectionJob {
       title,
       }),
     );
+    const resolvedTitles = suggestedItems.map((d) => d.title);
 
     await ctx.info('immaculateTastePoints: plex resolve done', {
       resolved: suggestedItems.length,
@@ -477,6 +481,13 @@ export class ImmaculateTasteCollectionJob {
       failed: 0,
       skipped: 0,
     };
+    const radarrLists = {
+      attempted: [] as string[],
+      added: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
 
     if (!ctx.dryRun && radarrEnabled && missingTitles.length) {
       await ctx.info('radarr: start', {
@@ -514,13 +525,33 @@ export class ImmaculateTasteCollectionJob {
           defaults,
         );
       } else {
+        let radarrIndexByTmdb: Map<number, RadarrMovie> | null = null;
+        const ensureRadarrIndex = async () => {
+          if (radarrIndexByTmdb) return radarrIndexByTmdb;
+          const movies = await this.radarr.listMovies({
+            baseUrl: radarrBaseUrl,
+            apiKey: radarrApiKey,
+          });
+          const map = new Map<number, RadarrMovie>();
+          for (const m of movies) {
+            const tmdbId = typeof m.tmdbId === 'number' ? m.tmdbId : Number(m.tmdbId);
+            if (Number.isFinite(tmdbId) && tmdbId > 0) {
+              map.set(Math.trunc(tmdbId), m);
+            }
+          }
+          radarrIndexByTmdb = map;
+          return map;
+        };
+
         for (const title of missingTitles) {
           radarrStats.attempted += 1;
           const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
           if (!tmdbMatch) {
             radarrStats.skipped += 1;
+            radarrLists.skipped.push(title.trim());
             continue;
           }
+          radarrLists.attempted.push(tmdbMatch.title);
 
           try {
             const result = await this.radarr.addMovie({
@@ -536,10 +567,30 @@ export class ImmaculateTasteCollectionJob {
               minimumAvailability: 'announced',
               searchForMovie: startSearchImmediately,
             });
-            if (result.status === 'added') radarrStats.added += 1;
-            else radarrStats.exists += 1;
+            if (result.status === 'added') {
+              radarrStats.added += 1;
+              radarrLists.added.push(tmdbMatch.title);
+            } else {
+              radarrStats.exists += 1;
+              radarrLists.exists.push(tmdbMatch.title);
+
+              // Best-effort: ensure existing Radarr movies are monitored (matches the UI expectation).
+              const idx = await ensureRadarrIndex().catch(() => null);
+              const existing = idx ? idx.get(tmdbMatch.tmdbId) ?? null : null;
+              if (existing) {
+                await this.radarr
+                  .setMovieMonitored({
+                    baseUrl: radarrBaseUrl,
+                    apiKey: radarrApiKey,
+                    movie: existing,
+                    monitored: true,
+                  })
+                  .catch(() => undefined);
+              }
+            }
           } catch (err) {
             radarrStats.failed += 1;
+            radarrLists.failed.push(tmdbMatch.title);
             await ctx.warn('radarr: add failed (continuing)', {
               title,
               error: (err as Error)?.message ?? String(err),
@@ -607,9 +658,13 @@ export class ImmaculateTasteCollectionJob {
       seedYear,
       recommendationStrategy: recs.strategy,
       generated: recs.titles.length,
+      generatedTitles,
       resolvedInPlex: suggestedItems.length,
+      resolvedTitles,
       missingInPlex: missingTitles.length,
+      missingTitles,
       radarr: radarrStats,
+      radarrLists,
       startSearchImmediately,
       points: pointsSummary,
       refresher: refresherSummary,
@@ -803,6 +858,9 @@ export class ImmaculateTasteCollectionJob {
       returned: recs.titles.length,
       sample: recs.titles.slice(0, 12),
     });
+    const generatedTitles = recs.titles
+      .map((t) => String(t ?? '').trim())
+      .filter(Boolean);
 
     // --- Resolve in Plex ---
     void ctx
@@ -843,6 +901,7 @@ export class ImmaculateTasteCollectionJob {
     const suggestedItems = Array.from(unique.entries()).map(
       ([ratingKey, title]) => ({ ratingKey, title }),
     );
+    const resolvedTitles = suggestedItems.map((d) => d.title);
 
     await ctx.info('immaculateTastePoints(tv): plex resolve done', {
       resolved: suggestedItems.length,
@@ -945,6 +1004,13 @@ export class ImmaculateTasteCollectionJob {
       skipped: 0,
       failed: 0,
     };
+    const sonarrLists = {
+      attempted: [] as string[],
+      added: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
 
     if (!ctx.dryRun && sonarrEnabled && missingTitles.length) {
       const defaults = await this.pickSonarrDefaults({
@@ -974,13 +1040,34 @@ export class ImmaculateTasteCollectionJob {
       if ('error' in defaults) {
         await ctx.warn('sonarr: defaults unavailable (skipping adds)', defaults);
       } else {
+        // Best-effort: keep existing series monitored when they already exist in Sonarr.
+        let sonarrIndexByTvdb: Map<number, SonarrSeries> | null = null;
+        const ensureSonarrIndex = async () => {
+          if (sonarrIndexByTvdb) return sonarrIndexByTvdb;
+          const all = await this.sonarr.listSeries({
+            baseUrl: sonarrBaseUrl,
+            apiKey: sonarrApiKey,
+          });
+          const map = new Map<number, SonarrSeries>();
+          for (const s of all) {
+            const tvdbId = typeof s.tvdbId === 'number' ? s.tvdbId : Number(s.tvdbId);
+            if (Number.isFinite(tvdbId) && tvdbId > 0) {
+              map.set(Math.trunc(tvdbId), s);
+            }
+          }
+          sonarrIndexByTvdb = map;
+          return map;
+        };
+
         for (const title of missingTitles) {
           sonarrStats.attempted += 1;
           const ids = missingTitleToIds.get(title.trim()) ?? null;
           if (!ids || !ids.tvdbId) {
             sonarrStats.skipped += 1;
+            sonarrLists.skipped.push(title.trim());
             continue;
           }
+          sonarrLists.attempted.push(ids.title);
 
           try {
             const result = await this.sonarr.addSeries({
@@ -995,10 +1082,28 @@ export class ImmaculateTasteCollectionJob {
               searchForMissingEpisodes: startSearchImmediately,
               searchForCutoffUnmetEpisodes: startSearchImmediately,
             });
-            if (result.status === 'added') sonarrStats.added += 1;
-            else sonarrStats.exists += 1;
+            if (result.status === 'added') {
+              sonarrStats.added += 1;
+              sonarrLists.added.push(ids.title);
+            } else {
+              sonarrStats.exists += 1;
+              sonarrLists.exists.push(ids.title);
+
+              const idx = await ensureSonarrIndex().catch(() => null);
+              const existing = idx ? idx.get(ids.tvdbId) ?? null : null;
+              if (existing && existing.monitored === false) {
+                await this.sonarr
+                  .updateSeries({
+                    baseUrl: sonarrBaseUrl,
+                    apiKey: sonarrApiKey,
+                    series: { ...existing, monitored: true },
+                  })
+                  .catch(() => undefined);
+              }
+            }
           } catch (err) {
             sonarrStats.failed += 1;
+            sonarrLists.failed.push(ids.title);
             await ctx.warn('sonarr: add failed (continuing)', {
               title,
               error: (err as Error)?.message ?? String(err),
@@ -1066,9 +1171,13 @@ export class ImmaculateTasteCollectionJob {
       seedYear,
       recommendationStrategy: recs.strategy,
       generated: recs.titles.length,
+      generatedTitles,
       resolvedInPlex: suggestedItems.length,
+      resolvedTitles,
       missingInPlex: missingTitles.length,
+      missingTitles,
       sonarr: sonarrStats,
+      sonarrLists,
       startSearchImmediately,
       points: pointsSummary,
       refresher: refresherSummary,
@@ -1337,6 +1446,25 @@ function buildImmaculateTastePointsReport(params: {
 }): JobReportV1 {
   const { ctx, raw } = params;
 
+  const asStringArray = (v: unknown): string[] => {
+    if (!Array.isArray(v)) return [];
+    return v
+      .map((x) => String(x ?? '').trim())
+      .filter(Boolean);
+  };
+  const uniqueStrings = (arr: string[]) => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const s of arr) {
+      const v = String(s ?? '').trim();
+      if (!v) continue;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+    }
+    return out;
+  };
+
   const radarr = isPlainObject(raw.radarr) ? raw.radarr : null;
   const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : null;
   const points = isPlainObject(raw.points) ? raw.points : null;
@@ -1371,6 +1499,12 @@ function buildImmaculateTastePointsReport(params: {
   ];
 
   const mode = sonarr ? 'tv' : 'movie';
+  const generatedTitles = uniqueStrings(asStringArray(raw.generatedTitles));
+  const resolvedTitles = uniqueStrings(asStringArray(raw.resolvedTitles));
+  const missingTitles = uniqueStrings(asStringArray(raw.missingTitles));
+
+  const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
+  const sonarrLists = isPlainObject(raw.sonarrLists) ? raw.sonarrLists : null;
 
   return {
     template: 'jobReportV1',
@@ -1430,20 +1564,41 @@ function buildImmaculateTastePointsReport(params: {
         id: 'recommendations',
         title: 'Generate recommendations',
         status: 'success',
-        rows: [metricRow({ label: 'Generated', end: generated, unit: 'titles' })],
         facts: [
-          { label: 'strategy', value: String(raw.recommendationStrategy ?? '') },
-          { label: 'seedTitle', value: String(raw.seedTitle ?? '') },
-          { label: 'seedYear', value: asNum(raw.seedYear) },
+          {
+            label: 'Generated',
+            value: {
+              count: generated,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: generatedTitles,
+            },
+          },
+          { label: 'Strategy', value: String(raw.recommendationStrategy ?? '') },
+          { label: 'Seed', value: String(raw.seedTitle ?? '') },
+          { label: 'Seed year', value: asNum(raw.seedYear) },
         ],
       },
       {
         id: 'plex_resolve',
         title: 'Resolve titles in Plex',
         status: 'success',
-        rows: [
-          metricRow({ label: 'Resolved', end: resolvedInPlex, unit: 'items' }),
-          metricRow({ label: 'Missing', end: missingInPlex, unit: 'titles' }),
+        facts: [
+          {
+            label: 'Resolved',
+            value: {
+              count: resolvedInPlex,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: resolvedTitles,
+            },
+          },
+          {
+            label: 'Missing',
+            value: {
+              count: missingInPlex,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: missingTitles,
+            },
+          },
         ],
       },
       ...(radarr
@@ -1457,11 +1612,47 @@ function buildImmaculateTastePointsReport(params: {
                   : radarrFailed
                     ? ('failed' as const)
                     : ('success' as const),
-              rows: [
-                metricRow({ label: 'Attempted', end: asNum(radarr.attempted), unit: 'movies' }),
-                metricRow({ label: 'Added', end: asNum(radarr.added), unit: 'movies' }),
-                metricRow({ label: 'Exists', end: asNum(radarr.exists), unit: 'movies' }),
-                metricRow({ label: 'Failed', end: asNum(radarr.failed), unit: 'movies' }),
+              facts: [
+                {
+                  label: 'Attempted',
+                  value: {
+                    count: asNum(radarr.attempted),
+                    unit: 'movies',
+                    items: uniqueStrings(
+                      radarrLists ? asStringArray(radarrLists.attempted) : [],
+                    ),
+                  },
+                },
+                {
+                  label: 'Added',
+                  value: {
+                    count: asNum(radarr.added),
+                    unit: 'movies',
+                    items: uniqueStrings(
+                      radarrLists ? asStringArray(radarrLists.added) : [],
+                    ),
+                  },
+                },
+                {
+                  label: 'Exists',
+                  value: {
+                    count: asNum(radarr.exists),
+                    unit: 'movies',
+                    items: uniqueStrings(
+                      radarrLists ? asStringArray(radarrLists.exists) : [],
+                    ),
+                  },
+                },
+                {
+                  label: 'Failed',
+                  value: {
+                    count: asNum(radarr.failed),
+                    unit: 'movies',
+                    items: uniqueStrings(
+                      radarrLists ? asStringArray(radarrLists.failed) : [],
+                    ),
+                  },
+                },
               ],
             },
           ]
@@ -1477,11 +1668,47 @@ function buildImmaculateTastePointsReport(params: {
                   : sonarrFailed
                     ? ('failed' as const)
                     : ('success' as const),
-              rows: [
-                metricRow({ label: 'Attempted', end: asNum(sonarr.attempted), unit: 'shows' }),
-                metricRow({ label: 'Added', end: asNum(sonarr.added), unit: 'shows' }),
-                metricRow({ label: 'Exists', end: asNum(sonarr.exists), unit: 'shows' }),
-                metricRow({ label: 'Failed', end: asNum(sonarr.failed), unit: 'shows' }),
+              facts: [
+                {
+                  label: 'Attempted',
+                  value: {
+                    count: asNum(sonarr.attempted),
+                    unit: 'shows',
+                    items: uniqueStrings(
+                      sonarrLists ? asStringArray(sonarrLists.attempted) : [],
+                    ),
+                  },
+                },
+                {
+                  label: 'Added',
+                  value: {
+                    count: asNum(sonarr.added),
+                    unit: 'shows',
+                    items: uniqueStrings(
+                      sonarrLists ? asStringArray(sonarrLists.added) : [],
+                    ),
+                  },
+                },
+                {
+                  label: 'Exists',
+                  value: {
+                    count: asNum(sonarr.exists),
+                    unit: 'shows',
+                    items: uniqueStrings(
+                      sonarrLists ? asStringArray(sonarrLists.exists) : [],
+                    ),
+                  },
+                },
+                {
+                  label: 'Failed',
+                  value: {
+                    count: asNum(sonarr.failed),
+                    unit: 'shows',
+                    items: uniqueStrings(
+                      sonarrLists ? asStringArray(sonarrLists.failed) : [],
+                    ),
+                  },
+                },
               ],
             },
           ]
