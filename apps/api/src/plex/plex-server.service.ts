@@ -95,10 +95,13 @@ export type PlexRecentlyAddedItem = {
   title: string | null;
   year: number | null;
   addedAt: number | null;
+  updatedAt: number | null;
   librarySectionId: number | null;
   librarySectionTitle: string | null;
   grandparentTitle: string | null;
   grandparentRatingKey: string | null;
+  parentTitle: string | null;
+  parentRatingKey: string | null;
   parentIndex: number | null;
   index: number | null;
 };
@@ -129,16 +132,16 @@ function asUnknownArray(value: unknown): unknown[] {
 function asPlexMetadataArray(
   container: Record<string, unknown> | undefined,
 ): PlexMetadata[] {
-  // Plex can return items under different element names depending on endpoint:
-  // - /library/sections/:id/all => Video (movies) or Directory (shows)
-  // - /library/.../search => Video / Directory
-  // - /library/metadata/... => Metadata
-  const items = (container?.Metadata ??
-    container?.Video ??
-    container?.Directory ??
-    container?.Track ??
-    []) as PlexMetadata | PlexMetadata[];
-  return asArray(items);
+  // Plex can return items under different element names depending on endpoint.
+  // IMPORTANT: some endpoints return mixed nodes (e.g. both Video + Directory). We want all of them.
+  const items = [
+    ...asUnknownArray(container?.Metadata),
+    ...asUnknownArray(container?.Video),
+    ...asUnknownArray(container?.Directory),
+    ...asUnknownArray(container?.Track),
+  ].filter((v): v is PlexMetadata => Boolean(v) && typeof v === 'object');
+
+  return items;
 }
 
 function asPlexSessionItemArray(
@@ -593,6 +596,14 @@ export class PlexServerService {
         const n = Number.parseInt(s, 10);
         return Number.isFinite(n) ? n : null;
       })();
+      const updatedAt = (() => {
+        const raw = (it as Record<string, unknown>)['updatedAt'];
+        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        const s = toStringSafe(raw).trim();
+        if (!s) return null;
+        const n = Number.parseInt(s, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
 
       const librarySectionId = (() => {
         const raw = (it as Record<string, unknown>)['librarySectionID'];
@@ -621,6 +632,18 @@ export class PlexServerService {
         ).trim();
         return s ? s : null;
       })();
+      const parentTitle = (() => {
+        const s = toStringSafe(
+          (it as Record<string, unknown>)['parentTitle'],
+        ).trim();
+        return s ? s : null;
+      })();
+      const parentRatingKey = (() => {
+        const s = toStringSafe(
+          (it as Record<string, unknown>)['parentRatingKey'],
+        ).trim();
+        return s ? s : null;
+      })();
 
       const parentIndex = (() => {
         const raw = it.parentIndex;
@@ -645,10 +668,13 @@ export class PlexServerService {
         title,
         year,
         addedAt,
+        updatedAt,
         librarySectionId,
         librarySectionTitle,
         grandparentTitle,
         grandparentRatingKey,
+        parentTitle,
+        parentRatingKey,
         parentIndex,
         index,
       });

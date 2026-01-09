@@ -270,15 +270,22 @@ export class PlexPollingService implements OnModuleInit {
     // Plex should provide `addedAt` as a unix timestamp in seconds. Some servers/libraries
     // occasionally emit bogus "future" timestamps (e.g. year 2098), which would permanently
     // break our watermark logic. Clamp those out and self-heal if the watermark was poisoned.
+    // If `addedAt` is invalid, fall back to `updatedAt` when present.
     const nowSec = Math.floor(now / 1000);
     const MAX_FUTURE_SKEW_SEC = 24 * 60 * 60;
-    const safeAddedAt = (addedAtSec: number | null): number | null => {
-      if (addedAtSec === null) return null;
-      if (!Number.isFinite(addedAtSec)) return null;
-      const n = Math.trunc(addedAtSec);
+    const safePlexTimestampSec = (tsSec: number | null): number | null => {
+      if (tsSec === null) return null;
+      if (!Number.isFinite(tsSec)) return null;
+      const n = Math.trunc(tsSec);
       if (n <= 0) return null;
       if (n > nowSec + MAX_FUTURE_SKEW_SEC) return null;
       return n;
+    };
+    const itemTimestampSec = (it: PlexRecentlyAddedItem): number | null => {
+      // Prefer addedAt when it's sane; otherwise use updatedAt (some servers return broken addedAt).
+      const a = safePlexTimestampSec(it.addedAt);
+      if (a !== null) return a;
+      return safePlexTimestampSec(it.updatedAt);
     };
 
     const invalidFutureCount = items.reduce((acc, it) => {
@@ -289,13 +296,12 @@ export class PlexPollingService implements OnModuleInit {
     }, 0);
     if (invalidFutureCount > 0) {
       this.logger.debug(
-        `Plex recentlyAdded: ignoring ${invalidFutureCount} item(s) with invalid future addedAt`,
+        `Plex recentlyAdded: ${invalidFutureCount} item(s) had invalid future addedAt; using updatedAt fallback`,
       );
     }
 
     const maxAddedAt =
-      items.reduce((max, it) => Math.max(max, safeAddedAt(it.addedAt) ?? 0), 0) ||
-      0;
+      items.reduce((max, it) => Math.max(max, itemTimestampSec(it) ?? 0), 0) || 0;
     if (!maxAddedAt) return;
 
     if (
@@ -315,7 +321,7 @@ export class PlexPollingService implements OnModuleInit {
     }
 
     const since = this.lastSeenAddedAtSec;
-    const newItems = items.filter((it) => (safeAddedAt(it.addedAt) ?? 0) > since);
+    const newItems = items.filter((it) => (itemTimestampSec(it) ?? 0) > since);
 
     // Always advance the "seen" watermark so we don't repeatedly treat the same items as new.
     this.lastSeenAddedAtSec = Math.max(this.lastSeenAddedAtSec, maxAddedAt);
@@ -324,11 +330,8 @@ export class PlexPollingService implements OnModuleInit {
       this.lastLibraryNewTriggeredAtMs === null ||
       now - this.lastLibraryNewTriggeredAtMs >= this.libraryNewDebounceMs;
 
-    const pickNewer = (a: PlexRecentlyAddedItem, b: PlexRecentlyAddedItem) => {
-      const aa = a.addedAt ?? 0;
-      const bb = b.addedAt ?? 0;
-      return bb > aa ? b : a;
-    };
+    const pickNewer = (a: PlexRecentlyAddedItem, b: PlexRecentlyAddedItem) =>
+      (itemTimestampSec(b) ?? 0) > (itemTimestampSec(a) ?? 0) ? b : a;
 
     // If we saw new items but are within the debounce window, stash the newest one and run later.
     if (newItems.length > 0 && !canRunNow) {
@@ -382,6 +385,7 @@ export class PlexPollingService implements OnModuleInit {
         ? (newest.index ?? newest.parentIndex ?? null)
         : newest.parentIndex ?? null;
     const episodeNumber = mediaType === 'episode' ? newest.index ?? null : null;
+    const newestAddedAt = itemTimestampSec(newest);
 
     const payload: Record<string, unknown> = {
       event: 'library.new',
@@ -394,7 +398,7 @@ export class PlexPollingService implements OnModuleInit {
         grandparentRatingKey: newest.grandparentRatingKey ?? undefined,
         parentIndex: newest.parentIndex ?? undefined,
         index: newest.index ?? undefined,
-        addedAt: newest.addedAt ?? undefined,
+        addedAt: newestAddedAt ?? undefined,
         librarySectionID: newest.librarySectionId ?? undefined,
         librarySectionTitle: newest.librarySectionTitle ?? undefined,
       },
@@ -436,7 +440,7 @@ export class PlexPollingService implements OnModuleInit {
         episodeNumber,
         persistedPath: persisted.path,
         newlyAddedCount,
-        newestAddedAt: newest.addedAt ?? null,
+        newestAddedAt: newestAddedAt ?? null,
       } as const;
 
       const run = await this.jobsService.runJob({
