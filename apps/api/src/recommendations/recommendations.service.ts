@@ -163,8 +163,6 @@ export class RecommendationsService {
     let googleTmdbAdded = 0;
     let googleSuggestedTitles: string[] = [];
     let openAiSuggestedTitles: string[] = [];
-    let googleSuggestedTitles: string[] = [];
-    let openAiSuggestedTitles: string[] = [];
 
     // --- Tier 1 (optional): Google discovery booster (never depends on OpenAI) ---
     void ctx
@@ -206,7 +204,9 @@ export class RecommendationsService {
 
           const extracted = extractMovieTitleCandidatesFromGoogle(results, 60);
           googleTitlesExtracted = extracted.length;
-          googleSuggestedTitles = extracted.slice();
+          googleSuggestedTitles = extracted.map((t) =>
+            t.year ? `${t.title} (${t.year})` : t.title,
+          );
           if (extracted.length) {
             const { added, released, upcoming, unknown } =
               await this.resolveGoogleTitlesToTmdbCandidates({
@@ -530,6 +530,8 @@ export class RecommendationsService {
     let googleMeta: JsonObject | null = null;
     let googleTitlesExtracted = 0;
     let googleTmdbAdded = 0;
+    let googleSuggestedTitles: string[] = [];
+    let openAiSuggestedTitles: string[] = [];
 
     // --- Tier 1 (optional): Google discovery booster (never depends on OpenAI) ---
     void ctx
@@ -571,7 +573,9 @@ export class RecommendationsService {
 
           const extracted = extractMovieTitleCandidatesFromGoogle(results, 60);
           googleTitlesExtracted = extracted.length;
-          googleSuggestedTitles = extracted.slice();
+          googleSuggestedTitles = extracted.map((t) =>
+            t.year ? `${t.title} (${t.year})` : t.title,
+          );
           if (extracted.length) {
             const { added, released, upcoming, unknown } =
               await this.resolveGoogleTitlesToTmdbTvCandidates({
