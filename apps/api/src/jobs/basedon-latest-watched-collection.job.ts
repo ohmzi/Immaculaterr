@@ -9,7 +9,7 @@ import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedMovieRecommendationsService } from '../watched-movie-recommendations/watched-movie-recommendations.service';
 import { WatchedShowRecommendationsService } from '../watched-movie-recommendations/watched-show-recommendations.service';
-import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
 
@@ -1918,7 +1918,7 @@ function buildWatchedLatestCollectionReport(params: {
   const tasks: JobReportV1['tasks'] = [];
 
   // 1) Generate recommendations
-  const recFacts: Array<{ label: string; value: unknown }> = [];
+  const recFacts: Array<{ label: string; value: JsonValue }> = [];
   if (seedTitle) recFacts.push({ label: 'Seed', value: seedTitle });
   if (seedYear !== null) recFacts.push({ label: 'Seed year', value: seedYear });
 
@@ -1942,7 +1942,7 @@ function buildWatchedLatestCollectionReport(params: {
   });
 
   // 2) Resolve titles in Plex
-  const resolveFacts: Array<{ label: string; value: unknown }> = [];
+  const resolveFacts: Array<{ label: string; value: JsonValue }> = [];
   for (const [idx, c] of collections.entries()) {
     const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
     const resolvedTitles = uniqueStrings(asStringArray(c.resolvedTitles ?? c.sampleResolved));
@@ -1966,7 +1966,7 @@ function buildWatchedLatestCollectionReport(params: {
 
   // 3) Radarr/Sonarr add missing
   if (isTv) {
-    const sonarrFacts: Array<{ label: string; value: unknown }> = [];
+    const sonarrFacts: Array<{ label: string; value: JsonValue }> = [];
     let sonarrEnabled = false;
     let sonarrFailed = 0;
 
@@ -2015,7 +2015,7 @@ function buildWatchedLatestCollectionReport(params: {
       ],
     });
   } else {
-    const radarrFacts: Array<{ label: string; value: unknown }> = [];
+    const radarrFacts: Array<{ label: string; value: JsonValue }> = [];
     let radarrEnabled = false;
     let radarrFailed = 0;
 
@@ -2066,7 +2066,7 @@ function buildWatchedLatestCollectionReport(params: {
   }
 
   // 4) Refresh Plex collection
-  const plexFacts: Array<{ label: string; value: unknown }> = [];
+  const plexFacts: Array<{ label: string; value: JsonValue }> = [];
   let anyDesired = false;
   for (const [idx, c] of collections.entries()) {
     const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
