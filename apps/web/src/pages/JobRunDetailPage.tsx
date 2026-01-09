@@ -842,17 +842,19 @@ export function JobRunDetailPage() {
 
                             return (
                               <div className="mb-6 space-y-4">
-                                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                                  <div className="text-xs text-white/60 font-mono">
-                                    Added content
+                                {run.trigger !== 'manual' ? (
+                                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                                    <div className="text-xs text-white/60 font-mono">
+                                      Added content
+                                    </div>
+                                    <div className="mt-2 text-white font-semibold break-words">
+                                      {addedName}
+                                    </div>
+                                    <div className="mt-1 text-xs text-white/60 font-mono">
+                                      Type: {addedTypeLabel}
+                                    </div>
                                   </div>
-                                  <div className="mt-2 text-white font-semibold break-words">
-                                    {addedName}
-                                  </div>
-                                  <div className="mt-1 text-xs text-white/60 font-mono">
-                                    Type: {addedTypeLabel}
-                                  </div>
-                                </div>
+                                ) : null}
 
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                                   <div className="flex items-center justify-between gap-3">
