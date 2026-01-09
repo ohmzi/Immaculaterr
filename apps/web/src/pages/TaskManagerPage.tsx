@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
+import { testSavedIntegration } from '@/api/integrations';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { cn } from '@/components/ui/utils';
@@ -302,6 +303,13 @@ export function TaskManagerPage() {
   const titleIconGlowControls = useAnimation();
   const [arrRequiresSetupOpen, setArrRequiresSetupOpen] = useState(false);
   const [arrRequiresSetupJobId, setArrRequiresSetupJobId] = useState<string | null>(null);
+  const [arrPing, setArrPing] = useState<{
+    loading: boolean;
+    radarrOk: boolean | null;
+    sonarrOk: boolean | null;
+    checkedAtMs: number | null;
+  }>({ loading: false, radarrOk: null, sonarrOk: null, checkedAtMs: null });
+  const lastArrEnforceAtRef = useRef<number>(0);
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [terminalState, setTerminalState] = useState<
@@ -383,6 +391,44 @@ export function TaskManagerPage() {
     const saved = readBool(settings, 'sonarr.enabled');
     return (saved ?? Boolean(secretsPresent.sonarr)) === true;
   })();
+
+  // Background ARR reachability ping when entering Task Manager (fast validation).
+  useEffect(() => {
+    if (settingsQuery.status !== 'success') return;
+    if (!isRadarrEnabled && !isSonarrEnabled) {
+      // Nothing enabled -> don't ping.
+      setArrPing((p) => ({ ...p, loading: false, radarrOk: null, sonarrOk: null, checkedAtMs: Date.now() }));
+      return;
+    }
+
+    let cancelled = false;
+    setArrPing((p) => ({ ...p, loading: true }));
+
+    const run = async () => {
+      const [radarrRes, sonarrRes] = await Promise.allSettled([
+        isRadarrEnabled ? testSavedIntegration('radarr').then(() => true) : Promise.resolve(null),
+        isSonarrEnabled ? testSavedIntegration('sonarr').then(() => true) : Promise.resolve(null),
+      ]);
+
+      const radarrOk =
+        radarrRes.status === 'fulfilled' ? radarrRes.value : false;
+      const sonarrOk =
+        sonarrRes.status === 'fulfilled' ? sonarrRes.value : false;
+
+      if (cancelled) return;
+      setArrPing({
+        loading: false,
+        radarrOk,
+        sonarrOk,
+        checkedAtMs: Date.now(),
+      });
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsQuery.status, isRadarrEnabled, isSonarrEnabled]);
   const immaculateIncludeRefresherMutation = useMutation({
     mutationFn: async (enabled: boolean) =>
       putSettings({
@@ -639,6 +685,48 @@ export function TaskManagerPage() {
       }));
     },
   });
+
+  // If neither Radarr nor Sonarr is reachable, disable ARR-dependent schedules automatically.
+  useEffect(() => {
+    if (settingsQuery.status !== 'success') return;
+    if (jobsQuery.status !== 'success') return;
+    if (arrPing.loading || arrPing.checkedAtMs === null) return;
+
+    const radarrOk = isRadarrEnabled && arrPing.radarrOk === true;
+    const sonarrOk = isSonarrEnabled && arrPing.sonarrOk === true;
+    const anyArrOk = radarrOk || sonarrOk;
+    if (anyArrOk) return;
+
+    const now = Date.now();
+    // Throttle so we don't spam schedule writes if queries refetch.
+    if (now - lastArrEnforceAtRef.current < 30_000) return;
+    lastArrEnforceAtRef.current = now;
+
+    const targetJobIds: Array<'monitorConfirm' | 'arrMonitoredSearch'> = [
+      'monitorConfirm',
+      'arrMonitoredSearch',
+    ];
+
+    for (const jobId of targetJobIds) {
+      const job = jobsQuery.data?.jobs?.find((j) => j.id === jobId);
+      if (!job) continue;
+      const enabled = job.schedule?.enabled ?? false;
+      if (!enabled) continue;
+      const cron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
+      if (!cron) continue;
+      scheduleMutation.mutate({ jobId, cron, enabled: false });
+    }
+  }, [
+    settingsQuery.status,
+    jobsQuery.status,
+    jobsQuery.data?.jobs,
+    arrPing.loading,
+    arrPing.checkedAtMs,
+    arrPing.radarrOk,
+    arrPing.sonarrOk,
+    isRadarrEnabled,
+    isSonarrEnabled,
+  ]);
 
   // Check for recent runs on mount and when jobs change
   useEffect(() => {
@@ -911,8 +999,16 @@ export function TaskManagerPage() {
               const arrRequiredJobBlocked =
                 (job.id === 'arrMonitoredSearch' || job.id === 'monitorConfirm') &&
                 settingsQuery.status === 'success' &&
-                !isRadarrEnabled &&
-                !isSonarrEnabled;
+                (() => {
+                  // Block if ARR is not available at all:
+                  // - neither enabled/configured
+                  // - OR both enabled services are unreachable (ping failed)
+                  if (!isRadarrEnabled && !isSonarrEnabled) return true;
+                  if (arrPing.loading || arrPing.checkedAtMs === null) return false;
+                  const radarrOk = isRadarrEnabled && arrPing.radarrOk === true;
+                  const sonarrOk = isSonarrEnabled && arrPing.sonarrOk === true;
+                  return !radarrOk && !sonarrOk;
+                })();
               const weeklyOpen = weeklyDaySelector[job.id] ?? false;
               const monthlyOpen = monthlyDaySelector[job.id] ?? false;
               const nextRunsOpen = nextRunsPopup[job.id] ?? false;
@@ -2525,24 +2621,60 @@ export function TaskManagerPage() {
                   ? 'Confirm Monitored'
                   : 'Search Monitored'}
               </span>{' '}
-              task needs Radarr or Sonarr enabled to monitor content.
+              task needs Radarr or Sonarr available to monitor content.
             </div>
             <div className="text-sm text-white/70">
-              Enable and configure{' '}
-              <Link
-                to="/vault#vault-radarr"
-                className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
-              >
-                Radarr
-              </Link>{' '}
-              or{' '}
-              <Link
-                to="/vault#vault-sonarr"
-                className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
-              >
-                Sonarr
-              </Link>{' '}
-              in the Vault.
+              {(() => {
+                const pingReady = !arrPing.loading && arrPing.checkedAtMs !== null;
+                const radarrOk = isRadarrEnabled && arrPing.radarrOk === true;
+                const sonarrOk = isSonarrEnabled && arrPing.sonarrOk === true;
+
+                const noArrEnabled = !isRadarrEnabled && !isSonarrEnabled;
+                const arrUnreachable =
+                  pingReady && (isRadarrEnabled || isSonarrEnabled) && !radarrOk && !sonarrOk;
+
+                if (arrUnreachable) {
+                  return (
+                    <>
+                      Immaculaterr couldn’t reach Radarr or Sonarr. Check your URLs/API keys and networking in{' '}
+                      <Link
+                        to="/vault#vault-radarr"
+                        className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+                      >
+                        Radarr
+                      </Link>{' '}
+                      /{' '}
+                      <Link
+                        to="/vault#vault-sonarr"
+                        className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+                      >
+                        Sonarr
+                      </Link>
+                      .
+                    </>
+                  );
+                }
+
+                return (
+                  <>
+                    {noArrEnabled ? 'Enable and configure ' : 'Check configuration for '}
+                    <Link
+                      to="/vault#vault-radarr"
+                      className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+                    >
+                      Radarr
+                    </Link>{' '}
+                    or{' '}
+                    <Link
+                      to="/vault#vault-sonarr"
+                      className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+                    >
+                      Sonarr
+                    </Link>{' '}
+                    in the Vault.
+                  </>
+                );
+              })()}
             </div>
             <div className="text-xs text-white/55">
               Tip: tap the Radarr/Sonarr links above to jump straight to the right Vault card.
