@@ -341,6 +341,17 @@ export function LogsPage() {
                       onClick={() => {
                         const total = logs.length;
                         if (!total) return;
+                        const isCoarsePointer =
+                          typeof window !== 'undefined' &&
+                          Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
+                        if (isCoarsePointer) {
+                          const ok = window.confirm(
+                            `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
+                          );
+                          if (ok) clearMutation.mutate();
+                          return;
+                        }
+
                         setClearAllOpen(true);
                       }}
                       disabled={clearMutation.isPending || logs.length === 0}

@@ -331,6 +331,17 @@ export function RewindPage() {
                       onClick={() => {
                         const total = historyQuery.data?.runs?.length ?? 0;
                         if (!total) return;
+                        const isCoarsePointer =
+                          typeof window !== 'undefined' &&
+                          Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
+                        if (isCoarsePointer) {
+                          const ok = window.confirm(
+                            `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`,
+                          );
+                          if (ok) clearAllMutation.mutate();
+                          return;
+                        }
+
                         setClearAllOpen(true);
                       }}
                       disabled={
