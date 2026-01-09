@@ -630,9 +630,244 @@ export function JobRunDetailPage() {
                             return u ? `${prefix}${s} ${u}` : `${prefix}${s}`;
                           };
 
+                          const mediaAddedSummaryBlock = (() => {
+                            if (!isMediaAddedCleanup) return null;
+
+                            const raw = isPlainObject(s.raw)
+                              ? (s.raw as Record<string, unknown>)
+                              : null;
+                            const mediaTypeRaw = raw ? pickString(raw, 'mediaType') : null;
+                            const mediaType = (mediaTypeRaw ?? '').toLowerCase();
+
+                            const title = raw ? pickString(raw, 'title') : null;
+                            const year = raw ? pickNumber(raw, 'year') : null;
+                            const showTitle = raw ? pickString(raw, 'showTitle') : null;
+                            const seasonNumber = raw ? pickNumber(raw, 'seasonNumber') : null;
+                            const episodeNumber = raw ? pickNumber(raw, 'episodeNumber') : null;
+
+                            const pad2 = (n: number | null) =>
+                              typeof n === 'number' && Number.isFinite(n)
+                                ? String(Math.trunc(n)).padStart(2, '0')
+                                : '??';
+
+                            const addedTypeLabel = (() => {
+                              if (mediaType === 'movie') return 'Movie';
+                              if (mediaType === 'episode') return 'TV Episode';
+                              if (mediaType === 'season') return 'TV Season';
+                              if (mediaType === 'show') return 'TV Show';
+                              return mediaTypeRaw ?? 'Unknown';
+                            })();
+
+                            const addedName = (() => {
+                              if (mediaType === 'movie') {
+                                const t = title ?? 'Movie';
+                                return year ? `${t} (${year})` : t;
+                              }
+                              if (mediaType === 'episode') {
+                                const show = showTitle ?? 'Show';
+                                const ep = `S${pad2(seasonNumber)}E${pad2(episodeNumber)}`;
+                                const epTitle = title ?? '';
+                                return `${show} ${ep}${epTitle ? ` — ${epTitle}` : ''}`;
+                              }
+                              if (mediaType === 'season') {
+                                const show = showTitle ?? 'Show';
+                                return `${show} — Season ${seasonNumber ?? '??'}`;
+                              }
+                              if (mediaType === 'show') return title ?? 'Show';
+                              return title ?? '—';
+                            })();
+
+                            const asCount = (v: number) =>
+                              Math.max(0, Math.trunc(v)).toLocaleString();
+
+                            const getSectionEnd = (sectionId: string, rowLabel: string): number => {
+                              const sec = sections.find(
+                                (x) => (pickString(x, 'id') ?? '') === sectionId,
+                              );
+                              if (!sec) return 0;
+                              const rowsRaw = (sec as Record<string, unknown>).rows;
+                              const rows = Array.isArray(rowsRaw)
+                                ? rowsRaw.filter(
+                                    (r): r is Record<string, unknown> =>
+                                      Boolean(r) &&
+                                      typeof r === 'object' &&
+                                      !Array.isArray(r),
+                                  )
+                                : [];
+                              const row = rows.find(
+                                (r) => (pickString(r, 'label') ?? '') === rowLabel,
+                              );
+                              const end = row ? pickNumber(row, 'end') : null;
+                              return end === null ? 0 : Math.max(0, Math.trunc(end));
+                            };
+
+                            const isDryRun = Boolean(run.dryRun);
+                            const radarr =
+                              raw && isPlainObject(raw.radarr)
+                                ? (raw.radarr as Record<string, unknown>)
+                                : null;
+                            const sonarr =
+                              raw && isPlainObject(raw.sonarr)
+                                ? (raw.sonarr as Record<string, unknown>)
+                                : null;
+
+                            const pickBool = (
+                              obj: Record<string, unknown> | null,
+                              key: string,
+                            ) => {
+                              if (!obj) return null;
+                              const v = obj[key];
+                              return typeof v === 'boolean' ? v : null;
+                            };
+
+                            const pickCount = (
+                              obj: Record<string, unknown> | null,
+                              key: string,
+                            ) => {
+                              if (!obj) return null;
+                              return pickNumber(obj, key);
+                            };
+
+                            const movieUnmonitored = (() => {
+                              if (!radarr) return 0;
+                              if (isDryRun) {
+                                const n = pickCount(radarr, 'moviesWouldUnmonitor');
+                                if (n !== null) return Math.max(0, Math.trunc(n));
+                                return pickBool(radarr, 'wouldUnmonitor') ? 1 : 0;
+                              }
+                              const n = pickCount(radarr, 'moviesUnmonitored');
+                              if (n !== null) return Math.max(0, Math.trunc(n));
+                              return pickBool(radarr, 'unmonitored') ? 1 : 0;
+                            })();
+
+                            const tvUnmonitored = (() => {
+                              if (!sonarr) return 0;
+
+                              const episodesCount = isDryRun
+                                ? pickCount(sonarr, 'episodesWouldUnmonitor')
+                                : pickCount(sonarr, 'episodesUnmonitored');
+                              if (episodesCount !== null)
+                                return Math.max(0, Math.trunc(episodesCount));
+
+                              // Fallbacks for show-level/season-level flows.
+                              if (isDryRun) {
+                                if (pickBool(sonarr, 'wouldUnmonitor')) return 1;
+                                if (pickBool(sonarr, 'seasonWouldUnmonitor')) return 1;
+                                return 0;
+                              }
+                              if (pickBool(sonarr, 'seriesUnmonitored')) return 1;
+                              if (pickBool(sonarr, 'seasonUnmonitored')) return 1;
+                              if (pickBool(sonarr, 'episodeUnmonitored')) return 1;
+                              return 0;
+                            })();
+
+                            const movieDuplicatesDeleted = getSectionEnd(
+                              'duplicates',
+                              'Movie deleted',
+                            );
+                            const tvDuplicatesDeleted = getSectionEnd(
+                              'duplicates',
+                              'Episode deleted',
+                            );
+                            const movieWatchlistRemoved = getSectionEnd(
+                              'watchlist',
+                              'Movie removed',
+                            );
+                            const tvWatchlistRemoved = getSectionEnd(
+                              'watchlist',
+                              'Show removed',
+                            );
+
+                            const tvRowLabel = (() => {
+                              if (mediaType === 'episode') return 'TV (Episode)';
+                              if (mediaType === 'season') return 'TV (Season)';
+                              if (mediaType === 'show') return 'TV (Show)';
+                              return 'TV';
+                            })();
+
+                            return (
+                              <div className="mb-6 space-y-4">
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                                  <div className="text-xs text-white/60 font-mono">
+                                    Added content
+                                  </div>
+                                  <div className="mt-2 text-white font-semibold break-words">
+                                    {addedName}
+                                  </div>
+                                  <div className="mt-1 text-xs text-white/60 font-mono">
+                                    Type: {addedTypeLabel}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="text-sm font-semibold text-white">
+                                      Summary
+                                    </div>
+                                    {isDryRun ? (
+                                      <div className="text-[11px] text-white/60 font-mono">
+                                        dry-run (would remove)
+                                      </div>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
+                                    <table className="w-full text-sm">
+                                      <thead className="text-left text-xs text-white/60">
+                                        <tr>
+                                          <th className="px-4 py-3">Type</th>
+                                          <th className="px-4 py-3 text-right">
+                                            Unmonitored
+                                          </th>
+                                          <th className="px-4 py-3 text-right">
+                                            Duplicates
+                                          </th>
+                                          <th className="px-4 py-3 text-right">
+                                            Watchlist
+                                          </th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        <tr className="border-t border-white/10">
+                                          <td className="px-4 py-3 text-white/85 font-semibold">
+                                            Movie
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                            {asCount(movieUnmonitored)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                            {asCount(movieDuplicatesDeleted)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                            {asCount(movieWatchlistRemoved)}
+                                          </td>
+                                        </tr>
+                                        <tr className="border-t border-white/10">
+                                          <td className="px-4 py-3 text-white/85 font-semibold">
+                                            {tvRowLabel}
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                            {asCount(tvUnmonitored)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                            {asCount(tvDuplicatesDeleted)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-xs text-white/80">
+                                            {asCount(tvWatchlistRemoved)}
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })();
+
                           return (
                             <div>
                               {progressBlock}
+                              {mediaAddedSummaryBlock}
 
                               {headline && !isRefreshJob && !isMediaAddedCleanup ? (
                                 <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -668,7 +903,7 @@ export function JobRunDetailPage() {
                                 </div>
                               ) : null}
 
-                              {!isRefreshJob && sections.length ? (
+                              {!isRefreshJob && sections.length && !isMediaAddedCleanup ? (
                                 <div className="space-y-4">
                                   {sections.map((sec, idx) => {
                                     const title = pickString(sec, 'title') ?? `Section ${idx + 1}`;
