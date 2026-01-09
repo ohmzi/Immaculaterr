@@ -12,6 +12,7 @@ import { WatchedShowRecommendationsService } from '../watched-movie-recommendati
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
+import { withJobRetry, withJobRetryOrNull } from './job-retry';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -144,10 +145,14 @@ export class BasedonLatestWatchedCollectionJob {
     if (!plexBaseUrlRaw) throw new Error('Plex baseUrl is not set');
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
-    const sections = await this.plexServer.getSections({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    const sections = await withJobRetry(
+      () =>
+        this.plexServer.getSections({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+        }),
+      { ctx, label: 'plex: get libraries' },
+    );
     const movieSections = sections
       .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
       .sort((a, b) => a.title.localeCompare(b.title));
@@ -158,13 +163,15 @@ export class BasedonLatestWatchedCollectionJob {
     let movieLibraryName = seedLibrarySectionTitle || '';
 
     if (!movieSectionKey && seedRatingKey) {
-      const meta = await this.plexServer
-        .getMetadataDetails({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          ratingKey: seedRatingKey,
-        })
-        .catch(() => null);
+      const meta = await withJobRetryOrNull(
+        () =>
+          this.plexServer.getMetadataDetails({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: seedRatingKey,
+          }),
+        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+      );
       if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle)
         movieLibraryName = meta.librarySectionTitle;
@@ -197,10 +204,14 @@ export class BasedonLatestWatchedCollectionJob {
         movieSections.find((s) => s.key === movieSectionKey)?.title ??
         'Movies';
     }
-    const machineIdentifier = await this.plexServer.getMachineIdentifier({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    const machineIdentifier = await withJobRetry(
+      () =>
+        this.plexServer.getMachineIdentifier({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+        }),
+      { ctx, label: 'plex: get machine identifier' },
+    );
 
     // --- Recommendation + integration config ---
     const tmdbApiKey =
@@ -354,35 +365,34 @@ export class BasedonLatestWatchedCollectionJob {
 
     const radarrDefaults =
       !ctx.dryRun && radarrEnabled
-      ? await this.pickRadarrDefaults({
-          ctx,
-          baseUrl: radarrBaseUrl,
-          apiKey: radarrApiKey,
-          preferredRootFolderPath:
-            pickString(settings, 'radarr.defaultRootFolderPath') ||
-            pickString(settings, 'radarr.rootFolderPath'),
-          preferredQualityProfileId:
-            Math.max(
-              1,
-              Math.trunc(
-                pickNumber(settings, 'radarr.defaultQualityProfileId') ??
-                  pickNumber(settings, 'radarr.qualityProfileId') ??
-                  1,
-              ),
-            ) || 1,
-          preferredTagId: (() => {
-            const v =
-              pickNumber(settings, 'radarr.defaultTagId') ??
-              pickNumber(settings, 'radarr.tagId');
-            return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
-          })(),
-        }).catch(async (err) => {
-          await ctx.warn('radarr: defaults unavailable (skipping adds)', {
-            error: (err as Error)?.message ?? String(err),
-          });
-          return null;
-        })
-      : null;
+        ? await withJobRetryOrNull(
+            () =>
+              this.pickRadarrDefaults({
+                ctx,
+                baseUrl: radarrBaseUrl,
+                apiKey: radarrApiKey,
+                preferredRootFolderPath:
+                  pickString(settings, 'radarr.defaultRootFolderPath') ||
+                  pickString(settings, 'radarr.rootFolderPath'),
+                preferredQualityProfileId:
+                  Math.max(
+                    1,
+                    Math.trunc(
+                      pickNumber(settings, 'radarr.defaultQualityProfileId') ??
+                        pickNumber(settings, 'radarr.qualityProfileId') ??
+                        1,
+                    ),
+                  ) || 1,
+                preferredTagId: (() => {
+                  const v =
+                    pickNumber(settings, 'radarr.defaultTagId') ??
+                    pickNumber(settings, 'radarr.tagId');
+                  return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+                })(),
+              }),
+            { ctx, label: 'radarr: resolve defaults', meta: { baseUrl: radarrBaseUrl } },
+          )
+        : null;
 
     const perCollection: JsonObject[] = [];
     for (const col of collectionsToBuild) {
@@ -493,14 +503,16 @@ export class BasedonLatestWatchedCollectionJob {
     for (const title of recommendationTitles) {
       const t = title.trim();
       if (!t) continue;
-      const found = await this.plexServer
-        .findMovieRatingKeyByTitle({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey: movieSectionKey,
-          title: t,
-        })
-        .catch(() => null);
+      const found = await withJobRetryOrNull(
+        () =>
+          this.plexServer.findMovieRatingKeyByTitle({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: movieSectionKey,
+            title: t,
+          }),
+        { ctx, label: 'plex: find movie by title', meta: { title: t } },
+      );
       if (found)
         resolved.push({ ratingKey: found.ratingKey, title: found.title });
       else missingTitles.push(t);
@@ -536,9 +548,10 @@ export class BasedonLatestWatchedCollectionJob {
       const cached = tmdbDetailsCache.get(tmdbId) ?? null;
       if (cached) return cached;
 
-      const vote = await this.tmdb
-        .getMovieVoteStats({ apiKey: tmdbApiKey, tmdbId })
-        .catch(() => null);
+      const vote = await withJobRetryOrNull(
+        () => this.tmdb.getMovieVoteStats({ apiKey: tmdbApiKey, tmdbId }),
+        { ctx, label: 'tmdb: get movie vote stats', meta: { tmdbId } },
+      );
       const normalized = {
         vote_average: vote?.vote_average ?? null,
         vote_count: vote?.vote_count ?? null,
@@ -571,22 +584,24 @@ export class BasedonLatestWatchedCollectionJob {
       const rk = it.ratingKey.trim();
       if (!rk) continue;
 
-      const meta = await this.plexServer
-        .getMetadataDetails({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          ratingKey: rk,
-        })
-        .catch(() => null);
+      const meta = await withJobRetryOrNull(
+        () =>
+          this.plexServer.getMetadataDetails({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: rk,
+          }),
+        { ctx, label: 'plex: get metadata details', meta: { ratingKey: rk } },
+      );
 
       let tmdbId = meta?.tmdbIds?.[0] ?? null;
       const title = (meta?.title ?? it.title ?? '').trim() || it.title;
 
       if (!tmdbId) {
-        const match = await this.pickBestTmdbMatch({
-          tmdbApiKey,
-          title,
-        }).catch(() => null);
+        const match = await withJobRetryOrNull(
+          () => this.pickBestTmdbMatch({ tmdbApiKey, title }),
+          { ctx, label: 'tmdb: resolve movie title', meta: { title } },
+        );
         tmdbId = match?.tmdbId ?? null;
       }
 
@@ -608,10 +623,10 @@ export class BasedonLatestWatchedCollectionJob {
       if (!t) continue;
       if (missingTitleToTmdb.has(t)) continue;
 
-      const match = await this.pickBestTmdbMatch({
-        tmdbApiKey,
-        title: t,
-      }).catch(() => null);
+      const match = await withJobRetryOrNull(
+        () => this.pickBestTmdbMatch({ tmdbApiKey, title: t }),
+        { ctx, label: 'tmdb: resolve missing movie title', meta: { title: t } },
+      );
       if (!match) continue;
 
       const cached = await getVoteStats(match.tmdbId);
@@ -683,19 +698,27 @@ export class BasedonLatestWatchedCollectionJob {
           }
 
           try {
-            const result = await this.radarr.addMovie({
-              baseUrl: radarr.baseUrl,
-              apiKey: radarr.apiKey,
-              title: tmdbMatch.title,
-              tmdbId: tmdbMatch.tmdbId,
-              year: tmdbMatch.year ?? null,
-              qualityProfileId: defaults.qualityProfileId,
-              rootFolderPath: defaults.rootFolderPath,
-              tags: defaults.tagIds,
-              monitored: true,
-              minimumAvailability: 'announced',
-              searchForMovie: true,
-            });
+            const result = await withJobRetry(
+              () =>
+                this.radarr.addMovie({
+                  baseUrl: radarr.baseUrl,
+                  apiKey: radarr.apiKey,
+                  title: tmdbMatch.title,
+                  tmdbId: tmdbMatch.tmdbId,
+                  year: tmdbMatch.year ?? null,
+                  qualityProfileId: defaults.qualityProfileId,
+                  rootFolderPath: defaults.rootFolderPath,
+                  tags: defaults.tagIds,
+                  monitored: true,
+                  minimumAvailability: 'announced',
+                  searchForMovie: true,
+                }),
+              {
+                ctx,
+                label: 'radarr: add movie',
+                meta: { title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
+              },
+            );
             if (result.status === 'added') {
               radarrStats.added += 1;
               radarrLists.added.push(tmdbMatch.title);
@@ -765,14 +788,16 @@ export class BasedonLatestWatchedCollectionJob {
       const title = (row?.title ?? '').trim();
       if (!title) continue;
 
-      const found = await this.plexServer
-        .findMovieRatingKeyByTitle({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey: movieSectionKey,
-          title,
-        })
-        .catch(() => null);
+      const found = await withJobRetryOrNull(
+        () =>
+          this.plexServer.findMovieRatingKeyByTitle({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: movieSectionKey,
+            title,
+          }),
+        { ctx, label: 'plex: find movie by title', meta: { title } },
+      );
 
       if (!found) {
         skippedNotInPlex += 1;
@@ -859,16 +884,20 @@ export class BasedonLatestWatchedCollectionJob {
         collectionName,
         desiredItems: desiredItems.length,
       });
-      return await this.plexCurated.rebuildMovieCollection({
-        ctx,
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        machineIdentifier,
-        movieSectionKey,
-        collectionName,
-        desiredItems,
-        randomizeOrder: false,
-      });
+      return await withJobRetry(
+        () =>
+          this.plexCurated.rebuildMovieCollection({
+            ctx,
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            machineIdentifier,
+            movieSectionKey,
+            collectionName,
+            desiredItems,
+            randomizeOrder: false,
+          }),
+        { ctx, label: 'plex: rebuild curated collection', meta: { collectionName } },
+      );
     })();
 
     await ctx.info('plex: rebuild done', {
@@ -936,10 +965,14 @@ export class BasedonLatestWatchedCollectionJob {
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const sections = await this.plexServer.getSections({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    const sections = await withJobRetry(
+      () =>
+        this.plexServer.getSections({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+        }),
+      { ctx, label: 'plex: get libraries' },
+    );
     const tvSections = sections
       .filter((s) => (s.type ?? '').toLowerCase() === 'show')
       .sort((a, b) => a.title.localeCompare(b.title));
@@ -950,13 +983,15 @@ export class BasedonLatestWatchedCollectionJob {
     let tvLibraryName = seedLibrarySectionTitle || '';
 
     if (!tvSectionKey && seedRatingKey) {
-      const meta = await this.plexServer
-        .getMetadataDetails({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          ratingKey: seedRatingKey,
-        })
-        .catch(() => null);
+      const meta = await withJobRetryOrNull(
+        () =>
+          this.plexServer.getMetadataDetails({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: seedRatingKey,
+          }),
+        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+      );
       if (meta?.librarySectionId) tvSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle) tvLibraryName = meta.librarySectionTitle;
     }
@@ -990,10 +1025,14 @@ export class BasedonLatestWatchedCollectionJob {
         'TV Shows';
     }
 
-    const machineIdentifier = await this.plexServer.getMachineIdentifier({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    const machineIdentifier = await withJobRetry(
+      () =>
+        this.plexServer.getMachineIdentifier({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+        }),
+      { ctx, label: 'plex: get machine identifier' },
+    );
 
     // --- Recommendation + integration config ---
     const tmdbApiKey =
@@ -1138,34 +1177,33 @@ export class BasedonLatestWatchedCollectionJob {
 
     const sonarrDefaults =
       !ctx.dryRun && sonarrEnabled
-        ? await this.pickSonarrDefaults({
-            ctx,
-            baseUrl: sonarrBaseUrl,
-            apiKey: sonarrApiKey,
-            preferredRootFolderPath:
-              pickString(settings, 'sonarr.defaultRootFolderPath') ||
-              pickString(settings, 'sonarr.rootFolderPath'),
-            preferredQualityProfileId:
-              Math.max(
-                1,
-                Math.trunc(
-                  pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
-                    pickNumber(settings, 'sonarr.qualityProfileId') ??
+        ? await withJobRetryOrNull(
+            () =>
+              this.pickSonarrDefaults({
+                ctx,
+                baseUrl: sonarrBaseUrl,
+                apiKey: sonarrApiKey,
+                preferredRootFolderPath:
+                  pickString(settings, 'sonarr.defaultRootFolderPath') ||
+                  pickString(settings, 'sonarr.rootFolderPath'),
+                preferredQualityProfileId:
+                  Math.max(
                     1,
-                ),
-              ) || 1,
-            preferredTagId: (() => {
-              const v =
-                pickNumber(settings, 'sonarr.defaultTagId') ??
-                pickNumber(settings, 'sonarr.tagId');
-              return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
-            })(),
-          }).catch(async (err) => {
-            await ctx.warn('sonarr: defaults unavailable (skipping adds)', {
-              error: (err as Error)?.message ?? String(err),
-            });
-            return null;
-          })
+                    Math.trunc(
+                      pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
+                        pickNumber(settings, 'sonarr.qualityProfileId') ??
+                        1,
+                    ),
+                  ) || 1,
+                preferredTagId: (() => {
+                  const v =
+                    pickNumber(settings, 'sonarr.defaultTagId') ??
+                    pickNumber(settings, 'sonarr.tagId');
+                  return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+                })(),
+              }),
+            { ctx, label: 'sonarr: resolve defaults', meta: { baseUrl: sonarrBaseUrl } },
+          )
         : null;
 
     const perCollection: JsonObject[] = [];
@@ -1279,14 +1317,16 @@ export class BasedonLatestWatchedCollectionJob {
     for (const title of recommendationTitles) {
       const t = title.trim();
       if (!t) continue;
-      const found = await this.plexServer
-        .findShowRatingKeyByTitle({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey: tvSectionKey,
-          title: t,
-        })
-        .catch(() => null);
+      const found = await withJobRetryOrNull(
+        () =>
+          this.plexServer.findShowRatingKeyByTitle({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: tvSectionKey,
+            title: t,
+          }),
+        { ctx, label: 'plex: find show by title', meta: { title: t } },
+      );
       if (found) resolved.push({ ratingKey: found.ratingKey, title: found.title });
       else missingTitles.push(t);
     }
@@ -1325,9 +1365,10 @@ export class BasedonLatestWatchedCollectionJob {
       if (!key) return null;
       if (matchCache.has(key)) return matchCache.get(key) ?? null;
       const match = await this.pickBestTmdbTvMatch({
+        ctx,
         tmdbApiKey,
         title,
-      }).catch(() => null);
+      });
       matchCache.set(key, match);
       return match;
     };
@@ -1419,18 +1460,26 @@ export class BasedonLatestWatchedCollectionJob {
           }
 
           try {
-            const result = await this.sonarr.addSeries({
-              baseUrl: sonarr.baseUrl,
-              apiKey: sonarr.apiKey,
-              title: ids.title,
-              tvdbId: ids.tvdbId,
-              qualityProfileId: defaults.qualityProfileId,
-              rootFolderPath: defaults.rootFolderPath,
-              tags: defaults.tagIds,
-              monitored: true,
-              searchForMissingEpisodes: true,
-              searchForCutoffUnmetEpisodes: true,
-            });
+            const result = await withJobRetry(
+              () =>
+                this.sonarr.addSeries({
+                  baseUrl: sonarr.baseUrl,
+                  apiKey: sonarr.apiKey,
+                  title: ids.title,
+                  tvdbId: ids.tvdbId,
+                  qualityProfileId: defaults.qualityProfileId,
+                  rootFolderPath: defaults.rootFolderPath,
+                  tags: defaults.tagIds,
+                  monitored: true,
+                  searchForMissingEpisodes: true,
+                  searchForCutoffUnmetEpisodes: true,
+                }),
+              {
+                ctx,
+                label: 'sonarr: add series',
+                meta: { title: ids.title, tvdbId: ids.tvdbId },
+              },
+            );
             if (result.status === 'added') {
               sonarrStats.added += 1;
               sonarrLists.added.push(ids.title);
@@ -1503,14 +1552,16 @@ export class BasedonLatestWatchedCollectionJob {
       const title = (row?.title ?? '').trim();
       if (!title) continue;
 
-      const found = await this.plexServer
-        .findShowRatingKeyByTitle({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey: tvSectionKey,
-          title,
-        })
-        .catch(() => null);
+      const found = await withJobRetryOrNull(
+        () =>
+          this.plexServer.findShowRatingKeyByTitle({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: tvSectionKey,
+            title,
+          }),
+        { ctx, label: 'plex: find show by title', meta: { title } },
+      );
 
       if (!found) {
         skippedNotInPlex += 1;
@@ -1564,17 +1615,25 @@ export class BasedonLatestWatchedCollectionJob {
         desiredItems: desiredItems.length,
       });
 
-      return await this.plexCurated.rebuildMovieCollection({
-        ctx,
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        machineIdentifier,
-        movieSectionKey: tvSectionKey,
-        itemType: 2,
-        collectionName,
-        desiredItems,
-        randomizeOrder: false,
-      });
+      return await withJobRetry(
+        () =>
+          this.plexCurated.rebuildMovieCollection({
+            ctx,
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            machineIdentifier,
+            movieSectionKey: tvSectionKey,
+            itemType: 2,
+            collectionName,
+            desiredItems,
+            randomizeOrder: false,
+          }),
+        {
+          ctx,
+          label: 'plex: rebuild curated collection',
+          meta: { collectionName },
+        },
+      );
     })();
 
     await ctx.info('plex: rebuild done (tv)', {
@@ -1789,6 +1848,7 @@ export class BasedonLatestWatchedCollectionJob {
   }
 
   private async pickBestTmdbTvMatch(params: {
+    ctx: JobContext;
     tmdbApiKey: string;
     title: string;
   }): Promise<{
@@ -1799,25 +1859,39 @@ export class BasedonLatestWatchedCollectionJob {
     vote_average: number | null;
     vote_count: number | null;
   } | null> {
-    const results = await this.tmdb.searchTv({
-      apiKey: params.tmdbApiKey,
-      query: params.title,
-      includeAdult: false,
-      firstAirDateYear: null,
-    });
-    if (!results.length) return null;
+    const results = await withJobRetryOrNull(
+      () =>
+        this.tmdb.searchTv({
+          apiKey: params.tmdbApiKey,
+          query: params.title,
+          includeAdult: false,
+          firstAirDateYear: null,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'tmdb: search tv',
+        meta: { title: params.title },
+      },
+    );
+    if (!results?.length) return null;
 
     const q = params.title.trim().toLowerCase();
     const exact = results.find((r) => r.name.trim().toLowerCase() === q);
     const best = exact ?? results[0];
 
-    const details = await this.tmdb
-      .getTv({
-        apiKey: params.tmdbApiKey,
-        tmdbId: best.id,
-        appendExternalIds: true,
-      })
-      .catch(() => null);
+    const details = await withJobRetryOrNull(
+      () =>
+        this.tmdb.getTv({
+          apiKey: params.tmdbApiKey,
+          tmdbId: best.id,
+          appendExternalIds: true,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'tmdb: get tv details',
+        meta: { tmdbId: best.id },
+      },
+    );
 
     const tvdbIdRaw = details?.external_ids?.tvdb_id ?? null;
     const tvdbId =

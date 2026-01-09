@@ -11,6 +11,7 @@ import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
+import { withJobRetry, withJobRetryOrNull } from './job-retry';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -163,10 +164,14 @@ export class ImmaculateTasteCollectionJob {
       })
       .catch(() => undefined);
 
-    const sections = await this.plexServer.getSections({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    const sections = await withJobRetry(
+      () =>
+        this.plexServer.getSections({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+        }),
+      { ctx, label: 'plex: get libraries' },
+    );
     const movieSections = sections
       .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
       .sort((a, b) => a.title.localeCompare(b.title));
@@ -177,13 +182,15 @@ export class ImmaculateTasteCollectionJob {
     let movieLibraryName = seedLibrarySectionTitle || '';
 
     if (!movieSectionKey && seedRatingKey) {
-      const meta = await this.plexServer
-        .getMetadataDetails({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          ratingKey: seedRatingKey,
-        })
-        .catch(() => null);
+      const meta = await withJobRetryOrNull(
+        () =>
+          this.plexServer.getMetadataDetails({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: seedRatingKey,
+          }),
+        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+      );
       if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle)
         movieLibraryName = meta.librarySectionTitle;
@@ -272,21 +279,23 @@ export class ImmaculateTasteCollectionJob {
     });
 
     // --- Recommend (tiered pipeline: Google -> OpenAI -> TMDb) ---
-    const recs = await this.recommendations.buildSimilarMovieTitles({
-      ctx,
-      seedTitle,
-      seedYear,
-      tmdbApiKey,
-      count: suggestionsPerRun,
-      webContextFraction,
-      upcomingPercent,
-      openai: openAiEnabled
-        ? { apiKey: openAiApiKey, model: openAiModel }
-        : null,
-      google: googleEnabled
-        ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
-        : null,
-    });
+    const recs = await withJobRetry(
+      () =>
+        this.recommendations.buildSimilarMovieTitles({
+          ctx,
+          seedTitle,
+          seedYear,
+          tmdbApiKey,
+          count: suggestionsPerRun,
+          webContextFraction,
+          upcomingPercent,
+          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          google: googleEnabled
+            ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
+            : null,
+        }),
+      { ctx, label: 'recommendations: build similar movie titles' },
+    );
 
     await ctx.info('immaculateTastePoints: recommendations ready', {
       strategy: recs.strategy,
@@ -317,14 +326,16 @@ export class ImmaculateTasteCollectionJob {
     for (const title of recs.titles) {
       const t = title.trim();
       if (!t) continue;
-      const found = await this.plexServer
-        .findMovieRatingKeyByTitle({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey: movieSectionKey,
-          title: t,
-        })
-        .catch(() => null);
+      const found = await withJobRetryOrNull(
+        () =>
+          this.plexServer.findMovieRatingKeyByTitle({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: movieSectionKey,
+            title: t,
+          }),
+        { ctx, label: 'plex: find movie by title', meta: { title: t } },
+      );
       if (found)
         resolved.push({ ratingKey: found.ratingKey, title: found.title });
       else missingTitles.push(t);
@@ -359,9 +370,10 @@ export class ImmaculateTasteCollectionJob {
       const cached = tmdbDetailsCache.get(tmdbId) ?? null;
       if (cached) return cached;
 
-      const vote = await this.tmdb
-        .getMovieVoteStats({ apiKey: tmdbApiKey, tmdbId })
-        .catch(() => null);
+      const vote = await withJobRetryOrNull(
+        () => this.tmdb.getMovieVoteStats({ apiKey: tmdbApiKey, tmdbId }),
+        { ctx, label: 'tmdb: get movie vote stats', meta: { tmdbId } },
+      );
       const normalized = {
         vote_average: vote?.vote_average ?? null,
         vote_count: vote?.vote_count ?? null,
@@ -393,22 +405,24 @@ export class ImmaculateTasteCollectionJob {
       const rk = it.ratingKey.trim();
       if (!rk) continue;
 
-      const meta = await this.plexServer
-        .getMetadataDetails({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          ratingKey: rk,
-        })
-        .catch(() => null);
+      const meta = await withJobRetryOrNull(
+        () =>
+          this.plexServer.getMetadataDetails({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: rk,
+          }),
+        { ctx, label: 'plex: get metadata details', meta: { ratingKey: rk } },
+      );
 
       let tmdbId = meta?.tmdbIds?.[0] ?? null;
       const title = (meta?.title ?? it.title ?? '').trim() || it.title;
 
       if (!tmdbId) {
-        const match = await this.pickBestTmdbMatch({
-          tmdbApiKey,
-          title,
-        }).catch(() => null);
+        const match = await withJobRetryOrNull(
+          () => this.pickBestTmdbMatch({ tmdbApiKey, title }),
+          { ctx, label: 'tmdb: resolve movie title', meta: { title } },
+        );
         tmdbId = match?.tmdbId ?? null;
       }
 
@@ -431,10 +445,10 @@ export class ImmaculateTasteCollectionJob {
       if (!t) continue;
       if (missingTitleToTmdb.has(t)) continue;
 
-      const match = await this.pickBestTmdbMatch({
-        tmdbApiKey,
-        title: t,
-      }).catch(() => null);
+      const match = await withJobRetryOrNull(
+        () => this.pickBestTmdbMatch({ tmdbApiKey, title: t }),
+        { ctx, label: 'tmdb: resolve missing movie title', meta: { title: t } },
+      );
       if (!match) continue;
 
       const cached = await getVoteStats(match.tmdbId);
@@ -495,29 +509,33 @@ export class ImmaculateTasteCollectionJob {
         sampleMissing: missingTitles.slice(0, 10),
       });
 
-      const defaults = await this.pickRadarrDefaults({
-        ctx,
-        baseUrl: radarrBaseUrl,
-        apiKey: radarrApiKey,
-        preferredRootFolderPath:
-          pickString(settings, 'radarr.defaultRootFolderPath') ||
-          pickString(settings, 'radarr.rootFolderPath'),
-        preferredQualityProfileId:
-          Math.max(
-            1,
-            Math.trunc(
-              pickNumber(settings, 'radarr.defaultQualityProfileId') ??
-                pickNumber(settings, 'radarr.qualityProfileId') ??
+      const defaults = await withJobRetry(
+        () =>
+          this.pickRadarrDefaults({
+            ctx,
+            baseUrl: radarrBaseUrl,
+            apiKey: radarrApiKey,
+            preferredRootFolderPath:
+              pickString(settings, 'radarr.defaultRootFolderPath') ||
+              pickString(settings, 'radarr.rootFolderPath'),
+            preferredQualityProfileId:
+              Math.max(
                 1,
-            ),
-          ) || 1,
-        preferredTagId: (() => {
-          const v =
-            pickNumber(settings, 'radarr.defaultTagId') ??
-            pickNumber(settings, 'radarr.tagId');
-          return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
-        })(),
-      }).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
+                Math.trunc(
+                  pickNumber(settings, 'radarr.defaultQualityProfileId') ??
+                    pickNumber(settings, 'radarr.qualityProfileId') ??
+                    1,
+                ),
+              ) || 1,
+            preferredTagId: (() => {
+              const v =
+                pickNumber(settings, 'radarr.defaultTagId') ??
+                pickNumber(settings, 'radarr.tagId');
+              return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+            })(),
+          }),
+        { ctx, label: 'radarr: resolve defaults', meta: { baseUrl: radarrBaseUrl } },
+      ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
 
       if ('error' in defaults) {
         await ctx.warn(
@@ -554,19 +572,27 @@ export class ImmaculateTasteCollectionJob {
           radarrLists.attempted.push(tmdbMatch.title);
 
           try {
-            const result = await this.radarr.addMovie({
-              baseUrl: radarrBaseUrl,
-              apiKey: radarrApiKey,
-              title: tmdbMatch.title,
-              tmdbId: tmdbMatch.tmdbId,
-              year: tmdbMatch.year ?? null,
-              qualityProfileId: defaults.qualityProfileId,
-              rootFolderPath: defaults.rootFolderPath,
-              tags: defaults.tagIds,
-              monitored: true,
-              minimumAvailability: 'announced',
-              searchForMovie: startSearchImmediately,
-            });
+            const result = await withJobRetry(
+              () =>
+                this.radarr.addMovie({
+                  baseUrl: radarrBaseUrl,
+                  apiKey: radarrApiKey,
+                  title: tmdbMatch.title,
+                  tmdbId: tmdbMatch.tmdbId,
+                  year: tmdbMatch.year ?? null,
+                  qualityProfileId: defaults.qualityProfileId,
+                  rootFolderPath: defaults.rootFolderPath,
+                  tags: defaults.tagIds,
+                  monitored: true,
+                  minimumAvailability: 'announced',
+                  searchForMovie: startSearchImmediately,
+                }),
+              {
+                ctx,
+                label: 'radarr: add movie',
+                meta: { title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
+              },
+            );
             if (result.status === 'added') {
               radarrStats.added += 1;
               radarrLists.added.push(tmdbMatch.title);
@@ -575,17 +601,26 @@ export class ImmaculateTasteCollectionJob {
               radarrLists.exists.push(tmdbMatch.title);
 
               // Best-effort: ensure existing Radarr movies are monitored (matches the UI expectation).
-              const idx = await ensureRadarrIndex().catch(() => null);
+              const idx = await withJobRetryOrNull(() => ensureRadarrIndex(), {
+                ctx,
+                label: 'radarr: index movies',
+              });
               const existing = idx ? idx.get(tmdbMatch.tmdbId) ?? null : null;
               if (existing) {
-                await this.radarr
-                  .setMovieMonitored({
-                    baseUrl: radarrBaseUrl,
-                    apiKey: radarrApiKey,
-                    movie: existing,
-                    monitored: true,
-                  })
-                  .catch(() => undefined);
+                await withJobRetry(
+                  () =>
+                    this.radarr.setMovieMonitored({
+                      baseUrl: radarrBaseUrl,
+                      apiKey: radarrApiKey,
+                      movie: existing,
+                      monitored: true,
+                    }),
+                  {
+                    ctx,
+                    label: 'radarr: set movie monitored',
+                    meta: { tmdbId: tmdbMatch.tmdbId },
+                  },
+                ).catch(() => undefined);
               }
             }
           } catch (err) {
@@ -726,10 +761,14 @@ export class ImmaculateTasteCollectionJob {
       })
       .catch(() => undefined);
 
-    const sections = await this.plexServer.getSections({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    const sections = await withJobRetry(
+      () =>
+        this.plexServer.getSections({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+        }),
+      { ctx, label: 'plex: get libraries' },
+    );
     const tvSections = sections
       .filter((s) => (s.type ?? '').toLowerCase() === 'show')
       .sort((a, b) => a.title.localeCompare(b.title));
@@ -739,13 +778,15 @@ export class ImmaculateTasteCollectionJob {
     let tvLibraryName = seedLibrarySectionTitle || '';
 
     if (!tvSectionKey && seedRatingKey) {
-      const meta = await this.plexServer
-        .getMetadataDetails({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          ratingKey: seedRatingKey,
-        })
-        .catch(() => null);
+      const meta = await withJobRetryOrNull(
+        () =>
+          this.plexServer.getMetadataDetails({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: seedRatingKey,
+          }),
+        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+      );
       if (meta?.librarySectionId) tvSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle) tvLibraryName = meta.librarySectionTitle;
     }
@@ -839,19 +880,23 @@ export class ImmaculateTasteCollectionJob {
 
     await this.immaculateTasteTv.ensureLegacyImported({ ctx, maxPoints });
 
-    const recs = await this.recommendations.buildSimilarTvTitles({
-      ctx,
-      seedTitle,
-      seedYear,
-      tmdbApiKey,
-      count: suggestionsPerRun,
-      webContextFraction,
-      upcomingPercent,
-      openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
-      google: googleEnabled
-        ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
-        : null,
-    });
+    const recs = await withJobRetry(
+      () =>
+        this.recommendations.buildSimilarTvTitles({
+          ctx,
+          seedTitle,
+          seedYear,
+          tmdbApiKey,
+          count: suggestionsPerRun,
+          webContextFraction,
+          upcomingPercent,
+          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          google: googleEnabled
+            ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
+            : null,
+        }),
+      { ctx, label: 'recommendations: build similar tv titles' },
+    );
 
     await ctx.info('immaculateTastePoints(tv): recommendations ready', {
       strategy: recs.strategy,
@@ -882,14 +927,16 @@ export class ImmaculateTasteCollectionJob {
     for (const title of recs.titles) {
       const t = title.trim();
       if (!t) continue;
-      const found = await this.plexServer
-        .findShowRatingKeyByTitle({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey: tvSectionKey,
-          title: t,
-        })
-        .catch(() => null);
+      const found = await withJobRetryOrNull(
+        () =>
+          this.plexServer.findShowRatingKeyByTitle({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: tvSectionKey,
+            title: t,
+          }),
+        { ctx, label: 'plex: find show by title', meta: { title: t } },
+      );
       if (found) resolved.push({ ratingKey: found.ratingKey, title: found.title });
       else missingTitles.push(t);
     }
@@ -928,9 +975,10 @@ export class ImmaculateTasteCollectionJob {
       if (!key) return null;
       if (matchCache.has(key)) return matchCache.get(key) ?? null;
       const match = await this.pickBestTmdbTvMatch({
+        ctx,
         tmdbApiKey,
         title,
-      }).catch(() => null);
+      });
       matchCache.set(key, match);
       return match;
     };
@@ -1013,29 +1061,33 @@ export class ImmaculateTasteCollectionJob {
     };
 
     if (!ctx.dryRun && sonarrEnabled && missingTitles.length) {
-      const defaults = await this.pickSonarrDefaults({
-        ctx,
-        baseUrl: sonarrBaseUrl,
-        apiKey: sonarrApiKey,
-        preferredRootFolderPath:
-          pickString(settings, 'sonarr.defaultRootFolderPath') ||
-          pickString(settings, 'sonarr.rootFolderPath'),
-        preferredQualityProfileId:
-          Math.max(
-            1,
-            Math.trunc(
-              pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
-                pickNumber(settings, 'sonarr.qualityProfileId') ??
+      const defaults = await withJobRetry(
+        () =>
+          this.pickSonarrDefaults({
+            ctx,
+            baseUrl: sonarrBaseUrl,
+            apiKey: sonarrApiKey,
+            preferredRootFolderPath:
+              pickString(settings, 'sonarr.defaultRootFolderPath') ||
+              pickString(settings, 'sonarr.rootFolderPath'),
+            preferredQualityProfileId:
+              Math.max(
                 1,
-            ),
-          ) || 1,
-        preferredTagId: (() => {
-          const v =
-            pickNumber(settings, 'sonarr.defaultTagId') ??
-            pickNumber(settings, 'sonarr.tagId');
-          return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
-        })(),
-      }).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
+                Math.trunc(
+                  pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
+                    pickNumber(settings, 'sonarr.qualityProfileId') ??
+                    1,
+                ),
+              ) || 1,
+            preferredTagId: (() => {
+              const v =
+                pickNumber(settings, 'sonarr.defaultTagId') ??
+                pickNumber(settings, 'sonarr.tagId');
+              return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+            })(),
+          }),
+        { ctx, label: 'sonarr: resolve defaults', meta: { baseUrl: sonarrBaseUrl } },
+      ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
 
       if ('error' in defaults) {
         await ctx.warn('sonarr: defaults unavailable (skipping adds)', defaults);
@@ -1070,18 +1122,26 @@ export class ImmaculateTasteCollectionJob {
           sonarrLists.attempted.push(ids.title);
 
           try {
-            const result = await this.sonarr.addSeries({
-              baseUrl: sonarrBaseUrl,
-              apiKey: sonarrApiKey,
-              title: ids.title,
-              tvdbId: ids.tvdbId,
-              qualityProfileId: defaults.qualityProfileId,
-              rootFolderPath: defaults.rootFolderPath,
-              tags: defaults.tagIds,
-              monitored: true,
-              searchForMissingEpisodes: startSearchImmediately,
-              searchForCutoffUnmetEpisodes: startSearchImmediately,
-            });
+            const result = await withJobRetry(
+              () =>
+                this.sonarr.addSeries({
+                  baseUrl: sonarrBaseUrl,
+                  apiKey: sonarrApiKey,
+                  title: ids.title,
+                  tvdbId: ids.tvdbId,
+                  qualityProfileId: defaults.qualityProfileId,
+                  rootFolderPath: defaults.rootFolderPath,
+                  tags: defaults.tagIds,
+                  monitored: true,
+                  searchForMissingEpisodes: startSearchImmediately,
+                  searchForCutoffUnmetEpisodes: startSearchImmediately,
+                }),
+              {
+                ctx,
+                label: 'sonarr: add series',
+                meta: { title: ids.title, tvdbId: ids.tvdbId },
+              },
+            );
             if (result.status === 'added') {
               sonarrStats.added += 1;
               sonarrLists.added.push(ids.title);
@@ -1089,16 +1149,25 @@ export class ImmaculateTasteCollectionJob {
               sonarrStats.exists += 1;
               sonarrLists.exists.push(ids.title);
 
-              const idx = await ensureSonarrIndex().catch(() => null);
+              const idx = await withJobRetryOrNull(() => ensureSonarrIndex(), {
+                ctx,
+                label: 'sonarr: index series',
+              });
               const existing = idx ? idx.get(ids.tvdbId) ?? null : null;
               if (existing && existing.monitored === false) {
-                await this.sonarr
-                  .updateSeries({
-                    baseUrl: sonarrBaseUrl,
-                    apiKey: sonarrApiKey,
-                    series: { ...existing, monitored: true },
-                  })
-                  .catch(() => undefined);
+                await withJobRetry(
+                  () =>
+                    this.sonarr.updateSeries({
+                      baseUrl: sonarrBaseUrl,
+                      apiKey: sonarrApiKey,
+                      series: { ...existing, monitored: true },
+                    }),
+                  {
+                    ctx,
+                    label: 'sonarr: set series monitored',
+                    meta: { tvdbId: ids.tvdbId },
+                  },
+                ).catch(() => undefined);
               }
             }
           } catch (err) {
@@ -1371,6 +1440,7 @@ export class ImmaculateTasteCollectionJob {
   }
 
   private async pickBestTmdbTvMatch(params: {
+    ctx: JobContext;
     tmdbApiKey: string;
     title: string;
   }): Promise<{
@@ -1381,25 +1451,31 @@ export class ImmaculateTasteCollectionJob {
     vote_average: number | null;
     vote_count: number | null;
   } | null> {
-    const results = await this.tmdb.searchTv({
-      apiKey: params.tmdbApiKey,
-      query: params.title,
-      includeAdult: false,
-      firstAirDateYear: null,
-    });
-    if (!results.length) return null;
+    const results = await withJobRetryOrNull(
+      () =>
+        this.tmdb.searchTv({
+          apiKey: params.tmdbApiKey,
+          query: params.title,
+          includeAdult: false,
+          firstAirDateYear: null,
+        }),
+      { ctx: params.ctx, label: 'tmdb: search tv', meta: { title: params.title } },
+    );
+    if (!results?.length) return null;
 
     const q = params.title.trim().toLowerCase();
     const exact = results.find((r) => r.name.trim().toLowerCase() === q);
     const best = exact ?? results[0];
 
-    const details = await this.tmdb
-      .getTv({
-        apiKey: params.tmdbApiKey,
-        tmdbId: best.id,
-        appendExternalIds: true,
-      })
-      .catch(() => null);
+    const details = await withJobRetryOrNull(
+      () =>
+        this.tmdb.getTv({
+          apiKey: params.tmdbApiKey,
+          tmdbId: best.id,
+          appendExternalIds: true,
+        }),
+      { ctx: params.ctx, label: 'tmdb: get tv details', meta: { tmdbId: best.id } },
+    );
 
     const tvdbIdRaw = details?.external_ids?.tvdb_id ?? null;
     const tvdbId =
