@@ -1022,6 +1022,7 @@ export class PlexServerService {
     token: string;
     librarySectionKey: string;
     sectionTitle?: string;
+    duplicateOnly?: boolean;
   }): Promise<
     Array<{
       ratingKey: string;
@@ -1031,7 +1032,7 @@ export class PlexServerService {
       year: number | null;
     }>
   > {
-    const { baseUrl, token, librarySectionKey } = params;
+    const { baseUrl, token, librarySectionKey, duplicateOnly = false } = params;
 
     const items = await this.listSectionItems({
       baseUrl,
@@ -1039,7 +1040,7 @@ export class PlexServerService {
       librarySectionKey,
       type: 1,
       includeGuids: true,
-      duplicate: false,
+      duplicate: duplicateOnly,
       timeoutMs: 60000,
     });
 

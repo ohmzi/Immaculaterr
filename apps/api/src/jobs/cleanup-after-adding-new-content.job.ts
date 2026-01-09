@@ -1678,8 +1678,10 @@ export class CleanupAfterAddingNewContentJob {
         return toReport(summary);
       }
 
-      // 1) Duplicate cleanup (across ALL Plex movie libraries)
+      // 1) Duplicate cleanup (only within the Plex movie library where this item was added)
       let movieRatingKey = ratingKey;
+      let movieSectionKeyHint: string | null = null;
+      let movieSectionTitleHint: string | null = null;
       if (!movieRatingKey && title) {
         for (const sec of plexMovieSections) {
           const found = await this.plexServer
@@ -1692,6 +1694,8 @@ export class CleanupAfterAddingNewContentJob {
             .catch(() => null);
           if (found?.ratingKey) {
             movieRatingKey = found.ratingKey;
+            movieSectionKeyHint = sec.key;
+            movieSectionTitleHint = sec.title;
             break;
           }
         }
@@ -1700,6 +1704,9 @@ export class CleanupAfterAddingNewContentJob {
       let tmdbId: number | null = tmdbIdInput ?? null;
       let resolvedTitle = title;
       let resolvedYear = year;
+      let resolvedAddedAt: number | null = null;
+      let movieLibrarySectionKey: string | null = movieSectionKeyHint;
+      let movieLibrarySectionTitle: string | null = movieSectionTitleHint;
 
       if (movieRatingKey) {
         try {
@@ -1711,6 +1718,11 @@ export class CleanupAfterAddingNewContentJob {
           tmdbId = tmdbId ?? meta?.tmdbIds?.[0] ?? null;
           resolvedTitle = meta?.title?.trim() || resolvedTitle;
           resolvedYear = meta?.year ?? resolvedYear;
+          resolvedAddedAt = meta?.addedAt ?? resolvedAddedAt;
+          movieLibrarySectionKey =
+            meta?.librarySectionId ?? movieLibrarySectionKey;
+          movieLibrarySectionTitle =
+            meta?.librarySectionTitle ?? movieLibrarySectionTitle;
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
           (summary.warnings as string[]).push(
@@ -1724,7 +1736,9 @@ export class CleanupAfterAddingNewContentJob {
       }
 
       const crossMeta = {
-        mode: 'movieAcrossLibraries' as const,
+        mode: 'movieWithinLibrary' as const,
+        librarySectionId: movieLibrarySectionKey,
+        librarySectionTitle: movieLibrarySectionTitle,
         tmdbId,
         candidates: 0,
         keptRatingKey: null as string | null,
@@ -1735,36 +1749,45 @@ export class CleanupAfterAddingNewContentJob {
         versionCleanup: null as unknown,
       };
 
-      if (tmdbId && plexMovieSections.length > 0) {
+      if (tmdbId && movieLibrarySectionKey) {
         const candidates: Array<{
           ratingKey: string;
           title: string;
           addedAt: number | null;
         }> = [];
-        for (const sec of plexMovieSections) {
-          try {
-            const items =
-              await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                librarySectionKey: sec.key,
-                sectionTitle: sec.title,
+        try {
+          const items = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: movieLibrarySectionKey,
+            sectionTitle: movieLibrarySectionTitle ?? undefined,
+            duplicateOnly: true,
+          });
+          for (const it of items) {
+            if (it.tmdbId === tmdbId) {
+              candidates.push({
+                ratingKey: it.ratingKey,
+                title: it.title,
+                addedAt: it.addedAt,
               });
-            for (const it of items) {
-              if (it.tmdbId === tmdbId) {
-                candidates.push({
-                  ratingKey: it.ratingKey,
-                  title: it.title,
-                  addedAt: it.addedAt,
-                });
-              }
             }
-          } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
-            crossMeta.warnings.push(
-              `plex: failed listing movies for section=${sec.title} (continuing): ${msg}`,
-            );
           }
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          crossMeta.warnings.push(
+            `plex: failed listing movies for section=${movieLibrarySectionTitle ?? movieLibrarySectionKey} (continuing): ${msg}`,
+          );
+        }
+
+        if (
+          movieRatingKey &&
+          !candidates.some((c) => c.ratingKey === movieRatingKey)
+        ) {
+          candidates.push({
+            ratingKey: movieRatingKey,
+            title: resolvedTitle || title || movieRatingKey,
+            addedAt: resolvedAddedAt,
+          });
         }
 
         crossMeta.candidates = candidates.length;
@@ -2544,11 +2567,12 @@ export class CleanupAfterAddingNewContentJob {
         );
       }
 
-      // Duplicate cleanup for this episode across ALL Plex TV libraries:
-      // - If multiple Plex metadata items exist for the same SxxEyy, keep the best and delete the rest.
+      // Duplicate cleanup for this episode within its Plex show (same library as the added episode):
+      // - If multiple Plex metadata items exist for the same SxxEyy within that show, keep the best and delete the rest.
       // - Always clean up versions within the kept item.
       const dupMeta = {
-        mode: 'episodeAcrossLibraries' as const,
+        mode: 'episodeWithinLibrary' as const,
+        showRatingKey: showRatingKey,
         candidates: 0,
         keptRatingKey: null as string | null,
         deletedMetadata: 0,
@@ -2559,40 +2583,47 @@ export class CleanupAfterAddingNewContentJob {
       };
 
       try {
-        // Resolve series TVDB id (best-effort)
-        let seriesTvdbId: number | null = tvdbIdInput ?? null;
-        if (!seriesTvdbId && showRatingKey) {
-          const meta = await this.plexServer.getMetadataDetails({
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            ratingKey: showRatingKey,
-          });
-          seriesTvdbId = meta?.tvdbIds?.[0] ?? null;
+        // Resolve Plex show ratingKey for THIS library/show (best-effort).
+        // Prefer the webhook's grandparentRatingKey; fall back to the episode metadata if needed.
+        let plexShowKey = (showRatingKey ?? '').trim() || null;
+        if (!plexShowKey && ratingKey) {
+          try {
+            const meta = await this.plexServer.getMetadataDetails({
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              ratingKey,
+            });
+            plexShowKey = meta?.grandparentRatingKey?.trim() || null;
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            dupMeta.warnings.push(
+              `plex: failed to resolve showRatingKey from episode metadata (continuing): ${msg}`,
+            );
+            await ctx.warn(
+              'plex: failed to resolve showRatingKey from episode metadata (continuing)',
+              { error: msg },
+            );
+          }
         }
-
-        // Find Plex show ratingKeys across all TV libraries for this series.
-        let plexShowRatingKeys: string[] = [];
-        if (seriesTvdbId) {
-          plexShowRatingKeys =
-            (await getPlexTvdbRatingKeys()).get(seriesTvdbId) ?? [];
-        }
-        if (plexShowRatingKeys.length === 0 && showRatingKey) {
-          plexShowRatingKeys = [showRatingKey];
-        }
+        dupMeta.showRatingKey = plexShowKey;
 
         const candidateEpisodeRatingKeys = new Set<string>();
 
-        for (const rk of plexShowRatingKeys) {
+        if (plexShowKey) {
           const eps = await this.plexServer.listEpisodesForShow({
             baseUrl: plexBaseUrl,
             token: plexToken,
-            showRatingKey: rk,
+            showRatingKey: plexShowKey,
           });
           for (const ep of eps) {
             if (ep.seasonNumber !== seasonNum) continue;
             if (ep.episodeNumber !== epNum) continue;
             if (ep.ratingKey) candidateEpisodeRatingKeys.add(ep.ratingKey);
           }
+        } else {
+          dupMeta.warnings.push(
+            'plex: missing showRatingKey; cannot scan episode duplicates within a single library/show',
+          );
         }
 
         if (ratingKey) candidateEpisodeRatingKeys.add(ratingKey);
