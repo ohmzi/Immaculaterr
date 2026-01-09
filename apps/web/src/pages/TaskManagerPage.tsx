@@ -301,6 +301,7 @@ export function TaskManagerPage() {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
   const [arrRequiresSetupOpen, setArrRequiresSetupOpen] = useState(false);
+  const [arrRequiresSetupJobId, setArrRequiresSetupJobId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [terminalState, setTerminalState] = useState<
@@ -907,8 +908,8 @@ export function TaskManagerPage() {
               const isTerminalFailed =
                 terminalInfo?.status === 'completed' && terminalInfo.result === 'FAILED';
 
-              const arrMonitoredSearchBlocked =
-                job.id === 'arrMonitoredSearch' &&
+              const arrRequiredJobBlocked =
+                (job.id === 'arrMonitoredSearch' || job.id === 'monitorConfirm') &&
                 settingsQuery.status === 'success' &&
                 !isRadarrEnabled &&
                 !isSonarrEnabled;
@@ -967,12 +968,13 @@ export function TaskManagerPage() {
 
                   <motion.div
                     layout
-                    aria-disabled={arrMonitoredSearchBlocked ? true : undefined}
+                    aria-disabled={arrRequiredJobBlocked ? true : undefined}
                     onPointerDownCapture={() => {
                       setCardIconPulse({ jobId: job.id, nonce: Date.now() });
                     }}
                     onClick={(e) => {
-                      if (arrMonitoredSearchBlocked) {
+                      if (arrRequiredJobBlocked) {
+                        setArrRequiresSetupJobId(job.id);
                         setArrRequiresSetupOpen(true);
                         return;
                       }
@@ -990,17 +992,20 @@ export function TaskManagerPage() {
                     }}
                     className={cn(
                       'group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10 active:bg-[#1a1625]/85 active:shadow-2xl active:shadow-purple-500/15',
-                      arrMonitoredSearchBlocked
+                      arrRequiredJobBlocked
                         ? 'opacity-60 grayscale hover:bg-[#1a1625]/60 active:bg-[#1a1625]/60 hover:shadow-none active:shadow-none'
                         : null,
                     )}
                   >
                     <div className="absolute top-0 right-0 p-32 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity duration-500 blur-3xl rounded-full pointer-events-none -z-10" />
-                    {arrMonitoredSearchBlocked ? (
+                    {arrRequiredJobBlocked ? (
                       <button
                         type="button"
                         data-no-card-toggle="true"
-                        onClick={() => setArrRequiresSetupOpen(true)}
+                        onClick={() => {
+                          setArrRequiresSetupJobId(job.id);
+                          setArrRequiresSetupOpen(true);
+                        }}
                         className="absolute inset-0 z-20 rounded-[32px] bg-transparent cursor-not-allowed"
                         aria-label="Enable Radarr or Sonarr in Vault to use this task"
                         title="Enable Radarr or Sonarr in Vault to use this task"
@@ -2500,9 +2505,13 @@ export function TaskManagerPage() {
 
       <ConfirmDialog
         open={arrRequiresSetupOpen}
-        onClose={() => setArrRequiresSetupOpen(false)}
+        onClose={() => {
+          setArrRequiresSetupOpen(false);
+          setArrRequiresSetupJobId(null);
+        }}
         onConfirm={() => {
           setArrRequiresSetupOpen(false);
+          setArrRequiresSetupJobId(null);
           navigate('/vault');
         }}
         label="Setup required"
@@ -2510,8 +2519,13 @@ export function TaskManagerPage() {
         description={
           <div className="space-y-2">
             <div className="text-white/85 font-semibold">
-              The <span className="text-white">Search Monitored</span> task needs Radarr or Sonarr
-              enabled to monitor and search for content.
+              The{' '}
+              <span className="text-white">
+                {arrRequiresSetupJobId === 'monitorConfirm'
+                  ? 'Confirm Monitored'
+                  : 'Search Monitored'}
+              </span>{' '}
+              task needs Radarr or Sonarr enabled to monitor content.
             </div>
             <div className="text-sm text-white/70">
               Enable and configure{' '}
