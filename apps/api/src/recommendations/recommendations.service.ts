@@ -161,6 +161,10 @@ export class RecommendationsService {
     let googleMeta: JsonObject | null = null;
     let googleTitlesExtracted = 0;
     let googleTmdbAdded = 0;
+    let googleSuggestedTitles: string[] = [];
+    let openAiSuggestedTitles: string[] = [];
+    let googleSuggestedTitles: string[] = [];
+    let openAiSuggestedTitles: string[] = [];
 
     // --- Tier 1 (optional): Google discovery booster (never depends on OpenAI) ---
     void ctx
@@ -202,6 +206,7 @@ export class RecommendationsService {
 
           const extracted = extractMovieTitleCandidatesFromGoogle(results, 60);
           googleTitlesExtracted = extracted.length;
+          googleSuggestedTitles = extracted.slice();
           if (extracted.length) {
             const { added, released, upcoming, unknown } =
               await this.resolveGoogleTitlesToTmdbCandidates({
@@ -234,6 +239,7 @@ export class RecommendationsService {
             },
           );
           googleContext = null;
+          googleSuggestedTitles = [];
           googleMeta = { failed: true };
           this.googleDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
         }
@@ -260,6 +266,7 @@ export class RecommendationsService {
       upcomingPool: scoredUpcoming,
       unknownPool: scoredUnknown,
     });
+    const tmdbSuggestedTitles = deterministic.titles.slice();
 
     // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
     void ctx
@@ -341,6 +348,7 @@ export class RecommendationsService {
                 `OpenAI selection underfilled: expected ${releasedTarget + upcomingTarget}, got ${cleaned.length}`,
               );
             }
+            openAiSuggestedTitles = cleaned.slice();
             await ctx.info('recs: openai select done', {
               returned: cleaned.length,
               released: releasedTarget,
@@ -359,8 +367,11 @@ export class RecommendationsService {
               googleMeta: googleMeta ?? null,
                 googleTitlesExtracted,
                 googleTmdbAdded,
+                googleSuggestedTitles,
               openAiEnabled: true,
                 openAiModel: model,
+                openAiSuggestedTitles,
+                tmdbSuggestedTitles,
                 used: {
                   tmdb: true,
                   google: Boolean(googleContext),
@@ -406,6 +417,9 @@ export class RecommendationsService {
         googleTitlesExtracted,
         googleTmdbAdded,
         openAiEnabled,
+        googleSuggestedTitles,
+        openAiSuggestedTitles,
+        tmdbSuggestedTitles,
         used: { tmdb: true, google: Boolean(googleContext), openai: false },
       },
     };
@@ -557,6 +571,7 @@ export class RecommendationsService {
 
           const extracted = extractMovieTitleCandidatesFromGoogle(results, 60);
           googleTitlesExtracted = extracted.length;
+          googleSuggestedTitles = extracted.slice();
           if (extracted.length) {
             const { added, released, upcoming, unknown } =
               await this.resolveGoogleTitlesToTmdbTvCandidates({
@@ -580,6 +595,7 @@ export class RecommendationsService {
             },
           );
           googleContext = null;
+          googleSuggestedTitles = [];
           googleMeta = { failed: true };
           this.googleDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
         }
@@ -606,6 +622,7 @@ export class RecommendationsService {
       upcomingPool: scoredUpcoming,
       unknownPool: scoredUnknown,
     });
+    const tmdbSuggestedTitles = deterministic.titles.slice();
 
     // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
     void ctx
@@ -674,6 +691,7 @@ export class RecommendationsService {
               ...selected.upcoming,
             ].map((id) => idToTitle.get(id) ?? String(id));
             const cleaned = cleanTitles(ordered, count);
+            openAiSuggestedTitles = cleaned.slice();
 
             await ctx.info('recs(tv): openai select done', {
               returned: cleaned.length,
@@ -695,6 +713,9 @@ export class RecommendationsService {
                 googleTitlesExtracted,
                 googleTmdbAdded,
                 openAiEnabled,
+                googleSuggestedTitles,
+                openAiSuggestedTitles,
+                tmdbSuggestedTitles,
                 used: {
                   tmdb: true,
                   google: Boolean(googleContext),
@@ -743,6 +764,9 @@ export class RecommendationsService {
         googleTitlesExtracted,
         googleTmdbAdded,
         openAiEnabled,
+        googleSuggestedTitles,
+        openAiSuggestedTitles,
+        tmdbSuggestedTitles,
         used: { tmdb: true, google: Boolean(googleContext), openai: false },
       },
     };

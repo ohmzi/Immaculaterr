@@ -7,7 +7,7 @@ import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
-import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
@@ -692,6 +692,7 @@ export class ImmaculateTasteCollectionJob {
       seedTitle,
       seedYear,
       recommendationStrategy: recs.strategy,
+      recommendationDebug: recs.debug,
       generated: recs.titles.length,
       generatedTitles,
       resolvedInPlex: suggestedItems.length,
@@ -1240,6 +1241,7 @@ export class ImmaculateTasteCollectionJob {
       seedTitle,
       seedYear,
       recommendationStrategy: recs.strategy,
+      recommendationDebug: recs.debug,
       generated: recs.titles.length,
       generatedTitles,
       resolvedInPlex: suggestedItems.length,
@@ -1584,6 +1586,86 @@ function buildImmaculateTastePointsReport(params: {
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
   const sonarrLists = isPlainObject(raw.sonarrLists) ? raw.sonarrLists : null;
 
+  const recommendationDebug = isPlainObject(raw.recommendationDebug)
+    ? (raw.recommendationDebug as Record<string, unknown>)
+    : null;
+  const recommendationUsed =
+    recommendationDebug && isPlainObject(recommendationDebug.used)
+      ? (recommendationDebug.used as Record<string, unknown>)
+      : null;
+
+  const recommendationStrategyRaw = String(raw.recommendationStrategy ?? '')
+    .trim()
+    .toLowerCase();
+  const recommendationStrategy =
+    recommendationStrategyRaw || (Boolean(recommendationUsed?.openai) ? 'openai' : 'tmdb');
+
+  const googleEnabled = Boolean(recommendationDebug?.googleEnabled);
+  const openAiEnabled = Boolean(recommendationDebug?.openAiEnabled);
+  const googleUsed = Boolean(recommendationUsed?.google);
+
+  const googleSuggestedTitles = uniqueStrings(
+    asStringArray(recommendationDebug?.googleSuggestedTitles),
+  );
+  const openAiSuggestedTitles = uniqueStrings(
+    asStringArray(recommendationDebug?.openAiSuggestedTitles),
+  );
+  const tmdbSuggestedTitles = uniqueStrings(
+    asStringArray(recommendationDebug?.tmdbSuggestedTitles),
+  );
+
+  const recommendationFacts: Array<{ label: string; value: JsonValue }> = [];
+  recommendationFacts.push(
+    { label: 'Seed', value: seedTitle },
+    { label: 'Seed year', value: asNum(raw.seedYear) },
+    {
+      label: 'Google',
+      value: !googleEnabled
+        ? 'Not enabled'
+        : googleUsed
+          ? {
+              count: googleSuggestedTitles.length,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: googleSuggestedTitles,
+            }
+          : 'Skipped',
+    },
+    {
+      label: 'OpenAI',
+      value: !openAiEnabled
+        ? 'Not enabled'
+        : recommendationStrategy === 'openai'
+          ? {
+              count: (openAiSuggestedTitles.length ? openAiSuggestedTitles : generatedTitles)
+                .length,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: openAiSuggestedTitles.length ? openAiSuggestedTitles : generatedTitles,
+            }
+          : 'Skipped',
+    },
+    {
+      label: 'TMDB',
+      value:
+        recommendationStrategy === 'tmdb'
+          ? {
+              count: (tmdbSuggestedTitles.length ? tmdbSuggestedTitles : generatedTitles)
+                .length,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: tmdbSuggestedTitles.length ? tmdbSuggestedTitles : generatedTitles,
+            }
+          : 'Skipped',
+    },
+    {
+      label: 'Generated',
+      value: {
+        count: generated,
+        unit: mode === 'tv' ? 'shows' : 'movies',
+        items: generatedTitles,
+      },
+    },
+    { label: 'Strategy', value: String(raw.recommendationStrategy ?? '') },
+  );
+
   return {
     template: 'jobReportV1',
     version: 1,
@@ -1649,19 +1731,7 @@ function buildImmaculateTastePointsReport(params: {
         id: 'recommendations',
         title: 'Generate recommendations',
         status: 'success',
-        facts: [
-          {
-            label: 'Generated',
-            value: {
-              count: generated,
-              unit: mode === 'tv' ? 'shows' : 'movies',
-              items: generatedTitles,
-            },
-          },
-          { label: 'Strategy', value: String(raw.recommendationStrategy ?? '') },
-          { label: 'Seed', value: String(raw.seedTitle ?? '') },
-          { label: 'Seed year', value: asNum(raw.seedYear) },
-        ],
+        facts: recommendationFacts,
       },
       {
         id: 'plex_resolve',

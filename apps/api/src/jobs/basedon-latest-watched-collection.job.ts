@@ -339,20 +339,39 @@ export class BasedonLatestWatchedCollectionJob {
       },
     });
 
+    const changeOfTasteDebug: JsonObject = {
+      pipeline: 'change_of_taste',
+      googleEnabled,
+      openAiEnabled,
+      used: {
+        tmdb: true,
+        google: false,
+        openai: changeOfTaste.strategy === 'openai',
+      },
+      googleSuggestedTitles: [] as string[],
+      openAiSuggestedTitles:
+        changeOfTaste.strategy === 'openai' ? changeOfTaste.titles : ([] as string[]),
+      tmdbSuggestedTitles:
+        changeOfTaste.strategy === 'tmdb' ? changeOfTaste.titles : ([] as string[]),
+    };
+
     const collectionsToBuild: Array<{
       name: string;
       titles: string[];
       strategy: string;
+      debug: JsonObject;
     }> = [
       {
         name: 'Based on your recently watched movie',
         titles: similar.titles,
         strategy: similar.strategy,
+        debug: similar.debug,
       },
       {
         name: 'Change of Taste',
         titles: changeOfTaste.titles,
         strategy: changeOfTaste.strategy,
+        debug: changeOfTasteDebug,
       },
     ];
 
@@ -410,6 +429,7 @@ export class BasedonLatestWatchedCollectionJob {
         collectionName: col.name,
         recommendationTitles: col.titles,
         recommendationStrategy: col.strategy,
+        recommendationDebug: col.debug,
         maxPoints,
         collectionLimit,
         radarr: radarrEnabled
@@ -444,6 +464,7 @@ export class BasedonLatestWatchedCollectionJob {
     collectionName: string;
     recommendationTitles: string[];
     recommendationStrategy: string;
+    recommendationDebug: JsonObject;
     maxPoints: number;
     collectionLimit: number;
     radarr: {
@@ -466,6 +487,7 @@ export class BasedonLatestWatchedCollectionJob {
       collectionName,
       recommendationTitles,
       recommendationStrategy,
+      recommendationDebug,
       maxPoints,
       collectionLimit,
       radarr,
@@ -919,6 +941,7 @@ export class BasedonLatestWatchedCollectionJob {
     const summary: JsonObject = {
       collectionName,
       recommendationStrategy,
+      recommendationDebug,
       generated: recommendationTitles.length,
       resolvedInPlex: desiredItems.length,
       missingInPlex: missingTitles.length,
@@ -1160,20 +1183,39 @@ export class BasedonLatestWatchedCollectionJob {
       },
     });
 
+    const changeOfTasteDebug: JsonObject = {
+      pipeline: 'change_of_taste',
+      googleEnabled,
+      openAiEnabled,
+      used: {
+        tmdb: true,
+        google: false,
+        openai: changeOfTaste.strategy === 'openai',
+      },
+      googleSuggestedTitles: [] as string[],
+      openAiSuggestedTitles:
+        changeOfTaste.strategy === 'openai' ? changeOfTaste.titles : ([] as string[]),
+      tmdbSuggestedTitles:
+        changeOfTaste.strategy === 'tmdb' ? changeOfTaste.titles : ([] as string[]),
+    };
+
     const collectionsToBuild: Array<{
       name: string;
       titles: string[];
       strategy: string;
+      debug: JsonObject;
     }> = [
       {
         name: 'Based on your recently watched show',
         titles: similar.titles,
         strategy: similar.strategy,
+        debug: similar.debug,
       },
       {
         name: 'Change of Taste',
         titles: changeOfTaste.titles,
         strategy: changeOfTaste.strategy,
+        debug: changeOfTasteDebug,
       },
     ];
 
@@ -1230,6 +1272,7 @@ export class BasedonLatestWatchedCollectionJob {
         collectionName: col.name,
         recommendationTitles: col.titles,
         recommendationStrategy: col.strategy,
+        recommendationDebug: col.debug,
         maxPoints,
         collectionLimit,
         sonarr: sonarrEnabled
@@ -1266,6 +1309,7 @@ export class BasedonLatestWatchedCollectionJob {
     collectionName: string;
     recommendationTitles: string[];
     recommendationStrategy: string;
+    recommendationDebug: JsonObject;
     maxPoints: number;
     collectionLimit: number;
     sonarr: {
@@ -1288,6 +1332,7 @@ export class BasedonLatestWatchedCollectionJob {
       collectionName,
       recommendationTitles,
       recommendationStrategy,
+      recommendationDebug,
       maxPoints,
       collectionLimit,
       sonarr,
@@ -1657,6 +1702,7 @@ export class BasedonLatestWatchedCollectionJob {
     const summary: JsonObject = {
       collectionName,
       recommendationStrategy,
+      recommendationDebug,
       generated: recommendationTitles.length,
       resolvedInPlex: desiredItems.length,
       missingInPlex: missingTitles.length,
@@ -2013,11 +2059,70 @@ function buildWatchedLatestCollectionReport(params: {
     const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
     const generatedTitles = uniqueStrings(asStringArray(c.generatedTitles));
     const generatedCount = asNum(c.generated) ?? generatedTitles.length;
+
+    const recommendationDebug = isPlainObject(c.recommendationDebug)
+      ? (c.recommendationDebug as Record<string, unknown>)
+      : null;
+    const recommendationUsed =
+      recommendationDebug && isPlainObject(recommendationDebug.used)
+        ? (recommendationDebug.used as Record<string, unknown>)
+        : null;
+
+    const googleEnabled = Boolean(recommendationDebug?.googleEnabled);
+    const openAiEnabled = Boolean(recommendationDebug?.openAiEnabled);
+    const googleUsed = Boolean(recommendationUsed?.google);
+
+    const googleSuggestedTitles = uniqueStrings(
+      asStringArray(recommendationDebug?.googleSuggestedTitles),
+    );
+    const openAiSuggestedTitles = uniqueStrings(
+      asStringArray(recommendationDebug?.openAiSuggestedTitles),
+    );
+    const tmdbSuggestedTitles = uniqueStrings(
+      asStringArray(recommendationDebug?.tmdbSuggestedTitles),
+    );
+
+    recFacts.push({
+      label: `${name} — Google`,
+      value: !googleEnabled
+        ? 'Not enabled'
+        : googleUsed
+          ? { count: googleSuggestedTitles.length, unit, items: googleSuggestedTitles }
+          : 'Skipped',
+    });
+
+    const strategy = String(c.recommendationStrategy ?? '').trim().toLowerCase();
+    recFacts.push({
+      label: `${name} — OpenAI`,
+      value: !openAiEnabled
+        ? 'Not enabled'
+        : strategy === 'openai'
+          ? {
+              count: (openAiSuggestedTitles.length ? openAiSuggestedTitles : generatedTitles)
+                .length,
+              unit,
+              items: openAiSuggestedTitles.length ? openAiSuggestedTitles : generatedTitles,
+            }
+          : 'Skipped',
+    });
+    recFacts.push({
+      label: `${name} — TMDB`,
+      value:
+        strategy === 'tmdb'
+          ? {
+              count: (tmdbSuggestedTitles.length ? tmdbSuggestedTitles : generatedTitles)
+                .length,
+              unit,
+              items: tmdbSuggestedTitles.length ? tmdbSuggestedTitles : generatedTitles,
+            }
+          : 'Skipped',
+    });
+
+    // Keep the final recommendations card as-is for this collection.
     recFacts.push({
       label: name,
       value: { count: generatedCount, unit, items: generatedTitles },
     });
-    const strategy = String(c.recommendationStrategy ?? '').trim();
     if (strategy) recFacts.push({ label: `${name} — Strategy`, value: strategy });
   }
 
