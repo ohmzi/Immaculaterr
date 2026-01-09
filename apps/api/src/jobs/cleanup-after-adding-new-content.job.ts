@@ -3301,7 +3301,12 @@ function buildMediaAddedCleanupReport(params: {
     },
     {
       id: 'arr',
-      title: 'Scanned in Radarr/Sonarr',
+      title:
+        arrService === 'radarr'
+          ? 'Scanned in Radarr'
+          : arrService === 'sonarr'
+            ? 'Scanned in Sonarr'
+            : 'Scanned in Radarr/Sonarr',
       status: arrTask.status,
       facts: arrTask.facts,
       issues: arrTask.issues,
