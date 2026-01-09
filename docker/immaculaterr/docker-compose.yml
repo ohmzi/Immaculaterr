@@ -3,7 +3,8 @@ name: immaculaterr
 services:
   immaculaterr:
     container_name: immaculaterr
-    image: immaculaterr:latest
+    # Default: pull from GitHub Container Registry (GHCR). Override for forks via IMM_IMAGE/IMM_TAG.
+    image: ${IMM_IMAGE:-ghcr.io/ohmz/immaculaterr}:${IMM_TAG:-latest}
     build:
       context: ../..
       dockerfile: docker/immaculaterr/Dockerfile
@@ -19,6 +20,8 @@ services:
       # Persist DB + runtime state outside the container
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
+      # Update check (UI toast + Help menu indicator). Defaults to the upstream repo.
+      - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
       # Preferred: inject via deployment secrets
       - APP_MASTER_KEY=${APP_MASTER_KEY:-}
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}

@@ -44,10 +44,16 @@ npm run dev:web
 
 ## Docker (recommended for deployment)
 
-### Build + run
+### Run (pull from GitHub Container Registry)
+
+This repo publishes official images to **GitHub Container Registry (GHCR)**:
+
+- `ghcr.io/ohmz/immaculaterr:latest`
+- `ghcr.io/ohmz/immaculaterr:vX.X.X.X` / `ghcr.io/ohmz/immaculaterr:X.X.X.X`
 
 ```bash
-docker compose -f docker/immaculaterr/docker-compose.yml up -d --build
+docker compose -f docker/immaculaterr/docker-compose.yml pull
+docker compose -f docker/immaculaterr/docker-compose.yml up -d
 ```
 
 Open:
@@ -100,6 +106,18 @@ Optional: if you *do* want Plex to push events instead of polling, you can confi
 docker compose -f docker/immaculaterr/docker-compose.yml down
 ```
 
+### Update to the latest version
+
+```bash
+docker compose -f docker/immaculaterr/docker-compose.yml pull
+docker compose -f docker/immaculaterr/docker-compose.yml up -d
+```
+
+When a newer version is available, the web UI will show:
+
+- a **toast** on open (top of the app)
+- a **Help menu** indicator (shows `vX.X.X.X available`)
+
 ### Change the external port (Radarr-style)
 
 With host networking, the “external port” is just the app listen port. Set `APP_PORT` (or `PORT`)
@@ -121,4 +139,23 @@ If you use Portainer:
 
 - Set the container **network mode** to **host**
 - Set env **`APP_PORT`** (or `PORT`) if you want a non-default port
+
+## Publishing to GHCR
+
+This repo includes a GitHub Actions workflow that builds and publishes images to GHCR on git tags
+matching `v*`.
+
+### Release a new version
+
+Example (first release):
+
+```bash
+git tag v0.0.0.100
+git push origin v0.0.0.100
+```
+
+That will:
+
+- build and push multi-arch images to GHCR
+- create a GitHub Release for the tag (used by the in-app update checker)
 
