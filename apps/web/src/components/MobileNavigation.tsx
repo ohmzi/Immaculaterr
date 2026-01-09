@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Search } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { getUpdates } from '@/api/updates';
 
 interface MobileNavigationProps {
   onLogout: () => void;
@@ -48,6 +50,18 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const navigate = useNavigate();
+
+  const updatesQuery = useQuery({
+    queryKey: ['updates'],
+    queryFn: getUpdates,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
+  const updateAvailable =
+    Boolean(updatesQuery.data?.updateAvailable) && Boolean(updatesQuery.data?.latestVersion);
+  const updateLabel = updatesQuery.data?.latestVersion ? `v${updatesQuery.data.latestVersion}` : null;
 
   useEffect(() => {
     const updatePositions = () => {
@@ -313,7 +327,15 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               }}
               className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
             >
-              Help
+              <span className="inline-flex items-center gap-2">
+                Help
+                {updateAvailable ? (
+                  <span
+                    aria-label="Update available"
+                    className="h-2 w-2 rounded-full bg-[#facc15] shadow-[0_0_12px_rgba(250,204,21,0.55)]"
+                  />
+                ) : null}
+              </span>
             </button>
           </div>
         </div>
@@ -348,6 +370,20 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   </p>
 
                   <div className="space-y-2">
+                    {updateAvailable && updateLabel ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsHelpOpen(false);
+                          const url = updatesQuery.data?.latestUrl;
+                          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold"
+                      >
+                        {updateLabel} available — update container
+                      </button>
+                    ) : null}
+
                     <button
                       onClick={() => {
                         setIsHelpOpen(false);

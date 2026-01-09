@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { logout } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { getUpdates } from '@/api/updates';
 
 interface NavItem {
   label: string;
@@ -45,6 +47,31 @@ export function Navigation() {
   const queryClient = useQueryClient();
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
+  const didToastUpdateRef = useRef(false);
+
+  const updatesQuery = useQuery({
+    queryKey: ['updates'],
+    queryFn: getUpdates,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
+  const updateAvailable =
+    Boolean(updatesQuery.data?.updateAvailable) && Boolean(updatesQuery.data?.latestVersion);
+  const updateLabel = updatesQuery.data?.latestVersion ? `v${updatesQuery.data.latestVersion}` : null;
+
+  useEffect(() => {
+    if (!updateAvailable || !updateLabel) return;
+
+    // Only toast once per page-load session.
+    if (didToastUpdateRef.current) return;
+    didToastUpdateRef.current = true;
+
+    toast.info(`${updateLabel} available`, {
+      description: 'Update your Docker container to get the latest build (docker compose pull && docker compose up -d).',
+    });
+  }, [updateAvailable, updateLabel]);
 
   // Update button positions when they change
   useEffect(() => {
@@ -337,7 +364,15 @@ export function Navigation() {
                     onClick={() => setIsHelpOpen(!isHelpOpen)}
                     className="px-5 py-2.5 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 active:scale-[0.98] backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20"
                   >
-                    Help
+                    <span className="inline-flex items-center gap-2">
+                      Help
+                      {updateAvailable ? (
+                        <span
+                          aria-label="Update available"
+                          className="h-2 w-2 rounded-full bg-[#facc15] shadow-[0_0_12px_rgba(250,204,21,0.55)]"
+                        />
+                      ) : null}
+                    </span>
                   </button>
 
                   {/* Help Card */}
@@ -357,6 +392,19 @@ export function Navigation() {
                           </p>
 
                           <div className="space-y-2">
+                            {updateAvailable && updateLabel ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const url = updatesQuery.data?.latestUrl;
+                                  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold"
+                              >
+                                {updateLabel} available — update container
+                              </button>
+                            ) : null}
+
                             <button
                               onClick={handleResetAccount}
                               disabled={logoutMutation.isPending || resetMutation.isPending}
