@@ -15,7 +15,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
   },
   {
     id: 'mediaAddedCleanup',
-    name: 'Media Added Cleanup',
+    name: 'Cleanup After Adding New Content',
     description:
       'Auto-run: triggered by Plex webhooks when new media is added (duplicate cleanup across all libraries + unmonitor + watchlist removal when complete). Run Now: full sweep across all libraries + watchlist reconciliation.',
     defaultScheduleCron: undefined,

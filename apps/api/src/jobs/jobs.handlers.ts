@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { JobContext, JobRunResult } from './jobs.types';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
-import { MediaAddedCleanupJob } from './media-added-cleanup.job';
+import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
 import { NoopJob } from './noop.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
@@ -15,7 +15,7 @@ export class JobsHandlers {
     private readonly noopJob: NoopJob,
     private readonly monitorConfirmJob: MonitorConfirmJob,
     private readonly arrMonitoredSearchJob: ArrMonitoredSearchJob,
-    private readonly mediaAddedCleanupJob: MediaAddedCleanupJob,
+    private readonly cleanupAfterAddingNewContentJob: CleanupAfterAddingNewContentJob,
     private readonly immaculateTasteCollectionJob: ImmaculateTasteCollectionJob,
     private readonly immaculateTasteRefresherJob: ImmaculateTasteRefresherJob,
     private readonly basedonLatestWatchedRefresherJob: BasedonLatestWatchedRefresherJob,
@@ -31,7 +31,7 @@ export class JobsHandlers {
       case 'arrMonitoredSearch':
         return await this.arrMonitoredSearchJob.run(ctx);
       case 'mediaAddedCleanup':
-        return await this.mediaAddedCleanupJob.run(ctx);
+        return await this.cleanupAfterAddingNewContentJob.run(ctx);
       case 'immaculateTastePoints':
         return await this.immaculateTasteCollectionJob.run(ctx);
       case 'immaculateTasteRefresher':

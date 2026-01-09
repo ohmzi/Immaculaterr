@@ -17,7 +17,7 @@ import { JobsRetentionService } from './jobs-retention.service';
 import { NoopJob } from './noop.job';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
-import { MediaAddedCleanupJob } from './media-added-cleanup.job';
+import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
 import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
@@ -45,7 +45,7 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
     NoopJob,
     MonitorConfirmJob,
     ArrMonitoredSearchJob,
-    MediaAddedCleanupJob,
+    CleanupAfterAddingNewContentJob,
     BasedonLatestWatchedCollectionJob,
     BasedonLatestWatchedRefresherJob,
     ImmaculateTasteCollectionJob,

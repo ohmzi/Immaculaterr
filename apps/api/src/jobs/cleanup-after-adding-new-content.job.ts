@@ -148,7 +148,7 @@ function resolutionPriority(resolution: string | null): number {
 }
 
 @Injectable()
-export class MediaAddedCleanupJob {
+export class CleanupAfterAddingNewContentJob {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
