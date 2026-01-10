@@ -732,6 +732,7 @@ export class PlexCuratedCollectionsService {
     const collectionArtworkMap: Record<string, string> = {
       'Inspired by your Immaculate Taste': 'immaculate_taste_collection',
       'Based on your recently watched movie': 'recently_watched_collection',
+      'Based on your recently watched show': 'recently_watched_collection',
       'Change of Taste': 'change_of_taste_collection',
     };
 

@@ -62,6 +62,9 @@ RUN npm -w apps/api run db:generate
 COPY --from=builder /app/apps/api/dist /app/apps/api/dist
 COPY --from=builder /app/apps/web/dist /app/apps/web/dist
 
+# Curated collection artwork (posters/backgrounds) used when creating/recreating Plex collections.
+COPY assets/collection_artwork /app/assets/collection_artwork
+
 # Entrypoint script (handles /data perms then starts the app as non-root).
 COPY docker/immaculaterr/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
