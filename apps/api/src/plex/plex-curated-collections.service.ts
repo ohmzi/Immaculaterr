@@ -742,15 +742,20 @@ export class PlexCuratedCollectionsService {
       return { poster: null, background: null };
     }
 
-    // Find project root by looking for assets/collection_artwork directory
-    // Try common layouts relative to current working directory
+    // Find curated artwork directory.
+    // In-repo source of truth: apps/web/src/assets/collection_artwork
+    // Runtime (Docker) may copy it into either:
+    // - /app/apps/web/src/assets/collection_artwork (new canonical path)
+    // - /app/assets/collection_artwork (legacy path)
+    //
+    // Try common layouts relative to current working directory.
     const cwd = process.cwd();
-    const candidates = [
-      join(cwd, 'assets', 'collection_artwork'),
-      join(cwd, '..', 'assets', 'collection_artwork'),
-      join(cwd, '..', '..', 'assets', 'collection_artwork'),
-      join(cwd, '..', '..', '..', 'assets', 'collection_artwork'),
+    const roots = [cwd, join(cwd, '..'), join(cwd, '..', '..'), join(cwd, '..', '..', '..')];
+    const rels = [
+      join('apps', 'web', 'src', 'assets', 'collection_artwork'),
+      join('assets', 'collection_artwork'), // legacy
     ];
+    const candidates = roots.flatMap((root) => rels.map((rel) => join(root, rel)));
 
     let assetsDir: string | null = null;
     for (const candidate of candidates) {

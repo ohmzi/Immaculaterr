@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { logout } from '@/api/auth';
+import { logout, resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 
@@ -39,7 +39,6 @@ const navItems: NavItem[] = [
 
 export function Navigation() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -48,6 +47,7 @@ export function Navigation() {
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const didToastUpdateRef = useRef(false);
+  const helpRef = useRef<HTMLDivElement | null>(null);
 
   const updatesQuery = useQuery({
     queryKey: ['updates'],
@@ -73,6 +73,21 @@ export function Navigation() {
       description: 'Update your Docker container to get the latest build (docker compose pull && docker compose up -d).',
     });
   }, [updateAvailable, updateLabel]);
+
+  // Close Help when clicking/tapping anywhere outside of the Help button + dropdown.
+  useEffect(() => {
+    if (!isHelpOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const el = helpRef.current;
+      const target = e.target as Node | null;
+      if (!el || !target) return;
+      if (!el.contains(target)) setIsHelpOpen(false);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [isHelpOpen]);
 
   // Update button positions when they change
   useEffect(() => {
@@ -164,13 +179,7 @@ export function Navigation() {
 
   const resetMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/auth/reset-dev', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        throw new Error('Failed to reset account. Please try logging out and back in.');
-      }
+      await resetDev();
     },
     onSuccess: () => {
       // Clear everything like logout
@@ -194,32 +203,6 @@ export function Navigation() {
 
   return (
     <>
-      {/* Search backdrop - closes search when clicked */}
-      <AnimatePresence>
-        {isSearchOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSearchOpen(false)}
-            className="fixed inset-0 z-40"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Help backdrop - closes help when clicked */}
-      <AnimatePresence>
-        {isHelpOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsHelpOpen(false)}
-            className="fixed inset-0 z-40"
-          />
-        )}
-      </AnimatePresence>
-
       {/* Desktop Navigation */}
       <nav className="hidden lg:flex fixed top-0 left-0 right-0 z-50 justify-center pt-8">
         {/* Curved Cutout Container */}
@@ -326,41 +309,11 @@ export function Navigation() {
 
               {/* Right side buttons */}
               <div className="flex items-center gap-3 ml-8 overflow-visible">
-                <div className="relative flex items-center">
-                  {/* Search bar that slides open */}
-                  <AnimatePresence>
-                    {isSearchOpen && (
-                      <motion.div
-                        initial={{ width: 0, opacity: 0 }}
-                        animate={{ width: 200, opacity: 1 }}
-                        exit={{ width: 0, opacity: 0 }}
-                        transition={{ 
-                          duration: 0.3,
-                          ease: [0.16, 1, 0.3, 1]
-                        }}
-                        className="overflow-hidden mr-1"
-                      >
-                        <input
-                          type="text"
-                          placeholder="Search..."
-                          autoFocus
-                          className="w-full px-4 py-2 text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm rounded-full border border-white/20 focus:outline-none focus:border-white/40 transition-colors"
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  
-                  <motion.button
-                    animate={{ x: isSearchOpen ? 0 : 0 }}
-                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                    className="p-2.5 text-white/80 hover:text-white transition-all duration-300 rounded-full hover:bg-white/10 active:bg-white/15 active:scale-95 backdrop-blur-sm relative z-10"
-                    onClick={() => setIsSearchOpen(!isSearchOpen)}
-                  >
-                    <Search size={20} />
-                  </motion.button>
-                </div>
-
-                <div className="relative">
+                <div
+                  ref={helpRef}
+                  className="relative pb-2"
+                  onMouseLeave={() => setIsHelpOpen(false)}
+                >
                   <button
                     onClick={() => setIsHelpOpen(!isHelpOpen)}
                     className="px-5 py-2.5 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 active:scale-[0.98] backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20"
@@ -386,16 +339,28 @@ export function Navigation() {
                         transition={{ duration: 0.2 }}
                         className="absolute top-full right-0 mt-2 w-64 bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden z-50"
                       >
-                        <div className="p-4">
-                          <h3 className="text-lg font-semibold text-white mb-2">Help & Support</h3>
-                          <p className="text-sm text-white/70 mb-4">
-                            Need assistance? Visit our documentation or contact support.
-                          </p>
+                        <div className="p-4 space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsHelpOpen(false);
+                              navigate('/faq');
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                          >
+                            FAQ
+                          </button>
 
-                          <div className="space-y-2">
-                            <div className="w-full px-4 py-2.5 text-left text-sm text-white/70 rounded-xl border border-white/10 bg-white/5 font-mono">
-                              Version: {currentLabel ?? '—'}
-                            </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsHelpOpen(false);
+                              navigate('/version-history');
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5"
+                          >
+                            Version: {currentLabel ?? '—'}
+                          </button>
 
                             {updateAvailable && updateLabel ? (
                               <button
@@ -406,18 +371,17 @@ export function Navigation() {
                                 }}
                                 className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                               >
-                                Update available: {updateLabel}
+                                Update available {updateLabel}
                               </button>
                             ) : null}
 
                             <button
                               onClick={handleResetAccount}
                               disabled={logoutMutation.isPending || resetMutation.isPending}
-                              className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium disabled:opacity-50"
+                              className="w-full px-4 py-2.5 text-left text-sm text-rose-100/80 hover:text-rose-100 hover:bg-rose-500/10 active:bg-rose-500/15 active:scale-[0.99] rounded-xl transition-all font-medium border border-white/10 bg-rose-500/5 disabled:opacity-50"
                             >
                               Reset Account to Fresh Setup
                             </button>
-                          </div>
 
                           <div className="mt-4 pt-4 border-t border-white/10">
                             <button

@@ -193,11 +193,7 @@ export class AuthService {
     }
   }
 
-  async resetAllDataForDev() {
-    if (process.env.NODE_ENV === 'production') {
-      throw new BadRequestException('Reset is disabled in production.');
-    }
-
+  async resetAllData() {
     // Order matters due to FK constraints
     await this.prisma.jobLogLine.deleteMany();
     await this.prisma.jobRun.deleteMany();

@@ -17,7 +17,7 @@ Major Features Include
   - “Inspired by your Immaculate Taste” (Movies + TV)
   - “Based on your recently watched movie/show”
   - “Change of Taste”
-- **Poster artwork included**: Collections use the matching posters shipped in `assets/collection_artwork/posters`.
+- **Poster artwork included**: Collections use the matching posters shipped in `apps/web/src/assets/collection_artwork/posters`.
 - **Recommendation engine**:
   - TMDB-powered “similar” suggestions
   - Optional Google + OpenAI enrichment (still shows “not enabled” / “skipped” when off)
@@ -40,7 +40,8 @@ Getting Started (Docker)
 Immaculaterr is designed to run as a single container.
 
 ```bash
-docker compose -f docker/immaculaterr/docker-compose.yml up -d --build
+docker compose -f docker/immaculaterr/docker-compose.yml pull
+docker compose -f docker/immaculaterr/docker-compose.yml up -d
 ```
 
 Then open `http://<server-ip>:3210/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).

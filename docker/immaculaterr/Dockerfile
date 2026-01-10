@@ -25,7 +25,7 @@ RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
 
-ARG APP_VERSION=0.0.0.101
+ARG APP_VERSION=0.0.0.200
 ARG APP_BUILD_SHA=
 ARG APP_BUILD_TIME=
 
@@ -63,7 +63,8 @@ COPY --from=builder /app/apps/api/dist /app/apps/api/dist
 COPY --from=builder /app/apps/web/dist /app/apps/web/dist
 
 # Curated collection artwork (posters/backgrounds) used when creating/recreating Plex collections.
-COPY assets/collection_artwork /app/assets/collection_artwork
+# Source of truth lives under the web app assets folder, but is used by the API at runtime.
+COPY apps/web/src/assets/collection_artwork /app/apps/web/src/assets/collection_artwork
 
 # Entrypoint script (handles /data perms then starts the app as non-root).
 COPY docker/immaculaterr/entrypoint.sh /entrypoint.sh
