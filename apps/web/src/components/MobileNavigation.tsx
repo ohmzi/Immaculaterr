@@ -315,22 +315,28 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             >
               <div className="ml-auto w-full max-w-sm bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
                 <div className="p-4">
-                  <h3 className="text-lg font-semibold text-white mb-2">Help & Support</h3>
                   <button
                     type="button"
                     onClick={() => {
                       setIsHelpOpen(false);
                       navigate('/faq');
                     }}
-                    className="inline-block text-sm text-sky-300 hover:text-sky-200 underline underline-offset-4"
+                    className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                   >
-                    Visit FAQ documentation
+                    FAQ
                   </button>
 
-                  <div className="mt-3 space-y-2">
-                    <div className="text-sm text-white/70 font-mono">
+                  <div className="mt-2 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsHelpOpen(false);
+                        navigate('/version-history');
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5"
+                    >
                       Version: {currentLabel ?? '—'}
-                    </div>
+                    </button>
 
                     {updateAvailable && updateLabel ? (
                       <button

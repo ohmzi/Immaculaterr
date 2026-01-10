@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { logout, resetDev } from '@/api/auth';
@@ -332,20 +332,28 @@ export function Navigation() {
                         transition={{ duration: 0.2 }}
                         className="absolute top-full right-0 mt-2 w-64 bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden z-50"
                       >
-                        <div className="p-4">
-                          <h3 className="text-lg font-semibold text-white mb-2">Help & Support</h3>
-                          <Link
-                            to="/faq"
-                            onClick={() => setIsHelpOpen(false)}
-                            className="inline-block text-sm text-sky-300 hover:text-sky-200 underline underline-offset-4"
+                        <div className="p-4 space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsHelpOpen(false);
+                              navigate('/faq');
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                           >
-                            Visit FAQ documentation
-                          </Link>
+                            FAQ
+                          </button>
 
-                          <div className="mt-3 space-y-2">
-                            <div className="text-sm text-white/70 font-mono">
-                              Version: {currentLabel ?? '—'}
-                            </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsHelpOpen(false);
+                              navigate('/version-history');
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5"
+                          >
+                            Version: {currentLabel ?? '—'}
+                          </button>
 
                             {updateAvailable && updateLabel ? (
                               <button
@@ -367,7 +375,6 @@ export function Navigation() {
                             >
                               Reset Account to Fresh Setup
                             </button>
-                          </div>
 
                           <div className="mt-4 pt-4 border-t border-white/10">
                             <button
