@@ -84,7 +84,7 @@ jobs:
           echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"
 
       - name: Set required commit status
-        if: always()
+        if: ${{ always() }}
         uses: actions/github-script@v7
         env:
           SHA: ${{ steps.policy.outputs.sha }}
@@ -113,7 +113,7 @@ jobs:
             })
 
       - name: Enforce policy (PRs into master)
-        if: github.event_name == 'pull_request' && steps.policy.outputs.allowed != 'true'
+        if: ${{ github.event_name == 'pull_request' && steps.policy.outputs.allowed != 'true' }}
         shell: bash
         run: |
           echo "${{ steps.policy.outputs.reason }}"
