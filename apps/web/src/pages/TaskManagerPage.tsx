@@ -32,7 +32,6 @@ import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
-  APP_HEADER_STATUS_PILL_BASE_CLASS,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
 
@@ -1081,7 +1080,6 @@ export function TaskManagerPage() {
                 webhookAutoRun[job.id] ??
                 (readBool(settingsQuery.data?.settings, `jobs.webhookEnabled.${job.id}`) ??
                   false);
-              const isAutoRunEnabled = supportsSchedule ? draft.enabled : webhookEnabled;
               const iconPulseActive = cardIconPulse?.jobId === job.id;
               const isExpanded = expandedCards[job.id] ?? false;
               const canExpand =
@@ -1211,20 +1209,6 @@ export function TaskManagerPage() {
                             className="static shrink-0 hidden md:inline-flex"
                           />
                         </div>
-
-                        {/* Mobile: status inline-right with the title */}
-                        <span
-                          data-no-card-toggle="true"
-                          className={cn(
-                            APP_HEADER_STATUS_PILL_BASE_CLASS,
-                            'md:hidden',
-                            isAutoRunEnabled
-                              ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/20'
-                              : 'bg-white/10 text-white/70 border-white/10',
-                          )}
-                        >
-                          {isAutoRunEnabled ? 'Enabled' : 'Disabled'}
-                        </span>
                       </div>
                       <p className="hidden sm:block text-gray-400 leading-relaxed font-medium text-sm md:text-base max-w-lg">
                         {config.description}
@@ -1374,20 +1358,6 @@ export function TaskManagerPage() {
                       <div className="w-px h-10 bg-white/5 hidden md:block md:self-center" />
 
                       <div className="flex flex-col items-end gap-2 md:self-stretch md:justify-between">
-                        {/* Desktop: status above Run Now */}
-                        <span
-                          data-no-card-toggle="true"
-                          className={cn(
-                            APP_HEADER_STATUS_PILL_BASE_CLASS,
-                            'hidden md:inline-flex',
-                            isAutoRunEnabled
-                              ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/20'
-                              : 'bg-white/10 text-white/70 border-white/10',
-                          )}
-                        >
-                          {isAutoRunEnabled ? 'Enabled' : 'Disabled'}
-                        </span>
-
                         <div className="flex gap-2">
                         <button
                           type="button"
