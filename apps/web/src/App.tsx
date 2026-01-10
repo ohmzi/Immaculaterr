@@ -11,6 +11,7 @@ import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { VaultPage } from '@/pages/VaultPage';
 import { CommandCenterPage } from '@/pages/CommandCenterPage';
+import { FaqPage } from '@/pages/FaqPage';
 
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="app" element={<Navigate to="/" replace />} />
             <Route path="vault" element={<VaultPage />} />
             <Route path="command-center" element={<CommandCenterPage />} />
+            <Route path="faq" element={<FaqPage />} />
             <Route path="task-manager" element={<TaskManagerPage />} />
             <Route path="rewind" element={<RewindPage />} />
             <Route path="rewind/:runId" element={<JobRunDetailPage />} />

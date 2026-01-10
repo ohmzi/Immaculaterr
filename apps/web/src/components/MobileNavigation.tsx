@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Search } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 import { resetDev } from '@/api/auth';
@@ -44,7 +44,6 @@ const navItems: NavItem[] = [
 export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -88,7 +87,6 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
   const handleButtonClick = (index: number) => {
     setIsHelpOpen(false);
-    setIsSearchOpen(false);
     if (selectedIndex === index) {
       setSelectedIndex(null);
     } else {
@@ -264,7 +262,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               <path d="M12.5 12.5L15 15" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <span
-              className={`${isSearchOpen ? 'hidden' : 'inline'} max-w-[150px] truncate text-lg font-semibold tracking-tight text-white sm:max-w-none`}
+              className="inline max-w-[150px] truncate text-lg font-semibold tracking-tight text-white sm:max-w-none"
             >
               Immaculaterr
             </span>
@@ -272,51 +270,10 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
           {/* Right side controls */}
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1">
-            {/* Search (icon -> expands into full bar) */}
-            <div className="relative flex min-w-0 flex-1 items-center justify-end overflow-visible">
-              <AnimatePresence>
-                {isSearchOpen && (
-                  <motion.div
-                    initial={{ width: 0, opacity: 0 }}
-                    animate={{ width: '100%', opacity: 1 }}
-                    exit={{ width: 0, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                    className="min-w-0 overflow-hidden"
-                  >
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/60" />
-                      <input
-                        type="text"
-                        placeholder="Search…"
-                        autoFocus
-                        onBlur={() => setIsSearchOpen(false)}
-                        className="h-9 w-full rounded-full border border-white/20 bg-white/10 pl-9 pr-3 text-sm text-white placeholder-white/60 backdrop-blur-sm outline-none transition-colors focus:border-white/40"
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {!isSearchOpen && (
-                <button
-                  onClick={() => {
-                    setSelectedIndex(null);
-                    setIsHelpOpen(false);
-                    setIsSearchOpen(true);
-                  }}
-                  className="rounded-full p-2 text-white/80 transition-all hover:bg-white/10 hover:text-white active:bg-white/15 active:scale-95"
-                  aria-label="Search"
-                >
-                  <Search size={20} />
-                </button>
-              )}
-            </div>
-
             {/* Help button (matches desktop top bar) */}
             <button
               onClick={() => {
                 setSelectedIndex(null);
-                setIsSearchOpen(false);
                 setIsHelpOpen((v) => !v);
               }}
               className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
@@ -359,12 +316,19 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               <div className="ml-auto w-full max-w-sm bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
                 <div className="p-4">
                   <h3 className="text-lg font-semibold text-white mb-2">Help & Support</h3>
-                  <p className="text-sm text-white/70 mb-4">
-                    Need assistance? Visit our documentation or contact support.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHelpOpen(false);
+                      navigate('/faq');
+                    }}
+                    className="inline-block text-sm text-sky-300 hover:text-sky-200 underline underline-offset-4"
+                  >
+                    Visit FAQ documentation
+                  </button>
 
-                  <div className="space-y-2">
-                    <div className="w-full px-4 py-2.5 text-left text-sm text-white/70 rounded-xl border border-white/10 bg-white/5 font-mono">
+                  <div className="mt-3 space-y-2">
+                    <div className="text-sm text-white/70 font-mono">
                       Version: {currentLabel ?? '—'}
                     </div>
 
@@ -378,7 +342,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                         }}
                         className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                       >
-                        Update available: {updateLabel}
+                        Update available {updateLabel}
                       </button>
                     ) : null}
 
@@ -388,7 +352,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                         setResetError(null);
                         setResetOpen(true);
                       }}
-                      className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium"
+                      className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium"
                     >
                       Reset Account to Fresh Setup
                     </button>

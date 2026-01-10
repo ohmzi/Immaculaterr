@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { logout, resetDev } from '@/api/auth';
@@ -39,7 +39,6 @@ const navItems: NavItem[] = [
 
 export function Navigation() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -188,19 +187,6 @@ export function Navigation() {
 
   return (
     <>
-      {/* Search backdrop - closes search when clicked */}
-      <AnimatePresence>
-        {isSearchOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSearchOpen(false)}
-            className="fixed inset-0 z-40"
-          />
-        )}
-      </AnimatePresence>
-
       {/* Help backdrop - closes help when clicked */}
       <AnimatePresence>
         {isHelpOpen && (
@@ -320,40 +306,6 @@ export function Navigation() {
 
               {/* Right side buttons */}
               <div className="flex items-center gap-3 ml-8 overflow-visible">
-                <div className="relative flex items-center">
-                  {/* Search bar that slides open */}
-                  <AnimatePresence>
-                    {isSearchOpen && (
-                      <motion.div
-                        initial={{ width: 0, opacity: 0 }}
-                        animate={{ width: 200, opacity: 1 }}
-                        exit={{ width: 0, opacity: 0 }}
-                        transition={{ 
-                          duration: 0.3,
-                          ease: [0.16, 1, 0.3, 1]
-                        }}
-                        className="overflow-hidden mr-1"
-                      >
-                        <input
-                          type="text"
-                          placeholder="Search..."
-                          autoFocus
-                          className="w-full px-4 py-2 text-base text-white placeholder-white/60 bg-white/10 backdrop-blur-sm rounded-full border border-white/20 focus:outline-none focus:border-white/40 transition-colors"
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  
-                  <motion.button
-                    animate={{ x: isSearchOpen ? 0 : 0 }}
-                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                    className="p-2.5 text-white/80 hover:text-white transition-all duration-300 rounded-full hover:bg-white/10 active:bg-white/15 active:scale-95 backdrop-blur-sm relative z-10"
-                    onClick={() => setIsSearchOpen(!isSearchOpen)}
-                  >
-                    <Search size={20} />
-                  </motion.button>
-                </div>
-
                 <div className="relative">
                   <button
                     onClick={() => setIsHelpOpen(!isHelpOpen)}
@@ -382,12 +334,16 @@ export function Navigation() {
                       >
                         <div className="p-4">
                           <h3 className="text-lg font-semibold text-white mb-2">Help & Support</h3>
-                          <p className="text-sm text-white/70 mb-4">
-                            Need assistance? Visit our documentation or contact support.
-                          </p>
+                          <Link
+                            to="/faq"
+                            onClick={() => setIsHelpOpen(false)}
+                            className="inline-block text-sm text-sky-300 hover:text-sky-200 underline underline-offset-4"
+                          >
+                            Visit FAQ documentation
+                          </Link>
 
-                          <div className="space-y-2">
-                            <div className="w-full px-4 py-2.5 text-left text-sm text-white/70 rounded-xl border border-white/10 bg-white/5 font-mono">
+                          <div className="mt-3 space-y-2">
+                            <div className="text-sm text-white/70 font-mono">
                               Version: {currentLabel ?? '—'}
                             </div>
 
@@ -400,14 +356,14 @@ export function Navigation() {
                                 }}
                                 className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                               >
-                                Update available: {updateLabel}
+                                Update available {updateLabel}
                               </button>
                             ) : null}
 
                             <button
                               onClick={handleResetAccount}
                               disabled={logoutMutation.isPending || resetMutation.isPending}
-                              className="w-full px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium disabled:opacity-50"
+                              className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium disabled:opacity-50"
                             >
                               Reset Account to Fresh Setup
                             </button>
