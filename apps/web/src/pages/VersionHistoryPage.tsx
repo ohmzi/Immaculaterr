@@ -1,6 +1,5 @@
 import { motion, useAnimation } from 'motion/react';
 import { Tags } from 'lucide-react';
-import { useState } from 'react';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -11,7 +10,6 @@ import {
 export function VersionHistoryPage() {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
-  const [nonce, setNonce] = useState(0);
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
@@ -32,26 +30,22 @@ export function VersionHistoryPage() {
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
-          {/* Page Header */}
-          <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="mb-12">
             <motion.div
-              initial={{ opacity: 0, y: 18 }}
+              initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
-              className="flex flex-col gap-4"
+              transition={{ duration: 0.6 }}
+              className="space-y-6"
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-5">
                 <motion.button
-                  key={nonce}
                   type="button"
                   onClick={() => {
-                    setNonce((n) => n + 1);
                     titleIconControls.stop();
                     titleIconGlowControls.stop();
                     void titleIconControls.start({
                       scale: [1, 1.06, 1],
-                      rotate: [-6, 0, -3],
-                      transition: { duration: 0.6, ease: 'easeOut' },
+                      transition: { duration: 0.55, ease: 'easeOut' },
                     });
                     void titleIconGlowControls.start({
                       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
@@ -69,20 +63,26 @@ export function VersionHistoryPage() {
                     className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
                   />
                   <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
-                  <div className="relative p-3 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10 group-hover:rotate-0 transition-transform duration-300">
-                    <Tags className="w-8 h-8 text-black" strokeWidth={2.5} />
-                  </div>
+                  <motion.div
+                    initial={{ rotate: -10, scale: 0.94, y: 2 }}
+                    animate={{ rotate: -6, scale: 1, y: 0 }}
+                    whileHover={{ rotate: 0, scale: 1.04 }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+                    style={{ backfaceVisibility: 'hidden' }}
+                    className="relative will-change-transform transform-gpu p-3 md:p-4 bg-[#facc15] rounded-2xl shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20"
+                  >
+                    <Tags className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
+                  </motion.div>
                 </motion.button>
 
-                <div className="min-w-0">
-                  <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
-                    Version History
-                  </h1>
-                  <p className="mt-2 text-amber-100/70 text-lg font-medium max-w-xl leading-relaxed">
-                    Release notes and version history. We’ll fill this in soon.
-                  </p>
-                </div>
+                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
+                  Version History
+                </h1>
               </div>
+
+              <p className="text-amber-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
+                Release notes and version history. We’ll fill this in soon.
+              </p>
             </motion.div>
           </div>
 

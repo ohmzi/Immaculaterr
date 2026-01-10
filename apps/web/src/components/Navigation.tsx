@@ -378,7 +378,7 @@ export function Navigation() {
                             <button
                               onClick={handleResetAccount}
                               disabled={logoutMutation.isPending || resetMutation.isPending}
-                              className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-medium disabled:opacity-50"
+                              className="w-full px-4 py-2.5 text-left text-sm text-rose-100/80 hover:text-rose-100 hover:bg-rose-500/10 active:bg-rose-500/15 active:scale-[0.99] rounded-xl transition-all font-medium border border-white/10 bg-rose-500/5 disabled:opacity-50"
                             >
                               Reset Account to Fresh Setup
                             </button>
