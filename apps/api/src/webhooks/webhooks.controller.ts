@@ -209,23 +209,11 @@ export class WebhooksController {
               false;
 
             // 1) Recently-watched recommendations (two collections)
-            if (!watchedEnabled) {
-              skipped.watchedMovieRecommendations = 'disabled';
-            } else {
-              try {
-                const run = await this.jobsService.runJob({
-                  jobId: 'watchedMovieRecommendations',
-                  trigger: 'auto',
-                  dryRun: false,
-                  userId,
-                  input: payloadInput,
-                });
-                runs.watchedMovieRecommendations = run.id;
-              } catch (err) {
-                errors.watchedMovieRecommendations =
-                  (err as Error)?.message ?? String(err);
-              }
-            }
+            // NOTE: polling-only mode (70% progress) - do not trigger from webhooks.
+            // Plex webhooks are still persisted/logged for auditability.
+            skipped.watchedMovieRecommendations = watchedEnabled
+              ? 'polling_only'
+              : 'disabled';
 
             // 2) Immaculate Taste points update (dataset grows/decays over time)
             if (!immaculateEnabled) {
