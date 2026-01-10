@@ -1,6 +1,11 @@
 name: Policy: develop-only into master
 
 on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
   pull_request:
     branches:
       - master
@@ -13,7 +18,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
   statuses: write
 
 jobs:
@@ -27,62 +31,89 @@ jobs:
         run: |
           set -euo pipefail
 
-          BASE_REF="${{ github.event.pull_request.base.ref }}"
-          HEAD_REF="${{ github.event.pull_request.head.ref }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          EVENT="${{ github.event_name }}"
 
+          BASE_REF=""
+          HEAD_REF=""
+          SHA=""
+
+          if [[ "${EVENT}" == "pull_request" ]]; then
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            HEAD_REF="${{ github.event.pull_request.head.ref }}"
+            SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            HEAD_REF="${{ github.ref_name }}"
+            SHA="${{ github.sha }}"
+          fi
+
+          echo "event=${EVENT}"
           echo "base_ref=${BASE_REF}"
           echo "head_ref=${HEAD_REF}"
-          echo "head_sha=${HEAD_SHA}"
+          echo "sha=${SHA}"
 
-          if [[ "${BASE_REF}" != "master" ]]; then
-            echo "allowed=false" >> "${GITHUB_OUTPUT}"
-            echo "reason=This workflow only enforces PRs into master." >> "${GITHUB_OUTPUT}"
-            exit 0
+          allowed="false"
+          reason="Only develop is allowed to merge into master."
+
+          # Push events: mark develop as allowed (and master as allowed to avoid noisy red checks).
+          if [[ "${EVENT}" == "push" ]]; then
+            if [[ "${HEAD_REF}" == "develop" ]]; then
+              allowed="true"
+              reason="OK: commit is on develop."
+            elif [[ "${HEAD_REF}" == "master" ]]; then
+              allowed="true"
+              reason="OK: commit is on master."
+            else
+              allowed="false"
+              reason="Not allowed: only develop may merge into master."
+            fi
           fi
 
-          if [[ "${HEAD_REF}" == "develop" ]]; then
-            echo "allowed=true" >> "${GITHUB_OUTPUT}"
-            echo "reason=OK: PR source branch is develop." >> "${GITHUB_OUTPUT}"
-          else
-            echo "allowed=false" >> "${GITHUB_OUTPUT}"
-            echo "reason=Only PRs from develop are allowed into master." >> "${GITHUB_OUTPUT}"
+          # PR events: enforce develop -> master only.
+          if [[ "${EVENT}" == "pull_request" ]]; then
+            if [[ "${BASE_REF}" == "master" && "${HEAD_REF}" == "develop" ]]; then
+              allowed="true"
+              reason="OK: PR source branch is develop."
+            else
+              allowed="false"
+              reason="Only PRs from develop are allowed into master."
+            fi
           fi
+
+          echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"
+          echo "reason=${reason}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"
 
       - name: Set required commit status
         if: always()
+        uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ steps.policy.outputs.sha }}
           ALLOWED: ${{ steps.policy.outputs.allowed }}
           REASON: ${{ steps.policy.outputs.reason }}
-        shell: bash
-        run: |
-          set -euo pipefail
+        with:
+          script: |
+            const sha = (process.env.SHA ?? '').trim()
+            const allowed = (process.env.ALLOWED ?? '') === 'true'
+            const reason = String(process.env.REASON ?? '').trim() || 'Policy check'
+            if (!sha) {
+              core.warning('No SHA resolved for commit status; skipping.')
+              return
+            }
+            const state = allowed ? 'success' : 'failure'
+            const description = reason.slice(0, 140)
+            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state,
+              context: 'policy/develop-only-into-master',
+              description,
+              target_url,
+            })
 
-          STATE="failure"
-          DESCRIPTION="${REASON:-Only PRs from develop are allowed into master.}"
-          if [[ "${ALLOWED:-false}" == "true" ]]; then
-            STATE="success"
-          fi
-
-          # Post a stable status context that branch protection can require.
-          curl -sS -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${REPO}/statuses/${SHA}" \
-            -d "$(jq -n \
-              --arg state "${STATE}" \
-              --arg context "policy/develop-only-into-master" \
-              --arg description "${DESCRIPTION}" \
-              --arg target_url "${RUN_URL}" \
-              '{state:$state, context:$context, description:$description, target_url:$target_url}')" \
-            >/dev/null
-
-      - name: Enforce policy
-        if: steps.policy.outputs.allowed != 'true'
+      - name: Enforce policy (PRs into master)
+        if: github.event_name == 'pull_request' && steps.policy.outputs.allowed != 'true'
         shell: bash
         run: |
           echo "${{ steps.policy.outputs.reason }}"
