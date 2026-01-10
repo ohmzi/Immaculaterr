@@ -55,8 +55,6 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
       'Refreshes and reshuffles the curated Plex collections "Based on your recently watched movie" and "Change of Taste" across all Plex movie libraries.',
     defaultScheduleCron: '0 2 * * *', // 2am daily (disabled by default)
   },
-  {
-  },
 ];
 
 export function findJobDefinition(
