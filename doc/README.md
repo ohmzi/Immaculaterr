@@ -40,8 +40,7 @@ Getting Started (Docker)
 Immaculaterr is designed to run as a single container.
 
 ```bash
-docker compose -f docker/immaculaterr/docker-compose.yml pull
-docker compose -f docker/immaculaterr/docker-compose.yml up -d
+docker compose -f docker/immaculaterr/docker-compose.yml up -d --build
 ```
 
 Then open `http://<server-ip>:3210/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
