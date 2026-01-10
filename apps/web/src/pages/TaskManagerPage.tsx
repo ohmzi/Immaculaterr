@@ -363,10 +363,6 @@ export function TaskManagerPage() {
     immaculateStartSearchDialogOpen,
     setImmaculateStartSearchDialogOpen,
   ] = useState(false);
-  const [
-    immaculateStartSearchDetailsOpen,
-    setImmaculateStartSearchDetailsOpen,
-  ] = useState(false);
   const [immaculateRefresherDetailsOpen, setImmaculateRefresherDetailsOpen] =
     useState(false);
   const [cardIconPulse, setCardIconPulse] = useState<{
