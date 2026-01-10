@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security reports
+    url: https://github.com/ohmzi/Immaculaterr/security
+    about: Report security vulnerabilities privately via GitHub.
+  - name: Setup guide
+    url: https://github.com/ohmzi/Immaculaterr/blob/master/doc/setupguide.md
+    about: Docker install and configuration guide.
+  - name: FAQ
+    url: https://github.com/ohmzi/Immaculaterr/blob/master/doc/FAQ.md
+    about: Common questions and troubleshooting.
+
