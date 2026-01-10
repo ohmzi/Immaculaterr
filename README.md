@@ -26,18 +26,18 @@
 
 ## What it does
 
-- **Plex-triggered automation (no webhook setup required)**: detects “finished watching” via Plex polling, then runs tasks automatically.
-- **Curated collections you actually want to open**:
-  - Inspired by your Immaculate Taste (Movies + TV)
-  - Based on your recently watched movie/show
-  - Change of Taste
-- **Poster artwork included**: collections use the matching posters shipped in `apps/web/src/assets/collection_artwork/posters`.
+- **Plex-triggered automation via Plex API, then runs tasks automatically.
+- **Scheduler automation for off hours fetching media or refreshing the Plex home screen.
+- **Curated Movies and TV Shows collections you actually want to open**:
+  - Inspired by your Immaculate Taste (long term collection)
+  - Based on your recently watched (refreshes on every watch)
+  - Change of Taste (refreshes on every watch)
 - **Recommendation engine**:
-  - TMDB-powered “similar” suggestions
-  - Optional Google + OpenAI enrichment (still shows “not enabled” / “skipped” when off)
+  - TMDB-powered suggestions
+  - Optional Google + OpenAI 
 - **Keeps a snapshot database** for watched-based collections (active/pending) so refreshers can activate titles once they arrive in Plex.
-- **Radarr + Sonarr integration** (optional per job): “Fetch Missing items” toggles let you decide whether jobs can send titles to ARR downloaders.
-- **Job reports & logs**: step-by-step breakdowns, metrics tables, expandable lists, and run history.
+- **Radarr + Sonarr integration**: Toggles let you decide whether jobs can send titles to ARR downloaders.
+- **Job reports & logs**: step-by-step breakdowns, metrics tables, and run history.
 
 ## Screenshots
 
