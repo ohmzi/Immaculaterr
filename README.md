@@ -1,161 +1,77 @@
-# Immaculaterr
+Immaculaterr
+===
 
-Monorepo with:
+[![Build Status](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml)
+[![Latest Release](https://img.shields.io/github/v/release/ohmzi/Immaculaterr)](https://github.com/ohmzi/Immaculaterr/releases)
+[![License](https://img.shields.io/github/license/ohmzi/Immaculaterr)](./LICENSE)
+[![GitHub Downloads](https://img.shields.io/github/downloads/ohmzi/Immaculaterr/total)](https://github.com/ohmzi/Immaculaterr/releases)
+
+Immaculaterr is a **Plex “autopilot”** that watches what you’re watching, generates recommendations, and keeps your library tidy.
+It builds curated Plex collections (with proper artwork), can optionally send missing titles to Radarr/Sonarr, and gives you detailed run reports so you always know what happened.
+
+Major Features Include
+---
+
+- **Plex-triggered automation (no webhook setup required)**: Detects “finished watching” via Plex polling, then runs tasks automatically.
+- **Curated collections you actually want to open**:
+  - “Inspired by your Immaculate Taste” (Movies + TV)
+  - “Based on your recently watched movie/show”
+  - “Change of Taste”
+- **Poster artwork included**: Collections use the matching posters shipped in `assets/collection_artwork/posters`.
+- **Recommendation engine**:
+  - TMDB-powered “similar” suggestions
+  - Optional Google + OpenAI enrichment (still shows “not enabled” / “skipped” when off)
+- **Keeps a snapshot database** for watched-based collections (active/pending) so refreshers can activate titles once they arrive in Plex.
+- **Refresher jobs**: Re-check pending items, activate what’s now available, shuffle active items, and rebuild collections cleanly.
+- **Radarr + Sonarr integration** (optional per job): “Fetch Missing items” toggles let you decide whether jobs can send titles to ARR downloaders.
+- **Cleanup After Adding New Content**: Manual/scheduled cleanup that dedupes across libraries and unmonitors duplicates in Radarr/Sonarr (with episode/season-aware rules).
+- **Confirm Monitored**: Keeps ARR monitoring aligned with what’s already in Plex.
+- **Job system with strong observability**:
+  - Step-by-step breakdown cards
+  - Metrics tables + expandable lists
+  - Logs and run history (Rewind)
+- **Resilient external calls**: Built-in retry for flaky APIs (3 attempts, 10s wait) where it matters.
+- **Built for Docker**: Single container that serves both the API and the Web UI on one port.
+- **Update awareness**: The app can check for newer releases and shows an in-app reminder to update your container.
+
+Getting Started (Docker)
+---
+
+Immaculaterr is designed to run as a single container.
+
+```bash
+docker compose -f docker/immaculaterr/docker-compose.yml pull
+docker compose -f docker/immaculaterr/docker-compose.yml up -d
+```
+
+Then open `http://<server-ip>:3210/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
+
+Development
+---
+
+Immaculaterr is a monorepo:
 
 - **API**: NestJS (`apps/api`) — serves the REST API under `/api`
 - **Web UI**: React + Vite (`apps/web`)
 
-In **Docker / production**, the API serves the built UI too, so there is **one port** for both the UI and `/api`.
-
-## Development (local)
-
-### Requirements
-
-- Node.js **20+**
-- npm
-
-### Start dev mode (API + Web)
-
 ```bash
 npm install
 npm -w apps/api run db:generate
-# First run only: create the dev DB + tables (SQLite)
 APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite npm -w apps/api run db:migrate
 npm run dev
 ```
 
-Defaults:
+Support
+---
 
-- **API**: `http://localhost:3210/api`
-- **Web**: `http://localhost:5175/` (LAN: `http://<your-lan-ip>:5175/`)
+- **Report Bug**: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- **Send Suggestion**: [Immaculaterr Feedback Form](https://forms.gle/wMpsDu9jPEY14dua6)
 
-### Change dev ports
+License
+---
 
-```bash
-PORT=3211 WEB_PORT=5176 npm run dev
-```
+Immaculaterr is licensed under the **MIT License** — see [LICENSE](./LICENSE).
 
-You can also run them individually:
-
-```bash
-npm run dev:api
-npm run dev:web
-```
-
-## Docker (recommended for deployment)
-
-### Run (pull from GitHub Container Registry)
-
-This repo publishes official images to **GitHub Container Registry (GHCR)**:
-
-- `ghcr.io/ohmz/immaculaterr:latest`
-- `ghcr.io/ohmz/immaculaterr:vX.X.X.X` / `ghcr.io/ohmz/immaculaterr:X.X.X.X`
-
-```bash
-docker compose -f docker/immaculaterr/docker-compose.yml pull
-docker compose -f docker/immaculaterr/docker-compose.yml up -d
-```
-
-Open:
-
-- `http://<server-ip>:3210/`
-
-This Docker Compose runs Immaculaterr with **host networking by default** (Linux), so it behaves like
-many media-stack containers (Radarr/Sonarr/etc):
-
-- No port publishing/mapping needed
-- The app binds directly to the host network on `PORT` (default `3210`)
-
-### Connecting to Plex/Radarr/Sonarr when Immaculaterr runs in Docker
-
-With **host networking**, you can usually use `http://localhost:<port>` as the Base URL (example:
-Plex: `http://localhost:32400`).
-
-If you switch Immaculaterr to Docker **bridge** networking later, then `localhost` will refer to the
-container — use your service’s **LAN IP** instead (example: `http://192.168.1.10:32400`).
-
-### Auto-run on watched (no Plex webhook setup required)
-
-Immaculaterr can detect “finished watching” by **polling Plex now-playing sessions** (Tautulli-style),
-so you do **not** need to configure Plex Webhooks.
-
-Then in Immaculaterr:
-
-- Task Manager → enable **Auto-run** for the jobs you want
-  - “Based on Latest Watched Collection” (`watchedMovieRecommendations`)
-  - “Immaculate Taste Collection” (`immaculateTastePoints`)
-  - “Media Added Cleanup” (`mediaAddedCleanup`) *(optional; runs when new items are added)*
-
-Optional: if you *do* want Plex to push events instead of polling, you can configure Plex Webhooks:
-
-- Plex Settings → **Webhooks** → Add:
-  - `http://<host-ip>:3210/api/webhooks/plex`
-  - (Also works: `http://<host-ip>:3210/webhooks/plex`)
-
-#### Polling settings (optional)
-
-- `PLEX_POLLING_ENABLED` (default: `true`)
-- `PLEX_POLLING_INTERVAL_MS` (default: `5000`)
-- `PLEX_POLLING_SCROBBLE_THRESHOLD` (default: `0.7` i.e. 70%)
-- `PLEX_POLLING_RECENTLY_ADDED_INTERVAL_MS` (default: `60000`)
-- `PLEX_POLLING_LIBRARY_NEW_DEBOUNCE_MS` (default: `120000`)
-
-### Stop
-
-```bash
-docker compose -f docker/immaculaterr/docker-compose.yml down
-```
-
-### Update to the latest version
-
-```bash
-docker compose -f docker/immaculaterr/docker-compose.yml pull
-docker compose -f docker/immaculaterr/docker-compose.yml up -d
-```
-
-When a newer version is available, the web UI will show:
-
-- a **toast** on open (top of the app)
-- a **Help menu** indicator (shows `vX.X.X.X available`)
-
-### Change the external port (Radarr-style)
-
-With host networking, the “external port” is just the app listen port. Set `APP_PORT` (or `PORT`)
-to change it.
-
-Example: expose on `13378`:
-
-```bash
-APP_PORT=13378 docker compose -f docker/immaculaterr/docker-compose.yml up -d --build
-```
-
-Then open:
-
-- `http://<server-ip>:13378/`
-
-### Portainer mapping tip
-
-If you use Portainer:
-
-- Set the container **network mode** to **host**
-- Set env **`APP_PORT`** (or `PORT`) if you want a non-default port
-
-## Publishing to GHCR
-
-This repo includes a GitHub Actions workflow that builds and publishes images to GHCR on git tags
-matching `v*`.
-
-### Release a new version
-
-Example (first release):
-
-```bash
-git tag v0.0.0.100
-git push origin v0.0.0.100
-```
-
-That will:
-
-- build and push multi-arch images to GHCR
-- create a GitHub Release for the tag (used by the in-app update checker)
+This project uses publicly available APIs and integrates with third‑party services (Plex, Radarr, Sonarr, TMDB, OpenAI, Google).
+You are responsible for complying with their respective terms of service. Immaculaterr is not affiliated with or endorsed by those services.
 
