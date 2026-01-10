@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { chmod, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -26,7 +26,6 @@ function decodeMasterKey(input: string): Buffer {
 
 @Injectable()
 export class CryptoService implements OnModuleInit {
-  private readonly logger = new Logger(CryptoService.name);
   private masterKey!: Buffer;
 
   async onModuleInit() {
@@ -79,7 +78,6 @@ export class CryptoService implements OnModuleInit {
   private async loadOrCreateMasterKey(): Promise<Buffer> {
     const envKey = process.env.APP_MASTER_KEY?.trim();
     if (envKey) {
-      this.logger.log('Using APP_MASTER_KEY from environment.');
       return decodeMasterKey(envKey);
     }
 
@@ -87,7 +85,6 @@ export class CryptoService implements OnModuleInit {
     if (envKeyFile) {
       try {
         const raw = await readFile(envKeyFile, 'utf8');
-        this.logger.log(`Using APP_MASTER_KEY from file (${envKeyFile}).`);
         return decodeMasterKey(raw);
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
@@ -107,7 +104,6 @@ export class CryptoService implements OnModuleInit {
       const existing = await readFile(keyPath, 'utf8');
       // Best-effort: keep the key file locked down (owner read/write only).
       await chmod(keyPath, 0o600).catch(() => undefined);
-      this.logger.log(`Loaded master key from ${keyPath}`);
       return decodeMasterKey(existing);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
@@ -121,10 +117,6 @@ export class CryptoService implements OnModuleInit {
     await writeFile(keyPath, keyB64, { encoding: 'utf8', mode: 0o600 });
     // Ensure permissions even if umask interferes
     await chmod(keyPath, 0o600).catch(() => undefined);
-
-    this.logger.warn(
-      `Generated a new master key at ${keyPath}. Set APP_MASTER_KEY to keep it stable across moves/backups.`,
-    );
 
     return key;
   }
