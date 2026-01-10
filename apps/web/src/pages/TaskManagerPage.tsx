@@ -379,6 +379,12 @@ export function TaskManagerPage() {
   const [webhookAutoRun, setWebhookAutoRun] = useState<Record<string, boolean>>({});
   const [arrMonitoredIncludeRadarr, setArrMonitoredIncludeRadarr] = useState(true);
   const [arrMonitoredIncludeSonarr, setArrMonitoredIncludeSonarr] = useState(true);
+  const [immaculateFetchMissingRadarr, setImmaculateFetchMissingRadarr] =
+    useState(true);
+  const [immaculateFetchMissingSonarr, setImmaculateFetchMissingSonarr] =
+    useState(true);
+  const [watchedFetchMissingRadarr, setWatchedFetchMissingRadarr] = useState(true);
+  const [watchedFetchMissingSonarr, setWatchedFetchMissingSonarr] = useState(true);
 
   const isRadarrEnabled = (() => {
     const settings = settingsQuery.data?.settings;
@@ -521,6 +527,40 @@ export function TaskManagerPage() {
     setArrMonitoredIncludeRadarr(includeRadarr ?? true);
     setArrMonitoredIncludeSonarr(includeSonarr ?? true);
   }, [settingsQuery.data?.settings, arrMonitoredSearchOptionsMutation.isPending]);
+
+  const fetchMissingMutation = useMutation({
+    mutationFn: async (params: {
+      jobId: 'immaculateTastePoints' | 'watchedMovieRecommendations';
+      patch: { radarr?: boolean; sonarr?: boolean };
+    }) =>
+      putSettings({
+        settings: { jobs: { [params.jobId]: { fetchMissing: params.patch } } },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
+  useEffect(() => {
+    if (fetchMissingMutation.isPending) return;
+    const settings = settingsQuery.data?.settings;
+    if (!settings) return;
+
+    setImmaculateFetchMissingRadarr(
+      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ?? true,
+    );
+    setImmaculateFetchMissingSonarr(
+      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ?? true,
+    );
+    setWatchedFetchMissingRadarr(
+      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
+        true,
+    );
+    setWatchedFetchMissingSonarr(
+      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
+        true,
+    );
+  }, [settingsQuery.data?.settings, fetchMissingMutation.isPending]);
 
   useEffect(() => {
     if (!flashJob) return;
@@ -1468,145 +1508,171 @@ export function TaskManagerPage() {
                     </div>
                   </div>
 
-                  {/* Webhook-only expansion (shows extra controls only when Auto-Run is enabled) */}
+                  {/* Webhook/manual expansion (extra controls for webhook-only jobs) */}
                   {!supportsSchedule && (
                     <AnimatePresence initial={false}>
-                      {isExpanded && webhookEnabled && job.id === 'immaculateTastePoints' && (
-                        <motion.div
-                          data-no-card-toggle="true"
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{
-                            type: 'spring',
-                            stiffness: 200,
-                            damping: 25,
-                            mass: 0.8,
-                          }}
-                          className="overflow-hidden bg-[#0F0B15]/30 border-t border-white/5"
-                        >
-                          <div className="px-6 md:px-8 py-5">
-                            {job.id === 'immaculateTastePoints' && (
+                      {isExpanded &&
+                        (job.id === 'immaculateTastePoints' ||
+                          job.id === 'watchedMovieRecommendations') && (
+                          <motion.div
+                            data-no-card-toggle="true"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 200,
+                              damping: 25,
+                              mass: 0.8,
+                            }}
+                            className="overflow-hidden bg-[#0F0B15]/30 border-t border-white/5"
+                          >
+                            <div className="px-6 md:px-8 py-5">
                               <div className="flex flex-col gap-3">
-                                <div
-                                  role="button"
-                                  tabIndex={0}
-                                  aria-expanded={immaculateRefresherDetailsOpen}
-                                  onClick={() =>
-                                    setImmaculateRefresherDetailsOpen((v) => !v)
-                                  }
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault();
-                                      setImmaculateRefresherDetailsOpen((v) => !v);
-                                    }
-                                  }}
-                                  className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5 cursor-pointer select-none hover:bg-[#0F0B15]/45 transition-colors"
-                                >
-                                  <div className="flex items-start justify-between gap-4">
-                                    <div className="min-w-0">
-                                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                                      <RotateCw className="w-3 h-3 text-yellow-300" />
-                                        Immaculate Taste Refresher
+                                <div className="rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                    Fetch Missing items:
+                                  </div>
+
+                                  <div className="mt-3 flex flex-col sm:flex-row gap-3">
+                                    <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Radarr
+                                        </div>
                                       </div>
-
-                                      <AnimatePresence initial={false}>
-                                        {immaculateRefresherDetailsOpen && (
-                                          <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: 'auto', opacity: 1 }}
-                                            exit={{ height: 0, opacity: 0 }}
-                                            transition={{
-                                              type: 'spring',
-                                              stiffness: 240,
-                                              damping: 26,
-                                              mass: 0.85,
-                                            }}
-                                            className="overflow-hidden"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            <p className="mt-2 text-sm text-gray-400 leading-relaxed">
-                                              After updating points, automatically rebuild your{' '}
-                                              <span className="text-white/80 font-semibold">
-                                                Inspired by your Immaculate Taste
-                                              </span>{' '}
-                                              Plex collection.
-                                            </p>
-                                            <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                                              If disabled, you can still{' '}
-                                              <a
-                                                href="#job-immaculateTasteRefresher"
-                                                onClick={(e) => {
-                                                  e.preventDefault();
-                                                  document
-                                                    .getElementById(
-                                                      'job-immaculateTasteRefresher',
-                                                    )
-                                                    ?.scrollIntoView({
-                                                      behavior: 'smooth',
-                                                      block: 'start',
-                                                    });
-                                                  setFlashJob({
-                                                    jobId: 'immaculateTasteRefresher',
-                                                    nonce: Date.now(),
-                                                  });
-                                                }}
-                                                className="text-sky-200/90 underline underline-offset-4 hover:text-sky-100 transition-colors"
-                                              >
-                                                run/schedule the refresher from its own card
-                                              </a>{' '}
-                                              independently.
-                                            </p>
-
-                                            {immaculateIncludeRefresherMutation.isError && (
-                                              <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
-                                                <CircleAlert className="w-4 h-4" />
-                                                {(immaculateIncludeRefresherMutation.error as Error)
-                                                  .message}
-                                              </div>
-                                            )}
-                                          </motion.div>
-                                        )}
-                                      </AnimatePresence>
-                                    </div>
-
-                                    <div
-                                      className="flex flex-col items-end gap-2 shrink-0"
-                                      onClick={(e) => e.stopPropagation()}
-                                      onPointerDown={(e) => e.stopPropagation()}
-                                    >
                                       <button
                                         type="button"
                                         role="switch"
-                                        aria-checked={immaculateIncludeRefresherAfterUpdate}
+                                        aria-checked={
+                                          job.id === 'immaculateTastePoints'
+                                            ? immaculateFetchMissingRadarr
+                                            : watchedFetchMissingRadarr
+                                        }
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          const next = !immaculateIncludeRefresherAfterUpdate;
-                                          setImmaculateIncludeRefresherAfterUpdate(next);
-                                          immaculateIncludeRefresherMutation.mutate(next);
+                                          const prev =
+                                            job.id === 'immaculateTastePoints'
+                                              ? immaculateFetchMissingRadarr
+                                              : watchedFetchMissingRadarr;
+                                          const next = !prev;
+                                          if (job.id === 'immaculateTastePoints')
+                                            setImmaculateFetchMissingRadarr(next);
+                                          else setWatchedFetchMissingRadarr(next);
+
+                                          fetchMissingMutation.mutate(
+                                            {
+                                              jobId: job.id as
+                                                | 'immaculateTastePoints'
+                                                | 'watchedMovieRecommendations',
+                                              patch: { radarr: next },
+                                            },
+                                            {
+                                              onError: () => {
+                                                if (job.id === 'immaculateTastePoints')
+                                                  setImmaculateFetchMissingRadarr(prev);
+                                                else setWatchedFetchMissingRadarr(prev);
+                                              },
+                                            },
+                                          );
                                         }}
-                                        onPointerDown={(e) => e.stopPropagation()}
                                         disabled={
                                           settingsQuery.isLoading ||
-                                          immaculateIncludeRefresherMutation.isPending
+                                          fetchMissingMutation.isPending
                                         }
                                         className={cn(
                                           'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                          immaculateIncludeRefresherAfterUpdate
-                                            ? 'bg-sky-400'
-                                            : 'bg-[#2a2438] border-2 border-white/10'
+                                          (job.id === 'immaculateTastePoints'
+                                            ? immaculateFetchMissingRadarr
+                                            : watchedFetchMissingRadarr)
+                                            ? 'bg-[#facc15]'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
                                         )}
-                                        aria-label="Toggle Immaculate Taste Refresher after update"
+                                        aria-label={`Toggle Radarr fetch for ${job.name}`}
                                       >
                                         <span
                                           className={cn(
                                             'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                            immaculateIncludeRefresherAfterUpdate
+                                            (job.id === 'immaculateTastePoints'
+                                              ? immaculateFetchMissingRadarr
+                                              : watchedFetchMissingRadarr)
                                               ? 'translate-x-6'
-                                              : 'translate-x-1'
+                                              : 'translate-x-1',
                                           )}
                                         >
-                                          {immaculateIncludeRefresherMutation.isPending && (
+                                          {fetchMissingMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Sonarr
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={
+                                          job.id === 'immaculateTastePoints'
+                                            ? immaculateFetchMissingSonarr
+                                            : watchedFetchMissingSonarr
+                                        }
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const prev =
+                                            job.id === 'immaculateTastePoints'
+                                              ? immaculateFetchMissingSonarr
+                                              : watchedFetchMissingSonarr;
+                                          const next = !prev;
+                                          if (job.id === 'immaculateTastePoints')
+                                            setImmaculateFetchMissingSonarr(next);
+                                          else setWatchedFetchMissingSonarr(next);
+
+                                          fetchMissingMutation.mutate(
+                                            {
+                                              jobId: job.id as
+                                                | 'immaculateTastePoints'
+                                                | 'watchedMovieRecommendations',
+                                              patch: { sonarr: next },
+                                            },
+                                            {
+                                              onError: () => {
+                                                if (job.id === 'immaculateTastePoints')
+                                                  setImmaculateFetchMissingSonarr(prev);
+                                                else setWatchedFetchMissingSonarr(prev);
+                                              },
+                                            },
+                                          );
+                                        }}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          fetchMissingMutation.isPending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          (job.id === 'immaculateTastePoints'
+                                            ? immaculateFetchMissingSonarr
+                                            : watchedFetchMissingSonarr)
+                                            ? 'bg-[#facc15]'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label={`Toggle Sonarr fetch for ${job.name}`}
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            (job.id === 'immaculateTastePoints'
+                                              ? immaculateFetchMissingSonarr
+                                              : watchedFetchMissingSonarr)
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {fetchMissingMutation.isPending && (
                                             <Loader2 className="h-3 w-3 animate-spin text-black/70" />
                                           )}
                                         </span>
@@ -1615,119 +1681,250 @@ export function TaskManagerPage() {
                                   </div>
                                 </div>
 
-                                <div className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5">
-                                  <div
-                                    role="button"
-                                    tabIndex={0}
-                                    aria-expanded={immaculateStartSearchDetailsOpen}
-                                    onClick={() =>
-                                      setImmaculateStartSearchDetailsOpen((v) => !v)
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        setImmaculateStartSearchDetailsOpen((v) => !v);
+                                {job.id === 'immaculateTastePoints' && webhookEnabled && (
+                                  <>
+                                    <div
+                                      role="button"
+                                      tabIndex={0}
+                                      aria-expanded={immaculateRefresherDetailsOpen}
+                                      onClick={() =>
+                                        setImmaculateRefresherDetailsOpen((v) => !v)
                                       }
-                                    }}
-                                    className="cursor-pointer select-none"
-                                  >
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="min-w-0">
-                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                                          <Search className="w-3 h-3 text-fuchsia-300" />
-                                          Start search immediately
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          setImmaculateRefresherDetailsOpen((v) => !v);
+                                        }
+                                      }}
+                                      className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5 cursor-pointer select-none hover:bg-[#0F0B15]/45 transition-colors"
+                                    >
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                            <RotateCw className="w-3 h-3 text-yellow-300" />
+                                            Immaculate Taste Refresher
+                                          </div>
+
+                                          <AnimatePresence initial={false}>
+                                            {immaculateRefresherDetailsOpen && (
+                                              <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{
+                                                  type: 'spring',
+                                                  stiffness: 240,
+                                                  damping: 26,
+                                                  mass: 0.85,
+                                                }}
+                                                className="overflow-hidden"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <p className="mt-2 text-sm text-gray-400 leading-relaxed">
+                                                  After updating points, automatically rebuild your{' '}
+                                                  <span className="text-white/80 font-semibold">
+                                                    Inspired by your Immaculate Taste
+                                                  </span>{' '}
+                                                  Plex collection.
+                                                </p>
+                                                <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                                                  If disabled, you can still{' '}
+                                                  <a
+                                                    href="#job-immaculateTasteRefresher"
+                                                    onClick={(e) => {
+                                                      e.preventDefault();
+                                                      document
+                                                        .getElementById(
+                                                          'job-immaculateTasteRefresher',
+                                                        )
+                                                        ?.scrollIntoView({
+                                                          behavior: 'smooth',
+                                                          block: 'start',
+                                                        });
+                                                      setFlashJob({
+                                                        jobId: 'immaculateTasteRefresher',
+                                                        nonce: Date.now(),
+                                                      });
+                                                    }}
+                                                    className="text-sky-200/90 underline underline-offset-4 hover:text-sky-100 transition-colors"
+                                                  >
+                                                    run/schedule the refresher from its own card
+                                                  </a>{' '}
+                                                  independently.
+                                                </p>
+
+                                                {immaculateIncludeRefresherMutation.isError && (
+                                                  <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
+                                                    <CircleAlert className="w-4 h-4" />
+                                                    {(immaculateIncludeRefresherMutation.error as Error)
+                                                      .message}
+                                                  </div>
+                                                )}
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
                                         </div>
 
-                                        <AnimatePresence initial={false}>
-                                          {immaculateStartSearchDetailsOpen && (
-                                            <motion.div
-                                              initial={{ height: 0, opacity: 0 }}
-                                              animate={{ height: 'auto', opacity: 1 }}
-                                              exit={{ height: 0, opacity: 0 }}
-                                              transition={{
-                                                type: 'spring',
-                                                stiffness: 240,
-                                                damping: 26,
-                                                mass: 0.85,
-                                              }}
-                                              className="overflow-hidden"
-                                              onClick={(e) => e.stopPropagation()}
-                                            >
-                                              <div className="mt-2 text-sm text-gray-400 leading-relaxed">
-                                                When enabled, Radarr/Sonarr will start searching as
-                                                soon as this job adds missing titles.
-                                              </div>
-                                            </motion.div>
-                                          )}
-                                        </AnimatePresence>
-                                      </div>
-
-                                      <div
-                                        className="flex flex-col items-end gap-2 shrink-0"
-                                        onClick={(e) => e.stopPropagation()}
-                                        onPointerDown={(e) => e.stopPropagation()}
-                                      >
-                                        <button
-                                          type="button"
-                                          role="switch"
-                                          aria-checked={immaculateStartSearchImmediately}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (!immaculateStartSearchImmediately) {
-                                              setImmaculateStartSearchDialogOpen(true);
-                                              return;
-                                            }
-
-                                            const prev = immaculateStartSearchImmediately;
-                                            const next = false;
-                                            setImmaculateStartSearchImmediately(next);
-                                            immaculateStartSearchMutation.mutate(next, {
-                                              onError: () =>
-                                                setImmaculateStartSearchImmediately(prev),
-                                            });
-                                          }}
+                                        <div
+                                          className="flex flex-col items-end gap-2 shrink-0"
+                                          onClick={(e) => e.stopPropagation()}
                                           onPointerDown={(e) => e.stopPropagation()}
-                                          disabled={
-                                            settingsQuery.isLoading ||
-                                            immaculateStartSearchMutation.isPending
-                                          }
-                                          className={cn(
-                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                            immaculateStartSearchImmediately
-                                              ? 'bg-fuchsia-400'
-                                              : 'bg-[#2a2438] border-2 border-white/10'
-                                          )}
-                                          aria-label="Toggle immediate Radarr/Sonarr search for Immaculate Taste Collection"
                                         >
-                                          <span
+                                          <button
+                                            type="button"
+                                            role="switch"
+                                            aria-checked={immaculateIncludeRefresherAfterUpdate}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const next =
+                                                !immaculateIncludeRefresherAfterUpdate;
+                                              setImmaculateIncludeRefresherAfterUpdate(next);
+                                              immaculateIncludeRefresherMutation.mutate(next);
+                                            }}
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                            disabled={
+                                              settingsQuery.isLoading ||
+                                              immaculateIncludeRefresherMutation.isPending
+                                            }
                                             className={cn(
-                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                              immaculateStartSearchImmediately
-                                                ? 'translate-x-6'
-                                                : 'translate-x-1'
+                                              'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                              immaculateIncludeRefresherAfterUpdate
+                                                ? 'bg-sky-400'
+                                                : 'bg-[#2a2438] border-2 border-white/10',
                                             )}
+                                            aria-label="Toggle Immaculate Taste Refresher after update"
                                           >
-                                            {immaculateStartSearchMutation.isPending && (
-                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                            )}
-                                          </span>
-                                        </button>
+                                            <span
+                                              className={cn(
+                                                'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                                immaculateIncludeRefresherAfterUpdate
+                                                  ? 'translate-x-6'
+                                                  : 'translate-x-1',
+                                              )}
+                                            >
+                                              {immaculateIncludeRefresherMutation.isPending && (
+                                                <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                              )}
+                                            </span>
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
 
-                                  {immaculateStartSearchMutation.isError && (
-                                    <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
-                                      <CircleAlert className="w-4 h-4" />
-                                      {(immaculateStartSearchMutation.error as Error).message}
+                                    <div className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5">
+                                      <div
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-expanded={immaculateStartSearchDetailsOpen}
+                                        onClick={() =>
+                                          setImmaculateStartSearchDetailsOpen((v) => !v)
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setImmaculateStartSearchDetailsOpen((v) => !v);
+                                          }
+                                        }}
+                                        className="cursor-pointer select-none"
+                                      >
+                                        <div className="flex items-start justify-between gap-4">
+                                          <div className="min-w-0">
+                                            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                                              <Search className="w-3 h-3 text-fuchsia-300" />
+                                              Start search immediately
+                                            </div>
+
+                                            <AnimatePresence initial={false}>
+                                              {immaculateStartSearchDetailsOpen && (
+                                                <motion.div
+                                                  initial={{ height: 0, opacity: 0 }}
+                                                  animate={{ height: 'auto', opacity: 1 }}
+                                                  exit={{ height: 0, opacity: 0 }}
+                                                  transition={{
+                                                    type: 'spring',
+                                                    stiffness: 240,
+                                                    damping: 26,
+                                                    mass: 0.85,
+                                                  }}
+                                                  className="overflow-hidden"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  <div className="mt-2 text-sm text-gray-400 leading-relaxed">
+                                                    When enabled, Radarr/Sonarr will start searching as
+                                                    soon as this job adds missing titles.
+                                                  </div>
+                                                </motion.div>
+                                              )}
+                                            </AnimatePresence>
+                                          </div>
+
+                                          <div
+                                            className="flex flex-col items-end gap-2 shrink-0"
+                                            onClick={(e) => e.stopPropagation()}
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                          >
+                                            <button
+                                              type="button"
+                                              role="switch"
+                                              aria-checked={immaculateStartSearchImmediately}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!immaculateStartSearchImmediately) {
+                                                  setImmaculateStartSearchDialogOpen(true);
+                                                  return;
+                                                }
+
+                                                const prev = immaculateStartSearchImmediately;
+                                                const next = false;
+                                                setImmaculateStartSearchImmediately(next);
+                                                immaculateStartSearchMutation.mutate(next, {
+                                                  onError: () =>
+                                                    setImmaculateStartSearchImmediately(prev),
+                                                });
+                                              }}
+                                              onPointerDown={(e) => e.stopPropagation()}
+                                              disabled={
+                                                settingsQuery.isLoading ||
+                                                immaculateStartSearchMutation.isPending
+                                              }
+                                              className={cn(
+                                                'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                                immaculateStartSearchImmediately
+                                                  ? 'bg-fuchsia-400'
+                                                  : 'bg-[#2a2438] border-2 border-white/10',
+                                              )}
+                                              aria-label="Toggle immediate Radarr/Sonarr search for Immaculate Taste Collection"
+                                            >
+                                              <span
+                                                className={cn(
+                                                  'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                                  immaculateStartSearchImmediately
+                                                    ? 'translate-x-6'
+                                                    : 'translate-x-1',
+                                                )}
+                                              >
+                                                {immaculateStartSearchMutation.isPending && (
+                                                  <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                                )}
+                                              </span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {immaculateStartSearchMutation.isError && (
+                                        <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
+                                          <CircleAlert className="w-4 h-4" />
+                                          {(immaculateStartSearchMutation.error as Error).message}
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
+                                  </>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
+                            </div>
+                          </motion.div>
+                        )}
                     </AnimatePresence>
                   )}
 

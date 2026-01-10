@@ -478,8 +478,12 @@ export class ImmaculateTasteCollectionJob {
     // --- Optional Radarr: add missing titles (best-effort) ---
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(secrets, 'radarr.apiKey');
+    const fetchMissingRadarr =
+      pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ??
+      true;
     // Back-compat: if radarr.enabled isn't set, treat "secret present" as enabled.
     const radarrEnabled =
+      fetchMissingRadarr &&
       (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
       Boolean(radarrBaseUrlRaw) &&
       Boolean(radarrApiKey);
@@ -1037,7 +1041,11 @@ export class ImmaculateTasteCollectionJob {
     // --- Sonarr add missing series (best-effort)
     const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
+    const fetchMissingSonarr =
+      pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ??
+      true;
     const sonarrEnabled =
+      fetchMissingSonarr &&
       (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
       Boolean(sonarrBaseUrlRaw) &&
       Boolean(sonarrApiKey);
