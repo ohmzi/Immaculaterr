@@ -39,25 +39,11 @@
 - **Radarr + Sonarr integration** (optional per job): “Fetch Missing items” toggles let you decide whether jobs can send titles to ARR downloaders.
 - **Job reports & logs**: step-by-step breakdowns, metrics tables, expandable lists, and run history.
 
-## See it in action
-
-Three pages, one mission: keep your Plex library on autopilot.
+## Screenshots
 
 <div align="center">
-  <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr UI carousel: Command Center, Task Manager, and Your Library on Autopilot" width="900" />
+  <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr UI carousel: Your Library on Autopilot, Command Center, and Task Manager" width="900" />
 </div>
-
-<details>
-  <summary>Open full screenshots</summary>
-  <br />
-  <img src="doc/assets/screenshots/command-center.png" alt="Immaculaterr Command Center" width="900" />
-  <br />
-  <br />
-  <img src="doc/assets/screenshots/task-manager.png" alt="Immaculaterr Task Manager" width="900" />
-  <br />
-  <br />
-  <img src="doc/assets/screenshots/library-autopilot.png" alt="Immaculaterr Library Autopilot" width="900" />
-</details>
 
 ## Getting started (Docker)
 
