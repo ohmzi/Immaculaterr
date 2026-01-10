@@ -23,7 +23,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Guard: tag must point to a commit on master
+      - name: "Guard: tag must point to a commit on master"
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         shell: bash
         run: |

@@ -1,4 +1,4 @@
-name: Policy: develop-only into master
+name: "Policy: develop-only into master"
 
 on:
   push:
