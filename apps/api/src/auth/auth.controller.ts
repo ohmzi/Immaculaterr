@@ -123,7 +123,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     // Require auth (guarded). This wipes everything.
-    await this.authService.resetAllDataForDev();
+    await this.authService.resetAllData();
     const sid = this.authService.readSessionIdFromRequest(req);
     if (sid) await this.authService.logout(sid).catch(() => undefined);
     this.clearSessionCookie(req, res);

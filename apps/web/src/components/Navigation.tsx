@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { logout } from '@/api/auth';
+import { logout, resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 
@@ -164,13 +164,7 @@ export function Navigation() {
 
   const resetMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/auth/reset-dev', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        throw new Error('Failed to reset account. Please try logging out and back in.');
-      }
+      await resetDev();
     },
     onSuccess: () => {
       // Clear everything like logout

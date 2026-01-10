@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut, Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
+import { resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 
@@ -100,15 +101,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     setResetError(null);
     setResetting(true);
     try {
-      const response = await fetch('/api/auth/reset-dev', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        setResetError('Failed to reset account. Please try logging out and back in.');
-        return;
-      }
+      await resetDev();
 
       try {
         localStorage.clear();
