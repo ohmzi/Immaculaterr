@@ -47,6 +47,7 @@ export function Navigation() {
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const didToastUpdateRef = useRef(false);
+  const helpRef = useRef<HTMLDivElement | null>(null);
 
   const updatesQuery = useQuery({
     queryKey: ['updates'],
@@ -72,6 +73,21 @@ export function Navigation() {
       description: 'Update your Docker container to get the latest build (docker compose pull && docker compose up -d).',
     });
   }, [updateAvailable, updateLabel]);
+
+  // Close Help when clicking/tapping anywhere outside of the Help button + dropdown.
+  useEffect(() => {
+    if (!isHelpOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const el = helpRef.current;
+      const target = e.target as Node | null;
+      if (!el || !target) return;
+      if (!el.contains(target)) setIsHelpOpen(false);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [isHelpOpen]);
 
   // Update button positions when they change
   useEffect(() => {
@@ -187,19 +203,6 @@ export function Navigation() {
 
   return (
     <>
-      {/* Help backdrop - closes help when clicked */}
-      <AnimatePresence>
-        {isHelpOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsHelpOpen(false)}
-            className="fixed inset-0 z-40"
-          />
-        )}
-      </AnimatePresence>
-
       {/* Desktop Navigation */}
       <nav className="hidden lg:flex fixed top-0 left-0 right-0 z-50 justify-center pt-8">
         {/* Curved Cutout Container */}
@@ -306,7 +309,11 @@ export function Navigation() {
 
               {/* Right side buttons */}
               <div className="flex items-center gap-3 ml-8 overflow-visible">
-                <div className="relative">
+                <div
+                  ref={helpRef}
+                  className="relative pb-2"
+                  onMouseLeave={() => setIsHelpOpen(false)}
+                >
                   <button
                     onClick={() => setIsHelpOpen(!isHelpOpen)}
                     className="px-5 py-2.5 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 active:scale-[0.98] backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20"
