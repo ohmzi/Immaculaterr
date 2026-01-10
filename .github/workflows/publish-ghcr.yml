@@ -2,12 +2,11 @@ name: Publish Docker image to GHCR
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches:
+      - master
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 concurrency:
@@ -16,28 +15,10 @@ concurrency:
 
 jobs:
   build-and-push:
-    # Only allow manual runs from master (tags are handled separately).
-    if: ${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: "Guard: tag must point to a commit on master"
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          git fetch --no-tags --prune --depth=1 origin master:refs/remotes/origin/master
-          TAG_SHA="${GITHUB_SHA}"
-
-          if git merge-base --is-ancestor "${TAG_SHA}" "origin/master"; then
-            echo "OK: ${TAG_SHA} is on master."
-          else
-            echo "ERROR: Refusing to publish/release because ${TAG_SHA} is not on master."
-            exit 1
-          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -57,14 +38,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          REF_NAME="${GITHUB_REF_NAME}"
-          VERSION="${REF_NAME#v}"
+
+          # Read the in-app version from source of truth (apps/api/src/app.meta.ts).
+          # This ensures the Docker image metadata matches what the app reports.
+          VERSION="$(
+            node -e "const fs=require('fs');const s=fs.readFileSync('apps/api/src/app.meta.ts','utf8');const m=s.match(/DEFAULT_APP_VERSION\\s*=\\s*'([^']+)'/);process.stdout.write((m&&m[1]?m[1].trim():'')||'0.0.0.0')"
+          )"
           OWNER_LC="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           IMAGE="ghcr.io/${OWNER_LC}/immaculaterr"
           BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-12)"
 
-          echo "ref_name=${REF_NAME}" >> "${GITHUB_OUTPUT}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
           echo "build_time=${BUILD_TIME}" >> "${GITHUB_OUTPUT}"
@@ -79,7 +63,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.version }}
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.ref_name }}
+            ${{ steps.vars.outputs.image }}:v${{ steps.vars.outputs.version }}
             ${{ steps.vars.outputs.image }}:sha-${{ steps.vars.outputs.short_sha }}
             ${{ steps.vars.outputs.image }}:latest
           labels: |
@@ -92,11 +76,4 @@ jobs:
             APP_VERSION=${{ steps.vars.outputs.version }}
             APP_BUILD_SHA=${{ github.sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
-
-      - name: Create GitHub release (auto)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.vars.outputs.ref_name }}
-          generate_release_notes: true
 
