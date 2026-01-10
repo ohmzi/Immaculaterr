@@ -1,14 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
-import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
-import { WatchedMovieRecommendationsService } from '../watched-movie-recommendations/watched-movie-recommendations.service';
-import { WatchedShowRecommendationsService } from '../watched-movie-recommendations/watched-show-recommendations.service';
+import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
@@ -64,11 +62,9 @@ export class BasedonLatestWatchedCollectionJob {
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
-    private readonly plexCurated: PlexCuratedCollectionsService,
     private readonly recommendations: RecommendationsService,
     private readonly tmdb: TmdbService,
-    private readonly watchedRecs: WatchedMovieRecommendationsService,
-    private readonly watchedShowRecs: WatchedShowRecommendationsService,
+    private readonly watchedRefresher: WatchedCollectionsRefresherService,
     private readonly radarr: RadarrService,
     private readonly sonarr: SonarrService,
   ) {}
@@ -256,8 +252,6 @@ export class BasedonLatestWatchedCollectionJob {
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
       0.3;
-    const maxPoints =
-      Math.trunc(pickNumber(settings, 'recommendations.maxPoints') ?? 50) || 50;
     // Collection size is controlled separately; do NOT default it to recCount.
     const collectionLimitRaw =
       pickNumber(settings, 'recommendations.collectionLimit') ?? 15;
@@ -278,7 +272,6 @@ export class BasedonLatestWatchedCollectionJob {
       googleEnabled,
       recCount,
       upcomingPercent,
-      maxPoints,
       collectionLimit,
       webContextFraction,
     });
@@ -424,14 +417,11 @@ export class BasedonLatestWatchedCollectionJob {
         tmdbApiKey,
         plexBaseUrl,
         plexToken,
-        machineIdentifier,
         movieSectionKey,
         collectionName: col.name,
         recommendationTitles: col.titles,
         recommendationStrategy: col.strategy,
         recommendationDebug: col.debug,
-        maxPoints,
-        collectionLimit,
         radarr: radarrEnabled
           ? {
               baseUrl: radarrBaseUrl,
@@ -443,10 +433,24 @@ export class BasedonLatestWatchedCollectionJob {
       perCollection.push(summary);
     }
 
+    const refresh = await this.watchedRefresher.refresh({
+      ctx,
+      plexBaseUrl,
+      plexToken,
+      machineIdentifier,
+      movieSections,
+      tvSections: [],
+      limit: collectionLimit,
+      scope: { librarySectionKey: movieSectionKey, mode: 'movie' },
+    });
+
     const summary: JsonObject = {
       seedTitle,
       seedYear,
+      movieSectionKey,
+      movieLibraryName,
       collections: perCollection,
+      refresh,
     };
 
     await ctx.info('watchedMovieRecommendations: done', summary);
@@ -459,14 +463,11 @@ export class BasedonLatestWatchedCollectionJob {
     tmdbApiKey: string;
     plexBaseUrl: string;
     plexToken: string;
-    machineIdentifier: string;
     movieSectionKey: string;
     collectionName: string;
     recommendationTitles: string[];
     recommendationStrategy: string;
     recommendationDebug: JsonObject;
-    maxPoints: number;
-    collectionLimit: number;
     radarr: {
           baseUrl: string;
           apiKey: string;
@@ -482,14 +483,11 @@ export class BasedonLatestWatchedCollectionJob {
       tmdbApiKey,
       plexBaseUrl,
       plexToken,
-      machineIdentifier,
       movieSectionKey,
       collectionName,
       recommendationTitles,
       recommendationStrategy,
       recommendationDebug,
-      maxPoints,
-      collectionLimit,
       radarr,
     } = params;
 
@@ -518,11 +516,6 @@ export class BasedonLatestWatchedCollectionJob {
       collectionName,
       requested: recommendationTitles.length,
     });
-
-    const effectiveCollectionLimit = Math.max(
-      1,
-      Math.min(200, Math.trunc(collectionLimit || 15)),
-    );
 
     const resolved: Array<{ ratingKey: string; title: string }> = [];
     const missingTitles: string[] = [];
@@ -680,6 +673,57 @@ export class BasedonLatestWatchedCollectionJob {
       sampleTmdb: suggestedForPoints.slice(0, 10).map((s) => s.tmdbId),
     });
 
+    // Overwrite the per-library snapshot (active/pending) — no points/decay.
+    const byTmdbId = new Map<
+      number,
+      {
+        tmdbId: number;
+        title: string;
+        status: 'active' | 'pending';
+        tmdbVoteAvg: number | null;
+        tmdbVoteCount: number | null;
+      }
+    >();
+    for (const s of suggestedForPoints) {
+      const tmdbId = s.tmdbId;
+      const status: 'active' | 'pending' = s.inPlex ? 'active' : 'pending';
+      const prev = byTmdbId.get(tmdbId) ?? null;
+      if (!prev || (prev.status === 'pending' && status === 'active')) {
+        byTmdbId.set(tmdbId, {
+          tmdbId,
+          title: s.title,
+          status,
+          tmdbVoteAvg: s.tmdbVoteAvg ?? null,
+          tmdbVoteCount: s.tmdbVoteCount ?? null,
+        });
+      }
+    }
+
+    const snapshotRows = Array.from(byTmdbId.values());
+    const snapshotActive = snapshotRows.filter((r) => r.status === 'active').length;
+    const snapshotPending = snapshotRows.filter((r) => r.status === 'pending').length;
+
+    let snapshotSaved = false;
+    if (!ctx.dryRun) {
+      await this.prisma.watchedMovieRecommendationLibrary.deleteMany({
+        where: { collectionName, librarySectionKey: movieSectionKey },
+      });
+      if (snapshotRows.length) {
+        await this.prisma.watchedMovieRecommendationLibrary.createMany({
+          data: snapshotRows.map((r) => ({
+            collectionName,
+            librarySectionKey: movieSectionKey,
+            tmdbId: r.tmdbId,
+            title: r.title || undefined,
+            status: r.status,
+            tmdbVoteAvg: r.tmdbVoteAvg ?? undefined,
+            tmdbVoteCount: r.tmdbVoteCount ?? undefined,
+          })),
+        });
+      }
+      snapshotSaved = true;
+    }
+
     // Optional Radarr: add missing titles
     const radarrStats = {
       enabled: Boolean(radarr),
@@ -764,173 +808,6 @@ export class BasedonLatestWatchedCollectionJob {
       }
     }
 
-    // Update the points dataset in SQLite (pending + active by tmdbId)
-    const pointsSummary = ctx.dryRun
-      ? ({ dryRun: true } as JsonObject)
-      : await this.watchedRecs.applyPointsUpdate({
-          ctx,
-          collectionName,
-          librarySectionKey: movieSectionKey,
-          suggested: suggestedForPoints,
-          maxPoints,
-        });
-
-    // Build the desired Plex ordering from the active points dataset (limited for UX).
-    const activeRows = await this.watchedRecs.getActiveMovies({
-      collectionName,
-      librarySectionKey: movieSectionKey,
-      minPoints: 1,
-      take: Math.min(
-        250,
-        Math.max(effectiveCollectionLimit * 4, effectiveCollectionLimit),
-      ),
-    });
-    const activeByTmdbId = new Map(
-      activeRows.map((m) => [
-        m.tmdbId,
-        {
-          tmdbId: m.tmdbId,
-          title: (m.title ?? '').trim() || null,
-          tmdbVoteAvg: m.tmdbVoteAvg ?? null,
-          tmdbVoteCount: m.tmdbVoteCount ?? null,
-        },
-      ]),
-    );
-    const orderedTmdb = this.watchedRecs.buildThreeTierTmdbRatingShuffleOrder({
-      movies: activeRows.map((m) => ({
-        tmdbId: m.tmdbId,
-        tmdbVoteAvg: m.tmdbVoteAvg ?? null,
-        tmdbVoteCount: m.tmdbVoteCount ?? null,
-      })),
-    });
-
-    const desiredItems: Array<{ ratingKey: string; title: string }> = [];
-    const seenRatingKeys = new Set<string>();
-    let skippedNotInPlex = 0;
-
-    for (const tmdbId of orderedTmdb) {
-      if (desiredItems.length >= effectiveCollectionLimit) break;
-      const row = activeByTmdbId.get(tmdbId);
-      const title = (row?.title ?? '').trim();
-      if (!title) continue;
-
-      const found = await withJobRetryOrNull(
-        () =>
-          this.plexServer.findMovieRatingKeyByTitle({
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            librarySectionKey: movieSectionKey,
-            title,
-          }),
-        { ctx, label: 'plex: find movie by title', meta: { title } },
-      );
-
-      if (!found) {
-        skippedNotInPlex += 1;
-        continue;
-      }
-      if (seenRatingKeys.has(found.ratingKey)) continue;
-      seenRatingKeys.add(found.ratingKey);
-      desiredItems.push({ ratingKey: found.ratingKey, title: found.title });
-    }
-
-    await ctx.info('collection_run: desired list built from points dataset', {
-      collectionName,
-      activeCandidates: activeRows.length,
-      applying: desiredItems.length,
-      collectionLimit: effectiveCollectionLimit,
-      skippedNotInPlex,
-      sampleTop10: desiredItems.slice(0, 10).map((d) => d.title),
-    });
-
-    // Persist the latest list in app DB (replace items)
-    let dbSaved = false;
-    let curatedCollectionId: string | null = null;
-    if (!ctx.dryRun) {
-      await ctx.info('db: replace curated collection items', {
-        collectionName,
-        desiredItems: desiredItems.length,
-      });
-
-      const col = await this.prisma.curatedCollection.upsert({
-        where: { name: collectionName },
-        update: {},
-        create: { name: collectionName },
-        select: { id: true },
-      });
-      curatedCollectionId = col.id;
-
-      await this.prisma.curatedCollectionItem.deleteMany({
-        where: { collectionId: col.id },
-      });
-
-      if (desiredItems.length) {
-        await this.prisma.curatedCollectionItem.createMany({
-          data: desiredItems.map((it) => ({
-            collectionId: col.id,
-            ratingKey: it.ratingKey,
-            title: it.title,
-          })),
-        });
-      }
-      dbSaved = true;
-
-      await ctx.info('db: saved', {
-        collectionName,
-        curatedCollectionId,
-        savedItems: desiredItems.length,
-      });
-    }
-
-    // Rebuild Plex collection (delete → create → order → artwork → pin)
-    const plexResult = await (async () => {
-      if (!desiredItems.length) {
-        await ctx.warn(
-          'collection_run: no resolvable Plex items (skipping plex rebuild)',
-          {
-          collectionName,
-          generated: recommendationTitles.length,
-          missing: missingTitles.length,
-          },
-        );
-        return null;
-      }
-
-      void ctx
-        .patchSummary({
-          progress: {
-            step: 'plex_collection_sync',
-            message: `Syncing Plex collection… (${collectionName})`,
-            updatedAt: new Date().toISOString(),
-          },
-        })
-        .catch(() => undefined);
-
-      await ctx.info('plex: rebuild start', {
-        collectionName,
-        desiredItems: desiredItems.length,
-      });
-      return await withJobRetry(
-        () =>
-          this.plexCurated.rebuildMovieCollection({
-            ctx,
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            machineIdentifier,
-            movieSectionKey,
-            collectionName,
-            desiredItems,
-            randomizeOrder: false,
-          }),
-        { ctx, label: 'plex: rebuild curated collection', meta: { collectionName } },
-      );
-    })();
-
-    await ctx.info('plex: rebuild done', {
-      collectionName,
-      result: plexResult,
-    });
-
     if (!ctx.dryRun && radarr && missingTitles.length) {
       await ctx.info('radarr: done', {
         collectionName,
@@ -943,20 +820,20 @@ export class BasedonLatestWatchedCollectionJob {
       recommendationStrategy,
       recommendationDebug,
       generated: recommendationTitles.length,
-      resolvedInPlex: desiredItems.length,
+      resolvedInPlex: resolvedItems.length,
       missingInPlex: missingTitles.length,
       generatedTitles: uniqueStrings(recommendationTitles),
       resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
       missingTitles: uniqueStrings(missingTitles),
-      plexDesiredTitles: uniqueStrings(desiredItems.map((d) => d.title)),
-      dbSaved,
-      curatedCollectionId,
+      snapshot: {
+        saved: snapshotSaved,
+        active: snapshotActive,
+        pending: snapshotPending,
+      },
       radarr: radarrStats,
       radarrLists,
-      points: pointsSummary,
-      plex: plexResult,
       sampleMissing: missingTitles.slice(0, 10),
-      sampleResolved: desiredItems.slice(0, 10).map((d) => d.title),
+      sampleResolved: resolvedItems.slice(0, 10).map((d) => d.title),
     };
 
     await ctx.info('collection_run: done', summary);
@@ -1103,8 +980,6 @@ export class BasedonLatestWatchedCollectionJob {
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
       0.3;
-    const maxPoints =
-      Math.trunc(pickNumber(settings, 'recommendations.maxPoints') ?? 50) || 50;
     const collectionLimitRaw =
       pickNumber(settings, 'recommendations.collectionLimit') ?? 15;
     const collectionLimit = Math.max(
@@ -1123,7 +998,6 @@ export class BasedonLatestWatchedCollectionJob {
       googleEnabled,
       recCount,
       upcomingPercent,
-      maxPoints,
       collectionLimit,
       webContextFraction,
     });
@@ -1267,14 +1141,11 @@ export class BasedonLatestWatchedCollectionJob {
         tmdbApiKey,
         plexBaseUrl,
         plexToken,
-        machineIdentifier,
         tvSectionKey,
         collectionName: col.name,
         recommendationTitles: col.titles,
         recommendationStrategy: col.strategy,
         recommendationDebug: col.debug,
-        maxPoints,
-        collectionLimit,
         sonarr: sonarrEnabled
           ? {
               baseUrl: sonarrBaseUrl,
@@ -1286,12 +1157,24 @@ export class BasedonLatestWatchedCollectionJob {
       perCollection.push(summary);
     }
 
+    const refresh = await this.watchedRefresher.refresh({
+      ctx,
+      plexBaseUrl,
+      plexToken,
+      machineIdentifier,
+      movieSections: [],
+      tvSections,
+      limit: collectionLimit,
+      scope: { librarySectionKey: tvSectionKey, mode: 'tv' },
+    });
+
     const summary: JsonObject = {
       seedTitle,
       seedYear,
       tvLibraryName,
       tvSectionKey,
       collections: perCollection,
+      refresh,
     };
 
     await ctx.info('watchedShowRecommendations: done', summary);
@@ -1304,14 +1187,11 @@ export class BasedonLatestWatchedCollectionJob {
     tmdbApiKey: string;
     plexBaseUrl: string;
     plexToken: string;
-    machineIdentifier: string;
     tvSectionKey: string;
     collectionName: string;
     recommendationTitles: string[];
     recommendationStrategy: string;
     recommendationDebug: JsonObject;
-    maxPoints: number;
-    collectionLimit: number;
     sonarr: {
       baseUrl: string;
       apiKey: string;
@@ -1327,14 +1207,11 @@ export class BasedonLatestWatchedCollectionJob {
       tmdbApiKey,
       plexBaseUrl,
       plexToken,
-      machineIdentifier,
       tvSectionKey,
       collectionName,
       recommendationTitles,
       recommendationStrategy,
       recommendationDebug,
-      maxPoints,
-      collectionLimit,
       sonarr,
     } = params;
 
@@ -1363,11 +1240,6 @@ export class BasedonLatestWatchedCollectionJob {
       collectionName,
       requested: recommendationTitles.length,
     });
-
-    const effectiveCollectionLimit = Math.max(
-      1,
-      Math.min(200, Math.trunc(collectionLimit || 15)),
-    );
 
     const resolved: Array<{ ratingKey: string; title: string }> = [];
     const missingTitles: string[] = [];
@@ -1482,6 +1354,68 @@ export class BasedonLatestWatchedCollectionJob {
       });
     }
 
+    await ctx.info('collection_run(tv): tmdb resolve done', {
+      collectionName,
+      suggested: suggestedForPoints.length,
+      withPlex: suggestedForPoints.filter((s) => s.inPlex).length,
+      pending: suggestedForPoints.filter((s) => !s.inPlex).length,
+      sampleTvdb: suggestedForPoints.slice(0, 10).map((s) => s.tvdbId),
+    });
+
+    // Overwrite the per-library snapshot (active/pending) — no points/decay.
+    const byTvdbId = new Map<
+      number,
+      {
+        tvdbId: number;
+        tmdbId: number | null;
+        title: string;
+        status: 'active' | 'pending';
+        tmdbVoteAvg: number | null;
+        tmdbVoteCount: number | null;
+      }
+    >();
+    for (const s of suggestedForPoints) {
+      const tvdbId = s.tvdbId;
+      const status: 'active' | 'pending' = s.inPlex ? 'active' : 'pending';
+      const prev = byTvdbId.get(tvdbId) ?? null;
+      if (!prev || (prev.status === 'pending' && status === 'active')) {
+        byTvdbId.set(tvdbId, {
+          tvdbId,
+          tmdbId: s.tmdbId ?? null,
+          title: s.title,
+          status,
+          tmdbVoteAvg: s.tmdbVoteAvg ?? null,
+          tmdbVoteCount: s.tmdbVoteCount ?? null,
+        });
+      }
+    }
+
+    const snapshotRows = Array.from(byTvdbId.values());
+    const snapshotActive = snapshotRows.filter((r) => r.status === 'active').length;
+    const snapshotPending = snapshotRows.filter((r) => r.status === 'pending').length;
+
+    let snapshotSaved = false;
+    if (!ctx.dryRun) {
+      await this.prisma.watchedShowRecommendationLibrary.deleteMany({
+        where: { collectionName, librarySectionKey: tvSectionKey },
+      });
+      if (snapshotRows.length) {
+        await this.prisma.watchedShowRecommendationLibrary.createMany({
+          data: snapshotRows.map((r) => ({
+            collectionName,
+            librarySectionKey: tvSectionKey,
+            tvdbId: r.tvdbId,
+            tmdbId: r.tmdbId ?? undefined,
+            title: r.title || undefined,
+            status: r.status,
+            tmdbVoteAvg: r.tmdbVoteAvg ?? undefined,
+            tmdbVoteCount: r.tmdbVoteCount ?? undefined,
+          })),
+        });
+      }
+      snapshotSaved = true;
+    }
+
     // --- Sonarr add missing series (best-effort)
     const sonarrStats = {
       enabled: Boolean(sonarr),
@@ -1559,165 +1493,25 @@ export class BasedonLatestWatchedCollectionJob {
       await ctx.info('sonarr: done', { collectionName, ...sonarrStats });
     }
 
-    // Update points dataset (DB) by tvdbId
-    const pointsSummary = ctx.dryRun
-      ? ({ dryRun: true } as JsonObject)
-      : await this.watchedShowRecs.applyPointsUpdate({
-          ctx,
-          collectionName,
-          librarySectionKey: tvSectionKey,
-          suggested: suggestedForPoints,
-          maxPoints,
-        });
-
-    // Build desired Plex ordering from active points dataset.
-    const activeRows = await this.watchedShowRecs.getActiveShows({
-      collectionName,
-      librarySectionKey: tvSectionKey,
-      minPoints: 1,
-      take: Math.min(
-        250,
-        Math.max(effectiveCollectionLimit * 4, effectiveCollectionLimit),
-      ),
-    });
-    const activeByTvdbId = new Map(
-      activeRows.map((s) => [
-        s.tvdbId,
-        {
-          tvdbId: s.tvdbId,
-          title: (s.title ?? '').trim() || null,
-          tmdbVoteAvg: s.tmdbVoteAvg ?? null,
-          tmdbVoteCount: s.tmdbVoteCount ?? null,
-        },
-      ]),
-    );
-
-    const orderedTvdb = this.watchedShowRecs.buildThreeTierTmdbRatingShuffleOrder({
-      shows: activeRows.map((s) => ({
-        tvdbId: s.tvdbId,
-        tmdbVoteAvg: s.tmdbVoteAvg ?? null,
-        tmdbVoteCount: s.tmdbVoteCount ?? null,
-      })),
-    });
-
-    const desiredItems: Array<{ ratingKey: string; title: string }> = [];
-    const seenRatingKeys = new Set<string>();
-    let skippedNotInPlex = 0;
-
-    for (const tvdbId of orderedTvdb) {
-      if (desiredItems.length >= effectiveCollectionLimit) break;
-      const row = activeByTvdbId.get(tvdbId);
-      const title = (row?.title ?? '').trim();
-      if (!title) continue;
-
-      const found = await withJobRetryOrNull(
-        () =>
-          this.plexServer.findShowRatingKeyByTitle({
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            librarySectionKey: tvSectionKey,
-            title,
-          }),
-        { ctx, label: 'plex: find show by title', meta: { title } },
-      );
-
-      if (!found) {
-        skippedNotInPlex += 1;
-        continue;
-      }
-      if (seenRatingKeys.has(found.ratingKey)) continue;
-      seenRatingKeys.add(found.ratingKey);
-      desiredItems.push({ ratingKey: found.ratingKey, title: found.title });
-    }
-
-    await ctx.info('collection_run(tv): desired list built from points dataset', {
-      collectionName,
-      activeCandidates: activeRows.length,
-      applying: desiredItems.length,
-      collectionLimit: effectiveCollectionLimit,
-      skippedNotInPlex,
-      sampleTop10: desiredItems.slice(0, 10).map((d) => d.title),
-    });
-
-    // NOTE: For TV we do NOT persist to CuratedCollection table yet (movie-only UI).
-    const dbSaved = false;
-    const curatedCollectionId: string | null = null;
-
-    // Rebuild Plex collection (delete → create → order → artwork → pin)
-    const plexResult = await (async () => {
-      if (!desiredItems.length) {
-        await ctx.warn(
-          'collection_run(tv): no resolvable Plex items (skipping plex rebuild)',
-          {
-            collectionName,
-            generated: recommendationTitles.length,
-            missing: missingTitles.length,
-          },
-        );
-        return { skipped: true, reason: 'no_resolvable_items' } as JsonObject;
-      }
-
-      void ctx
-        .patchSummary({
-          progress: {
-            step: 'plex_collection_sync',
-            message: `Syncing Plex collection… (${collectionName})`,
-            updatedAt: new Date().toISOString(),
-          },
-        })
-        .catch(() => undefined);
-
-      await ctx.info('plex: rebuilding curated collection (tv)', {
-        collectionName,
-        tvSectionKey,
-        desiredItems: desiredItems.length,
-      });
-
-      return await withJobRetry(
-        () =>
-          this.plexCurated.rebuildMovieCollection({
-            ctx,
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            machineIdentifier,
-            movieSectionKey: tvSectionKey,
-            itemType: 2,
-            collectionName,
-            desiredItems,
-            randomizeOrder: false,
-          }),
-        {
-          ctx,
-          label: 'plex: rebuild curated collection',
-          meta: { collectionName },
-        },
-      );
-    })();
-
-    await ctx.info('plex: rebuild done (tv)', {
-      collectionName,
-      result: plexResult,
-    });
-
     const summary: JsonObject = {
       collectionName,
       recommendationStrategy,
       recommendationDebug,
       generated: recommendationTitles.length,
-      resolvedInPlex: desiredItems.length,
+      resolvedInPlex: resolvedItems.length,
       missingInPlex: missingTitles.length,
       generatedTitles: uniqueStrings(recommendationTitles),
       resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
       missingTitles: uniqueStrings(missingTitles),
-      plexDesiredTitles: uniqueStrings(desiredItems.map((d) => d.title)),
-      dbSaved,
-      curatedCollectionId,
+      snapshot: {
+        saved: snapshotSaved,
+        active: snapshotActive,
+        pending: snapshotPending,
+      },
       sonarr: sonarrStats,
       sonarrLists,
-      points: pointsSummary,
-      plex: plexResult,
       sampleMissing: missingTitles.slice(0, 10),
-      sampleResolved: desiredItems.slice(0, 10).map((d) => d.title),
+      sampleResolved: resolvedItems.slice(0, 10).map((d) => d.title),
     };
 
     await ctx.info('collection_run(tv): done', summary);
@@ -2258,11 +2052,39 @@ function buildWatchedLatestCollectionReport(params: {
   }
 
   // 4) Refresh Plex collection
+  const desiredByCollection = new Map<string, string[]>();
+  const refreshRaw = (raw as Record<string, unknown>).refresh;
+  const refresh = isPlainObject(refreshRaw)
+    ? (refreshRaw as Record<string, unknown>)
+    : null;
+  const sideRaw = refresh ? (isTv ? refresh['tv'] : refresh['movie']) : null;
+  const side = isPlainObject(sideRaw) ? (sideRaw as Record<string, unknown>) : null;
+  const byLibraryRaw = side?.['byLibrary'];
+  const byLibrary = Array.isArray(byLibraryRaw)
+    ? byLibraryRaw.filter((b): b is Record<string, unknown> => isPlainObject(b))
+    : [];
+  for (const lib of byLibrary) {
+    const colsRaw = lib['collections'];
+    const cols = Array.isArray(colsRaw)
+      ? colsRaw.filter((c): c is Record<string, unknown> => isPlainObject(c))
+      : [];
+    for (const c of cols) {
+      const name = String(c['collectionName'] ?? '').trim();
+      if (!name) continue;
+      const desired = uniqueStrings(asStringArray(c['desiredTitles']));
+      if (!desired.length) continue;
+      const existing = desiredByCollection.get(name) ?? [];
+      desiredByCollection.set(name, uniqueStrings(existing.concat(desired)));
+    }
+  }
+
   const plexFacts: Array<{ label: string; value: JsonValue }> = [];
   let anyDesired = false;
   for (const [idx, c] of collections.entries()) {
     const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
-    const desiredTitles = uniqueStrings(asStringArray(c.plexDesiredTitles ?? c.sampleResolved));
+    const desiredTitles =
+      desiredByCollection.get(name) ??
+      uniqueStrings(asStringArray(c.sampleResolved));
     if (desiredTitles.length) anyDesired = true;
     plexFacts.push({
       label: name,

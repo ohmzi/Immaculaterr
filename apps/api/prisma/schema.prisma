@@ -209,7 +209,6 @@ model WatchedMovieRecommendationLibrary {
   title              String?
 
   status WatchedRecommendationStatus @default(pending)
-  points Int                         @default(0)
 
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
@@ -220,7 +219,6 @@ model WatchedMovieRecommendationLibrary {
   @@id([collectionName, librarySectionKey, tmdbId])
   @@index([librarySectionKey])
   @@index([librarySectionKey, collectionName, status])
-  @@index([librarySectionKey, collectionName, points])
   @@index([librarySectionKey, collectionName, tmdbVoteAvg])
   @@index([tmdbId])
 }
@@ -304,7 +302,6 @@ model WatchedShowRecommendationLibrary {
   title  String?
 
   status WatchedRecommendationStatus @default(pending)
-  points Int                         @default(0)
 
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
@@ -316,7 +313,6 @@ model WatchedShowRecommendationLibrary {
   @@index([librarySectionKey])
   @@index([tmdbId])
   @@index([librarySectionKey, collectionName, status])
-  @@index([librarySectionKey, collectionName, points])
   @@index([librarySectionKey, collectionName, tmdbVoteAvg])
 }
 

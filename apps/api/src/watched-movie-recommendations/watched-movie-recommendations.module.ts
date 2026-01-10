@@ -1,13 +1,12 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
-import { TmdbModule } from '../tmdb/tmdb.module';
-import { WatchedMovieRecommendationsService } from './watched-movie-recommendations.service';
-import { WatchedShowRecommendationsService } from './watched-show-recommendations.service';
+import { PlexModule } from '../plex/plex.module';
+import { WatchedCollectionsRefresherService } from './watched-collections-refresher.service';
 
 @Module({
-  imports: [DbModule, TmdbModule],
-  providers: [WatchedMovieRecommendationsService, WatchedShowRecommendationsService],
-  exports: [WatchedMovieRecommendationsService, WatchedShowRecommendationsService],
+  imports: [DbModule, PlexModule],
+  providers: [WatchedCollectionsRefresherService],
+  exports: [WatchedCollectionsRefresherService],
 })
 export class WatchedMovieRecommendationsModule {}
 
