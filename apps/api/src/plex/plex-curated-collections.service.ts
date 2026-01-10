@@ -729,14 +729,15 @@ export class PlexCuratedCollectionsService {
     poster: string | null;
     background: string | null;
   } {
+    const normalizedName = collectionName.trim().toLowerCase();
     const collectionArtworkMap: Record<string, string> = {
-      'Inspired by your Immaculate Taste': 'immaculate_taste_collection',
-      'Based on your recently watched movie': 'recently_watched_collection',
-      'Based on your recently watched show': 'recently_watched_collection',
-      'Change of Taste': 'change_of_taste_collection',
+      'inspired by your immaculate taste': 'immaculate_taste_collection',
+      'based on your recently watched movie': 'recently_watched_collection',
+      'based on your recently watched show': 'recently_watched_collection',
+      'change of taste': 'change_of_taste_collection',
     };
 
-    const artworkName = collectionArtworkMap[collectionName];
+    const artworkName = collectionArtworkMap[normalizedName];
     if (!artworkName) {
       return { poster: null, background: null };
     }
