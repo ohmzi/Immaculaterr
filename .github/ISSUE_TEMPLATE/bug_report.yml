@@ -1,0 +1,59 @@
+name: Bug report
+description: Report something that isn’t working
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Found in Help → Version.
+      placeholder: v0.0.0.200
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker (recommended)
+        - Local (node)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Include what you expected to happen.
+      placeholder: When I click X, I expected Y, but Z happened…
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to…
+        2. Click…
+        3. See…
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots (optional)
+      description: Paste relevant logs (redact tokens) or attach screenshots.
+      render: shell
+    validations:
+      required: false
+

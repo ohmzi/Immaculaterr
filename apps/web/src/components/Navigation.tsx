@@ -48,6 +48,7 @@ export function Navigation() {
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const didToastUpdateRef = useRef(false);
   const helpRef = useRef<HTMLDivElement | null>(null);
+  const helpCloseTimeoutRef = useRef<number | null>(null);
 
   const updatesQuery = useQuery({
     queryKey: ['updates'],
@@ -88,6 +89,21 @@ export function Navigation() {
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [isHelpOpen]);
+
+  const clearHelpCloseTimeout = () => {
+    const t = helpCloseTimeoutRef.current;
+    if (t) window.clearTimeout(t);
+    helpCloseTimeoutRef.current = null;
+  };
+
+  const scheduleHelpClose = () => {
+    clearHelpCloseTimeout();
+    // Small delay so moving from the button into the dropdown doesn't instantly close it.
+    helpCloseTimeoutRef.current = window.setTimeout(() => {
+      setIsHelpOpen(false);
+      helpCloseTimeoutRef.current = null;
+    }, 250);
+  };
 
   // Update button positions when they change
   useEffect(() => {
@@ -312,7 +328,8 @@ export function Navigation() {
                 <div
                   ref={helpRef}
                   className="relative pb-2"
-                  onMouseLeave={() => setIsHelpOpen(false)}
+                  onMouseEnter={() => clearHelpCloseTimeout()}
+                  onMouseLeave={() => scheduleHelpClose()}
                 >
                   <button
                     onClick={() => setIsHelpOpen(!isHelpOpen)}
