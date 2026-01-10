@@ -58,8 +58,10 @@ type SessionSnapshot = PlexNowPlayingSession & {
   lastSeenAtMs: number;
   firstViewOffsetMs: number | null;
   lastViewOffsetMs: number | null;
-  scrobbleTriggered: boolean;
-  scrobbleTriggeredAtMs: number | null;
+  watchedTriggered: boolean;
+  watchedTriggeredAtMs: number | null;
+  immaculateTriggered: boolean;
+  immaculateTriggeredAtMs: number | null;
 };
 
 @Injectable()
@@ -74,8 +76,16 @@ export class PlexPollingService implements OnModuleInit {
     process.env.PLEX_POLLING_INTERVAL_MS,
     5_000,
   );
-  private readonly scrobbleThreshold = (() => {
-    const v = parseFloatEnv(process.env.PLEX_POLLING_SCROBBLE_THRESHOLD, 0.7);
+  private readonly watchedScrobbleThreshold = (() => {
+    const v = parseFloatEnv(process.env.PLEX_POLLING_WATCHED_THRESHOLD, 0.6);
+    return v > 1 ? v / 100 : v;
+  })();
+  private readonly immaculateScrobbleThreshold = (() => {
+    const v = parseFloatEnv(
+      process.env.PLEX_POLLING_IMMACULATE_THRESHOLD ??
+        process.env.PLEX_POLLING_SCROBBLE_THRESHOLD,
+      0.7,
+    );
     return v > 1 ? v / 100 : v;
   })();
   private readonly minDurationMs = parseNumberEnv(
@@ -116,7 +126,7 @@ export class PlexPollingService implements OnModuleInit {
 
   onModuleInit() {
     this.logger.log(
-      `Plex polling ${this.enabled ? 'ENABLED' : 'disabled'} intervalMs=${this.intervalMs} scrobbleThreshold=${this.scrobbleThreshold} minDurationMs=${this.minDurationMs}`,
+      `Plex polling ${this.enabled ? 'ENABLED' : 'disabled'} intervalMs=${this.intervalMs} watchedThreshold=${this.watchedScrobbleThreshold} immaculateThreshold=${this.immaculateScrobbleThreshold} minDurationMs=${this.minDurationMs}`,
     );
     // Let the app fully boot first.
     setTimeout(() => void this.pollOnce(), 15_000);
@@ -592,8 +602,10 @@ export class PlexPollingService implements OnModuleInit {
       lastSeenAtMs: nowMs,
       firstViewOffsetMs,
       lastViewOffsetMs: firstViewOffsetMs,
-      scrobbleTriggered: false,
-      scrobbleTriggeredAtMs: null,
+      watchedTriggered: false,
+      watchedTriggeredAtMs: null,
+      immaculateTriggered: false,
+      immaculateTriggeredAtMs: null,
     };
   }
 
@@ -618,8 +630,10 @@ export class PlexPollingService implements OnModuleInit {
       firstViewOffsetMs: prev.firstViewOffsetMs ?? viewOffset ?? null,
       lastSeenAtMs: nowMs,
       lastViewOffsetMs,
-      scrobbleTriggered: prev.scrobbleTriggered,
-      scrobbleTriggeredAtMs: prev.scrobbleTriggeredAtMs,
+      watchedTriggered: prev.watchedTriggered,
+      watchedTriggeredAtMs: prev.watchedTriggeredAtMs,
+      immaculateTriggered: prev.immaculateTriggered,
+      immaculateTriggeredAtMs: prev.immaculateTriggeredAtMs,
     };
   }
 
@@ -642,14 +656,12 @@ export class PlexPollingService implements OnModuleInit {
 
     // Only trigger for video scrobbles (movie/episode).
     if (snap.type !== 'movie' && snap.type !== 'episode') return snap;
-    if (snap.scrobbleTriggered) return snap;
 
     const duration = snap.durationMs ?? null;
     if (!duration || duration < this.minDurationMs) return snap;
 
     const ratio = this.getProgressRatio(snap);
     if (ratio === null) return snap;
-    if (ratio < this.scrobbleThreshold) return snap;
 
     // Respect per-job auto-run toggles (same settings as webhooks).
     const watchedEnabled =
@@ -659,13 +671,50 @@ export class PlexPollingService implements OnModuleInit {
       pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ?? false;
     if (!watchedEnabled && !immaculateEnabled) return snap;
 
-    // De-dupe across short time windows (protects against both polling quirks and "double triggers"
-    // if the user ever enables Plex webhooks too).
-    const dedupeKey = `${snap.type}:${snap.ratingKey ?? 'unknown'}:${snap.librarySectionId ?? 'unknown'}`;
+    const shouldConsiderWatched =
+      watchedEnabled &&
+      !snap.watchedTriggered &&
+      ratio >= this.watchedScrobbleThreshold;
+    const shouldConsiderImmaculate =
+      immaculateEnabled &&
+      !snap.immaculateTriggered &&
+      ratio >= this.immaculateScrobbleThreshold;
+    if (!shouldConsiderWatched && !shouldConsiderImmaculate) return snap;
+
+    // De-dupe across short time windows (protects against polling quirks and sessionKey resets).
     const now = Date.now();
-    const last = this.recentTriggers.get(dedupeKey) ?? 0;
-    if (now - last < PlexPollingService.RECENT_TRIGGER_TTL_MS) return snap;
-    this.recentTriggers.set(dedupeKey, now);
+    const makeDedupeKey = (jobId: string) =>
+      `${jobId}:${snap.type}:${snap.ratingKey ?? 'unknown'}:${snap.librarySectionId ?? 'unknown'}`;
+
+    let runWatched = false;
+    let runImmaculate = false;
+
+    let next: SessionSnapshot = { ...snap };
+
+    if (shouldConsiderWatched) {
+      const key = makeDedupeKey('watchedMovieRecommendations');
+      const last = this.recentTriggers.get(key) ?? 0;
+      if (now - last < PlexPollingService.RECENT_TRIGGER_TTL_MS) {
+        next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
+      } else {
+        this.recentTriggers.set(key, now);
+        runWatched = true;
+      }
+    }
+
+    if (shouldConsiderImmaculate) {
+      const key = makeDedupeKey('immaculateTastePoints');
+      const last = this.recentTriggers.get(key) ?? 0;
+      if (now - last < PlexPollingService.RECENT_TRIGGER_TTL_MS) {
+        next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+      } else {
+        this.recentTriggers.set(key, now);
+        runImmaculate = true;
+      }
+    }
+
+    // If we decided not to run anything (dedupe-only), just mark triggered flags and exit.
+    if (!runWatched && !runImmaculate) return next;
 
     const viewOffset =
       snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
@@ -687,7 +736,8 @@ export class PlexPollingService implements OnModuleInit {
         duration: duration,
         progress: ratio,
         source: params.reason,
-        threshold: this.scrobbleThreshold,
+        thresholdWatchedMovieRecommendations: this.watchedScrobbleThreshold,
+        thresholdImmaculateTastePoints: this.immaculateScrobbleThreshold,
       },
       Account: {
         title: snap.userTitle ?? undefined,
@@ -739,24 +789,32 @@ export class PlexPollingService implements OnModuleInit {
         : {}),
       persistedPath: persisted.path,
       progress: ratio,
-      threshold: this.scrobbleThreshold,
       reason: params.reason,
+    } as const;
+    const watchedInput = {
+      ...payloadInput,
+      threshold: this.watchedScrobbleThreshold,
+    } as const;
+    const immaculateInput = {
+      ...payloadInput,
+      threshold: this.immaculateScrobbleThreshold,
     } as const;
 
     const runs: Record<string, string> = {};
     const errors: Record<string, string> = {};
     const skipped: Record<string, string> = {};
 
-    if (!watchedEnabled) {
-      skipped.watchedMovieRecommendations = 'disabled';
-    } else {
+    if (watchedEnabled && !runWatched) {
+      skipped.watchedMovieRecommendations = 'dedupe_or_already_triggered';
+    }
+    if (runWatched) {
       try {
         const run = await this.jobsService.runJob({
           jobId: 'watchedMovieRecommendations',
           trigger: 'auto',
           dryRun: false,
           userId,
-          input: payloadInput,
+          input: watchedInput,
         });
         runs.watchedMovieRecommendations = run.id;
       } catch (err) {
@@ -765,16 +823,17 @@ export class PlexPollingService implements OnModuleInit {
       }
     }
 
-    if (!immaculateEnabled) {
-      skipped.immaculateTastePoints = 'disabled';
-    } else {
+    if (immaculateEnabled && !runImmaculate) {
+      skipped.immaculateTastePoints = 'dedupe_or_already_triggered';
+    }
+    if (runImmaculate) {
       try {
         const run = await this.jobsService.runJob({
           jobId: 'immaculateTastePoints',
           trigger: 'auto',
           dryRun: false,
           userId,
-          input: payloadInput,
+          input: immaculateInput,
         });
         runs.immaculateTastePoints = run.id;
       } catch (err) {
@@ -793,9 +852,11 @@ export class PlexPollingService implements OnModuleInit {
     });
 
     return {
-      ...snap,
-      scrobbleTriggered: true,
-      scrobbleTriggeredAtMs: now,
+      ...next,
+      ...(runWatched ? { watchedTriggered: true, watchedTriggeredAtMs: now } : {}),
+      ...(runImmaculate
+        ? { immaculateTriggered: true, immaculateTriggeredAtMs: now }
+        : {}),
     };
   }
 
