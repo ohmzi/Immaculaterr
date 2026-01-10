@@ -1234,9 +1234,14 @@ export function TaskManagerPage() {
                     <div className="flex items-center gap-4 self-end md:self-center w-full md:w-auto justify-between md:justify-end shrink-0 md:items-stretch">
                       {supportsSchedule ? (
                         <div className="flex flex-col items-center gap-2 md:self-center">
-                          <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                            Auto-Run
-                          </span>
+                          <div className="flex flex-col items-center gap-0.5 leading-none">
+                            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                              Scheduled
+                            </span>
+                            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                              Auto-Run
+                            </span>
+                          </div>
                           <button
                             type="button"
                             role="switch"
@@ -1309,9 +1314,14 @@ export function TaskManagerPage() {
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-2 md:self-center">
-                          <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                            Auto-Run
-                          </span>
+                          <div className="flex flex-col items-center gap-0.5 leading-none">
+                            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                              Plex-Triggered
+                            </span>
+                            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                              Auto-Run
+                            </span>
+                          </div>
                           <button
                             type="button"
                             role="switch"
