@@ -3,7 +3,7 @@ Immaculaterr
 
 [![Build Status](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml)
 [![Latest Release](https://img.shields.io/github/v/release/ohmzi/Immaculaterr)](https://github.com/ohmzi/Immaculaterr/releases)
-[![License](https://img.shields.io/github/license/ohmzi/Immaculaterr)](./LICENSE)
+[![License](https://img.shields.io/github/license/ohmzi/Immaculaterr)](../LICENSE)
 [![GitHub Downloads](https://img.shields.io/github/downloads/ohmzi/Immaculaterr/total)](https://github.com/ohmzi/Immaculaterr/releases)
 
 Immaculaterr is a **Plex “autopilot”** that watches what you’re watching, generates recommendations, and keeps your library tidy.
@@ -70,7 +70,7 @@ Support
 License
 ---
 
-Immaculaterr is licensed under the **MIT License** — see [LICENSE](./LICENSE).
+Immaculaterr is licensed under the **MIT License** — see [LICENSE](../LICENSE).
 
 This project uses publicly available APIs and integrates with third‑party services (Plex, Radarr, Sonarr, TMDB, OpenAI, Google).
 You are responsible for complying with their respective terms of service. Immaculaterr is not affiliated with or endorsed by those services.
