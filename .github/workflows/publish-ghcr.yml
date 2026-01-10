@@ -16,10 +16,28 @@ concurrency:
 
 jobs:
   build-and-push:
+    # Only allow manual runs from master (tags are handled separately).
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Guard: tag must point to a commit on master
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags --prune --depth=1 origin master:refs/remotes/origin/master
+          TAG_SHA="${GITHUB_SHA}"
+
+          if git merge-base --is-ancestor "${TAG_SHA}" "origin/master"; then
+            echo "OK: ${TAG_SHA} is on master."
+          else
+            echo "ERROR: Refusing to publish/release because ${TAG_SHA} is not on master."
+            exit 1
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

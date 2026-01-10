@@ -1,0 +1,90 @@
+name: Policy: develop-only into master
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - edited
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  develop-only:
+    name: develop-only
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate policy
+        id: policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "base_ref=${BASE_REF}"
+          echo "head_ref=${HEAD_REF}"
+          echo "head_sha=${HEAD_SHA}"
+
+          if [[ "${BASE_REF}" != "master" ]]; then
+            echo "allowed=false" >> "${GITHUB_OUTPUT}"
+            echo "reason=This workflow only enforces PRs into master." >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${HEAD_REF}" == "develop" ]]; then
+            echo "allowed=true" >> "${GITHUB_OUTPUT}"
+            echo "reason=OK: PR source branch is develop." >> "${GITHUB_OUTPUT}"
+          else
+            echo "allowed=false" >> "${GITHUB_OUTPUT}"
+            echo "reason=Only PRs from develop are allowed into master." >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set required commit status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ALLOWED: ${{ steps.policy.outputs.allowed }}
+          REASON: ${{ steps.policy.outputs.reason }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STATE="failure"
+          DESCRIPTION="${REASON:-Only PRs from develop are allowed into master.}"
+          if [[ "${ALLOWED:-false}" == "true" ]]; then
+            STATE="success"
+          fi
+
+          # Post a stable status context that branch protection can require.
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/statuses/${SHA}" \
+            -d "$(jq -n \
+              --arg state "${STATE}" \
+              --arg context "policy/develop-only-into-master" \
+              --arg description "${DESCRIPTION}" \
+              --arg target_url "${RUN_URL}" \
+              '{state:$state, context:$context, description:$description, target_url:$target_url}')" \
+            >/dev/null
+
+      - name: Enforce policy
+        if: steps.policy.outputs.allowed != 'true'
+        shell: bash
+        run: |
+          echo "${{ steps.policy.outputs.reason }}"
+          exit 1
+
