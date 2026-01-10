@@ -1064,7 +1064,8 @@ export function TaskManagerPage() {
               const isExpanded = expandedCards[job.id] ?? false;
               const canExpand =
                 (supportsSchedule && Boolean(job.schedule || job.defaultScheduleCron)) ||
-                job.id === 'immaculateTastePoints';
+                job.id === 'immaculateTastePoints' ||
+                job.id === 'watchedMovieRecommendations';
 
               return (
                 <div
@@ -1297,7 +1298,11 @@ export function TaskManagerPage() {
                               const prev = webhookEnabled;
                               const next = !webhookEnabled;
                               setWebhookAutoRun((p) => ({ ...p, [job.id]: next }));
-                              if (next && job.id === 'immaculateTastePoints') {
+                              if (
+                                next &&
+                                (job.id === 'immaculateTastePoints' ||
+                                  job.id === 'watchedMovieRecommendations')
+                              ) {
                                 setExpandedCards((p) => ({ ...p, [job.id]: true }));
                               }
                               webhookAutoRunMutation.mutate(
@@ -1511,7 +1516,7 @@ export function TaskManagerPage() {
                   {/* Webhook/manual expansion (extra controls for webhook-only jobs) */}
                   {!supportsSchedule && (
                     <AnimatePresence initial={false}>
-                      {isExpanded &&
+                      {(isExpanded || webhookEnabled) &&
                         (job.id === 'immaculateTastePoints' ||
                           job.id === 'watchedMovieRecommendations') && (
                           <motion.div
@@ -1529,159 +1534,7 @@ export function TaskManagerPage() {
                           >
                             <div className="px-6 md:px-8 py-5">
                               <div className="flex flex-col gap-3">
-                                <div className="rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
-                                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                    Fetch Missing items:
-                                  </div>
-
-                                  <div className="mt-3 flex flex-col sm:flex-row gap-3">
-                                    <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
-                                      <div className="min-w-0">
-                                        <div className="text-sm font-semibold text-white">
-                                          Radarr
-                                        </div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={
-                                          job.id === 'immaculateTastePoints'
-                                            ? immaculateFetchMissingRadarr
-                                            : watchedFetchMissingRadarr
-                                        }
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const prev =
-                                            job.id === 'immaculateTastePoints'
-                                              ? immaculateFetchMissingRadarr
-                                              : watchedFetchMissingRadarr;
-                                          const next = !prev;
-                                          if (job.id === 'immaculateTastePoints')
-                                            setImmaculateFetchMissingRadarr(next);
-                                          else setWatchedFetchMissingRadarr(next);
-
-                                          fetchMissingMutation.mutate(
-                                            {
-                                              jobId: job.id as
-                                                | 'immaculateTastePoints'
-                                                | 'watchedMovieRecommendations',
-                                              patch: { radarr: next },
-                                            },
-                                            {
-                                              onError: () => {
-                                                if (job.id === 'immaculateTastePoints')
-                                                  setImmaculateFetchMissingRadarr(prev);
-                                                else setWatchedFetchMissingRadarr(prev);
-                                              },
-                                            },
-                                          );
-                                        }}
-                                        disabled={
-                                          settingsQuery.isLoading ||
-                                          fetchMissingMutation.isPending
-                                        }
-                                        className={cn(
-                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                          (job.id === 'immaculateTastePoints'
-                                            ? immaculateFetchMissingRadarr
-                                            : watchedFetchMissingRadarr)
-                                            ? 'bg-[#facc15]'
-                                            : 'bg-[#2a2438] border-2 border-white/10',
-                                        )}
-                                        aria-label={`Toggle Radarr fetch for ${job.name}`}
-                                      >
-                                        <span
-                                          className={cn(
-                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                            (job.id === 'immaculateTastePoints'
-                                              ? immaculateFetchMissingRadarr
-                                              : watchedFetchMissingRadarr)
-                                              ? 'translate-x-6'
-                                              : 'translate-x-1',
-                                          )}
-                                        >
-                                          {fetchMissingMutation.isPending && (
-                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                          )}
-                                        </span>
-                                      </button>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
-                                      <div className="min-w-0">
-                                        <div className="text-sm font-semibold text-white">
-                                          Sonarr
-                                        </div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={
-                                          job.id === 'immaculateTastePoints'
-                                            ? immaculateFetchMissingSonarr
-                                            : watchedFetchMissingSonarr
-                                        }
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const prev =
-                                            job.id === 'immaculateTastePoints'
-                                              ? immaculateFetchMissingSonarr
-                                              : watchedFetchMissingSonarr;
-                                          const next = !prev;
-                                          if (job.id === 'immaculateTastePoints')
-                                            setImmaculateFetchMissingSonarr(next);
-                                          else setWatchedFetchMissingSonarr(next);
-
-                                          fetchMissingMutation.mutate(
-                                            {
-                                              jobId: job.id as
-                                                | 'immaculateTastePoints'
-                                                | 'watchedMovieRecommendations',
-                                              patch: { sonarr: next },
-                                            },
-                                            {
-                                              onError: () => {
-                                                if (job.id === 'immaculateTastePoints')
-                                                  setImmaculateFetchMissingSonarr(prev);
-                                                else setWatchedFetchMissingSonarr(prev);
-                                              },
-                                            },
-                                          );
-                                        }}
-                                        disabled={
-                                          settingsQuery.isLoading ||
-                                          fetchMissingMutation.isPending
-                                        }
-                                        className={cn(
-                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                          (job.id === 'immaculateTastePoints'
-                                            ? immaculateFetchMissingSonarr
-                                            : watchedFetchMissingSonarr)
-                                            ? 'bg-[#facc15]'
-                                            : 'bg-[#2a2438] border-2 border-white/10',
-                                        )}
-                                        aria-label={`Toggle Sonarr fetch for ${job.name}`}
-                                      >
-                                        <span
-                                          className={cn(
-                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                            (job.id === 'immaculateTastePoints'
-                                              ? immaculateFetchMissingSonarr
-                                              : watchedFetchMissingSonarr)
-                                              ? 'translate-x-6'
-                                              : 'translate-x-1',
-                                          )}
-                                        >
-                                          {fetchMissingMutation.isPending && (
-                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                          )}
-                                        </span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {job.id === 'immaculateTastePoints' && webhookEnabled && (
+                                {job.id === 'immaculateTastePoints' ? (
                                   <>
                                     <div
                                       role="button"
@@ -1811,105 +1664,175 @@ export function TaskManagerPage() {
                                       </div>
                                     </div>
 
-                                    <div className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5">
-                                      <div
-                                        role="button"
-                                        tabIndex={0}
-                                        aria-expanded={immaculateStartSearchDetailsOpen}
-                                        onClick={() =>
-                                          setImmaculateStartSearchDetailsOpen((v) => !v)
-                                        }
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter' || e.key === ' ') {
-                                            e.preventDefault();
-                                            setImmaculateStartSearchDetailsOpen((v) => !v);
-                                          }
-                                        }}
-                                        className="cursor-pointer select-none"
-                                      >
-                                        <div className="flex items-start justify-between gap-4">
+                                    <div className="rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                        Fetch Missing items:
+                                      </div>
+
+                                      <div className="mt-3 flex flex-col sm:flex-row gap-3">
+                                        <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
                                           <div className="min-w-0">
-                                            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                                              <Search className="w-3 h-3 text-fuchsia-300" />
-                                              Start search immediately
+                                            <div className="text-sm font-semibold text-white">
+                                              Radarr
                                             </div>
-
-                                            <AnimatePresence initial={false}>
-                                              {immaculateStartSearchDetailsOpen && (
-                                                <motion.div
-                                                  initial={{ height: 0, opacity: 0 }}
-                                                  animate={{ height: 'auto', opacity: 1 }}
-                                                  exit={{ height: 0, opacity: 0 }}
-                                                  transition={{
-                                                    type: 'spring',
-                                                    stiffness: 240,
-                                                    damping: 26,
-                                                    mass: 0.85,
-                                                  }}
-                                                  className="overflow-hidden"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                >
-                                                  <div className="mt-2 text-sm text-gray-400 leading-relaxed">
-                                                    When enabled, Radarr/Sonarr will start searching as
-                                                    soon as this job adds missing titles.
-                                                  </div>
-                                                </motion.div>
-                                              )}
-                                            </AnimatePresence>
                                           </div>
-
-                                          <div
-                                            className="flex flex-col items-end gap-2 shrink-0"
-                                            onClick={(e) => e.stopPropagation()}
-                                            onPointerDown={(e) => e.stopPropagation()}
-                                          >
-                                            <button
-                                              type="button"
-                                              role="switch"
-                                              aria-checked={immaculateStartSearchImmediately}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (!immaculateStartSearchImmediately) {
-                                                  setImmaculateStartSearchDialogOpen(true);
-                                                  return;
-                                                }
-
-                                                const prev = immaculateStartSearchImmediately;
-                                                const next = false;
-                                                setImmaculateStartSearchImmediately(next);
-                                                immaculateStartSearchMutation.mutate(next, {
+                                          <button
+                                            type="button"
+                                            role="switch"
+                                            aria-checked={immaculateFetchMissingRadarr}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const prev = immaculateFetchMissingRadarr;
+                                              const next = !prev;
+                                              setImmaculateFetchMissingRadarr(next);
+                                              fetchMissingMutation.mutate(
+                                                {
+                                                  jobId: 'immaculateTastePoints',
+                                                  patch: { radarr: next },
+                                                },
+                                                {
                                                   onError: () =>
-                                                    setImmaculateStartSearchImmediately(prev),
-                                                });
-                                              }}
-                                              onPointerDown={(e) => e.stopPropagation()}
-                                              disabled={
-                                                settingsQuery.isLoading ||
-                                                immaculateStartSearchMutation.isPending
-                                              }
+                                                    setImmaculateFetchMissingRadarr(prev),
+                                                },
+                                              );
+                                            }}
+                                            disabled={
+                                              settingsQuery.isLoading ||
+                                              fetchMissingMutation.isPending
+                                            }
+                                            className={cn(
+                                              'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                              immaculateFetchMissingRadarr
+                                                ? 'bg-[#facc15]'
+                                                : 'bg-[#2a2438] border-2 border-white/10',
+                                            )}
+                                            aria-label="Toggle Radarr fetch for Immaculate Taste Collection"
+                                          >
+                                            <span
                                               className={cn(
-                                                'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                                immaculateStartSearchImmediately
-                                                  ? 'bg-fuchsia-400'
-                                                  : 'bg-[#2a2438] border-2 border-white/10',
+                                                'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                                immaculateFetchMissingRadarr
+                                                  ? 'translate-x-6'
+                                                  : 'translate-x-1',
                                               )}
-                                              aria-label="Toggle immediate Radarr/Sonarr search for Immaculate Taste Collection"
                                             >
-                                              <span
-                                                className={cn(
-                                                  'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                                  immaculateStartSearchImmediately
-                                                    ? 'translate-x-6'
-                                                    : 'translate-x-1',
-                                                )}
-                                              >
-                                                {immaculateStartSearchMutation.isPending && (
-                                                  <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                                )}
-                                              </span>
-                                            </button>
+                                              {fetchMissingMutation.isPending && (
+                                                <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                              )}
+                                            </span>
+                                          </button>
+                                        </div>
+
+                                        <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                          <div className="min-w-0">
+                                            <div className="text-sm font-semibold text-white">
+                                              Sonarr
+                                            </div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            role="switch"
+                                            aria-checked={immaculateFetchMissingSonarr}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const prev = immaculateFetchMissingSonarr;
+                                              const next = !prev;
+                                              setImmaculateFetchMissingSonarr(next);
+                                              fetchMissingMutation.mutate(
+                                                {
+                                                  jobId: 'immaculateTastePoints',
+                                                  patch: { sonarr: next },
+                                                },
+                                                {
+                                                  onError: () =>
+                                                    setImmaculateFetchMissingSonarr(prev),
+                                                },
+                                              );
+                                            }}
+                                            disabled={
+                                              settingsQuery.isLoading ||
+                                              fetchMissingMutation.isPending
+                                            }
+                                            className={cn(
+                                              'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                              immaculateFetchMissingSonarr
+                                                ? 'bg-[#facc15]'
+                                                : 'bg-[#2a2438] border-2 border-white/10',
+                                            )}
+                                            aria-label="Toggle Sonarr fetch for Immaculate Taste Collection"
+                                          >
+                                            <span
+                                              className={cn(
+                                                'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                                immaculateFetchMissingSonarr
+                                                  ? 'translate-x-6'
+                                                  : 'translate-x-1',
+                                              )}
+                                            >
+                                              {fetchMissingMutation.isPending && (
+                                                <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                              )}
+                                            </span>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <div className="mt-3 flex items-start justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white flex items-center gap-2">
+                                            <Search className="w-4 h-4 text-fuchsia-300" />
+                                            Start search immediately
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                            When enabled, Radarr/Sonarr will start searching as soon as this job adds missing titles.
                                           </div>
                                         </div>
+
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={immaculateStartSearchImmediately}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!immaculateStartSearchImmediately) {
+                                              setImmaculateStartSearchDialogOpen(true);
+                                              return;
+                                            }
+
+                                            const prev = immaculateStartSearchImmediately;
+                                            const next = false;
+                                            setImmaculateStartSearchImmediately(next);
+                                            immaculateStartSearchMutation.mutate(next, {
+                                              onError: () =>
+                                                setImmaculateStartSearchImmediately(prev),
+                                            });
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            immaculateStartSearchMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            immaculateStartSearchImmediately
+                                              ? 'bg-fuchsia-400'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label="Toggle immediate Radarr/Sonarr search for Immaculate Taste Collection"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              immaculateStartSearchImmediately
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {immaculateStartSearchMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
                                       </div>
 
                                       {immaculateStartSearchMutation.isError && (
@@ -1920,6 +1843,122 @@ export function TaskManagerPage() {
                                       )}
                                     </div>
                                   </>
+                                ) : (
+                                  <div className="rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                      Fetch Missing items:
+                                    </div>
+
+                                    <div className="mt-3 flex flex-col sm:flex-row gap-3">
+                                      <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
+                                            Radarr
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={watchedFetchMissingRadarr}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = watchedFetchMissingRadarr;
+                                            const next = !prev;
+                                            setWatchedFetchMissingRadarr(next);
+
+                                            fetchMissingMutation.mutate(
+                                              {
+                                                jobId: 'watchedMovieRecommendations',
+                                                patch: { radarr: next },
+                                              },
+                                              {
+                                                onError: () =>
+                                                  setWatchedFetchMissingRadarr(prev),
+                                              },
+                                            );
+                                          }}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            fetchMissingMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            watchedFetchMissingRadarr
+                                              ? 'bg-[#facc15]'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label={`Toggle Radarr fetch for ${job.name}`}
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              watchedFetchMissingRadarr
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {fetchMissingMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+
+                                      <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
+                                            Sonarr
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={watchedFetchMissingSonarr}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = watchedFetchMissingSonarr;
+                                            const next = !prev;
+                                            setWatchedFetchMissingSonarr(next);
+
+                                            fetchMissingMutation.mutate(
+                                              {
+                                                jobId: 'watchedMovieRecommendations',
+                                                patch: { sonarr: next },
+                                              },
+                                              {
+                                                onError: () =>
+                                                  setWatchedFetchMissingSonarr(prev),
+                                              },
+                                            );
+                                          }}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            fetchMissingMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            watchedFetchMissingSonarr
+                                              ? 'bg-[#facc15]'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label={`Toggle Sonarr fetch for ${job.name}`}
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              watchedFetchMissingSonarr
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {fetchMissingMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
                                 )}
                               </div>
                             </div>
