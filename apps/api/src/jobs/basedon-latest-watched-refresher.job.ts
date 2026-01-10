@@ -4,7 +4,7 @@ import { SettingsService } from '../settings/settings.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
-import { issue, metricRow } from './job-report-v1';
+import { metricRow } from './job-report-v1';
 
 const MOVIE_COLLECTIONS = [
   'Based on your recently watched movie',
@@ -194,14 +194,14 @@ function buildRecentlyWatchedRefresherReport(params: {
     ? (refreshRaw as Record<string, unknown>)
     : null;
 
-  const limit = asNum((raw as Record<string, unknown>).limit) ?? asNum(refresh?.limit);
-
   const tasks: JobReportV1['tasks'] = [];
   const issues: JobReportV1['issues'] = [];
 
   const addSide = (params: {
     prefix: 'movie' | 'tv';
+    titlePrefix: 'Movie library:' | 'TV library:';
     collections: readonly string[];
+    sentLabel: 'Sent to Radarr' | 'Sent to Sonarr';
   }) => {
     const sideRaw = refresh ? refresh[params.prefix] : null;
     const side = isPlainObject(sideRaw) ? (sideRaw as Record<string, unknown>) : null;
@@ -210,94 +210,89 @@ function buildRecentlyWatchedRefresherReport(params: {
       ? byLibraryRaw.filter((b): b is Record<string, unknown> => isPlainObject(b))
       : [];
 
-    for (const collectionName of params.collections) {
-      let activatedNowTotal = 0;
-      let applyingTotal = 0;
+    for (const lib of byLibrary) {
+      const library = String(lib.library ?? lib.librarySectionKey ?? 'Library');
+      const librarySectionKey = String(lib.librarySectionKey ?? library);
+      const colsRaw = lib.collections;
+      const cols = Array.isArray(colsRaw)
+        ? colsRaw.filter((c): c is Record<string, unknown> => isPlainObject(c))
+        : [];
 
-      tasks.push({
-        id: `${params.prefix}_${collectionName}`,
-        title: `Collection: ${collectionName}`,
-        status: 'success',
-        rows: [
-          metricRow({ label: 'Libraries', end: byLibrary.length, unit: 'libraries' }),
-        ],
-      });
-
-      for (const lib of byLibrary) {
-        const library = String(lib.library ?? lib.librarySectionKey ?? 'Library');
-        const colsRaw = lib.collections;
-        const cols = Array.isArray(colsRaw)
-          ? colsRaw.filter((c): c is Record<string, unknown> => isPlainObject(c))
-          : [];
-
+      for (const collectionName of params.collections) {
         const col = cols.find(
           (c) => String(c.collectionName ?? '').trim() === collectionName,
         );
-        const desiredTitles = uniqueStrings(asStringArray(col?.desiredTitles));
-        const applying =
-          asNum(col?.applying) ?? (desiredTitles.length ? desiredTitles.length : 0);
-        const activatedNow = asNum(col?.activatedNow) ?? 0;
-        const active = asNum(col?.active);
+        if (!col) continue;
 
-        activatedNowTotal += activatedNow;
-        applyingTotal += applying;
-
-        const skipped = applying === 0;
-        if (skipped) {
-          issues.push(
-            issue('warn', `${collectionName}: ${library} skipped (no active items).`),
-          );
+        const desiredTitles = uniqueStrings(asStringArray(col.desiredTitles));
+        const applying = asNum(col.applying) ?? desiredTitles.length;
+        if (applying <= 0) {
+          // If the collection wasn't updated, don't show a table for it.
+          continue;
         }
 
+        const plex = isPlainObject(col.plex) ? (col.plex as Record<string, unknown>) : null;
+        const existingCount = plex ? asNum(plex.existingCount) : null;
+        const desiredCount =
+          (plex ? asNum(plex.desiredCount) : null) ?? (asNum(col.applying) ?? desiredTitles.length);
+
+        const activatedNow = asNum(col.activatedNow) ?? 0;
+        const tmdbBackfilled = asNum((col as Record<string, unknown>).tmdbBackfilled) ?? 0;
+
+        const sent =
+          params.prefix === 'movie'
+            ? asNum((col as Record<string, unknown>).sentToRadarr) ?? 0
+            : asNum((col as Record<string, unknown>).sentToSonarr) ?? 0;
+
         tasks.push({
-          id: `${params.prefix}_${collectionName}_${library}`,
-          title: `- ${library}`,
-          status: skipped ? 'skipped' : 'success',
+          id: `${params.prefix}_${librarySectionKey}_${collectionName}`,
+          title: `${params.titlePrefix} ${library} — ${collectionName}`,
+          status: 'success',
           rows: [
             metricRow({
-              label: 'Active (in Plex)',
-              end: active,
-              unit: params.prefix === 'tv' ? 'shows' : 'movies',
-            }),
-            metricRow({
-              label: 'Applying',
-              end: applying,
-              unit: params.prefix === 'tv' ? 'shows' : 'movies',
+              label: 'Collection items',
+              start: existingCount,
+              changed:
+                existingCount !== null && desiredCount !== null ? desiredCount - existingCount : null,
+              end: desiredCount,
+              unit: 'items',
             }),
             metricRow({ label: 'Activated now', end: activatedNow, unit: 'items' }),
+            metricRow({ label: params.sentLabel, end: sent, unit: 'titles' }),
+            metricRow({ label: 'TMDB ratings backfilled', end: tmdbBackfilled, unit: 'items' }),
           ],
         });
-      }
-
-      // Patch in collection totals (1-row task was already pushed above)
-      const headerTask = tasks.find(
-        (t) => t.id === `${params.prefix}_${collectionName}`,
-      );
-      if (headerTask) {
-        headerTask.rows = [
-          metricRow({ label: 'Activated now', end: activatedNowTotal, unit: 'items' }),
-          metricRow({ label: 'Applying', end: applyingTotal, unit: 'items' }),
-          metricRow({ label: 'Libraries', end: byLibrary.length, unit: 'libraries' }),
-        ];
       }
     }
   };
 
-  addSide({ prefix: 'movie', collections: MOVIE_COLLECTIONS });
-  addSide({ prefix: 'tv', collections: TV_COLLECTIONS });
+  addSide({
+    prefix: 'movie',
+    titlePrefix: 'Movie library:',
+    collections: MOVIE_COLLECTIONS,
+    sentLabel: 'Sent to Radarr',
+  });
+  addSide({
+    prefix: 'tv',
+    titlePrefix: 'TV library:',
+    collections: TV_COLLECTIONS,
+    sentLabel: 'Sent to Sonarr',
+  });
 
-  const movieLibraries = (() => {
-    const sideRaw = refresh ? refresh.movie : null;
-    const side = isPlainObject(sideRaw) ? (sideRaw as Record<string, unknown>) : null;
-    const byLibraryRaw = side?.byLibrary;
-    return Array.isArray(byLibraryRaw) ? byLibraryRaw.length : 0;
-  })();
-  const tvLibraries = (() => {
-    const sideRaw = refresh ? refresh.tv : null;
-    const side = isPlainObject(sideRaw) ? (sideRaw as Record<string, unknown>) : null;
-    const byLibraryRaw = side?.byLibrary;
-    return Array.isArray(byLibraryRaw) ? byLibraryRaw.length : 0;
-  })();
+  if (tasks.length === 0) {
+    tasks.push({
+      id: 'nothing_to_do',
+      title: 'well i got paid to do nothing',
+      status: 'success',
+      facts: [
+        {
+          label: 'Note',
+          value:
+            'this database will start suggesting as you watch more movies or run the Based on Latest Watched Collection task manually',
+        },
+      ],
+    });
+  }
 
   return {
     template: 'jobReportV1',
@@ -306,17 +301,8 @@ function buildRecentlyWatchedRefresherReport(params: {
     dryRun: ctx.dryRun,
     trigger: ctx.trigger,
     headline: 'Refresher complete.',
-    sections: [
-      {
-        id: 'overview',
-        title: 'Overview',
-        rows: [
-          metricRow({ label: 'Movie libraries', end: movieLibraries, unit: 'libraries' }),
-          metricRow({ label: 'TV libraries', end: tvLibraries, unit: 'libraries' }),
-          metricRow({ label: 'Limit', end: limit, unit: 'items' }),
-        ],
-      },
-    ],
+    // Keep Summary card clean; the per-collection breakdown is shown in the step-by-step tasks.
+    sections: [],
     tasks,
     issues,
     raw,
