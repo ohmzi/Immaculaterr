@@ -3,7 +3,6 @@ import type { JobContext, JobRunResult } from './jobs.types';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
-import { NoopJob } from './noop.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
@@ -12,7 +11,6 @@ import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-coll
 @Injectable()
 export class JobsHandlers {
   constructor(
-    private readonly noopJob: NoopJob,
     private readonly monitorConfirmJob: MonitorConfirmJob,
     private readonly arrMonitoredSearchJob: ArrMonitoredSearchJob,
     private readonly cleanupAfterAddingNewContentJob: CleanupAfterAddingNewContentJob,
@@ -24,8 +22,6 @@ export class JobsHandlers {
 
   async run(jobId: string, ctx: JobContext): Promise<JobRunResult> {
     switch (jobId) {
-      case 'noop':
-        return await this.noopJob.run(ctx);
       case 'monitorConfirm':
         return await this.monitorConfirmJob.run(ctx);
       case 'arrMonitoredSearch':

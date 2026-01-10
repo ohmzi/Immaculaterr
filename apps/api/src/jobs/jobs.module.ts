@@ -14,7 +14,6 @@ import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
 import { JobsHandlers } from './jobs.handlers';
 import { JobsRetentionService } from './jobs-retention.service';
-import { NoopJob } from './noop.job';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
@@ -42,7 +41,6 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
     JobsScheduler,
     JobsHandlers,
     JobsRetentionService,
-    NoopJob,
     MonitorConfirmJob,
     ArrMonitoredSearchJob,
     CleanupAfterAddingNewContentJob,

@@ -109,12 +109,6 @@ const JOB_CONFIG: Record<
     description:
       'Generates fresh recommendations after you finish a movie.',
   },
-  noop: {
-    icon: <Zap className="w-8 h-8" />,
-    color: 'text-[#facc15]',
-    description:
-      'Quick diagnostic run to verify jobs + logging are working.',
-  },
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

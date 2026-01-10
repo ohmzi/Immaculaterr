@@ -56,11 +56,6 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     defaultScheduleCron: '0 2 * * *', // 2am daily (disabled by default)
   },
   {
-    id: 'noop',
-    name: 'No-op (diagnostic)',
-    description:
-      'A tiny job to validate the job runner, logging, and schedules.',
-    defaultScheduleCron: undefined,
   },
 ];
 
