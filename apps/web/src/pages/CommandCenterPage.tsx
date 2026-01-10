@@ -572,7 +572,7 @@ export function CommandCenterPage() {
                       </div>
                       <div className="mt-1 text-xs text-white/60">
                         Plex: {plexLabel} • Dataset: {c.dataset.total} tracked ({c.dataset.active} active,{' '}
-                        {c.dataset.pending} pending) • Key: {c.librarySectionKey}
+                        {c.dataset.pending} pending)
                       </div>
                     </div>
 
