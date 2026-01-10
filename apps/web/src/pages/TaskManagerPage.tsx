@@ -290,6 +290,8 @@ function calculateNextRuns(draft: ScheduleDraft, count: number = 5): Date[] {
   return runs;
 }
 
+const TASK_MANAGER_AUTO_EXPAND_SEEN_KEY = 'immaculaterr.taskManager.autoExpandSeen.v1';
+
 export function TaskManagerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -306,6 +308,23 @@ export function TaskManagerPage() {
   const lastArrEnforceAtRef = useRef<number>(0);
   const [drafts, setDrafts] = useState<Record<string, ScheduleDraft>>({});
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [autoExpandSeen, setAutoExpandSeen] = useState<Record<string, boolean>>(() => {
+    try {
+      if (typeof window === 'undefined') return {};
+      const raw = window.localStorage.getItem(TASK_MANAGER_AUTO_EXPAND_SEEN_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as unknown;
+      if (!isPlainObject(parsed)) return {};
+
+      const next: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'boolean') next[k] = v;
+      }
+      return next;
+    } catch {
+      return {};
+    }
+  });
   const [terminalState, setTerminalState] = useState<
     Record<
       string,
@@ -375,6 +394,19 @@ export function TaskManagerPage() {
     useState(true);
   const [watchedFetchMissingRadarr, setWatchedFetchMissingRadarr] = useState(true);
   const [watchedFetchMissingSonarr, setWatchedFetchMissingSonarr] = useState(true);
+
+  const markAutoExpandSeen = (jobId: string) => {
+    setAutoExpandSeen((prev) => {
+      if (prev[jobId] === true) return prev;
+      const next = { ...prev, [jobId]: true };
+      try {
+        window.localStorage.setItem(TASK_MANAGER_AUTO_EXPAND_SEEN_KEY, JSON.stringify(next));
+      } catch {
+        // ignore storage failures (private mode, etc)
+      }
+      return next;
+    });
+  };
 
   const isRadarrEnabled = (() => {
     const settings = settingsQuery.data?.settings;
@@ -1287,13 +1319,15 @@ export function TaskManagerPage() {
                             onClick={() => {
                               const prev = webhookEnabled;
                               const next = !webhookEnabled;
-                              setWebhookAutoRun((p) => ({ ...p, [job.id]: next }));
-                              if (
+                              const shouldAutoExpandOnce =
                                 next &&
                                 (job.id === 'immaculateTastePoints' ||
-                                  job.id === 'watchedMovieRecommendations')
-                              ) {
+                                  job.id === 'watchedMovieRecommendations') &&
+                                autoExpandSeen[job.id] !== true;
+                              setWebhookAutoRun((p) => ({ ...p, [job.id]: next }));
+                              if (shouldAutoExpandOnce) {
                                 setExpandedCards((p) => ({ ...p, [job.id]: true }));
+                                markAutoExpandSeen(job.id);
                               }
                               webhookAutoRunMutation.mutate(
                                 { jobId: job.id, enabled: next },
@@ -1506,7 +1540,7 @@ export function TaskManagerPage() {
                   {/* Webhook/manual expansion (extra controls for webhook-only jobs) */}
                   {!supportsSchedule && (
                     <AnimatePresence initial={false}>
-                      {(isExpanded || webhookEnabled) &&
+                      {isExpanded &&
                         (job.id === 'immaculateTastePoints' ||
                           job.id === 'watchedMovieRecommendations') && (
                           <motion.div
