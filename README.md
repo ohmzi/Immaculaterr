@@ -38,8 +38,6 @@
 - **Radarr + Sonarr integration**: Toggles let you decide whether jobs can send titles to ARR downloaders.
 - **Job reports & logs**: step-by-step breakdowns, metrics tables, and run history.
 
-## Screenshots
-
 <div align="center">
   <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr UI carousel: Your Library on Autopilot, Command Center, and Task Manager" width="900" />
 </div>
