@@ -25,7 +25,10 @@ RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
 
-ARG APP_VERSION=0.0.0.300
+# Source of truth for the app's version is `apps/api/src/app.meta.ts`.
+# CI (GHCR publish workflow) passes APP_VERSION explicitly; local builds can omit it
+# and the app will fall back to DEFAULT_APP_VERSION.
+ARG APP_VERSION
 ARG APP_BUILD_SHA=
 ARG APP_BUILD_TIME=
 
