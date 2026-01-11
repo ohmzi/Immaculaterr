@@ -345,16 +345,21 @@ export function HeroSection() {
                 aria-label="Landing title"
                 style={{ fontSize: 'inherit' }}
               >
-                <span>
-                  <span className="font-tesla font-bold tracking-tight">Your</span>{' '}
-                  <span className="font-tesla font-bold tracking-tight">Library</span>{' '}
-                  <span className="inline-block relative w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 -ml-2 align-middle">
+                <span className="inline-flex items-center gap-0.5">
+                  <span className="inline-flex items-baseline gap-[0.35em] transition-transform duration-300 ease-out group-hover:-translate-x-3 group-active:-translate-x-3">
+                    <span className="font-tesla font-bold tracking-tight">Your</span>
+                    <span className="font-tesla font-bold tracking-tight group-hover:tracking-normal transition-all duration-300">
+                      Library
+                    </span>
+                  </span>
+
+                  <span className="inline-block relative w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 -ml-2 align-middle transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
                     <ChevronRight className="absolute inset-0 text-black w-full h-full stroke-[8]" />
                     <ChevronRight className="absolute inset-0 w-full h-full stroke-[5] text-[#e5a00d] transition-[filter] duration-300 ease-out group-hover:drop-shadow-[0_0_18px_rgba(229,160,13,0.9)] group-active:drop-shadow-[0_0_22px_rgba(229,160,13,0.95)]" />
                   </span>
                 </span>
-                <span>
-                  <span className="font-tesla font-bold tracking-tight">on</span>{' '}
+                <span className="inline-flex items-baseline gap-[0.35em] transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
+                  <span className="font-tesla font-bold tracking-tight">on</span>
                   <span className="font-plex font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-black to-neutral-800 animate-pulse">
                     Autopilot.
                   </span>
