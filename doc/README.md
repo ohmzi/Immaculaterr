@@ -12,27 +12,23 @@ It builds curated Plex collections (with proper artwork), can optionally send mi
 Major Features Include
 ---
 
-- **Plex-triggered automation (no webhook setup required)**: Detects “finished watching” via Plex polling, then runs tasks automatically.
-- **Curated collections you actually want to open**:
-  - “Inspired by your Immaculate Taste” (Movies + TV)
-  - “Based on your recently watched movie/show”
+- **Plex-triggered automation**:
+  - Detects what you’re watching and automatically triggers actions as you finish the movies or TV episodes.
+- **Curated collections you actually want*:
+  - “Inspired by your Immaculate Taste”
+  - “Based on your recently watched”
   - “Change of Taste”
-- **Poster artwork included**: Collections use the matching posters shipped in `apps/web/src/assets/collection_artwork/posters`.
 - **Recommendation engine**:
-  - TMDB-powered “similar” suggestions
-  - Optional Google + OpenAI enrichment (still shows “not enabled” / “skipped” when off)
-- **Keeps a snapshot database** for watched-based collections (active/pending) so refreshers can activate titles once they arrive in Plex.
-- **Refresher jobs**: Re-check pending items, activate what’s now available, shuffle active items, and rebuild collections cleanly.
-- **Radarr + Sonarr integration** (optional per job): “Fetch Missing items” toggles let you decide whether jobs can send titles to ARR downloaders.
-- **Cleanup After Adding New Content**: Manual/scheduled cleanup that dedupes across libraries and unmonitors duplicates in Radarr/Sonarr (with episode/season-aware rules).
+  - TMDB-powered suggestions
+  - Optional Google + OpenAI enrichment
+- **Refresher**: Re-check pending items, activate what’s now available, shuffle active items, and rebuild collections.
+- **Radarr + Sonarr integration**: Fetch Missing items using ARR downloaders.
+- **Cleanup After Adding New Content**: Manual/scheduled cleanup duplicates across libraries and unmonitors them in Radarr/Sonarr.
 - **Confirm Monitored**: Keeps ARR monitoring aligned with what’s already in Plex.
 - **Job system with strong observability**:
   - Step-by-step breakdown cards
   - Metrics tables + expandable lists
-  - Logs and run history (Rewind)
-- **Resilient external calls**: Built-in retry for flaky APIs (3 attempts, 10s wait) where it matters.
-- **Built for Docker**: Single container that serves both the API and the Web UI on one port.
-- **Update awareness**: The app can check for newer releases and shows an in-app reminder to update your container.
+  - Logs and run history
 
 Getting Started (Docker)
 ---
