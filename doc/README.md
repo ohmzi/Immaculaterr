@@ -12,7 +12,8 @@ It builds curated Plex collections (with proper artwork), can optionally send mi
 Major Features Include
 ---
 
-- **Plex-triggered automation (no webhook setup required)**: Detects “finished watching” via Plex polling, then runs tasks automatically.
+- **Plex-triggered automation (no webhook setup required)**:
+  - Detects “finished watching” via Plex polling, then runs tasks automatically.
 - **Curated collections you actually want to open**:
   - “Inspired by your Immaculate Taste” (Movies + TV)
   - “Based on your recently watched movie/show”
