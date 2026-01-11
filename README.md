@@ -25,17 +25,21 @@
 
 ## What it does
 
-- **Plex-triggered automation**: Automatically reacts to Plex library activity and runs smart workflows in real time.
-- **Scheduler automation**: Off hours fetching media or refreshing the Plex home screen.
+- **Plex-triggered automation**:
+  - Automatically reacts to Plex library activity and runs smart workflows in real time.
+- **Scheduler automation**:
+  - Off hours fetching media or refreshing the Plex home screen.
 - **Curated Movies and TV Shows collections**:
   - Inspired by your Immaculate Taste (long term collection)
   - Based on your recently watched (refreshes on every watch)
   - Change of Taste (refreshes on every watch)
 - **Recommendation engine**:
   - TMDB-powered suggestions
-  - Optional Google + OpenAI 
-- **Keeps a snapshot database** for watched-based collections so refreshers can activate titles once they arrive in Plex.
-- **Radarr + Sonarr integration**: Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
+  - Optional - Google + OpenAI 
+- **Keeps a snapshot database:**
+  - Recommmended database for refresher task to monitor titles as they become available in Plex.
+- **Radarr + Sonarr integration**:
+  - Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
 - **Job reports & logs**: step-by-step breakdowns, metrics tables, and run history.
 - **More features on the way**
   - Discovering Media from film industries around the world
