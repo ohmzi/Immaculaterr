@@ -1,9 +1,8 @@
 <div align="center">
-  <img src="doc/assets/readme-header.jpg" alt="Immaculaterr banner" width="100%" />
+  <img src="doc/assets/readme-header.png" alt="Immaculaterr banner" width="100%" />
 </div>
 
 <div align="center">
-  <h1>Immaculaterr</h1>
   <p>
     A Plex “autopilot” that watches what you’re watching, builds curated collections, and keeps your library tidy — without the babysitting.
   </p>
@@ -26,8 +25,8 @@
 
 ## What it does
 
-- **Plex-triggered automation via Plex API, then runs tasks automatically.
-- **Scheduler automation for off hours fetching media or refreshing the Plex home screen.
+- **Plex-triggered automation**: via Plex API, then runs tasks automatically.
+- **Scheduler automation**: for off hours fetching media or refreshing the Plex home screen.
 - **Curated Movies and TV Shows collections you actually want to open**:
   - Inspired by your Immaculate Taste (long term collection)
   - Based on your recently watched (refreshes on every watch)

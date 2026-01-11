@@ -337,31 +337,24 @@ export function HeroSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-center"
           >
-            <h1 className="text-5xl md:text-6xl font-black text-gray-900 tracking-tighter leading-tight">
+            {/* Match headline spacing from /home/ohmz/Downloads/src, keep the original landing animation */}
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
               <button
                 type="button"
-                className="inline-flex flex-col items-center gap-2 group leading-none bg-transparent border-0 p-0 appearance-none cursor-pointer select-none focus:outline-none"
+                className="group inline-flex flex-col items-center leading-tight bg-transparent border-0 p-0 appearance-none cursor-pointer select-none focus:outline-none"
                 aria-label="Landing title"
                 style={{ fontSize: 'inherit' }}
               >
-                {/* Line 1 */}
-                <span className="inline-flex items-center gap-0.5">
-                  <span className="inline-flex items-baseline gap-[0.35em] transition-transform duration-300 ease-out group-hover:-translate-x-3 group-active:-translate-x-3">
-                    <span className="font-tesla font-bold tracking-tight">Your</span>
-                    <span className="font-tesla font-bold tracking-tight group-hover:tracking-normal transition-all duration-300">
-                      Library
-                    </span>
-                  </span>
-
-                  <span className="relative w-12 h-12 -ml-3 transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
-                    <ChevronRight className="absolute inset-0 w-12 h-12 stroke-[8] text-black" />
-                    <ChevronRight className="absolute inset-0 w-12 h-12 stroke-[5] text-[#e5a00d] transition-[filter] duration-300 ease-out group-hover:drop-shadow-[0_0_18px_rgba(229,160,13,0.9)] group-active:drop-shadow-[0_0_22px_rgba(229,160,13,0.95)]" />
+                <span>
+                  <span className="font-tesla font-bold tracking-tight">Your</span>{' '}
+                  <span className="font-tesla font-bold tracking-tight">Library</span>{' '}
+                  <span className="inline-block relative w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 -ml-2 align-middle">
+                    <ChevronRight className="absolute inset-0 text-black w-full h-full stroke-[8]" />
+                    <ChevronRight className="absolute inset-0 w-full h-full stroke-[5] text-[#e5a00d] transition-[filter] duration-300 ease-out group-hover:drop-shadow-[0_0_18px_rgba(229,160,13,0.9)] group-active:drop-shadow-[0_0_22px_rgba(229,160,13,0.95)]" />
                   </span>
                 </span>
-
-                {/* Line 2 */}
-                <span className="inline-flex items-baseline gap-[0.35em] ml-[1ch] transition-transform duration-300 ease-out group-hover:translate-x-3 group-active:translate-x-3">
-                  <span className="font-tesla font-bold tracking-tight">on</span>
+                <span>
+                  <span className="font-tesla font-bold tracking-tight">on</span>{' '}
                   <span className="font-plex font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-black to-neutral-800 animate-pulse">
                     Autopilot.
                   </span>
