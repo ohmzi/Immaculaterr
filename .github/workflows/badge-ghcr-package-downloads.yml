@@ -1,4 +1,4 @@
-name: Badge: GHCR package downloads
+name: "Badge: GHCR package downloads"
 
 "on":
   schedule:
