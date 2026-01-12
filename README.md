@@ -9,7 +9,7 @@
 
   <p>
     <a href="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml">
-      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg" />
+      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg?branch=master" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/releases">
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/ohmzi/Immaculaterr" />
@@ -57,7 +57,7 @@
 docker pull ghcr.io/ohmzi/immaculaterr:latest
 
 docker run -d \
-  --name immaculaterr \
+  --name Immaculaterr \
   --network host \
   -e HOST=0.0.0.0 \
   -e PORT=3210 \
