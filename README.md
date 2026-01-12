@@ -20,7 +20,7 @@
     <a href="https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr">
       <img
         alt="GHCR Downloads"
-        src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-downloads.json"
+        src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-package-downloads.json"
       />
     </a>
   </p>
