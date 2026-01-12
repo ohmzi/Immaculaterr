@@ -4,7 +4,7 @@ services:
   immaculaterr:
     container_name: immaculaterr
     # Default: pull from GitHub Container Registry (GHCR). Override for forks via IMM_IMAGE/IMM_TAG.
-    image: ${IMM_IMAGE:-ghcr.io/ohmz/immaculaterr}:${IMM_TAG:-latest}
+    image: ${IMM_IMAGE:-ghcr.io/ohmzi/immaculaterr}:${IMM_TAG:-latest}
     build:
       context: ../..
       dockerfile: docker/immaculaterr/Dockerfile
