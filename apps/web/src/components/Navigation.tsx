@@ -53,7 +53,8 @@ export function Navigation() {
   const updatesQuery = useQuery({
     queryKey: ['updates'],
     queryFn: getUpdates,
-    staleTime: 10 * 60_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     retry: 1,
   });
@@ -71,7 +72,7 @@ export function Navigation() {
     didToastUpdateRef.current = true;
 
     toast.info(`${updateLabel} available`, {
-      description: 'Update your Docker container to get the latest build (docker compose pull && docker compose up -d).',
+      description: 'Pull the latest image and recreate/redeploy the container (Portainer: Recreate / Pull latest image).',
     });
   }, [updateAvailable, updateLabel]);
 

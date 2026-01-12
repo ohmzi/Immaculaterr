@@ -56,8 +56,10 @@ function readUpdateRepoEnv(): string | null {
 }
 
 function readUpdateCheckTtlMs(): number {
-  const raw = Number.parseInt(process.env.UPDATE_CHECK_TTL_MS ?? '600000', 10); // 10m
-  return Number.isFinite(raw) && raw > 5_000 ? raw : 600_000;
+  // Default to 60s so new releases show up quickly for users.
+  // Can be overridden via UPDATE_CHECK_TTL_MS.
+  const raw = Number.parseInt(process.env.UPDATE_CHECK_TTL_MS ?? '60000', 10);
+  return Number.isFinite(raw) && raw > 5_000 ? raw : 60_000;
 }
 
 function readGitHubToken(): string | null {
