@@ -186,7 +186,7 @@ async function bootstrap() {
   }
 
   // Default away from 3000 (commonly taken on dev machines).
-  const port = Number.parseInt(process.env.PORT ?? '3210', 10);
+  const port = Number.parseInt(process.env.PORT ?? '5454', 10);
   const host = process.env.HOST ?? '0.0.0.0';
   try {
     await app.listen(port, host);
@@ -196,7 +196,7 @@ async function bootstrap() {
       bootstrapLogger.error(
         `Port ${port} is already in use. Stop the other process or set PORT to a free port.`,
       );
-      bootstrapLogger.error(`Example: PORT=3211 npm run dev:api`);
+      bootstrapLogger.error(`Example: PORT=5859 npm run dev:api`);
       process.exit(1);
     }
     throw err;

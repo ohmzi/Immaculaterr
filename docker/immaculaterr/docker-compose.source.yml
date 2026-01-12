@@ -11,7 +11,7 @@ services:
     network_mode: host
     environment:
       - HOST=0.0.0.0
-      - PORT=${APP_PORT:-3210}
+      - PORT=${APP_PORT:-5454}
       - APP_VERSION=${APP_VERSION:-}
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
