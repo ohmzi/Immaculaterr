@@ -86,9 +86,9 @@ It does not download media by itself—it can optionally send missing titles to 
 
 ### What port does Immaculaterr use and how do I access it?
 
-By default, it serves the Web UI and API on port `3210`.
+By default, it serves the Web UI and API on port `5454`.
 
-Open: `http://<server-ip>:3210/`
+Open: `http://<server-ip>:5454/`
 
 ### Do I need Docker host networking? When should I use host.docker.internal?
 

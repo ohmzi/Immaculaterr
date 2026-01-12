@@ -60,7 +60,7 @@ docker run -d \
   --name Immaculaterr \
   --network host \
   -e HOST=0.0.0.0 \
-  -e PORT=3210 \
+  -e PORT=5454 \
   -e APP_DATA_DIR=/data \
   -e DATABASE_URL=file:/data/tcp.sqlite \
   -v immaculaterr-data:/data \
@@ -70,7 +70,7 @@ docker run -d \
 
 See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupguide.md)
 
-Then open `http://<server-ip>:3210/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
+Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
 
 ## Documentation
 
