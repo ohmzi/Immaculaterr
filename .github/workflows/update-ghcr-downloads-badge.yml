@@ -27,31 +27,30 @@ jobs:
         id: downloads
         env:
           OWNER: ohmzi
+          REPO: Immaculaterr
           PACKAGE: immaculaterr
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
 
-          total=0
-          page=1
-          while true; do
-            resp="$(
-              curl -fsSL \
-                -H "Authorization: Bearer ${GH_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE}/versions?per_page=100&page=${page}"
-            )"
+          # GitHub Packages downloads are shown on the package page but aren't reliably exposed via
+          # the Packages REST API for container images. Scrape the public package page instead.
+          total="$(
+            curl -fsSL "https://github.com/${OWNER}/${REPO}/pkgs/container/${PACKAGE}" | \
+              python3 - <<'PY'
+import re, sys
+html = sys.stdin.read()
 
-            len="$(echo "${resp}" | jq 'length')"
-            if [[ "${len}" == "0" ]]; then
-              break
-            fi
+# Example snippet:
+#   <span ...>Total downloads</span>
+#   <h3 title="264">264</h3>
+m = re.search(r'Total downloads</span>\\s*<h3[^>]*title=\"([0-9,]+)\"', html, re.IGNORECASE)
+if not m:
+  m = re.search(r'Total downloads</span>\\s*<h3[^>]*>\\s*([0-9,]+)\\s*<', html, re.IGNORECASE)
 
-            page_total="$(echo "${resp}" | jq '[.[].download_count] | add // 0')"
-            total="$(( total + page_total ))"
-            page="$(( page + 1 ))"
-          done
+print((m.group(1) if m else '0').replace(',', ''))
+PY
+          )"
 
           echo "total=${total}" >> "${GITHUB_OUTPUT}"
 
