@@ -55,6 +55,7 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -62,9 +63,6 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.version }}
-            ${{ steps.vars.outputs.image }}:v${{ steps.vars.outputs.version }}
-            ${{ steps.vars.outputs.image }}:sha-${{ steps.vars.outputs.short_sha }}
             ${{ steps.vars.outputs.image }}:latest
           labels: |
             org.opencontainers.image.title=immaculaterr
@@ -77,3 +75,22 @@ jobs:
             APP_BUILD_SHA=${{ github.sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
 
+      - name: Tag version aliases (vX + X)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE="${{ steps.vars.outputs.image }}"
+          VERSION="${{ steps.vars.outputs.version }}"
+          DIGEST="${{ steps.build.outputs.digest }}"
+
+          if [[ -z "${DIGEST}" ]]; then
+            echo "ERROR: build-push-action did not expose an image digest."
+            exit 1
+          fi
+
+          echo "Tagging ${IMAGE}@${DIGEST} as ${IMAGE}:${VERSION} and ${IMAGE}:v${VERSION}"
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${VERSION}" \
+            --tag "${IMAGE}:v${VERSION}" \
+            "${IMAGE}@${DIGEST}"
