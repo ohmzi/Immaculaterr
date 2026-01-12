@@ -106,70 +106,6 @@ export function FaqPage() {
             </>
           ),
         },
-        {
-          id: 'getting-started-host-networking',
-          question: 'Do I need Docker host networking? When should I use host.docker.internal?',
-          answer: (
-            <>
-              <p>
-                On Linux, this project defaults to Docker <code className="font-mono">host</code>{' '}
-                networking so the container can reach services like Plex/Radarr/Sonarr via{' '}
-                <code className="font-mono">localhost</code>.
-              </p>
-              <p>
-                On Docker Desktop (Mac/Windows), use <code className="font-mono">host.docker.internal</code>{' '}
-                for host services (for example, Plex at{' '}
-                <code className="font-mono">http://host.docker.internal:32400</code>).
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'getting-started-data-storage',
-          question: 'Where is the data stored (DB, settings, secrets)?',
-          answer: (
-            <>
-              <p>
-                In Docker, the app stores data under <code className="font-mono">/data</code> (a
-                Docker volume by default).
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>
-                  SQLite DB: <code className="font-mono">/data/tcp.sqlite</code>
-                </li>
-                <li>
-                  Master key file (if not provided by env/secret):{' '}
-                  <code className="font-mono">/data/app-master.key</code>
-                </li>
-                <li>
-                  Settings + encrypted secrets live in the DB (secrets are encrypted at rest).
-                </li>
-              </ul>
-            </>
-          ),
-        },
-        {
-          id: 'getting-started-reset',
-          question: 'How do I reset and start over? What does “Reset Account” delete?',
-          answer: (
-            <>
-              <p>
-                Use <span className="font-semibold text-white/85">Help → Reset Account</span> to wipe
-                Immaculaterr’s local state and restart the setup flow.
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>Deletes app settings and stored secrets (keys/tokens).</li>
-                <li>Deletes job history/logs stored by Immaculaterr.</li>
-                <li>Logs you out and returns you to fresh setup.</li>
-              </ul>
-              <p>
-                It does <span className="font-semibold text-white/85">not</span> delete Plex media
-                files. It may have previously created Plex collections; those are managed by jobs and
-                can be recreated later.
-              </p>
-            </>
-          ),
-        },
       ],
     },
     {
@@ -193,46 +129,13 @@ export function FaqPage() {
           ),
         },
         {
-          id: 'automation-which-jobs',
-          question: 'Which jobs are Plex-triggered and which are scheduled?',
-          answer: (
-            <>
-              <p>
-                Task Manager labels jobs as <span className="font-semibold text-white/85">Plex-Triggered</span>{' '}
-                or <span className="font-semibold text-white/85">Scheduled</span> above the Auto-Run
-                toggle.
-              </p>
-              <p>
-                If you’re unsure, trust the label in Task Manager—it reflects how that job is wired
-                in this build.
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'automation-immaculate-threshold',
-          question: 'When does “Immaculate Taste Collection” trigger?',
+          id: 'automation-collection-threshold',
+          question: 'When does Collection task trigger?',
           answer: (
             <>
               <p>
                 By default, it triggers when Plex polling detects you’ve watched roughly{' '}
                 <span className="font-semibold text-white/85">70%</span> of the item.
-              </p>
-              <p>
-                (Thresholds can be tuned via environment variables in advanced setups.)
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'automation-watched-threshold',
-          question: 'When does “Based on Latest Watched Collection” trigger?',
-          answer: (
-            <>
-              <p>
-                By default, it triggers at about{' '}
-                <span className="font-semibold text-white/85">60%</span> watched for the seed item,
-                detected via Plex polling.
               </p>
             </>
           ),
