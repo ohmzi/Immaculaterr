@@ -47,12 +47,19 @@ Then open:
 Updating
 ---
 
-To update, pull the new tag and recreate the container:
+To update, pull the new tag and restart the service.
 
 ```bash
 docker pull ghcr.io/ohmzi/immaculaterr:latest
-docker-compose up -d imacculaterr
+docker compose up -d immaculaterr
 ```
+
+Notes:
+
+- If you see `no configuration file provided`, you’re not in a folder with a Compose file.
+  - Run from the folder that contains your `compose.yml` / `docker-compose.yml`, **or**
+  - Add `-f <path-to-your-compose-file>` to the command.
+- If you started Immaculaterr with `docker run`, you’ll need to recreate the container after pulling (the volume stays intact).
 
 License
 ---
