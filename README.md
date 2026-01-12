@@ -17,10 +17,10 @@
     <a href="./LICENSE">
       <img alt="License" src="https://img.shields.io/github/license/ohmzi/Immaculaterr" />
     </a>
-    <a href="https://hub.docker.com/r/ohmzii/immaculaterr">
+    <a href="https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr">
       <img
-        alt="Docker Pulls"
-        src="https://img.shields.io/docker/pulls/ohmzii/immaculaterr"
+        alt="GHCR Downloads"
+        src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-package-downloads.json&cacheSeconds=300"
       />
     </a>
   </p>
