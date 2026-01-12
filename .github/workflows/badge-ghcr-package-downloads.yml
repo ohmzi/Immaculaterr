@@ -1,6 +1,6 @@
 name: Badge: GHCR package downloads
 
-on:
+"on":
   schedule:
     # Update periodically (GitHub schedules may be delayed)
     - cron: '17 * * * *'
