@@ -66,6 +66,15 @@ docker run -d \
   ghcr.io/ohmzi/immaculaterr:latest
 ```
 
+Portainer (optional)
+---
+
+If you use Portainer and want a one-click deployment (no image typing/search), add this **App Template URL**:
+
+- `https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/portainer-templates.json`
+
+In Portainer: **Settings → App Templates → URL → Save**. Then you can deploy the **Immaculaterr** template from the App Templates screen.
+
 License
 ---
 
