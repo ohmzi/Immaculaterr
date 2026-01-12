@@ -40,7 +40,7 @@ docker compose -f docker/immaculaterr/docker-compose.yml pull
 docker compose -f docker/immaculaterr/docker-compose.yml up -d
 ```
 
-Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
+Then open `http://<server-ip>:5454/` (**production Docker port is `5454`**) and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
 
 Development
 ---
@@ -54,8 +54,17 @@ Immaculaterr is a monorepo:
 npm install
 npm -w apps/api run db:generate
 APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite npm -w apps/api run db:migrate
-npm run dev
+
+# Dev ports:
+# - Web UI: 5858
+# - API: 5859
+APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite API_PORT=5859 WEB_PORT=5858 npm run dev
 ```
+
+Then open:
+
+- Web UI: `http://localhost:5858/`
+- API: `http://localhost:5859/api`
 
 Support
 ---
