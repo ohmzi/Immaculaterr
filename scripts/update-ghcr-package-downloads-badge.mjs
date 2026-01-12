@@ -4,11 +4,12 @@ const OWNER = process.env.GHCR_OWNER ?? process.env.GITHUB_REPOSITORY_OWNER;
 const PACKAGE = process.env.GHCR_PACKAGE ?? 'immaculaterr';
 const TOKEN = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 const API_BASE = process.env.GITHUB_API_URL ?? 'https://api.github.com';
+const REPO = process.env.GHCR_REPO ?? process.env.GITHUB_REPOSITORY ?? `${OWNER}/Immaculaterr`;
 
 if (!OWNER) throw new Error('Missing GHCR_OWNER / GITHUB_REPOSITORY_OWNER');
-if (!TOKEN) throw new Error('Missing GITHUB_TOKEN (or GH_TOKEN)');
 
-async function fetchJson(url) {
+async function fetchJsonWithToken(url) {
+  if (!TOKEN) throw new Error('Missing GITHUB_TOKEN (or GH_TOKEN)');
   const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${TOKEN}`,
@@ -24,6 +25,21 @@ async function fetchJson(url) {
   return await res.json();
 }
 
+async function fetchText(url) {
+  const res = await fetch(url, {
+    headers: {
+      // Mimic a browser-ish UA to avoid edge cases with bot responses.
+      'User-Agent': 'immaculaterr-ghcr-downloads-badge',
+      Accept: 'text/html,application/xhtml+xml',
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Request failed: ${res.status} ${res.statusText} (${url}) ${text}`);
+  }
+  return await res.text();
+}
+
 async function sumDownloadsForEndpoint(endpointUrlBase) {
   const perPage = 100;
   let page = 1;
@@ -34,7 +50,7 @@ async function sumDownloadsForEndpoint(endpointUrlBase) {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const url = `${endpointUrlBase}?per_page=${perPage}&page=${page}`;
-    const versions = await fetchJson(url);
+    const versions = await fetchJsonWithToken(url);
     if (!Array.isArray(versions) || versions.length === 0) break;
 
     for (const v of versions) {
@@ -49,7 +65,31 @@ async function sumDownloadsForEndpoint(endpointUrlBase) {
   return total;
 }
 
-async function getGhcrDownloadsTotal() {
+async function getGhcrDownloadsTotalFromApi() {
+  // Prefer package-level total if available (matches the UI “Total downloads”).
+  const userPkgUrl = `${API_BASE}/users/${encodeURIComponent(
+    OWNER,
+  )}/packages/container/${encodeURIComponent(PACKAGE)}`;
+  const orgPkgUrl = `${API_BASE}/orgs/${encodeURIComponent(
+    OWNER,
+  )}/packages/container/${encodeURIComponent(PACKAGE)}`;
+
+  try {
+    const pkg = await fetchJsonWithToken(userPkgUrl);
+    if (typeof pkg?.download_count === 'number') return pkg.download_count;
+  } catch (err) {
+    const msg = (err instanceof Error ? err.message : String(err)) ?? '';
+    if (!msg.includes('403') && !msg.includes('404')) throw err;
+  }
+
+  try {
+    const pkg = await fetchJsonWithToken(orgPkgUrl);
+    if (typeof pkg?.download_count === 'number') return pkg.download_count;
+  } catch (err) {
+    const msg = (err instanceof Error ? err.message : String(err)) ?? '';
+    if (!msg.includes('403') && !msg.includes('404')) throw err;
+  }
+
   const userEndpointBase = `${API_BASE}/users/${encodeURIComponent(
     OWNER,
   )}/packages/container/${encodeURIComponent(PACKAGE)}/versions`;
@@ -69,7 +109,31 @@ async function getGhcrDownloadsTotal() {
   }
 }
 
-const total = await getGhcrDownloadsTotal();
+async function getGhcrDownloadsTotalFromHtml() {
+  const url = `https://github.com/${REPO}/pkgs/container/${encodeURIComponent(PACKAGE)}`;
+  const html = await fetchText(url);
+
+  // Example snippet:
+  // <span ...>Total downloads</span>
+  // <h3 title="314">314</h3>
+  const re = /Total downloads<\/span>\s*<h3[^>]*title="(\d+)"[^>]*>\s*\d+\s*<\/h3>/i;
+  const m = html.match(re);
+  if (!m?.[1]) throw new Error(`Could not parse total downloads from ${url}`);
+  return Number.parseInt(m[1], 10);
+}
+
+let apiTotal = null;
+if (TOKEN) {
+  try {
+    apiTotal = await getGhcrDownloadsTotalFromApi();
+  } catch (err) {
+    // Keep going; HTML parsing is our reliable fallback for public packages.
+    console.warn(String(err));
+  }
+}
+
+const htmlTotal = await getGhcrDownloadsTotalFromHtml();
+const total = typeof apiTotal === 'number' ? Math.max(apiTotal, htmlTotal) : htmlTotal;
 
 const badgePath = 'doc/assets/badges/ghcr-package-downloads.json';
 await mkdir('doc/assets/badges', { recursive: true });

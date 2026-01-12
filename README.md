@@ -9,7 +9,7 @@
 
   <p>
     <a href="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml">
-      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg?branch=master" />
+      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg?branch=master&event=push" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/releases">
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/ohmzi/Immaculaterr" />
@@ -21,6 +21,12 @@
       <img
         alt="GHCR Downloads"
         src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-package-downloads.json&cacheSeconds=300"
+      />
+    </a>
+    <a href="https://hub.docker.com/r/ohmzii/immaculaterr">
+      <img
+        alt="Docker Pulls"
+        src="https://img.shields.io/docker/pulls/ohmzii/immaculaterr"
       />
     </a>
   </p>

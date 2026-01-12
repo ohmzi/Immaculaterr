@@ -33,6 +33,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_OWNER: ${{ github.repository_owner }}
           GHCR_PACKAGE: immaculaterr
+          GHCR_REPO: ${{ github.repository }}
         run: node scripts/update-ghcr-package-downloads-badge.mjs
 
       - name: Commit and push (if changed)
