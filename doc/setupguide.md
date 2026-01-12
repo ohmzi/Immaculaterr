@@ -51,7 +51,6 @@ To update, pull the new tag and recreate the container:
 
 ```bash
 docker pull ghcr.io/ohmzi/immaculaterr:latest
-docker rm -f immaculaterr
 docker-compose up -d imacculaterr
 ```
 
