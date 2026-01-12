@@ -15,13 +15,13 @@ export default defineConfig({
     // WARNING: this disables Vite's DNS-rebinding protection for the dev server.
     allowedHosts: true,
     // Allow accessing the dev UI from other devices (phones/tablets) on the LAN.
-    // Note: use http://<server-ip>:5175 from other devices (not localhost).
+    // Note: use http://<server-ip>:5858 from other devices (not localhost).
     host: '0.0.0.0',
-    port: Number.parseInt(process.env.WEB_PORT ?? '5175', 10),
+    port: Number.parseInt(process.env.WEB_PORT ?? '5858', 10),
     strictPort: true,
     proxy: {
       '/api': {
-        target: `http://127.0.0.1:${Number.parseInt(process.env.API_PORT ?? process.env.PORT ?? '3210', 10)}`,
+        target: `http://127.0.0.1:${Number.parseInt(process.env.API_PORT ?? process.env.PORT ?? '5859', 10)}`,
         // Preserve the original Host header so API Origin checks work for LAN IPs / tunnels.
         // Also forward X-Forwarded-* so the API can make correct decisions behind proxies.
         changeOrigin: false,
