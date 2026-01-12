@@ -1,0 +1,55 @@
+name: Badge: GHCR package downloads
+
+on:
+  schedule:
+    # Update periodically (GitHub schedules may be delayed)
+    - cron: '17 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: ghcr-downloads-badge
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (develop)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Update badge JSON
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_OWNER: ${{ github.repository_owner }}
+          GHCR_PACKAGE: immaculaterr
+          GHCR_REPO: ${{ github.repository }}
+        run: node scripts/update-ghcr-package-downloads-badge.mjs
+
+      - name: Commit and push (if changed)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add doc/assets/badges/ghcr-package-downloads.json
+          git commit -m "chore(badges): update GHCR downloads [skip ci]"
+          git push origin HEAD:develop
+

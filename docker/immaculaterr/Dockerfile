@@ -34,7 +34,7 @@ ARG APP_BUILD_TIME=
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
-ENV PORT=3210
+ENV PORT=5454
 ENV APP_DATA_DIR=/data
 ENV DATABASE_URL=file:/data/tcp.sqlite
 ENV APP_VERSION=$APP_VERSION
@@ -73,7 +73,7 @@ COPY apps/web/src/assets/collection_artwork /app/apps/web/src/assets/collection_
 COPY docker/immaculaterr/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 3210
+EXPOSE 5454
 
 CMD ["/entrypoint.sh"]
 

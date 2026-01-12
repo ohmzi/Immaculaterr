@@ -40,7 +40,7 @@ docker compose -f docker/immaculaterr/docker-compose.yml pull
 docker compose -f docker/immaculaterr/docker-compose.yml up -d
 ```
 
-Then open `http://<server-ip>:3210/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
+Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
 
 Development
 ---

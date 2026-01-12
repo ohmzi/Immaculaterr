@@ -9,7 +9,7 @@
 
   <p>
     <a href="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml">
-      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg?branch=master" />
+      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg?branch=master&event=push" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/releases">
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/ohmzi/Immaculaterr" />
@@ -17,8 +17,17 @@
     <a href="./LICENSE">
       <img alt="License" src="https://img.shields.io/github/license/ohmzi/Immaculaterr" />
     </a>
-    <a href="https://github.com/ohmzi/Immaculaterr/releases">
-      <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/ohmzi/Immaculaterr/total" />
+    <a href="https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr">
+      <img
+        alt="GHCR Downloads"
+        src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-package-downloads.json&cacheSeconds=300"
+      />
+    </a>
+    <a href="https://hub.docker.com/r/ohmzii/immaculaterr">
+      <img
+        alt="Docker Pulls"
+        src="https://img.shields.io/docker/pulls/ohmzii/immaculaterr"
+      />
     </a>
   </p>
 </div>
@@ -51,26 +60,34 @@
 
 ## Getting started (Docker)
 
-### Install from the package (GHCR)
+### Install from the package
+
+**Option A (Docker Hub — best for Portainer search/discovery):**
 
 ```bash
-docker pull ghcr.io/ohmzi/immaculaterr:latest
+docker pull ohmzii/immaculaterr:latest
 
 docker run -d \
   --name Immaculaterr \
   --network host \
   -e HOST=0.0.0.0 \
-  -e PORT=3210 \
+  -e PORT=5454 \
   -e APP_DATA_DIR=/data \
   -e DATABASE_URL=file:/data/tcp.sqlite \
   -v immaculaterr-data:/data \
   --restart unless-stopped \
-  ghcr.io/ohmzi/immaculaterr:latest
+  ohmzii/immaculaterr:latest
+```
+
+**Option B (GHCR):**
+
+```bash
+docker pull ghcr.io/ohmzi/immaculaterr:latest
 ```
 
 See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupguide.md)
 
-Then open `http://<server-ip>:3210/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
+Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
 
 ## Documentation
 

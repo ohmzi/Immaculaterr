@@ -3,24 +3,19 @@ name: immaculaterr
 services:
   immaculaterr:
     container_name: Immaculaterr
-    # Build the image locally from the repo (useful for contributors / debugging).
-    image: immaculaterr:local
-    build:
-      context: ../..
-      dockerfile: docker/immaculaterr/Dockerfile
+    image: ohmzii/immaculaterr:latest
     network_mode: host
     environment:
       - HOST=0.0.0.0
       - PORT=${APP_PORT:-5454}
-      - APP_VERSION=${APP_VERSION:-}
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
       - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
       - UPDATE_CHECK_GITHUB_TOKEN=${UPDATE_CHECK_GITHUB_TOKEN:-}
+      # Optional but recommended: set a stable master key (or mount via APP_MASTER_KEY_FILE)
       - APP_MASTER_KEY=${APP_MASTER_KEY:-}
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
-      - APP_UMASK=${APP_UMASK:-}
     volumes:
       - immaculaterr-data:/data
     restart: unless-stopped

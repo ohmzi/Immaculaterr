@@ -1,0 +1,16 @@
+[
+  {
+    "type": "stack",
+    "title": "Immaculaterr",
+    "description": "Your library on autopilot (Plex + Radarr/Sonarr automation).",
+    "note": "Deploys Immaculaterr using Docker Hub (ohmzii/immaculaterr:latest). Linux recommended; uses host networking. Web UI: http://<server-ip>:5454/.",
+    "categories": ["media", "automation"],
+    "platform": "linux",
+    "logo": "https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/apps/web/public/favicon.svg",
+    "repository": {
+      "url": "https://github.com/ohmzi/Immaculaterr",
+      "stackfile": "docker/immaculaterr/docker-compose.dockerhub.yml"
+    }
+  }
+]
+

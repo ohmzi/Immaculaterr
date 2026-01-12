@@ -1833,7 +1833,9 @@ export class PlexServerService {
   }): Promise<string | null> {
     const { baseUrl, token, librarySectionKey, collectionName } = params;
     const url = new URL(
-      `library/sections/${librarySectionKey}/search?type=18&query=${encodeURIComponent(
+      `library/sections/${encodeURIComponent(
+        librarySectionKey,
+      )}/search?type=18&query=${encodeURIComponent(
         collectionName,
       )}`,
       normalizeBaseUrl(baseUrl),

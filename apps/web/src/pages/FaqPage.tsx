@@ -98,10 +98,10 @@ export function FaqPage() {
           answer: (
             <>
               <p>
-                By default, it serves the Web UI and API on port <code className="font-mono">3210</code>.
+                By default, it serves the Web UI and API on port <code className="font-mono">5454</code>.
               </p>
               <p>
-                Open: <code className="font-mono">http://&lt;server-ip&gt;:3210/</code>
+                Open: <code className="font-mono">http://&lt;server-ip&gt;:5454/</code>
               </p>
             </>
           ),
