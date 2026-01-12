@@ -1,0 +1,90 @@
+name: Update GHCR downloads badge
+
+on:
+  schedule:
+    # Update periodically (GitHub schedules may be delayed)
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: ghcr-downloads-badge
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Fetch GHCR downloads count (total)
+        id: downloads
+        env:
+          OWNER: ohmzi
+          PACKAGE: immaculaterr
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          total=0
+          page=1
+          while true; do
+            resp="$(
+              curl -fsSL \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE}/versions?per_page=100&page=${page}"
+            )"
+
+            len="$(echo "${resp}" | jq 'length')"
+            if [[ "${len}" == "0" ]]; then
+              break
+            fi
+
+            page_total="$(echo "${resp}" | jq '[.[].download_count] | add // 0')"
+            total="$(( total + page_total ))"
+            page="$(( page + 1 ))"
+          done
+
+          echo "total=${total}" >> "${GITHUB_OUTPUT}"
+
+      - name: Write badge JSON
+        env:
+          TOTAL: ${{ steps.downloads.outputs.total }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p doc/assets/badges
+          cat > doc/assets/badges/ghcr-downloads.json <<JSON
+          {
+            "schemaVersion": 1,
+            "label": "GHCR downloads",
+            "message": "${TOTAL}",
+            "color": "blue"
+          }
+          JSON
+
+      - name: Commit and push (if changed)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- doc/assets/badges/ghcr-downloads.json; then
+            echo "No changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add doc/assets/badges/ghcr-downloads.json
+          git commit -m "chore: update GHCR downloads badge"
+          git push origin HEAD:develop
+

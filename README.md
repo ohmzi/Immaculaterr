@@ -17,8 +17,11 @@
     <a href="./LICENSE">
       <img alt="License" src="https://img.shields.io/github/license/ohmzi/Immaculaterr" />
     </a>
-    <a href="https://github.com/ohmzi/Immaculaterr/releases">
-      <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/ohmzi/Immaculaterr/total" />
+    <a href="https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr">
+      <img
+        alt="GHCR Downloads"
+        src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-downloads.json"
+      />
     </a>
   </p>
 </div>
