@@ -4,7 +4,7 @@ on:
   schedule:
     # Update periodically (GitHub schedules may be delayed)
     - cron: '17 * * * *'
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
   contents: write
