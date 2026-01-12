@@ -20,6 +20,7 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What’s the difference between Immaculate Taste and Based on Latest Watched?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched)
   - [What is Change of Taste and how is it chosen?](#what-is-change-of-taste-and-how-is-it-chosen)
   - [How are recommendation titles generated?](#how-are-recommendation-titles-generated)
+  - [What does the ratio of future releases vs current releases do?](#what-does-the-ratio-of-future-releases-vs-current-releases-do)
   - [Why do I see not enabled or skipped?](#why-do-i-see-not-enabled-or-skipped)
   - [What happens when a recommended title isn’t in Plex?](#what-happens-when-a-recommended-title-isnt-in-plex)
   - [How does the refresher move items from pending to active?](#how-does-the-refresher-move-items-from-pending-to-active)
@@ -136,9 +137,36 @@ It’s designed to intentionally vary from your “similar” recommendations—
 
 ### How are recommendation titles generated?
 
-Recommendations are primarily driven by TMDB “similar” logic, with optional enrichment from Google/OpenAI if you’ve configured them.
+Recommendations always start with TMDB (it builds a pool of candidates similar to the seed). What happens next depends on what you configured in Vault:
+
+#### Variant 1: TMDB only
+
+- TMDB finds the seed and builds candidate pools (released / upcoming / unknown).
+- The “future vs current” ratio dial is applied to pick a mix (see below).
+- Final titles come from TMDB’s pool selection.
+
+#### Variant 2: TMDB + OpenAI
+
+- TMDB still builds the candidate pools first.
+- OpenAI then curates the final list from TMDB candidates (better “taste” and variety).
+- The final list is still constrained by the released/upcoming mix you set.
+
+#### Variant 3: TMDB + Google + OpenAI
+
+- TMDB builds the candidate pools.
+- Google search is used as a discovery booster (web context) to widen suggestions and add extra candidates.
+- OpenAI uses both TMDB candidates and the web context to curate the final list.
 
 The job reports include a per-service breakdown (what each service suggested) plus the final “Generated” list.
+
+### What does the ratio of future releases vs current releases do?
+
+This dial lives in Command Center → Recommendations. It controls how many suggestions are:
+
+- **Current releases**: already released and typically available to watch now
+- **Future releases**: upcoming titles that may not be released yet
+
+Under the hood it sets `recommendations.upcomingPercent` (default 25%). The system enforces that **released stays at least 25%**, so upcoming is effectively capped (max 75%).
 
 ### Why do I see not enabled or skipped?
 

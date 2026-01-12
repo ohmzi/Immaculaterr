@@ -235,12 +235,66 @@ export function FaqPage() {
           answer: (
             <>
               <p>
-                Recommendations are primarily driven by TMDB “similar” logic, with optional enrichment
-                from Google/OpenAI if you’ve configured them.
+                Recommendations always start with TMDB (it builds a pool of candidates similar to the seed).
+                What happens next depends on what you configured in Vault:
               </p>
+              <div className="space-y-3">
+                <div>
+                  <div className="font-semibold text-white/85">Variant 1: TMDB only</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds candidate pools (released / upcoming / unknown).</li>
+                    <li>
+                      The “future vs current” ratio dial is applied to choose a mix (see below).
+                    </li>
+                    <li>Final titles come from TMDB’s pool selection.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-white/85">Variant 2: TMDB + OpenAI</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds candidate pools first.</li>
+                    <li>OpenAI curates the final list from TMDB candidates (better “taste” and variety).</li>
+                    <li>The final list still respects the released/upcoming mix you set.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-white/85">Variant 3: TMDB + Google + OpenAI</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds the candidate pools.</li>
+                    <li>Google search is used as a discovery booster (web context) to widen suggestions.</li>
+                    <li>OpenAI uses both TMDB candidates and web context to curate the final list.</li>
+                  </ul>
+                </div>
+              </div>
+              <p className="mt-3">
+                The job reports include a per-service breakdown (what each service suggested) plus the final{' '}
+                “Generated” list.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-upcoming-ratio',
+          question: 'What does the ratio of future releases vs current releases do?',
+          answer: (
+            <>
               <p>
-                The job reports include a per-service breakdown (what each service suggested) plus the
-                final “Generated” list.
+                This dial lives in <span className="font-semibold text-white/85">Command Center → Recommendations</span>.
+                It controls how many suggestions are:
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Current releases</span>: already released and typically available to watch now
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Future releases</span>: upcoming titles that may not be released yet
+                </li>
+              </ul>
+              <p>
+                The system enforces that released stays at least <span className="font-semibold text-white/85">25%</span>,
+                so upcoming is effectively capped.
               </p>
             </>
           ),
