@@ -10,7 +10,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: containers-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
