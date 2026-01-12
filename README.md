@@ -57,6 +57,17 @@ Immaculaterr is designed to run as a single container.
 
 ```bash
 docker pull ghcr.io/ohmzi/immaculaterr:latest
+
+docker run -d \
+  --name immaculaterr \
+  --network host \
+  -e HOST=0.0.0.0 \
+  -e PORT=3210 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  ghcr.io/ohmzi/immaculaterr:latest
 ```
 
 See the setup guide for `docker run` and Docker Compose examples: [`doc/setupguide.md`](doc/setupguide.md)
