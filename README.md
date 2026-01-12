@@ -54,10 +54,12 @@
 
 ## Getting started (Docker)
 
-### Install from the package (GHCR)
+### Install from the package
+
+**Option A (Docker Hub — best for Portainer search/discovery):**
 
 ```bash
-docker pull ghcr.io/ohmzi/immaculaterr:latest
+docker pull ohmzii/immaculaterr:latest
 
 docker run -d \
   --name Immaculaterr \
@@ -68,7 +70,13 @@ docker run -d \
   -e DATABASE_URL=file:/data/tcp.sqlite \
   -v immaculaterr-data:/data \
   --restart unless-stopped \
-  ghcr.io/ohmzi/immaculaterr:latest
+  ohmzii/immaculaterr:latest
+```
+
+**Option B (GHCR):**
+
+```bash
+docker pull ghcr.io/ohmzi/immaculaterr:latest
 ```
 
 See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupguide.md)

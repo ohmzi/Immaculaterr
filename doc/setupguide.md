@@ -13,9 +13,15 @@ Prerequisites
 Pull the image
 ---
 
-Images are published to GitHub Container Registry (GHCR).
+Images are published to **Docker Hub** (best for Portainer search/discovery) and **GHCR**.
 
-- Latest:
+- Latest (Docker Hub):
+
+```bash
+docker pull ohmzii/immaculaterr:latest
+```
+
+- Latest (GHCR):
 
 ```bash
 docker pull ghcr.io/ohmzi/immaculaterr:latest
@@ -36,7 +42,7 @@ docker run -d \
   -e DATABASE_URL=file:/data/tcp.sqlite \
   -v immaculaterr-data:/data \
   --restart unless-stopped \
-  ghcr.io/ohmzi/immaculaterr:latest
+  ohmzii/immaculaterr:latest
 ```
 
 Then open:
@@ -50,7 +56,7 @@ Updating
 To update, pull the new tag and recreate the container (your volume stays intact).
 
 ```bash
-docker pull ghcr.io/ohmzi/immaculaterr:latest
+docker pull ohmzii/immaculaterr:latest
 
 docker rm -f Immaculaterr 2>/dev/null || true
 
@@ -63,8 +69,13 @@ docker run -d \
   -e DATABASE_URL=file:/data/tcp.sqlite \
   -v immaculaterr-data:/data \
   --restart unless-stopped \
-  ghcr.io/ohmzi/immaculaterr:latest
+  ohmzii/immaculaterr:latest
 ```
+
+Notes
+---
+
+- If you prefer GHCR, replace the image with `ghcr.io/ohmzi/immaculaterr:latest`.
 
 Portainer (optional)
 ---

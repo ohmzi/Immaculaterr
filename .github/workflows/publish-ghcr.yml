@@ -33,6 +33,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Login to Docker Hub (optional)
+        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Compute image tags
         id: vars
         shell: bash
@@ -45,14 +52,38 @@ jobs:
             node -e "const fs=require('fs');const s=fs.readFileSync('apps/api/src/app.meta.ts','utf8');const m=s.match(/DEFAULT_APP_VERSION\\s*=\\s*'([^']+)'/);process.stdout.write((m&&m[1]?m[1].trim():'')||'0.0.0.0')"
           )"
           OWNER_LC="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          IMAGE="ghcr.io/${OWNER_LC}/immaculaterr"
+          GHCR_IMAGE="ghcr.io/${OWNER_LC}/immaculaterr"
+          DOCKERHUB_IMAGE="docker.io/ohmzii/immaculaterr"
           BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-12)"
 
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
-          echo "build_time=${BUILD_TIME}" >> "${GITHUB_OUTPUT}"
-          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          DOCKERHUB_ENABLED="false"
+          if [[ -n "${DOCKERHUB_TOKEN:-}" && -n "${DOCKERHUB_USERNAME:-}" ]]; then
+            DOCKERHUB_ENABLED="true"
+          fi
+
+          {
+            echo "version=${VERSION}"
+            echo "ghcr_image=${GHCR_IMAGE}"
+            echo "dockerhub_image=${DOCKERHUB_IMAGE}"
+            echo "dockerhub_enabled=${DOCKERHUB_ENABLED}"
+            echo "build_time=${BUILD_TIME}"
+            echo "short_sha=${SHORT_SHA}"
+
+            echo "tags<<EOF"
+            echo "${GHCR_IMAGE}:latest"
+            echo "${GHCR_IMAGE}:${VERSION}"
+            echo "${GHCR_IMAGE}:v${VERSION}"
+            if [[ "${DOCKERHUB_ENABLED}" == "true" ]]; then
+              echo "${DOCKERHUB_IMAGE}:latest"
+              echo "${DOCKERHUB_IMAGE}:${VERSION}"
+              echo "${DOCKERHUB_IMAGE}:v${VERSION}"
+            fi
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
         id: build
@@ -62,8 +93,7 @@ jobs:
           file: docker/immaculaterr/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.vars.outputs.image }}:latest
+          tags: ${{ steps.vars.outputs.tags }}
           labels: |
             org.opencontainers.image.title=Immaculaterr
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -74,23 +104,3 @@ jobs:
             APP_VERSION=${{ steps.vars.outputs.version }}
             APP_BUILD_SHA=${{ github.sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
-
-      - name: Tag version aliases (vX + X)
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          IMAGE="${{ steps.vars.outputs.image }}"
-          VERSION="${{ steps.vars.outputs.version }}"
-          DIGEST="${{ steps.build.outputs.digest }}"
-
-          if [[ -z "${DIGEST}" ]]; then
-            echo "ERROR: build-push-action did not expose an image digest."
-            exit 1
-          fi
-
-          echo "Tagging ${IMAGE}@${DIGEST} as ${IMAGE}:${VERSION} and ${IMAGE}:v${VERSION}"
-          docker buildx imagetools create \
-            --tag "${IMAGE}:${VERSION}" \
-            --tag "${IMAGE}:v${VERSION}" \
-            "${IMAGE}@${DIGEST}"
