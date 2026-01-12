@@ -1,16 +1,14 @@
-name: Publish containers (GHCR + Docker Hub)
+name: Publish Docker image to GHCR
 
 on:
-  push:
-    branches:
-      - master
+  # Superseded by `publish-containers.yml` (GHCR + Docker Hub). Keep manual-only to avoid duplicates.
+  workflow_dispatch: {}
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  # NOTE: Must be a single expression; string concatenation like ${{ a }}-${{ b }} breaks workflow parsing.
   group: ${{ format('{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: false
 
@@ -44,40 +42,53 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
-      - name: Compute tags
+      - name: Compute image tags
         id: vars
         shell: bash
         run: |
           set -euo pipefail
 
+          # Read the in-app version from source of truth (apps/api/src/app.meta.ts).
+          # This ensures the Docker image metadata matches what the app reports.
           VERSION="$(
             node -e "const fs=require('fs');const s=fs.readFileSync('apps/api/src/app.meta.ts','utf8');const m=s.match(/DEFAULT_APP_VERSION\\s*=\\s*'([^']+)'/);process.stdout.write((m&&m[1]?m[1].trim():'')||'0.0.0.0')"
           )"
-
           OWNER_LC="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           GHCR_IMAGE="ghcr.io/${OWNER_LC}/immaculaterr"
           DOCKERHUB_IMAGE="docker.io/ohmzii/immaculaterr"
           BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-12)"
 
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "ghcr_image=${GHCR_IMAGE}" >> "${GITHUB_OUTPUT}"
-          echo "dockerhub_image=${DOCKERHUB_IMAGE}" >> "${GITHUB_OUTPUT}"
-          echo "build_time=${BUILD_TIME}" >> "${GITHUB_OUTPUT}"
-
-          echo "tags<<EOF" >> "${GITHUB_OUTPUT}"
-          echo "${GHCR_IMAGE}:latest" >> "${GITHUB_OUTPUT}"
-          echo "${GHCR_IMAGE}:${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "${GHCR_IMAGE}:v${VERSION}" >> "${GITHUB_OUTPUT}"
-          if [[ -n "${DOCKERHUB_TOKEN:-}" ]]; then
-            echo "${DOCKERHUB_IMAGE}:latest" >> "${GITHUB_OUTPUT}"
-            echo "${DOCKERHUB_IMAGE}:${VERSION}" >> "${GITHUB_OUTPUT}"
-            echo "${DOCKERHUB_IMAGE}:v${VERSION}" >> "${GITHUB_OUTPUT}"
+          DOCKERHUB_ENABLED="false"
+          if [[ -n "${DOCKERHUB_TOKEN:-}" && -n "${DOCKERHUB_USERNAME:-}" ]]; then
+            DOCKERHUB_ENABLED="true"
           fi
-          echo "EOF" >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "version=${VERSION}"
+            echo "ghcr_image=${GHCR_IMAGE}"
+            echo "dockerhub_image=${DOCKERHUB_IMAGE}"
+            echo "dockerhub_enabled=${DOCKERHUB_ENABLED}"
+            echo "build_time=${BUILD_TIME}"
+            echo "short_sha=${SHORT_SHA}"
+
+            echo "tags<<EOF"
+            echo "${GHCR_IMAGE}:latest"
+            echo "${GHCR_IMAGE}:${VERSION}"
+            echo "${GHCR_IMAGE}:v${VERSION}"
+            if [[ "${DOCKERHUB_ENABLED}" == "true" ]]; then
+              echo "${DOCKERHUB_IMAGE}:latest"
+              echo "${DOCKERHUB_IMAGE}:${VERSION}"
+              echo "${DOCKERHUB_IMAGE}:v${VERSION}"
+            fi
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
         env:
+          DOCKERHUB_USERNAME: ${{ env.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ env.DOCKERHUB_TOKEN }}
 
-      - name: Build and push (multi-arch)
+      - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -95,4 +106,3 @@ jobs:
             APP_VERSION=${{ steps.vars.outputs.version }}
             APP_BUILD_SHA=${{ github.sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
-
