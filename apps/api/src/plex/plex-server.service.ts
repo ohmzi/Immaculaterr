@@ -1032,6 +1032,16 @@ export class PlexServerService {
     const q = title.trim();
     if (!q) return null;
 
+    // Ensure librarySectionKey is in the expected safe format (numeric ID) to
+    // prevent path manipulation or SSRF-style issues when constructing URLs.
+    // Plex library section IDs are numeric, so reject anything else.
+    if (!/^[1-9]\d*$/.test(librarySectionKey.trim())) {
+      this.logger.warn(
+        `Ignoring invalid Plex librarySectionKey: ${librarySectionKey}`,
+      );
+      return null;
+    }
+
     const url = new URL(
       `library/sections/${librarySectionKey}/search?type=1&query=${encodeURIComponent(q)}`,
       normalizeBaseUrl(baseUrl),
