@@ -1,0 +1,36 @@
+name: Docker Hub: update repository overview
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [master]
+    paths:
+      - doc/DOCKERHUB_OVERVIEW.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-overview
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Update Docker Hub overview
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_PAT: ${{ secrets.DOCKERHUB_PAT }}
+          DOCKERHUB_REPO: ohmzii/immaculaterr
+          DOCKERHUB_OVERVIEW_PATH: doc/DOCKERHUB_OVERVIEW.md
+        run: node scripts/update-dockerhub-overview.mjs
+
