@@ -51,8 +51,6 @@
 
 ## Getting started (Docker)
 
-Immaculaterr is designed to run as a single container.
-
 ### Install from the package (GHCR)
 
 ```bash
@@ -70,20 +68,7 @@ docker run -d \
   ghcr.io/ohmzi/immaculaterr:latest
 ```
 
-Or with Docker Compose (v2):
-
-```bash
-docker compose -f docker/immaculaterr/docker-compose.yml pull immaculaterr
-docker compose -f docker/immaculaterr/docker-compose.yml up -d immaculaterr
-```
-
-See the setup guide for `docker run` and Docker Compose examples: [`doc/setupguide.md`](doc/setupguide.md)
-
-### Run from source code (build locally)
-
-```bash
-docker compose -f docker/immaculaterr/docker-compose.source.yml up -d --build immaculaterr
-```
+See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupguide.md)
 
 Then open `http://<server-ip>:3210/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
 
