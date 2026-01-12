@@ -70,7 +70,6 @@ jobs:
           echo "${GHCR_IMAGE}:v${VERSION}" >> "${GITHUB_OUTPUT}"
           if [[ -n "${DOCKERHUB_TOKEN:-}" ]]; then
             echo "${DOCKERHUB_IMAGE}:latest" >> "${GITHUB_OUTPUT}"
-            echo "${DOCKERHUB_IMAGE}:${VERSION}" >> "${GITHUB_OUTPUT}"
             echo "${DOCKERHUB_IMAGE}:v${VERSION}" >> "${GITHUB_OUTPUT}"
           fi
           echo "EOF" >> "${GITHUB_OUTPUT}"
