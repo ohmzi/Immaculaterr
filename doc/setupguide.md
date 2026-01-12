@@ -28,7 +28,7 @@ Immaculaterr works best with **host networking** on Linux (so it can reach Plex/
 
 ```bash
 docker run -d \
-  --name immaculaterr \
+  --name Immaculaterr \
   --network host \
   -e HOST=0.0.0.0 \
   -e PORT=3210 \
@@ -47,19 +47,24 @@ Then open:
 Updating
 ---
 
-To update, pull the new tag and restart the service.
+To update, pull the new tag and recreate the container (your volume stays intact).
 
 ```bash
 docker pull ghcr.io/ohmzi/immaculaterr:latest
-docker compose up -d immaculaterr
+
+docker rm -f Immaculaterr 2>/dev/null || true
+
+docker run -d \
+  --name Immaculaterr \
+  --network host \
+  -e HOST=0.0.0.0 \
+  -e PORT=3210 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  ghcr.io/ohmzi/immaculaterr:latest
 ```
-
-Notes:
-
-- If you see `no configuration file provided`, you’re not in a folder with a Compose file.
-  - Run from the folder that contains your `compose.yml` / `docker-compose.yml`, **or**
-  - Add `-f <path-to-your-compose-file>` to the command.
-- If you started Immaculaterr with `docker run`, you’ll need to recreate the container after pulling (the volume stays intact).
 
 License
 ---

@@ -65,7 +65,7 @@ jobs:
           tags: |
             ${{ steps.vars.outputs.image }}:latest
           labels: |
-            org.opencontainers.image.title=immaculaterr
+            org.opencontainers.image.title=Immaculaterr
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.vars.outputs.version }}

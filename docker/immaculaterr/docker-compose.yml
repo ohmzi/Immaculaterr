@@ -2,7 +2,7 @@ name: immaculaterr
 
 services:
   immaculaterr:
-    container_name: immaculaterr
+    container_name: Immaculaterr
     # Default: pull from GitHub Container Registry (GHCR). Override for forks via IMM_IMAGE/IMM_TAG.
     image: ${IMM_IMAGE:-ghcr.io/ohmzi/immaculaterr}:${IMM_TAG:-latest}
     # Default to host networking (Linux), so Immaculaterr can reach host services like Plex/Radarr/Sonarr

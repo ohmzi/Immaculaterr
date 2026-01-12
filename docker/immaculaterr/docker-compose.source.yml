@@ -2,7 +2,7 @@ name: immaculaterr
 
 services:
   immaculaterr:
-    container_name: immaculaterr
+    container_name: Immaculaterr
     # Build the image locally from the repo (useful for contributors / debugging).
     image: immaculaterr:local
     build:

@@ -1,4 +1,4 @@
-export const DEFAULT_APP_VERSION = '0.0.0.304';
+export const DEFAULT_APP_VERSION = '0.0.0.305';
 
 export type AppMeta = {
   name: string;
@@ -13,7 +13,7 @@ export function readAppMeta(): AppMeta {
   const buildTime = (process.env.APP_BUILD_TIME ?? '').trim() || null;
 
   return {
-    name: 'immaculaterr',
+    name: 'Immaculaterr',
     version,
     buildSha,
     buildTime,
