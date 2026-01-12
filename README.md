@@ -40,8 +40,9 @@
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Radarr + Sonarr integration**:
   - Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
-- **Job reports & logs**: step-by-step breakdowns, metrics tables, and run history.
-- **More features on the way**
+- **Job reports & logs**:
+  - Step-by-step breakdowns, metrics tables, and run history.
+- **More features on the way:**
   - Discovering Media from film industries around the world
   - Email reports on media server health
 <div align="center">
