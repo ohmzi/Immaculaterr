@@ -54,7 +54,8 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const updatesQuery = useQuery({
     queryKey: ['updates'],
     queryFn: getUpdates,
-    staleTime: 10 * 60_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     retry: 1,
   });
