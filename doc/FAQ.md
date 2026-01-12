@@ -9,14 +9,9 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand)
   - [How do I do first-time setup?](#how-do-i-do-first-time-setup)
   - [What port does Immaculaterr use and how do I access it?](#what-port-does-immaculaterr-use-and-how-do-i-access-it)
-  - [Do I need Docker host networking? When should I use host.docker.internal?](#do-i-need-docker-host-networking-when-should-i-use-hostdockerinternal)
-  - [Where is the data stored (DB, settings, secrets)?](#where-is-the-data-stored-db-settings-secrets)
-  - [How do I reset and start over? What does Reset Account delete?](#how-do-i-reset-and-start-over-what-does-reset-account-delete)
 - [Automation & triggers](#automation--triggers)
   - [What does Plex-Triggered Auto-Run mean?](#what-does-plex-triggered-auto-run-mean)
-  - [Which jobs are Plex-triggered and which are scheduled?](#which-jobs-are-plex-triggered-and-which-are-scheduled)
-  - [When does Immaculate Taste Collection trigger?](#when-does-immaculate-taste-collection-trigger)
-  - [When does Based on Latest Watched Collection trigger?](#when-does-based-on-latest-watched-collection-trigger)
+  - [When does Collection task trigger?](#when-does-collection-task-trigger)
   - [Why didn’t a job trigger even though I watched past the threshold?](#why-didnt-a-job-trigger-even-though-i-watched-past-the-threshold)
   - [How can I run a job manually?](#how-can-i-run-a-job-manually)
   - [What is the difference between the Collection job and the Refresher job?](#what-is-the-difference-between-the-collection-job-and-the-refresher-job)
@@ -90,30 +85,6 @@ By default, it serves the Web UI and API on port `5454`.
 
 Open: `http://<server-ip>:5454/`
 
-### Do I need Docker host networking? When should I use host.docker.internal?
-
-On Linux, this project defaults to Docker `host` networking so the container can reach services like Plex/Radarr/Sonarr via `localhost`.
-
-On Docker Desktop (Mac/Windows), use `host.docker.internal` for host services (for example: `http://host.docker.internal:32400`).
-
-### Where is the data stored (DB, settings, secrets)?
-
-In Docker, the app stores data under `/data` (a Docker volume by default).
-
-- SQLite DB: `/data/tcp.sqlite`
-- Master key file (if not provided by env/secret): `/data/app-master.key`
-- Settings + encrypted secrets live in the DB (secrets are encrypted at rest).
-
-### How do I reset and start over? What does Reset Account delete?
-
-Use Help → Reset Account to wipe Immaculaterr’s local state and restart the setup flow.
-
-- Deletes app settings and stored secrets (keys/tokens)
-- Deletes job history/logs stored by Immaculaterr
-- Logs you out and returns you to fresh setup
-
-It does not delete Plex media files. It may have created Plex collections; those are managed by jobs and can be recreated later.
-
 ## Automation & triggers
 
 ### What does Plex-Triggered Auto-Run mean?
@@ -122,21 +93,9 @@ When Auto-Run is enabled for a Plex-triggered job, Immaculaterr polls Plex and a
 
 You can still run the job manually any time from Task Manager.
 
-### Which jobs are Plex-triggered and which are scheduled?
-
-Task Manager labels jobs as Plex-Triggered or Scheduled above the Auto-Run toggle.
-
-If you’re unsure, trust the label in Task Manager—it reflects how that job is wired in this build.
-
-### When does Immaculate Taste Collection trigger?
+### When does Collection task trigger?
 
 By default, it triggers when Plex polling detects you’ve watched roughly 70% of the item.
-
-(Thresholds can be tuned via environment variables in advanced setups.)
-
-### When does Based on Latest Watched Collection trigger?
-
-By default, it triggers at about 60% watched for the seed item, detected via Plex polling.
 
 ### Why didn’t a job trigger even though I watched past the threshold?
 
