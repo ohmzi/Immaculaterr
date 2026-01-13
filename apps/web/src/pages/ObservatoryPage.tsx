@@ -25,11 +25,11 @@ import {
 import { cn } from '@/components/ui/utils';
 
 type Tab = 'movie' | 'tv';
-type Phase = 'pendingApprovals' | 'sentinel' | 'review';
+type Phase = 'pendingApprovals' | 'review';
 
 type CardModel =
   | { kind: 'item'; item: ObservatoryItem }
-  | { kind: 'sentinel' };
+  | { kind: 'sentinel'; sentinel: 'approvalsDone' | 'reviewDone' };
 
 function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));
@@ -141,15 +141,40 @@ function SwipeCard({
         </div>
 
         {card.kind === 'sentinel' ? (
-          <div className="p-10 md:p-12">
-            <div className="text-white text-2xl font-black tracking-tight">
-              End of download requests
+          // Sentinel cards are styled like movie cards so the deck never "ends".
+          <div className="relative h-[420px]">
+            <img
+              src={APP_BG_IMAGE_URL}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover object-center opacity-90"
+              draggable={false}
+            />
+            <div className="absolute inset-0 bg-gradient-to-br from-black/35 via-black/40 to-black/65" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-black/25" />
+
+            <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
+              <div className="max-w-md">
+                <div className="text-white text-2xl md:text-3xl font-black tracking-tight drop-shadow-2xl">
+                  {card.sentinel === 'approvalsDone'
+                    ? 'All download approvals have been reviewed'
+                    : 'All suggestions have been reviewed'}
+                </div>
+                <div className="mt-3 text-white/75 leading-relaxed">
+                  Swipe right to{' '}
+                  {card.sentinel === 'approvalsDone'
+                    ? 'review suggestions'
+                    : 'restart reviewing'}
+                  .
+                </div>
+              </div>
             </div>
-            <div className="mt-3 text-white/70 leading-relaxed">
-              Swipe right to review suggestions. Swiping left won’t dismiss this card.
-            </div>
-            <div className="mt-6 text-sm text-white/60">
-              Tip: this page batches changes and applies them after a short cooldown.
+
+            <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
+              <div className="text-white font-semibold text-sm leading-tight">
+                {card.sentinel === 'approvalsDone'
+                  ? 'Swipe right to review suggestions'
+                  : 'Swipe right to restart reviewing'}
+              </div>
             </div>
           </div>
         ) : (
@@ -315,6 +340,54 @@ export function ObservatoryPage() {
     refetchOnWindowFocus: false,
   });
 
+  const approvalsDoneCard = useMemo<CardModel>(
+    () => ({ kind: 'sentinel', sentinel: 'approvalsDone' }),
+    [],
+  );
+  const reviewDoneCard = useMemo<CardModel>(
+    () => ({ kind: 'sentinel', sentinel: 'reviewDone' }),
+    [],
+  );
+
+  const setDeckForApprovals = () => {
+    const pending = listPendingQuery.data?.items ?? [];
+    setPhase('pendingApprovals');
+    setDeck(pending.length ? buildDeck(pending) : [approvalsDoneCard]);
+  };
+
+  const setDeckForReview = () => {
+    const items = listReviewQuery.data?.items ?? [];
+    setPhase('review');
+    setDeck(items.length ? buildDeck(items) : [reviewDoneCard]);
+  };
+
+  const advanceOneOrSentinel = (sentinel: CardModel) => {
+    setDeck((prev) => {
+      const next = prev.slice(1);
+      return next.length ? next : [sentinel];
+    });
+  };
+
+  const restartCycle = () => {
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: [
+          'observatory',
+          'immaculateTaste',
+          tab,
+          activeLibraryKey,
+          'pendingApproval',
+        ],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'review'],
+      }),
+    ]).finally(() => {
+      if (approvalRequired) setDeckForApprovals();
+      else setDeckForReview();
+    });
+  };
+
   // Initialize deck only when tab/library changes (avoid re-mounting the whole deck after each swipe/refetch).
   useEffect(() => {
     const key = `${tab}:${activeLibraryKey || 'none'}`;
@@ -326,20 +399,11 @@ export function ObservatoryPage() {
     setApprovalRequired(approval);
 
     if (!approval) {
-      setPhase('review');
-      setDeck(buildDeck(listReviewQuery.data?.items ?? []));
+      setDeckForReview();
       return;
     }
 
-    const pending = listPendingQuery.data?.items ?? [];
-    if (pending.length) {
-      setPhase('pendingApprovals');
-      setDeck(buildDeck(pending));
-      return;
-    }
-
-    setPhase('sentinel');
-    setDeck([{ kind: 'sentinel' }]);
+    setDeckForApprovals();
   }, [tab, activeLibraryKey, listPendingQuery.data, listReviewQuery.data]);
 
   const recordDecisionMutation = useMutation({
@@ -408,8 +472,6 @@ export function ObservatoryPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, activeLibraryKey]);
-
-  const popTop = () => setDeck((prev) => prev.slice(1));
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -565,7 +627,7 @@ export function ObservatoryPage() {
                         <motion.div
                           key={
                             card.kind === 'sentinel'
-                              ? 'sentinel'
+                              ? `sentinel:${card.sentinel}`
                               : `${card.item.mediaType}:${card.item.id}`
                           }
                           style={{
@@ -597,21 +659,21 @@ export function ObservatoryPage() {
                                 id: card.item.id,
                                 action,
                               });
-                              popTop();
-                              scheduleApply();
-                              if (
-                                !deck.slice(1).length &&
-                                approvalRequired &&
+                              advanceOneOrSentinel(
                                 phase === 'pendingApprovals'
-                              ) {
-                                setPhase('sentinel');
-                                setDeck([{ kind: 'sentinel' }]);
-                              }
+                                  ? approvalsDoneCard
+                                  : reviewDoneCard,
+                              );
+                              scheduleApply();
                             }}
                             onSwipeRight={() => {
                               if (card.kind === 'sentinel') {
-                                setPhase('review');
-                                setDeck(buildDeck(listReviewQuery.data?.items ?? []));
+                                // approvalsDone -> review, reviewDone -> restart loop
+                                if (card.sentinel === 'approvalsDone') {
+                                  setDeckForReview();
+                                } else {
+                                  restartCycle();
+                                }
                                 return;
                               }
                               const action =
@@ -622,7 +684,11 @@ export function ObservatoryPage() {
                                 id: card.item.id,
                                 action,
                               });
-                              popTop();
+                              advanceOneOrSentinel(
+                                phase === 'pendingApprovals'
+                                  ? approvalsDoneCard
+                                  : reviewDoneCard,
+                              );
                               scheduleApply();
                             }}
                           />
@@ -631,12 +697,12 @@ export function ObservatoryPage() {
                     })}
                 </div>
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-full rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-10 text-center text-white/70 backdrop-blur-2xl">
-                    <div className="text-white font-semibold text-lg">
-                      All suggestions have been reviewed
-                    </div>
-                  </div>
+                <div className="absolute inset-0">
+                  <SwipeCard
+                    card={reviewDoneCard}
+                    onSwipeLeft={() => undefined}
+                    onSwipeRight={() => restartCycle()}
+                  />
                 </div>
               )}
             </div>
