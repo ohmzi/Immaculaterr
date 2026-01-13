@@ -37,6 +37,21 @@ Major Features Include
   - Email reports on media server health
   - Windows and macOS support
 
+Screenshots
+---
+
+**Desktop UI**
+
+<div align="center">
+  <img src="assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
+</div>
+
+**Mobile UI (full mobile support)**
+
+<div align="center">
+  <img src="assets/screenshots/showcase-mobile.gif" alt="Immaculaterr mobile UI showcase" width="320" />
+</div>
+
 Getting Started (Docker)
 ---
 
