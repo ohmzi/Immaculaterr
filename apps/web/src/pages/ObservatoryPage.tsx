@@ -674,23 +674,6 @@ export function ObservatoryPage() {
           <div className="mt-6">
             {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
             <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
-              <button
-                type="button"
-                onClick={undoLast}
-                disabled={!canUndo}
-                className={cn(
-                  'absolute bottom-4 right-4 z-50 h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
-                  canUndo
-                    ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
-                    : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
-                )}
-                aria-label="Undo last swipe"
-                title={canUndo ? 'Undo last swipe' : 'Nothing to undo'}
-              >
-                <Undo2 className="h-4 w-4" />
-                Undo
-              </button>
-
               {deck.length ? (
                 <div className="relative h-full">
                   {/* Render a small stack: top 3 */}
@@ -800,6 +783,25 @@ export function ObservatoryPage() {
                   />
                 </div>
               )}
+            </div>
+
+            <div className="mx-auto max-w-3xl mt-4 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={undoLast}
+                disabled={!canUndo}
+                className={cn(
+                  'h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
+                  canUndo
+                    ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                    : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
+                )}
+                aria-label="Undo last swipe"
+                title={canUndo ? 'Undo last swipe' : 'Nothing to undo'}
+              >
+                <Undo2 className="h-4 w-4" />
+                Undo
+              </button>
             </div>
           </div>
         </div>
