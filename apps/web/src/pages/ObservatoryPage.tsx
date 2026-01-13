@@ -1504,7 +1504,7 @@ export function ObservatoryPage() {
                   transition={{ duration: 0.3 }}
                 >
                   {/* Sub-tabs (Movie / TV) */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div className="flex items-center">
                       <div className="rounded-lg p-1 inline-flex relative border border-white/10 bg-black/10 backdrop-blur-md">
                           {['Movie', 'TV'].map((sub) => {
@@ -1560,7 +1560,7 @@ export function ObservatoryPage() {
                     </div>
                   </div>
 
-                  <div className="mt-3 text-xs text-white/55">
+                  <div className="mb-6 text-xs text-white/55">
                     {watchedApprovalRequired
                       ? 'Approval is ON. Pending download requests show first.'
                       : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
