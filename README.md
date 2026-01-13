@@ -58,7 +58,12 @@
   - Email reports on media server health
   - Windows and macOS support
 <div align="center">
-  <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr UI carousel: Your Library on Autopilot, Command Center, and Task Manager" width="900" />
+  <p><b>Desktop UI</b></p>
+  <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
+  <br/>
+  <br/>
+  <p><b>Mobile UI (full mobile support)</b></p>
+  <img src="doc/assets/screenshots/showcase-mobile.gif" alt="Immaculaterr mobile UI showcase" width="320" />
 </div>
 
 ## Getting started (Docker)
