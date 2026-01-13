@@ -4,7 +4,7 @@ import { PlexServerService } from './plex-server.service';
 import { createHash } from 'crypto';
 
 export type PlexLibraryGrowthPoint = {
-  month: string; // YYYY-MM (UTC)
+  month: string; // YYYY-MM or YYYY-MM-DD (UTC)
   movies: number;
   tv: number;
 };
@@ -62,6 +62,13 @@ function monthKeyUtc(date: Date): string {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
+}
+
+function dayKeyUtc(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function startOfMonthUtc(tsSeconds: number): Date {
@@ -129,6 +136,14 @@ function buildCumulativeMonthlySeries(params: {
     series.push({ month: key, movies, tv });
   }
 
+  // Always end on today's *actual* UTC date so the chart advances daily.
+  const today = new Date();
+  const todayKey = dayKeyUtc(today);
+  const lastKey = series.at(-1)?.month ?? '';
+  if (todayKey && lastKey !== todayKey) {
+    series.push({ month: todayKey, movies, tv });
+  }
+
   return series;
 }
 
@@ -177,7 +192,8 @@ export class PlexAnalyticsService {
       .slice(0, 16);
 
     const counter = this.growthBustCounterByUserId.get(userId) ?? 0;
-    return { ok: true, version: `${signatureHash}:${counter}` };
+    const dayBucket = Math.floor(Date.now() / 86_400_000); // refresh at least daily
+    return { ok: true, version: `${signatureHash}:${counter}:${dayBucket}` };
   }
 
   async getLibraryGrowth(userId: string): Promise<PlexLibraryGrowthResponse> {
@@ -231,7 +247,7 @@ export class PlexAnalyticsService {
       };
       this.cache.set(userId, {
         signature,
-        expiresAt: now + 24 * 60 * 60_000,
+        expiresAt: now + 60 * 60_000,
         data,
       });
       return data;
@@ -275,7 +291,8 @@ export class PlexAnalyticsService {
     };
 
     // Cache for 24 hours (webhooks will invalidate on library.new)
-    this.cache.set(userId, { signature, expiresAt: now + 24 * 60 * 60_000, data });
+    // Also refresh frequently enough that the chart's end date advances each day.
+    this.cache.set(userId, { signature, expiresAt: now + 60 * 60_000, data });
     return data;
   }
 }

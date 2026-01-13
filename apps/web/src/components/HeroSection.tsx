@@ -23,20 +23,30 @@ const TIME_RANGE_OPTIONS: Array<{
 ];
 
 function formatMonthLabel(value: string) {
-  const [y, m] = value.split('-');
+  const [y, m, d] = value.split('-');
   const year = Number.parseInt(y ?? '', 10);
   const month = Number.parseInt(m ?? '', 10);
+  const day = d ? Number.parseInt(d, 10) : NaN;
   if (!Number.isFinite(year) || !Number.isFinite(month)) return value;
-  const d = new Date(Date.UTC(year, month - 1, 1));
-  return d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
+
+  // If this point is a specific day (YYYY-MM-DD), show Month Day (e.g. "Jan 13")
+  if (Number.isFinite(day)) {
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    return dt.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  const dt = new Date(Date.UTC(year, month - 1, 1));
+  return dt.toLocaleString(undefined, { month: 'short', year: '2-digit' });
 }
 
-function parseUtcMonthStart(value: string): Date | null {
-  const [y, m] = value.split('-');
+function parseUtcDateKey(value: string): Date | null {
+  const [y, m, d] = value.split('-');
   const year = Number.parseInt(y ?? '', 10);
   const month = Number.parseInt(m ?? '', 10);
+  const day = d ? Number.parseInt(d, 10) : 1;
   if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
-  return new Date(Date.UTC(year, month - 1, 1));
+  if (!Number.isFinite(day) || day <= 0) return null;
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function niceCeilStep(rawStep: number) {
@@ -244,7 +254,7 @@ export function HeroSection() {
     const months = opt?.months;
     if (!months) return series;
 
-    const end = parseUtcMonthStart(series.at(-1)?.month ?? '');
+    const end = parseUtcDateKey(series.at(-1)?.month ?? '');
     if (!end) return series;
 
     // Include the month *before* the window so a "1M" view still has a visible trend.
@@ -254,7 +264,7 @@ export function HeroSection() {
     );
 
     const next = series.filter((p) => {
-      const dt = parseUtcMonthStart(p.month);
+      const dt = parseUtcDateKey(p.month);
       return dt ? dt >= start : false;
     });
 
