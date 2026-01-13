@@ -46,6 +46,59 @@ function parseUtcMonthStart(value: string): Date | null {
   return new Date(Date.UTC(year, month - 1, 1));
 }
 
+/**
+ * Calculate evenly spaced X-axis tick values for the chart.
+ * For each time range, we divide into ~4 ticks that land on roughly the same day
+ * of the month as "today" (the last data point).
+ */
+function calculateXAxisTicks(
+  data: Array<{ month: string }>,
+  timeRangeMonths: number | undefined,
+): string[] {
+  if (data.length < 2) return data.map((d) => d.month);
+
+  const firstKey = data[0]?.month ?? '';
+  const lastKey = data.at(-1)?.month ?? '';
+
+  // Always include start and end
+  const ticks: string[] = [firstKey];
+
+  // Determine how many intermediate ticks based on time range
+  // 1M -> 2 ticks (start, end)
+  // 3M -> 2-3 ticks
+  // 6M -> 3 ticks (start, mid, end)
+  // 1Y -> 4 ticks (quarters)
+  // 5Y+ -> 4-5 ticks
+  const numIntermediateTicks =
+    !timeRangeMonths || timeRangeMonths <= 1
+      ? 0
+      : timeRangeMonths <= 3
+        ? 1
+        : timeRangeMonths <= 6
+          ? 1
+          : timeRangeMonths <= 12
+            ? 2
+            : 3;
+
+  if (numIntermediateTicks > 0 && data.length > 2) {
+    // Find evenly spaced indices in the data array
+    const step = (data.length - 1) / (numIntermediateTicks + 1);
+    for (let i = 1; i <= numIntermediateTicks; i++) {
+      const idx = Math.round(step * i);
+      const tickValue = data[idx]?.month;
+      if (tickValue && tickValue !== firstKey && tickValue !== lastKey) {
+        ticks.push(tickValue);
+      }
+    }
+  }
+
+  if (lastKey !== firstKey) {
+    ticks.push(lastKey);
+  }
+
+  return ticks;
+}
+
 function niceCeilStep(rawStep: number) {
   // Round the step up to a "nice" magnitude: 10s / 100s / 1000s, etc.
   // - < 10: keep integer precision
@@ -246,18 +299,26 @@ export function HeroSection() {
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1Y');
 
   const filteredSeries = useMemo(() => {
-    if (timeRange === 'ALL') return series;
+    // For ALL time option, limit to Jan 1, 2015 as the earliest date
+    if (timeRange === 'ALL') {
+      const allTimeStart = new Date(Date.UTC(2015, 0, 1)); // Jan 1, 2015
+      return series.filter((p) => {
+        const dt = parseUtcMonthStart(p.month);
+        return dt ? dt >= allTimeStart : false;
+      });
+    }
+
     const opt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
     const months = opt?.months;
     if (!months) return series;
 
-    const end = parseUtcMonthStart(series.at(-1)?.month ?? '');
-    if (!end) return series;
-
+    // Use today's date as the reference point for calculating the start date
+    const today = new Date();
+    
     // Include the month *before* the window so a "1M" view still has a visible trend.
     // Example: for 6M we show the last 7 monthly points (baseline + 6 month window).
     const start = new Date(
-      Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - months, 1),
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - months, 1),
     );
 
     const next = series.filter((p) => {
@@ -307,6 +368,12 @@ export function HeroSection() {
   const tvScale = buildQuarterScale(tvMax);
   const firstMonth = filteredSeries[0]?.month ?? '';
   const lastMonth = filteredSeries.at(-1)?.month ?? '';
+
+  const rangeMonths = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange)?.months;
+  const xAxisTicks = useMemo(
+    () => calculateXAxisTicks(filteredSeries, rangeMonths),
+    [filteredSeries, rangeMonths],
+  );
 
   const yAxisWidth = (() => {
     const lens: number[] = [];
@@ -474,8 +541,7 @@ export function HeroSection() {
                             lastMonth={lastMonth}
                           />
                         )}
-                        interval="preserveStartEnd"
-                        minTickGap={16}
+                        ticks={xAxisTicks}
                         tickMargin={10}
                         padding={{ left: 10, right: 10 }}
                       />
