@@ -1,10 +1,11 @@
 Immaculaterr
 ===
 
-[![Build Status](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml)
+[![Publish containers (GHCR + Docker Hub)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml/badge.svg?branch=master)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml)
 [![Latest Release](https://img.shields.io/github/v/release/ohmzi/Immaculaterr)](https://github.com/ohmzi/Immaculaterr/releases)
 [![License](https://img.shields.io/github/license/ohmzi/Immaculaterr)](../LICENSE)
-[![GitHub Downloads](https://img.shields.io/github/downloads/ohmzi/Immaculaterr/total)](https://github.com/ohmzi/Immaculaterr/releases)
+[![GHCR Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-package-downloads.json&cacheSeconds=300)](https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr)
+[![Docker Pulls](https://img.shields.io/docker/pulls/ohmzii/immaculaterr)](https://hub.docker.com/r/ohmzii/immaculaterr)
 
 Immaculaterr is a **Plex “autopilot”** that watches what you’re watching, generates recommendations, and keeps your library tidy.
 It builds curated Plex collections (with proper artwork), can optionally send missing titles to Radarr/Sonarr, and gives you detailed run reports so you always know what happened.
@@ -41,8 +42,18 @@ Getting Started (Docker)
 Immaculaterr is designed to run as a single container.
 
 ```bash
-docker compose -f docker/immaculaterr/docker-compose.yml pull
-docker compose -f docker/immaculaterr/docker-compose.yml up -d
+docker pull ohmzii/immaculaterr:latest
+
+docker run -d \
+  --name Immaculaterr \
+  --network host \
+  -e HOST=0.0.0.0 \
+  -e PORT=5454 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  ohmzii/immaculaterr:latest
 ```
 
 Then open `http://<server-ip>:5454/` (**production Docker port is `5454`**) and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
