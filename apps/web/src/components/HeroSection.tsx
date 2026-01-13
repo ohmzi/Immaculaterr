@@ -72,10 +72,17 @@ function addMonthsClampedUtc(date: Date, months: number): Date {
   return new Date(Date.UTC(targetYear, targetMonth0, clampedDay));
 }
 
-function formatTickDateUtc(ms: number, mode: 'day' | 'month'): string {
+function formatTickDateUtc(ms: number, mode: 'day' | 'month' | 'monthOnly' | 'year2'): string {
   const dt = new Date(ms);
   if (mode === 'day') {
     return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  }
+  if (mode === 'monthOnly') {
+    return dt.toLocaleString(undefined, { month: 'short', timeZone: 'UTC' });
+  }
+  if (mode === 'year2') {
+    const yy = String(dt.getUTCFullYear()).slice(-2);
+    return `'${yy}`;
   }
   return dt.toLocaleString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' });
 }
@@ -243,7 +250,7 @@ function MonthXAxisTick(props: {
   payload?: { value?: number };
   firstX: number;
   lastX: number;
-  mode: 'day' | 'month';
+  mode: 'day' | 'month' | 'monthOnly' | 'year2';
 }) {
   const { x = 0, y = 0, payload, firstX, lastX, mode } = props;
   const value = typeof payload?.value === 'number' ? payload.value : NaN;
@@ -360,14 +367,16 @@ export function HeroSection() {
 
     if (timeRange === 'ALL') {
       const allStart = Date.UTC(2015, 0, 1);
-      return { startMs: allStart, endMs, stepMonths: 6, tickMode: 'month' as const };
+      // Exceptional case: ALL ticks should be 2 years apart.
+      return { startMs: allStart, endMs, stepMonths: 24, tickMode: 'year2' as const };
     }
 
     const opt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
     const months = opt?.months ?? 12;
 
-    const stepMonths = timeRange === '5Y' ? 6 : 1;
-    const tickMode = stepMonths === 1 ? ('day' as const) : ('month' as const);
+    const stepMonths = timeRange === '5Y' ? 12 : timeRange === '1Y' ? 2 : 1;
+    // For month-based ranges (1M/3M/6M/1Y), X-axis labels should show only the month name.
+    const tickMode = timeRange === '5Y' ? ('month' as const) : ('monthOnly' as const);
 
     const start = addMonthsClampedUtc(endUtc, -months);
     const startMs = start.getTime();
@@ -393,10 +402,18 @@ export function HeroSection() {
 
     const end = new Date(endMs);
     const ticks: number[] = [];
-    // Exactly N intervals => N+1 ticks (start..end), month-apart and anchored to today.
-    for (let i = months; i >= 0; i--) {
+    // Exactly N months, with a range-specific step:
+    // - 1M/3M/6M: 1 month steps
+    // - 1Y: 2 month steps
+    // - 5Y: 6 month steps
+    //
+    // Always anchored to today and always includes the exact start/end.
+    for (let i = months; i >= 0; i -= stepMonths) {
       ticks.push(addMonthsClampedUtc(end, -i).getTime());
     }
+    const startTick = addMonthsClampedUtc(end, -months).getTime();
+    if (ticks[0] !== startTick) ticks.unshift(startTick);
+    if (ticks.at(-1) !== endMs) ticks.push(endMs);
     return ticks;
   }, [rangeBounds, timeRange]);
 
