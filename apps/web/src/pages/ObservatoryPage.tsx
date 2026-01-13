@@ -5,7 +5,7 @@ import {
   useMotionValue,
   useTransform,
 } from 'motion/react';
-import { Telescope } from 'lucide-react';
+import { Telescope, Undo2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -30,6 +30,14 @@ type Phase = 'pendingApprovals' | 'review';
 type CardModel =
   | { kind: 'item'; item: ObservatoryItem }
   | { kind: 'sentinel'; sentinel: 'approvalsDone' | 'reviewDone' };
+
+type UndoState = {
+  tab: Tab;
+  librarySectionKey: string;
+  phase: Phase;
+  card: { kind: 'item'; item: ObservatoryItem };
+  action: 'approve' | 'reject' | 'keep' | 'remove';
+} | null;
 
 function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));
@@ -293,6 +301,7 @@ export function ObservatoryPage() {
   const [phase, setPhase] = useState<Phase>('pendingApprovals');
   const [deck, setDeck] = useState<CardModel[]>([]);
   const [approvalRequired, setApprovalRequired] = useState(false);
+  const [undoState, setUndoState] = useState<UndoState>(null);
 
   const pendingApplyRef = useRef(false);
   const applyTimerRef = useRef<number | null>(null);
@@ -419,6 +428,7 @@ export function ObservatoryPage() {
     if (!activeLibraryKey) return;
     if (deckKeyRef.current === key) return;
     deckKeyRef.current = key;
+    setUndoState(null);
 
     const approval = listPendingQuery.data?.approvalRequiredFromObservatory ?? false;
     setApprovalRequired(approval);
@@ -436,7 +446,7 @@ export function ObservatoryPage() {
       mediaType: 'movie' | 'tv';
       librarySectionKey: string;
       id: number;
-      action: 'approve' | 'reject' | 'keep' | 'remove';
+      action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
     }) => {
       return await recordImmaculateTasteDecisions({
         librarySectionKey: params.librarySectionKey,
@@ -472,6 +482,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       pendingApplyRef.current = false;
+      setUndoState(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste'] }),
         queryClient.invalidateQueries({ queryKey: ['immaculateTasteCollections'] }),
@@ -485,6 +496,36 @@ export function ObservatoryPage() {
       if (!pendingApplyRef.current) return;
       applyMutation.mutate({ mediaType: tab, librarySectionKey: activeLibraryKey });
     }, 120_000);
+  };
+
+  const canUndo =
+    Boolean(undoState) &&
+    undoState?.tab === tab &&
+    undoState?.librarySectionKey === activeLibraryKey &&
+    !recordDecisionMutation.isPending &&
+    !applyMutation.isPending;
+
+  const undoLast = () => {
+    if (!undoState) return;
+    if (undoState.tab !== tab) return;
+    if (undoState.librarySectionKey !== activeLibraryKey) return;
+
+    const { card, phase: prevPhase } = undoState;
+    setUndoState(null);
+    setPhase(prevPhase);
+    setDeck((prev) => {
+      // If we currently show a sentinel because the deck ran out, replace it with the restored card.
+      const rest = prev.length === 1 && prev[0]?.kind === 'sentinel' ? [] : prev;
+      return [card, ...rest];
+    });
+
+    recordDecisionMutation.mutate({
+      mediaType: tab,
+      librarySectionKey: activeLibraryKey,
+      id: card.item.id,
+      action: 'undo',
+    });
+    scheduleApply();
   };
 
   // Apply on page leave/unmount (best-effort).
@@ -633,6 +674,23 @@ export function ObservatoryPage() {
           <div className="mt-6">
             {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
             <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
+              <button
+                type="button"
+                onClick={undoLast}
+                disabled={!canUndo}
+                className={cn(
+                  'absolute bottom-4 right-4 z-50 h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
+                  canUndo
+                    ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                    : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
+                )}
+                aria-label="Undo last swipe"
+                title={canUndo ? 'Undo last swipe' : 'Nothing to undo'}
+              >
+                <Undo2 className="h-4 w-4" />
+                Undo
+              </button>
+
               {deck.length ? (
                 <div className="relative h-full">
                   {/* Render a small stack: top 3 */}
@@ -675,6 +733,13 @@ export function ObservatoryPage() {
                               if (card.kind === 'sentinel') return;
                               const action =
                                 phase === 'pendingApprovals' ? 'reject' : 'remove';
+                              setUndoState({
+                                tab,
+                                librarySectionKey: activeLibraryKey,
+                                phase,
+                                card: { kind: 'item', item: card.item },
+                                action,
+                              });
                               recordDecisionMutation.mutate({
                                 mediaType: tab,
                                 librarySectionKey: activeLibraryKey,
@@ -690,6 +755,7 @@ export function ObservatoryPage() {
                             }}
                             onSwipeRight={() => {
                               if (card.kind === 'sentinel') {
+                                setUndoState(null);
                                 // approvalsDone -> review, reviewDone -> restart loop
                                 if (card.sentinel === 'approvalsDone') {
                                   setDeckForReview();
@@ -700,6 +766,13 @@ export function ObservatoryPage() {
                               }
                               const action =
                                 phase === 'pendingApprovals' ? 'approve' : 'keep';
+                              setUndoState({
+                                tab,
+                                librarySectionKey: activeLibraryKey,
+                                phase,
+                                card: { kind: 'item', item: card.item },
+                                action,
+                              });
                               recordDecisionMutation.mutate({
                                 mediaType: tab,
                                 librarySectionKey: activeLibraryKey,

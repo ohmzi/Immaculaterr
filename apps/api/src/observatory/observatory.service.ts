@@ -310,8 +310,9 @@ export class ObservatoryService {
       const isApprove = action === 'approve';
       const isReject = action === 'reject' || action === 'remove';
       const isKeep = action === 'keep';
+      const isUndo = action === 'undo';
 
-      if (!isApprove && !isReject && !isKeep) {
+      if (!isApprove && !isReject && !isKeep && !isUndo) {
         ignored += 1;
         continue;
       }
@@ -324,6 +325,37 @@ export class ObservatoryService {
 
       try {
         if (params.mediaType === 'movie') {
+          if (isUndo) {
+            const row = await this.prisma.immaculateTasteMovieLibrary
+              .findUnique({
+                where: {
+                  librarySectionKey_tmdbId: {
+                    librarySectionKey: params.librarySectionKey,
+                    tmdbId: a.id,
+                  },
+                },
+                select: { status: true },
+              })
+              .catch(() => null);
+            if (!row) {
+              ignored += 1;
+              continue;
+            }
+            const restored: DownloadApprovalStatus =
+              row.status === 'pending' ? 'pending' : 'none';
+            await this.prisma.immaculateTasteMovieLibrary.update({
+              where: {
+                librarySectionKey_tmdbId: {
+                  librarySectionKey: params.librarySectionKey,
+                  tmdbId: a.id,
+                },
+              },
+              data: { downloadApproval: restored },
+            });
+            applied += 1;
+            continue;
+          }
+
           if (!nextApproval) {
             applied += 1;
             continue;
@@ -339,6 +371,37 @@ export class ObservatoryService {
           });
           applied += 1;
         } else {
+          if (isUndo) {
+            const row = await this.prisma.immaculateTasteShowLibrary
+              .findUnique({
+                where: {
+                  librarySectionKey_tvdbId: {
+                    librarySectionKey: params.librarySectionKey,
+                    tvdbId: a.id,
+                  },
+                },
+                select: { status: true },
+              })
+              .catch(() => null);
+            if (!row) {
+              ignored += 1;
+              continue;
+            }
+            const restored: DownloadApprovalStatus =
+              row.status === 'pending' ? 'pending' : 'none';
+            await this.prisma.immaculateTasteShowLibrary.update({
+              where: {
+                librarySectionKey_tvdbId: {
+                  librarySectionKey: params.librarySectionKey,
+                  tvdbId: a.id,
+                },
+              },
+              data: { downloadApproval: restored },
+            });
+            applied += 1;
+            continue;
+          }
+
           if (!nextApproval) {
             applied += 1;
             continue;

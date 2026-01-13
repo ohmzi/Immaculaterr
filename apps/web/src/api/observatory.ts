@@ -52,7 +52,10 @@ export async function listImmaculateTasteTvObservatory(params: {
 export async function recordImmaculateTasteDecisions(params: {
   librarySectionKey: string;
   mediaType: 'movie' | 'tv';
-  decisions: Array<{ id: number; action: 'approve' | 'reject' | 'keep' | 'remove' }>;
+  decisions: Array<{
+    id: number;
+    action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
+  }>;
 }) {
   return await fetchJson<{ ok: true; applied: number; ignored: number }>(
     '/api/observatory/immaculate-taste/decisions',
