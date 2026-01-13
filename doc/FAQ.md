@@ -26,6 +26,11 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [How does the refresher move items from pending to active?](#how-does-the-refresher-move-items-from-pending-to-active)
   - [Why does the app recreate Plex collections instead of editing them in place?](#why-does-the-app-recreate-plex-collections-instead-of-editing-them-in-place)
   - [How does poster artwork work for collections? Can I customize posters?](#how-does-poster-artwork-work-for-collections-can-i-customize-posters)
+- [Observatory (swipe review)](#observatory-swipe-review)
+  - [What is the Observatory page?](#what-is-the-observatory-page)
+  - [How do I require approval before sending anything to Radarr/Sonarr?](#how-do-i-require-approval-before-sending-anything-to-radarrsonarr)
+  - [What do swipes do, and can I use keyboard shortcuts?](#what-do-swipes-do-and-can-i-use-keyboard-shortcuts)
+  - [Why does Observatory say there are no suggestions for my library?](#why-does-observatory-say-there-are-no-suggestions-for-my-library)
 - [Radarr / Sonarr](#radarr--sonarr)
   - [What does Fetch Missing items actually do?](#what-does-fetch-missing-items-actually-do)
   - [If I disable Radarr/Sonarr toggles, what changes?](#if-i-disable-radarrsonarr-toggles-what-changes)
@@ -194,6 +199,31 @@ Plex can keep old ordering even after remove/re-add operations. Recreating the c
 When collections are created/recreated, the app applies shipped poster artwork by matching collection name → poster file.
 
 Advanced: you can replace the poster files under `apps/web/src/assets/collection_artwork/posters` (or adjust the mapping in the backend) to customize.
+
+## Observatory (swipe review)
+
+### What is the Observatory page?
+
+Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you approve download requests (optional), and curate your suggestions before/while they land in Plex collections.
+
+### How do I require approval before sending anything to Radarr/Sonarr?
+
+In Task Manager → Immaculate Taste Collection, turn on **Approval required from Observatory**.
+
+When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you **swipe right** on them in Observatory.
+
+### What do swipes do, and can I use keyboard shortcuts?
+
+- Swipe right: approve (in approval mode) or keep (in review mode)
+- Swipe left: reject/remove that suggestion
+- Undo: restores your last swipe
+- Desktop: use ← and → to swipe the top card
+
+### Why does Observatory say there are no suggestions for my library?
+
+It usually means the collection job hasn’t generated suggestions yet for that library and media type.
+
+Please continue using Plex and let suggestions build up, or run the collection task manually from Task Manager for that media type to generate suggestions.
 
 ## Radarr / Sonarr
 

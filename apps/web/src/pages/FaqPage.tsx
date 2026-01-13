@@ -366,6 +366,82 @@ export function FaqPage() {
       ],
     },
     {
+      id: 'observatory',
+      title: 'Observatory (swipe review)',
+      items: [
+        {
+          id: 'observatory-what-is',
+          question: 'What is the Observatory page?',
+          answer: (
+            <>
+              <p>
+                Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you
+                approve download requests (optional), and curate your suggestions before/while they
+                land in Plex collections.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'observatory-approval-required',
+          question: 'How do I require approval before sending anything to Radarr/Sonarr?',
+          answer: (
+            <>
+              <p>
+                In <span className="font-semibold text-white/85">Task Manager</span> →{' '}
+                <span className="font-semibold text-white/85">Immaculate Taste Collection</span>, turn
+                on <span className="font-semibold text-white/85">Approval required from Observatory</span>.
+              </p>
+              <p>
+                When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you{' '}
+                <span className="font-semibold text-white/85">swipe right</span> on them in Observatory.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'observatory-controls',
+          question: 'What do swipes do, and can I use keyboard shortcuts?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold text-white/85">Swipe right</span>: approve (in approval
+                mode) or keep (in review mode).
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Swipe left</span>: reject/remove that
+                suggestion.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Undo</span>: restores your last swipe.
+              </li>
+              <li>
+                Desktop: use <span className="font-semibold text-white/85">←</span> and{' '}
+                <span className="font-semibold text-white/85">→</span> to swipe the top card.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'observatory-no-suggestions',
+          question: 'Why does Observatory say there are no suggestions for my library?',
+          answer: (
+            <>
+              <p>
+                It usually means the collection job hasn’t generated suggestions yet for that library
+                and media type.
+              </p>
+              <p>
+                Please continue using Plex and let suggestions build up, or run the collection task
+                manually from <span className="font-semibold text-white/85">Task Manager</span> for that
+                media type to generate suggestions.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
       id: 'arr',
       title: 'Radarr / Sonarr',
       items: [
