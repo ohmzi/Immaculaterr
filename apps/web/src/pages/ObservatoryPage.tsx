@@ -791,7 +791,7 @@ export function ObservatoryPage() {
                 </h1>
               </div>
 
-              <p className="text-amber-100/70 text-lg font-medium leading-relaxed ml-1 md:whitespace-nowrap">
+              <p className="text-amber-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
                 Swipe to approve downloads and curate your recommendations.
               </p>
             </motion.div>
@@ -811,12 +811,10 @@ export function ObservatoryPage() {
                   'relative pb-4 text-sm font-bold tracking-wide uppercase transition-colors duration-300',
                   activeCollectionTab === (t.id as CollectionTab)
                     ? 'text-[#facc15]'
-                    : 'text-gray-300/70 hover:text-gray-200',
+                    : 'text-gray-500 hover:text-gray-300',
                 )}
               >
-                <span className="inline-flex rounded-lg bg-black/25 px-2.5 py-1 backdrop-blur-sm">
-                  {t.label}
-                </span>
+                {t.label}
                 {activeCollectionTab === (t.id as CollectionTab) && (
                   <motion.div
                     layoutId="observatoryActiveTab"
@@ -840,7 +838,7 @@ export function ObservatoryPage() {
                   {/* Sub-tabs (Movie / TV) */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div className="flex items-center">
-                      <div className="bg-black/20 rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-sm">
+                      <div className="bg-white/5 rounded-lg p-1 inline-flex relative border border-white/5">
                         {['Movie', 'TV'].map((sub) => {
                           const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
                           const isActive = mediaTab === id;
@@ -853,7 +851,7 @@ export function ObservatoryPage() {
                                 'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
                                 isActive
                                   ? 'text-[#facc15]'
-                                  : 'text-gray-300/70 hover:text-gray-200',
+                                  : 'text-gray-400 hover:text-gray-200',
                               )}
                             >
                               {sub}
@@ -1066,7 +1064,7 @@ export function ObservatoryPage() {
                   {/* Sub-tabs (Movie / TV) */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div className="flex items-center">
-                      <div className="bg-black/20 rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-sm">
+                      <div className="bg-white/5 rounded-lg p-1 inline-flex relative border border-white/5">
                         {['Movie', 'TV'].map((sub) => {
                           const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
                           const isActive = mediaTab === id;
@@ -1079,7 +1077,7 @@ export function ObservatoryPage() {
                                 'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
                                 isActive
                                   ? 'text-[#facc15]'
-                                  : 'text-gray-300/70 hover:text-gray-200',
+                                  : 'text-gray-400 hover:text-gray-200',
                               )}
                             >
                               {sub}
