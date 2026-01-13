@@ -497,13 +497,25 @@ export function ObservatoryPage() {
                     {deck.slice(0, 3).reverse().map((card, idx, arr) => {
                       const isTop = idx === arr.length - 1;
                       const depth = arr.length - 1 - idx;
-                      const scale = 1 - depth * 0.03;
-                      const y = depth * 10;
+                      // Make the waiting-deck feel obvious (without being distracting).
+                      const scale = 1 - depth * 0.045;
+                      const y = depth * 18;
+                      const opacity = 1 - depth * 0.14;
+                      const rotate = depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
                       return (
                         <motion.div
                           key={card.kind === 'sentinel' ? 'sentinel' : `${card.item.mediaType}:${card.item.id}`}
-                          style={{ scale, y }}
-                          className="absolute inset-0"
+                          style={{
+                            scale,
+                            y,
+                            opacity,
+                            rotate,
+                            zIndex: 50 - depth,
+                          }}
+                          className={cn(
+                            'absolute inset-0',
+                            !isTop && 'pointer-events-none',
+                          )}
                         >
                           <SwipeCard
                             card={card}
@@ -559,7 +571,12 @@ export function ObservatoryPage() {
                     exit={{ opacity: 0 }}
                     className="rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-10 text-center text-white/70"
                   >
-                    No cards to review.
+                    <div className="text-white font-semibold text-lg">
+                      All suggestions have been reviewed
+                    </div>
+                    <div className="mt-2 text-sm text-white/65">
+                      No suggestions left to check right now.
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
