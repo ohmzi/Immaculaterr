@@ -122,7 +122,7 @@ function SwipeCard({
     >
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
         {/* Swipe tint feedback */}
-        <div className="pointer-events-none absolute inset-0 z-[1]">
+        <div className="pointer-events-none absolute inset-0 z-20">
           <motion.div
             style={{ opacity: greenTintOpacity }}
             className="absolute inset-0 bg-emerald-400/40"
@@ -134,7 +134,7 @@ function SwipeCard({
           <div className="absolute inset-0 bg-gradient-to-t from-black/15 via-transparent to-black/10" />
         </div>
 
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 pointer-events-none z-30">
           <motion.div
             style={{ opacity: likeOpacity }}
             className="absolute top-6 left-6 rounded-xl border border-emerald-400/40 bg-emerald-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-emerald-100"
