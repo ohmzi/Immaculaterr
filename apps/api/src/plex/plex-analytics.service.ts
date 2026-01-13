@@ -26,6 +26,8 @@ export type PlexLibraryGrowthVersionResponse = {
   version: string;
 };
 
+const GROWTH_CACHE_TTL_MS = 6 * 60 * 60_000; // 6 hours
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -73,6 +75,11 @@ function addMonthsUtc(date: Date, months: number): Date {
   return new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1),
   );
+}
+
+function growthTimeBucket(nowMs: number): number {
+  // Rotates every ~6 hours, so the web client refetches without relying on webhooks.
+  return Math.floor(nowMs / GROWTH_CACHE_TTL_MS);
 }
 
 function buildCumulativeMonthlySeries(params: {
@@ -177,7 +184,8 @@ export class PlexAnalyticsService {
       .slice(0, 16);
 
     const counter = this.growthBustCounterByUserId.get(userId) ?? 0;
-    return { ok: true, version: `${signatureHash}:${counter}` };
+    const bucket = growthTimeBucket(Date.now());
+    return { ok: true, version: `${signatureHash}:${counter}:${bucket}` };
   }
 
   async getLibraryGrowth(userId: string): Promise<PlexLibraryGrowthResponse> {
@@ -231,7 +239,7 @@ export class PlexAnalyticsService {
       };
       this.cache.set(userId, {
         signature,
-        expiresAt: now + 24 * 60 * 60_000,
+        expiresAt: now + GROWTH_CACHE_TTL_MS,
         data,
       });
       return data;
@@ -275,7 +283,7 @@ export class PlexAnalyticsService {
     };
 
     // Cache for 24 hours (webhooks will invalidate on library.new)
-    this.cache.set(userId, { signature, expiresAt: now + 24 * 60 * 60_000, data });
+    this.cache.set(userId, { signature, expiresAt: now + GROWTH_CACHE_TTL_MS, data });
     return data;
   }
 }

@@ -1,10 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdatesResponseDto {
-  @ApiProperty({ example: '1.0.0.100' })
+  @ApiProperty({ example: '1.0.0.101' })
   currentVersion!: string;
 
-  @ApiProperty({ example: '1.0.0.100', nullable: true })
+  @ApiProperty({ example: '1.0.0.101', nullable: true })
   latestVersion!: string | null;
 
   @ApiProperty({ example: true })
