@@ -15,7 +15,7 @@
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/ohmzi/Immaculaterr" />
     </a>
     <a href="./LICENSE">
-      <img alt="License" src="https://img.shields.io/github/license/ohmzi/Immaculaterr" />
+      <img alt="License" src="https://img.shields.io/badge/license-MIT-brightgreen" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr">
       <img

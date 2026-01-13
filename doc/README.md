@@ -3,7 +3,7 @@ Immaculaterr
 
 [![Publish containers (GHCR + Docker Hub)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml/badge.svg?branch=master)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml)
 [![Latest Release](https://img.shields.io/github/v/release/ohmzi/Immaculaterr)](https://github.com/ohmzi/Immaculaterr/releases)
-[![License](https://img.shields.io/github/license/ohmzi/Immaculaterr)](../LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-brightgreen)](../LICENSE)
 [![GHCR Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-package-downloads.json&cacheSeconds=300)](https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr)
 [![Docker Pulls](https://img.shields.io/docker/pulls/ohmzii/immaculaterr)](https://hub.docker.com/r/ohmzii/immaculaterr)
 
