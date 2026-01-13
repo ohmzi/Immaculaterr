@@ -178,13 +178,13 @@ function SwipeCard({
               </div>
             </div>
 
-            <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
-              <div className="text-white font-semibold text-sm leading-tight">
-                {card.sentinel === 'approvalsDone'
-                  ? 'Swipe right to review suggestions'
-                  : 'Swipe right to restart reviewing'}
+            {card.sentinel === 'approvalsDone' && (
+              <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
+                <div className="text-white font-semibold text-sm leading-tight">
+                  Swipe right to review suggestions
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           <>
@@ -271,9 +271,6 @@ function SwipeCard({
                 <div className="mt-6 text-xs text-white/55 leading-relaxed">
                   Swipe right to keep. Swipe left to remove.
                 </div>
-                </div>
-                <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                  Tip: swipe deep into a corner to commit quickly.
                 </div>
               </div>
             </div>
