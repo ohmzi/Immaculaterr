@@ -655,13 +655,10 @@ export function ObservatoryPage() {
                               ? `sentinel:${card.sentinel}`
                               : `${card.item.mediaType}:${card.item.id}`
                           }
-                          style={{
-                            scale,
-                            y,
-                            opacity,
-                            rotate,
-                            zIndex: 50 - depth,
-                          }}
+                          initial={false}
+                          animate={{ scale, y, opacity, rotate }}
+                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                          style={{ zIndex: 50 - depth }}
                           className={cn(
                             'absolute inset-0',
                             !isTop && 'pointer-events-none',
