@@ -153,37 +153,78 @@ function SwipeCard({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2">
-            <div className="relative h-72 md:h-[420px] bg-white/5">
+          <>
+            {/* Mobile: full-bleed poster + small caption bar (no extra metadata) */}
+            <div className="relative md:hidden h-[420px]">
               {card.item.posterUrl ? (
                 <img
                   src={card.item.posterUrl}
                   alt=""
-                  className="h-full w-full object-cover object-center"
+                  className="absolute inset-0 h-full w-full object-cover object-center"
                   draggable={false}
                 />
               ) : (
-                <div className="h-full w-full flex items-center justify-center text-white/35 text-sm">
-                  No poster
+                <div className="absolute inset-0 flex items-center justify-center bg-white/5 text-white/65 px-6 text-center font-semibold">
+                  {card.item.title ||
+                    (card.item.mediaType === 'movie'
+                      ? `TMDB ${card.item.id}`
+                      : `TVDB ${card.item.id}`)}
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/25" />
-            </div>
-            <div className="p-7 md:p-10">
-              <div className="text-white text-2xl font-black tracking-tight">
-                {card.item.title || (card.item.mediaType === 'movie' ? `TMDB ${card.item.id}` : `TVDB ${card.item.id}`)}
-              </div>
-              <div className="mt-2 text-sm text-white/70">
-                Status: <span className="text-white/90 font-semibold">{card.item.status}</span>
-              </div>
-              <div className="mt-1 text-sm text-white/70">
-                Approval: <span className="text-white/90 font-semibold">{card.item.downloadApproval}</span>
-              </div>
-              <div className="mt-6 text-xs text-white/55 leading-relaxed">
-                Swipe right to keep. Swipe left to remove.
+
+              {/* Bottom caption (~10% height) */}
+              <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
+                <div className="text-white font-semibold text-sm leading-tight line-clamp-2">
+                  {card.item.title ||
+                    (card.item.mediaType === 'movie'
+                      ? `TMDB ${card.item.id}`
+                      : `TVDB ${card.item.id}`)}
+                </div>
               </div>
             </div>
-          </div>
+
+            {/* Desktop/tablet: poster + details */}
+            <div className="hidden md:grid grid-cols-2">
+              <div className="relative h-[420px] bg-white/5">
+                {card.item.posterUrl ? (
+                  <img
+                    src={card.item.posterUrl}
+                    alt=""
+                    className="h-full w-full object-cover object-center"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center text-white/35 text-sm">
+                    No poster
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/25" />
+              </div>
+              <div className="p-10">
+                <div className="text-white text-2xl font-black tracking-tight">
+                  {card.item.title ||
+                    (card.item.mediaType === 'movie'
+                      ? `TMDB ${card.item.id}`
+                      : `TVDB ${card.item.id}`)}
+                </div>
+                <div className="mt-2 text-sm text-white/70">
+                  Status:{' '}
+                  <span className="text-white/90 font-semibold">
+                    {card.item.status}
+                  </span>
+                </div>
+                <div className="mt-1 text-sm text-white/70">
+                  Approval:{' '}
+                  <span className="text-white/90 font-semibold">
+                    {card.item.downloadApproval}
+                  </span>
+                </div>
+                <div className="mt-6 text-xs text-white/55 leading-relaxed">
+                  Swipe right to keep. Swipe left to remove.
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </motion.div>
