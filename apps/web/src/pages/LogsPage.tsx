@@ -34,7 +34,6 @@ type ServiceFilter =
   | 'tmdb'
   | 'radarr'
   | 'sonarr'
-  | 'overseerr'
   | 'google'
   | 'openai'
   | 'errors';
@@ -70,11 +69,6 @@ const SERVICE_FILTERS: Array<{
     activeClass: 'bg-violet-500/15 text-violet-100 border-violet-500/25',
   },
   {
-    id: 'overseerr',
-    label: 'Overseerr',
-    activeClass: 'bg-teal-500/15 text-teal-100 border-teal-500/25',
-  },
-  {
     id: 'google',
     label: 'Google',
     activeClass: 'bg-blue-500/15 text-blue-100 border-blue-500/25',
@@ -96,7 +90,6 @@ function logMatchesAnyService(line: { message?: string; context?: string | null 
     hay.includes('themoviedb') ||
     hay.includes('radarr') ||
     hay.includes('sonarr') ||
-    hay.includes('overseerr') ||
     hay.includes('openai') ||
     hay.includes('open ai') ||
     hay.includes('google') ||
@@ -130,7 +123,6 @@ function serviceTagsForLine(line: {
   if (hay.includes('tmdb') || hay.includes('themoviedb')) out.add('tmdb');
   if (hay.includes('radarr')) out.add('radarr');
   if (hay.includes('sonarr')) out.add('sonarr');
-  if (hay.includes('overseerr')) out.add('overseerr');
   if (
     hay.includes('google') ||
     hay.includes('programmable search') ||

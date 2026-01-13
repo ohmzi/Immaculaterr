@@ -22,6 +22,143 @@
         ]
       }
     },
+    "/api/meta": {
+      "get": {
+        "operationId": "AppController_getMeta",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppMetaResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "app"
+        ]
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "operationId": "AppController_getReady",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "status": "ready",
+                    "time": "2026-01-02T00:00:00.000Z",
+                    "checks": {
+                      "db": {
+                        "ok": true
+                      },
+                      "dataDir": {
+                        "ok": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "app"
+        ]
+      }
+    },
+    "/api/auth/bootstrap": {
+      "get": {
+        "operationId": "AuthController_bootstrap",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/reset-dev": {
+      "post": {
+        "operationId": "AuthController_resetDev",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/settings": {
       "get": {
         "operationId": "SettingsController_get",
@@ -48,9 +185,74 @@
         ]
       }
     },
-    "/api/settings/import-yaml": {
+    "/api/settings/backup-info": {
+      "get": {
+        "operationId": "SettingsController_backupInfo",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/integrations/radarr/options": {
+      "get": {
+        "operationId": "IntegrationsController_radarrOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/integrations/sonarr/options": {
+      "get": {
+        "operationId": "IntegrationsController_sonarrOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/integrations/test/{integrationId}": {
       "post": {
-        "operationId": "SettingsController_importYaml",
+        "operationId": "IntegrationsController_testSaved",
+        "parameters": [
+          {
+            "name": "integrationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/plex/pin": {
+      "post": {
+        "operationId": "PlexController_createPin",
         "parameters": [],
         "responses": {
           "201": {
@@ -58,7 +260,413 @@
           }
         },
         "tags": [
-          "settings"
+          "Plex"
+        ]
+      }
+    },
+    "/api/plex/pin/{id}": {
+      "get": {
+        "operationId": "PlexController_checkPin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Plex"
+        ]
+      }
+    },
+    "/api/plex/whoami": {
+      "get": {
+        "operationId": "PlexController_whoami",
+        "parameters": [
+          {
+            "name": "x-plex-token",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Plex"
+        ]
+      }
+    },
+    "/api/plex/test": {
+      "post": {
+        "operationId": "PlexController_test",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Plex"
+        ]
+      }
+    },
+    "/api/plex/library-growth": {
+      "get": {
+        "operationId": "PlexController_libraryGrowth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Plex"
+        ]
+      }
+    },
+    "/api/plex/library-growth/version": {
+      "get": {
+        "operationId": "PlexController_libraryGrowthVersion",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Plex"
+        ]
+      }
+    },
+    "/api/radarr/test": {
+      "post": {
+        "operationId": "RadarrController_test",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Radarr"
+        ]
+      }
+    },
+    "/api/sonarr/test": {
+      "post": {
+        "operationId": "SonarrController_test",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Sonarr"
+        ]
+      }
+    },
+    "/api/tmdb/test": {
+      "post": {
+        "operationId": "TmdbController_test",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Tmdb"
+        ]
+      }
+    },
+    "/api/google/test": {
+      "post": {
+        "operationId": "GoogleController_test",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Google"
+        ]
+      }
+    },
+    "/api/openai/test": {
+      "post": {
+        "operationId": "OpenAiController_test",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OpenAi"
+        ]
+      }
+    },
+    "/api/collections": {
+      "get": {
+        "operationId": "CollectionsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      },
+      "post": {
+        "operationId": "CollectionsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/collections/seed-defaults": {
+      "post": {
+        "operationId": "CollectionsController_seedDefaults",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/collections/{collectionId}": {
+      "delete": {
+        "operationId": "CollectionsController_delete",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/collections/{collectionId}/items": {
+      "get": {
+        "operationId": "CollectionsController_listItems",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      },
+      "post": {
+        "operationId": "CollectionsController_addItem",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/collections/{collectionId}/items/{itemId}": {
+      "delete": {
+        "operationId": "CollectionsController_deleteItem",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/collections/{collectionId}/import-json": {
+      "post": {
+        "operationId": "CollectionsController_importJson",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/collections/{collectionId}/export-json": {
+      "get": {
+        "operationId": "CollectionsController_exportJson",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/logs": {
+      "get": {
+        "operationId": "LogsController_getLogs",
+        "parameters": [
+          {
+            "name": "afterId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "logs"
+        ]
+      },
+      "delete": {
+        "operationId": "LogsController_clear",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "logs"
+        ]
+      }
+    },
+    "/api/updates": {
+      "get": {
+        "operationId": "UpdatesController_getUpdates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatesResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "updates"
         ]
       }
     },
@@ -121,6 +729,27 @@
           },
           {
             "name": "skip",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "jobs"
+        ]
+      },
+      "delete": {
+        "operationId": "JobsController_clearRuns",
+        "parameters": [
+          {
+            "name": "jobId",
             "required": true,
             "in": "query",
             "schema": {
@@ -223,69 +852,23 @@
         ]
       }
     },
-    "/api/plex/pin": {
-      "post": {
-        "operationId": "PlexController_createPin",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Plex"
-        ]
-      }
-    },
-    "/api/plex/pin/{id}": {
+    "/api/immaculate-taste/collections": {
       "get": {
-        "operationId": "PlexController_checkPin",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "ImmaculateTasteController_listCollections",
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
           }
         },
         "tags": [
-          "Plex"
+          "immaculate-taste"
         ]
       }
     },
-    "/api/plex/whoami": {
-      "get": {
-        "operationId": "PlexController_whoami",
-        "parameters": [
-          {
-            "name": "x-plex-token",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Plex"
-        ]
-      }
-    },
-    "/api/radarr/test": {
+    "/api/immaculate-taste/collections/reset": {
       "post": {
-        "operationId": "RadarrController_test",
+        "operationId": "ImmaculateTasteController_resetCollection",
         "parameters": [],
         "responses": {
           "201": {
@@ -293,21 +876,7 @@
           }
         },
         "tags": [
-          "Radarr"
-        ]
-      }
-    },
-    "/api/sonarr/test": {
-      "post": {
-        "operationId": "SonarrController_test",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Sonarr"
+          "immaculate-taste"
         ]
       }
     },
@@ -322,62 +891,6 @@
         },
         "tags": [
           "Webhooks"
-        ]
-      }
-    },
-    "/api/google/test": {
-      "post": {
-        "operationId": "GoogleController_test",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Google"
-        ]
-      }
-    },
-    "/api/tmdb/test": {
-      "post": {
-        "operationId": "TmdbController_test",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Tmdb"
-        ]
-      }
-    },
-    "/api/openai/test": {
-      "post": {
-        "operationId": "OpenAiController_test",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "OpenAi"
-        ]
-      }
-    },
-    "/api/overseerr/test": {
-      "post": {
-        "operationId": "OverseerrController_test",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Overseerr"
         ]
       }
     }
@@ -407,6 +920,86 @@
         "required": [
           "status",
           "time"
+        ]
+      },
+      "AppMetaResponseDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "immaculaterr"
+          },
+          "version": {
+            "type": "string",
+            "example": "0.0.0.100"
+          },
+          "buildSha": {
+            "type": "object",
+            "example": "41fb2cb",
+            "nullable": true
+          },
+          "buildTime": {
+            "type": "object",
+            "example": "2026-01-09T15:54:13.000Z",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "buildSha",
+          "buildTime"
+        ]
+      },
+      "UpdatesResponseDto": {
+        "type": "object",
+        "properties": {
+          "currentVersion": {
+            "type": "string",
+            "example": "0.0.0.100"
+          },
+          "latestVersion": {
+            "type": "object",
+            "example": "0.0.0.101",
+            "nullable": true
+          },
+          "updateAvailable": {
+            "type": "boolean",
+            "example": true
+          },
+          "source": {
+            "type": "string",
+            "example": "github-releases"
+          },
+          "repo": {
+            "type": "object",
+            "example": "ohmz/Immaculaterr",
+            "nullable": true
+          },
+          "latestUrl": {
+            "type": "object",
+            "example": "https://github.com/ohmz/Immaculaterr/releases/tag/v0.0.0.101",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "example": "2026-01-09T16:05:00.000Z"
+          },
+          "error": {
+            "type": "object",
+            "example": null,
+            "nullable": true
+          }
+        },
+        "required": [
+          "currentVersion",
+          "latestVersion",
+          "updateAvailable",
+          "source",
+          "repo",
+          "latestUrl",
+          "checkedAt",
+          "error"
         ]
       }
     }

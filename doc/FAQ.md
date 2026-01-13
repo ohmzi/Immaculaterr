@@ -9,14 +9,9 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand)
   - [How do I do first-time setup?](#how-do-i-do-first-time-setup)
   - [What port does Immaculaterr use and how do I access it?](#what-port-does-immaculaterr-use-and-how-do-i-access-it)
-  - [Do I need Docker host networking? When should I use host.docker.internal?](#do-i-need-docker-host-networking-when-should-i-use-hostdockerinternal)
-  - [Where is the data stored (DB, settings, secrets)?](#where-is-the-data-stored-db-settings-secrets)
-  - [How do I reset and start over? What does Reset Account delete?](#how-do-i-reset-and-start-over-what-does-reset-account-delete)
 - [Automation & triggers](#automation--triggers)
   - [What does Plex-Triggered Auto-Run mean?](#what-does-plex-triggered-auto-run-mean)
-  - [Which jobs are Plex-triggered and which are scheduled?](#which-jobs-are-plex-triggered-and-which-are-scheduled)
-  - [When does Immaculate Taste Collection trigger?](#when-does-immaculate-taste-collection-trigger)
-  - [When does Based on Latest Watched Collection trigger?](#when-does-based-on-latest-watched-collection-trigger)
+  - [When does Collection task trigger?](#when-does-collection-task-trigger)
   - [Why didn’t a job trigger even though I watched past the threshold?](#why-didnt-a-job-trigger-even-though-i-watched-past-the-threshold)
   - [How can I run a job manually?](#how-can-i-run-a-job-manually)
   - [What is the difference between the Collection job and the Refresher job?](#what-is-the-difference-between-the-collection-job-and-the-refresher-job)
@@ -25,11 +20,17 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What’s the difference between Immaculate Taste and Based on Latest Watched?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched)
   - [What is Change of Taste and how is it chosen?](#what-is-change-of-taste-and-how-is-it-chosen)
   - [How are recommendation titles generated?](#how-are-recommendation-titles-generated)
+  - [What does the ratio of future releases vs current releases do?](#what-does-the-ratio-of-future-releases-vs-current-releases-do)
   - [Why do I see not enabled or skipped?](#why-do-i-see-not-enabled-or-skipped)
   - [What happens when a recommended title isn’t in Plex?](#what-happens-when-a-recommended-title-isnt-in-plex)
   - [How does the refresher move items from pending to active?](#how-does-the-refresher-move-items-from-pending-to-active)
   - [Why does the app recreate Plex collections instead of editing them in place?](#why-does-the-app-recreate-plex-collections-instead-of-editing-them-in-place)
   - [How does poster artwork work for collections? Can I customize posters?](#how-does-poster-artwork-work-for-collections-can-i-customize-posters)
+- [Observatory (swipe review)](#observatory-swipe-review)
+  - [What is the Observatory page?](#what-is-the-observatory-page)
+  - [How do I require approval before sending anything to Radarr/Sonarr?](#how-do-i-require-approval-before-sending-anything-to-radarrsonarr)
+  - [What do swipes do, and can I use keyboard shortcuts?](#what-do-swipes-do-and-can-i-use-keyboard-shortcuts)
+  - [Why does Observatory say there are no suggestions for my library?](#why-does-observatory-say-there-are-no-suggestions-for-my-library)
 - [Radarr / Sonarr](#radarr--sonarr)
   - [What does Fetch Missing items actually do?](#what-does-fetch-missing-items-actually-do)
   - [If I disable Radarr/Sonarr toggles, what changes?](#if-i-disable-radarrsonarr-toggles-what-changes)
@@ -90,30 +91,6 @@ By default, it serves the Web UI and API on port `5454`.
 
 Open: `http://<server-ip>:5454/`
 
-### Do I need Docker host networking? When should I use host.docker.internal?
-
-On Linux, this project defaults to Docker `host` networking so the container can reach services like Plex/Radarr/Sonarr via `localhost`.
-
-On Docker Desktop (Mac/Windows), use `host.docker.internal` for host services (for example: `http://host.docker.internal:32400`).
-
-### Where is the data stored (DB, settings, secrets)?
-
-In Docker, the app stores data under `/data` (a Docker volume by default).
-
-- SQLite DB: `/data/tcp.sqlite`
-- Master key file (if not provided by env/secret): `/data/app-master.key`
-- Settings + encrypted secrets live in the DB (secrets are encrypted at rest).
-
-### How do I reset and start over? What does Reset Account delete?
-
-Use Help → Reset Account to wipe Immaculaterr’s local state and restart the setup flow.
-
-- Deletes app settings and stored secrets (keys/tokens)
-- Deletes job history/logs stored by Immaculaterr
-- Logs you out and returns you to fresh setup
-
-It does not delete Plex media files. It may have created Plex collections; those are managed by jobs and can be recreated later.
-
 ## Automation & triggers
 
 ### What does Plex-Triggered Auto-Run mean?
@@ -122,21 +99,9 @@ When Auto-Run is enabled for a Plex-triggered job, Immaculaterr polls Plex and a
 
 You can still run the job manually any time from Task Manager.
 
-### Which jobs are Plex-triggered and which are scheduled?
-
-Task Manager labels jobs as Plex-Triggered or Scheduled above the Auto-Run toggle.
-
-If you’re unsure, trust the label in Task Manager—it reflects how that job is wired in this build.
-
-### When does Immaculate Taste Collection trigger?
+### When does Collection task trigger?
 
 By default, it triggers when Plex polling detects you’ve watched roughly 70% of the item.
-
-(Thresholds can be tuned via environment variables in advanced setups.)
-
-### When does Based on Latest Watched Collection trigger?
-
-By default, it triggers at about 60% watched for the seed item, detected via Plex polling.
 
 ### Why didn’t a job trigger even though I watched past the threshold?
 
@@ -177,9 +142,36 @@ It’s designed to intentionally vary from your “similar” recommendations—
 
 ### How are recommendation titles generated?
 
-Recommendations are primarily driven by TMDB “similar” logic, with optional enrichment from Google/OpenAI if you’ve configured them.
+Recommendations always start with TMDB (it builds a pool of candidates similar to the seed). What happens next depends on what you configured in Vault:
+
+#### Variant 1: TMDB only
+
+- TMDB finds the seed and builds candidate pools (released / upcoming / unknown).
+- The “future vs current” ratio dial is applied to pick a mix (see below).
+- Final titles come from TMDB’s pool selection.
+
+#### Variant 2: TMDB + OpenAI
+
+- TMDB still builds the candidate pools first.
+- OpenAI then curates the final list from TMDB candidates (better “taste” and variety).
+- The final list is still constrained by the released/upcoming mix you set.
+
+#### Variant 3: TMDB + Google + OpenAI
+
+- TMDB builds the candidate pools.
+- Google search is used as a discovery booster (web context) to widen suggestions and add extra candidates.
+- OpenAI uses both TMDB candidates and the web context to curate the final list.
 
 The job reports include a per-service breakdown (what each service suggested) plus the final “Generated” list.
+
+### What does the ratio of future releases vs current releases do?
+
+This dial lives in Command Center → Recommendations. It controls how many suggestions are:
+
+- **Current releases**: already released and typically available to watch now
+- **Future releases**: upcoming titles that may not be released yet
+
+Under the hood it sets `recommendations.upcomingPercent` (default 25%). The system enforces that **released stays at least 25%**, so upcoming is effectively capped (max 75%).
 
 ### Why do I see not enabled or skipped?
 
@@ -207,6 +199,31 @@ Plex can keep old ordering even after remove/re-add operations. Recreating the c
 When collections are created/recreated, the app applies shipped poster artwork by matching collection name → poster file.
 
 Advanced: you can replace the poster files under `apps/web/src/assets/collection_artwork/posters` (or adjust the mapping in the backend) to customize.
+
+## Observatory (swipe review)
+
+### What is the Observatory page?
+
+Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you approve download requests (optional), and curate your suggestions before/while they land in Plex collections.
+
+### How do I require approval before sending anything to Radarr/Sonarr?
+
+In Task Manager → Immaculate Taste Collection, turn on **Approval required from Observatory**.
+
+When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you **swipe right** on them in Observatory.
+
+### What do swipes do, and can I use keyboard shortcuts?
+
+- Swipe right: approve (in approval mode) or keep (in review mode)
+- Swipe left: reject/remove that suggestion
+- Undo: restores your last swipe
+- Desktop: use ← and → to swipe the top card
+
+### Why does Observatory say there are no suggestions for my library?
+
+It usually means the collection job hasn’t generated suggestions yet for that library and media type.
+
+Please continue using Plex and let suggestions build up, or run the collection task manually from Task Manager for that media type to generate suggestions.
 
 ## Radarr / Sonarr
 

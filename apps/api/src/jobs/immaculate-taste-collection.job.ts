@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../db/prisma.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService, type RadarrMovie } from '../radarr/radarr.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
@@ -60,6 +61,7 @@ function normalizeHttpUrl(raw: string): string {
 @Injectable()
 export class ImmaculateTasteCollectionJob {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
     private readonly recommendations: RecommendationsService,
@@ -254,6 +256,9 @@ export class ImmaculateTasteCollectionJob {
       pickBool(settings, 'immaculateTaste.includeRefresherAfterUpdate') ?? true;
     const startSearchImmediately =
       pickBool(settings, 'jobs.immaculateTastePoints.searchImmediately') ?? false;
+    const approvalRequiredFromObservatory =
+      pickBool(settings, 'jobs.immaculateTastePoints.approvalRequiredFromObservatory') ??
+      false;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -269,6 +274,7 @@ export class ImmaculateTasteCollectionJob {
       maxPoints,
       includeRefresherAfterUpdate,
       startSearchImmediately,
+      approvalRequiredFromObservatory,
       webContextFraction,
     });
 
@@ -506,8 +512,18 @@ export class ImmaculateTasteCollectionJob {
       failed: [] as string[],
       skipped: [] as string[],
     };
+    const radarrSentTmdbIds: number[] = [];
 
     if (!ctx.dryRun && radarrEnabled && missingTitles.length) {
+      if (approvalRequiredFromObservatory) {
+        await ctx.info('radarr: skipped (approval required from Observatory)', {
+          missingTitles: missingTitles.length,
+        });
+        radarrStats.skipped += missingTitles.length;
+        radarrLists.skipped.push(
+          ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
+        );
+      } else {
       await ctx.info('radarr: start', {
         missingTitles: missingTitles.length,
         sampleMissing: missingTitles.slice(0, 10),
@@ -600,9 +616,11 @@ export class ImmaculateTasteCollectionJob {
             if (result.status === 'added') {
               radarrStats.added += 1;
               radarrLists.added.push(tmdbMatch.title);
+              radarrSentTmdbIds.push(tmdbMatch.tmdbId);
             } else {
               radarrStats.exists += 1;
               radarrLists.exists.push(tmdbMatch.title);
+              radarrSentTmdbIds.push(tmdbMatch.tmdbId);
 
               // Best-effort: ensure existing Radarr movies are monitored (matches the UI expectation).
               const idx = await withJobRetryOrNull(() => ensureRadarrIndex(), {
@@ -639,6 +657,7 @@ export class ImmaculateTasteCollectionJob {
       }
 
       await ctx.info('radarr: done', radarrStats);
+      }
     }
 
     // --- Update points dataset (DB) ---
@@ -650,6 +669,71 @@ export class ImmaculateTasteCollectionJob {
           suggested: suggestedForPoints,
           maxPoints,
         });
+
+    // Observatory approvals: mark missing titles as pending approval when enabled.
+    if (!ctx.dryRun) {
+      const now = new Date();
+      const missingTmdbIds = Array.from(
+        new Set(Array.from(missingTitleToTmdb.values()).map((v) => v.tmdbId)),
+      );
+      const activeTmdbIds = Array.from(
+        new Set(suggestedForPoints.filter((s) => s.inPlex).map((s) => s.tmdbId)),
+      );
+
+      if (activeTmdbIds.length) {
+        await this.prisma.immaculateTasteMovieLibrary
+          .updateMany({
+            where: {
+              librarySectionKey: movieSectionKey,
+              tmdbId: { in: activeTmdbIds },
+            },
+            data: { downloadApproval: 'none' },
+          })
+          .catch(() => undefined);
+      }
+
+      if (missingTmdbIds.length) {
+        if (approvalRequiredFromObservatory) {
+          await this.prisma.immaculateTasteMovieLibrary
+            .updateMany({
+              where: {
+                librarySectionKey: movieSectionKey,
+                status: 'pending',
+                tmdbId: { in: missingTmdbIds },
+                downloadApproval: 'none',
+              },
+              data: { downloadApproval: 'pending' },
+            })
+            .catch(() => undefined);
+        } else {
+          // Keep legacy behavior: no approvals (ensure we don't leave items stuck in approval state).
+          await this.prisma.immaculateTasteMovieLibrary
+            .updateMany({
+              where: {
+                librarySectionKey: movieSectionKey,
+                status: 'pending',
+                tmdbId: { in: missingTmdbIds },
+                downloadApproval: 'pending',
+              },
+              data: { downloadApproval: 'none' },
+            })
+            .catch(() => undefined);
+        }
+      }
+
+      if (radarrSentTmdbIds.length) {
+        await this.prisma.immaculateTasteMovieLibrary
+          .updateMany({
+            where: {
+              librarySectionKey: movieSectionKey,
+              tmdbId: { in: radarrSentTmdbIds },
+              sentToRadarrAt: null,
+            },
+            data: { sentToRadarrAt: now },
+          })
+          .catch(() => undefined);
+      }
+    }
 
     // --- Optional chained refresher (rebuild Plex collection from points DB) ---
     let refresherSummary: JsonObject | null = null;
@@ -865,6 +949,9 @@ export class ImmaculateTasteCollectionJob {
       pickBool(settings, 'immaculateTaste.includeRefresherAfterUpdate') ?? true;
     const startSearchImmediately =
       pickBool(settings, 'jobs.immaculateTastePoints.searchImmediately') ?? false;
+    const approvalRequiredFromObservatory =
+      pickBool(settings, 'jobs.immaculateTastePoints.approvalRequiredFromObservatory') ??
+      false;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -880,6 +967,7 @@ export class ImmaculateTasteCollectionJob {
       maxPoints,
       includeRefresherAfterUpdate,
       startSearchImmediately,
+      approvalRequiredFromObservatory,
       webContextFraction,
     });
 
@@ -1068,8 +1156,18 @@ export class ImmaculateTasteCollectionJob {
       failed: [] as string[],
       skipped: [] as string[],
     };
+    const sonarrSentTvdbIds: number[] = [];
 
     if (!ctx.dryRun && sonarrEnabled && missingTitles.length) {
+      if (approvalRequiredFromObservatory) {
+        await ctx.info('sonarr: skipped (approval required from Observatory)', {
+          missingTitles: missingTitles.length,
+        });
+        sonarrStats.skipped += missingTitles.length;
+        sonarrLists.skipped.push(
+          ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
+        );
+      } else {
       const defaults = await withJobRetry(
         () =>
           this.pickSonarrDefaults({
@@ -1155,9 +1253,11 @@ export class ImmaculateTasteCollectionJob {
             if (result.status === 'added') {
               sonarrStats.added += 1;
               sonarrLists.added.push(ids.title);
+              sonarrSentTvdbIds.push(tvdbId);
             } else {
               sonarrStats.exists += 1;
               sonarrLists.exists.push(ids.title);
+              sonarrSentTvdbIds.push(tvdbId);
 
               const idx = await withJobRetryOrNull(() => ensureSonarrIndex(), {
                 ctx,
@@ -1192,6 +1292,7 @@ export class ImmaculateTasteCollectionJob {
       }
 
       await ctx.info('sonarr: done', sonarrStats);
+      }
     }
 
     // --- Update points dataset (DB) ---
@@ -1203,6 +1304,70 @@ export class ImmaculateTasteCollectionJob {
           suggested: suggestedForPoints,
           maxPoints,
         });
+
+    // Observatory approvals: mark missing titles as pending approval when enabled.
+    if (!ctx.dryRun) {
+      const now = new Date();
+      const missingTvdbIds = Array.from(
+        new Set(Array.from(missingTitleToIds.values()).map((v) => v.tvdbId).filter((x): x is number => Boolean(x))),
+      );
+      const activeTvdbIds = Array.from(
+        new Set(suggestedForPoints.filter((s) => s.inPlex).map((s) => s.tvdbId)),
+      );
+
+      if (activeTvdbIds.length) {
+        await this.prisma.immaculateTasteShowLibrary
+          .updateMany({
+            where: {
+              librarySectionKey: tvSectionKey,
+              tvdbId: { in: activeTvdbIds },
+            },
+            data: { downloadApproval: 'none' },
+          })
+          .catch(() => undefined);
+      }
+
+      if (missingTvdbIds.length) {
+        if (approvalRequiredFromObservatory) {
+          await this.prisma.immaculateTasteShowLibrary
+            .updateMany({
+              where: {
+                librarySectionKey: tvSectionKey,
+                status: 'pending',
+                tvdbId: { in: missingTvdbIds },
+                downloadApproval: 'none',
+              },
+              data: { downloadApproval: 'pending' },
+            })
+            .catch(() => undefined);
+        } else {
+          await this.prisma.immaculateTasteShowLibrary
+            .updateMany({
+              where: {
+                librarySectionKey: tvSectionKey,
+                status: 'pending',
+                tvdbId: { in: missingTvdbIds },
+                downloadApproval: 'pending',
+              },
+              data: { downloadApproval: 'none' },
+            })
+            .catch(() => undefined);
+        }
+      }
+
+      if (sonarrSentTvdbIds.length) {
+        await this.prisma.immaculateTasteShowLibrary
+          .updateMany({
+            where: {
+              librarySectionKey: tvSectionKey,
+              tvdbId: { in: sonarrSentTvdbIds },
+              sentToSonarrAt: null,
+            },
+            data: { sentToSonarrAt: now },
+          })
+          .catch(() => undefined);
+      }
+    }
 
     // --- Optional chained refresher ---
     let refresherSummary: JsonObject | null = null;

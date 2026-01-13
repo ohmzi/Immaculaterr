@@ -21,5 +21,20 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 # Run migrations + start the server as the non-root user.
-exec gosu app:app sh -c 'npm -w apps/api run db:migrate && node apps/api/dist/main.js'
+run_cmd='npm -w apps/api run db:migrate && node apps/api/dist/main.js'
+
+if [ "$(id -u)" = "0" ]; then
+  if command -v setpriv >/dev/null 2>&1; then
+    exec setpriv --reuid=app --regid=app --clear-groups sh -c "$run_cmd"
+  elif command -v runuser >/dev/null 2>&1; then
+    exec runuser -u app -- sh -c "$run_cmd"
+  elif command -v su >/dev/null 2>&1; then
+    exec su -s /bin/sh app -c "$run_cmd"
+  else
+    echo "WARN: no privilege-drop tool found (setpriv/runuser/su). Running as root." >&2
+    exec sh -c "$run_cmd"
+  fi
+fi
+
+exec sh -c "$run_cmd"
 

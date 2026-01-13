@@ -135,6 +135,13 @@ enum ImmaculateTasteStatus {
   active
 }
 
+enum DownloadApprovalStatus {
+  none
+  pending
+  approved
+  rejected
+}
+
 model ImmaculateTasteMovie {
   tmdbId Int @id
   title  String?
@@ -191,6 +198,14 @@ model ImmaculateTasteMovieLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  // Observatory approvals (optional): gate ARR requests behind user swipes.
+  downloadApproval DownloadApprovalStatus @default(none)
+  sentToRadarrAt   DateTime?
+  sentToSonarrAt   DateTime?
+
+  // Cached artwork (optional). Store TMDB poster path (e.g. "/abc.jpg").
+  tmdbPosterPath String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -213,6 +228,13 @@ model WatchedMovieRecommendationLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  // Observatory approvals (optional): gate ARR requests behind user swipes.
+  downloadApproval DownloadApprovalStatus @default(none)
+  sentToRadarrAt   DateTime?
+
+  // Cached artwork (optional). Store TMDB poster path (e.g. "/abc.jpg").
+  tmdbPosterPath String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -220,6 +242,8 @@ model WatchedMovieRecommendationLibrary {
   @@index([librarySectionKey])
   @@index([librarySectionKey, collectionName, status])
   @@index([librarySectionKey, collectionName, tmdbVoteAvg])
+  @@index([librarySectionKey, collectionName, downloadApproval])
+  @@index([librarySectionKey, collectionName, sentToRadarrAt])
   @@index([tmdbId])
 }
 
@@ -257,6 +281,14 @@ model ImmaculateTasteShowLibrary {
 
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
+
+  // Observatory approvals (optional): gate ARR requests behind user swipes.
+  downloadApproval DownloadApprovalStatus @default(none)
+  sentToRadarrAt   DateTime?
+  sentToSonarrAt   DateTime?
+
+  // Cached artwork (optional). Store TMDB poster path (e.g. "/abc.jpg").
+  tmdbPosterPath String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -306,6 +338,13 @@ model WatchedShowRecommendationLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  // Observatory approvals (optional): gate ARR requests behind user swipes.
+  downloadApproval DownloadApprovalStatus @default(none)
+  sentToSonarrAt   DateTime?
+
+  // Cached artwork (optional). Store TMDB poster path (e.g. "/abc.jpg").
+  tmdbPosterPath String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -314,6 +353,8 @@ model WatchedShowRecommendationLibrary {
   @@index([tmdbId])
   @@index([librarySectionKey, collectionName, status])
   @@index([librarySectionKey, collectionName, tmdbVoteAvg])
+  @@index([librarySectionKey, collectionName, downloadApproval])
+  @@index([librarySectionKey, collectionName, sentToSonarrAt])
 }
 
 // Legacy table preserved by historical migrations (not used by Prisma Client).

@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { ObservatoryPage } from '@/pages/ObservatoryPage';
 import { TaskManagerPage } from '@/pages/TaskManagerPage';
 import { RewindPage } from '@/pages/RewindPage';
 import { LogsPage } from '@/pages/LogsPage';
@@ -42,6 +43,7 @@ export default function App() {
           {/* All pages require authentication and wizard completion */}
           <Route element={<ProtectedAppShell />}>
             <Route index element={<DashboardPage />} />
+            <Route path="observatory" element={<ObservatoryPage />} />
             <Route path="app" element={<Navigate to="/" replace />} />
             <Route path="vault" element={<VaultPage />} />
             <Route path="command-center" element={<CommandCenterPage />} />

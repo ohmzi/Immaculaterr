@@ -43,10 +43,12 @@ ENV APP_BUILD_TIME=$APP_BUILD_TIME
 
 WORKDIR /app
 
-# Drop privileges for the actual app process. We use gosu to switch users after
-# doing any one-time permission fixes on the mounted data volume.
+# Drop privileges for the actual app process. We avoid `gosu` (it is frequently
+# flagged by image scanners due to the Go stdlib version used to build the
+# Debian package). The entrypoint uses built-in tools (`setpriv`/`runuser`/`su`)
+# to switch users after doing one-time permission fixes on the mounted data volume.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends gosu ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app

@@ -106,70 +106,6 @@ export function FaqPage() {
             </>
           ),
         },
-        {
-          id: 'getting-started-host-networking',
-          question: 'Do I need Docker host networking? When should I use host.docker.internal?',
-          answer: (
-            <>
-              <p>
-                On Linux, this project defaults to Docker <code className="font-mono">host</code>{' '}
-                networking so the container can reach services like Plex/Radarr/Sonarr via{' '}
-                <code className="font-mono">localhost</code>.
-              </p>
-              <p>
-                On Docker Desktop (Mac/Windows), use <code className="font-mono">host.docker.internal</code>{' '}
-                for host services (for example, Plex at{' '}
-                <code className="font-mono">http://host.docker.internal:32400</code>).
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'getting-started-data-storage',
-          question: 'Where is the data stored (DB, settings, secrets)?',
-          answer: (
-            <>
-              <p>
-                In Docker, the app stores data under <code className="font-mono">/data</code> (a
-                Docker volume by default).
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>
-                  SQLite DB: <code className="font-mono">/data/tcp.sqlite</code>
-                </li>
-                <li>
-                  Master key file (if not provided by env/secret):{' '}
-                  <code className="font-mono">/data/app-master.key</code>
-                </li>
-                <li>
-                  Settings + encrypted secrets live in the DB (secrets are encrypted at rest).
-                </li>
-              </ul>
-            </>
-          ),
-        },
-        {
-          id: 'getting-started-reset',
-          question: 'How do I reset and start over? What does “Reset Account” delete?',
-          answer: (
-            <>
-              <p>
-                Use <span className="font-semibold text-white/85">Help → Reset Account</span> to wipe
-                Immaculaterr’s local state and restart the setup flow.
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>Deletes app settings and stored secrets (keys/tokens).</li>
-                <li>Deletes job history/logs stored by Immaculaterr.</li>
-                <li>Logs you out and returns you to fresh setup.</li>
-              </ul>
-              <p>
-                It does <span className="font-semibold text-white/85">not</span> delete Plex media
-                files. It may have previously created Plex collections; those are managed by jobs and
-                can be recreated later.
-              </p>
-            </>
-          ),
-        },
       ],
     },
     {
@@ -193,46 +129,13 @@ export function FaqPage() {
           ),
         },
         {
-          id: 'automation-which-jobs',
-          question: 'Which jobs are Plex-triggered and which are scheduled?',
-          answer: (
-            <>
-              <p>
-                Task Manager labels jobs as <span className="font-semibold text-white/85">Plex-Triggered</span>{' '}
-                or <span className="font-semibold text-white/85">Scheduled</span> above the Auto-Run
-                toggle.
-              </p>
-              <p>
-                If you’re unsure, trust the label in Task Manager—it reflects how that job is wired
-                in this build.
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'automation-immaculate-threshold',
-          question: 'When does “Immaculate Taste Collection” trigger?',
+          id: 'automation-collection-threshold',
+          question: 'When does Collection task trigger?',
           answer: (
             <>
               <p>
                 By default, it triggers when Plex polling detects you’ve watched roughly{' '}
                 <span className="font-semibold text-white/85">70%</span> of the item.
-              </p>
-              <p>
-                (Thresholds can be tuned via environment variables in advanced setups.)
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'automation-watched-threshold',
-          question: 'When does “Based on Latest Watched Collection” trigger?',
-          answer: (
-            <>
-              <p>
-                By default, it triggers at about{' '}
-                <span className="font-semibold text-white/85">60%</span> watched for the seed item,
-                detected via Plex polling.
               </p>
             </>
           ),
@@ -332,12 +235,66 @@ export function FaqPage() {
           answer: (
             <>
               <p>
-                Recommendations are primarily driven by TMDB “similar” logic, with optional enrichment
-                from Google/OpenAI if you’ve configured them.
+                Recommendations always start with TMDB (it builds a pool of candidates similar to the seed).
+                What happens next depends on what you configured in Vault:
               </p>
+              <div className="space-y-3">
+                <div>
+                  <div className="font-semibold text-white/85">Variant 1: TMDB only</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds candidate pools (released / upcoming / unknown).</li>
+                    <li>
+                      The “future vs current” ratio dial is applied to choose a mix (see below).
+                    </li>
+                    <li>Final titles come from TMDB’s pool selection.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-white/85">Variant 2: TMDB + OpenAI</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds candidate pools first.</li>
+                    <li>OpenAI curates the final list from TMDB candidates (better “taste” and variety).</li>
+                    <li>The final list still respects the released/upcoming mix you set.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-white/85">Variant 3: TMDB + Google + OpenAI</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds the candidate pools.</li>
+                    <li>Google search is used as a discovery booster (web context) to widen suggestions.</li>
+                    <li>OpenAI uses both TMDB candidates and web context to curate the final list.</li>
+                  </ul>
+                </div>
+              </div>
+              <p className="mt-3">
+                The job reports include a per-service breakdown (what each service suggested) plus the final{' '}
+                “Generated” list.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-upcoming-ratio',
+          question: 'What does the ratio of future releases vs current releases do?',
+          answer: (
+            <>
               <p>
-                The job reports include a per-service breakdown (what each service suggested) plus the
-                final “Generated” list.
+                This dial lives in <span className="font-semibold text-white/85">Command Center → Recommendations</span>.
+                It controls how many suggestions are:
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Current releases</span>: already released and typically available to watch now
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Future releases</span>: upcoming titles that may not be released yet
+                </li>
+              </ul>
+              <p>
+                The system enforces that released stays at least <span className="font-semibold text-white/85">25%</span>,
+                so upcoming is effectively capped.
               </p>
             </>
           ),
@@ -402,6 +359,82 @@ export function FaqPage() {
                 Advanced: you can replace the poster files under{' '}
                 <code className="font-mono">apps/web/src/assets/collection_artwork/posters</code> (or
                 adjust the mapping in the backend) to customize.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'observatory',
+      title: 'Observatory (swipe review)',
+      items: [
+        {
+          id: 'observatory-what-is',
+          question: 'What is the Observatory page?',
+          answer: (
+            <>
+              <p>
+                Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you
+                approve download requests (optional), and curate your suggestions before/while they
+                land in Plex collections.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'observatory-approval-required',
+          question: 'How do I require approval before sending anything to Radarr/Sonarr?',
+          answer: (
+            <>
+              <p>
+                In <span className="font-semibold text-white/85">Task Manager</span> →{' '}
+                <span className="font-semibold text-white/85">Immaculate Taste Collection</span>, turn
+                on <span className="font-semibold text-white/85">Approval required from Observatory</span>.
+              </p>
+              <p>
+                When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you{' '}
+                <span className="font-semibold text-white/85">swipe right</span> on them in Observatory.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'observatory-controls',
+          question: 'What do swipes do, and can I use keyboard shortcuts?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold text-white/85">Swipe right</span>: approve (in approval
+                mode) or keep (in review mode).
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Swipe left</span>: reject/remove that
+                suggestion.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Undo</span>: restores your last swipe.
+              </li>
+              <li>
+                Desktop: use <span className="font-semibold text-white/85">←</span> and{' '}
+                <span className="font-semibold text-white/85">→</span> to swipe the top card.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'observatory-no-suggestions',
+          question: 'Why does Observatory say there are no suggestions for my library?',
+          answer: (
+            <>
+              <p>
+                It usually means the collection job hasn’t generated suggestions yet for that library
+                and media type.
+              </p>
+              <p>
+                Please continue using Plex and let suggestions build up, or run the collection task
+                manually from <span className="font-semibold text-white/85">Task Manager</span> for that
+                media type to generate suggestions.
               </p>
             </>
           ),

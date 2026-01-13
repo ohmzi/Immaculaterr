@@ -12,7 +12,6 @@ import { SonarrModule } from './sonarr/sonarr.module';
 import { GoogleModule } from './google/google.module';
 import { TmdbModule } from './tmdb/tmdb.module';
 import { OpenAiModule } from './openai/openai.module';
-import { OverseerrModule } from './overseerr/overseerr.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { SettingsModule } from './settings/settings.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -23,6 +22,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { CollectionsModule } from './collections/collections.module';
 import { LogsModule } from './logs/logs.module';
 import { UpdatesModule } from './updates/updates.module';
+import { ObservatoryModule } from './observatory/observatory.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -48,6 +48,7 @@ const staticImports = existsSync(webDistPath)
     CollectionsModule,
     LogsModule,
     UpdatesModule,
+    ObservatoryModule,
     JobsModule,
     PlexModule,
     WebhooksModule,
@@ -56,7 +57,6 @@ const staticImports = existsSync(webDistPath)
     GoogleModule,
     TmdbModule,
     OpenAiModule,
-    OverseerrModule,
   ],
   controllers: [AppController],
   providers: [

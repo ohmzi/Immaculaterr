@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
     label: 'Overview',
     dropdown: [
       { label: 'Dashboard', to: '/' },
+      { label: 'Observatory', to: '/observatory' },
     ],
   },
   {
