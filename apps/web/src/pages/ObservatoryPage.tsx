@@ -4,7 +4,6 @@ import {
   useAnimation,
   useMotionValue,
   useTransform,
-  AnimatePresence,
 } from 'motion/react';
 import { Telescope } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -489,22 +488,30 @@ export function ObservatoryPage() {
           </div>
 
           <div className="mt-6">
-            <div className="relative mx-auto max-w-3xl">
-              <AnimatePresence initial={false}>
-                {deck.length ? (
-                  <div className="relative">
-                    {/* Render a small stack: top 3 */}
-                    {deck.slice(0, 3).reverse().map((card, idx, arr) => {
+            {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
+            <div className="relative mx-auto max-w-3xl h-[520px] md:h-[460px] overflow-hidden">
+              {deck.length ? (
+                <div className="relative h-full">
+                  {/* Render a small stack: top 3 */}
+                  {deck
+                    .slice(0, 3)
+                    .reverse()
+                    .map((card, idx, arr) => {
                       const isTop = idx === arr.length - 1;
                       const depth = arr.length - 1 - idx;
                       // Make the waiting-deck feel obvious (without being distracting).
                       const scale = 1 - depth * 0.045;
                       const y = depth * 18;
                       const opacity = 1 - depth * 0.14;
-                      const rotate = depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
+                      const rotate =
+                        depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
                       return (
                         <motion.div
-                          key={card.kind === 'sentinel' ? 'sentinel' : `${card.item.mediaType}:${card.item.id}`}
+                          key={
+                            card.kind === 'sentinel'
+                              ? 'sentinel'
+                              : `${card.item.mediaType}:${card.item.id}`
+                          }
                           style={{
                             scale,
                             y,
@@ -519,12 +526,13 @@ export function ObservatoryPage() {
                         >
                           <SwipeCard
                             card={card}
-                            disabled={!isTop || recordDecisionMutation.isPending || applyMutation.isPending}
-                            onSwipeLeft={async () => {
-                              if (card.kind === 'sentinel') {
-                                // left brings it back (no-op)
-                                return;
-                              }
+                            disabled={
+                              !isTop ||
+                              recordDecisionMutation.isPending ||
+                              applyMutation.isPending
+                            }
+                            onSwipeLeft={() => {
+                              if (card.kind === 'sentinel') return;
                               const action =
                                 phase === 'pendingApprovals' ? 'reject' : 'remove';
                               recordDecisionMutation.mutate({
@@ -535,12 +543,16 @@ export function ObservatoryPage() {
                               });
                               popTop();
                               scheduleApply();
-                              if (!deck.slice(1).length && approvalRequired && phase === 'pendingApprovals') {
+                              if (
+                                !deck.slice(1).length &&
+                                approvalRequired &&
+                                phase === 'pendingApprovals'
+                              ) {
                                 setPhase('sentinel');
                                 setDeck([{ kind: 'sentinel' }]);
                               }
                             }}
-                            onSwipeRight={async () => {
+                            onSwipeRight={() => {
                               if (card.kind === 'sentinel') {
                                 setPhase('review');
                                 setDeck(buildDeck(listReviewQuery.data?.items ?? []));
@@ -561,25 +573,19 @@ export function ObservatoryPage() {
                         </motion.div>
                       );
                     })}
-                    <div className="pt-[520px] md:pt-[460px]" />
-                  </div>
-                ) : (
-                  <motion.div
-                    key={`${tab}:${activeLibraryKey}:empty`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-10 text-center text-white/70"
-                  >
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-full rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-10 text-center text-white/70 backdrop-blur-2xl">
                     <div className="text-white font-semibold text-lg">
                       All suggestions have been reviewed
                     </div>
                     <div className="mt-2 text-sm text-white/65">
                       No suggestions left to check right now.
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
