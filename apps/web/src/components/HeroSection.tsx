@@ -80,6 +80,68 @@ function formatTickDateUtc(ms: number, mode: 'day' | 'month'): string {
   return dt.toLocaleString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' });
 }
 
+function formatTooltipDateUtc(ms: number): string {
+  const dt = new Date(ms);
+  return dt.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function isoDayKeyUtc(ms: number): string {
+  // YYYY-MM-DD in UTC
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function interpolateLinear(a: number, b: number, t: number) {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(t)) return a;
+  return a + (b - a) * t;
+}
+
+function densifyDailySeries<T extends { x: number; movies: number; tv: number }>(params: {
+  anchors: T[];
+  startMs: number;
+  endMs: number;
+}) {
+  const { anchors, startMs, endMs } = params;
+  if (!anchors.length) return [];
+
+  const DAY_MS = 86_400_000;
+  const start = Math.floor(startMs / DAY_MS) * DAY_MS;
+  const end = Math.floor(endMs / DAY_MS) * DAY_MS;
+
+  const out: Array<{ month: string; x: number; movies: number; tv: number }> = [];
+  let i = 0;
+
+  for (let x = start; x <= end; x += DAY_MS) {
+    while (i + 1 < anchors.length && anchors[i + 1]!.x < x) i++;
+    const left = anchors[i]!;
+    const right = anchors[i + 1] ?? left;
+
+    const span = right.x - left.x;
+    const tRaw = span > 0 ? (x - left.x) / span : 0;
+    const t = clamp(tRaw, 0, 1);
+
+    const movies = interpolateLinear(left.movies, right.movies, t);
+    const tv = interpolateLinear(left.tv, right.tv, t);
+
+    out.push({
+      month: isoDayKeyUtc(x),
+      x,
+      movies,
+      tv,
+    });
+  }
+
+  return out;
+}
+
 function niceCeilStep(rawStep: number) {
   // Round the step up to a "nice" magnitude: 10s / 100s / 1000s, etc.
   // - < 10: keep integer precision
@@ -381,6 +443,14 @@ export function HeroSection() {
     return next;
   }, [rangeBounds, seriesWithX]);
 
+  const dailySeries = useMemo(() => {
+    return densifyDailySeries({
+      anchors: filteredSeries,
+      startMs: rangeBounds.startMs,
+      endMs: rangeBounds.endMs,
+    });
+  }, [filteredSeries, rangeBounds.endMs, rangeBounds.startMs]);
+
   const rangeOpt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
   const rangeLabel = rangeOpt?.label ?? timeRange;
 
@@ -412,8 +482,8 @@ export function HeroSection() {
       ? Math.round((statsRangeDelta / statsRangeStartTotal) * 100)
       : null;
 
-  const moviesMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.movies), 0);
-  const tvMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.tv), 0);
+  const moviesMax = dailySeries.reduce((acc, p) => Math.max(acc, p.movies), 0);
+  const tvMax = dailySeries.reduce((acc, p) => Math.max(acc, p.tv), 0);
   const moviesScale = buildQuarterScale(moviesMax);
   const tvScale = buildQuarterScale(tvMax);
   const firstX = filteredSeries[0]?.x ?? 0;
@@ -559,7 +629,7 @@ export function HeroSection() {
                 <div className="w-full h-[240px] relative min-w-0 overflow-hidden">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                     <AreaChart
-                      data={filteredSeries}
+                      data={dailySeries}
                       margin={{ top: 8, right: 0, bottom: 8, left: 0 }}
                     >
                       <defs>
@@ -623,11 +693,11 @@ export function HeroSection() {
                         labelFormatter={(label) => {
                           const n = typeof label === 'number' ? label : Number(label);
                           return Number.isFinite(n)
-                            ? formatTickDateUtc(n, 'day')
+                            ? formatTooltipDateUtc(n)
                             : String(label);
                         }}
                         formatter={(value, name) => [
-                          value,
+                          typeof value === 'number' ? Math.round(value) : value,
                           name === 'movies' ? 'Movies' : name === 'tv' ? 'TV Shows' : String(name),
                         ]}
                         contentStyle={{ 
