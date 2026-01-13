@@ -29,7 +29,7 @@ type Phase = 'pendingApprovals' | 'review';
 
 type CardModel =
   | { kind: 'item'; item: ObservatoryItem }
-  | { kind: 'sentinel'; sentinel: 'approvalsDone' | 'reviewDone' };
+  | { kind: 'sentinel'; sentinel: 'approvalsDone' | 'reviewDone' | 'noData' };
 
 type UndoState = {
   tab: Tab;
@@ -174,15 +174,25 @@ function SwipeCard({
                 <div className="text-white text-2xl md:text-3xl font-black tracking-tight drop-shadow-2xl">
                   {card.sentinel === 'approvalsDone'
                     ? 'All download approvals have been reviewed'
-                    : 'All suggestions have been reviewed'}
+                    : card.sentinel === 'noData'
+                      ? 'No suggestions yet for this library'
+                      : 'All suggestions have been reviewed'}
                 </div>
-                <div className="mt-3 text-white/75 leading-relaxed">
-                  Swipe right to{' '}
-                  {card.sentinel === 'approvalsDone'
-                    ? 'review suggestions'
-                    : 'restart reviewing'}
-                  .
-                </div>
+                {card.sentinel === 'noData' ? (
+                  <div className="mt-3 text-white/75 leading-relaxed">
+                    Run <span className="text-white/90 font-semibold">Immaculate Taste Collection</span>{' '}
+                    manually for this media type to generate suggestions, then come back here to approve
+                    downloads and curate your list.
+                  </div>
+                ) : (
+                  <div className="mt-3 text-white/75 leading-relaxed">
+                    Swipe right to{' '}
+                    {card.sentinel === 'approvalsDone'
+                      ? 'review suggestions'
+                      : 'restart reviewing'}
+                    .
+                  </div>
+                )}
               </div>
             </div>
 
@@ -383,17 +393,22 @@ export function ObservatoryPage() {
     () => ({ kind: 'sentinel', sentinel: 'reviewDone' }),
     [],
   );
+  const noDataCard = useMemo<CardModel>(() => ({ kind: 'sentinel', sentinel: 'noData' }), []);
 
   const setDeckForApprovals = () => {
     const pending = listPendingQuery.data?.items ?? [];
+    const review = listReviewQuery.data?.items ?? [];
     setPhase('pendingApprovals');
-    setDeck(pending.length ? buildDeck(pending) : [approvalsDoneCard]);
+    setDeck(
+      pending.length ? buildDeck(pending) : review.length ? [approvalsDoneCard] : [noDataCard],
+    );
   };
 
   const setDeckForReview = () => {
     const items = listReviewQuery.data?.items ?? [];
+    const pending = listPendingQuery.data?.items ?? [];
     setPhase('review');
-    setDeck(items.length ? buildDeck(items) : [reviewDoneCard]);
+    setDeck(items.length ? buildDeck(items) : pending.length ? [reviewDoneCard] : [noDataCard]);
   };
 
   const advanceOneOrSentinel = (sentinel: CardModel) => {
@@ -862,7 +877,12 @@ export function ObservatoryPage() {
               ) : (
                 <div className="absolute inset-0">
                   <SwipeCard
-                    card={reviewDoneCard}
+                    card={
+                      (listPendingQuery.data?.items?.length ?? 0) === 0 &&
+                      (listReviewQuery.data?.items?.length ?? 0) === 0
+                        ? noDataCard
+                        : reviewDoneCard
+                    }
                     onSwipeLeft={() => undefined}
                     onSwipeRight={() => restartCycle()}
                   />
