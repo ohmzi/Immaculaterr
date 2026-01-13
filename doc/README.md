@@ -13,22 +13,27 @@ Major Features Include
 ---
 
 - **Plex-triggered automation**:
-  - Detects what you’re watching and automatically triggers actions as you finish the movies or TV episodes.
-- **Curated collections you actually want*:
-  - “Inspired by your Immaculate Taste”
-  - “Based on your recently watched”
-  - “Change of Taste”
+  - Automatically reacts to Plex library activity and runs smart workflows in real time.
+- **Scheduler automation**:
+  - Off hours fetching media or refreshing the Plex home screen.
+- **Curated Movies and TV Shows collections**:
+  - Inspired by your Immaculate Taste (long term collection)
+  - Based on your recently watched (refreshes on every watch)
+  - Change of Taste (refreshes on every watch)
 - **Recommendation engine**:
   - TMDB-powered suggestions
-  - Optional Google + OpenAI enrichment
-- **Refresher**: Re-check pending items, activate what’s now available, shuffle active items, and rebuild collections.
-- **Radarr + Sonarr integration**: Fetch Missing items using ARR downloaders.
-- **Cleanup After Adding New Content**: Manual/scheduled cleanup duplicates across libraries and unmonitors them in Radarr/Sonarr.
-- **Confirm Monitored**: Keeps ARR monitoring aligned with what’s already in Plex.
-- **Job system with strong observability**:
-  - Step-by-step breakdown cards
-  - Metrics tables + expandable lists
-  - Logs and run history
+  - Optional - Google + OpenAI 
+- **Keeps a snapshot database:**
+  - Recommmended database for refresher task to monitor titles as they become available in Plex.
+- **Radarr + Sonarr integration**:
+  - Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
+- **Observatory**:
+  - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
+- **Job reports & logs**:
+  - Step-by-step breakdowns, metrics tables, and run history.
+- **More features on the way:**
+  - Discovering Media from film industries around the world
+  - Email reports on media server health
 
 Getting Started (Docker)
 ---
