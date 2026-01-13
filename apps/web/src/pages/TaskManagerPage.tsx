@@ -2646,7 +2646,7 @@ export function TaskManagerPage() {
                         setMovieSeedError(null);
                         setMovieSeedMediaType(v);
                       }}
-                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      className="mt-2 h-12 w-full appearance-none bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     >
                       <option value="movie">Movie</option>
                       <option value="tv">TV show</option>
@@ -2705,7 +2705,7 @@ export function TaskManagerPage() {
                         setMovieSeedDialogJobId(null);
                       }}
                       placeholder={movieSeedMediaType === 'tv' ? 'Breaking Bad' : 'Inception'}
-                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      className="mt-2 h-12 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-white/35 leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     />
                   </div>
 
@@ -2721,7 +2721,7 @@ export function TaskManagerPage() {
                       }}
                       inputMode="numeric"
                       placeholder="2010"
-                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      className="mt-2 h-12 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-white/35 leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     />
                   </div>
                 </div>
