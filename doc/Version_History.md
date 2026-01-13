@@ -3,38 +3,26 @@ Version History
 
 This file tracks notable changes by version.
 
-Unreleased (develop)
+1.0.0.0
 ---
 
-- _Add entries here as changes land on `develop`._
-
-v1.0.0.0
----
-
-- **Observatory (Immaculate Taste)**:
-  - Swipe-card review UI for both Movies and TV.
-  - Optional **“Approval required from Observatory”** mode to gate Radarr/Sonarr requests behind right-swipes.
-  - Undo support and a 2-minute batched apply that syncs Plex + ARR changes.
-- **Observatory (Based on Latest Watched)**:
-  - Same swipe/undo/apply workflow as Immaculate, with a 2-stage flow:
-    - **Based on your recently watched** suggestions first
-    - **Change of Taste** suggestions second
-  - Optional approval-gating toggle in Task Manager for this job as well.
-- **Based on Latest Watched job improvements**:
-  - Added persistent per-library dataset fields needed for Observatory: approval state, “sent to ARR” timestamps, and cached poster path.
-  - When approval-gating is enabled, missing items are saved as **pending approval** instead of being sent to ARR immediately.
-- **UI polish**:
-  - Observatory styling and spacing improvements across tabs and controls.
-  - “Run now” dialog input fields aligned consistently.
-
-v0.0.0.101
----
-
-- GHCR publishing + GitHub Release created for a tagged build.
-- In-app update awareness (toast + Help menu) and version metadata surfaced in the UI.
-
-v0.0.0.100
----
-
-- Initial tagged release.
+- Plex-triggered automation:
+  - Automatically reacts to Plex library activity and runs smart workflows in real time.
+- Scheduler automation:
+  - Off hours fetching media or refreshing the Plex home screen.
+- Curated Movies and TV Shows collections:
+  - Inspired by your Immaculate Taste (long term collection)
+  - Based on your recently watched (refreshes on every watch)
+  - Change of Taste (refreshes on every watch)
+- Recommendation engine:
+  - TMDB-powered suggestions
+  - Optional - Google + OpenAI
+- Keeps a snapshot database:
+  - Recommmended database for refresher task to monitor titles as they become available in Plex.
+- Radarr + Sonarr integration:
+  - Seamlessly organizes your media collection and automatically sends movies and series to ARR downloaders for monitoring and acquisition.
+- Observatory:
+  - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
+- Job reports & logs:
+  - Step-by-step breakdowns, metrics tables, and run history.
 
