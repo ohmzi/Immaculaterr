@@ -49,8 +49,8 @@
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Radarr + Sonarr integration**:
   - Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
-- **Observatory (new)**:
-  - Swipe to approve download requests (optional “approval required” mode), curate suggestions, undo the last swipe, and use ←/→ keyboard arrows on desktop.
+- **Observatory**:
+  - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
 - **Job reports & logs**:
   - Step-by-step breakdowns, metrics tables, and run history.
 - **More features on the way:**
