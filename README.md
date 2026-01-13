@@ -8,8 +8,8 @@
   </p>
 
   <p>
-    <a href="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml">
-      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg?branch=master&event=push" />
+    <a href="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml">
+      <img alt="Publish containers (GHCR + Docker Hub)" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml/badge.svg?branch=master" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/releases">
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/ohmzi/Immaculaterr" />
