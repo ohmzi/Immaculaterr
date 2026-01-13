@@ -149,6 +149,7 @@ export class ObservatoryService {
         title: true,
         status: true,
         points: true,
+        tmdbVoteAvg: true,
         downloadApproval: true,
         sentToRadarrAt: true,
         tmdbPosterPath: true,
@@ -168,6 +169,10 @@ export class ObservatoryService {
         title: r.title ?? null,
         status: r.status,
         points: r.points,
+        tmdbVoteAvg:
+          typeof r.tmdbVoteAvg === 'number' && Number.isFinite(r.tmdbVoteAvg)
+            ? Number(r.tmdbVoteAvg)
+            : null,
         downloadApproval: r.downloadApproval,
         sentToRadarrAt: r.sentToRadarrAt?.toISOString() ?? null,
         posterUrl: posterUrlFromPath(r.tmdbPosterPath ?? null),
@@ -246,6 +251,7 @@ export class ObservatoryService {
         title: true,
         status: true,
         points: true,
+        tmdbVoteAvg: true,
         downloadApproval: true,
         sentToSonarrAt: true,
         tmdbPosterPath: true,
@@ -266,6 +272,10 @@ export class ObservatoryService {
         title: r.title ?? null,
         status: r.status,
         points: r.points,
+        tmdbVoteAvg:
+          typeof r.tmdbVoteAvg === 'number' && Number.isFinite(r.tmdbVoteAvg)
+            ? Number(r.tmdbVoteAvg)
+            : null,
         downloadApproval: r.downloadApproval,
         sentToSonarrAt: r.sentToSonarrAt?.toISOString() ?? null,
         posterUrl: posterUrlFromPath(r.tmdbPosterPath ?? null),

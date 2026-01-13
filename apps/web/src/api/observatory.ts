@@ -8,6 +8,7 @@ export type ObservatoryItem = {
   title: string | null;
   status: 'pending' | 'active';
   points: number;
+  tmdbVoteAvg?: number | null;
   downloadApproval: 'none' | 'pending' | 'approved' | 'rejected';
   posterUrl: string | null;
   sentToRadarrAt?: string | null;

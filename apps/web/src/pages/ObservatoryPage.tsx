@@ -35,6 +35,15 @@ function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));
 }
 
+function formatRating(v: unknown): string | null {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : null;
+  if (n === null) return null;
+  // TMDB vote_average is /10; show 1 decimal.
+  const rounded = Math.round(n * 10) / 10;
+  if (!Number.isFinite(rounded) || rounded <= 0) return null;
+  return rounded.toFixed(1);
+}
+
 function SwipeCard({
   card,
   disabled,
@@ -142,7 +151,7 @@ function SwipeCard({
 
         {card.kind === 'sentinel' ? (
           // Sentinel cards are styled like movie cards so the deck never "ends".
-          <div className="relative h-[420px]">
+          <div className="relative h-full">
             <img
               src={APP_BG_IMAGE_URL}
               alt=""
@@ -180,12 +189,12 @@ function SwipeCard({
         ) : (
           <>
             {/* Mobile: full-bleed poster + small caption bar (no extra metadata) */}
-            <div className="relative md:hidden h-[420px]">
+            <div className="relative md:hidden h-full">
               {card.item.posterUrl ? (
                 <img
                   src={card.item.posterUrl}
                   alt=""
-                  className="absolute inset-0 h-full w-full object-cover object-center"
+                  className="absolute inset-0 h-full w-full object-contain object-center bg-black/30"
                   draggable={false}
                 />
               ) : (
@@ -199,23 +208,30 @@ function SwipeCard({
 
               {/* Bottom caption (~10% height) */}
               <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
-                <div className="text-white font-semibold text-sm leading-tight line-clamp-2">
-                  {card.item.title ||
-                    (card.item.mediaType === 'movie'
-                      ? `TMDB ${card.item.id}`
-                      : `TVDB ${card.item.id}`)}
+                <div className="w-full flex items-center justify-between gap-3">
+                  <div className="text-white font-semibold text-sm leading-tight line-clamp-1">
+                    {card.item.title ||
+                      (card.item.mediaType === 'movie'
+                        ? `TMDB ${card.item.id}`
+                        : `TVDB ${card.item.id}`)}
+                  </div>
+                  {formatRating(card.item.tmdbVoteAvg ?? null) && (
+                    <div className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white/90">
+                      {formatRating(card.item.tmdbVoteAvg ?? null)}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Desktop/tablet: poster + details */}
-            <div className="hidden md:grid grid-cols-2">
-              <div className="relative h-[420px] bg-white/5">
+            <div className="hidden md:grid grid-cols-2 h-full">
+              <div className="relative h-full bg-black/20">
                 {card.item.posterUrl ? (
                   <img
                     src={card.item.posterUrl}
                     alt=""
-                    className="h-full w-full object-cover object-center"
+                    className="h-full w-full object-contain object-center"
                     draggable={false}
                   />
                 ) : (
@@ -225,13 +241,21 @@ function SwipeCard({
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/25" />
               </div>
-              <div className="p-10">
-                <div className="text-white text-2xl font-black tracking-tight">
-                  {card.item.title ||
-                    (card.item.mediaType === 'movie'
-                      ? `TMDB ${card.item.id}`
-                      : `TVDB ${card.item.id}`)}
-                </div>
+              <div className="p-10 flex flex-col justify-between h-full">
+                <div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="text-white text-3xl font-black tracking-tight leading-tight">
+                      {card.item.title ||
+                        (card.item.mediaType === 'movie'
+                          ? `TMDB ${card.item.id}`
+                          : `TVDB ${card.item.id}`)}
+                    </div>
+                    {formatRating(card.item.tmdbVoteAvg ?? null) && (
+                      <div className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-black text-white/90">
+                        {formatRating(card.item.tmdbVoteAvg ?? null)}
+                      </div>
+                    )}
+                  </div>
                 <div className="mt-2 text-sm text-white/70">
                   Status:{' '}
                   <span className="text-white/90 font-semibold">
@@ -246,6 +270,10 @@ function SwipeCard({
                 </div>
                 <div className="mt-6 text-xs text-white/55 leading-relaxed">
                   Swipe right to keep. Swipe left to remove.
+                </div>
+                </div>
+                <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+                  Tip: swipe deep into a corner to commit quickly.
                 </div>
               </div>
             </div>
@@ -607,7 +635,7 @@ export function ObservatoryPage() {
 
           <div className="mt-6">
             {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
-            <div className="relative mx-auto max-w-3xl h-[520px] md:h-[460px] overflow-visible">
+            <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
               {deck.length ? (
                 <div className="relative h-full">
                   {/* Render a small stack: top 3 */}
