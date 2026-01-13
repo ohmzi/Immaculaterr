@@ -500,14 +500,14 @@ export function ObservatoryPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, teal-tinted) */}
+          {/* Background (landing-page style, amber-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
           src={APP_BG_IMAGE_URL}
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-teal-300/20 via-cyan-800/35 to-slate-950/75" />
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-300/25 via-yellow-700/35 to-slate-950/75" />
         <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
@@ -544,16 +544,16 @@ export function ObservatoryPage() {
                   <motion.div
                     aria-hidden="true"
                     animate={titleIconGlowControls}
-                    className="pointer-events-none absolute inset-0 bg-[#2dd4bf] blur-xl opacity-0"
+                    className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
                   />
-                  <div className="absolute inset-0 bg-[#2dd4bf] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
+                  <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
                   <motion.div
                     initial={{ rotate: -10, scale: 0.94, y: 2 }}
                     animate={{ rotate: -6, scale: 1, y: 0 }}
                     whileHover={{ rotate: 0, scale: 1.04 }}
                     transition={{ type: 'spring', stiffness: 420, damping: 28 }}
                     style={{ backfaceVisibility: 'hidden' }}
-                    className="relative will-change-transform transform-gpu p-3 md:p-4 bg-[#2dd4bf] rounded-2xl shadow-[0_0_30px_rgba(45,212,191,0.25)] border border-white/20"
+                    className="relative will-change-transform transform-gpu p-3 md:p-4 bg-[#facc15] rounded-2xl shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20"
                   >
                     <Telescope
                       className="w-8 h-8 md:w-10 md:h-10 text-black"
@@ -567,7 +567,7 @@ export function ObservatoryPage() {
                 </h1>
               </div>
 
-              <p className="text-teal-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
+              <p className="text-amber-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
                 A place for visibility and diagnostics. We’ll build this out next.
               </p>
             </motion.div>
