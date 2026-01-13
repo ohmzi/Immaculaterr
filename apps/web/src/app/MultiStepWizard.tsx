@@ -18,7 +18,6 @@ type WizardStep =
   | 'sonarr'
   | 'google'
   | 'openai'
-  | 'overseerr'
   | 'complete';
 
 const STEP_ORDER: WizardStep[] = [
@@ -29,7 +28,6 @@ const STEP_ORDER: WizardStep[] = [
   'sonarr',
   'google',
   'openai',
-  'overseerr',
   'complete',
 ];
 
@@ -85,10 +83,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   // OpenAI state
   const [openAiApiKey, setOpenAiApiKey] = useState('');
-
-  // Overseerr state
-  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
-  const [overseerrApiKey, setOverseerrApiKey] = useState('');
 
   const getCurrentStepIndex = () => STEP_ORDER.indexOf(currentStep);
   const canGoBack = getCurrentStepIndex() > 0;
@@ -241,7 +235,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   });
 
   const saveOptionalService = useMutation({
-    mutationFn: async (service: 'radarr' | 'sonarr' | 'google' | 'openai' | 'overseerr') => {
+    mutationFn: async (service: 'radarr' | 'sonarr' | 'google' | 'openai') => {
       const updates: Parameters<typeof putSettings>[0] = {};
 
       if (service === 'radarr' && radarrBaseUrl && radarrApiKey) {
@@ -255,9 +249,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         updates.secrets = { google: { apiKey: googleApiKey.trim() } };
       } else if (service === 'openai' && openAiApiKey) {
         updates.secrets = { openai: { apiKey: openAiApiKey.trim() } };
-      } else if (service === 'overseerr' && overseerrBaseUrl && overseerrApiKey) {
-        updates.settings = { overseerr: { baseUrl: overseerrBaseUrl.trim() } };
-        updates.secrets = { overseerr: { apiKey: overseerrApiKey.trim() } };
       }
 
       if (updates.settings || updates.secrets) {
@@ -715,65 +706,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
               <Button
                 onClick={() => saveOptionalService.mutate('openai')}
                 disabled={!openAiApiKey.trim() || saveOptionalService.isPending}
-                className="flex-1"
-              >
-                {saveOptionalService.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                  </>
-                ) : (
-                  <>
-                    Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'overseerr':
-        return (
-          <div className="flex flex-col min-h-[480px]">
-            <div className="flex-1 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold mb-2">Configure Overseerr (Optional)</h2>
-                <p className="text-sm text-muted-foreground">
-                  Overseerr for media requests and management.
-                </p>
-              </div>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="overseerrBaseUrl">Overseerr URL</Label>
-                  <Input
-                    id="overseerrBaseUrl"
-                    value={overseerrBaseUrl}
-                    onChange={(e) => setOverseerrBaseUrl(e.target.value)}
-                    placeholder="http://localhost:5055"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="overseerrApiKey">Overseerr API Key</Label>
-                  <Input
-                    id="overseerrApiKey"
-                    type="password"
-                    value={overseerrApiKey}
-                    onChange={(e) => setOverseerrApiKey(e.target.value)}
-                    placeholder="Enter Overseerr API key"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6 pt-6 border-t">
-              <Button variant="outline" onClick={handleBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button variant="ghost" onClick={handleSkip} className="flex-1">
-                Skip
-              </Button>
-              <Button
-                onClick={() => saveOptionalService.mutate('overseerr')}
-                disabled={!overseerrBaseUrl.trim() || !overseerrApiKey.trim() || saveOptionalService.isPending}
                 className="flex-1"
               >
                 {saveOptionalService.isPending ? (

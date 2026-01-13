@@ -42,7 +42,7 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-type ServiceKey = 'tmdb' | 'radarr' | 'sonarr' | 'overseerr' | 'openai' | 'google';
+type ServiceKey = 'tmdb' | 'radarr' | 'sonarr' | 'openai' | 'google';
 type ServiceStatus = 'unknown' | 'not_configured' | 'online' | 'offline';
 
 @Injectable()
@@ -152,7 +152,6 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       this.checkTmdb(s, sec),
       this.checkRadarr(s, sec),
       this.checkSonarr(s, sec),
-      this.checkOverseerr(s, sec),
       this.checkOpenAi(s, sec),
       this.checkGoogle(s, sec),
     ]);
@@ -218,25 +217,6 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
 
     await this.probeHttp('sonarr', url, {
       headers: { Accept: 'application/json', 'X-Api-Key': apiKey },
-      timeoutMs: 10_000,
-    });
-  }
-
-  private async checkOverseerr(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
-    const enabled =
-      (pickBool(settings, 'overseerr.enabled') ?? Boolean(pickString(secrets, 'overseerr.apiKey'))) &&
-      Boolean(pickString(settings, 'overseerr.baseUrl'));
-    if (!enabled) {
-      this.setStatus('overseerr', 'not_configured', null, { reason: 'disabled_or_missing' });
-      return;
-    }
-
-    const baseUrl = normalizeHttpUrl(pickString(settings, 'overseerr.baseUrl'));
-    const url = new URL('api/v1/status', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
-
-    // status endpoint does not require api key
-    await this.probeHttp('overseerr', url, {
-      headers: { Accept: 'application/json' },
       timeoutMs: 10_000,
     });
   }

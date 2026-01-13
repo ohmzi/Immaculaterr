@@ -8,14 +8,14 @@
   </p>
 
   <p>
-    <a href="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml">
-      <img alt="Build Status" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-ghcr.yml/badge.svg?branch=master&event=push" />
+    <a href="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml">
+      <img alt="Publish containers (GHCR + Docker Hub)" src="https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml/badge.svg?branch=master" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/releases">
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/ohmzi/Immaculaterr" />
     </a>
     <a href="./LICENSE">
-      <img alt="License" src="https://img.shields.io/github/license/ohmzi/Immaculaterr" />
+      <img alt="License" src="https://img.shields.io/badge/license-MIT-brightgreen" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr">
       <img
@@ -49,13 +49,21 @@
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Radarr + Sonarr integration**:
   - Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
+- **Observatory**:
+  - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
 - **Job reports & logs**:
   - Step-by-step breakdowns, metrics tables, and run history.
 - **More features on the way:**
   - Discovering Media from film industries around the world
   - Email reports on media server health
+  - Windows and macOS support
 <div align="center">
-  <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr UI carousel: Your Library on Autopilot, Command Center, and Task Manager" width="900" />
+  <p><b>Desktop UI</b></p>
+  <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
+  <br/>
+  <br/>
+  <p><b>Mobile UI (full mobile support)</b></p>
+  <img src="doc/assets/screenshots/showcase-mobile.gif" alt="Immaculaterr mobile UI showcase" width="320" />
 </div>
 
 ## Getting started (Docker)
@@ -98,10 +106,17 @@ Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/
 
 Full project README: [`doc/README.md`](doc/README.md)
 
-## Support
+## Security and Suggestions
 
 - Report Bug: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
 - Send Suggestion: [Immaculaterr Feedback Form](https://forms.gle/wMpsDu9jPEY14dua6)
+
+## ❤️ Support
+
+This project is free and always will be.
+
+If it saves you time or runs 24/7 in your homelab, consider supporting development via GitHub Sponsors:
+[https://github.com/sponsors/ohmzi](https://github.com/sponsors/ohmzi)
 
 ## License
 

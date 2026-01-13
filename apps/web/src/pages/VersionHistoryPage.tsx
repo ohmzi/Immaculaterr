@@ -81,16 +81,74 @@ export function VersionHistoryPage() {
               </div>
 
               <p className="text-amber-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
-                Release notes and version history. We’ll fill this in soon.
+                Release notes and version history.
               </p>
             </motion.div>
           </div>
 
-          {/* Placeholder content */}
-          <div className={cardClass}>
-            <div className="text-white font-semibold text-xl">Coming soon</div>
-            <div className="mt-2 text-sm text-white/70 leading-relaxed">
-              This page will contain version history and release notes.
+          <div className="space-y-6">
+            <div className={cardClass}>
+              <div className="text-white font-black text-2xl tracking-tight">
+                1.0.0.0
+              </div>
+
+              <div className="mt-4 space-y-3 text-sm text-white/75 leading-relaxed">
+                <div className="text-white/90 font-semibold">Plex-triggered automation</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Automatically reacts to Plex library activity and runs smart workflows in real time.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Scheduler automation</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Off hours fetching media or refreshing the Plex home screen.</li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">
+                  Curated Movies and TV Shows collections
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Inspired by your Immaculate Taste (long term collection)</li>
+                  <li>Based on your recently watched (refreshes on every watch)</li>
+                  <li>Change of Taste (refreshes on every watch)</li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Recommendation engine</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>TMDB-powered suggestions</li>
+                  <li>Optional - Google + OpenAI</li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Keeps a snapshot database</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Recommmended database for refresher task to monitor titles as they become
+                    available in Plex.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Radarr + Sonarr integration</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Seamlessly organizes your media collection and automatically sends movies and
+                    series to ARR downloaders for monitoring and acquisition.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Observatory</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Swipe to approve download requests (optional “approval required” mode), curate
+                    suggestions.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Job reports & logs</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Step-by-step breakdowns, metrics tables, and run history.</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>

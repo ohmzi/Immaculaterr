@@ -393,6 +393,9 @@ export function TaskManagerPage() {
     useState(true);
   const [watchedFetchMissingRadarr, setWatchedFetchMissingRadarr] = useState(true);
   const [watchedFetchMissingSonarr, setWatchedFetchMissingSonarr] = useState(true);
+  const [immaculateApprovalRequired, setImmaculateApprovalRequired] =
+    useState(false);
+  const [watchedApprovalRequired, setWatchedApprovalRequired] = useState(false);
 
   const markAutoExpandSeen = (jobId: string) => {
     setAutoExpandSeen((prev) => {
@@ -581,7 +584,49 @@ export function TaskManagerPage() {
       readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
         true,
     );
+
+    setImmaculateApprovalRequired(
+      readBool(
+        settings,
+        'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+      ) ?? false,
+    );
+
+    setWatchedApprovalRequired(
+      readBool(
+        settings,
+        'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
+      ) ?? false,
+    );
   }, [settingsQuery.data?.settings, fetchMissingMutation.isPending]);
+
+  const immaculateApprovalRequiredMutation = useMutation({
+    mutationFn: async (enabled: boolean) =>
+      putSettings({
+        settings: {
+          jobs: {
+            immaculateTastePoints: { approvalRequiredFromObservatory: enabled },
+          },
+        },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
+  const watchedApprovalRequiredMutation = useMutation({
+    mutationFn: async (enabled: boolean) =>
+      putSettings({
+        settings: {
+          jobs: {
+            watchedMovieRecommendations: { approvalRequiredFromObservatory: enabled },
+          },
+        },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
 
   useEffect(() => {
     if (!flashJob) return;
@@ -1846,8 +1891,63 @@ export function TaskManagerPage() {
                                         </div>
                                       )}
                                     </div>
+
+                                    <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
+                                            Approval required from Observatory
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                            When enabled, missing items won’t be sent to Radarr/Sonarr until you swipe right in Observatory.
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={immaculateApprovalRequired}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = immaculateApprovalRequired;
+                                            const next = !prev;
+                                            setImmaculateApprovalRequired(next);
+                                            immaculateApprovalRequiredMutation.mutate(next, {
+                                              onError: () =>
+                                                setImmaculateApprovalRequired(prev),
+                                            });
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            immaculateApprovalRequiredMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            immaculateApprovalRequired
+                                              ? 'bg-teal-400'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label="Toggle Observatory approval for Immaculate Taste Collection"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              immaculateApprovalRequired
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {immaculateApprovalRequiredMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
                                   </>
                                 ) : (
+                                  <>
                                   <div className="rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
                                     <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                                       Fetch Missing items:
@@ -1963,6 +2063,60 @@ export function TaskManagerPage() {
                                       </div>
                                     </div>
                                   </div>
+
+                                  <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Approval required from Observatory
+                                        </div>
+                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                          When enabled, missing items won’t be sent to Radarr/Sonarr until you swipe right in Observatory.
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={watchedApprovalRequired}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const prev = watchedApprovalRequired;
+                                          const next = !prev;
+                                          setWatchedApprovalRequired(next);
+                                          watchedApprovalRequiredMutation.mutate(next, {
+                                            onError: () => setWatchedApprovalRequired(prev),
+                                          });
+                                        }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          watchedApprovalRequiredMutation.isPending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          watchedApprovalRequired
+                                            ? 'bg-teal-400'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle Observatory approval for Based on Latest Watched Collection"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            watchedApprovalRequired
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {watchedApprovalRequiredMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -2559,9 +2713,11 @@ export function TaskManagerPage() {
 
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <div className="sm:col-span-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Media type
-                    </label>
+                    <div className="h-8 flex items-end">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                        Media type
+                      </label>
+                    </div>
                     <select
                       value={movieSeedMediaType}
                       onChange={(e) => {
@@ -2569,7 +2725,7 @@ export function TaskManagerPage() {
                         setMovieSeedError(null);
                         setMovieSeedMediaType(v);
                       }}
-                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      className="mt-2 h-12 w-full appearance-none bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     >
                       <option value="movie">Movie</option>
                       <option value="tv">TV show</option>
@@ -2577,9 +2733,11 @@ export function TaskManagerPage() {
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Content title
-                    </label>
+                    <div className="h-8 flex items-end">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                        Content title
+                      </label>
+                    </div>
                     <input
                       ref={movieSeedTitleRef}
                       value={movieSeedTitle}
@@ -2628,14 +2786,16 @@ export function TaskManagerPage() {
                         setMovieSeedDialogJobId(null);
                       }}
                       placeholder={movieSeedMediaType === 'tv' ? 'Breaking Bad' : 'Inception'}
-                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      className="mt-2 h-12 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-white/35 leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     />
                   </div>
 
                   <div className="sm:col-span-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Year (optional)
-                    </label>
+                    <div className="h-8 flex items-end">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                        Year (optional)
+                      </label>
+                    </div>
                     <input
                       value={movieSeedYear}
                       onChange={(e) => {
@@ -2644,7 +2804,7 @@ export function TaskManagerPage() {
                       }}
                       inputMode="numeric"
                       placeholder="2010"
-                      className="mt-2 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      className="mt-2 h-12 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-white/35 leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     />
                   </div>
                 </div>
