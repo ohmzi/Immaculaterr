@@ -798,7 +798,7 @@ export function ObservatoryPage() {
           </div>
 
           {/* Primary tabs (Immaculate vs Based on Latest Watched) */}
-          <div className="flex items-center gap-8 border-b border-white/10 mb-8 px-2">
+          <div className="flex items-center justify-center gap-8 border-b border-white/10 mb-8 px-2">
             {[
               { id: 'immaculate', label: 'Immaculate Taste Collection' },
               { id: 'latestWatched', label: 'Based on Latest Watched Collection' },
