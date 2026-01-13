@@ -883,7 +883,7 @@ export function ObservatoryPage() {
                           if (mediaTab === 'movie') setMovieLibrary(e.target.value);
                           else setTvLibrary(e.target.value);
                         }}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-white/20"
+                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/95 outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
                       >
                         {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
                           (l) => (
@@ -1109,7 +1109,7 @@ export function ObservatoryPage() {
                           if (mediaTab === 'movie') setMovieLibrary(e.target.value);
                           else setTvLibrary(e.target.value);
                         }}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-white/20"
+                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/95 outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
                       >
                         {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
                           (l) => (
