@@ -76,8 +76,8 @@ function SwipeCard({
     <motion.div
       animate={controls}
       drag={disabled ? false : 'x'}
-      dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.2}
+      dragMomentum={false}
       style={{ x, rotate, opacity, touchAction: 'pan-y' }}
       onDragEnd={(_, info) => {
         if (disabled) return;
