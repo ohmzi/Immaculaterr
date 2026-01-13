@@ -240,10 +240,10 @@ export function JobRunDetailPage() {
   }, [visibleLogs]);
 
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 sm:p-6 lg:p-8 shadow-2xl';
+    'w-full max-w-full min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 sm:p-6 lg:p-8 shadow-2xl';
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, Rewind violet-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
@@ -256,7 +256,7 @@ export function JobRunDetailPage() {
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
-      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16 select-text">
+      <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16 select-text">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -343,7 +343,7 @@ export function JobRunDetailPage() {
                 </div>
               </div>
             ) : run ? (
-              <div className="grid gap-6">
+              <div className="grid gap-6 min-w-0">
                 {/* Run Details Card */}
                 <div className={cardClass}>
                   <div className="mb-3 text-sm font-medium text-white/85">
@@ -870,7 +870,7 @@ export function JobRunDetailPage() {
                                     ) : null}
                                   </div>
 
-                                  <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
+                                  <div className="mt-4 max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
                                     <table className="w-full text-sm">
                                       <thead className="text-left text-xs text-white/60">
                                         <tr>
@@ -1022,7 +1022,7 @@ export function JobRunDetailPage() {
                                           <div className="text-sm font-semibold text-white mb-4">
                                             {title}
                                           </div>
-                                          <div className="overflow-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
+                                          <div className="max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
                                             <table className="w-full text-sm">
                                               <thead className="text-left text-xs text-white/60">
                                                 <tr>
@@ -1719,7 +1719,7 @@ export function JobRunDetailPage() {
                                 ) : null}
 
                                 {rows.length ? (
-                                  <div className="mt-4 overflow-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
+                                  <div className="mt-4 max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-[#0b0c0f]/30">
                                     <table className="w-full text-sm">
                                       <thead className="text-left text-xs text-white/60">
                                         <tr>
