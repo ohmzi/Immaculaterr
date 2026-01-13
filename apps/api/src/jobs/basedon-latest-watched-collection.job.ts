@@ -132,6 +132,9 @@ export class BasedonLatestWatchedCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    const approvalRequiredFromObservatory =
+      (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
+        false) === true;
 
     // --- Plex settings ---
     const plexBaseUrlRaw =
@@ -274,6 +277,7 @@ export class BasedonLatestWatchedCollectionJob {
       upcomingPercent,
       collectionLimit,
       webContextFraction,
+      approvalRequiredFromObservatory,
     });
 
     void ctx
@@ -426,6 +430,7 @@ export class BasedonLatestWatchedCollectionJob {
         recommendationTitles: col.titles,
         recommendationStrategy: col.strategy,
         recommendationDebug: col.debug,
+        approvalRequiredFromObservatory,
         radarr: radarrEnabled
           ? {
               baseUrl: radarrBaseUrl,
@@ -472,6 +477,7 @@ export class BasedonLatestWatchedCollectionJob {
     recommendationTitles: string[];
     recommendationStrategy: string;
     recommendationDebug: JsonObject;
+    approvalRequiredFromObservatory: boolean;
     radarr: {
           baseUrl: string;
           apiKey: string;
@@ -492,6 +498,7 @@ export class BasedonLatestWatchedCollectionJob {
       recommendationTitles,
       recommendationStrategy,
       recommendationDebug,
+      approvalRequiredFromObservatory,
       radarr,
     } = params;
 
@@ -722,6 +729,10 @@ export class BasedonLatestWatchedCollectionJob {
             status: r.status,
             tmdbVoteAvg: r.tmdbVoteAvg ?? undefined,
             tmdbVoteCount: r.tmdbVoteCount ?? undefined,
+            downloadApproval:
+              approvalRequiredFromObservatory && r.status === 'pending'
+                ? 'pending'
+                : 'none',
           })),
         });
       }
@@ -745,7 +756,7 @@ export class BasedonLatestWatchedCollectionJob {
       skipped: [] as string[],
     };
 
-    if (!ctx.dryRun && radarr && missingTitles.length) {
+    if (!approvalRequiredFromObservatory && !ctx.dryRun && radarr && missingTitles.length) {
       await ctx.info('radarr: start', {
         collectionName,
         missingTitles: missingTitles.length,
@@ -753,7 +764,7 @@ export class BasedonLatestWatchedCollectionJob {
       });
     }
 
-    if (!ctx.dryRun && radarr && missingTitles.length) {
+    if (!approvalRequiredFromObservatory && !ctx.dryRun && radarr && missingTitles.length) {
       const defaults = radarr.defaults;
       if (!defaults) {
         await ctx.warn('radarr: defaults unavailable (skipping adds)', {
@@ -800,6 +811,20 @@ export class BasedonLatestWatchedCollectionJob {
               radarrStats.exists += 1;
               radarrLists.exists.push(tmdbMatch.title);
             }
+
+            // Mark that we requested it in Radarr so Observatory rejections can unmonitor later.
+            await this.prisma.watchedMovieRecommendationLibrary
+              .update({
+                where: {
+                  collectionName_librarySectionKey_tmdbId: {
+                    collectionName,
+                    librarySectionKey: movieSectionKey,
+                    tmdbId: tmdbMatch.tmdbId,
+                  },
+                },
+                data: { sentToRadarrAt: new Date(), downloadApproval: 'none' },
+              })
+              .catch(() => undefined);
           } catch (err) {
             radarrStats.failed += 1;
             radarrLists.failed.push(title);
@@ -812,7 +837,7 @@ export class BasedonLatestWatchedCollectionJob {
       }
     }
 
-    if (!ctx.dryRun && radarr && missingTitles.length) {
+    if (!approvalRequiredFromObservatory && !ctx.dryRun && radarr && missingTitles.length) {
       await ctx.info('radarr: done', {
         collectionName,
         ...radarrStats,
@@ -863,6 +888,9 @@ export class BasedonLatestWatchedCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    const approvalRequiredFromObservatory =
+      (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
+        false) === true;
 
     // --- Plex settings ---
     const plexBaseUrlRaw =
@@ -1004,6 +1032,7 @@ export class BasedonLatestWatchedCollectionJob {
       upcomingPercent,
       collectionLimit,
       webContextFraction,
+      approvalRequiredFromObservatory,
     });
 
     void ctx
@@ -1154,6 +1183,7 @@ export class BasedonLatestWatchedCollectionJob {
         recommendationTitles: col.titles,
         recommendationStrategy: col.strategy,
         recommendationDebug: col.debug,
+        approvalRequiredFromObservatory,
         sonarr: sonarrEnabled
           ? {
               baseUrl: sonarrBaseUrl,
@@ -1200,6 +1230,7 @@ export class BasedonLatestWatchedCollectionJob {
     recommendationTitles: string[];
     recommendationStrategy: string;
     recommendationDebug: JsonObject;
+    approvalRequiredFromObservatory: boolean;
     sonarr: {
       baseUrl: string;
       apiKey: string;
@@ -1220,6 +1251,7 @@ export class BasedonLatestWatchedCollectionJob {
       recommendationTitles,
       recommendationStrategy,
       recommendationDebug,
+      approvalRequiredFromObservatory,
       sonarr,
     } = params;
 
@@ -1418,6 +1450,10 @@ export class BasedonLatestWatchedCollectionJob {
             status: r.status,
             tmdbVoteAvg: r.tmdbVoteAvg ?? undefined,
             tmdbVoteCount: r.tmdbVoteCount ?? undefined,
+            downloadApproval:
+              approvalRequiredFromObservatory && r.status === 'pending'
+                ? 'pending'
+                : 'none',
           })),
         });
       }
@@ -1441,7 +1477,7 @@ export class BasedonLatestWatchedCollectionJob {
       skipped: [] as string[],
     };
 
-    if (!ctx.dryRun && sonarr && missingTitles.length) {
+    if (!approvalRequiredFromObservatory && !ctx.dryRun && sonarr && missingTitles.length) {
       const defaults = sonarr.defaults;
       if (!defaults) {
         await ctx.warn('sonarr: defaults unavailable (skipping adds)', {
@@ -1487,6 +1523,20 @@ export class BasedonLatestWatchedCollectionJob {
               sonarrStats.exists += 1;
               sonarrLists.exists.push(ids.title);
             }
+
+            // Mark that we requested it in Sonarr so Observatory rejections can unmonitor later.
+            await this.prisma.watchedShowRecommendationLibrary
+              .update({
+                where: {
+                  collectionName_librarySectionKey_tvdbId: {
+                    collectionName,
+                    librarySectionKey: tvSectionKey,
+                    tvdbId,
+                  },
+                },
+                data: { sentToSonarrAt: new Date(), downloadApproval: 'none' },
+              })
+              .catch(() => undefined);
           } catch (err) {
             sonarrStats.failed += 1;
             sonarrLists.failed.push(title);
