@@ -57,7 +57,8 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     queryFn: getUpdates,
     staleTime: 0,
     refetchOnMount: 'always',
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
     retry: 1,
   });
 
@@ -276,7 +277,11 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             <button
               onClick={() => {
                 setSelectedIndex(null);
-                setIsHelpOpen((v) => !v);
+                setIsHelpOpen((v) => {
+                  const next = !v;
+                  if (next) void updatesQuery.refetch();
+                  return next;
+                });
               }}
               className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
             >

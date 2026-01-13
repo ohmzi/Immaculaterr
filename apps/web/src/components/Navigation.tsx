@@ -56,7 +56,8 @@ export function Navigation() {
     queryFn: getUpdates,
     staleTime: 0,
     refetchOnMount: 'always',
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
     retry: 1,
   });
 
@@ -334,7 +335,11 @@ export function Navigation() {
                   onMouseLeave={() => scheduleHelpClose()}
                 >
                   <button
-                    onClick={() => setIsHelpOpen(!isHelpOpen)}
+                    onClick={() => {
+                      const next = !isHelpOpen;
+                      setIsHelpOpen(next);
+                      if (next) void updatesQuery.refetch();
+                    }}
                     className="px-5 py-2.5 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 active:scale-[0.98] backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20"
                   >
                     <span className="inline-flex items-center gap-2">
