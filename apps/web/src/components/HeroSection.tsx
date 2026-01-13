@@ -32,11 +32,11 @@ function formatMonthLabel(value: string) {
   // If this point is a specific day (YYYY-MM-DD), show Month Day (e.g. "Jan 13")
   if (Number.isFinite(day)) {
     const dt = new Date(Date.UTC(year, month - 1, day));
-    return dt.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+    return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
 
   const dt = new Date(Date.UTC(year, month - 1, 1));
-  return dt.toLocaleString(undefined, { month: 'short', year: '2-digit' });
+  return dt.toLocaleString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' });
 }
 
 function parseUtcDateKey(value: string): Date | null {
@@ -47,6 +47,37 @@ function parseUtcDateKey(value: string): Date | null {
   if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
   if (!Number.isFinite(day) || day <= 0) return null;
   return new Date(Date.UTC(year, month - 1, day));
+}
+
+function parseUtcDateKeyToMs(value: string): number | null {
+  const dt = parseUtcDateKey(value);
+  const ms = dt?.getTime();
+  return typeof ms === 'number' && Number.isFinite(ms) ? ms : null;
+}
+
+function daysInMonthUtc(year: number, monthIndex0: number) {
+  // monthIndex0: 0..11
+  return new Date(Date.UTC(year, monthIndex0 + 1, 0)).getUTCDate();
+}
+
+function addMonthsClampedUtc(date: Date, months: number): Date {
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const d = date.getUTCDate();
+  const targetMonthIndex = m + months;
+  const targetYear = y + Math.floor(targetMonthIndex / 12);
+  const targetMonth0 = ((targetMonthIndex % 12) + 12) % 12;
+  const maxDay = daysInMonthUtc(targetYear, targetMonth0);
+  const clampedDay = Math.min(d, maxDay);
+  return new Date(Date.UTC(targetYear, targetMonth0, clampedDay));
+}
+
+function formatTickDateUtc(ms: number, mode: 'day' | 'month'): string {
+  const dt = new Date(ms);
+  if (mode === 'day') {
+    return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  }
+  return dt.toLocaleString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' });
 }
 
 function niceCeilStep(rawStep: number) {
@@ -147,15 +178,15 @@ function CombinedYAxisTick(props: {
 function MonthXAxisTick(props: {
   x?: number;
   y?: number;
-  payload?: { value?: string };
-  firstMonth: string;
-  lastMonth: string;
+  payload?: { value?: number };
+  firstX: number;
+  lastX: number;
+  mode: 'day' | 'month';
 }) {
-  const { x = 0, y = 0, payload, firstMonth, lastMonth } = props;
-  const value = typeof payload?.value === 'string' ? payload.value : '';
-  const label = value ? formatMonthLabel(value) : '';
-  const anchor =
-    value && value === firstMonth ? 'start' : value && value === lastMonth ? 'end' : 'middle';
+  const { x = 0, y = 0, payload, firstX, lastX, mode } = props;
+  const value = typeof payload?.value === 'number' ? payload.value : NaN;
+  const label = Number.isFinite(value) ? formatTickDateUtc(value, mode) : '';
+  const anchor = value === firstX ? 'start' : value === lastX ? 'end' : 'middle';
 
   return (
     <g transform={`translate(${x},${y})`}>
@@ -248,30 +279,107 @@ export function HeroSection() {
 
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1Y');
 
-  const filteredSeries = useMemo(() => {
-    if (timeRange === 'ALL') return series;
-    const opt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
-    const months = opt?.months;
-    if (!months) return series;
+  const seriesWithX = useMemo(() => {
+    return series
+      .map((p) => {
+        const x = parseUtcDateKeyToMs(p.month);
+        return x == null ? null : { ...p, x };
+      })
+      .filter((p): p is PlexLibraryGrowthResponse['series'][number] & { x: number } => Boolean(p))
+      .sort((a, b) => a.x - b.x);
+  }, [series]);
 
-    const end = parseUtcDateKey(series.at(-1)?.month ?? '');
-    if (!end) return series;
-
-    // Include the month *before* the window so a "1M" view still has a visible trend.
-    // Example: for 6M we show the last 7 monthly points (baseline + 6 month window).
-    const start = new Date(
-      Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - months, 1),
+  const rangeBounds = useMemo(() => {
+    const endDate = new Date();
+    const endUtc = new Date(
+      Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()),
     );
+    const endMs = endUtc.getTime();
 
-    const next = series.filter((p) => {
-      const dt = parseUtcDateKey(p.month);
-      return dt ? dt >= start : false;
-    });
+    if (timeRange === 'ALL') {
+      const allStart = Date.UTC(2015, 0, 1);
+      return { startMs: allStart, endMs, stepMonths: 6, tickMode: 'month' as const };
+    }
 
-    if (next.length >= 2) return next;
-    if (next.length > 0) return next;
-    return series;
-  }, [series, timeRange]);
+    const opt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
+    const months = opt?.months ?? 12;
+
+    const stepMonths = timeRange === '5Y' ? 6 : 1;
+    const tickMode = stepMonths === 1 ? ('day' as const) : ('month' as const);
+
+    const start = addMonthsClampedUtc(endUtc, -months);
+    const startMs = start.getTime();
+    return { startMs, endMs, stepMonths, tickMode };
+  }, [timeRange]);
+
+  const xAxisTicks = useMemo(() => {
+    const { startMs, endMs, stepMonths } = rangeBounds;
+
+    if (timeRange === 'ALL') {
+      const ticks: number[] = [];
+      const start = new Date(startMs);
+      const end = new Date(endMs);
+      for (let cursor = start; cursor <= end; cursor = addMonthsClampedUtc(cursor, stepMonths)) {
+        ticks.push(cursor.getTime());
+      }
+      if (ticks.at(-1) !== endMs) ticks.push(endMs);
+      return ticks;
+    }
+
+    const opt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
+    const months = opt?.months ?? 12;
+
+    const end = new Date(endMs);
+    const ticks: number[] = [];
+    // Exactly N intervals => N+1 ticks (start..end), month-apart and anchored to today.
+    for (let i = months; i >= 0; i--) {
+      ticks.push(addMonthsClampedUtc(end, -i).getTime());
+    }
+    return ticks;
+  }, [rangeBounds, timeRange]);
+
+  const filteredSeries = useMemo(() => {
+    if (!seriesWithX.length) return [];
+
+    const { startMs, endMs } = rangeBounds;
+
+    const inRange = seriesWithX.filter((p) => p.x >= startMs && p.x <= endMs);
+    const prev = [...seriesWithX].reverse().find((p) => p.x < startMs) ?? null;
+    const first = inRange[0] ?? null;
+
+    const startPoint =
+      prev ?? first
+        ? {
+            month: new Date(startMs).toISOString().slice(0, 10), // YYYY-MM-DD
+            movies: (prev ?? first)!.movies,
+            tv: (prev ?? first)!.tv,
+            x: startMs,
+          }
+        : null;
+
+    const endPoint = (() => {
+      const last = inRange.at(-1) ?? null;
+      if (last && last.x === endMs) return null;
+      const base = last ?? prev ?? first;
+      if (!base) return null;
+      return {
+        month: new Date(endMs).toISOString().slice(0, 10),
+        movies: base.movies,
+        tv: base.tv,
+        x: endMs,
+      };
+    })();
+
+    const next = [
+      ...(startPoint ? [startPoint] : []),
+      ...inRange,
+      ...(endPoint ? [endPoint] : []),
+    ]
+      .filter((p, idx, arr) => arr.findIndex((q) => q.x === p.x) === idx)
+      .sort((a, b) => a.x - b.x);
+
+    return next;
+  }, [rangeBounds, seriesWithX]);
 
   const rangeOpt = TIME_RANGE_OPTIONS.find((o) => o.key === timeRange) ?? null;
   const rangeLabel = rangeOpt?.label ?? timeRange;
@@ -308,8 +416,8 @@ export function HeroSection() {
   const tvMax = filteredSeries.reduce((acc, p) => Math.max(acc, p.tv), 0);
   const moviesScale = buildQuarterScale(moviesMax);
   const tvScale = buildQuarterScale(tvMax);
-  const firstMonth = filteredSeries[0]?.month ?? '';
-  const lastMonth = filteredSeries.at(-1)?.month ?? '';
+  const firstX = filteredSeries[0]?.x ?? 0;
+  const lastX = filteredSeries.at(-1)?.x ?? 0;
 
   const yAxisWidth = (() => {
     const lens: number[] = [];
@@ -466,19 +574,23 @@ export function HeroSection() {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
                       <XAxis 
-                        dataKey="month"
+                        dataKey="x"
+                        type="number"
+                        scale="time"
+                        domain={[rangeBounds.startMs, rangeBounds.endMs]}
+                        ticks={xAxisTicks}
                         stroke="#9ca3af" 
                         style={{ fontSize: '12px' }}
-                        tickFormatter={formatMonthLabel}
                         tick={(tickProps) => (
                           <MonthXAxisTick
                             {...tickProps}
-                            firstMonth={firstMonth}
-                            lastMonth={lastMonth}
+                            firstX={xAxisTicks[0] ?? firstX}
+                            lastX={xAxisTicks.at(-1) ?? lastX}
+                            mode={rangeBounds.tickMode}
                           />
                         )}
-                        interval="preserveStartEnd"
-                        minTickGap={16}
+                        interval={0}
+                        minTickGap={0}
                         tickMargin={10}
                         padding={{ left: 0, right: 0 }}
                       />
@@ -508,7 +620,12 @@ export function HeroSection() {
                         ticks={moviesScale.ticks}
                       />
                       <Tooltip 
-                        labelFormatter={(label) => formatMonthLabel(String(label))}
+                        labelFormatter={(label) => {
+                          const n = typeof label === 'number' ? label : Number(label);
+                          return Number.isFinite(n)
+                            ? formatTickDateUtc(n, 'day')
+                            : String(label);
+                        }}
                         formatter={(value, name) => [
                           value,
                           name === 'movies' ? 'Movies' : name === 'tv' ? 'TV Shows' : String(name),
