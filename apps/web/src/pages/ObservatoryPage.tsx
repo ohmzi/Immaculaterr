@@ -785,7 +785,7 @@ export function ObservatoryPage() {
               )}
             </div>
 
-            <div className="mx-auto max-w-3xl mt-4 flex items-center justify-end">
+            <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
               <button
                 type="button"
                 onClick={undoLast}
