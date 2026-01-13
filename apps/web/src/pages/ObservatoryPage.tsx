@@ -814,7 +814,7 @@ export function ObservatoryPage() {
                     : 'text-gray-300/70 hover:text-gray-200',
                 )}
               >
-                <span className="inline-flex rounded-lg bg-gradient-to-b from-black/25 via-black/15 to-black/20 px-2.5 py-1 backdrop-blur-md">
+                <span className="inline-flex rounded-lg bg-black/25 px-2.5 py-1 backdrop-blur-sm">
                   {t.label}
                 </span>
                 {activeCollectionTab === (t.id as CollectionTab) && (
@@ -840,7 +840,7 @@ export function ObservatoryPage() {
                   {/* Sub-tabs (Movie / TV) */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div className="flex items-center">
-                      <div className="bg-gradient-to-b from-black/25 via-black/10 to-black/20 rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-md">
+                      <div className="bg-black/20 rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-sm">
                         {['Movie', 'TV'].map((sub) => {
                           const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
                           const isActive = mediaTab === id;
@@ -1066,7 +1066,7 @@ export function ObservatoryPage() {
                   {/* Sub-tabs (Movie / TV) */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div className="flex items-center">
-                      <div className="bg-gradient-to-b from-black/25 via-black/10 to-black/20 rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-md">
+                      <div className="bg-black/20 rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-sm">
                         {['Movie', 'TV'].map((sub) => {
                           const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
                           const isActive = mediaTab === id;
