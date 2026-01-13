@@ -14,7 +14,7 @@ export type PlexPinCheckResponse = {
 };
 
 export type PlexLibraryGrowthPoint = {
-  month: string; // YYYY-MM (UTC)
+  month: string; // YYYY-MM or YYYY-MM-DD (UTC)
   movies: number;
   tv: number;
 };

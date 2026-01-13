@@ -12,7 +12,7 @@ export class AppMetaResponseDto {
   @ApiProperty({ example: 'immaculaterr' })
   name!: string;
 
-  @ApiProperty({ example: '1.0.0.102' })
+  @ApiProperty({ example: '0.0.0.500' })
   version!: string;
 
   @ApiProperty({ example: '41fb2cb', nullable: true })
