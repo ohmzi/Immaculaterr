@@ -730,7 +730,8 @@ export function ObservatoryPage() {
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
-            <div className="absolute inset-0 bg-gradient-to-br from-amber-300/25 via-yellow-700/35 to-slate-950/75" />
+        {/* Purple-tinted overlay (bright yellow top-left, purple wash, dark purple bottom-right) */}
+        <div className="absolute inset-0 bg-gradient-to-br from-yellow-300/25 via-purple-700/40 to-purple-950/80" />
         <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
