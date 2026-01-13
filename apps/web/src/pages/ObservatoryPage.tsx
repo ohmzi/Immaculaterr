@@ -1504,81 +1504,67 @@ export function ObservatoryPage() {
                   transition={{ duration: 0.3 }}
                 >
                   {/* Sub-tabs (Movie / TV) */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                    <div className="flex items-center">
-                      <div className="bg-white/5 rounded-lg p-1 inline-flex relative border border-white/5">
-                        {['Movie', 'TV'].map((sub) => {
-                          const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
-                          const isActive = mediaTab === id;
-                          return (
-                            <button
-                              key={id}
-                              type="button"
-                              onClick={() => setMediaTab(id)}
-                              className={cn(
-                                'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
-                                isActive
-                                  ? 'text-[#facc15]'
-                                  : 'text-gray-400 hover:text-gray-200',
-                              )}
-                            >
-                              {sub}
-                              {isActive && (
-                                <motion.div
-                                  layoutId="observatoryActiveSubTab"
-                                  className="absolute inset-0 bg-[#facc15]/10 rounded-md shadow-[0_0_15px_rgba(250,204,21,0.1)] border border-[#facc15]/20"
-                                  transition={{
-                                    type: 'spring',
-                                    bounce: 0.2,
-                                    duration: 0.6,
-                                  }}
-                                  style={{ zIndex: -1 }}
-                                />
-                              )}
-                            </button>
-                          );
-                        })}
+                  <div className="rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 md:p-6 shadow-2xl">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="flex items-center">
+                        <div className="bg-gradient-to-br from-black/25 via-black/10 to-transparent rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-md">
+                          {['Movie', 'TV'].map((sub) => {
+                            const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
+                            const isActive = mediaTab === id;
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => setMediaTab(id)}
+                                className={cn(
+                                  'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
+                                  isActive
+                                    ? 'text-[#facc15]'
+                                    : 'text-gray-400 hover:text-gray-200',
+                                )}
+                              >
+                                {sub}
+                                {isActive && (
+                                  <motion.div
+                                    layoutId="observatoryActiveSubTab"
+                                    className="absolute inset-0 bg-[#facc15]/10 rounded-md shadow-[0_0_15px_rgba(250,204,21,0.1)] border border-[#facc15]/20"
+                                    transition={{
+                                      type: 'spring',
+                                      bounce: 0.2,
+                                      duration: 0.6,
+                                    }}
+                                    style={{ zIndex: -1 }}
+                                  />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="text-xs text-white/60 font-semibold">
-                        Library
-                      </div>
-                      <select
-                        value={activeLibraryKey}
-                        onChange={(e) => {
-                          if (mediaTab === 'movie') setMovieLibrary(e.target.value);
-                          else setTvLibrary(e.target.value);
-                        }}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-white/20"
-                      >
-                        {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
-                          (l) => (
+                      <div className="flex items-center gap-3">
+                        <div className="text-xs text-white/60 font-semibold">Library</div>
+                        <select
+                          value={activeLibraryKey}
+                          onChange={(e) => {
+                            if (mediaTab === 'movie') setMovieLibrary(e.target.value);
+                            else setTvLibrary(e.target.value);
+                          }}
+                          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                        >
+                          {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => (
                             <option key={l.key} value={l.key}>
                               {l.title}
                             </option>
-                          ),
-                        )}
-                      </select>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 md:p-6 shadow-2xl">
                     <div className="mt-4 text-xs text-white/55">
-                      <div>
-                        Deck:{' '}
-                        <span className="text-white/80 font-semibold">
-                          {watchedCollectionKind === 'recentlyWatched'
-                            ? 'Based on your recently watched'
-                            : 'Change of Taste'}
-                        </span>
-                      </div>
-                      <div className="mt-1">
-                        {watchedApprovalRequired
-                          ? 'Approval is ON. Pending download requests show first.'
-                          : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
-                      </div>
+                      {watchedApprovalRequired
+                        ? 'Approval is ON. Pending download requests show first.'
+                        : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                     </div>
                   </div>
 
