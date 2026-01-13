@@ -118,9 +118,9 @@ function SwipeCard({
         }
         void controls.start({ x: 0, rotate: 0, transition: springBack });
       }}
-      className="relative w-full"
+      className="relative w-full h-full"
     >
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
+      <div className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
         {/* Swipe tint feedback */}
         <div className="pointer-events-none absolute inset-0 z-20">
           <motion.div
