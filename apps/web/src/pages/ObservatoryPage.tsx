@@ -402,12 +402,13 @@ export function ObservatoryPage() {
   );
 
   const makeNoDataCard = (): CardModel => {
-    const mediaTypeQuoted = tab === 'movie' ? '"movie"' : '"tv"';
-    const libraryLabel = activeLibraryTitle ? ` in "${activeLibraryTitle}"` : '';
+    const mediaTypeLabel = tab === 'movie' ? 'movie' : 'tv';
+    const libraryKindLabel = tab === 'movie' ? 'Movie Library' : 'TV Show Library';
+    const libraryLabel = activeLibraryTitle ? ` in ${libraryKindLabel}: ${activeLibraryTitle}` : '';
     return {
       kind: 'sentinel',
       sentinel: 'noData',
-      message: `Please continue using Plex for ${mediaTypeQuoted}${libraryLabel} and let the suggestion list build up, or run Immaculate Taste Collection manually for ${mediaTypeQuoted} to generate suggestions.`,
+      message: `Please continue using Plex for ${mediaTypeLabel}${libraryLabel} and let the suggestion list build up, or run Immaculate Taste Collection manually for ${mediaTypeLabel} to generate suggestions.`,
     };
   };
 
