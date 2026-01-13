@@ -6,7 +6,9 @@ import { SonarrModule } from '../sonarr/sonarr.module';
 import { SettingsModule } from '../settings/settings.module';
 import { TmdbModule } from '../tmdb/tmdb.module';
 import { ImmaculateTasteCollectionModule } from '../immaculate-taste-collection/immaculate-taste-collection.module';
+import { WatchedMovieRecommendationsModule } from '../watched-movie-recommendations/watched-movie-recommendations.module';
 import { ObservatoryController } from './observatory.controller';
+import { WatchedObservatoryController } from './observatory.watched.controller';
 import { ObservatoryService } from './observatory.service';
 
 @Module({
@@ -18,8 +20,9 @@ import { ObservatoryService } from './observatory.service';
     RadarrModule,
     SonarrModule,
     ImmaculateTasteCollectionModule,
+    WatchedMovieRecommendationsModule,
   ],
-  controllers: [ObservatoryController],
+  controllers: [ObservatoryController, WatchedObservatoryController],
   providers: [ObservatoryService],
 })
 export class ObservatoryModule {}

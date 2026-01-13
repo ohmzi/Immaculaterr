@@ -1,6 +1,7 @@
 import { fetchJson } from '@/api/http';
 
 export type ObservatoryListMode = 'pendingApproval' | 'review';
+export type WatchedCollectionKind = 'recentlyWatched' | 'changeOfTaste';
 
 export type ObservatoryItem = {
   id: number;
@@ -21,6 +22,10 @@ export type ListObservatoryResponse = {
   mode: ObservatoryListMode;
   approvalRequiredFromObservatory: boolean;
   items: ObservatoryItem[];
+};
+
+export type ListWatchedObservatoryResponse = ListObservatoryResponse & {
+  collectionKind: WatchedCollectionKind;
 };
 
 export async function listImmaculateTasteMovieObservatory(params: {
@@ -81,3 +86,67 @@ export async function applyImmaculateTasteObservatory(params: {
   );
 }
 
+export async function listWatchedMovieObservatory(params: {
+  librarySectionKey: string;
+  mode: ObservatoryListMode;
+  collectionKind: WatchedCollectionKind;
+}) {
+  const q = new URLSearchParams({
+    librarySectionKey: params.librarySectionKey,
+    mode: params.mode,
+    collectionKind: params.collectionKind,
+  });
+  return await fetchJson<ListWatchedObservatoryResponse>(
+    `/api/observatory/watched/movies?${q.toString()}`,
+  );
+}
+
+export async function listWatchedTvObservatory(params: {
+  librarySectionKey: string;
+  mode: ObservatoryListMode;
+  collectionKind: WatchedCollectionKind;
+}) {
+  const q = new URLSearchParams({
+    librarySectionKey: params.librarySectionKey,
+    mode: params.mode,
+    collectionKind: params.collectionKind,
+  });
+  return await fetchJson<ListWatchedObservatoryResponse>(
+    `/api/observatory/watched/tv?${q.toString()}`,
+  );
+}
+
+export async function recordWatchedDecisions(params: {
+  librarySectionKey: string;
+  mediaType: 'movie' | 'tv';
+  collectionKind: WatchedCollectionKind;
+  decisions: Array<{
+    id: number;
+    action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
+  }>;
+}) {
+  return await fetchJson<{ ok: true; applied: number; ignored: number }>(
+    '/api/observatory/watched/decisions',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+  );
+}
+
+export async function applyWatchedObservatory(params: {
+  librarySectionKey: string;
+  mediaType: 'movie' | 'tv';
+}) {
+  return await fetchJson<{
+    ok: true;
+    approvalRequired: boolean;
+    unmonitored: number;
+    sent: number;
+  }>('/api/observatory/watched/apply', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+}
