@@ -49,7 +49,7 @@ function formatRating(v: unknown): string | null {
   // TMDB vote_average is /10; show 1 decimal.
   const rounded = Math.round(n * 10) / 10;
   if (!Number.isFinite(rounded) || rounded <= 0) return null;
-  return rounded.toFixed(1);
+  return `${rounded.toFixed(1)}/10`;
 }
 
 function SwipeCard({
