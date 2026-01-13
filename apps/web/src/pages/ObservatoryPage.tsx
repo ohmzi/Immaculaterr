@@ -306,6 +306,7 @@ export function ObservatoryPage() {
   const pendingApplyRef = useRef(false);
   const applyTimerRef = useRef<number | null>(null);
   const deckKeyRef = useRef<string | null>(null);
+  const swipeTopCardRef = useRef<((dir: 'left' | 'right') => void) | null>(null);
 
   const collectionsQuery = useQuery({
     queryKey: ['immaculateTasteCollections'],
@@ -527,6 +528,90 @@ export function ObservatoryPage() {
     });
     scheduleApply();
   };
+
+  const swipeTopCard = (dir: 'left' | 'right') => {
+    if (!activeLibraryKey) return;
+    if (!deck.length) return;
+    if (recordDecisionMutation.isPending || applyMutation.isPending) return;
+
+    const top = deck[0];
+    if (!top) return;
+
+    // Sentinel: only Right is meaningful.
+    if (top.kind === 'sentinel') {
+      if (dir === 'left') return;
+      setUndoState(null);
+      if (top.sentinel === 'approvalsDone') {
+        setDeckForReview();
+      } else {
+        restartCycle();
+      }
+      return;
+    }
+
+    const action =
+      phase === 'pendingApprovals'
+        ? dir === 'right'
+          ? 'approve'
+          : 'reject'
+        : dir === 'right'
+          ? 'keep'
+          : 'remove';
+
+    setUndoState({
+      tab,
+      librarySectionKey: activeLibraryKey,
+      phase,
+      card: { kind: 'item', item: top.item },
+      action,
+    });
+
+    recordDecisionMutation.mutate({
+      mediaType: tab,
+      librarySectionKey: activeLibraryKey,
+      id: top.item.id,
+      action,
+    });
+
+    advanceOneOrSentinel(
+      phase === 'pendingApprovals' ? approvalsDoneCard : reviewDoneCard,
+    );
+    scheduleApply();
+  };
+
+  // Keep the latest swipe handler available to the keyboard listener (without re-binding listeners).
+  useEffect(() => {
+    swipeTopCardRef.current = swipeTopCard;
+  });
+
+  // Keyboard shortcuts: ArrowLeft/ArrowRight behave like swipes on the top card.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.repeat) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          t.isContentEditable
+        ) {
+          return;
+        }
+      }
+
+      e.preventDefault();
+      swipeTopCardRef.current?.(e.key === 'ArrowLeft' ? 'left' : 'right');
+    };
+
+    window.addEventListener('keydown', onKeyDown, { passive: false });
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Apply on page leave/unmount (best-effort).
   useEffect(() => {
