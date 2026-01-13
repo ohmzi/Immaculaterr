@@ -2713,9 +2713,11 @@ export function TaskManagerPage() {
 
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <div className="sm:col-span-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Media type
-                    </label>
+                    <div className="h-8 flex items-end">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                        Media type
+                      </label>
+                    </div>
                     <select
                       value={movieSeedMediaType}
                       onChange={(e) => {
@@ -2731,9 +2733,11 @@ export function TaskManagerPage() {
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Content title
-                    </label>
+                    <div className="h-8 flex items-end">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                        Content title
+                      </label>
+                    </div>
                     <input
                       ref={movieSeedTitleRef}
                       value={movieSeedTitle}
@@ -2787,9 +2791,11 @@ export function TaskManagerPage() {
                   </div>
 
                   <div className="sm:col-span-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Year (optional)
-                    </label>
+                    <div className="h-8 flex items-end">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                        Year (optional)
+                      </label>
+                    </div>
                     <input
                       value={movieSeedYear}
                       onChange={(e) => {
