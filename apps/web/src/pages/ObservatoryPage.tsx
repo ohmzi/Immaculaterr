@@ -568,7 +568,7 @@ export function ObservatoryPage() {
               </div>
 
               <p className="text-amber-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
-                A place for visibility and diagnostics. We’ll build this out next.
+                Swipe to approve downloads and curate your recommendations.
               </p>
             </motion.div>
           </div>
