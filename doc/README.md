@@ -35,6 +35,7 @@ Major Features Include
 - **More features on the way:**
   - Discovering Media from film industries around the world
   - Email reports on media server health
+  - Windows and macOS support
 
 Getting Started (Docker)
 ---

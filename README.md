@@ -56,6 +56,7 @@
 - **More features on the way:**
   - Discovering Media from film industries around the world
   - Email reports on media server health
+  - Windows and macOS support
 <div align="center">
   <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr UI carousel: Your Library on Autopilot, Command Center, and Task Manager" width="900" />
 </div>
