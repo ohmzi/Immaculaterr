@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AnimatePresence,
   motion,
   useAnimation,
   useMotionValue,
@@ -26,6 +27,7 @@ import { cn } from '@/components/ui/utils';
 
 type Tab = 'movie' | 'tv';
 type Phase = 'pendingApprovals' | 'review';
+type CollectionTab = 'immaculate' | 'latestWatched';
 
 type CardModel =
   | { kind: 'item'; item: ObservatoryItem }
@@ -307,7 +309,9 @@ export function ObservatoryPage() {
   const titleIconGlowControls = useAnimation();
   const queryClient = useQueryClient();
 
-  const [tab, setTab] = useState<Tab>('movie');
+  const [activeCollectionTab, setActiveCollectionTab] =
+    useState<CollectionTab>('immaculate');
+  const [mediaTab, setMediaTab] = useState<Tab>('movie');
   const [movieLibrary, setMovieLibrary] = useState<string>('');
   const [tvLibrary, setTvLibrary] = useState<string>('');
 
@@ -350,17 +354,23 @@ export function ObservatoryPage() {
     if (!tvLibrary && tvLibraries.length) setTvLibrary(tvLibraries[0]!.key);
   }, [tvLibraries, tvLibrary]);
 
-  const activeLibraryKey = tab === 'movie' ? movieLibrary : tvLibrary;
+  const activeLibraryKey = mediaTab === 'movie' ? movieLibrary : tvLibrary;
   const activeLibraryTitle = useMemo(() => {
-    const libs = tab === 'movie' ? movieLibraries : tvLibraries;
+    const libs = mediaTab === 'movie' ? movieLibraries : tvLibraries;
     return libs.find((l) => l.key === activeLibraryKey)?.title ?? null;
-  }, [activeLibraryKey, movieLibraries, tab, tvLibraries]);
+  }, [activeLibraryKey, mediaTab, movieLibraries, tvLibraries]);
 
   const listPendingQuery = useQuery({
-    queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'pendingApproval'],
-    enabled: Boolean(activeLibraryKey),
+    queryKey: [
+      'observatory',
+      'immaculateTaste',
+      mediaTab,
+      activeLibraryKey,
+      'pendingApproval',
+    ],
+    enabled: activeCollectionTab === 'immaculate' && Boolean(activeLibraryKey),
     queryFn: async () => {
-      return tab === 'movie'
+      return mediaTab === 'movie'
         ? await listImmaculateTasteMovieObservatory({
             librarySectionKey: activeLibraryKey,
             mode: 'pendingApproval',
@@ -375,10 +385,10 @@ export function ObservatoryPage() {
   });
 
   const listReviewQuery = useQuery({
-    queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'review'],
-    enabled: Boolean(activeLibraryKey),
+    queryKey: ['observatory', 'immaculateTaste', mediaTab, activeLibraryKey, 'review'],
+    enabled: activeCollectionTab === 'immaculate' && Boolean(activeLibraryKey),
     queryFn: async () => {
-      return tab === 'movie'
+      return mediaTab === 'movie'
         ? await listImmaculateTasteMovieObservatory({
             librarySectionKey: activeLibraryKey,
             mode: 'review',
@@ -402,8 +412,9 @@ export function ObservatoryPage() {
   );
 
   const makeNoDataCard = (): CardModel => {
-    const mediaTypeLabel = tab === 'movie' ? 'movie' : 'tv';
-    const libraryKindLabel = tab === 'movie' ? 'Movie Library' : 'TV Show Library';
+    const mediaTypeLabel = mediaTab === 'movie' ? 'movie' : 'tv';
+    const libraryKindLabel =
+      mediaTab === 'movie' ? 'Movie Library' : 'TV Show Library';
     const libraryLabel = activeLibraryTitle ? ` in ${libraryKindLabel}: ${activeLibraryTitle}` : '';
     return {
       kind: 'sentinel',
@@ -447,13 +458,19 @@ export function ObservatoryPage() {
         queryKey: [
           'observatory',
           'immaculateTaste',
-          tab,
+          mediaTab,
           activeLibraryKey,
           'pendingApproval',
         ],
       }),
       queryClient.invalidateQueries({
-        queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'review'],
+        queryKey: [
+          'observatory',
+          'immaculateTaste',
+          mediaTab,
+          activeLibraryKey,
+          'review',
+        ],
       }),
     ]).finally(() => {
       if (approvalRequired) setDeckForApprovals();
@@ -463,11 +480,17 @@ export function ObservatoryPage() {
 
   // Initialize deck only when tab/library changes (avoid re-mounting the whole deck after each swipe/refetch).
   useEffect(() => {
-    const key = `${tab}:${activeLibraryKey || 'none'}`;
+    const key = `${activeCollectionTab}:${mediaTab}:${activeLibraryKey || 'none'}`;
     if (!activeLibraryKey) return;
     if (deckKeyRef.current === key) return;
     deckKeyRef.current = key;
     setUndoState(null);
+
+    if (activeCollectionTab !== 'immaculate') {
+      setApprovalRequired(false);
+      setDeck([]);
+      return;
+    }
 
     const approval = listPendingQuery.data?.approvalRequiredFromObservatory ?? false;
     setApprovalRequired(approval);
@@ -478,7 +501,7 @@ export function ObservatoryPage() {
     }
 
     setDeckForApprovals();
-  }, [tab, activeLibraryKey, listPendingQuery.data, listReviewQuery.data]);
+  }, [activeCollectionTab, mediaTab, activeLibraryKey, listPendingQuery.data, listReviewQuery.data]);
 
   const recordDecisionMutation = useMutation({
     mutationFn: async (params: {
@@ -496,8 +519,24 @@ export function ObservatoryPage() {
     onSuccess: async () => {
       pendingApplyRef.current = true;
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'pendingApproval'] }),
-        queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'review'] }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'immaculateTaste',
+            mediaTab,
+            activeLibraryKey,
+            'pendingApproval',
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'immaculateTaste',
+            mediaTab,
+            activeLibraryKey,
+            'review',
+          ],
+        }),
       ]);
     },
     onError: (err) => {
@@ -506,8 +545,24 @@ export function ObservatoryPage() {
       );
       // Best-effort: reload server truth.
       void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'pendingApproval'] }),
-        queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'review'] }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'immaculateTaste',
+            mediaTab,
+            activeLibraryKey,
+            'pendingApproval',
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'immaculateTaste',
+            mediaTab,
+            activeLibraryKey,
+            'review',
+          ],
+        }),
       ]);
     },
   });
@@ -533,20 +588,21 @@ export function ObservatoryPage() {
     if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
     applyTimerRef.current = window.setTimeout(() => {
       if (!pendingApplyRef.current) return;
-      applyMutation.mutate({ mediaType: tab, librarySectionKey: activeLibraryKey });
+      if (activeCollectionTab !== 'immaculate') return;
+      applyMutation.mutate({ mediaType: mediaTab, librarySectionKey: activeLibraryKey });
     }, 120_000);
   };
 
   const canUndo =
     Boolean(undoState) &&
-    undoState?.tab === tab &&
+    undoState?.tab === mediaTab &&
     undoState?.librarySectionKey === activeLibraryKey &&
     !recordDecisionMutation.isPending &&
     !applyMutation.isPending;
 
   const undoLast = () => {
     if (!undoState) return;
-    if (undoState.tab !== tab) return;
+    if (undoState.tab !== mediaTab) return;
     if (undoState.librarySectionKey !== activeLibraryKey) return;
 
     const { card, phase: prevPhase } = undoState;
@@ -559,7 +615,7 @@ export function ObservatoryPage() {
     });
 
     recordDecisionMutation.mutate({
-      mediaType: tab,
+      mediaType: mediaTab,
       librarySectionKey: activeLibraryKey,
       id: card.item.id,
       action: 'undo',
@@ -568,6 +624,7 @@ export function ObservatoryPage() {
   };
 
   const swipeTopCard = (dir: 'left' | 'right') => {
+    if (activeCollectionTab !== 'immaculate') return;
     if (!activeLibraryKey) return;
     if (!deck.length) return;
     if (recordDecisionMutation.isPending || applyMutation.isPending) return;
@@ -597,7 +654,7 @@ export function ObservatoryPage() {
           : 'remove';
 
     setUndoState({
-      tab,
+      tab: mediaTab,
       librarySectionKey: activeLibraryKey,
       phase,
       card: { kind: 'item', item: top.item },
@@ -605,7 +662,7 @@ export function ObservatoryPage() {
     });
 
     recordDecisionMutation.mutate({
-      mediaType: tab,
+      mediaType: mediaTab,
       librarySectionKey: activeLibraryKey,
       id: top.item.id,
       action,
@@ -629,6 +686,7 @@ export function ObservatoryPage() {
       if (e.repeat) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (activeCollectionTab !== 'immaculate') return;
 
       const t = e.target as HTMLElement | null;
       if (t) {
@@ -649,18 +707,19 @@ export function ObservatoryPage() {
 
     window.addEventListener('keydown', onKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [activeCollectionTab]);
 
   // Apply on page leave/unmount (best-effort).
   useEffect(() => {
     return () => {
       if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
       if (!pendingApplyRef.current) return;
+      if (activeCollectionTab !== 'immaculate') return;
       // fire-and-forget apply
-      applyMutation.mutate({ mediaType: tab, librarySectionKey: activeLibraryKey });
+      applyMutation.mutate({ mediaType: mediaTab, librarySectionKey: activeLibraryKey });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, activeLibraryKey]);
+  }, [activeCollectionTab, mediaTab, activeLibraryKey]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -737,200 +796,354 @@ export function ObservatoryPage() {
             </motion.div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 md:p-6 shadow-2xl">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTab('movie')}
-                  className={cn(
-                    'px-4 py-2 rounded-2xl border text-sm font-semibold transition-colors',
-                    tab === 'movie'
-                      ? 'bg-white/10 border-white/20 text-white'
-                      : 'bg-white/5 border-white/10 text-white/70 hover:text-white/90 hover:bg-white/8',
-                  )}
-                >
-                  Movies
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTab('tv')}
-                  className={cn(
-                    'px-4 py-2 rounded-2xl border text-sm font-semibold transition-colors',
-                    tab === 'tv'
-                      ? 'bg-white/10 border-white/20 text-white'
-                      : 'bg-white/5 border-white/10 text-white/70 hover:text-white/90 hover:bg-white/8',
-                  )}
-                >
-                  TV
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="text-xs text-white/60 font-semibold">
-                  Library
-                </div>
-                <select
-                  value={activeLibraryKey}
-                  onChange={(e) => {
-                    if (tab === 'movie') setMovieLibrary(e.target.value);
-                    else setTvLibrary(e.target.value);
-                  }}
-                  className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-white/20"
-                >
-                  {(tab === 'movie' ? movieLibraries : tvLibraries).map((l) => (
-                    <option key={l.key} value={l.key}>
-                      {l.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4 text-xs text-white/55">
-              {approvalRequired
-                ? 'Approval is ON. Pending download requests show first.'
-                : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
-            </div>
+          {/* Primary tabs (Immaculate vs Based on Latest Watched) */}
+          <div className="flex items-center gap-8 border-b border-white/10 mb-8 px-2">
+            {[
+              { id: 'immaculate', label: 'Immaculate Taste Collection' },
+              { id: 'latestWatched', label: 'Based on Latest Watched Collection' },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveCollectionTab(t.id as CollectionTab)}
+                className={cn(
+                  'relative pb-4 text-sm font-bold tracking-wide uppercase transition-colors duration-300',
+                  activeCollectionTab === (t.id as CollectionTab)
+                    ? 'text-[#facc15]'
+                    : 'text-gray-500 hover:text-gray-300',
+                )}
+              >
+                {t.label}
+                {activeCollectionTab === (t.id as CollectionTab) && (
+                  <motion.div
+                    layoutId="observatoryActiveTab"
+                    className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-[#facc15] shadow-[0_0_10px_rgba(250,204,21,0.5)]"
+                  />
+                )}
+              </button>
+            ))}
           </div>
 
-          <div className="mt-6">
-            {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
-            <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
-              {deck.length ? (
-                <div className="relative h-full">
-                  {/* Render a small stack: top 3 */}
-                  {deck
-                    .slice(0, 3)
-                    .reverse()
-                    .map((card, idx, arr) => {
-                      const isTop = idx === arr.length - 1;
-                      const depth = arr.length - 1 - idx;
-                      // Make the waiting-deck feel obvious (without being distracting).
-                      const scale = 1 - depth * 0.045;
-                      const y = depth * 18;
-                      const opacity = 1 - depth * 0.14;
-                      const rotate =
-                        depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
-                      return (
-                        <motion.div
-                          key={
-                            card.kind === 'sentinel'
-                              ? `sentinel:${card.sentinel}`
-                              : `${card.item.mediaType}:${card.item.id}`
-                          }
-                          initial={false}
-                          animate={{ scale, y, opacity, rotate }}
-                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                          style={{ zIndex: 50 - depth }}
-                          className={cn(
-                            'absolute inset-0',
-                            !isTop && 'pointer-events-none',
-                          )}
-                        >
-                          <SwipeCard
-                            card={card}
-                            disabled={
-                              !isTop ||
-                              recordDecisionMutation.isPending ||
-                              applyMutation.isPending
-                            }
-                            onSwipeLeft={() => {
-                              if (card.kind === 'sentinel') return;
-                              const action =
-                                phase === 'pendingApprovals' ? 'reject' : 'remove';
-                              setUndoState({
-                                tab,
-                                librarySectionKey: activeLibraryKey,
-                                phase,
-                                card: { kind: 'item', item: card.item },
-                                action,
-                              });
-                              recordDecisionMutation.mutate({
-                                mediaType: tab,
-                                librarySectionKey: activeLibraryKey,
-                                id: card.item.id,
-                                action,
-                              });
-                              advanceOneOrSentinel(
-                                phase === 'pendingApprovals'
-                                  ? approvalsDoneCard
-                                  : reviewDoneCard,
-                              );
-                              scheduleApply();
-                            }}
-                            onSwipeRight={() => {
-                              if (card.kind === 'sentinel') {
-                                setUndoState(null);
-                                // approvalsDone -> review, reviewDone -> restart loop
-                                if (card.sentinel === 'approvalsDone') {
-                                  setDeckForReview();
-                                } else {
-                                  restartCycle();
-                                }
-                                return;
-                              }
-                              const action =
-                                phase === 'pendingApprovals' ? 'approve' : 'keep';
-                              setUndoState({
-                                tab,
-                                librarySectionKey: activeLibraryKey,
-                                phase,
-                                card: { kind: 'item', item: card.item },
-                                action,
-                              });
-                              recordDecisionMutation.mutate({
-                                mediaType: tab,
-                                librarySectionKey: activeLibraryKey,
-                                id: card.item.id,
-                                action,
-                              });
-                              advanceOneOrSentinel(
-                                phase === 'pendingApprovals'
-                                  ? approvalsDoneCard
-                                  : reviewDoneCard,
-                              );
-                              scheduleApply();
-                            }}
-                          />
-                        </motion.div>
-                      );
-                    })}
-                </div>
-              ) : (
-                <div className="absolute inset-0">
-                  <SwipeCard
-                    card={
-                      (listPendingQuery.data?.items?.length ?? 0) === 0 &&
-                      (listReviewQuery.data?.items?.length ?? 0) === 0
-                        ? makeNoDataCard()
-                        : reviewDoneCard
-                    }
-                    onSwipeLeft={() => undefined}
-                    onSwipeRight={() => restartCycle()}
-                  />
-                </div>
-              )}
-            </div>
+          <div className="min-h-[300px]">
+            <AnimatePresence mode="wait">
+              {activeCollectionTab === 'immaculate' ? (
+                <motion.div
+                  key="immaculate"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Sub-tabs (Movie / TV) */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                    <div className="flex items-center">
+                      <div className="bg-white/5 rounded-lg p-1 inline-flex relative border border-white/5">
+                        {['Movie', 'TV'].map((sub) => {
+                          const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
+                          const isActive = mediaTab === id;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setMediaTab(id)}
+                              className={cn(
+                                'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
+                                isActive
+                                  ? 'text-[#facc15]'
+                                  : 'text-gray-400 hover:text-gray-200',
+                              )}
+                            >
+                              {sub}
+                              {isActive && (
+                                <motion.div
+                                  layoutId="observatoryActiveSubTab"
+                                  className="absolute inset-0 bg-[#facc15]/10 rounded-md shadow-[0_0_15px_rgba(250,204,21,0.1)] border border-[#facc15]/20"
+                                  transition={{
+                                    type: 'spring',
+                                    bounce: 0.2,
+                                    duration: 0.6,
+                                  }}
+                                  style={{ zIndex: -1 }}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-            <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
-              <button
-                type="button"
-                onClick={undoLast}
-                disabled={!canUndo}
-                className={cn(
-                  'h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
-                  canUndo
-                    ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
-                    : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
-                )}
-                aria-label="Undo last swipe"
-                title={canUndo ? 'Undo last swipe' : 'Nothing to undo'}
-              >
-                <Undo2 className="h-4 w-4" />
-                Undo
-              </button>
-            </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-white/60 font-semibold">
+                        Library
+                      </div>
+                      <select
+                        value={activeLibraryKey}
+                        onChange={(e) => {
+                          if (mediaTab === 'movie') setMovieLibrary(e.target.value);
+                          else setTvLibrary(e.target.value);
+                        }}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-white/20"
+                      >
+                        {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
+                          (l) => (
+                            <option key={l.key} value={l.key}>
+                              {l.title}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mb-6 text-xs text-white/55">
+                    {approvalRequired
+                      ? 'Approval is ON. Pending download requests show first.'
+                      : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
+                  </div>
+
+                  <div className="mt-6">
+                    {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
+                    <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
+                      {deck.length ? (
+                        <div className="relative h-full">
+                          {/* Render a small stack: top 3 */}
+                          {deck
+                            .slice(0, 3)
+                            .reverse()
+                            .map((card, idx, arr) => {
+                              const isTop = idx === arr.length - 1;
+                              const depth = arr.length - 1 - idx;
+                              // Make the waiting-deck feel obvious (without being distracting).
+                              const scale = 1 - depth * 0.045;
+                              const y = depth * 18;
+                              const opacity = 1 - depth * 0.14;
+                              const rotate =
+                                depth === 0
+                                  ? 0
+                                  : depth % 2 === 0
+                                    ? 0.35
+                                    : -0.35;
+                              return (
+                                <motion.div
+                                  key={
+                                    card.kind === 'sentinel'
+                                      ? `sentinel:${card.sentinel}`
+                                      : `${card.item.mediaType}:${card.item.id}`
+                                  }
+                                  initial={false}
+                                  animate={{ scale, y, opacity, rotate }}
+                                  transition={{
+                                    type: 'spring',
+                                    stiffness: 420,
+                                    damping: 34,
+                                  }}
+                                  style={{ zIndex: 50 - depth }}
+                                  className={cn(
+                                    'absolute inset-0',
+                                    !isTop && 'pointer-events-none',
+                                  )}
+                                >
+                                  <SwipeCard
+                                    card={card}
+                                    disabled={
+                                      !isTop ||
+                                      recordDecisionMutation.isPending ||
+                                      applyMutation.isPending
+                                    }
+                                    onSwipeLeft={() => {
+                                      if (card.kind === 'sentinel') return;
+                                      const action =
+                                        phase === 'pendingApprovals'
+                                          ? 'reject'
+                                          : 'remove';
+                                      setUndoState({
+                                        tab: mediaTab,
+                                        librarySectionKey: activeLibraryKey,
+                                        phase,
+                                        card: { kind: 'item', item: card.item },
+                                        action,
+                                      });
+                                      recordDecisionMutation.mutate({
+                                        mediaType: mediaTab,
+                                        librarySectionKey: activeLibraryKey,
+                                        id: card.item.id,
+                                        action,
+                                      });
+                                      advanceOneOrSentinel(
+                                        phase === 'pendingApprovals'
+                                          ? approvalsDoneCard
+                                          : reviewDoneCard,
+                                      );
+                                      scheduleApply();
+                                    }}
+                                    onSwipeRight={() => {
+                                      if (card.kind === 'sentinel') {
+                                        setUndoState(null);
+                                        // approvalsDone -> review, reviewDone -> restart loop
+                                        if (card.sentinel === 'approvalsDone') {
+                                          setDeckForReview();
+                                        } else {
+                                          restartCycle();
+                                        }
+                                        return;
+                                      }
+                                      const action =
+                                        phase === 'pendingApprovals'
+                                          ? 'approve'
+                                          : 'keep';
+                                      setUndoState({
+                                        tab: mediaTab,
+                                        librarySectionKey: activeLibraryKey,
+                                        phase,
+                                        card: { kind: 'item', item: card.item },
+                                        action,
+                                      });
+                                      recordDecisionMutation.mutate({
+                                        mediaType: mediaTab,
+                                        librarySectionKey: activeLibraryKey,
+                                        id: card.item.id,
+                                        action,
+                                      });
+                                      advanceOneOrSentinel(
+                                        phase === 'pendingApprovals'
+                                          ? approvalsDoneCard
+                                          : reviewDoneCard,
+                                      );
+                                      scheduleApply();
+                                    }}
+                                  />
+                                </motion.div>
+                              );
+                            })}
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0">
+                          <SwipeCard
+                            card={
+                              (listPendingQuery.data?.items?.length ?? 0) === 0 &&
+                              (listReviewQuery.data?.items?.length ?? 0) === 0
+                                ? makeNoDataCard()
+                                : reviewDoneCard
+                            }
+                            onSwipeLeft={() => undefined}
+                            onSwipeRight={() => restartCycle()}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={undoLast}
+                        disabled={!canUndo}
+                        className={cn(
+                          'h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
+                          canUndo
+                            ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                            : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
+                        )}
+                        aria-label="Undo last swipe"
+                        title={canUndo ? 'Undo last swipe' : 'Nothing to undo'}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                        Undo
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="latestWatched"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Sub-tabs (Movie / TV) */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                    <div className="flex items-center">
+                      <div className="bg-white/5 rounded-lg p-1 inline-flex relative border border-white/5">
+                        {['Movie', 'TV'].map((sub) => {
+                          const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
+                          const isActive = mediaTab === id;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setMediaTab(id)}
+                              className={cn(
+                                'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
+                                isActive
+                                  ? 'text-[#facc15]'
+                                  : 'text-gray-400 hover:text-gray-200',
+                              )}
+                            >
+                              {sub}
+                              {isActive && (
+                                <motion.div
+                                  layoutId="observatoryActiveSubTab"
+                                  className="absolute inset-0 bg-[#facc15]/10 rounded-md shadow-[0_0_15px_rgba(250,204,21,0.1)] border border-[#facc15]/20"
+                                  transition={{
+                                    type: 'spring',
+                                    bounce: 0.2,
+                                    duration: 0.6,
+                                  }}
+                                  style={{ zIndex: -1 }}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-white/60 font-semibold">
+                        Library
+                      </div>
+                      <select
+                        value={activeLibraryKey}
+                        onChange={(e) => {
+                          if (mediaTab === 'movie') setMovieLibrary(e.target.value);
+                          else setTvLibrary(e.target.value);
+                        }}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-white/20"
+                      >
+                        {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
+                          (l) => (
+                            <option key={l.key} value={l.key}>
+                              {l.title}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl shadow-2xl">
+                    <img
+                      src={APP_BG_IMAGE_URL}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover object-center opacity-20"
+                      draggable={false}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-br from-black/35 via-black/40 to-black/65" />
+                    <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
+                      <div className="max-w-lg">
+                        <div className="text-white text-2xl md:text-3xl font-black tracking-tight drop-shadow-2xl">
+                          Coming soon
+                        </div>
+                        <div className="mt-3 text-white/75 leading-relaxed">
+                          Observatory for Based on Latest Watched ({mediaTab === 'movie' ? 'movie' : 'tv'}) will be available next.
+                          For now, run the collection job to generate suggestions, then review them under Immaculate Taste.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </section>
