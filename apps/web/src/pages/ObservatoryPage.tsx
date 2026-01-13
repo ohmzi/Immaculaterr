@@ -1504,10 +1504,9 @@ export function ObservatoryPage() {
                   transition={{ duration: 0.3 }}
                 >
                   {/* Sub-tabs (Movie / TV) */}
-                  <div className="rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 md:p-6 shadow-2xl">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="flex items-center">
-                        <div className="bg-gradient-to-br from-black/25 via-black/10 to-transparent rounded-lg p-1 inline-flex relative border border-white/10 backdrop-blur-md">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-center">
+                      <div className="rounded-lg p-1 inline-flex relative border border-white/10 bg-black/10 backdrop-blur-md">
                           {['Movie', 'TV'].map((sub) => {
                             const id = sub.toLowerCase() === 'movie' ? 'movie' : 'tv';
                             const isActive = mediaTab === id;
@@ -1539,33 +1538,32 @@ export function ObservatoryPage() {
                               </button>
                             );
                           })}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="text-xs text-white/60 font-semibold">Library</div>
-                        <select
-                          value={activeLibraryKey}
-                          onChange={(e) => {
-                            if (mediaTab === 'movie') setMovieLibrary(e.target.value);
-                            else setTvLibrary(e.target.value);
-                          }}
-                          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
-                        >
-                          {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => (
-                            <option key={l.key} value={l.key}>
-                              {l.title}
-                            </option>
-                          ))}
-                        </select>
                       </div>
                     </div>
 
-                    <div className="mt-4 text-xs text-white/55">
-                      {watchedApprovalRequired
-                        ? 'Approval is ON. Pending download requests show first.'
-                        : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-white/60 font-semibold">Library</div>
+                      <select
+                        value={activeLibraryKey}
+                        onChange={(e) => {
+                          if (mediaTab === 'movie') setMovieLibrary(e.target.value);
+                          else setTvLibrary(e.target.value);
+                        }}
+                        className="rounded-2xl border border-white/10 bg-transparent px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      >
+                        {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => (
+                          <option key={l.key} value={l.key}>
+                            {l.title}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+                  </div>
+
+                  <div className="mt-3 text-xs text-white/55">
+                    {watchedApprovalRequired
+                      ? 'Approval is ON. Pending download requests show first.'
+                      : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                   </div>
 
                   <div className="mt-6">
