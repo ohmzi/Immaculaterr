@@ -18,10 +18,15 @@ import {
 import { getImmaculateTasteCollections } from '@/api/immaculate';
 import {
   applyImmaculateTasteObservatory,
+  applyWatchedObservatory,
   listImmaculateTasteMovieObservatory,
   listImmaculateTasteTvObservatory,
+  listWatchedMovieObservatory,
+  listWatchedTvObservatory,
   recordImmaculateTasteDecisions,
+  recordWatchedDecisions,
   type ObservatoryItem,
+  type WatchedCollectionKind,
 } from '@/api/observatory';
 import { cn } from '@/components/ui/utils';
 
@@ -34,12 +39,24 @@ type CardModel =
   | {
       kind: 'sentinel';
       sentinel: 'approvalsDone' | 'reviewDone' | 'noData';
+      title?: string;
+      subtitle?: string;
+      ctaBar?: string;
       message?: string;
     };
 
 type UndoState = {
   tab: Tab;
   librarySectionKey: string;
+  phase: Phase;
+  card: { kind: 'item'; item: ObservatoryItem };
+  action: 'approve' | 'reject' | 'keep' | 'remove';
+} | null;
+
+type WatchedUndoState = {
+  tab: Tab;
+  librarySectionKey: string;
+  collectionKind: WatchedCollectionKind;
   phase: Phase;
   card: { kind: 'item'; item: ObservatoryItem };
   action: 'approve' | 'reject' | 'keep' | 'remove';
@@ -178,11 +195,12 @@ function SwipeCard({
             <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
               <div className="max-w-md">
                 <div className="text-white text-2xl md:text-3xl font-black tracking-tight drop-shadow-2xl">
-                  {card.sentinel === 'approvalsDone'
-                    ? 'All download approvals have been reviewed'
-                    : card.sentinel === 'noData'
-                      ? 'No suggestions yet for this library'
-                      : 'All suggestions have been reviewed'}
+                  {card.title ??
+                    (card.sentinel === 'approvalsDone'
+                      ? 'All download approvals have been reviewed'
+                      : card.sentinel === 'noData'
+                        ? 'No suggestions yet for this library'
+                        : 'All suggestions have been reviewed')}
                 </div>
                 {card.sentinel === 'noData' ? (
                   <div className="mt-3 text-white/75 leading-relaxed">
@@ -191,20 +209,27 @@ function SwipeCard({
                   </div>
                 ) : (
                   <div className="mt-3 text-white/75 leading-relaxed">
-                    Swipe right to{' '}
-                    {card.sentinel === 'approvalsDone'
-                      ? 'review suggestions'
-                      : 'restart reviewing'}
-                    .
+                    {card.subtitle ??
+                      `Swipe right to ${
+                        card.sentinel === 'approvalsDone'
+                          ? 'review suggestions'
+                          : 'restart reviewing'
+                      }.`}
                   </div>
                 )}
               </div>
             </div>
 
-            {card.sentinel === 'approvalsDone' && (
+            {(card.ctaBar ||
+              (card.sentinel === 'approvalsDone'
+                ? 'Swipe right to review suggestions'
+                : null)) && (
               <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
                 <div className="text-white font-semibold text-sm leading-tight">
-                  Swipe right to review suggestions
+                  {card.ctaBar ??
+                    (card.sentinel === 'approvalsDone'
+                      ? 'Swipe right to review suggestions'
+                      : '')}
                 </div>
               </div>
             )}
@@ -320,10 +345,21 @@ export function ObservatoryPage() {
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [undoState, setUndoState] = useState<UndoState>(null);
 
+  const [watchedCollectionKind, setWatchedCollectionKind] =
+    useState<WatchedCollectionKind>('recentlyWatched');
+  const [watchedPhase, setWatchedPhase] = useState<Phase>('pendingApprovals');
+  const [watchedDeck, setWatchedDeck] = useState<CardModel[]>([]);
+  const [watchedApprovalRequired, setWatchedApprovalRequired] = useState(false);
+  const [watchedUndoState, setWatchedUndoState] = useState<WatchedUndoState>(null);
+
   const pendingApplyRef = useRef(false);
   const applyTimerRef = useRef<number | null>(null);
   const deckKeyRef = useRef<string | null>(null);
   const swipeTopCardRef = useRef<((dir: 'left' | 'right') => void) | null>(null);
+
+  const watchedPendingApplyRef = useRef(false);
+  const watchedApplyTimerRef = useRef<number | null>(null);
+  const watchedDeckKeyRef = useRef<string | null>(null);
 
   const collectionsQuery = useQuery({
     queryKey: ['immaculateTasteCollections'],
@@ -402,6 +438,60 @@ export function ObservatoryPage() {
     refetchOnWindowFocus: false,
   });
 
+  const listWatchedPendingQuery = useQuery({
+    queryKey: [
+      'observatory',
+      'watched',
+      mediaTab,
+      activeLibraryKey,
+      watchedCollectionKind,
+      'pendingApproval',
+    ],
+    enabled: activeCollectionTab === 'latestWatched' && Boolean(activeLibraryKey),
+    queryFn: async () => {
+      return mediaTab === 'movie'
+        ? await listWatchedMovieObservatory({
+            librarySectionKey: activeLibraryKey,
+            mode: 'pendingApproval',
+            collectionKind: watchedCollectionKind,
+          })
+        : await listWatchedTvObservatory({
+            librarySectionKey: activeLibraryKey,
+            mode: 'pendingApproval',
+            collectionKind: watchedCollectionKind,
+          });
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  });
+
+  const listWatchedReviewQuery = useQuery({
+    queryKey: [
+      'observatory',
+      'watched',
+      mediaTab,
+      activeLibraryKey,
+      watchedCollectionKind,
+      'review',
+    ],
+    enabled: activeCollectionTab === 'latestWatched' && Boolean(activeLibraryKey),
+    queryFn: async () => {
+      return mediaTab === 'movie'
+        ? await listWatchedMovieObservatory({
+            librarySectionKey: activeLibraryKey,
+            mode: 'review',
+            collectionKind: watchedCollectionKind,
+          })
+        : await listWatchedTvObservatory({
+            librarySectionKey: activeLibraryKey,
+            mode: 'review',
+            collectionKind: watchedCollectionKind,
+          });
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  });
+
   const approvalsDoneCard = useMemo<CardModel>(
     () => ({ kind: 'sentinel', sentinel: 'approvalsDone' }),
     [],
@@ -421,6 +511,103 @@ export function ObservatoryPage() {
       sentinel: 'noData',
       message: `Please continue using Plex for ${mediaTypeLabel}${libraryLabel} and let the suggestion list build up, or run Immaculate Taste Collection manually for ${mediaTypeLabel} to generate suggestions.`,
     };
+  };
+
+  const watchedApprovalsDoneCard = useMemo<CardModel>(
+    () => ({
+      kind: 'sentinel',
+      sentinel: 'approvalsDone',
+      ctaBar: 'Swipe right to review suggestions',
+    }),
+    [],
+  );
+  const watchedNextDeckCard = useMemo<CardModel>(
+    () => ({
+      kind: 'sentinel',
+      sentinel: 'reviewDone',
+      title: 'Recently watched suggestions have been reviewed',
+      subtitle: 'Swipe right to review Change of Taste.',
+    }),
+    [],
+  );
+  const watchedRestartCard = useMemo<CardModel>(
+    () => ({
+      kind: 'sentinel',
+      sentinel: 'reviewDone',
+      title: 'All suggestions have been reviewed',
+      subtitle: 'Swipe right to restart reviewing.',
+    }),
+    [],
+  );
+
+  const makeWatchedNoDataCard = (): CardModel => {
+    const mediaTypeLabel = mediaTab === 'movie' ? 'movie' : 'tv';
+    const libraryKindLabel =
+      mediaTab === 'movie' ? 'Movie Library' : 'TV Show Library';
+    const libraryLabel = activeLibraryTitle
+      ? ` in ${libraryKindLabel}: ${activeLibraryTitle}`
+      : '';
+    const deckLabel =
+      watchedCollectionKind === 'changeOfTaste'
+        ? 'Change of Taste'
+        : 'Based on your recently watched';
+    return {
+      kind: 'sentinel',
+      sentinel: 'noData',
+      title: `${deckLabel}: No suggestions yet`,
+      message: `Please continue using Plex for ${mediaTypeLabel}${libraryLabel} and let the suggestion list build up, or run Based on Latest Watched Collection manually for ${mediaTypeLabel} to generate suggestions.`,
+    };
+  };
+
+  const setWatchedDeckForApprovals = () => {
+    const pending = listWatchedPendingQuery.data?.items ?? [];
+    const review = listWatchedReviewQuery.data?.items ?? [];
+    setWatchedPhase('pendingApprovals');
+    setWatchedDeck(
+      pending.length
+        ? buildDeck(pending)
+        : review.length
+          ? [watchedApprovalsDoneCard]
+          : [makeWatchedNoDataCard()],
+    );
+  };
+
+  const setWatchedDeckForReview = () => {
+    const items = listWatchedReviewQuery.data?.items ?? [];
+    const pending = listWatchedPendingQuery.data?.items ?? [];
+    setWatchedPhase('review');
+    setWatchedDeck(
+      items.length
+        ? buildDeck(items)
+        : pending.length
+          ? [
+              watchedCollectionKind === 'recentlyWatched'
+                ? watchedNextDeckCard
+                : watchedRestartCard,
+            ]
+          : [makeWatchedNoDataCard()],
+    );
+  };
+
+  const advanceWatchedOneOrSentinel = (sentinel: CardModel) => {
+    setWatchedDeck((prev) => {
+      const next = prev.slice(1);
+      return next.length ? next : [sentinel];
+    });
+  };
+
+  const restartWatchedCycle = () => {
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey, 'recentlyWatched'],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey, 'changeOfTaste'],
+      }),
+    ]).finally(() => {
+      setWatchedCollectionKind('recentlyWatched');
+      watchedDeckKeyRef.current = null;
+    });
   };
 
   const setDeckForApprovals = () => {
@@ -503,6 +690,56 @@ export function ObservatoryPage() {
     setDeckForApprovals();
   }, [activeCollectionTab, mediaTab, activeLibraryKey, listPendingQuery.data, listReviewQuery.data]);
 
+  // Watched: whenever library/media changes, start from the "recently watched" deck.
+  useEffect(() => {
+    if (activeCollectionTab !== 'latestWatched') return;
+    setWatchedCollectionKind('recentlyWatched');
+    watchedDeckKeyRef.current = null;
+  }, [activeCollectionTab, mediaTab, activeLibraryKey]);
+
+  // Watched: initialize deck when tab/library/kind changes (avoid re-mounting after each swipe/refetch).
+  useEffect(() => {
+    const key = `${activeCollectionTab}:${mediaTab}:${activeLibraryKey || 'none'}:${watchedCollectionKind}`;
+    if (!activeLibraryKey) return;
+
+    if (activeCollectionTab !== 'latestWatched') {
+      setWatchedApprovalRequired(false);
+      setWatchedDeck([]);
+      setWatchedUndoState(null);
+      watchedDeckKeyRef.current = null;
+      return;
+    }
+
+    // Wait until at least one query has data so we don't lock-in an empty deck.
+    const hasData =
+      Boolean(listWatchedPendingQuery.data) || Boolean(listWatchedReviewQuery.data);
+    if (!hasData) return;
+
+    if (watchedDeckKeyRef.current === key) return;
+    watchedDeckKeyRef.current = key;
+    setWatchedUndoState(null);
+
+    const approval =
+      listWatchedPendingQuery.data?.approvalRequiredFromObservatory ??
+      listWatchedReviewQuery.data?.approvalRequiredFromObservatory ??
+      false;
+    setWatchedApprovalRequired(approval);
+
+    if (!approval) {
+      setWatchedDeckForReview();
+      return;
+    }
+
+    setWatchedDeckForApprovals();
+  }, [
+    activeCollectionTab,
+    mediaTab,
+    activeLibraryKey,
+    watchedCollectionKind,
+    listWatchedPendingQuery.data,
+    listWatchedReviewQuery.data,
+  ]);
+
   const recordDecisionMutation = useMutation({
     mutationFn: async (params: {
       mediaType: 'movie' | 'tv';
@@ -567,6 +804,75 @@ export function ObservatoryPage() {
     },
   });
 
+  const recordWatchedDecisionMutation = useMutation({
+    mutationFn: async (params: {
+      mediaType: 'movie' | 'tv';
+      librarySectionKey: string;
+      collectionKind: WatchedCollectionKind;
+      id: number;
+      action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
+    }) => {
+      return await recordWatchedDecisions({
+        librarySectionKey: params.librarySectionKey,
+        mediaType: params.mediaType,
+        collectionKind: params.collectionKind,
+        decisions: [{ id: params.id, action: params.action }],
+      });
+    },
+    onSuccess: async () => {
+      watchedPendingApplyRef.current = true;
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'watched',
+            mediaTab,
+            activeLibraryKey,
+            watchedCollectionKind,
+            'pendingApproval',
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'watched',
+            mediaTab,
+            activeLibraryKey,
+            watchedCollectionKind,
+            'review',
+          ],
+        }),
+      ]);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to save swipe decision',
+      );
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'watched',
+            mediaTab,
+            activeLibraryKey,
+            watchedCollectionKind,
+            'pendingApproval',
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'watched',
+            mediaTab,
+            activeLibraryKey,
+            watchedCollectionKind,
+            'review',
+          ],
+        }),
+      ]);
+    },
+  });
+
   const applyMutation = useMutation({
     mutationFn: async (params: { mediaType: 'movie' | 'tv'; librarySectionKey: string }) => {
       return await applyImmaculateTasteObservatory({
@@ -584,6 +890,24 @@ export function ObservatoryPage() {
     },
   });
 
+  const applyWatchedMutation = useMutation({
+    mutationFn: async (params: { mediaType: 'movie' | 'tv'; librarySectionKey: string }) => {
+      return await applyWatchedObservatory({
+        librarySectionKey: params.librarySectionKey,
+        mediaType: params.mediaType,
+      });
+    },
+    onSuccess: async () => {
+      watchedPendingApplyRef.current = false;
+      setWatchedUndoState(null);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey],
+        }),
+      ]);
+    },
+  });
+
   const scheduleApply = () => {
     if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
     applyTimerRef.current = window.setTimeout(() => {
@@ -593,12 +917,33 @@ export function ObservatoryPage() {
     }, 120_000);
   };
 
+  const scheduleWatchedApply = () => {
+    if (watchedApplyTimerRef.current)
+      window.clearTimeout(watchedApplyTimerRef.current);
+    watchedApplyTimerRef.current = window.setTimeout(() => {
+      if (!watchedPendingApplyRef.current) return;
+      if (activeCollectionTab !== 'latestWatched') return;
+      applyWatchedMutation.mutate({
+        mediaType: mediaTab,
+        librarySectionKey: activeLibraryKey,
+      });
+    }, 120_000);
+  };
+
   const canUndo =
     Boolean(undoState) &&
     undoState?.tab === mediaTab &&
     undoState?.librarySectionKey === activeLibraryKey &&
     !recordDecisionMutation.isPending &&
     !applyMutation.isPending;
+
+  const canWatchedUndo =
+    Boolean(watchedUndoState) &&
+    watchedUndoState?.tab === mediaTab &&
+    watchedUndoState?.librarySectionKey === activeLibraryKey &&
+    watchedUndoState?.collectionKind === watchedCollectionKind &&
+    !recordWatchedDecisionMutation.isPending &&
+    !applyWatchedMutation.isPending;
 
   const undoLast = () => {
     if (!undoState) return;
@@ -623,7 +968,31 @@ export function ObservatoryPage() {
     scheduleApply();
   };
 
-  const swipeTopCard = (dir: 'left' | 'right') => {
+  const undoWatchedLast = () => {
+    if (!watchedUndoState) return;
+    if (watchedUndoState.tab !== mediaTab) return;
+    if (watchedUndoState.librarySectionKey !== activeLibraryKey) return;
+    if (watchedUndoState.collectionKind !== watchedCollectionKind) return;
+
+    const { card, phase: prevPhase, collectionKind } = watchedUndoState;
+    setWatchedUndoState(null);
+    setWatchedPhase(prevPhase);
+    setWatchedDeck((prev) => {
+      const rest = prev.length === 1 && prev[0]?.kind === 'sentinel' ? [] : prev;
+      return [card, ...rest];
+    });
+
+    recordWatchedDecisionMutation.mutate({
+      mediaType: mediaTab,
+      librarySectionKey: activeLibraryKey,
+      collectionKind,
+      id: card.item.id,
+      action: 'undo',
+    });
+    scheduleWatchedApply();
+  };
+
+  const swipeTopCardImmaculate = (dir: 'left' | 'right') => {
     if (activeCollectionTab !== 'immaculate') return;
     if (!activeLibraryKey) return;
     if (!deck.length) return;
@@ -674,9 +1043,74 @@ export function ObservatoryPage() {
     scheduleApply();
   };
 
+  const swipeTopCardWatched = (dir: 'left' | 'right') => {
+    if (activeCollectionTab !== 'latestWatched') return;
+    if (!activeLibraryKey) return;
+    if (!watchedDeck.length) return;
+    if (recordWatchedDecisionMutation.isPending || applyWatchedMutation.isPending) return;
+
+    const top = watchedDeck[0];
+    if (!top) return;
+
+    if (top.kind === 'sentinel') {
+      if (dir === 'left') return;
+      setWatchedUndoState(null);
+
+      if (top.sentinel === 'approvalsDone') {
+        setWatchedDeckForReview();
+        return;
+      }
+
+      // noData or reviewDone: advance the overall flow (recently watched -> change of taste -> restart).
+      if (watchedCollectionKind === 'recentlyWatched') {
+        setWatchedCollectionKind('changeOfTaste');
+        watchedDeckKeyRef.current = null;
+      } else {
+        restartWatchedCycle();
+      }
+      return;
+    }
+
+    const action =
+      watchedPhase === 'pendingApprovals'
+        ? dir === 'right'
+          ? 'approve'
+          : 'reject'
+        : dir === 'right'
+          ? 'keep'
+          : 'remove';
+
+    setWatchedUndoState({
+      tab: mediaTab,
+      librarySectionKey: activeLibraryKey,
+      collectionKind: watchedCollectionKind,
+      phase: watchedPhase,
+      card: { kind: 'item', item: top.item },
+      action,
+    });
+
+    recordWatchedDecisionMutation.mutate({
+      mediaType: mediaTab,
+      librarySectionKey: activeLibraryKey,
+      collectionKind: watchedCollectionKind,
+      id: top.item.id,
+      action,
+    });
+
+    advanceWatchedOneOrSentinel(
+      watchedPhase === 'pendingApprovals'
+        ? watchedApprovalsDoneCard
+        : watchedCollectionKind === 'recentlyWatched'
+          ? watchedNextDeckCard
+          : watchedRestartCard,
+    );
+    scheduleWatchedApply();
+  };
+
   // Keep the latest swipe handler available to the keyboard listener (without re-binding listeners).
   useEffect(() => {
-    swipeTopCardRef.current = swipeTopCard;
+    swipeTopCardRef.current =
+      activeCollectionTab === 'immaculate' ? swipeTopCardImmaculate : swipeTopCardWatched;
   });
 
   // Keyboard shortcuts: ArrowLeft/ArrowRight behave like swipes on the top card.
@@ -713,10 +1147,18 @@ export function ObservatoryPage() {
   useEffect(() => {
     return () => {
       if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
-      if (!pendingApplyRef.current) return;
-      if (activeCollectionTab !== 'immaculate') return;
-      // fire-and-forget apply
-      applyMutation.mutate({ mediaType: mediaTab, librarySectionKey: activeLibraryKey });
+      if (watchedApplyTimerRef.current)
+        window.clearTimeout(watchedApplyTimerRef.current);
+
+      if (pendingApplyRef.current) {
+        applyMutation.mutate({ mediaType: mediaTab, librarySectionKey: activeLibraryKey });
+      }
+      if (watchedPendingApplyRef.current) {
+        applyWatchedMutation.mutate({
+          mediaType: mediaTab,
+          librarySectionKey: activeLibraryKey,
+        });
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCollectionTab, mediaTab, activeLibraryKey]);
@@ -1122,24 +1564,97 @@ export function ObservatoryPage() {
                     </div>
                   </div>
 
-                  <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl shadow-2xl">
-                    <img
-                      src={APP_BG_IMAGE_URL}
-                      alt=""
-                      className="absolute inset-0 h-full w-full object-cover object-center opacity-20"
-                      draggable={false}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-br from-black/35 via-black/40 to-black/65" />
-                    <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-                      <div className="max-w-lg">
-                        <div className="text-white text-2xl md:text-3xl font-black tracking-tight drop-shadow-2xl">
-                          Coming soon
-                        </div>
-                        <div className="mt-3 text-white/75 leading-relaxed">
-                          Observatory for Based on Latest Watched ({mediaTab === 'movie' ? 'movie' : 'tv'}) will be available next.
-                          For now, run the collection job to generate suggestions, then review them under Immaculate Taste.
-                        </div>
+                  <div className="rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 md:p-6 shadow-2xl">
+                    <div className="mt-4 text-xs text-white/55">
+                      <div>
+                        Deck:{' '}
+                        <span className="text-white/80 font-semibold">
+                          {watchedCollectionKind === 'recentlyWatched'
+                            ? 'Based on your recently watched'
+                            : 'Change of Taste'}
+                        </span>
                       </div>
+                      <div className="mt-1">
+                        {watchedApprovalRequired
+                          ? 'Approval is ON. Pending download requests show first.'
+                          : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
+                      {watchedDeck.length ? (
+                        <div className="relative h-full">
+                          {watchedDeck
+                            .slice(0, 3)
+                            .reverse()
+                            .map((card, idx, arr) => {
+                              const isTop = idx === arr.length - 1;
+                              const depth = arr.length - 1 - idx;
+                              const scale = 1 - depth * 0.045;
+                              const y = depth * 18;
+                              const opacity = 1 - depth * 0.14;
+                              const rotate =
+                                depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
+                              return (
+                                <motion.div
+                                  key={
+                                    card.kind === 'sentinel'
+                                      ? `watched:${watchedCollectionKind}:sentinel:${card.sentinel}`
+                                      : `watched:${watchedCollectionKind}:${card.item.mediaType}:${card.item.id}`
+                                  }
+                                  initial={false}
+                                  animate={{ scale, y, opacity, rotate }}
+                                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                                  style={{ zIndex: 50 - depth }}
+                                  className={cn(
+                                    'absolute inset-0',
+                                    !isTop && 'pointer-events-none',
+                                  )}
+                                >
+                                  <SwipeCard
+                                    card={card}
+                                    disabled={
+                                      !isTop ||
+                                      recordWatchedDecisionMutation.isPending ||
+                                      applyWatchedMutation.isPending
+                                    }
+                                    onSwipeLeft={() => swipeTopCardWatched('left')}
+                                    onSwipeRight={() => swipeTopCardWatched('right')}
+                                  />
+                                </motion.div>
+                              );
+                            })}
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0">
+                          <SwipeCard
+                            card={makeWatchedNoDataCard()}
+                            onSwipeLeft={() => undefined}
+                            onSwipeRight={() => swipeTopCardWatched('right')}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={undoWatchedLast}
+                        disabled={!canWatchedUndo}
+                        className={cn(
+                          'h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
+                          canWatchedUndo
+                            ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                            : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
+                        )}
+                        aria-label="Undo last swipe"
+                        title={canWatchedUndo ? 'Undo last swipe' : 'Nothing to undo'}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                        Undo
+                      </button>
                     </div>
                   </div>
                 </motion.div>
