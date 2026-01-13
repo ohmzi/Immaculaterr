@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, useAnimation, useMotionValue, useTransform, AnimatePresence } from 'motion/react';
+import {
+  motion,
+  useAnimation,
+  useMotionValue,
+  useTransform,
+  AnimatePresence,
+} from 'motion/react';
 import { Telescope } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -46,27 +53,60 @@ function SwipeCard({
   const likeOpacity = useTransform(x, [40, 140], [0, 1]);
   const nopeOpacity = useTransform(x, [-140, -40], [1, 0]);
 
-  const threshold = 140;
+  const controls = useAnimation();
+  const leavingRef = useRef(false);
+
+  const threshold = 120;
+  const throwX = 520;
+  const throwRotate = 18;
+  const springBack = { type: 'spring' as const, stiffness: 420, damping: 28 };
+  const springThrow = { type: 'spring' as const, stiffness: 320, damping: 26 };
 
   return (
     <motion.div
+      animate={controls}
       drag={disabled ? false : 'x'}
       dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.15}
+      dragElastic={0.2}
       style={{ x, rotate, opacity, touchAction: 'pan-y' }}
       onDragEnd={(_, info) => {
         if (disabled) return;
+        if (leavingRef.current) return;
         if (info.offset.x > threshold) {
-          void onSwipeRight();
-          x.set(0);
+          leavingRef.current = true;
+          void controls
+            .start({
+              x: throwX,
+              rotate: throwRotate,
+              opacity: 0,
+              transition: springThrow,
+            })
+            .then(() => onSwipeRight())
+            .finally(() => {
+              leavingRef.current = false;
+              x.set(0);
+              void controls.set({ x: 0, rotate: 0, opacity: 1 });
+            });
           return;
         }
         if (info.offset.x < -threshold) {
-          void onSwipeLeft();
-          x.set(0);
+          leavingRef.current = true;
+          void controls
+            .start({
+              x: -throwX,
+              rotate: -throwRotate,
+              opacity: 0,
+              transition: springThrow,
+            })
+            .then(() => onSwipeLeft())
+            .finally(() => {
+              leavingRef.current = false;
+              x.set(0);
+              void controls.set({ x: 0, rotate: 0, opacity: 1 });
+            });
           return;
         }
-        x.set(0);
+        void controls.start({ x: 0, rotate: 0, transition: springBack });
       }}
       className="relative w-full"
     >
@@ -151,6 +191,7 @@ export function ObservatoryPage() {
 
   const pendingApplyRef = useRef(false);
   const applyTimerRef = useRef<number | null>(null);
+  const deckKeyRef = useRef<string | null>(null);
 
   const collectionsQuery = useQuery({
     queryKey: ['immaculateTasteCollections'],
@@ -219,12 +260,14 @@ export function ObservatoryPage() {
     refetchOnWindowFocus: false,
   });
 
-  // Reset phase/deck when tab/library changes.
+  // Initialize deck only when tab/library changes (avoid re-mounting the whole deck after each swipe/refetch).
   useEffect(() => {
-    const approval =
-      (tab === 'movie'
-        ? listPendingQuery.data?.approvalRequiredFromObservatory
-        : listPendingQuery.data?.approvalRequiredFromObservatory) ?? false;
+    const key = `${tab}:${activeLibraryKey || 'none'}`;
+    if (!activeLibraryKey) return;
+    if (deckKeyRef.current === key) return;
+    deckKeyRef.current = key;
+
+    const approval = listPendingQuery.data?.approvalRequiredFromObservatory ?? false;
     setApprovalRequired(approval);
 
     if (!approval) {
@@ -233,21 +276,16 @@ export function ObservatoryPage() {
       return;
     }
 
-    const items = listPendingQuery.data?.items ?? [];
-    if (items.length) {
+    const pending = listPendingQuery.data?.items ?? [];
+    if (pending.length) {
       setPhase('pendingApprovals');
-      setDeck(buildDeck(items));
+      setDeck(buildDeck(pending));
       return;
     }
+
     setPhase('sentinel');
     setDeck([{ kind: 'sentinel' }]);
-  }, [
-    tab,
-    activeLibraryKey,
-    listPendingQuery.data?.items,
-    listPendingQuery.data?.approvalRequiredFromObservatory,
-    listReviewQuery.data?.items,
-  ]);
+  }, [tab, activeLibraryKey, listPendingQuery.data, listReviewQuery.data]);
 
   const recordDecisionMutation = useMutation({
     mutationFn: async (params: {
@@ -265,6 +303,16 @@ export function ObservatoryPage() {
     onSuccess: async () => {
       pendingApplyRef.current = true;
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'pendingApproval'] }),
+        queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'review'] }),
+      ]);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to save swipe decision',
+      );
+      // Best-effort: reload server truth.
+      void Promise.all([
         queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'pendingApproval'] }),
         queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'review'] }),
       ]);
@@ -444,14 +492,7 @@ export function ObservatoryPage() {
             <div className="relative mx-auto max-w-3xl">
               <AnimatePresence initial={false}>
                 {deck.length ? (
-                  <motion.div
-                    key={`${tab}:${activeLibraryKey}:${phase}:${deck.length}`}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    transition={{ duration: 0.2 }}
-                    className="relative"
-                  >
+                  <div className="relative">
                     {/* Render a small stack: top 3 */}
                     {deck.slice(0, 3).reverse().map((card, idx, arr) => {
                       const isTop = idx === arr.length - 1;
@@ -474,7 +515,7 @@ export function ObservatoryPage() {
                               }
                               const action =
                                 phase === 'pendingApprovals' ? 'reject' : 'remove';
-                              await recordDecisionMutation.mutateAsync({
+                              recordDecisionMutation.mutate({
                                 mediaType: tab,
                                 librarySectionKey: activeLibraryKey,
                                 id: card.item.id,
@@ -495,7 +536,7 @@ export function ObservatoryPage() {
                               }
                               const action =
                                 phase === 'pendingApprovals' ? 'approve' : 'keep';
-                              await recordDecisionMutation.mutateAsync({
+                              recordDecisionMutation.mutate({
                                 mediaType: tab,
                                 librarySectionKey: activeLibraryKey,
                                 id: card.item.id,
@@ -509,7 +550,7 @@ export function ObservatoryPage() {
                       );
                     })}
                     <div className="pt-[520px] md:pt-[460px]" />
-                  </motion.div>
+                  </div>
                 ) : (
                   <motion.div
                     key={`${tab}:${activeLibraryKey}:empty`}
