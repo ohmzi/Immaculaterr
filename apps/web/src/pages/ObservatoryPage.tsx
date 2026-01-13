@@ -51,6 +51,8 @@ function SwipeCard({
   const opacity = useTransform(x, [-240, -80, 0, 80, 240], [0, 1, 1, 1, 0]);
   const likeOpacity = useTransform(x, [40, 140], [0, 1]);
   const nopeOpacity = useTransform(x, [-140, -40], [1, 0]);
+  const greenTintOpacity = useTransform(x, [0, 70, 180], [0, 0.14, 0.28]);
+  const redTintOpacity = useTransform(x, [0, -70, -180], [0, 0.14, 0.28]);
 
   const controls = useAnimation();
   const leavingRef = useRef(false);
@@ -110,6 +112,19 @@ function SwipeCard({
       className="relative w-full"
     >
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
+        {/* Swipe tint feedback */}
+        <div className="pointer-events-none absolute inset-0 z-[1]">
+          <motion.div
+            style={{ opacity: greenTintOpacity }}
+            className="absolute inset-0 bg-emerald-400/40"
+          />
+          <motion.div
+            style={{ opacity: redTintOpacity }}
+            className="absolute inset-0 bg-rose-400/40"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/15 via-transparent to-black/10" />
+        </div>
+
         <div className="absolute inset-0 pointer-events-none">
           <motion.div
             style={{ opacity: likeOpacity }}
