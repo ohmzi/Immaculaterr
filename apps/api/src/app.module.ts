@@ -22,6 +22,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { CollectionsModule } from './collections/collections.module';
 import { LogsModule } from './logs/logs.module';
 import { UpdatesModule } from './updates/updates.module';
+import { ObservatoryModule } from './observatory/observatory.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -47,6 +48,7 @@ const staticImports = existsSync(webDistPath)
     CollectionsModule,
     LogsModule,
     UpdatesModule,
+    ObservatoryModule,
     JobsModule,
     PlexModule,
     WebhooksModule,

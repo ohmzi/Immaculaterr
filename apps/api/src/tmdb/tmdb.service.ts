@@ -17,6 +17,7 @@ type TmdbMovieDetails = {
   title?: string;
   release_date?: string;
   overview?: string;
+  poster_path?: string;
   genres?: Array<{ id?: unknown; name?: unknown }>;
   vote_count?: number;
   vote_average?: number;
@@ -41,6 +42,7 @@ type TmdbTvDetails = {
   name?: string;
   first_air_date?: string;
   overview?: string;
+  poster_path?: string;
   genres?: Array<{ id?: unknown; name?: unknown }>;
   vote_count?: number;
   vote_average?: number;
@@ -303,6 +305,8 @@ export class TmdbService {
           : undefined,
       overview:
         typeof rec['overview'] === 'string' ? rec['overview'] : undefined,
+      poster_path:
+        typeof rec['poster_path'] === 'string' ? rec['poster_path'] : undefined,
       genres: Array.isArray(rec['genres'])
         ? (rec['genres'] as Array<{ id?: unknown; name?: unknown }>)
         : undefined,
@@ -377,6 +381,8 @@ export class TmdbService {
           : undefined,
       overview:
         typeof rec['overview'] === 'string' ? rec['overview'] : undefined,
+      poster_path:
+        typeof rec['poster_path'] === 'string' ? rec['poster_path'] : undefined,
       genres: Array.isArray(rec['genres'])
         ? (rec['genres'] as Array<{ id?: unknown; name?: unknown }>)
         : undefined,
