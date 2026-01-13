@@ -29,7 +29,11 @@ type Phase = 'pendingApprovals' | 'review';
 
 type CardModel =
   | { kind: 'item'; item: ObservatoryItem }
-  | { kind: 'sentinel'; sentinel: 'approvalsDone' | 'reviewDone' | 'noData' };
+  | {
+      kind: 'sentinel';
+      sentinel: 'approvalsDone' | 'reviewDone' | 'noData';
+      message?: string;
+    };
 
 type UndoState = {
   tab: Tab;
@@ -180,9 +184,8 @@ function SwipeCard({
                 </div>
                 {card.sentinel === 'noData' ? (
                   <div className="mt-3 text-white/75 leading-relaxed">
-                    Run <span className="text-white/90 font-semibold">Immaculate Taste Collection</span>{' '}
-                    manually for this media type to generate suggestions, then come back here to approve
-                    downloads and curate your list.
+                    {card.message ??
+                      'Please continue using Plex for this media type and let the suggestion list build up, or run Immaculate Taste Collection manually to generate suggestions.'}
                   </div>
                 ) : (
                   <div className="mt-3 text-white/75 leading-relaxed">
@@ -348,6 +351,10 @@ export function ObservatoryPage() {
   }, [tvLibraries, tvLibrary]);
 
   const activeLibraryKey = tab === 'movie' ? movieLibrary : tvLibrary;
+  const activeLibraryTitle = useMemo(() => {
+    const libs = tab === 'movie' ? movieLibraries : tvLibraries;
+    return libs.find((l) => l.key === activeLibraryKey)?.title ?? null;
+  }, [activeLibraryKey, movieLibraries, tab, tvLibraries]);
 
   const listPendingQuery = useQuery({
     queryKey: ['observatory', 'immaculateTaste', tab, activeLibraryKey, 'pendingApproval'],
@@ -393,14 +400,27 @@ export function ObservatoryPage() {
     () => ({ kind: 'sentinel', sentinel: 'reviewDone' }),
     [],
   );
-  const noDataCard = useMemo<CardModel>(() => ({ kind: 'sentinel', sentinel: 'noData' }), []);
+
+  const makeNoDataCard = (): CardModel => {
+    const mediaTypeQuoted = tab === 'movie' ? '"movie"' : '"tv"';
+    const libraryLabel = activeLibraryTitle ? ` in "${activeLibraryTitle}"` : '';
+    return {
+      kind: 'sentinel',
+      sentinel: 'noData',
+      message: `Please continue using Plex for ${mediaTypeQuoted}${libraryLabel} and let the suggestion list build up, or run Immaculate Taste Collection manually for ${mediaTypeQuoted} to generate suggestions.`,
+    };
+  };
 
   const setDeckForApprovals = () => {
     const pending = listPendingQuery.data?.items ?? [];
     const review = listReviewQuery.data?.items ?? [];
     setPhase('pendingApprovals');
     setDeck(
-      pending.length ? buildDeck(pending) : review.length ? [approvalsDoneCard] : [noDataCard],
+      pending.length
+        ? buildDeck(pending)
+        : review.length
+          ? [approvalsDoneCard]
+          : [makeNoDataCard()],
     );
   };
 
@@ -408,7 +428,9 @@ export function ObservatoryPage() {
     const items = listReviewQuery.data?.items ?? [];
     const pending = listPendingQuery.data?.items ?? [];
     setPhase('review');
-    setDeck(items.length ? buildDeck(items) : pending.length ? [reviewDoneCard] : [noDataCard]);
+    setDeck(
+      items.length ? buildDeck(items) : pending.length ? [reviewDoneCard] : [makeNoDataCard()],
+    );
   };
 
   const advanceOneOrSentinel = (sentinel: CardModel) => {
@@ -880,7 +902,7 @@ export function ObservatoryPage() {
                     card={
                       (listPendingQuery.data?.items?.length ?? 0) === 0 &&
                       (listReviewQuery.data?.items?.length ?? 0) === 0
-                        ? noDataCard
+                        ? makeNoDataCard()
                         : reviewDoneCard
                     }
                     onSwipeLeft={() => undefined}
