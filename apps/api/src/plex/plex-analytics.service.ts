@@ -4,7 +4,7 @@ import { PlexServerService } from './plex-server.service';
 import { createHash } from 'crypto';
 
 export type PlexLibraryGrowthPoint = {
-  month: string; // YYYY-MM (UTC)
+  month: string; // YYYY-MM or YYYY-MM-DD (UTC)
   movies: number;
   tv: number;
 };
@@ -64,6 +64,13 @@ function monthKeyUtc(date: Date): string {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
+}
+
+function dateKeyUtc(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function startOfMonthUtc(tsSeconds: number): Date {
@@ -134,6 +141,19 @@ function buildCumulativeMonthlySeries(params: {
     movies += movieAdds.get(key) ?? 0;
     tv += tvAdds.get(key) ?? 0;
     series.push({ month: key, movies, tv });
+  }
+
+  // UX: always show "today" as the last point (so the graph feels up-to-date),
+  // while keeping monthly granularity for the rest of the timeline.
+  const last = series.at(-1) ?? null;
+  if (last) {
+    const todayKey = dateKeyUtc(now);
+    const lastMonthKey = String(last.month).slice(0, 7);
+    const todayMonthKey = monthKeyUtc(now);
+    const isFirstOfMonth = now.getUTCDate() === 1;
+    if (!isFirstOfMonth && lastMonthKey === todayMonthKey) {
+      series.push({ month: todayKey, movies: last.movies, tv: last.tv });
+    }
   }
 
   return series;

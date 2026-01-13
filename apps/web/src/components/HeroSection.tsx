@@ -23,12 +23,19 @@ const TIME_RANGE_OPTIONS: Array<{
 ];
 
 function formatMonthLabel(value: string) {
-  const [y, m] = value.split('-');
+  const [y, m, d] = value.split('-');
   const year = Number.parseInt(y ?? '', 10);
   const month = Number.parseInt(m ?? '', 10);
   if (!Number.isFinite(year) || !Number.isFinite(month)) return value;
-  const d = new Date(Date.UTC(year, month - 1, 1));
-  return d.toLocaleString(undefined, { month: 'short', year: '2-digit' });
+  const day = d ? Number.parseInt(d, 10) : 1;
+  const date = new Date(Date.UTC(year, month - 1, Number.isFinite(day) ? day : 1));
+
+  // If this point is a real "day" point (the server appends "today"),
+  // show a date label. Otherwise keep the compact month+year label.
+  if (d && Number.isFinite(day) && day !== 1) {
+    return date.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+  }
+  return date.toLocaleString(undefined, { month: 'short', year: '2-digit' });
 }
 
 function parseUtcMonthStart(value: string): Date | null {
