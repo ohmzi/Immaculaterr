@@ -88,48 +88,66 @@ export function VersionHistoryPage() {
 
           <div className="space-y-6">
             <div className={cardClass}>
-              <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-3">
-                <div className="text-white font-black text-2xl tracking-tight">
-                  v1.0.0.0
-                </div>
-                <div className="text-xs font-bold uppercase tracking-wider text-white/45">
-                  Major update
-                </div>
+              <div className="text-white font-black text-2xl tracking-tight">
+                1.0.0.0
               </div>
 
               <div className="mt-4 space-y-3 text-sm text-white/75 leading-relaxed">
-                <div className="text-white/90 font-semibold">
-                  Observatory + approval-gated downloads
-                </div>
+                <div className="text-white/90 font-semibold">Plex-triggered automation</div>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>
-                    Observatory swipe review for <span className="text-white/90 font-semibold">Immaculate Taste</span> (Movies + TV), including Undo and batched apply.
+                    Automatically reacts to Plex library activity and runs smart workflows in real time.
                   </li>
-                  <li>
-                    Observatory swipe review for <span className="text-white/90 font-semibold">Based on Latest Watched</span> with a 2-stage flow: Recently Watched then Change of Taste.
-                  </li>
-                  <li>
-                    Optional <span className="text-white/90 font-semibold">“Approval required from Observatory”</span> toggle to gate Radarr/Sonarr requests behind right-swipes.
-                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Scheduler automation</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Off hours fetching media or refreshing the Plex home screen.</li>
                 </ul>
 
                 <div className="pt-2 text-white/90 font-semibold">
-                  Quality-of-life
+                  Curated Movies and TV Shows collections
                 </div>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Observatory header styling/spacing polish across tabs.</li>
-                  <li>“Run now” dialog inputs aligned consistently.</li>
+                  <li>Inspired by your Immaculate Taste (long term collection)</li>
+                  <li>Based on your recently watched (refreshes on every watch)</li>
+                  <li>Change of Taste (refreshes on every watch)</li>
                 </ul>
-              </div>
-            </div>
 
-            <div className={cardClass}>
-              <div className="text-white font-black text-2xl tracking-tight">
-                Previous releases
-              </div>
-              <div className="mt-3 text-sm text-white/70 leading-relaxed">
-                Older release notes are available in the repository at{' '}
-                <span className="text-white/85 font-semibold">doc/Version_History.md</span>.
+                <div className="pt-2 text-white/90 font-semibold">Recommendation engine</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>TMDB-powered suggestions</li>
+                  <li>Optional - Google + OpenAI</li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Keeps a snapshot database</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Recommmended database for refresher task to monitor titles as they become
+                    available in Plex.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Radarr + Sonarr integration</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Seamlessly organizes your media collection and automatically sends movies and
+                    series to ARR downloaders for monitoring and acquisition.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Observatory</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Swipe to approve download requests (optional “approval required” mode), curate
+                    suggestions.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Job reports & logs</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Step-by-step breakdowns, metrics tables, and run history.</li>
+                </ul>
               </div>
             </div>
           </div>
