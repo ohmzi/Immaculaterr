@@ -636,9 +636,6 @@ export function ObservatoryPage() {
                     <div className="text-white font-semibold text-lg">
                       All suggestions have been reviewed
                     </div>
-                    <div className="mt-2 text-sm text-white/65">
-                      No suggestions left to check right now.
-                    </div>
                   </div>
                 </div>
               )}
