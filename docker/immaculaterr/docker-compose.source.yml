@@ -12,7 +12,6 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=${APP_PORT:-5454}
-      - APP_VERSION=${APP_VERSION:-}
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
