@@ -410,16 +410,37 @@ export function FaqPage() {
               </li>
               <li>
                 <span className="font-semibold text-white/85">Swipe left</span>: reject/remove that
-                suggestion.
+                suggestion. This adds it to your rejected list, so it won’t be suggested again.
               </li>
               <li>
                 <span className="font-semibold text-white/85">Undo</span>: restores your last swipe.
+              </li>
+              <li>
+                You can reset the rejected list from{' '}
+                <span className="font-semibold text-white/85">Command Center</span> →{' '}
+                <span className="font-semibold text-white/85">Reset Rejected List</span>.
               </li>
               <li>
                 Desktop: use <span className="font-semibold text-white/85">←</span> and{' '}
                 <span className="font-semibold text-white/85">→</span> to swipe the top card.
               </li>
             </ul>
+          ),
+        },
+        {
+          id: 'observatory-reset-immaculate',
+          question: 'What does “Reset Immaculate Taste Collection” do?',
+          answer: (
+            <>
+              <p>
+                It deletes the Immaculate Taste Plex collection for the selected library and clears
+                the saved dataset for that library (pending/active tracking).
+              </p>
+              <p>
+                After reset, run the Immaculate Taste Collection job again (or let it auto-run) to
+                rebuild suggestions and recreate the Plex collection.
+              </p>
+            </>
           ),
         },
         {

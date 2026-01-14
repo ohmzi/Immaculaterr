@@ -150,3 +150,10 @@ export async function applyWatchedObservatory(params: {
     body: JSON.stringify(params),
   });
 }
+
+export async function resetRejectedSuggestions() {
+  return await fetchJson<{ ok: true; deleted: number }>(
+    '/api/observatory/immaculate-taste/rejected/reset',
+    { method: 'DELETE' },
+  );
+}

@@ -91,6 +91,13 @@ export class ObservatoryService {
     private readonly watchedRefresher: WatchedCollectionsRefresherService,
   ) {}
 
+  async resetRejectedSuggestions(params: { userId: string }) {
+    const res = await this.prisma.rejectedSuggestion.deleteMany({
+      where: { userId: params.userId },
+    });
+    return { ok: true, deleted: res.count };
+  }
+
   async listMovies(params: {
     userId: string;
     librarySectionKey: string;

@@ -13,8 +13,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { getRadarrOptions, getSonarrOptions } from '@/api/integrations';
 import { getImmaculateTasteCollections, resetImmaculateTasteCollection } from '@/api/immaculate';
+import { resetRejectedSuggestions } from '@/api/observatory';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { FunCountSlider } from '@/components/FunCountSlider';
@@ -74,6 +76,7 @@ export function CommandCenterPage() {
       itemCount: number | null;
     };
   } | null>(null);
+  const [rejectedResetOpen, setRejectedResetOpen] = useState(false);
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: getPublicSettings,
@@ -94,6 +97,15 @@ export function CommandCenterPage() {
     mutationFn: resetImmaculateTasteCollection,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'collections'] });
+    },
+  });
+
+  const resetRejectedMutation = useMutation({
+    mutationFn: resetRejectedSuggestions,
+    onSuccess: (data) => {
+      toast.success(`Rejected list reset (${data.deleted} removed).`);
+      // Observatory pages should refresh their decks next time they mount.
+      void queryClient.invalidateQueries({ queryKey: ['observatory'] });
     },
   });
 
@@ -609,6 +621,48 @@ export function CommandCenterPage() {
             </div>
           </div>
 
+          {/* Reset Rejected List */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-red-400/10 focus-within:border-white/15 focus-within:shadow-red-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-red-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-rose-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <RotateCcw className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Reset Rejected List
+                </h2>
+              </div>
+
+              <SavingPill active={resetRejectedMutation.isPending} className="static" />
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Clears your Observatory rejected list so previously swiped-left suggestions can show up
+              again.
+            </p>
+
+            {resetRejectedMutation.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{(resetRejectedMutation.error as Error).message}</span>
+              </div>
+            ) : null}
+
+            <div className="mt-5">
+              <button
+                type="button"
+                disabled={resetRejectedMutation.isPending}
+                onClick={() => setRejectedResetOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset rejected list
+              </button>
+            </div>
+          </div>
+
           {/* Reset Immaculate Taste - Confirm Dialog */}
           <AnimatePresence>
             {immaculateResetTarget && (
@@ -722,6 +776,114 @@ export function CommandCenterPage() {
                         disabled={resetImmaculateMutation.isPending}
                       >
                         {resetImmaculateMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Resetting…
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="w-4 h-4" />
+                            Reset
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Reset Rejected List - Confirm Dialog */}
+          <AnimatePresence>
+            {rejectedResetOpen && (
+              <motion.div
+                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  if (resetRejectedMutation.isPending) return;
+                  setRejectedResetOpen(false);
+                }}
+              >
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+                <motion.div
+                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden"
+                >
+                  <div className="p-6 sm:p-7">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                          Reset
+                        </div>
+                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                          Rejected List
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetRejectedMutation.isPending) return;
+                          setRejectedResetOpen(false);
+                        }}
+                        className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                        aria-label="Close"
+                        disabled={resetRejectedMutation.isPending}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                      <div className="flex items-start gap-3">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-rose-200" />
+                        <div className="min-w-0">
+                          <div className="text-white/85 font-semibold">
+                            This will remove all rejected suggestions for your account.
+                          </div>
+                          <div className="mt-2 text-xs text-white/55">
+                            After resetting, previously rejected cards can appear again in
+                            Observatory.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {resetRejectedMutation.isError ? (
+                      <div className="mt-4 flex items-start gap-2 text-sm text-red-200/90">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>{(resetRejectedMutation.error as Error).message}</span>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setRejectedResetOpen(false)}
+                        className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetRejectedMutation.isPending}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetRejectedMutation.isPending) return;
+                          resetRejectedMutation.mutate(undefined, {
+                            onSuccess: () => setRejectedResetOpen(false),
+                          });
+                        }}
+                        className="h-12 rounded-full px-6 bg-[#f43f5e] text-white font-bold shadow-[0_0_20px_rgba(244,63,94,0.25)] hover:shadow-[0_0_28px_rgba(244,63,94,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetRejectedMutation.isPending}
+                      >
+                        {resetRejectedMutation.isPending ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
                             Resetting…
