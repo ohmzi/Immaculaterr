@@ -74,7 +74,8 @@ export function Navigation() {
     didToastUpdateRef.current = true;
 
     toast.info(`${updateLabel} available`, {
-      description: 'Pull the latest image and recreate/redeploy the container (Portainer: Recreate / Pull latest image).',
+      description:
+        'Pull the latest image and redeploy the container. Portainer: Duplicate/Edit → set image to :latest or :vX.Y.Z.NNN → remove APP_VERSION env var → enable “Always pull image” → Deploy.',
     });
   }, [updateAvailable, updateLabel]);
 
