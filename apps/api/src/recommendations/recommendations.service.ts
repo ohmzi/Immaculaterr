@@ -156,6 +156,33 @@ export class RecommendationsService {
       unknownCandidates: unknownPool.length,
     });
 
+    let fallbackUsed: 'none' | 'tmdb_discover' | 'openai_freeform' = 'none';
+    let fallbackCandidatesCount = 0;
+    let fallbackTitles: string[] = [];
+
+    // --- Tier 0b: ultimate fallback when TMDB pools are empty ---
+    if (!releasedPool.length && !upcomingPool.length && !unknownPool.length) {
+      const fallback = await this.tmdb
+        .discoverFallbackMovieCandidates({
+          apiKey: params.tmdbApiKey,
+          limit: Math.max(50, Math.min(400, count * 12)),
+          seedYear: params.seedYear ?? null,
+          genreIds: pools.seed.genreIds,
+          includeAdult: false,
+          timezone: null,
+        })
+        .catch(() => []);
+      if (fallback.length) {
+        releasedPool = mergeCandidatePools(releasedPool, fallback, 'tmdb_discover');
+        fallbackUsed = 'tmdb_discover';
+        fallbackCandidatesCount = fallback.length;
+        fallbackTitles = fallback.slice(0, 30).map((c) => c.title);
+        await ctx.info('recs: tmdb discover fallback used', {
+          added: fallback.length,
+        });
+      }
+    }
+
     let googleContext: string | null = null;
     let googleQuery: string | null = null;
     let googleMeta: JsonObject | null = null;
@@ -163,6 +190,13 @@ export class RecommendationsService {
     let googleTmdbAdded = 0;
     let googleSuggestedTitles: string[] = [];
     let openAiSuggestedTitles: string[] = [];
+    let openAiMode: 'split' | 'no_split' | null = null;
+    let openAiSkipReason:
+      | 'disabled'
+      | 'cooldown'
+      | 'no_candidates'
+      | 'error'
+      | null = null;
 
     // --- Tier 1 (optional): Google discovery booster (never depends on OpenAI) ---
     void ctx
@@ -281,6 +315,10 @@ export class RecommendationsService {
         },
       })
       .catch(() => undefined);
+
+    if (!openAiEnabled) openAiSkipReason = 'disabled';
+    else if (!this.canUseOpenAi()) openAiSkipReason = 'cooldown';
+
     if (openAiEnabled && this.canUseOpenAi()) {
       const model =
         (params.openai?.model ?? 'gpt-5.2-chat-latest') ||
@@ -293,104 +331,260 @@ export class RecommendationsService {
         0,
         Math.min(250, Math.max(upcomingTarget * 5, upcomingTarget)),
       );
+      const topUnknown = scoredUnknown.slice(0, Math.min(250, Math.max(count * 4, count)));
 
-      // If we don't have enough upcoming candidates to hit target, don't burn OpenAI.
       const canSatisfySplit =
         upcomingTarget === 0 || topUpcoming.length >= upcomingTarget;
 
-      if (canSatisfySplit && (topReleased.length || topUpcoming.length)) {
-        await ctx.info('recs: openai select start', {
-          model,
-        count,
-          releasedTarget,
-          upcomingTarget,
-          candidates: {
-            released: topReleased.length,
-            upcoming: topUpcoming.length,
-          },
-        googleUsed: Boolean(googleContext),
-          googleTitlesExtracted,
-          googleTmdbAdded,
-      });
+      const anyCandidates =
+        topReleased.length || topUpcoming.length || topUnknown.length;
+      if (!anyCandidates) {
+        openAiSkipReason = 'no_candidates';
+      } else {
+        try {
+          if (canSatisfySplit) {
+            openAiMode = 'split';
+            await ctx.info('recs: openai select start', {
+              model,
+              count,
+              releasedTarget,
+              upcomingTarget,
+              candidates: {
+                released: topReleased.length,
+                upcoming: topUpcoming.length,
+              },
+              googleUsed: Boolean(googleContext),
+              googleTitlesExtracted,
+              googleTmdbAdded,
+              mode: 'split',
+            });
 
-      try {
-          const selection = await this.openai.selectFromCandidates({
-          apiKey: params.openai!.apiKey,
+            const selection = await this.openai.selectFromCandidates({
+              apiKey: params.openai!.apiKey,
+              model,
+              seedTitle,
+              tmdbSeedMetadata: seedMeta,
+              releasedTarget,
+              upcomingTarget,
+              releasedCandidates: topReleased,
+              upcomingCandidates: topUpcoming,
+            });
+
+            if (
+              selection.released.length === releasedTarget &&
+              selection.upcoming.length === upcomingTarget
+            ) {
+              const releasedById = new Map(topReleased.map((c) => [c.tmdbId, c]));
+              const upcomingById = new Map(topUpcoming.map((c) => [c.tmdbId, c]));
+
+              const titles: string[] = [];
+              for (const id of selection.released) {
+                const t = releasedById.get(id)?.title ?? '';
+                if (t.trim()) titles.push(t.trim());
+              }
+              for (const id of selection.upcoming) {
+                const t = upcomingById.get(id)?.title ?? '';
+                if (t.trim()) titles.push(t.trim());
+              }
+
+              const cleaned = cleanTitles(titles, count);
+              openAiSuggestedTitles = cleaned.slice();
+              await ctx.info('recs: openai select done', {
+                returned: cleaned.length,
+                released: releasedTarget,
+                upcoming: upcomingTarget,
+                mode: 'split',
+              });
+              this.openAiDownUntilMs = null;
+              return {
+                titles: cleaned,
+                strategy: 'openai',
+                debug: {
+                  upcomingPercent,
+                  upcomingTarget,
+                  releasedTarget,
+                  googleEnabled,
+                  googleQuery,
+                  googleMeta: googleMeta ?? null,
+                  googleTitlesExtracted,
+                  googleTmdbAdded,
+                  googleSuggestedTitles,
+                  openAiEnabled: true,
+                  openAiModel: model,
+                  openAiMode,
+                  openAiSkipReason,
+                  fallbackUsed,
+                  fallbackCandidatesCount,
+                  fallbackTitles,
+                  openAiSuggestedTitles,
+                  tmdbSuggestedTitles,
+                  used: {
+                    tmdb: true,
+                    google: Boolean(googleContext),
+                    openai: true,
+                  },
+                },
+              };
+            }
+
+            await ctx.warn(
+              'recs: openai selector returned empty (falling back to deterministic)',
+            );
+          } else {
+            openAiMode = 'no_split';
+            const candidates = uniqueByTmdbId([
+              ...topReleased,
+              ...topUpcoming,
+              ...topUnknown,
+            ]).slice(0, 350);
+
+            await ctx.info('recs: openai select start', {
+              model,
+              count,
+              candidates: candidates.length,
+              mode: 'no_split',
+            });
+
+            const ids = await this.openai.selectFromCandidatesNoSplit({
+              apiKey: params.openai!.apiKey,
+              model,
+              seedTitle,
+              tmdbSeedMetadata: seedMeta,
+              count,
+              candidates,
+            });
+            if (ids.length === count) {
+              const byId = new Map(candidates.map((c) => [c.tmdbId, c.title]));
+              const ordered = ids.map((id) => byId.get(id) ?? String(id));
+              const cleaned = cleanTitles(ordered, count);
+              openAiSuggestedTitles = cleaned.slice();
+              await ctx.info('recs: openai select done', {
+                returned: cleaned.length,
+                mode: 'no_split',
+              });
+              this.openAiDownUntilMs = null;
+              return {
+                titles: cleaned,
+                strategy: 'openai',
+                debug: {
+                  upcomingPercent,
+                  upcomingTarget,
+                  releasedTarget,
+                  googleEnabled,
+                  googleQuery,
+                  googleMeta: googleMeta ?? null,
+                  googleTitlesExtracted,
+                  googleTmdbAdded,
+                  googleSuggestedTitles,
+                  openAiEnabled: true,
+                  openAiModel: model,
+                  openAiMode,
+                  openAiSkipReason,
+                  fallbackUsed,
+                  fallbackCandidatesCount,
+                  fallbackTitles,
+                  openAiSuggestedTitles,
+                  tmdbSuggestedTitles,
+                  used: {
+                    tmdb: true,
+                    google: Boolean(googleContext),
+                    openai: true,
+                  },
+                },
+              };
+            }
+          }
+        } catch (err) {
+          openAiSkipReason = 'error';
+          await ctx.warn(
+            'recs: openai selector failed (falling back to deterministic)',
+            {
+              error: (err as Error)?.message ?? String(err),
+              mode: openAiMode ?? null,
+            },
+          );
+          this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
+        }
+      }
+    }
+
+    // --- Tier 3 (ultimate): OpenAI freeform fallback when we have no candidates at all ---
+    if (!deterministic.titles.length) {
+      const canUseFreeform =
+        openAiEnabled && this.canUseOpenAi() && Boolean(params.openai?.apiKey?.trim());
+      if (!canUseFreeform) {
+        // keep deterministic (empty)
+      } else {
+        try {
+          const model =
+            (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
+          const titles = await this.openai.getRelatedMovieTitles({
+            apiKey: params.openai!.apiKey,
             model,
-          seedTitle,
-          tmdbSeedMetadata: seedMeta,
-            releasedTarget,
-            upcomingTarget,
-            releasedCandidates: topReleased,
-            upcomingCandidates: topUpcoming,
+            seedTitle,
+            limit: count,
+            tmdbSeedMetadata: seedMeta,
+            googleSearchContext: googleContext,
+            upcomingCapFraction: 0.0,
           });
 
-          if (
-            selection.released.length === releasedTarget &&
-            selection.upcoming.length === upcomingTarget
-          ) {
-            const releasedById = new Map(topReleased.map((c) => [c.tmdbId, c]));
-            const upcomingById = new Map(topUpcoming.map((c) => [c.tmdbId, c]));
+          const parsed = parseTitleYearCandidates(titles);
+          const resolved = await this.resolveGoogleTitlesToTmdbCandidates({
+            tmdbApiKey: params.tmdbApiKey,
+            titles: parsed,
+            today: pools.meta.today,
+          });
 
-            const titles: string[] = [];
-            for (const id of selection.released) {
-              const t = releasedById.get(id)?.title ?? '';
-              if (t.trim()) titles.push(t.trim());
-            }
-            for (const id of selection.upcoming) {
-              const t = upcomingById.get(id)?.title ?? '';
-              if (t.trim()) titles.push(t.trim());
-            }
+          const fallbackPool = mergeCandidatePools([], resolved.released, 'openai_freeform');
+          const scored = scoreAndSortCandidates(fallbackPool, { kind: 'released' });
+          const picked = scored.slice(0, count).map((c) => c.title);
+          const cleaned = cleanTitles(picked.length ? picked : titles, count);
 
-            const cleaned = titles.slice(0, releasedTarget + upcomingTarget);
-            if (cleaned.length !== releasedTarget + upcomingTarget) {
-              throw new Error(
-                `OpenAI selection underfilled: expected ${releasedTarget + upcomingTarget}, got ${cleaned.length}`,
-              );
-            }
-            openAiSuggestedTitles = cleaned.slice();
-            await ctx.info('recs: openai select done', {
-              returned: cleaned.length,
-              released: releasedTarget,
-              upcoming: upcomingTarget,
-            });
-            this.openAiDownUntilMs = null;
+          fallbackUsed = 'openai_freeform';
+          fallbackCandidatesCount = resolved.added;
+          fallbackTitles = cleaned.slice(0, 30);
+          openAiSuggestedTitles = cleaned.slice();
+          this.openAiDownUntilMs = null;
+
+          await ctx.info('recs: openai freeform fallback used', {
+            returned: cleaned.length,
+            tmdbValidated: resolved.added,
+          });
+
           return {
             titles: cleaned,
             strategy: 'openai',
             debug: {
-                upcomingPercent,
-                upcomingTarget,
-                releasedTarget,
+              upcomingPercent,
+              upcomingTarget,
+              releasedTarget,
               googleEnabled,
               googleQuery,
               googleMeta: googleMeta ?? null,
-                googleTitlesExtracted,
-                googleTmdbAdded,
-                googleSuggestedTitles,
+              googleTitlesExtracted,
+              googleTmdbAdded,
+              googleSuggestedTitles,
               openAiEnabled: true,
-                openAiModel: model,
-                openAiSuggestedTitles,
-                tmdbSuggestedTitles,
-                used: {
-                  tmdb: true,
-                  google: Boolean(googleContext),
-                  openai: true,
-                },
+              openAiModel: model,
+              openAiMode: null,
+              openAiSkipReason: null,
+              fallbackUsed,
+              fallbackCandidatesCount,
+              fallbackTitles,
+              openAiSuggestedTitles,
+              tmdbSuggestedTitles,
+              used: {
+                tmdb: false,
+                google: Boolean(googleContext),
+                openai: true,
+              },
             },
           };
-        }
-
-          await ctx.warn(
-            'recs: openai selector returned empty (falling back to deterministic)',
-          );
-      } catch (err) {
-          await ctx.warn(
-            'recs: openai selector failed (falling back to deterministic)',
-            {
-          error: (err as Error)?.message ?? String(err),
-            },
-          );
+        } catch (err) {
+          openAiSkipReason = 'error';
+          await ctx.warn('recs: openai freeform fallback failed', {
+            error: (err as Error)?.message ?? String(err),
+          });
           this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
         }
       }
@@ -417,6 +611,11 @@ export class RecommendationsService {
         googleTitlesExtracted,
         googleTmdbAdded,
         openAiEnabled,
+        openAiMode,
+        openAiSkipReason,
+        fallbackUsed,
+        fallbackCandidatesCount,
+        fallbackTitles,
         googleSuggestedTitles,
         openAiSuggestedTitles,
         tmdbSuggestedTitles,
@@ -525,6 +724,33 @@ export class RecommendationsService {
       unknownCandidates: unknownPool.length,
     });
 
+    let fallbackUsed: 'none' | 'tmdb_discover' | 'openai_freeform' = 'none';
+    let fallbackCandidatesCount = 0;
+    let fallbackTitles: string[] = [];
+
+    // --- Tier 0b: ultimate fallback when TMDB pools are empty ---
+    if (!releasedPool.length && !upcomingPool.length && !unknownPool.length) {
+      const fallback = await this.tmdb
+        .discoverFallbackTvCandidates({
+          apiKey: params.tmdbApiKey,
+          limit: Math.max(50, Math.min(400, count * 12)),
+          seedYear: params.seedYear ?? null,
+          genreIds: pools.seed.genreIds,
+          includeAdult: false,
+          timezone: null,
+        })
+        .catch(() => []);
+      if (fallback.length) {
+        releasedPool = mergeCandidatePools(releasedPool, fallback, 'tmdb_discover');
+        fallbackUsed = 'tmdb_discover';
+        fallbackCandidatesCount = fallback.length;
+        fallbackTitles = fallback.slice(0, 30).map((c) => c.title);
+        await ctx.info('recs(tv): tmdb discover fallback used', {
+          added: fallback.length,
+        });
+      }
+    }
+
     let googleContext: string | null = null;
     let googleQuery: string | null = null;
     let googleMeta: JsonObject | null = null;
@@ -532,6 +758,13 @@ export class RecommendationsService {
     let googleTmdbAdded = 0;
     let googleSuggestedTitles: string[] = [];
     let openAiSuggestedTitles: string[] = [];
+    let openAiMode: 'split' | 'no_split' | null = null;
+    let openAiSkipReason:
+      | 'disabled'
+      | 'cooldown'
+      | 'no_candidates'
+      | 'error'
+      | null = null;
 
     // --- Tier 1 (optional): Google discovery booster (never depends on OpenAI) ---
     void ctx
@@ -641,6 +874,10 @@ export class RecommendationsService {
         },
       })
       .catch(() => undefined);
+
+    if (!openAiEnabled) openAiSkipReason = 'disabled';
+    else if (!this.canUseOpenAi()) openAiSkipReason = 'cooldown';
+
     if (openAiEnabled && this.canUseOpenAi()) {
       const model =
         (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
@@ -652,96 +889,257 @@ export class RecommendationsService {
         0,
         Math.min(250, Math.max(upcomingTarget * 5, upcomingTarget)),
       );
+      const topUnknown = scoredUnknown.slice(0, Math.min(250, Math.max(count * 4, count)));
 
       const canSatisfySplit =
         upcomingTarget === 0 || topUpcoming.length >= upcomingTarget;
 
-      if (canSatisfySplit && (topReleased.length || topUpcoming.length)) {
-        await ctx.info('recs(tv): openai select start', {
-          model,
-          releasedCandidates: topReleased.length,
-          upcomingCandidates: topUpcoming.length,
-          releasedTarget,
-          upcomingTarget,
-        });
-
+      const anyCandidates =
+        topReleased.length || topUpcoming.length || topUnknown.length;
+      if (!anyCandidates) {
+        openAiSkipReason = 'no_candidates';
+      } else {
         try {
-          const selected = await this.openai.selectFromCandidates({
-            apiKey: params.openai!.apiKey,
-            model,
-            seedTitle,
-            mediaType: 'tv',
-            tmdbSeedMetadata: seedMeta,
-            releasedTarget,
-            upcomingTarget,
-            releasedCandidates: topReleased,
-            upcomingCandidates: topUpcoming,
-          });
-
-          if (
-            selected.released.length === releasedTarget &&
-            selected.upcoming.length === upcomingTarget
-          ) {
-            const selectedIds = new Set<number>([
-              ...selected.released,
-              ...selected.upcoming,
-            ]);
-            const idToTitle = new Map<number, string>();
-            for (const c of [...topReleased, ...topUpcoming]) {
-              if (!idToTitle.has(c.tmdbId)) idToTitle.set(c.tmdbId, c.title);
-            }
-            const ordered = [
-              ...selected.released,
-              ...selected.upcoming,
-            ].map((id) => idToTitle.get(id) ?? String(id));
-            const cleaned = cleanTitles(ordered, count);
-            openAiSuggestedTitles = cleaned.slice();
-
-            await ctx.info('recs(tv): openai select done', {
-              returned: cleaned.length,
-              released: selected.released.length,
-              upcoming: selected.upcoming.length,
+          if (canSatisfySplit) {
+            openAiMode = 'split';
+            await ctx.info('recs(tv): openai select start', {
+              model,
+              releasedCandidates: topReleased.length,
+              upcomingCandidates: topUpcoming.length,
+              releasedTarget,
+              upcomingTarget,
+              mode: 'split',
             });
 
-            this.openAiDownUntilMs = null;
-            return {
-              titles: cleaned,
-              strategy: 'openai',
-              debug: {
-                upcomingPercent,
-                upcomingTarget,
-                releasedTarget,
-                googleEnabled,
-                googleQuery,
-                googleMeta: googleMeta ?? null,
-                googleTitlesExtracted,
-                googleTmdbAdded,
-                openAiEnabled,
-                googleSuggestedTitles,
-                openAiSuggestedTitles,
-                tmdbSuggestedTitles,
-                used: {
-                  tmdb: true,
-                  google: Boolean(googleContext),
-                  openai: true,
-                },
-              },
-            };
-          }
+            const selected = await this.openai.selectFromCandidates({
+              apiKey: params.openai!.apiKey,
+              model,
+              seedTitle,
+              mediaType: 'tv',
+              tmdbSeedMetadata: seedMeta,
+              releasedTarget,
+              upcomingTarget,
+              releasedCandidates: topReleased,
+              upcomingCandidates: topUpcoming,
+            });
 
-          await ctx.warn('recs(tv): openai invalid selection (fallback)', {
-            releasedReturned: selected.released.length,
-            upcomingReturned: selected.upcoming.length,
-            releasedTarget,
-            upcomingTarget,
-          });
+            if (
+              selected.released.length === releasedTarget &&
+              selected.upcoming.length === upcomingTarget
+            ) {
+              const idToTitle = new Map<number, string>();
+              for (const c of [...topReleased, ...topUpcoming]) {
+                if (!idToTitle.has(c.tmdbId)) idToTitle.set(c.tmdbId, c.title);
+              }
+              const ordered = [
+                ...selected.released,
+                ...selected.upcoming,
+              ].map((id) => idToTitle.get(id) ?? String(id));
+              const cleaned = cleanTitles(ordered, count);
+              openAiSuggestedTitles = cleaned.slice();
+
+              await ctx.info('recs(tv): openai select done', {
+                returned: cleaned.length,
+                released: selected.released.length,
+                upcoming: selected.upcoming.length,
+                mode: 'split',
+              });
+
+              this.openAiDownUntilMs = null;
+              return {
+                titles: cleaned,
+                strategy: 'openai',
+                debug: {
+                  upcomingPercent,
+                  upcomingTarget,
+                  releasedTarget,
+                  googleEnabled,
+                  googleQuery,
+                  googleMeta: googleMeta ?? null,
+                  googleTitlesExtracted,
+                  googleTmdbAdded,
+                  openAiEnabled: true,
+                  openAiModel: model,
+                  openAiMode,
+                  openAiSkipReason,
+                  fallbackUsed,
+                  fallbackCandidatesCount,
+                  fallbackTitles,
+                  googleSuggestedTitles,
+                  openAiSuggestedTitles,
+                  tmdbSuggestedTitles,
+                  used: {
+                    tmdb: true,
+                    google: Boolean(googleContext),
+                    openai: true,
+                  },
+                },
+              };
+            }
+
+            await ctx.warn('recs(tv): openai invalid selection (fallback)', {
+              releasedReturned: selected.released.length,
+              upcomingReturned: selected.upcoming.length,
+              releasedTarget,
+              upcomingTarget,
+            });
+          } else {
+            openAiMode = 'no_split';
+            const candidates = uniqueByTmdbId([
+              ...topReleased,
+              ...topUpcoming,
+              ...topUnknown,
+            ]).slice(0, 350);
+
+            await ctx.info('recs(tv): openai select start', {
+              model,
+              candidates: candidates.length,
+              count,
+              mode: 'no_split',
+            });
+
+            const ids = await this.openai.selectFromCandidatesNoSplit({
+              apiKey: params.openai!.apiKey,
+              model,
+              seedTitle,
+              mediaType: 'tv',
+              tmdbSeedMetadata: seedMeta,
+              count,
+              candidates,
+            });
+            if (ids.length === count) {
+              const byId = new Map(candidates.map((c) => [c.tmdbId, c.title]));
+              const ordered = ids.map((id) => byId.get(id) ?? String(id));
+              const cleaned = cleanTitles(ordered, count);
+              openAiSuggestedTitles = cleaned.slice();
+
+              await ctx.info('recs(tv): openai select done', {
+                returned: cleaned.length,
+                mode: 'no_split',
+              });
+
+              this.openAiDownUntilMs = null;
+              return {
+                titles: cleaned,
+                strategy: 'openai',
+                debug: {
+                  upcomingPercent,
+                  upcomingTarget,
+                  releasedTarget,
+                  googleEnabled,
+                  googleQuery,
+                  googleMeta: googleMeta ?? null,
+                  googleTitlesExtracted,
+                  googleTmdbAdded,
+                  openAiEnabled: true,
+                  openAiModel: model,
+                  openAiMode,
+                  openAiSkipReason,
+                  fallbackUsed,
+                  fallbackCandidatesCount,
+                  fallbackTitles,
+                  googleSuggestedTitles,
+                  openAiSuggestedTitles,
+                  tmdbSuggestedTitles,
+                  used: {
+                    tmdb: true,
+                    google: Boolean(googleContext),
+                    openai: true,
+                  },
+                },
+              };
+            }
+          }
         } catch (err) {
+          openAiSkipReason = 'error';
           await ctx.warn(
             'recs(tv): openai selector failed (falling back to deterministic)',
             {
               error: (err as Error)?.message ?? String(err),
+              mode: openAiMode ?? null,
             },
           );
+          this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
+        }
+      }
+    }
+
+    // --- Tier 3 (ultimate): OpenAI freeform fallback when we have no candidates at all ---
+    if (!deterministic.titles.length) {
+      const canUseFreeform =
+        openAiEnabled && this.canUseOpenAi() && Boolean(params.openai?.apiKey?.trim());
+      if (!canUseFreeform) {
+        // keep deterministic (empty)
+      } else {
+        try {
+          const model =
+            (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
+          const titles = await this.openai.getRelatedTvTitles({
+            apiKey: params.openai!.apiKey,
+            model,
+            seedTitle,
+            limit: count,
+            tmdbSeedMetadata: seedMeta,
+            googleSearchContext: googleContext,
+          });
+
+          const parsed = parseTitleYearCandidates(titles);
+          const resolved = await this.resolveGoogleTitlesToTmdbTvCandidates({
+            tmdbApiKey: params.tmdbApiKey,
+            titles: parsed,
+            today: pools.meta.today,
+          });
+
+          const fallbackPool = mergeCandidatePools([], resolved.released, 'openai_freeform');
+          const scored = scoreAndSortCandidates(fallbackPool, { kind: 'released' });
+          const picked = scored.slice(0, count).map((c) => c.title);
+          const cleaned = cleanTitles(picked.length ? picked : titles, count);
+
+          fallbackUsed = 'openai_freeform';
+          fallbackCandidatesCount = resolved.added;
+          fallbackTitles = cleaned.slice(0, 30);
+          openAiSuggestedTitles = cleaned.slice();
+          this.openAiDownUntilMs = null;
+
+          await ctx.info('recs(tv): openai freeform fallback used', {
+            returned: cleaned.length,
+            tmdbValidated: resolved.added,
+          });
+
+          return {
+            titles: cleaned,
+            strategy: 'openai',
+            debug: {
+              upcomingPercent,
+              upcomingTarget,
+              releasedTarget,
+              googleEnabled,
+              googleQuery,
+              googleMeta: googleMeta ?? null,
+              googleTitlesExtracted,
+              googleTmdbAdded,
+              openAiEnabled: true,
+              openAiModel: model,
+              openAiMode: null,
+              openAiSkipReason: null,
+              fallbackUsed,
+              fallbackCandidatesCount,
+              fallbackTitles,
+              googleSuggestedTitles,
+              openAiSuggestedTitles,
+              tmdbSuggestedTitles,
+              used: {
+                tmdb: false,
+                google: Boolean(googleContext),
+                openai: true,
+              },
+            },
+          };
+        } catch (err) {
+          openAiSkipReason = 'error';
+          await ctx.warn('recs(tv): openai freeform fallback failed', {
+            error: (err as Error)?.message ?? String(err),
+          });
           this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
         }
       }
@@ -768,6 +1166,11 @@ export class RecommendationsService {
         googleTitlesExtracted,
         googleTmdbAdded,
         openAiEnabled,
+        openAiMode,
+        openAiSkipReason,
+        fallbackUsed,
+        fallbackCandidatesCount,
+        fallbackTitles,
         googleSuggestedTitles,
         openAiSuggestedTitles,
         tmdbSuggestedTitles,
@@ -1505,6 +1908,19 @@ function mergeCandidatePools<T extends { tmdbId: number; sources: string[] }>(
   return Array.from(byId.values());
 }
 
+function uniqueByTmdbId<T extends { tmdbId: number }>(items: T[]): T[] {
+  const out: T[] = [];
+  const seen = new Set<number>();
+  for (const it of items) {
+    const id = Number.isFinite(it?.tmdbId) ? Math.trunc(it.tmdbId) : NaN;
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(it);
+  }
+  return out;
+}
+
 function classifyReleaseDate(
   releaseDate: string | null,
   today: string,
@@ -1515,6 +1931,54 @@ function classifyReleaseDate(
   if (today && /^\d{4}-\d{2}-\d{2}$/.test(today) && d > today)
     return 'upcoming';
   return 'released';
+}
+
+function parseTitleYearCandidates(
+  titles: string[],
+  limit = 200,
+): Array<{ title: string; year: number | null }> {
+  const out: Array<{ title: string; year: number | null }> = [];
+  const seen = new Set<string>();
+  const max = Math.max(1, Math.min(500, Math.trunc(limit || 200)));
+
+  for (const raw of titles ?? []) {
+    let s = String(raw ?? '').trim();
+    if (!s) continue;
+
+    // Remove bullet / numbering prefixes
+    s = s.replace(/^\s*[-*\u2022]\s*/, '');
+    s = s.replace(/^\s*\d+[.)]\s*/, '');
+
+    let year: number | null = null;
+    let m = s.match(/\(\s*(19\d{2}|20\d{2})\s*\)\s*$/);
+    if (m) {
+      year = Number(m[1]);
+      s = s.replace(/\(\s*(19\d{2}|20\d{2})\s*\)\s*$/, '').trim();
+    } else {
+      m = s.match(/\s*[-–—]\s*(19\d{2}|20\d{2})\s*$/);
+      if (m) {
+        year = Number(m[1]);
+        s = s.replace(/\s*[-–—]\s*(19\d{2}|20\d{2})\s*$/, '').trim();
+      }
+    }
+
+    // Remove surrounding quotes
+    s = s
+      .trim()
+      .replace(/^["']+/, '')
+      .replace(/["']+$/, '')
+      .trim();
+
+    if (!s) continue;
+    const key = normalizeTitleKey(s);
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ title: s, year: Number.isFinite(year) ? (year as number) : null });
+    if (out.length >= max) break;
+  }
+
+  return out;
 }
 
 function extractMovieTitleCandidatesFromGoogle(

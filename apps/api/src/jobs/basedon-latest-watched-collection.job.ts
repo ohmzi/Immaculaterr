@@ -7,6 +7,7 @@ import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
+import { normalizeTitleForMatching } from '../lib/title-normalize';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
@@ -77,8 +78,9 @@ export class BasedonLatestWatchedCollectionJob {
     const isTv =
       mediaType === 'episode' || mediaType === 'show' || mediaType === 'tv';
 
-    const seedTitle =
+    const seedTitleRaw =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
+    const seedTitle = normalizeTitleForMatching(seedTitleRaw);
     const seedRatingKey =
       typeof input['seedRatingKey'] === 'string'
         ? input['seedRatingKey'].trim()
@@ -684,6 +686,39 @@ export class BasedonLatestWatchedCollectionJob {
       sampleTmdb: suggestedForPoints.slice(0, 10).map((s) => s.tmdbId),
     });
 
+    // --- Reject-list filtering (global per-user blacklist) ---
+    const rejectIds = await this.prisma.rejectedSuggestion
+      .findMany({
+        where: {
+          userId: ctx.userId,
+          mediaType: 'movie',
+          externalSource: 'tmdb',
+        },
+        select: { externalId: true },
+        take: 50000,
+      })
+      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .catch(() => new Set<string>());
+
+    const excludedByRejectList: string[] = [];
+    const filteredSuggestedForPoints = suggestedForPoints.filter((s) => {
+      const key = String(s.tmdbId);
+      if (!rejectIds.has(key)) return true;
+      excludedByRejectList.push(s.title);
+      return false;
+    });
+    suggestedForPoints.length = 0;
+    suggestedForPoints.push(...filteredSuggestedForPoints);
+
+    for (const [k, v] of Array.from(missingTitleToTmdb.entries())) {
+      if (rejectIds.has(String(v.tmdbId))) missingTitleToTmdb.delete(k);
+    }
+    for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
+      const t = missingTitles[i] ?? '';
+      const match = missingTitleToTmdb.get(t.trim()) ?? null;
+      if (match && rejectIds.has(String(match.tmdbId))) missingTitles.splice(i, 1);
+    }
+
     // Overwrite the per-library snapshot (active/pending) — no points/decay.
     const byTmdbId = new Map<
       number,
@@ -854,6 +889,8 @@ export class BasedonLatestWatchedCollectionJob {
       generatedTitles: uniqueStrings(recommendationTitles),
       resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
       missingTitles: uniqueStrings(missingTitles),
+      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListCount: excludedByRejectList.length,
       snapshot: {
         saved: snapshotSaved,
         active: snapshotActive,
@@ -1402,6 +1439,39 @@ export class BasedonLatestWatchedCollectionJob {
       sampleTvdb: suggestedForPoints.slice(0, 10).map((s) => s.tvdbId),
     });
 
+    // --- Reject-list filtering (global per-user blacklist) ---
+    const rejectIds = await this.prisma.rejectedSuggestion
+      .findMany({
+        where: {
+          userId: ctx.userId,
+          mediaType: 'tv',
+          externalSource: 'tvdb',
+        },
+        select: { externalId: true },
+        take: 50000,
+      })
+      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .catch(() => new Set<string>());
+
+    const excludedByRejectList: string[] = [];
+    const filteredSuggestedForPoints = suggestedForPoints.filter((s) => {
+      const key = String(s.tvdbId);
+      if (!rejectIds.has(key)) return true;
+      excludedByRejectList.push(s.title);
+      return false;
+    });
+    suggestedForPoints.length = 0;
+    suggestedForPoints.push(...filteredSuggestedForPoints);
+
+    for (const [k, v] of Array.from(missingTitleToIds.entries())) {
+      if (v?.tvdbId && rejectIds.has(String(v.tvdbId))) missingTitleToIds.delete(k);
+    }
+    for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
+      const t = missingTitles[i] ?? '';
+      const ids = missingTitleToIds.get(t.trim()) ?? null;
+      if (ids?.tvdbId && rejectIds.has(String(ids.tvdbId))) missingTitles.splice(i, 1);
+    }
+
     // Overwrite the per-library snapshot (active/pending) — no points/decay.
     const byTvdbId = new Map<
       number,
@@ -1561,6 +1631,8 @@ export class BasedonLatestWatchedCollectionJob {
       generatedTitles: uniqueStrings(recommendationTitles),
       resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
       missingTitles: uniqueStrings(missingTitles),
+      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListCount: excludedByRejectList.length,
       snapshot: {
         saved: snapshotSaved,
         active: snapshotActive,
@@ -1983,6 +2055,29 @@ function buildWatchedLatestCollectionReport(params: {
     title: 'Generate recommendations',
     status: 'success',
     facts: recFacts,
+  });
+
+  // 1.5) Excluded due to reject list (global blacklist)
+  const rejectFacts: Array<{ label: string; value: JsonValue }> = [];
+  let anyRejectExcluded = false;
+  for (const [idx, c] of collections.entries()) {
+    const name =
+      String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+      `Collection ${idx + 1}`;
+    const excludedTitles = uniqueStrings(asStringArray(c.excludedByRejectListTitles));
+    const excludedCount =
+      asNum(c.excludedByRejectListCount) ?? excludedTitles.length;
+    if (excludedCount) anyRejectExcluded = true;
+    rejectFacts.push({
+      label: `${name} — Excluded`,
+      value: { count: excludedCount, unit, items: excludedTitles },
+    });
+  }
+  tasks.push({
+    id: 'reject_list',
+    title: 'Excluded by reject list',
+    status: anyRejectExcluded ? 'success' : 'skipped',
+    facts: rejectFacts,
   });
 
   // 2) Resolve titles in Plex

@@ -19,6 +19,7 @@ import {
   APP_BG_IMAGE_URL,
   APP_CARD_ROW_CLASS,
 } from '@/lib/ui-classes';
+import { decodeHtmlEntities } from '@/lib/utils';
 
 function statusPill(status: string) {
   switch (status) {
@@ -64,7 +65,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function issueSummary(run: JobRun): string {
-  if (run.errorMessage) return run.errorMessage;
+  if (run.errorMessage) return decodeHtmlEntities(run.errorMessage);
   const s = run.summary;
   if (!s || typeof s !== 'object' || Array.isArray(s)) return '';
   const obj = s as Record<string, unknown>;
@@ -75,7 +76,7 @@ function issueSummary(run: JobRun): string {
     .filter(isPlainObject)
     .map((it) => (typeof it.message === 'string' ? it.message.trim() : ''))
     .filter(Boolean);
-  return msgs[0] ?? '';
+  return decodeHtmlEntities(msgs[0] ?? '');
 }
 
 export function RewindPage() {

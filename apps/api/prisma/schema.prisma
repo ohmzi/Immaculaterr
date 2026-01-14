@@ -22,9 +22,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions Session[]
-  settings UserSettings?
-  secrets  UserSecrets?
+  sessions            Session[]
+  settings            UserSettings?
+  secrets             UserSecrets?
+  rejectedSuggestions RejectedSuggestion[]
 }
 
 model Session {
@@ -142,12 +143,38 @@ enum DownloadApprovalStatus {
   rejected
 }
 
+enum RejectedSuggestionSource {
+  immaculate
+  watched
+}
+
+enum RejectedSuggestionExternalSource {
+  tmdb
+  tvdb
+}
+
+model RejectedSuggestion {
+  id             String                           @id @default(cuid())
+  userId         String
+  mediaType      String // 'movie' | 'tv' (kept simple for sqlite/prisma)
+  externalSource RejectedSuggestionExternalSource
+  externalId     String
+  source         RejectedSuggestionSource
+  reason         String? // 'reject' | 'remove' (optional)
+  createdAt      DateTime                         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, mediaType, externalSource, externalId])
+  @@index([userId, mediaType])
+}
+
 model ImmaculateTasteMovie {
-  tmdbId Int @id
+  tmdbId Int     @id
   title  String?
 
   status ImmaculateTasteStatus @default(pending)
-  points Int                  @default(0)
+  points Int                   @default(0)
 
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
@@ -167,8 +194,8 @@ enum WatchedRecommendationStatus {
 
 model WatchedMovieRecommendation {
   collectionName String
-  tmdbId          Int
-  title           String?
+  tmdbId         Int
+  title          String?
 
   status WatchedRecommendationStatus @default(pending)
   points Int                         @default(0)
@@ -193,7 +220,7 @@ model ImmaculateTasteMovieLibrary {
   title             String?
 
   status ImmaculateTasteStatus @default(pending)
-  points Int                  @default(0)
+  points Int                   @default(0)
 
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
@@ -218,10 +245,10 @@ model ImmaculateTasteMovieLibrary {
 
 // Library-specific points dataset for "Based on Latest Watched" collections (movies).
 model WatchedMovieRecommendationLibrary {
-  collectionName     String
-  librarySectionKey  String
-  tmdbId             Int
-  title              String?
+  collectionName    String
+  librarySectionKey String
+  tmdbId            Int
+  title             String?
 
   status WatchedRecommendationStatus @default(pending)
 
@@ -249,12 +276,12 @@ model WatchedMovieRecommendationLibrary {
 
 model ImmaculateTasteShow {
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
-  tvdbId Int @id
+  tvdbId Int     @id
   tmdbId Int?
   title  String?
 
   status ImmaculateTasteStatus @default(pending)
-  points Int                  @default(0)
+  points Int                   @default(0)
 
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
@@ -272,12 +299,12 @@ model ImmaculateTasteShow {
 model ImmaculateTasteShowLibrary {
   librarySectionKey String
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
-  tvdbId Int
-  tmdbId Int?
-  title  String?
+  tvdbId            Int
+  tmdbId            Int?
+  title             String?
 
   status ImmaculateTasteStatus @default(pending)
-  points Int                  @default(0)
+  points Int                   @default(0)
 
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
@@ -329,9 +356,9 @@ model WatchedShowRecommendationLibrary {
   collectionName    String
   librarySectionKey String
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
-  tvdbId Int
-  tmdbId Int?
-  title  String?
+  tvdbId            Int
+  tmdbId            Int?
+  title             String?
 
   status WatchedRecommendationStatus @default(pending)
 
@@ -361,7 +388,7 @@ model WatchedShowRecommendationLibrary {
 // We keep it in the database for debugging/back-compat reference, so Prisma
 // migrations must NOT attempt to drop it.
 model ImmaculateTasteMovieLegacy {
-  ratingKey String @id
+  ratingKey String   @id
   title     String?
   points    Int
   tmdbId    Int?
@@ -371,5 +398,3 @@ model ImmaculateTasteMovieLegacy {
   @@map("ImmaculateTasteMovieLegacy")
   @@ignore
 }
-
-

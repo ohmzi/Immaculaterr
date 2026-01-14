@@ -1,4 +1,5 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { buildTitleQueryVariants, normalizeTitleForMatching } from '../lib/title-normalize';
 
 type TmdbConfiguration = Record<string, unknown>;
 
@@ -471,19 +472,24 @@ export class TmdbService {
     seedTitle: string;
     seedYear?: number | null;
   }): Promise<Record<string, unknown>> {
-    const seedTitle = params.seedTitle.trim();
+    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
     const apiKey = params.apiKey.trim();
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) return { seed_title: '' };
 
     try {
-      const results = await this.searchMovie({
-        apiKey,
-        query: seedTitle,
-        year: params.seedYear ?? null,
-        includeAdult: false,
-      });
-      const best = bestSeedResult(seedTitle, results);
+      const variants = buildTitleQueryVariants(seedTitle);
+      let best: TmdbMovieSearchResult | null = null;
+      for (const q of variants.length ? variants : [seedTitle]) {
+        const results = await this.searchMovie({
+          apiKey,
+          query: q,
+          year: params.seedYear ?? null,
+          includeAdult: false,
+        });
+        best = bestSeedResult(q, results, params.seedYear ?? null);
+        if (best) break;
+      }
       if (!best) return { seed_title: seedTitle };
 
       const details = await this.getMovie({ apiKey, tmdbId: best.id }).catch(
@@ -517,19 +523,24 @@ export class TmdbService {
     seedTitle: string;
     seedYear?: number | null;
   }): Promise<Record<string, unknown>> {
-    const seedTitle = params.seedTitle.trim();
+    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
     const apiKey = params.apiKey.trim();
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) return { seed_title: '' };
 
     try {
-      const results = await this.searchTv({
-        apiKey,
-        query: seedTitle,
-        firstAirDateYear: params.seedYear ?? null,
-        includeAdult: false,
-      });
-      const best = bestSeedTvResult(seedTitle, results);
+      const variants = buildTitleQueryVariants(seedTitle);
+      let best: TmdbTvSearchResult | null = null;
+      for (const q of variants.length ? variants : [seedTitle]) {
+        const results = await this.searchTv({
+          apiKey,
+          query: q,
+          firstAirDateYear: params.seedYear ?? null,
+          includeAdult: false,
+        });
+        best = bestSeedTvResult(q, results, params.seedYear ?? null);
+        if (best) break;
+      }
       if (!best) return { seed_title: seedTitle };
 
       const details = await this.getTv({
@@ -560,6 +571,160 @@ export class TmdbService {
     }
   }
 
+  async discoverFallbackMovieCandidates(params: {
+    apiKey: string;
+    limit: number;
+    seedYear?: number | null;
+    genreIds?: number[] | null;
+    includeAdult?: boolean;
+    timezone?: string | null;
+  }): Promise<TmdbMovieCandidate[]> {
+    const apiKey = params.apiKey.trim();
+    const limit = Math.max(1, Math.min(500, Math.trunc(params.limit || 50)));
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+
+    const url = new URL('https://api.themoviedb.org/3/discover/movie');
+    const genreIds = Array.isArray(params.genreIds)
+      ? params.genreIds
+          .map((n) => (Number.isFinite(n) ? Math.trunc(n) : NaN))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+    if (genreIds.length) url.searchParams.set('with_genres', genreIds.slice(0, 4).join(','));
+    url.searchParams.set('primary_release_date.lte', today);
+
+    const y = Math.trunc(params.seedYear ?? NaN);
+    if (Number.isFinite(y) && y > 1800) {
+      const from = Math.max(1900, y - 20);
+      url.searchParams.set('primary_release_date.gte', `${from}-01-01`);
+    }
+
+    url.searchParams.set('vote_count.gte', '150');
+    url.searchParams.set('sort_by', 'vote_average.desc');
+
+    const results = await this.pagedResults({
+      apiKey,
+      url,
+      includeAdult: Boolean(params.includeAdult),
+      maxItems: Math.min(800, limit * 10),
+      maxPages: 10,
+    });
+
+    const out: TmdbMovieCandidate[] = [];
+    const seen = new Set<number>();
+    for (const r of results) {
+      if (!r || !Number.isFinite(r.id) || r.id <= 0) continue;
+      const tmdbId = Math.trunc(r.id);
+      if (seen.has(tmdbId)) continue;
+      const title = (r.title ?? '').trim();
+      if (!title) continue;
+      seen.add(tmdbId);
+      out.push({
+        tmdbId,
+        title,
+        releaseDate:
+          typeof r.release_date === 'string' && r.release_date.trim()
+            ? r.release_date.trim()
+            : null,
+        voteAverage:
+          typeof r.vote_average === 'number' && Number.isFinite(r.vote_average)
+            ? Number(r.vote_average)
+            : null,
+        voteCount:
+          typeof r.vote_count === 'number' && Number.isFinite(r.vote_count)
+            ? Math.max(0, Math.trunc(r.vote_count))
+            : null,
+        popularity:
+          typeof r.popularity === 'number' && Number.isFinite(r.popularity)
+            ? Number(r.popularity)
+            : null,
+        sources: ['discover_fallback'],
+      });
+      if (out.length >= limit) break;
+    }
+
+    return out;
+  }
+
+  async discoverFallbackTvCandidates(params: {
+    apiKey: string;
+    limit: number;
+    seedYear?: number | null;
+    genreIds?: number[] | null;
+    includeAdult?: boolean;
+    timezone?: string | null;
+  }): Promise<TmdbTvCandidate[]> {
+    const apiKey = params.apiKey.trim();
+    const limit = Math.max(1, Math.min(500, Math.trunc(params.limit || 50)));
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+
+    const url = new URL('https://api.themoviedb.org/3/discover/tv');
+    const genreIds = Array.isArray(params.genreIds)
+      ? params.genreIds
+          .map((n) => (Number.isFinite(n) ? Math.trunc(n) : NaN))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+    if (genreIds.length) url.searchParams.set('with_genres', genreIds.slice(0, 4).join(','));
+    url.searchParams.set('first_air_date.lte', today);
+
+    const y = Math.trunc(params.seedYear ?? NaN);
+    if (Number.isFinite(y) && y > 1800) {
+      const from = Math.max(1900, y - 20);
+      url.searchParams.set('first_air_date.gte', `${from}-01-01`);
+    }
+
+    url.searchParams.set('vote_count.gte', '150');
+    url.searchParams.set('sort_by', 'vote_average.desc');
+
+    const results = await this.pagedTvResults({
+      apiKey,
+      url,
+      includeAdult: Boolean(params.includeAdult),
+      maxItems: Math.min(800, limit * 10),
+      maxPages: 10,
+    });
+
+    const out: TmdbTvCandidate[] = [];
+    const seen = new Set<number>();
+    for (const r of results) {
+      if (!r || !Number.isFinite(r.id) || r.id <= 0) continue;
+      const tmdbId = Math.trunc(r.id);
+      if (seen.has(tmdbId)) continue;
+      const title = (r.name ?? '').trim();
+      if (!title) continue;
+      seen.add(tmdbId);
+      out.push({
+        tmdbId,
+        title,
+        releaseDate:
+          typeof r.first_air_date === 'string' && r.first_air_date.trim()
+            ? r.first_air_date.trim()
+            : null,
+        voteAverage:
+          typeof r.vote_average === 'number' && Number.isFinite(r.vote_average)
+            ? Number(r.vote_average)
+            : null,
+        voteCount:
+          typeof r.vote_count === 'number' && Number.isFinite(r.vote_count)
+            ? Math.max(0, Math.trunc(r.vote_count))
+            : null,
+        popularity:
+          typeof r.popularity === 'number' && Number.isFinite(r.popularity)
+            ? Number(r.popularity)
+            : null,
+        sources: ['discover_fallback'],
+      });
+      if (out.length >= limit) break;
+    }
+
+    return out;
+  }
+
   async getAdvancedMovieRecommendations(params: {
     apiKey: string;
     seedTitle: string;
@@ -568,7 +733,7 @@ export class TmdbService {
     includeAdult?: boolean;
   }): Promise<string[]> {
     const apiKey = params.apiKey.trim();
-    const seedTitle = params.seedTitle.trim();
+    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
     const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 25)));
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) return [];
@@ -579,7 +744,7 @@ export class TmdbService {
       year: params.seedYear ?? null,
       includeAdult: Boolean(params.includeAdult),
     });
-    const seedBest = bestSeedResult(seedTitle, seedResults);
+    const seedBest = bestSeedResult(seedTitle, seedResults, params.seedYear ?? null);
     if (!seedBest) return [];
 
     const seedDetails = await this.getMovie({
@@ -684,7 +849,7 @@ export class TmdbService {
     limit: number;
   }): Promise<string[]> {
     const apiKey = params.apiKey.trim();
-    const seedTitle = params.seedTitle.trim();
+    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
     const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 15)));
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) return [];
@@ -695,7 +860,7 @@ export class TmdbService {
       year: params.seedYear ?? null,
       includeAdult: false,
     });
-    const seedBest = bestSeedResult(seedTitle, seedResults);
+    const seedBest = bestSeedResult(seedTitle, seedResults, params.seedYear ?? null);
     if (!seedBest) return [];
 
     const seedDetails = await this.getMovie({
@@ -749,7 +914,7 @@ export class TmdbService {
     limit: number;
   }): Promise<string[]> {
     const apiKey = params.apiKey.trim();
-    const seedTitle = params.seedTitle.trim();
+    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
     const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 15)));
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) return [];
@@ -760,7 +925,7 @@ export class TmdbService {
       firstAirDateYear: params.seedYear ?? null,
       includeAdult: false,
     });
-    const seedBest = bestSeedTvResult(seedTitle, seedResults);
+    const seedBest = bestSeedTvResult(seedTitle, seedResults, params.seedYear ?? null);
     if (!seedBest) return [];
 
     const seedDetails = await this.getTv({
@@ -826,7 +991,7 @@ export class TmdbService {
     unknown: TmdbMovieCandidate[];
   }> {
     const apiKey = params.apiKey.trim();
-    const seedTitle = params.seedTitle.trim();
+    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) {
       return {
@@ -857,13 +1022,18 @@ export class TmdbService {
     );
     const tomorrow = this.formatDateInTimezone(addDays(new Date(), 1), tz);
 
-    const seedResults = await this.searchMovie({
-      apiKey,
-      query: seedTitle,
-      year: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
-    const seedBest = bestSeedResult(seedTitle, seedResults);
+    const variants = buildTitleQueryVariants(seedTitle);
+    let seedBest: TmdbMovieSearchResult | null = null;
+    for (const q of variants.length ? variants : [seedTitle]) {
+      const seedResults = await this.searchMovie({
+        apiKey,
+        query: q,
+        year: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
+      seedBest = bestSeedResult(q, seedResults, params.seedYear ?? null);
+      if (seedBest) break;
+    }
     if (!seedBest) {
       return {
         seed: { tmdbId: 0, title: seedTitle, genreIds: [], releaseDate: null },
@@ -1135,13 +1305,18 @@ export class TmdbService {
     );
     const tomorrow = this.formatDateInTimezone(addDays(new Date(), 1), tz);
 
-    const seedResults = await this.searchMovie({
-      apiKey,
-      query: seedTitle,
-      year: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
-    const seedBest = bestSeedResult(seedTitle, seedResults);
+    const variants = buildTitleQueryVariants(seedTitle);
+    let seedBest: TmdbMovieSearchResult | null = null;
+    for (const q of variants.length ? variants : [seedTitle]) {
+      const seedResults = await this.searchMovie({
+        apiKey,
+        query: q,
+        year: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
+      seedBest = bestSeedResult(q, seedResults, params.seedYear ?? null);
+      if (seedBest) break;
+    }
     if (!seedBest) {
       return {
         seed: { tmdbId: 0, title: seedTitle, genreIds: [], releaseDate: null },
@@ -1394,13 +1569,18 @@ export class TmdbService {
     );
     const tomorrow = this.formatDateInTimezone(addDays(new Date(), 1), tz);
 
-    const seedResults = await this.searchTv({
-      apiKey,
-      query: seedTitle,
-      firstAirDateYear: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
-    const seedBest = bestSeedTvResult(seedTitle, seedResults);
+    const variants = buildTitleQueryVariants(seedTitle);
+    let seedBest: TmdbTvSearchResult | null = null;
+    for (const q of variants.length ? variants : [seedTitle]) {
+      const seedResults = await this.searchTv({
+        apiKey,
+        query: q,
+        firstAirDateYear: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
+      seedBest = bestSeedTvResult(q, seedResults, params.seedYear ?? null);
+      if (seedBest) break;
+    }
     if (!seedBest) {
       return {
         seed: { tmdbId: 0, title: seedTitle, genreIds: [], releaseDate: null },
@@ -1666,13 +1846,18 @@ export class TmdbService {
     );
     const tomorrow = this.formatDateInTimezone(addDays(new Date(), 1), tz);
 
-    const seedResults = await this.searchTv({
-      apiKey,
-      query: seedTitle,
-      firstAirDateYear: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
-    const seedBest = bestSeedTvResult(seedTitle, seedResults);
+    const variants = buildTitleQueryVariants(seedTitle);
+    let seedBest: TmdbTvSearchResult | null = null;
+    for (const q of variants.length ? variants : [seedTitle]) {
+      const seedResults = await this.searchTv({
+        apiKey,
+        query: q,
+        firstAirDateYear: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
+      seedBest = bestSeedTvResult(q, seedResults, params.seedYear ?? null);
+      if (seedBest) break;
+    }
     if (!seedBest) {
       return {
         seed: { tmdbId: 0, title: seedTitle, genreIds: [], releaseDate: null },
@@ -2085,6 +2270,7 @@ export class TmdbService {
 function bestSeedResult(
   query: string,
   results: TmdbMovieSearchResult[],
+  seedYear?: number | null,
 ): TmdbMovieSearchResult | null {
   const q = query.trim().toLowerCase();
   if (!results.length) return null;
@@ -2107,8 +2293,20 @@ function bestSeedResult(
     const franchiseBoost =
       q === 'harry potter' && title.startsWith('harry potter and the') ? 60 : 0;
 
+    const yearBoost = (() => {
+      const y = Math.trunc(seedYear ?? NaN);
+      if (!Number.isFinite(y) || y <= 1800) return 0;
+      const ry = typeof r.release_date === 'string' ? Number(r.release_date.slice(0, 4)) : NaN;
+      if (!Number.isFinite(ry)) return 0;
+      const d = Math.abs(ry - y);
+      if (d === 0) return 200;
+      if (d === 1) return 50;
+      if (d === 2) return 10;
+      return 0;
+    })();
+
     const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
-    return docPenalty + starts + contains + franchiseBoost + engagement;
+    return docPenalty + starts + contains + franchiseBoost + yearBoost + engagement;
   };
 
   return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
@@ -2117,6 +2315,7 @@ function bestSeedResult(
 function bestSeedTvResult(
   query: string,
   results: TmdbTvSearchResult[],
+  seedYear?: number | null,
 ): TmdbTvSearchResult | null {
   const q = query.trim().toLowerCase();
   if (!results.length) return null;
@@ -2135,8 +2334,21 @@ function bestSeedTvResult(
     const starts = q && title.startsWith(q) ? 80 : 0;
     const contains = q && title.includes(q) ? 30 : 0;
 
+    const yearBoost = (() => {
+      const y = Math.trunc(seedYear ?? NaN);
+      if (!Number.isFinite(y) || y <= 1800) return 0;
+      const ry =
+        typeof r.first_air_date === 'string' ? Number(r.first_air_date.slice(0, 4)) : NaN;
+      if (!Number.isFinite(ry)) return 0;
+      const d = Math.abs(ry - y);
+      if (d === 0) return 200;
+      if (d === 1) return 50;
+      if (d === 2) return 10;
+      return 0;
+    })();
+
     const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
-    return docPenalty + starts + contains + engagement;
+    return docPenalty + starts + contains + yearBoost + engagement;
   };
 
   return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));

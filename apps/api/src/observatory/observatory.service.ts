@@ -584,7 +584,7 @@ export class ObservatoryService {
                     tmdbId: a.id,
                   },
                 },
-                select: { status: true },
+                select: { status: true, downloadApproval: true },
               })
               .catch(() => null);
             if (!row) {
@@ -602,6 +602,20 @@ export class ObservatoryService {
               },
               data: { downloadApproval: restored },
             });
+            if (row.downloadApproval === 'rejected') {
+              await this.prisma.rejectedSuggestion
+                .delete({
+                  where: {
+                    userId_mediaType_externalSource_externalId: {
+                      userId: params.userId,
+                      mediaType: 'movie',
+                      externalSource: 'tmdb',
+                      externalId: String(a.id),
+                    },
+                  },
+                })
+                .catch(() => undefined);
+            }
             applied += 1;
             continue;
           }
@@ -610,7 +624,7 @@ export class ObservatoryService {
             applied += 1;
             continue;
           }
-          await this.prisma.immaculateTasteMovieLibrary.update({
+          const updated = await this.prisma.immaculateTasteMovieLibrary.update({
             where: {
               librarySectionKey_tmdbId: {
                 librarySectionKey: params.librarySectionKey,
@@ -618,7 +632,48 @@ export class ObservatoryService {
               },
             },
             data: { downloadApproval: nextApproval },
+            select: { title: true },
           });
+          if (isReject) {
+            await this.prisma.rejectedSuggestion
+              .upsert({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'movie',
+                    externalSource: 'tmdb',
+                    externalId: String(a.id),
+                  },
+                },
+                create: {
+                  userId: params.userId,
+                  mediaType: 'movie',
+                  externalSource: 'tmdb',
+                  externalId: String(a.id),
+                  source: 'immaculate',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+                update: {
+                  source: 'immaculate',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+              })
+              .catch(() => undefined);
+          } else if (nextApproval === 'approved') {
+            // If a title is later approved, it should be allowed to show up again.
+            await this.prisma.rejectedSuggestion
+              .delete({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'movie',
+                    externalSource: 'tmdb',
+                    externalId: String(a.id),
+                  },
+                },
+              })
+              .catch(() => undefined);
+          }
           applied += 1;
         } else {
           if (isUndo) {
@@ -630,7 +685,7 @@ export class ObservatoryService {
                     tvdbId: a.id,
                   },
                 },
-                select: { status: true },
+                select: { status: true, downloadApproval: true },
               })
               .catch(() => null);
             if (!row) {
@@ -648,6 +703,20 @@ export class ObservatoryService {
               },
               data: { downloadApproval: restored },
             });
+            if (row.downloadApproval === 'rejected') {
+              await this.prisma.rejectedSuggestion
+                .delete({
+                  where: {
+                    userId_mediaType_externalSource_externalId: {
+                      userId: params.userId,
+                      mediaType: 'tv',
+                      externalSource: 'tvdb',
+                      externalId: String(a.id),
+                    },
+                  },
+                })
+                .catch(() => undefined);
+            }
             applied += 1;
             continue;
           }
@@ -665,6 +734,45 @@ export class ObservatoryService {
             },
             data: { downloadApproval: nextApproval },
           });
+          if (isReject) {
+            await this.prisma.rejectedSuggestion
+              .upsert({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'tv',
+                    externalSource: 'tvdb',
+                    externalId: String(a.id),
+                  },
+                },
+                create: {
+                  userId: params.userId,
+                  mediaType: 'tv',
+                  externalSource: 'tvdb',
+                  externalId: String(a.id),
+                  source: 'immaculate',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+                update: {
+                  source: 'immaculate',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+              })
+              .catch(() => undefined);
+          } else if (nextApproval === 'approved') {
+            await this.prisma.rejectedSuggestion
+              .delete({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'tv',
+                    externalSource: 'tvdb',
+                    externalId: String(a.id),
+                  },
+                },
+              })
+              .catch(() => undefined);
+          }
           applied += 1;
         }
       } catch {
@@ -728,7 +836,7 @@ export class ObservatoryService {
                     tmdbId: id,
                   },
                 },
-                select: { status: true },
+                select: { status: true, downloadApproval: true },
               })
               .catch(() => null);
             if (!row) {
@@ -747,6 +855,20 @@ export class ObservatoryService {
               },
               data: { downloadApproval: restored },
             });
+            if (row.downloadApproval === 'rejected') {
+              await this.prisma.rejectedSuggestion
+                .delete({
+                  where: {
+                    userId_mediaType_externalSource_externalId: {
+                      userId: params.userId,
+                      mediaType: 'movie',
+                      externalSource: 'tmdb',
+                      externalId: String(id),
+                    },
+                  },
+                })
+                .catch(() => undefined);
+            }
             applied += 1;
             continue;
           }
@@ -766,6 +888,45 @@ export class ObservatoryService {
             },
             data: { downloadApproval: nextApproval },
           });
+          if (nextApproval === 'rejected') {
+            await this.prisma.rejectedSuggestion
+              .upsert({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'movie',
+                    externalSource: 'tmdb',
+                    externalId: String(id),
+                  },
+                },
+                create: {
+                  userId: params.userId,
+                  mediaType: 'movie',
+                  externalSource: 'tmdb',
+                  externalId: String(id),
+                  source: 'watched',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+                update: {
+                  source: 'watched',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+              })
+              .catch(() => undefined);
+          } else if (nextApproval === 'approved') {
+            await this.prisma.rejectedSuggestion
+              .delete({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'movie',
+                    externalSource: 'tmdb',
+                    externalId: String(id),
+                  },
+                },
+              })
+              .catch(() => undefined);
+          }
           applied += 1;
         } else {
           if (isUndo) {
@@ -778,7 +939,7 @@ export class ObservatoryService {
                     tvdbId: id,
                   },
                 },
-                select: { status: true },
+                select: { status: true, downloadApproval: true },
               })
               .catch(() => null);
             if (!row) {
@@ -797,6 +958,20 @@ export class ObservatoryService {
               },
               data: { downloadApproval: restored },
             });
+            if (row.downloadApproval === 'rejected') {
+              await this.prisma.rejectedSuggestion
+                .delete({
+                  where: {
+                    userId_mediaType_externalSource_externalId: {
+                      userId: params.userId,
+                      mediaType: 'tv',
+                      externalSource: 'tvdb',
+                      externalId: String(id),
+                    },
+                  },
+                })
+                .catch(() => undefined);
+            }
             applied += 1;
             continue;
           }
@@ -816,6 +991,45 @@ export class ObservatoryService {
             },
             data: { downloadApproval: nextApproval },
           });
+          if (nextApproval === 'rejected') {
+            await this.prisma.rejectedSuggestion
+              .upsert({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'tv',
+                    externalSource: 'tvdb',
+                    externalId: String(id),
+                  },
+                },
+                create: {
+                  userId: params.userId,
+                  mediaType: 'tv',
+                  externalSource: 'tvdb',
+                  externalId: String(id),
+                  source: 'watched',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+                update: {
+                  source: 'watched',
+                  reason: action === 'remove' ? 'remove' : 'reject',
+                },
+              })
+              .catch(() => undefined);
+          } else if (nextApproval === 'approved') {
+            await this.prisma.rejectedSuggestion
+              .delete({
+                where: {
+                  userId_mediaType_externalSource_externalId: {
+                    userId: params.userId,
+                    mediaType: 'tv',
+                    externalSource: 'tvdb',
+                    externalId: String(id),
+                  },
+                },
+              })
+              .catch(() => undefined);
+          }
           applied += 1;
         }
       } catch {

@@ -231,6 +231,51 @@ export class OpenAiService {
     return parseNewlineRecommendations(text, limit);
   }
 
+  async getRelatedTvTitles(params: {
+    apiKey: string;
+    model?: string | null;
+    seedTitle: string;
+    limit: number;
+    tmdbSeedMetadata?: Record<string, unknown> | null;
+    googleSearchContext?: string | null;
+  }): Promise<string[]> {
+    const seedTitle = params.seedTitle.trim();
+    const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 25)));
+    const model = (params.model ?? '').trim() || 'gpt-5.2-chat-latest';
+
+    const seedBlock = safeJsonString(params.tmdbSeedMetadata ?? {});
+    const webBlock = (params.googleSearchContext ?? '').trim();
+
+    const prompt = [
+      `You are a TV show recommendation engine.`,
+      ``,
+      `Seed title: ${seedTitle}`,
+      `Desired count: ${limit}`,
+      ``,
+      `TMDb seed metadata (JSON):`,
+      seedBlock || '{}',
+      ``,
+      `Web search snippets:`,
+      webBlock || '(none)',
+      ``,
+      `Return ONLY a plain newline-separated list of TV show titles.`,
+      `No extra text, no numbering, no markdown.`,
+      `Do not include years unless necessary to disambiguate titles.`,
+    ].join('\n');
+
+    const text = await this.chatCompletions({
+      apiKey: params.apiKey,
+      model,
+      messages: [
+        { role: 'system', content: 'You are a TV show recommendation engine.' },
+        { role: 'user', content: prompt },
+      ],
+      timeoutMs: 45000,
+    });
+
+    return parseNewlineRecommendations(text, limit);
+  }
+
   async getContrastMovieTitles(params: {
     apiKey: string;
     model?: string | null;
@@ -416,6 +461,87 @@ export class OpenAiService {
 
     return { released: cleanReleased, upcoming: cleanUpcoming };
   }
+
+  async selectFromCandidatesNoSplit(params: {
+    apiKey: string;
+    model?: string | null;
+    seedTitle: string;
+    mediaType?: 'movie' | 'tv';
+    tmdbSeedMetadata?: Record<string, unknown> | null;
+    count: number;
+    candidates: MovieCandidateForSelection[];
+  }): Promise<number[]> {
+    const seedTitle = params.seedTitle.trim();
+    const model = (params.model ?? '').trim() || 'gpt-5.2-chat-latest';
+    const mediaType = params.mediaType === 'tv' ? 'tv' : 'movie';
+    const mediaLabel = mediaType === 'tv' ? 'TV show' : 'movie';
+    const count = Math.max(0, Math.min(100, Math.trunc(params.count ?? 0)));
+
+    const slim = (params.candidates ?? []).map((c) => ({
+      tmdbId: c.tmdbId,
+      title: c.title,
+      releaseDate: c.releaseDate,
+      voteAverage: c.voteAverage ?? null,
+      voteCount: c.voteCount ?? null,
+      popularity: c.popularity ?? null,
+      sources: c.sources ?? null,
+    }));
+
+    const prompt = [
+      `You are a ${mediaLabel} recommendation selector.`,
+      ``,
+      `Seed title: ${seedTitle}`,
+      `TMDb seed metadata (JSON): ${safeJsonString(params.tmdbSeedMetadata ?? {})}`,
+      ``,
+      `You MUST select exactly: ${count}`,
+      ``,
+      `You may ONLY select from the candidates provided below.`,
+      `Return STRICT JSON only with this schema:`,
+      `{ "selected": [123, 456, 789] }`,
+      ``,
+      `Candidates (JSON array):`,
+      safeJsonString(slim),
+      ``,
+      `Rules:`,
+      `- Output MUST contain only tmdbId numbers from the candidates list.`,
+      `- Output MUST contain no duplicates.`,
+      `- If you cannot satisfy the exact count, output { "selected": [] }.`,
+    ].join('\n');
+
+    const text = await this.chatCompletions({
+      apiKey: params.apiKey,
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            mediaType === 'tv'
+              ? 'You select TV shows from provided candidates.'
+              : 'You select movies from provided candidates.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      timeoutMs: 45000,
+    });
+
+    const parsed = tryParseNoSplitSelectionJson(text);
+    if (!parsed) return [];
+    const ids = parsed.selected.slice(0, count);
+
+    const allow = new Set((params.candidates ?? []).map((c) => c.tmdbId));
+    const out: number[] = [];
+    const seen = new Set<number>();
+    for (const id of ids) {
+      const n = Number.isFinite(id) ? Math.trunc(id) : NaN;
+      if (!Number.isFinite(n) || n <= 0) continue;
+      if (seen.has(n)) continue;
+      if (!allow.has(n)) continue;
+      seen.add(n);
+      out.push(n);
+    }
+    if (out.length !== count) return [];
+    return out;
+  }
 }
 
 function safeJsonString(value: unknown): string {
@@ -575,6 +701,21 @@ function tryParseSelectionJson(
     released: coerceNumberList(rec['released']),
     upcoming: coerceNumberList(rec['upcoming']),
   };
+}
+
+function tryParseNoSplitSelectionJson(
+  text: string,
+): { selected: number[] } | null {
+  const t = stripMarkdownFences(text || '');
+  let obj: unknown;
+  try {
+    obj = JSON.parse(t);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const rec = obj as Record<string, unknown>;
+  return { selected: coerceNumberList(rec['selected']) };
 }
 
 function coerceNumberList(value: unknown): number[] {

@@ -25,7 +25,7 @@ RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
 
-# Source of truth for the app's version is `apps/api/src/app.meta.ts`.
+# Source of truth for the app's version is `apps/api/src/version.ts`.
 # (We do not inject APP_VERSION into the runtime container env; allowing APP_VERSION
 # overrides causes confusing "stuck on old version" situations in Portainer when
 # env vars are preserved across recreates.)

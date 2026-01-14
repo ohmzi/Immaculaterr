@@ -15,6 +15,7 @@ import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
 import { SettingsService } from '../settings/settings.service';
+import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { WebhooksService } from './webhooks.service';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -87,6 +88,28 @@ export class WebhooksController {
       throw new BadRequestException('Invalid JSON in "payload" field');
     }
 
+    // Normalize Plex titles early (persist + downstream jobs).
+    const payloadObj = isPlainObject(payload) ? payload : null;
+    if (payloadObj) {
+      const metaRaw = pick(payloadObj, 'Metadata');
+      const meta = isPlainObject(metaRaw) ? metaRaw : null;
+      if (meta) {
+        const fields = [
+          'title',
+          'grandparentTitle',
+          'parentTitle',
+          'originalTitle',
+          'librarySectionTitle',
+        ] as const;
+        for (const k of fields) {
+          const v = meta[k];
+          if (typeof v === 'string' && v.trim()) {
+            meta[k] = normalizeTitleForMatching(v);
+          }
+        }
+      }
+    }
+
     const event = {
       receivedAt: new Date().toISOString(),
       payload,
@@ -115,7 +138,6 @@ export class WebhooksController {
 
     // Trigger watched automation on scrobble(movie|episode).
     // NOTE: Plex webhooks can be noisy; we keep the conditions strict.
-    const payloadObj = isPlainObject(payload) ? payload : null;
     const plexEvent = payloadObj ? pickString(payloadObj, 'event') : '';
     const mediaType = payloadObj ? pickString(payloadObj, 'Metadata.type') : '';
 

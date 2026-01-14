@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { APP_VERSION } from './version';
 
 export class HealthResponseDto {
   @ApiProperty({ example: 'ok' })
@@ -12,7 +13,7 @@ export class AppMetaResponseDto {
   @ApiProperty({ example: 'immaculaterr' })
   name!: string;
 
-  @ApiProperty({ example: '1.0.0.504' })
+  @ApiProperty({ example: APP_VERSION })
   version!: string;
 
   @ApiProperty({ example: '41fb2cb', nullable: true })

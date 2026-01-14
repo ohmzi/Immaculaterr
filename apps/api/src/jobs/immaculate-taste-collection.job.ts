@@ -8,6 +8,7 @@ import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
+import { normalizeTitleForMatching } from '../lib/title-normalize';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import type { JobReportV1 } from './job-report-v1';
@@ -48,6 +49,26 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   return null;
 }
 
+function normalizeAndCapTitles(rawTitles: string[], max: number): string[] {
+  const limit = Math.max(0, Math.min(100, Math.trunc(max ?? 0)));
+  if (limit <= 0) return [];
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of rawTitles ?? []) {
+    const t = normalizeTitleForMatching(String(raw ?? '').trim());
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= limit) break;
+  }
+
+  return out;
+}
+
 function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
@@ -81,8 +102,9 @@ export class ImmaculateTasteCollectionJob {
     const isTv =
       mediaType === 'episode' || mediaType === 'show' || mediaType === 'tv';
 
-    const seedTitle =
+    const seedTitleRaw =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
+    const seedTitle = normalizeTitleForMatching(seedTitleRaw);
     const seedRatingKey =
       typeof input['seedRatingKey'] === 'string'
         ? input['seedRatingKey'].trim()
@@ -284,6 +306,11 @@ export class ImmaculateTasteCollectionJob {
       maxPoints,
     });
 
+    const requestedCount = Math.min(
+      100,
+      Math.max(suggestionsPerRun, Math.max(1, suggestionsPerRun * 2)),
+    );
+
     // --- Recommend (tiered pipeline: Google -> OpenAI -> TMDb) ---
     const recs = await withJobRetry(
       () =>
@@ -292,7 +319,7 @@ export class ImmaculateTasteCollectionJob {
           seedTitle,
           seedYear,
           tmdbApiKey,
-          count: suggestionsPerRun,
+          count: requestedCount,
           webContextFraction,
           upcomingPercent,
           openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
@@ -303,14 +330,17 @@ export class ImmaculateTasteCollectionJob {
       { ctx, label: 'recommendations: build similar movie titles' },
     );
 
+    const normalizedTitles = normalizeAndCapTitles(recs.titles, suggestionsPerRun);
+
     await ctx.info('immaculateTastePoints: recommendations ready', {
       strategy: recs.strategy,
       returned: recs.titles.length,
       sample: recs.titles.slice(0, 12),
+      requestedCount,
+      suggestionsPerRun,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
-    const generatedTitles = recs.titles
-      .map((t) => String(t ?? '').trim())
-      .filter(Boolean);
+    const generatedTitles = normalizedTitles.slice();
 
     // --- Resolve in Plex ---
     void ctx
@@ -325,11 +355,12 @@ export class ImmaculateTasteCollectionJob {
 
     await ctx.info('immaculateTastePoints: resolving titles in Plex', {
       requested: recs.titles.length,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
 
     const resolved: Array<{ ratingKey: string; title: string }> = [];
     const missingTitles: string[] = [];
-    for (const title of recs.titles) {
+    for (const title of normalizedTitles) {
       const t = title.trim();
       if (!t) continue;
       const found = await withJobRetryOrNull(
@@ -480,6 +511,40 @@ export class ImmaculateTasteCollectionJob {
       pending: suggestedForPoints.filter((s) => !s.inPlex).length,
       sampleTmdb: suggestedForPoints.slice(0, 10).map((s) => s.tmdbId),
     });
+
+    // --- Reject-list filtering (global per-user blacklist) ---
+    const rejectIds = await this.prisma.rejectedSuggestion
+      .findMany({
+        where: {
+          userId: ctx.userId,
+          mediaType: 'movie',
+          externalSource: 'tmdb',
+        },
+        select: { externalId: true },
+        take: 50000,
+      })
+      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .catch(() => new Set<string>());
+
+    const excludedByRejectList: string[] = [];
+    const filteredSuggestedForPoints = suggestedForPoints.filter((s) => {
+      const key = String(s.tmdbId);
+      if (!rejectIds.has(key)) return true;
+      excludedByRejectList.push(s.title);
+      return false;
+    });
+    suggestedForPoints.length = 0;
+    suggestedForPoints.push(...filteredSuggestedForPoints);
+
+    // Keep missing maps aligned for downstream Radarr + approvals.
+    for (const [k, v] of Array.from(missingTitleToTmdb.entries())) {
+      if (rejectIds.has(String(v.tmdbId))) missingTitleToTmdb.delete(k);
+    }
+    for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
+      const t = missingTitles[i] ?? '';
+      const match = missingTitleToTmdb.get(t.trim()) ?? null;
+      if (match && rejectIds.has(String(match.tmdbId))) missingTitles.splice(i, 1);
+    }
 
     // --- Optional Radarr: add missing titles (best-effort) ---
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
@@ -781,12 +846,14 @@ export class ImmaculateTasteCollectionJob {
       seedYear,
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
-      generated: recs.titles.length,
+      generated: generatedTitles.length,
       generatedTitles,
       resolvedInPlex: suggestedItems.length,
       resolvedTitles,
       missingInPlex: missingTitles.length,
       missingTitles,
+      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListCount: excludedByRejectList.length,
       radarr: radarrStats,
       radarrLists,
       startSearchImmediately,
@@ -973,6 +1040,11 @@ export class ImmaculateTasteCollectionJob {
 
     await this.immaculateTasteTv.ensureLegacyImported({ ctx, maxPoints });
 
+    const requestedCount = Math.min(
+      100,
+      Math.max(suggestionsPerRun, Math.max(1, suggestionsPerRun * 2)),
+    );
+
     const recs = await withJobRetry(
       () =>
         this.recommendations.buildSimilarTvTitles({
@@ -980,7 +1052,7 @@ export class ImmaculateTasteCollectionJob {
           seedTitle,
           seedYear,
           tmdbApiKey,
-          count: suggestionsPerRun,
+          count: requestedCount,
           webContextFraction,
           upcomingPercent,
           openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
@@ -991,14 +1063,17 @@ export class ImmaculateTasteCollectionJob {
       { ctx, label: 'recommendations: build similar tv titles' },
     );
 
+    const normalizedTitles = normalizeAndCapTitles(recs.titles, suggestionsPerRun);
+
     await ctx.info('immaculateTastePoints(tv): recommendations ready', {
       strategy: recs.strategy,
       returned: recs.titles.length,
       sample: recs.titles.slice(0, 12),
+      requestedCount,
+      suggestionsPerRun,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
-    const generatedTitles = recs.titles
-      .map((t) => String(t ?? '').trim())
-      .filter(Boolean);
+    const generatedTitles = normalizedTitles.slice();
 
     // --- Resolve in Plex ---
     void ctx
@@ -1013,11 +1088,12 @@ export class ImmaculateTasteCollectionJob {
 
     await ctx.info('immaculateTastePoints(tv): resolving titles in Plex', {
       requested: recs.titles.length,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
 
     const resolved: Array<{ ratingKey: string; title: string }> = [];
     const missingTitles: string[] = [];
-    for (const title of recs.titles) {
+    for (const title of normalizedTitles) {
       const t = title.trim();
       if (!t) continue;
       const found = await withJobRetryOrNull(
@@ -1124,6 +1200,39 @@ export class ImmaculateTasteCollectionJob {
         tvdbId: match.tvdbId,
         title: match.title,
       });
+    }
+
+    // --- Reject-list filtering (global per-user blacklist) ---
+    const rejectIds = await this.prisma.rejectedSuggestion
+      .findMany({
+        where: {
+          userId: ctx.userId,
+          mediaType: 'tv',
+          externalSource: 'tvdb',
+        },
+        select: { externalId: true },
+        take: 50000,
+      })
+      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .catch(() => new Set<string>());
+
+    const excludedByRejectList: string[] = [];
+    const filteredSuggestedForPoints = suggestedForPoints.filter((s) => {
+      const key = String(s.tvdbId);
+      if (!rejectIds.has(key)) return true;
+      excludedByRejectList.push(s.title);
+      return false;
+    });
+    suggestedForPoints.length = 0;
+    suggestedForPoints.push(...filteredSuggestedForPoints);
+
+    for (const [k, v] of Array.from(missingTitleToIds.entries())) {
+      if (v?.tvdbId && rejectIds.has(String(v.tvdbId))) missingTitleToIds.delete(k);
+    }
+    for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
+      const t = missingTitles[i] ?? '';
+      const ids = missingTitleToIds.get(t.trim()) ?? null;
+      if (ids?.tvdbId && rejectIds.has(String(ids.tvdbId))) missingTitles.splice(i, 1);
     }
 
     // --- Sonarr add missing series (best-effort)
@@ -1415,12 +1524,14 @@ export class ImmaculateTasteCollectionJob {
       seedYear,
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
-      generated: recs.titles.length,
+      generated: generatedTitles.length,
       generatedTitles,
       resolvedInPlex: suggestedItems.length,
       resolvedTitles,
       missingInPlex: missingTitles.length,
       missingTitles,
+      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListCount: excludedByRejectList.length,
       sonarr: sonarrStats,
       sonarrLists,
       startSearchImmediately,
@@ -1754,6 +1865,11 @@ function buildImmaculateTastePointsReport(params: {
   const generatedTitles = uniqueStrings(asStringArray(raw.generatedTitles));
   const resolvedTitles = uniqueStrings(asStringArray(raw.resolvedTitles));
   const missingTitles = uniqueStrings(asStringArray(raw.missingTitles));
+  const excludedByRejectListTitles = uniqueStrings(
+    asStringArray(raw.excludedByRejectListTitles),
+  );
+  const excludedByRejectListCount =
+    asNum(raw.excludedByRejectListCount) ?? excludedByRejectListTitles.length;
   const seedTitle = String(raw.seedTitle ?? '').trim();
 
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
@@ -1905,6 +2021,21 @@ function buildImmaculateTastePointsReport(params: {
         title: 'Generate recommendations',
         status: 'success',
         facts: recommendationFacts,
+      },
+      {
+        id: 'reject_list',
+        title: 'Excluded by reject list',
+        status: excludedByRejectListCount ? 'success' : 'skipped',
+        facts: [
+          {
+            label: 'Excluded',
+            value: {
+              count: excludedByRejectListCount,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: excludedByRejectListTitles,
+            },
+          },
+        ],
       },
       {
         id: 'plex_resolve',
