@@ -32,6 +32,22 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Observatory: make the deck feel "locked-in" when fully in view (mobile only). */
+@media (max-width: 640px) {
+  html.observatory-snap,
+  body.observatory-snap {
+    /* Gentle snapping: doesn't fight scroll, but settles on the deck. */
+    scroll-snap-type: y mandatory;
+    scroll-padding-top: 96px;
+    overscroll-behavior-y: contain;
+  }
+
+  .observatory-snap-target {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+}
+
 /* Prevent zoom on input focus while maintaining accessibility */
 input, select, textarea {
   font-size: 16px !important;

@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Query,
   Req,
 } from '@nestjs/common';
@@ -102,6 +103,11 @@ export class ObservatoryController {
       librarySectionKey,
       mediaType,
     });
+  }
+
+  @Delete('rejected/reset')
+  async resetRejected(@Req() req: AuthenticatedRequest) {
+    return await this.observatory.resetRejectedSuggestions({ userId: req.user.id });
   }
 }
 

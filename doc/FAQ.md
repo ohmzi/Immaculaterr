@@ -215,9 +215,17 @@ When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until y
 ### What do swipes do, and can I use keyboard shortcuts?
 
 - Swipe right: approve (in approval mode) or keep (in review mode)
-- Swipe left: reject/remove that suggestion
+- Swipe left: reject/remove that suggestion. This adds it to your rejected list, so it won’t be suggested again.
 - Undo: restores your last swipe
 - Desktop: use ← and → to swipe the top card
+
+You can reset the rejected list from **Command Center → Reset Rejected List**.
+
+### What does “Reset Immaculate Taste Collection” do?
+
+It deletes the Immaculate Taste Plex collection for the selected library and clears the saved dataset for that library (pending/active tracking).
+
+After reset, run **Immaculate Taste Collection** again (or let it auto-run) to rebuild suggestions and recreate the Plex collection.
 
 ### Why does Observatory say there are no suggestions for my library?
 

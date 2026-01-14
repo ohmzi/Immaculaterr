@@ -101,7 +101,13 @@ function SwipeCard({
   const throwX = 520;
   const throwRotate = 18;
   const springBack = { type: 'spring' as const, stiffness: 420, damping: 28 };
-  const springThrow = { type: 'spring' as const, stiffness: 320, damping: 26 };
+  // Faster "throw" so the next card becomes interactive sooner.
+  const springThrow = {
+    type: 'spring' as const,
+    stiffness: 520,
+    damping: 34,
+    mass: 0.55,
+  };
 
   return (
     <motion.div
@@ -109,7 +115,8 @@ function SwipeCard({
       drag={disabled ? false : 'x'}
       dragElastic={0.2}
       dragMomentum={false}
-      style={{ x, rotate, opacity, touchAction: 'pan-y' }}
+      // Lock swipe interactions to horizontal so the page doesn't scroll/bounce while swiping cards.
+      style={{ x, rotate, opacity, touchAction: 'pan-x' }}
       onDragEnd={(_, info) => {
         if (disabled) return;
         if (leavingRef.current) return;
@@ -360,6 +367,16 @@ export function ObservatoryPage() {
   const watchedPendingApplyRef = useRef(false);
   const watchedApplyTimerRef = useRef<number | null>(null);
   const watchedDeckKeyRef = useRef<string | null>(null);
+
+  // Mobile: enable gentle scroll snapping so the deck feels "locked" when in view.
+  useEffect(() => {
+    document.documentElement.classList.add('observatory-snap');
+    document.body.classList.add('observatory-snap');
+    return () => {
+      document.documentElement.classList.remove('observatory-snap');
+      document.body.classList.remove('observatory-snap');
+    };
+  }, []);
 
   const collectionsQuery = useQuery({
     queryKey: ['immaculateTasteCollections'],
@@ -669,17 +686,44 @@ export function ObservatoryPage() {
   useEffect(() => {
     const key = `${activeCollectionTab}:${mediaTab}:${activeLibraryKey || 'none'}`;
     if (!activeLibraryKey) return;
-    if (deckKeyRef.current === key) return;
-    deckKeyRef.current = key;
-    setUndoState(null);
 
     if (activeCollectionTab !== 'immaculate') {
       setApprovalRequired(false);
       setDeck([]);
+      setUndoState(null);
+      deckKeyRef.current = null;
       return;
     }
 
-    const approval = listPendingQuery.data?.approvalRequiredFromObservatory ?? false;
+    // Wait until at least one query has data so we don't lock-in an empty deck.
+    const hasData = Boolean(listPendingQuery.data) || Boolean(listReviewQuery.data);
+    if (!hasData) return;
+
+    const approval =
+      listPendingQuery.data?.approvalRequiredFromObservatory ??
+      listReviewQuery.data?.approvalRequiredFromObservatory ??
+      false;
+
+    const pendingLen = listPendingQuery.data?.items?.length ?? 0;
+    const reviewLen = listReviewQuery.data?.items?.length ?? 0;
+    const isNoDataDeck =
+      deck.length === 1 &&
+      deck[0]?.kind === 'sentinel' &&
+      deck[0]?.sentinel === 'noData';
+
+    // If we previously locked into the "no suggestions" sentinel due to cached/empty data,
+    // allow the deck to self-heal once the queries fetch real items (without forcing a swipe).
+    if (deckKeyRef.current === key) {
+      if (isNoDataDeck && (pendingLen > 0 || reviewLen > 0)) {
+        setApprovalRequired(approval);
+        if (approval) setDeckForApprovals();
+        else setDeckForReview();
+      }
+      return;
+    }
+
+    deckKeyRef.current = key;
+    setUndoState(null);
     setApprovalRequired(approval);
 
     if (!approval) {
@@ -688,7 +732,14 @@ export function ObservatoryPage() {
     }
 
     setDeckForApprovals();
-  }, [activeCollectionTab, mediaTab, activeLibraryKey, listPendingQuery.data, listReviewQuery.data]);
+  }, [
+    activeCollectionTab,
+    mediaTab,
+    activeLibraryKey,
+    deck,
+    listPendingQuery.data,
+    listReviewQuery.data,
+  ]);
 
   // Watched: whenever library/media changes, start from the "recently watched" deck.
   useEffect(() => {
@@ -715,14 +766,29 @@ export function ObservatoryPage() {
       Boolean(listWatchedPendingQuery.data) || Boolean(listWatchedReviewQuery.data);
     if (!hasData) return;
 
-    if (watchedDeckKeyRef.current === key) return;
-    watchedDeckKeyRef.current = key;
-    setWatchedUndoState(null);
-
     const approval =
       listWatchedPendingQuery.data?.approvalRequiredFromObservatory ??
       listWatchedReviewQuery.data?.approvalRequiredFromObservatory ??
       false;
+
+    const pendingLen = listWatchedPendingQuery.data?.items?.length ?? 0;
+    const reviewLen = listWatchedReviewQuery.data?.items?.length ?? 0;
+    const isNoDataDeck =
+      watchedDeck.length === 1 &&
+      watchedDeck[0]?.kind === 'sentinel' &&
+      watchedDeck[0]?.sentinel === 'noData';
+
+    if (watchedDeckKeyRef.current === key) {
+      if (isNoDataDeck && (pendingLen > 0 || reviewLen > 0)) {
+        setWatchedApprovalRequired(approval);
+        if (approval) setWatchedDeckForApprovals();
+        else setWatchedDeckForReview();
+      }
+      return;
+    }
+
+    watchedDeckKeyRef.current = key;
+    setWatchedUndoState(null);
     setWatchedApprovalRequired(approval);
 
     if (!approval) {
@@ -736,6 +802,7 @@ export function ObservatoryPage() {
     mediaTab,
     activeLibraryKey,
     watchedCollectionKind,
+    watchedDeck,
     listWatchedPendingQuery.data,
     listWatchedReviewQuery.data,
   ]);
@@ -1344,7 +1411,7 @@ export function ObservatoryPage() {
                       : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                   </div>
 
-                  <div className="mt-6">
+                  <div className="mt-6 observatory-snap-target">
                     {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
                     <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
                       {deck.length ? (
@@ -1566,7 +1633,7 @@ export function ObservatoryPage() {
                       : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                   </div>
 
-                  <div className="mt-6">
+                  <div className="mt-6 observatory-snap-target">
                     <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
                       {watchedDeck.length ? (
                         <div className="relative h-full">

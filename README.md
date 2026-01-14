@@ -51,6 +51,7 @@
   - Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
 - **Observatory**:
   - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
+  - Swipe left adds a suggestion to your rejected list (it won’t be suggested again). You can clear this via **Command Center → Reset Rejected List**.
 - **Job reports & logs**:
   - Step-by-step breakdowns, metrics tables, and run history.
 - **More features on the way:**
@@ -96,6 +97,8 @@ docker pull ghcr.io/ohmzi/immaculaterr:latest
 See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupguide.md)
 
 Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
+
+Tip: **Command Center → Reset Immaculate Taste Collection** deletes the Plex collection and clears the saved dataset for a selected library (then rerun the collection job to rebuild).
 
 ## Documentation
 
