@@ -1253,7 +1253,7 @@ export function ObservatoryPage() {
                   'relative pb-4 text-sm font-bold tracking-wide uppercase transition-colors duration-300',
                   activeCollectionTab === (t.id as CollectionTab)
                     ? 'text-[#facc15]'
-                    : 'text-gray-500 hover:text-gray-300',
+                    : 'text-black hover:text-black',
                 )}
               >
                 {t.label}
@@ -1293,7 +1293,7 @@ export function ObservatoryPage() {
                                 'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
                                 isActive
                                   ? 'text-[#facc15]'
-                                  : 'text-gray-400 hover:text-gray-200',
+                                  : 'text-black hover:text-black',
                               )}
                             >
                               {sub}
@@ -1519,7 +1519,7 @@ export function ObservatoryPage() {
                                   'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
                                   isActive
                                     ? 'text-[#facc15]'
-                                    : 'text-gray-400 hover:text-gray-200',
+                                    : 'text-black hover:text-black',
                                 )}
                               >
                                 {sub}

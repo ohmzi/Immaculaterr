@@ -1,10 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdatesResponseDto {
-  @ApiProperty({ example: '1.0.0.504' })
+  @ApiProperty({ example: '1.0.0.505' })
   currentVersion!: string;
 
-  @ApiProperty({ example: '1.0.0.504', nullable: true })
+  @ApiProperty({ example: '1.0.0.505', nullable: true })
   latestVersion!: string | null;
 
   @ApiProperty({ example: true })
@@ -17,7 +17,7 @@ export class UpdatesResponseDto {
   repo!: string | null;
 
   @ApiProperty({
-    example: 'https://github.com/ohmz/Immaculaterr/releases/tag/v1.0.0.504',
+    example: 'https://github.com/ohmz/Immaculaterr/releases/tag/v1.0.0.505',
     nullable: true,
   })
   latestUrl!: string | null;
