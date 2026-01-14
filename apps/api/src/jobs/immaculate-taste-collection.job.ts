@@ -481,6 +481,40 @@ export class ImmaculateTasteCollectionJob {
       sampleTmdb: suggestedForPoints.slice(0, 10).map((s) => s.tmdbId),
     });
 
+    // --- Reject-list filtering (global per-user blacklist) ---
+    const rejectIds = await this.prisma.rejectedSuggestion
+      .findMany({
+        where: {
+          userId: ctx.userId,
+          mediaType: 'movie',
+          externalSource: 'tmdb',
+        },
+        select: { externalId: true },
+        take: 50000,
+      })
+      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .catch(() => new Set<string>());
+
+    const excludedByRejectList: string[] = [];
+    const filteredSuggestedForPoints = suggestedForPoints.filter((s) => {
+      const key = String(s.tmdbId);
+      if (!rejectIds.has(key)) return true;
+      excludedByRejectList.push(s.title);
+      return false;
+    });
+    suggestedForPoints.length = 0;
+    suggestedForPoints.push(...filteredSuggestedForPoints);
+
+    // Keep missing maps aligned for downstream Radarr + approvals.
+    for (const [k, v] of Array.from(missingTitleToTmdb.entries())) {
+      if (rejectIds.has(String(v.tmdbId))) missingTitleToTmdb.delete(k);
+    }
+    for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
+      const t = missingTitles[i] ?? '';
+      const match = missingTitleToTmdb.get(t.trim()) ?? null;
+      if (match && rejectIds.has(String(match.tmdbId))) missingTitles.splice(i, 1);
+    }
+
     // --- Optional Radarr: add missing titles (best-effort) ---
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(secrets, 'radarr.apiKey');
@@ -787,6 +821,8 @@ export class ImmaculateTasteCollectionJob {
       resolvedTitles,
       missingInPlex: missingTitles.length,
       missingTitles,
+      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListCount: excludedByRejectList.length,
       radarr: radarrStats,
       radarrLists,
       startSearchImmediately,
@@ -1126,6 +1162,39 @@ export class ImmaculateTasteCollectionJob {
       });
     }
 
+    // --- Reject-list filtering (global per-user blacklist) ---
+    const rejectIds = await this.prisma.rejectedSuggestion
+      .findMany({
+        where: {
+          userId: ctx.userId,
+          mediaType: 'tv',
+          externalSource: 'tvdb',
+        },
+        select: { externalId: true },
+        take: 50000,
+      })
+      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .catch(() => new Set<string>());
+
+    const excludedByRejectList: string[] = [];
+    const filteredSuggestedForPoints = suggestedForPoints.filter((s) => {
+      const key = String(s.tvdbId);
+      if (!rejectIds.has(key)) return true;
+      excludedByRejectList.push(s.title);
+      return false;
+    });
+    suggestedForPoints.length = 0;
+    suggestedForPoints.push(...filteredSuggestedForPoints);
+
+    for (const [k, v] of Array.from(missingTitleToIds.entries())) {
+      if (v?.tvdbId && rejectIds.has(String(v.tvdbId))) missingTitleToIds.delete(k);
+    }
+    for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
+      const t = missingTitles[i] ?? '';
+      const ids = missingTitleToIds.get(t.trim()) ?? null;
+      if (ids?.tvdbId && rejectIds.has(String(ids.tvdbId))) missingTitles.splice(i, 1);
+    }
+
     // --- Sonarr add missing series (best-effort)
     const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
@@ -1421,6 +1490,8 @@ export class ImmaculateTasteCollectionJob {
       resolvedTitles,
       missingInPlex: missingTitles.length,
       missingTitles,
+      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListCount: excludedByRejectList.length,
       sonarr: sonarrStats,
       sonarrLists,
       startSearchImmediately,
@@ -1754,6 +1825,11 @@ function buildImmaculateTastePointsReport(params: {
   const generatedTitles = uniqueStrings(asStringArray(raw.generatedTitles));
   const resolvedTitles = uniqueStrings(asStringArray(raw.resolvedTitles));
   const missingTitles = uniqueStrings(asStringArray(raw.missingTitles));
+  const excludedByRejectListTitles = uniqueStrings(
+    asStringArray(raw.excludedByRejectListTitles),
+  );
+  const excludedByRejectListCount =
+    asNum(raw.excludedByRejectListCount) ?? excludedByRejectListTitles.length;
   const seedTitle = String(raw.seedTitle ?? '').trim();
 
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
@@ -1905,6 +1981,21 @@ function buildImmaculateTastePointsReport(params: {
         title: 'Generate recommendations',
         status: 'success',
         facts: recommendationFacts,
+      },
+      {
+        id: 'reject_list',
+        title: 'Excluded by reject list',
+        status: excludedByRejectListCount ? 'success' : 'skipped',
+        facts: [
+          {
+            label: 'Excluded',
+            value: {
+              count: excludedByRejectListCount,
+              unit: mode === 'tv' ? 'shows' : 'movies',
+              items: excludedByRejectListTitles,
+            },
+          },
+        ],
       },
       {
         id: 'plex_resolve',
