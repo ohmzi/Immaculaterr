@@ -101,7 +101,13 @@ function SwipeCard({
   const throwX = 520;
   const throwRotate = 18;
   const springBack = { type: 'spring' as const, stiffness: 420, damping: 28 };
-  const springThrow = { type: 'spring' as const, stiffness: 320, damping: 26 };
+  // Faster "throw" so the next card becomes interactive sooner.
+  const springThrow = {
+    type: 'spring' as const,
+    stiffness: 520,
+    damping: 34,
+    mass: 0.55,
+  };
 
   return (
     <motion.div
