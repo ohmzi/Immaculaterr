@@ -37,7 +37,7 @@ body {
   html.observatory-snap,
   body.observatory-snap {
     /* Gentle snapping: doesn't fight scroll, but settles on the deck. */
-    scroll-snap-type: y proximity;
+    scroll-snap-type: y mandatory;
     scroll-padding-top: 96px;
     overscroll-behavior-y: contain;
   }

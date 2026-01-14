@@ -115,7 +115,8 @@ function SwipeCard({
       drag={disabled ? false : 'x'}
       dragElastic={0.2}
       dragMomentum={false}
-      style={{ x, rotate, opacity, touchAction: 'pan-y' }}
+      // Lock swipe interactions to horizontal so the page doesn't scroll/bounce while swiping cards.
+      style={{ x, rotate, opacity, touchAction: 'pan-x' }}
       onDragEnd={(_, info) => {
         if (disabled) return;
         if (leavingRef.current) return;
