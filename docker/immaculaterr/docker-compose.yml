@@ -14,8 +14,6 @@ services:
       # Internal listen port (inside the container). In most cases you can leave this at 5454.
       # With host networking, the host port is the same as this listen port.
       - PORT=${APP_PORT:-5454}
-      # Optional: override version metadata at runtime (useful for testing update notifications)
-      - APP_VERSION=${APP_VERSION:-}
       # Persist DB + runtime state outside the container
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
