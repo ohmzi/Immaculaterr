@@ -1,4 +1,4 @@
-export const DEFAULT_APP_VERSION = '1.0.0.503';
+export const DEFAULT_APP_VERSION = '1.0.0.504';
 
 export type AppMeta = {
   name: string;
