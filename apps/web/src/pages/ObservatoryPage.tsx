@@ -682,14 +682,31 @@ export function ObservatoryPage() {
     const hasData = Boolean(listPendingQuery.data) || Boolean(listReviewQuery.data);
     if (!hasData) return;
 
-    if (deckKeyRef.current === key) return;
-    deckKeyRef.current = key;
-    setUndoState(null);
-
     const approval =
       listPendingQuery.data?.approvalRequiredFromObservatory ??
       listReviewQuery.data?.approvalRequiredFromObservatory ??
       false;
+
+    const pendingLen = listPendingQuery.data?.items?.length ?? 0;
+    const reviewLen = listReviewQuery.data?.items?.length ?? 0;
+    const isNoDataDeck =
+      deck.length === 1 &&
+      deck[0]?.kind === 'sentinel' &&
+      deck[0]?.sentinel === 'noData';
+
+    // If we previously locked into the "no suggestions" sentinel due to cached/empty data,
+    // allow the deck to self-heal once the queries fetch real items (without forcing a swipe).
+    if (deckKeyRef.current === key) {
+      if (isNoDataDeck && (pendingLen > 0 || reviewLen > 0)) {
+        setApprovalRequired(approval);
+        if (approval) setDeckForApprovals();
+        else setDeckForReview();
+      }
+      return;
+    }
+
+    deckKeyRef.current = key;
+    setUndoState(null);
     setApprovalRequired(approval);
 
     if (!approval) {
@@ -698,7 +715,14 @@ export function ObservatoryPage() {
     }
 
     setDeckForApprovals();
-  }, [activeCollectionTab, mediaTab, activeLibraryKey, listPendingQuery.data, listReviewQuery.data]);
+  }, [
+    activeCollectionTab,
+    mediaTab,
+    activeLibraryKey,
+    deck,
+    listPendingQuery.data,
+    listReviewQuery.data,
+  ]);
 
   // Watched: whenever library/media changes, start from the "recently watched" deck.
   useEffect(() => {
@@ -725,14 +749,29 @@ export function ObservatoryPage() {
       Boolean(listWatchedPendingQuery.data) || Boolean(listWatchedReviewQuery.data);
     if (!hasData) return;
 
-    if (watchedDeckKeyRef.current === key) return;
-    watchedDeckKeyRef.current = key;
-    setWatchedUndoState(null);
-
     const approval =
       listWatchedPendingQuery.data?.approvalRequiredFromObservatory ??
       listWatchedReviewQuery.data?.approvalRequiredFromObservatory ??
       false;
+
+    const pendingLen = listWatchedPendingQuery.data?.items?.length ?? 0;
+    const reviewLen = listWatchedReviewQuery.data?.items?.length ?? 0;
+    const isNoDataDeck =
+      watchedDeck.length === 1 &&
+      watchedDeck[0]?.kind === 'sentinel' &&
+      watchedDeck[0]?.sentinel === 'noData';
+
+    if (watchedDeckKeyRef.current === key) {
+      if (isNoDataDeck && (pendingLen > 0 || reviewLen > 0)) {
+        setWatchedApprovalRequired(approval);
+        if (approval) setWatchedDeckForApprovals();
+        else setWatchedDeckForReview();
+      }
+      return;
+    }
+
+    watchedDeckKeyRef.current = key;
+    setWatchedUndoState(null);
     setWatchedApprovalRequired(approval);
 
     if (!approval) {
@@ -746,6 +785,7 @@ export function ObservatoryPage() {
     mediaTab,
     activeLibraryKey,
     watchedCollectionKind,
+    watchedDeck,
     listWatchedPendingQuery.data,
     listWatchedReviewQuery.data,
   ]);
