@@ -10,6 +10,7 @@ import {
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
+import { decodeHtmlEntities } from '@/lib/utils';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -925,7 +926,7 @@ export function JobRunDetailPage() {
                               jobId !== 'monitorConfirm' ? (
                                 <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-5">
                                   <div className="text-sm font-semibold text-white">
-                                    {headline}
+                                    {decodeHtmlEntities(headline)}
                                   </div>
                                 </div>
                               ) : null}
@@ -1776,7 +1777,8 @@ export function JobRunDetailPage() {
                                     </div>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       {facts.slice(0, 50).map((f, fi) => {
-                                        const label = String(f.label ?? '').trim() || 'Fact';
+                                        const labelRaw = String(f.label ?? '').trim() || 'Fact';
+                                        const label = decodeHtmlEntities(labelRaw);
                                         const rawValue = (f as Record<string, unknown>).value;
 
                                         const expandable = (() => {
@@ -1829,7 +1831,7 @@ export function JobRunDetailPage() {
                                                           key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
                                                           className="whitespace-pre-wrap break-words"
                                                         >
-                                                          {it}
+                                                          {decodeHtmlEntities(it)}
                                                         </li>
                                                       ))}
                                                     </ul>
@@ -1850,7 +1852,7 @@ export function JobRunDetailPage() {
                                             </div>
                                             <div className="mt-1 text-xs text-white/80 font-mono break-words">
                                               {typeof rawValue === 'string'
-                                                ? rawValue
+                                                ? decodeHtmlEntities(rawValue)
                                                 : rawValue === null || rawValue === undefined
                                                   ? '—'
                                                   : JSON.stringify(rawValue)}

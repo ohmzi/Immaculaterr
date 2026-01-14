@@ -9,6 +9,7 @@ import {
   PlexServerService,
 } from '../plex/plex-server.service';
 import { SettingsService } from '../settings/settings.service';
+import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { WebhooksService } from './webhooks.service';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -723,15 +724,19 @@ export class PlexPollingService implements OnModuleInit {
       event: 'media.scrobble',
       Metadata: {
         type: snap.type,
-        title: snap.title ?? undefined,
+        title: snap.title ? normalizeTitleForMatching(snap.title) : undefined,
         year: snap.year ?? undefined,
         ratingKey: snap.ratingKey ?? undefined,
-        grandparentTitle: snap.grandparentTitle ?? undefined,
+        grandparentTitle: snap.grandparentTitle
+          ? normalizeTitleForMatching(snap.grandparentTitle)
+          : undefined,
         grandparentRatingKey: snap.grandparentRatingKey ?? undefined,
         parentIndex: snap.parentIndex ?? undefined,
         index: snap.index ?? undefined,
         librarySectionID: snap.librarySectionId ?? undefined,
-        librarySectionTitle: snap.librarySectionTitle ?? undefined,
+        librarySectionTitle: snap.librarySectionTitle
+          ? normalizeTitleForMatching(snap.librarySectionTitle)
+          : undefined,
         viewOffset: viewOffset ?? undefined,
         duration: duration,
         progress: ratio,
@@ -765,8 +770,9 @@ export class PlexPollingService implements OnModuleInit {
       mediaTypeLower === 'episode' ? (snap.grandparentTitle ?? '') : '';
     const episodeTitle =
       mediaTypeLower === 'episode' ? (snap.title ?? '') : '';
-    const seedTitle =
-      mediaTypeLower === 'episode' ? showTitle : (snap.title ?? '');
+    const seedTitle = normalizeTitleForMatching(
+      mediaTypeLower === 'episode' ? showTitle : (snap.title ?? ''),
+    );
     if (!seedTitle) return snap;
 
     const payloadInput = {

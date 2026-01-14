@@ -8,6 +8,7 @@ import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
+import { normalizeTitleForMatching } from '../lib/title-normalize';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import type { JobReportV1 } from './job-report-v1';
@@ -81,8 +82,9 @@ export class ImmaculateTasteCollectionJob {
     const isTv =
       mediaType === 'episode' || mediaType === 'show' || mediaType === 'tv';
 
-    const seedTitle =
+    const seedTitleRaw =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
+    const seedTitle = normalizeTitleForMatching(seedTitleRaw);
     const seedRatingKey =
       typeof input['seedRatingKey'] === 'string'
         ? input['seedRatingKey'].trim()

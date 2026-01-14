@@ -7,6 +7,7 @@ import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
+import { normalizeTitleForMatching } from '../lib/title-normalize';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
@@ -77,8 +78,9 @@ export class BasedonLatestWatchedCollectionJob {
     const isTv =
       mediaType === 'episode' || mediaType === 'show' || mediaType === 'tv';
 
-    const seedTitle =
+    const seedTitleRaw =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
+    const seedTitle = normalizeTitleForMatching(seedTitleRaw);
     const seedRatingKey =
       typeof input['seedRatingKey'] === 'string'
         ? input['seedRatingKey'].trim()
