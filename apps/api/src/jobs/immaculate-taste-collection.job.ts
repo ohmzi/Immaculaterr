@@ -49,6 +49,26 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   return null;
 }
 
+function normalizeAndCapTitles(rawTitles: string[], max: number): string[] {
+  const limit = Math.max(0, Math.min(100, Math.trunc(max ?? 0)));
+  if (limit <= 0) return [];
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of rawTitles ?? []) {
+    const t = normalizeTitleForMatching(String(raw ?? '').trim());
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= limit) break;
+  }
+
+  return out;
+}
+
 function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
@@ -286,6 +306,11 @@ export class ImmaculateTasteCollectionJob {
       maxPoints,
     });
 
+    const requestedCount = Math.min(
+      100,
+      Math.max(suggestionsPerRun, Math.max(1, suggestionsPerRun * 2)),
+    );
+
     // --- Recommend (tiered pipeline: Google -> OpenAI -> TMDb) ---
     const recs = await withJobRetry(
       () =>
@@ -294,7 +319,7 @@ export class ImmaculateTasteCollectionJob {
           seedTitle,
           seedYear,
           tmdbApiKey,
-          count: suggestionsPerRun,
+          count: requestedCount,
           webContextFraction,
           upcomingPercent,
           openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
@@ -305,14 +330,17 @@ export class ImmaculateTasteCollectionJob {
       { ctx, label: 'recommendations: build similar movie titles' },
     );
 
+    const normalizedTitles = normalizeAndCapTitles(recs.titles, suggestionsPerRun);
+
     await ctx.info('immaculateTastePoints: recommendations ready', {
       strategy: recs.strategy,
       returned: recs.titles.length,
       sample: recs.titles.slice(0, 12),
+      requestedCount,
+      suggestionsPerRun,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
-    const generatedTitles = recs.titles
-      .map((t) => String(t ?? '').trim())
-      .filter(Boolean);
+    const generatedTitles = normalizedTitles.slice();
 
     // --- Resolve in Plex ---
     void ctx
@@ -327,11 +355,12 @@ export class ImmaculateTasteCollectionJob {
 
     await ctx.info('immaculateTastePoints: resolving titles in Plex', {
       requested: recs.titles.length,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
 
     const resolved: Array<{ ratingKey: string; title: string }> = [];
     const missingTitles: string[] = [];
-    for (const title of recs.titles) {
+    for (const title of normalizedTitles) {
       const t = title.trim();
       if (!t) continue;
       const found = await withJobRetryOrNull(
@@ -817,7 +846,7 @@ export class ImmaculateTasteCollectionJob {
       seedYear,
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
-      generated: recs.titles.length,
+      generated: generatedTitles.length,
       generatedTitles,
       resolvedInPlex: suggestedItems.length,
       resolvedTitles,
@@ -1011,6 +1040,11 @@ export class ImmaculateTasteCollectionJob {
 
     await this.immaculateTasteTv.ensureLegacyImported({ ctx, maxPoints });
 
+    const requestedCount = Math.min(
+      100,
+      Math.max(suggestionsPerRun, Math.max(1, suggestionsPerRun * 2)),
+    );
+
     const recs = await withJobRetry(
       () =>
         this.recommendations.buildSimilarTvTitles({
@@ -1018,7 +1052,7 @@ export class ImmaculateTasteCollectionJob {
           seedTitle,
           seedYear,
           tmdbApiKey,
-          count: suggestionsPerRun,
+          count: requestedCount,
           webContextFraction,
           upcomingPercent,
           openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
@@ -1029,14 +1063,17 @@ export class ImmaculateTasteCollectionJob {
       { ctx, label: 'recommendations: build similar tv titles' },
     );
 
+    const normalizedTitles = normalizeAndCapTitles(recs.titles, suggestionsPerRun);
+
     await ctx.info('immaculateTastePoints(tv): recommendations ready', {
       strategy: recs.strategy,
       returned: recs.titles.length,
       sample: recs.titles.slice(0, 12),
+      requestedCount,
+      suggestionsPerRun,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
-    const generatedTitles = recs.titles
-      .map((t) => String(t ?? '').trim())
-      .filter(Boolean);
+    const generatedTitles = normalizedTitles.slice();
 
     // --- Resolve in Plex ---
     void ctx
@@ -1051,11 +1088,12 @@ export class ImmaculateTasteCollectionJob {
 
     await ctx.info('immaculateTastePoints(tv): resolving titles in Plex', {
       requested: recs.titles.length,
+      normalizedUniqueCapped: normalizedTitles.length,
     });
 
     const resolved: Array<{ ratingKey: string; title: string }> = [];
     const missingTitles: string[] = [];
-    for (const title of recs.titles) {
+    for (const title of normalizedTitles) {
       const t = title.trim();
       if (!t) continue;
       const found = await withJobRetryOrNull(
@@ -1486,7 +1524,7 @@ export class ImmaculateTasteCollectionJob {
       seedYear,
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
-      generated: recs.titles.length,
+      generated: generatedTitles.length,
       generatedTitles,
       resolvedInPlex: suggestedItems.length,
       resolvedTitles,
