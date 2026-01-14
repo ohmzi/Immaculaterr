@@ -22,23 +22,6 @@ const TIME_RANGE_OPTIONS: Array<{
   { key: 'ALL', label: 'All', title: 'All time' },
 ];
 
-function formatMonthLabel(value: string) {
-  const [y, m, d] = value.split('-');
-  const year = Number.parseInt(y ?? '', 10);
-  const month = Number.parseInt(m ?? '', 10);
-  const day = d ? Number.parseInt(d, 10) : NaN;
-  if (!Number.isFinite(year) || !Number.isFinite(month)) return value;
-
-  // If this point is a specific day (YYYY-MM-DD), show Month Day (e.g. "Jan 13")
-  if (Number.isFinite(day)) {
-    const dt = new Date(Date.UTC(year, month - 1, day));
-    return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  }
-
-  const dt = new Date(Date.UTC(year, month - 1, 1));
-  return dt.toLocaleString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' });
-}
-
 function parseUtcDateKey(value: string): Date | null {
   const [y, m, d] = value.split('-');
   const year = Number.parseInt(y ?? '', 10);
