@@ -367,6 +367,16 @@ export function ObservatoryPage() {
   const watchedApplyTimerRef = useRef<number | null>(null);
   const watchedDeckKeyRef = useRef<string | null>(null);
 
+  // Mobile: enable gentle scroll snapping so the deck feels "locked" when in view.
+  useEffect(() => {
+    document.documentElement.classList.add('observatory-snap');
+    document.body.classList.add('observatory-snap');
+    return () => {
+      document.documentElement.classList.remove('observatory-snap');
+      document.body.classList.remove('observatory-snap');
+    };
+  }, []);
+
   const collectionsQuery = useQuery({
     queryKey: ['immaculateTasteCollections'],
     queryFn: getImmaculateTasteCollections,
@@ -1400,7 +1410,7 @@ export function ObservatoryPage() {
                       : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                   </div>
 
-                  <div className="mt-6">
+                  <div className="mt-6 observatory-snap-target">
                     {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
                     <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
                       {deck.length ? (
@@ -1622,7 +1632,7 @@ export function ObservatoryPage() {
                       : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                   </div>
 
-                  <div className="mt-6">
+                  <div className="mt-6 observatory-snap-target">
                     <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
                       {watchedDeck.length ? (
                         <div className="relative h-full">
