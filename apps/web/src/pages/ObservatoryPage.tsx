@@ -669,17 +669,27 @@ export function ObservatoryPage() {
   useEffect(() => {
     const key = `${activeCollectionTab}:${mediaTab}:${activeLibraryKey || 'none'}`;
     if (!activeLibraryKey) return;
-    if (deckKeyRef.current === key) return;
-    deckKeyRef.current = key;
-    setUndoState(null);
 
     if (activeCollectionTab !== 'immaculate') {
       setApprovalRequired(false);
       setDeck([]);
+      setUndoState(null);
+      deckKeyRef.current = null;
       return;
     }
 
-    const approval = listPendingQuery.data?.approvalRequiredFromObservatory ?? false;
+    // Wait until at least one query has data so we don't lock-in an empty deck.
+    const hasData = Boolean(listPendingQuery.data) || Boolean(listReviewQuery.data);
+    if (!hasData) return;
+
+    if (deckKeyRef.current === key) return;
+    deckKeyRef.current = key;
+    setUndoState(null);
+
+    const approval =
+      listPendingQuery.data?.approvalRequiredFromObservatory ??
+      listReviewQuery.data?.approvalRequiredFromObservatory ??
+      false;
     setApprovalRequired(approval);
 
     if (!approval) {
