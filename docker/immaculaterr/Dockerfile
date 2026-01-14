@@ -26,9 +26,9 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runner
 
 # Source of truth for the app's version is `apps/api/src/app.meta.ts`.
-# CI (GHCR publish workflow) passes APP_VERSION explicitly; local builds can omit it
-# and the app will fall back to DEFAULT_APP_VERSION.
-ARG APP_VERSION
+# (We do not inject APP_VERSION into the runtime container env; allowing APP_VERSION
+# overrides causes confusing "stuck on old version" situations in Portainer when
+# env vars are preserved across recreates.)
 ARG APP_BUILD_SHA=
 ARG APP_BUILD_TIME=
 
@@ -37,7 +37,6 @@ ENV HOST=0.0.0.0
 ENV PORT=5454
 ENV APP_DATA_DIR=/data
 ENV DATABASE_URL=file:/data/tcp.sqlite
-ENV APP_VERSION=$APP_VERSION
 ENV APP_BUILD_SHA=$APP_BUILD_SHA
 ENV APP_BUILD_TIME=$APP_BUILD_TIME
 
