@@ -340,6 +340,20 @@ export class CleanupAfterAddingNewContentJob {
       );
 
       const sweepWarnings: string[] = [];
+      const pushItem = (
+        list: string[],
+        item: string,
+        max: number,
+        onTruncate: () => void,
+      ) => {
+        if (list.length >= max) {
+          onTruncate();
+          return;
+        }
+        const s = String(item ?? '').trim();
+        if (!s) return;
+        list.push(s);
+      };
 
       await setProgress(2, 'scan_movies', 'Scanning Plex movies for duplicates…', {
         libraries: plexMovieSections.map((s) => s.title),
@@ -489,6 +503,10 @@ export class CleanupAfterAddingNewContentJob {
         radarrUnmonitored: 0,
         radarrWouldUnmonitor: 0,
         radarrNotFound: 0,
+        deletedMetadataItems: [] as string[],
+        deletedVersionItems: [] as string[],
+        radarrUnmonitoredItems: [] as string[],
+        itemsTruncated: false,
       };
 
       const deletedMovieRatingKeys = new Set<string>();
@@ -706,6 +724,14 @@ export class CleanupAfterAddingNewContentJob {
                 })
                 .catch(() => false);
               if (ok) movieStats.radarrUnmonitored += 1;
+              if (ok) {
+                pushItem(
+                  movieStats.radarrUnmonitoredItems,
+                  `${keep.title} [tmdbId=${tmdbId}]`,
+                  200,
+                  () => (movieStats.itemsTruncated = true),
+                );
+              }
               await ctx.info('radarr: unmonitor result (duplicate group)', {
                 ok,
                 tmdbId,
@@ -731,6 +757,14 @@ export class CleanupAfterAddingNewContentJob {
               });
               movieStats.metadataDeleted += 1;
               deletedMovieRatingKeys.add(rk);
+              const metaTitle =
+                metas.find((m) => m.ratingKey === rk)?.title ?? `ratingKey=${rk}`;
+              pushItem(
+                movieStats.deletedMetadataItems,
+                `${metaTitle} [ratingKey=${rk}]`,
+                200,
+                () => (movieStats.itemsTruncated = true),
+              );
             } catch (err) {
               movieStats.failures += 1;
               await ctx.warn(
@@ -756,6 +790,18 @@ export class CleanupAfterAddingNewContentJob {
             });
             movieStats.partsDeleted += dup.deleted;
             movieStats.partsWouldDelete += dup.wouldDelete;
+            const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+              ctx.dryRun ? Boolean(d) : d.deleted === true,
+            );
+            for (const d of relevantDeletes) {
+              const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
+              pushItem(
+                movieStats.deletedVersionItems,
+                `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                200,
+                () => (movieStats.itemsTruncated = true),
+              );
+            }
 
             // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
             try {
@@ -840,6 +886,18 @@ export class CleanupAfterAddingNewContentJob {
               if (dup.deleted || dup.wouldDelete) {
                 movieStats.partsDeleted += dup.deleted;
                 movieStats.partsWouldDelete += dup.wouldDelete;
+                const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+                  ctx.dryRun ? Boolean(d) : d.deleted === true,
+                );
+                for (const d of relevantDeletes) {
+                  const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
+                  pushItem(
+                    movieStats.deletedVersionItems,
+                    `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                    200,
+                    () => (movieStats.itemsTruncated = true),
+                  );
+                }
 
                 const tmdbId = dup.metadata.tmdbIds[0] ?? null;
                 const candidate =
@@ -863,6 +921,14 @@ export class CleanupAfterAddingNewContentJob {
                         })
                         .catch(() => false);
                       if (ok) movieStats.radarrUnmonitored += 1;
+                      if (ok) {
+                        pushItem(
+                          movieStats.radarrUnmonitoredItems,
+                          `${dup.title}${dup.metadata.year ? ` (${dup.metadata.year})` : ''} [tmdbId=${tmdbId ?? 'unknown'}]`,
+                          200,
+                          () => (movieStats.itemsTruncated = true),
+                        );
+                      }
                     }
                   }
                 }
@@ -926,6 +992,10 @@ export class CleanupAfterAddingNewContentJob {
         sonarrUnmonitored: 0,
         sonarrWouldUnmonitor: 0,
         sonarrNotFound: 0,
+        deletedMetadataItems: [] as string[],
+        deletedVersionItems: [] as string[],
+        sonarrUnmonitoredItems: [] as string[],
+        itemsTruncated: false,
       };
 
       type EpisodeCandidate = {
@@ -1141,6 +1211,15 @@ export class CleanupAfterAddingNewContentJob {
                     .then(() => true)
                     .catch(() => false);
                   if (ok) episodeStats.sonarrUnmonitored += 1;
+                  if (ok) {
+                    const s = String(showTitle ?? '').trim() || 'Unknown show';
+                    pushItem(
+                      episodeStats.sonarrUnmonitoredItems,
+                      `${s} S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`,
+                      200,
+                      () => (episodeStats.itemsTruncated = true),
+                    );
+                  }
                 }
               } catch (err) {
                 episodeStats.failures += 1;
@@ -1170,6 +1249,13 @@ export class CleanupAfterAddingNewContentJob {
                 ratingKey: rk,
               });
               episodeStats.metadataDeleted += 1;
+              const s = String(showTitle ?? '').trim() || 'Unknown show';
+              pushItem(
+                episodeStats.deletedMetadataItems,
+                `${s} S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')} [ratingKey=${rk}]`,
+                200,
+                () => (episodeStats.itemsTruncated = true),
+              );
             } catch (err) {
               episodeStats.failures += 1;
               await ctx.warn(
@@ -1192,6 +1278,18 @@ export class CleanupAfterAddingNewContentJob {
             });
             episodeStats.partsDeleted += dup.deleted;
             episodeStats.partsWouldDelete += dup.wouldDelete;
+            const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+              ctx.dryRun ? Boolean(d) : d.deleted === true,
+            );
+            for (const d of relevantDeletes) {
+              const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
+              pushItem(
+                episodeStats.deletedVersionItems,
+                `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                200,
+                () => (episodeStats.itemsTruncated = true),
+              );
+            }
 
             // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
             try {
@@ -1435,6 +1533,18 @@ export class CleanupAfterAddingNewContentJob {
                 });
                 episodeStats.partsDeleted += dup.deleted;
                 episodeStats.partsWouldDelete += dup.wouldDelete;
+                const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+                  ctx.dryRun ? Boolean(d) : d.deleted === true,
+                );
+                for (const d of relevantDeletes) {
+                  const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
+                  pushItem(
+                    episodeStats.deletedVersionItems,
+                    `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                    200,
+                    () => (episodeStats.itemsTruncated = true),
+                  );
+                }
               } catch (err) {
                 episodeStats.failures += 1;
                 await ctx.warn(
@@ -1469,6 +1579,9 @@ export class CleanupAfterAddingNewContentJob {
           radarrUnmonitored: 0,
           radarrWouldUnmonitor: 0,
           radarrNotFound: 0,
+          removedItems: [] as string[],
+          radarrUnmonitoredItems: [] as string[],
+          itemsTruncated: false,
         },
         shows: {
           total: 0,
@@ -1481,6 +1594,9 @@ export class CleanupAfterAddingNewContentJob {
           skippedNoSonarr: 0,
           sonarrUnmonitored: 0,
           sonarrWouldUnmonitor: 0,
+          removedItems: [] as string[],
+          sonarrUnmonitoredItems: [] as string[],
+          itemsTruncated: false,
         },
         warnings: watchlistWarnings,
       };
@@ -1536,6 +1652,14 @@ export class CleanupAfterAddingNewContentJob {
               .catch(() => false);
             if (ok) watchlistStats.movies.removed += 1;
             else watchlistStats.movies.failures += 1;
+            if (ok) {
+              pushItem(
+                watchlistStats.movies.removedItems,
+                `${it.title}${it.year ? ` (${it.year})` : ''} [ratingKey=${it.ratingKey}]`,
+                200,
+                () => (watchlistStats.movies.itemsTruncated = true),
+              );
+            }
           }
 
           // Unmonitor in Radarr (best-effort)
@@ -1558,6 +1682,14 @@ export class CleanupAfterAddingNewContentJob {
                 })
                 .catch(() => false);
               if (ok) watchlistStats.movies.radarrUnmonitored += 1;
+              if (ok) {
+                pushItem(
+                  watchlistStats.movies.radarrUnmonitoredItems,
+                  `${it.title}${it.year ? ` (${it.year})` : ''}`,
+                  200,
+                  () => (watchlistStats.movies.itemsTruncated = true),
+                );
+              }
             }
           }
         }
@@ -1684,6 +1816,14 @@ export class CleanupAfterAddingNewContentJob {
                 .catch(() => false);
               if (ok) watchlistStats.shows.removed += 1;
               else watchlistStats.shows.failures += 1;
+              if (ok) {
+                pushItem(
+                  watchlistStats.shows.removedItems,
+                  `${it.title}${it.year ? ` (${it.year})` : ''} [ratingKey=${it.ratingKey}]`,
+                  200,
+                  () => (watchlistStats.shows.itemsTruncated = true),
+                );
+              }
             }
 
             // Unmonitor in Sonarr (best-effort)
@@ -1699,6 +1839,12 @@ export class CleanupAfterAddingNewContentJob {
                   series: { ...series, monitored: false },
                 });
                 watchlistStats.shows.sonarrUnmonitored += 1;
+                pushItem(
+                  watchlistStats.shows.sonarrUnmonitoredItems,
+                  `${it.title}${it.year ? ` (${it.year})` : ''}`,
+                  200,
+                  () => (watchlistStats.shows.itemsTruncated = true),
+                );
               } catch {
                 // ignore update error; count as warning for visibility
                 watchlistWarnings.push(
@@ -3833,6 +3979,48 @@ function buildMediaAddedCleanupReport(params: {
                         ? num((duplicates.movie as Record<string, unknown>).radarrWouldUnmonitor)
                         : num((duplicates.movie as Record<string, unknown>).radarrUnmonitored)) ?? 0,
                   },
+                  ...(Array.isArray((duplicates.movie as Record<string, unknown>).deletedMetadataItems)
+                    ? [
+                        {
+                          label: 'Deleted movie metadata (items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((duplicates.movie as Record<string, unknown>).metadataWouldDelete) ?? 0
+                              : num((duplicates.movie as Record<string, unknown>).metadataDeleted) ?? 0,
+                            unit: 'items',
+                            items: (duplicates.movie as Record<string, unknown>).deletedMetadataItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(Array.isArray((duplicates.movie as Record<string, unknown>).deletedVersionItems)
+                    ? [
+                        {
+                          label: 'Deleted movie versions (items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((duplicates.movie as Record<string, unknown>).partsWouldDelete) ?? 0
+                              : num((duplicates.movie as Record<string, unknown>).partsDeleted) ?? 0,
+                            unit: 'versions',
+                            items: (duplicates.movie as Record<string, unknown>).deletedVersionItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(Array.isArray((duplicates.movie as Record<string, unknown>).radarrUnmonitoredItems)
+                    ? [
+                        {
+                          label: ctx.dryRun ? 'Radarr would unmonitor (items)' : 'Radarr unmonitored (items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((duplicates.movie as Record<string, unknown>).radarrWouldUnmonitor) ?? 0
+                              : num((duplicates.movie as Record<string, unknown>).radarrUnmonitored) ?? 0,
+                            unit: 'movies',
+                            items: (duplicates.movie as Record<string, unknown>).radarrUnmonitoredItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
                 ]
               : []),
             ...(duplicates && isPlainObject(duplicates.episode)
@@ -3845,6 +4033,50 @@ function buildMediaAddedCleanupReport(params: {
                         ? num((duplicates.episode as Record<string, unknown>).sonarrWouldUnmonitor)
                         : num((duplicates.episode as Record<string, unknown>).sonarrUnmonitored)) ?? 0,
                   },
+                  ...(Array.isArray((duplicates.episode as Record<string, unknown>).deletedMetadataItems)
+                    ? [
+                        {
+                          label: 'Deleted episode metadata (items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((duplicates.episode as Record<string, unknown>).metadataWouldDelete) ?? 0
+                              : num((duplicates.episode as Record<string, unknown>).metadataDeleted) ?? 0,
+                            unit: 'items',
+                            items: (duplicates.episode as Record<string, unknown>).deletedMetadataItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(Array.isArray((duplicates.episode as Record<string, unknown>).deletedVersionItems)
+                    ? [
+                        {
+                          label: 'Deleted episode versions (items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((duplicates.episode as Record<string, unknown>).partsWouldDelete) ?? 0
+                              : num((duplicates.episode as Record<string, unknown>).partsDeleted) ?? 0,
+                            unit: 'versions',
+                            items: (duplicates.episode as Record<string, unknown>).deletedVersionItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(Array.isArray((duplicates.episode as Record<string, unknown>).sonarrUnmonitoredItems)
+                    ? [
+                        {
+                          label: ctx.dryRun
+                            ? 'Sonarr would unmonitor (items)'
+                            : 'Sonarr unmonitored (items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((duplicates.episode as Record<string, unknown>).sonarrWouldUnmonitor) ?? 0
+                              : num((duplicates.episode as Record<string, unknown>).sonarrUnmonitored) ?? 0,
+                            unit: 'episodes',
+                            items: (duplicates.episode as Record<string, unknown>).sonarrUnmonitoredItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
                 ]
               : []),
           ],
@@ -3866,6 +4098,36 @@ function buildMediaAddedCleanupReport(params: {
                         ? num((watchlist.movies as Record<string, unknown>).radarrWouldUnmonitor)
                         : num((watchlist.movies as Record<string, unknown>).radarrUnmonitored)) ?? 0,
                   },
+                  ...(Array.isArray((watchlist.movies as Record<string, unknown>).removedItems)
+                    ? [
+                        {
+                          label: ctx.dryRun ? 'Would remove (movie items)' : 'Removed (movie items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((watchlist.movies as Record<string, unknown>).wouldRemove) ?? 0
+                              : num((watchlist.movies as Record<string, unknown>).removed) ?? 0,
+                            unit: 'movies',
+                            items: (watchlist.movies as Record<string, unknown>).removedItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(Array.isArray((watchlist.movies as Record<string, unknown>).radarrUnmonitoredItems)
+                    ? [
+                        {
+                          label: ctx.dryRun
+                            ? 'Radarr would unmonitor (movie items)'
+                            : 'Radarr unmonitored (movie items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((watchlist.movies as Record<string, unknown>).radarrWouldUnmonitor) ?? 0
+                              : num((watchlist.movies as Record<string, unknown>).radarrUnmonitored) ?? 0,
+                            unit: 'movies',
+                            items: (watchlist.movies as Record<string, unknown>).radarrUnmonitoredItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
                 ]
               : []),
             ...(watchlist && isPlainObject(watchlist.shows)
@@ -3877,6 +4139,36 @@ function buildMediaAddedCleanupReport(params: {
                         ? num((watchlist.shows as Record<string, unknown>).sonarrWouldUnmonitor)
                         : num((watchlist.shows as Record<string, unknown>).sonarrUnmonitored)) ?? 0,
                   },
+                  ...(Array.isArray((watchlist.shows as Record<string, unknown>).removedItems)
+                    ? [
+                        {
+                          label: ctx.dryRun ? 'Would remove (show items)' : 'Removed (show items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((watchlist.shows as Record<string, unknown>).wouldRemove) ?? 0
+                              : num((watchlist.shows as Record<string, unknown>).removed) ?? 0,
+                            unit: 'shows',
+                            items: (watchlist.shows as Record<string, unknown>).removedItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(Array.isArray((watchlist.shows as Record<string, unknown>).sonarrUnmonitoredItems)
+                    ? [
+                        {
+                          label: ctx.dryRun
+                            ? 'Sonarr would unmonitor (show items)'
+                            : 'Sonarr unmonitored (show items)',
+                          value: {
+                            count: ctx.dryRun
+                              ? num((watchlist.shows as Record<string, unknown>).sonarrWouldUnmonitor) ?? 0
+                              : num((watchlist.shows as Record<string, unknown>).sonarrUnmonitored) ?? 0,
+                            unit: 'shows',
+                            items: (watchlist.shows as Record<string, unknown>).sonarrUnmonitoredItems as string[],
+                          },
+                        },
+                      ]
+                    : []),
                 ]
               : []),
           ],
