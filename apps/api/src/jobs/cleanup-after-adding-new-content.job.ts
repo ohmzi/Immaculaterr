@@ -159,6 +159,29 @@ export class CleanupAfterAddingNewContentJob {
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
+    const PROGRESS_TOTAL_STEPS = 6;
+    const setProgress = async (
+      current: number,
+      step: string,
+      message: string,
+      extra?: JsonObject,
+    ) => {
+      await ctx.patchSummary({
+        phase: 'running',
+        progress: {
+          step,
+          message,
+          current,
+          total: PROGRESS_TOTAL_STEPS,
+          updatedAt: new Date().toISOString(),
+          ...(extra ?? {}),
+        },
+      });
+    };
+
+    // Ensure the UI has a meaningful live progress indicator immediately (JobsService sets a minimal one too).
+    await setProgress(1, 'starting', 'Starting cleanup…');
+
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
 
@@ -288,6 +311,20 @@ export class CleanupAfterAddingNewContentJob {
       warnings: [] as string[],
     };
 
+    // Make this job show a live "what it's doing" card while running. The final jobReportV1
+    // produced by `toReport(...)` replaces this summary on completion.
+    await ctx.setSummary({
+      phase: 'running',
+      ...summary,
+      progress: {
+        step: 'starting',
+        message: 'Starting cleanup…',
+        current: 1,
+        total: PROGRESS_TOTAL_STEPS,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
     const toReport = (rawSummary: JsonObject): JobRunResult => {
       const report = buildMediaAddedCleanupReport({ ctx, raw: rawSummary });
       return { summary: report as unknown as JsonObject };
@@ -303,6 +340,10 @@ export class CleanupAfterAddingNewContentJob {
       );
 
       const sweepWarnings: string[] = [];
+
+      await setProgress(2, 'scan_movies', 'Scanning Plex movies for duplicates…', {
+        libraries: plexMovieSections.map((s) => s.title),
+      });
 
       // --- Load Radarr index once (best-effort)
       let radarrMovies: RadarrMovie[] = [];
@@ -509,6 +550,12 @@ export class CleanupAfterAddingNewContentJob {
           groups.set(m.tmdbId, list);
         }
         movieStats.groups = groups.size;
+
+        await setProgress(
+          3,
+          'clean_movies',
+          'Deleting duplicate movies (Plex) and unmonitoring in Radarr…',
+        );
 
         for (const [tmdbId, items] of groups.entries()) {
           if (items.length < 2) continue;
@@ -892,6 +939,10 @@ export class CleanupAfterAddingNewContentJob {
 
       const episodeCandidates: EpisodeCandidate[] = [];
 
+      await setProgress(4, 'scan_episodes', 'Scanning Plex episodes for duplicates…', {
+        libraries: plexTvSections.map((s) => s.title),
+      });
+
       const loadDuplicateEpisodeKeys = async (): Promise<string[]> => {
         const out = new Set<string>();
         let anySucceeded = false;
@@ -1029,6 +1080,12 @@ export class CleanupAfterAddingNewContentJob {
           list.push(c);
           byKey.set(key, list);
         }
+
+        await setProgress(
+          5,
+          'clean_episodes',
+          'Deleting duplicate episodes (Plex) and unmonitoring in Sonarr…',
+        );
 
         for (const [key, group] of byKey.entries()) {
           if (!key || group.length === 0) continue;
@@ -1439,6 +1496,12 @@ export class CleanupAfterAddingNewContentJob {
         set.add(m.year ?? null);
         plexMovieYearsByNormTitle.set(norm, set);
       }
+
+      await setProgress(
+        6,
+        'watchlist',
+        'Reconciling Plex watchlist (and unmonitoring in Radarr/Sonarr)…',
+      );
 
       // Movies: remove from watchlist if now in Plex; unmonitor in Radarr (best-effort)
       try {

@@ -123,6 +123,24 @@ function getProgressPlan(jobId: string): ProgressPlan | null {
   const id = (jobId ?? '').trim();
   if (!id) return null;
 
+  // Cleanup job: scan → delete/unmonitor → watchlist
+  if (id === 'mediaAddedCleanup') {
+    return {
+      total: 6,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'starting') return 1;
+        if (stepId === 'scan_movies') return 2;
+        if (stepId === 'clean_movies') return 3;
+        if (stepId === 'scan_episodes') return 4;
+        if (stepId === 'clean_episodes') return 5;
+        if (stepId === 'watchlist') return 6;
+        if (stepId === 'done' || stepId === 'failed') return 6;
+        return null;
+      },
+    };
+  }
+
   // Refresher-style jobs: fewer, high-signal stages (movie → TV)
   if (id === 'immaculateTasteRefresher' || id === 'recentlyWatchedRefresher') {
     return {
@@ -522,7 +540,9 @@ export function JobRunDetailPage() {
                         })();
 
                         const stepCounterText =
-                          stepStage !== null && plan ? `${stepStage}/${plan.total}` : null;
+                          stepStage !== null && plan
+                            ? `Step ${stepStage} of ${plan.total}`
+                            : null;
 
                         const barPct = (() => {
                           if (isFinished) return 100;
@@ -600,7 +620,7 @@ export function JobRunDetailPage() {
                               </div>
                               {stepCounterText ? (
                                 <div className="shrink-0 text-xs text-white/70 font-mono">
-                                  {stepCounterText} steps
+                                  {stepCounterText}
                                 </div>
                               ) : displayProgressCurrent !== null &&
                                 displayProgressTotal !== null ? (
