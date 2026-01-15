@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CircleAlert, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CircleAlert, Copy, Loader2, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { getRun, getRunLogs, listJobs, type JobRun } from '@/api/jobs';
 import {
@@ -37,6 +38,28 @@ function pickNumber(obj: Record<string, unknown>, key: string): number | null {
 function pickString(obj: Record<string, unknown>, key: string): string | null {
   const v = obj[key];
   return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+async function copyToClipboard(text: string) {
+  // Prefer async clipboard API when available (secure contexts).
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  // Fallback for older browsers / non-secure contexts.
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.setAttribute('readonly', 'true');
+  el.style.position = 'fixed';
+  el.style.left = '-9999px';
+  el.style.top = '0';
+  document.body.appendChild(el);
+  el.select();
+  try {
+    document.execCommand('copy');
+  } finally {
+    document.body.removeChild(el);
+  }
 }
 
 function statusPill(status: string) {
@@ -2027,16 +2050,54 @@ export function JobRunDetailPage() {
                     {showRawResponse ? (
                       <div className="mt-4 space-y-4">
                         <div>
-                          <div className="text-xs text-white/60 mb-2">
-                            Run summary (JSON)
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="text-xs text-white/60">
+                              Run summary (JSON)
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await copyToClipboard(
+                                    JSON.stringify(run.summary, null, 2),
+                                  );
+                                  toast.success('Copied run summary JSON.');
+                                } catch {
+                                  toast.error('Failed to copy.');
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/70 transition-all duration-200 active:scale-95 hover:bg-white/10 touch-manipulation"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy
+                            </button>
                           </div>
                           <pre className="overflow-auto rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] text-white/60">
 {JSON.stringify(run.summary, null, 2)}
                           </pre>
                         </div>
                         <div>
-                          <div className="text-xs text-white/60 mb-2">
-                            Logs response (JSON)
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="text-xs text-white/60">
+                              Logs response (JSON)
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await copyToClipboard(
+                                    JSON.stringify(logs, null, 2),
+                                  );
+                                  toast.success('Copied logs JSON.');
+                                } catch {
+                                  toast.error('Failed to copy.');
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/70 transition-all duration-200 active:scale-95 hover:bg-white/10 touch-manipulation"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy
+                            </button>
                           </div>
                           <pre className="overflow-auto rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] text-white/60">
 {JSON.stringify(logs, null, 2)}

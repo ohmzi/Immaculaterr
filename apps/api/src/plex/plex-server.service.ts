@@ -1007,6 +1007,27 @@ export class PlexServerService {
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
+  async deleteMediaVersion(params: {
+    baseUrl: string;
+    token: string;
+    ratingKey: string;
+    mediaId: string;
+  }): Promise<void> {
+    const { baseUrl, token, ratingKey, mediaId } = params;
+    const rk = ratingKey.trim();
+    const mid = mediaId.trim();
+    if (!rk) throw new Error('ratingKey is required');
+    if (!mid) throw new Error('mediaId is required');
+
+    // Plex supports deleting a specific media version under a metadata item:
+    // DELETE /library/metadata/<ratingKey>/media/<mediaId>
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(rk)}/media/${encodeURIComponent(mid)}`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    await this.fetchNoContent(url, token, 'DELETE', 30000);
+  }
+
   async deleteMetadataByRatingKey(params: {
     baseUrl: string;
     token: string;

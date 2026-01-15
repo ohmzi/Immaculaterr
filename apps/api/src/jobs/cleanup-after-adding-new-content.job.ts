@@ -709,6 +709,28 @@ export class CleanupAfterAddingNewContentJob {
             });
             movieStats.partsDeleted += dup.deleted;
             movieStats.partsWouldDelete += dup.wouldDelete;
+
+            // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+            try {
+              const post = await this.plexServer.getMetadataDetails({
+                baseUrl: plexBaseUrl,
+                token: plexToken,
+                ratingKey: keep.ratingKey,
+              });
+              const mediaCount = post?.media?.length ?? 0;
+              if (mediaCount > 1) {
+                sweepWarnings.push(
+                  `plex: movie still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
+                );
+                await ctx.warn('plex: movie still has multiple media versions after cleanup', {
+                  ratingKey: keep.ratingKey,
+                  tmdbId,
+                  mediaCount,
+                });
+              }
+            } catch {
+              // ignore verification failures
+            }
           } catch (err) {
             movieStats.failures += 1;
             await ctx.warn(
@@ -798,6 +820,28 @@ export class CleanupAfterAddingNewContentJob {
                   }
                 }
               }
+
+            // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+            try {
+              const post = await this.plexServer.getMetadataDetails({
+                baseUrl: plexBaseUrl,
+                token: plexToken,
+                ratingKey: rk,
+              });
+              const mediaCount = post?.media?.length ?? 0;
+              if (mediaCount > 1) {
+                sweepWarnings.push(
+                  `plex: movie still has multiple media versions after cleanup ratingKey=${rk} media=${mediaCount}`,
+                );
+                await ctx.warn('plex: movie still has multiple media versions after cleanup', {
+                  ratingKey: rk,
+                  tmdbId: dup.metadata.tmdbIds[0] ?? null,
+                  mediaCount,
+                });
+              }
+            } catch {
+              // ignore verification failures
+            }
             } catch (err) {
               movieStats.failures += 1;
               await ctx.warn(
@@ -1091,6 +1135,55 @@ export class CleanupAfterAddingNewContentJob {
             });
             episodeStats.partsDeleted += dup.deleted;
             episodeStats.partsWouldDelete += dup.wouldDelete;
+
+            // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+            try {
+              const post = await this.plexServer.getMetadataDetails({
+                baseUrl: plexBaseUrl,
+                token: plexToken,
+                ratingKey: keep.ratingKey,
+              });
+              const mediaCount = post?.media?.length ?? 0;
+              if (mediaCount > 1) {
+                sweepWarnings.push(
+                  `plex: episode still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
+                );
+                await ctx.warn('plex: episode still has multiple media versions after cleanup', {
+                  ratingKey: keep.ratingKey,
+                  showTitle,
+                  season,
+                  episode: epNum,
+                  mediaCount,
+                });
+              }
+            } catch {
+              // ignore verification failures
+            }
+
+                // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+                try {
+                  const post = await this.plexServer.getMetadataDetails({
+                    baseUrl: plexBaseUrl,
+                    token: plexToken,
+                    ratingKey: keep.ratingKey,
+                  });
+                  const mediaCount = post?.media?.length ?? 0;
+                  if (mediaCount > 1) {
+                    sweepWarnings.push(
+                      `plex: episode still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
+                    );
+                    await ctx.warn(
+                      'plex: episode still has multiple media versions after cleanup',
+                      {
+                        ratingKey: keep.ratingKey,
+                        tvdbId: post?.tvdbIds?.[0] ?? null,
+                        mediaCount,
+                      },
+                    );
+                  }
+                } catch {
+                  // ignore verification failures
+                }
           } catch (err) {
             episodeStats.failures += 1;
             await ctx.warn(
