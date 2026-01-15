@@ -481,12 +481,12 @@ export class TmdbService {
       const variants = buildTitleQueryVariants(seedTitle);
       let best: TmdbMovieSearchResult | null = null;
       for (const q of variants.length ? variants : [seedTitle]) {
-        const results = await this.searchMovie({
-          apiKey,
+      const results = await this.searchMovie({
+        apiKey,
           query: q,
-          year: params.seedYear ?? null,
-          includeAdult: false,
-        });
+        year: params.seedYear ?? null,
+        includeAdult: false,
+      });
         best = bestSeedResult(q, results, params.seedYear ?? null);
         if (best) break;
       }
@@ -532,12 +532,12 @@ export class TmdbService {
       const variants = buildTitleQueryVariants(seedTitle);
       let best: TmdbTvSearchResult | null = null;
       for (const q of variants.length ? variants : [seedTitle]) {
-        const results = await this.searchTv({
-          apiKey,
+      const results = await this.searchTv({
+        apiKey,
           query: q,
-          firstAirDateYear: params.seedYear ?? null,
-          includeAdult: false,
-        });
+        firstAirDateYear: params.seedYear ?? null,
+        includeAdult: false,
+      });
         best = bestSeedTvResult(q, results, params.seedYear ?? null);
         if (best) break;
       }
@@ -1025,12 +1025,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbMovieSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-      const seedResults = await this.searchMovie({
-        apiKey,
+    const seedResults = await this.searchMovie({
+      apiKey,
         query: q,
-        year: params.seedYear ?? null,
-        includeAdult: Boolean(params.includeAdult),
-      });
+      year: params.seedYear ?? null,
+      includeAdult: Boolean(params.includeAdult),
+    });
       seedBest = bestSeedResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }
@@ -1308,12 +1308,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbMovieSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-      const seedResults = await this.searchMovie({
-        apiKey,
+    const seedResults = await this.searchMovie({
+      apiKey,
         query: q,
-        year: params.seedYear ?? null,
-        includeAdult: Boolean(params.includeAdult),
-      });
+      year: params.seedYear ?? null,
+      includeAdult: Boolean(params.includeAdult),
+    });
       seedBest = bestSeedResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }
@@ -1572,12 +1572,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbTvSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-      const seedResults = await this.searchTv({
-        apiKey,
+    const seedResults = await this.searchTv({
+      apiKey,
         query: q,
-        firstAirDateYear: params.seedYear ?? null,
-        includeAdult: Boolean(params.includeAdult),
-      });
+      firstAirDateYear: params.seedYear ?? null,
+      includeAdult: Boolean(params.includeAdult),
+    });
       seedBest = bestSeedTvResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }
@@ -1849,12 +1849,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbTvSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-      const seedResults = await this.searchTv({
-        apiKey,
+    const seedResults = await this.searchTv({
+      apiKey,
         query: q,
-        firstAirDateYear: params.seedYear ?? null,
-        includeAdult: Boolean(params.includeAdult),
-      });
+      firstAirDateYear: params.seedYear ?? null,
+      includeAdult: Boolean(params.includeAdult),
+    });
       seedBest = bestSeedTvResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }

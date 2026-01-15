@@ -344,92 +344,92 @@ export class RecommendationsService {
         try {
           if (canSatisfySplit) {
             openAiMode = 'split';
-            await ctx.info('recs: openai select start', {
-              model,
-              count,
-              releasedTarget,
-              upcomingTarget,
-              candidates: {
-                released: topReleased.length,
-                upcoming: topUpcoming.length,
-              },
-              googleUsed: Boolean(googleContext),
-              googleTitlesExtracted,
-              googleTmdbAdded,
+        await ctx.info('recs: openai select start', {
+          model,
+        count,
+          releasedTarget,
+          upcomingTarget,
+          candidates: {
+            released: topReleased.length,
+            upcoming: topUpcoming.length,
+          },
+        googleUsed: Boolean(googleContext),
+          googleTitlesExtracted,
+          googleTmdbAdded,
               mode: 'split',
-            });
+      });
 
-            const selection = await this.openai.selectFromCandidates({
-              apiKey: params.openai!.apiKey,
-              model,
-              seedTitle,
-              tmdbSeedMetadata: seedMeta,
-              releasedTarget,
-              upcomingTarget,
-              releasedCandidates: topReleased,
-              upcomingCandidates: topUpcoming,
-            });
+          const selection = await this.openai.selectFromCandidates({
+          apiKey: params.openai!.apiKey,
+            model,
+          seedTitle,
+          tmdbSeedMetadata: seedMeta,
+            releasedTarget,
+            upcomingTarget,
+            releasedCandidates: topReleased,
+            upcomingCandidates: topUpcoming,
+          });
 
-            if (
-              selection.released.length === releasedTarget &&
-              selection.upcoming.length === upcomingTarget
-            ) {
-              const releasedById = new Map(topReleased.map((c) => [c.tmdbId, c]));
-              const upcomingById = new Map(topUpcoming.map((c) => [c.tmdbId, c]));
+          if (
+            selection.released.length === releasedTarget &&
+            selection.upcoming.length === upcomingTarget
+          ) {
+            const releasedById = new Map(topReleased.map((c) => [c.tmdbId, c]));
+            const upcomingById = new Map(topUpcoming.map((c) => [c.tmdbId, c]));
 
-              const titles: string[] = [];
-              for (const id of selection.released) {
-                const t = releasedById.get(id)?.title ?? '';
-                if (t.trim()) titles.push(t.trim());
-              }
-              for (const id of selection.upcoming) {
-                const t = upcomingById.get(id)?.title ?? '';
-                if (t.trim()) titles.push(t.trim());
-              }
+            const titles: string[] = [];
+            for (const id of selection.released) {
+              const t = releasedById.get(id)?.title ?? '';
+              if (t.trim()) titles.push(t.trim());
+            }
+            for (const id of selection.upcoming) {
+              const t = upcomingById.get(id)?.title ?? '';
+              if (t.trim()) titles.push(t.trim());
+            }
 
               const cleaned = cleanTitles(titles, count);
-              openAiSuggestedTitles = cleaned.slice();
-              await ctx.info('recs: openai select done', {
-                returned: cleaned.length,
-                released: releasedTarget,
-                upcoming: upcomingTarget,
+            openAiSuggestedTitles = cleaned.slice();
+            await ctx.info('recs: openai select done', {
+              returned: cleaned.length,
+              released: releasedTarget,
+              upcoming: upcomingTarget,
                 mode: 'split',
-              });
-              this.openAiDownUntilMs = null;
-              return {
-                titles: cleaned,
-                strategy: 'openai',
-                debug: {
-                  upcomingPercent,
-                  upcomingTarget,
-                  releasedTarget,
-                  googleEnabled,
-                  googleQuery,
-                  googleMeta: googleMeta ?? null,
-                  googleTitlesExtracted,
-                  googleTmdbAdded,
-                  googleSuggestedTitles,
-                  openAiEnabled: true,
-                  openAiModel: model,
+            });
+            this.openAiDownUntilMs = null;
+          return {
+            titles: cleaned,
+            strategy: 'openai',
+            debug: {
+                upcomingPercent,
+                upcomingTarget,
+                releasedTarget,
+              googleEnabled,
+              googleQuery,
+              googleMeta: googleMeta ?? null,
+                googleTitlesExtracted,
+                googleTmdbAdded,
+                googleSuggestedTitles,
+              openAiEnabled: true,
+                openAiModel: model,
                   openAiMode,
                   openAiSkipReason,
                   fallbackUsed,
                   fallbackCandidatesCount,
                   fallbackTitles,
-                  openAiSuggestedTitles,
-                  tmdbSuggestedTitles,
-                  used: {
-                    tmdb: true,
-                    google: Boolean(googleContext),
-                    openai: true,
-                  },
+                openAiSuggestedTitles,
+                tmdbSuggestedTitles,
+                used: {
+                  tmdb: true,
+                  google: Boolean(googleContext),
+                  openai: true,
                 },
-              };
-            }
+            },
+          };
+        }
 
-            await ctx.warn(
-              'recs: openai selector returned empty (falling back to deterministic)',
-            );
+          await ctx.warn(
+            'recs: openai selector returned empty (falling back to deterministic)',
+          );
           } else {
             openAiMode = 'no_split';
             const candidates = uniqueByTmdbId([
@@ -494,12 +494,12 @@ export class RecommendationsService {
               };
             }
           }
-        } catch (err) {
+      } catch (err) {
           openAiSkipReason = 'error';
           await ctx.warn(
             'recs: openai selector failed (falling back to deterministic)',
             {
-              error: (err as Error)?.message ?? String(err),
+          error: (err as Error)?.message ?? String(err),
               mode: openAiMode ?? null,
             },
           );
@@ -902,62 +902,62 @@ export class RecommendationsService {
         try {
           if (canSatisfySplit) {
             openAiMode = 'split';
-            await ctx.info('recs(tv): openai select start', {
-              model,
-              releasedCandidates: topReleased.length,
-              upcomingCandidates: topUpcoming.length,
-              releasedTarget,
-              upcomingTarget,
+        await ctx.info('recs(tv): openai select start', {
+          model,
+          releasedCandidates: topReleased.length,
+          upcomingCandidates: topUpcoming.length,
+          releasedTarget,
+          upcomingTarget,
               mode: 'split',
-            });
+        });
 
-            const selected = await this.openai.selectFromCandidates({
-              apiKey: params.openai!.apiKey,
-              model,
-              seedTitle,
-              mediaType: 'tv',
-              tmdbSeedMetadata: seedMeta,
-              releasedTarget,
-              upcomingTarget,
-              releasedCandidates: topReleased,
-              upcomingCandidates: topUpcoming,
-            });
+          const selected = await this.openai.selectFromCandidates({
+            apiKey: params.openai!.apiKey,
+            model,
+            seedTitle,
+            mediaType: 'tv',
+            tmdbSeedMetadata: seedMeta,
+            releasedTarget,
+            upcomingTarget,
+            releasedCandidates: topReleased,
+            upcomingCandidates: topUpcoming,
+          });
 
-            if (
-              selected.released.length === releasedTarget &&
-              selected.upcoming.length === upcomingTarget
-            ) {
-              const idToTitle = new Map<number, string>();
-              for (const c of [...topReleased, ...topUpcoming]) {
-                if (!idToTitle.has(c.tmdbId)) idToTitle.set(c.tmdbId, c.title);
-              }
-              const ordered = [
-                ...selected.released,
-                ...selected.upcoming,
-              ].map((id) => idToTitle.get(id) ?? String(id));
-              const cleaned = cleanTitles(ordered, count);
-              openAiSuggestedTitles = cleaned.slice();
+          if (
+            selected.released.length === releasedTarget &&
+            selected.upcoming.length === upcomingTarget
+          ) {
+            const idToTitle = new Map<number, string>();
+            for (const c of [...topReleased, ...topUpcoming]) {
+              if (!idToTitle.has(c.tmdbId)) idToTitle.set(c.tmdbId, c.title);
+            }
+            const ordered = [
+              ...selected.released,
+              ...selected.upcoming,
+            ].map((id) => idToTitle.get(id) ?? String(id));
+            const cleaned = cleanTitles(ordered, count);
+            openAiSuggestedTitles = cleaned.slice();
 
-              await ctx.info('recs(tv): openai select done', {
-                returned: cleaned.length,
-                released: selected.released.length,
-                upcoming: selected.upcoming.length,
+            await ctx.info('recs(tv): openai select done', {
+              returned: cleaned.length,
+              released: selected.released.length,
+              upcoming: selected.upcoming.length,
                 mode: 'split',
-              });
+            });
 
-              this.openAiDownUntilMs = null;
-              return {
-                titles: cleaned,
-                strategy: 'openai',
-                debug: {
-                  upcomingPercent,
-                  upcomingTarget,
-                  releasedTarget,
-                  googleEnabled,
-                  googleQuery,
-                  googleMeta: googleMeta ?? null,
-                  googleTitlesExtracted,
-                  googleTmdbAdded,
+            this.openAiDownUntilMs = null;
+            return {
+              titles: cleaned,
+              strategy: 'openai',
+              debug: {
+                upcomingPercent,
+                upcomingTarget,
+                releasedTarget,
+                googleEnabled,
+                googleQuery,
+                googleMeta: googleMeta ?? null,
+                googleTitlesExtracted,
+                googleTmdbAdded,
                   openAiEnabled: true,
                   openAiModel: model,
                   openAiMode,
@@ -965,24 +965,24 @@ export class RecommendationsService {
                   fallbackUsed,
                   fallbackCandidatesCount,
                   fallbackTitles,
-                  googleSuggestedTitles,
-                  openAiSuggestedTitles,
-                  tmdbSuggestedTitles,
-                  used: {
-                    tmdb: true,
-                    google: Boolean(googleContext),
-                    openai: true,
-                  },
+                googleSuggestedTitles,
+                openAiSuggestedTitles,
+                tmdbSuggestedTitles,
+                used: {
+                  tmdb: true,
+                  google: Boolean(googleContext),
+                  openai: true,
                 },
-              };
-            }
+              },
+            };
+          }
 
-            await ctx.warn('recs(tv): openai invalid selection (fallback)', {
-              releasedReturned: selected.released.length,
-              upcomingReturned: selected.upcoming.length,
-              releasedTarget,
-              upcomingTarget,
-            });
+          await ctx.warn('recs(tv): openai invalid selection (fallback)', {
+            releasedReturned: selected.released.length,
+            upcomingReturned: selected.upcoming.length,
+            releasedTarget,
+            upcomingTarget,
+          });
           } else {
             openAiMode = 'no_split';
             const candidates = uniqueByTmdbId([

@@ -57,6 +57,55 @@ function resolutionPriority(resolution: string | null): number {
   return 1;
 }
 
+type MediaCandidate = {
+  mediaId: string;
+  videoResolution: string | null;
+  bestPartSize: number | null;
+  preserved: boolean;
+};
+
+function buildMediaCandidates(
+  meta: PlexMetadataDetails,
+  preserveQualityTerms: string[],
+): MediaCandidate[] {
+  const terms = (preserveQualityTerms ?? [])
+    .map((t) => (typeof t === 'string' ? t.trim().toLowerCase() : ''))
+    .filter(Boolean);
+
+  const byMedia = new Map<string, MediaCandidate>();
+
+  for (const m of meta.media ?? []) {
+    const mediaId = m.id ?? null;
+    if (!mediaId) continue;
+
+    const existing = byMedia.get(mediaId);
+
+    let bestSize = existing?.bestPartSize ?? null;
+    for (const p of m.parts ?? []) {
+      if (typeof p.size === 'number' && Number.isFinite(p.size)) {
+        bestSize = bestSize === null ? p.size : Math.max(bestSize, p.size);
+      }
+    }
+
+    let preserved = existing?.preserved ?? false;
+    if (!preserved && terms.length > 0) {
+      const target = `${m.videoResolution ?? ''} ${m.parts
+        .map((p) => p.file ?? '')
+        .join(' ')}`.toLowerCase();
+      preserved = terms.some((t) => target.includes(t));
+    }
+
+    byMedia.set(mediaId, {
+      mediaId,
+      videoResolution: m.videoResolution ?? null,
+      bestPartSize: bestSize,
+      preserved,
+    });
+  }
+
+  return Array.from(byMedia.values());
+}
+
 function sortBySizeAsc(a: PlexDuplicateCopy, b: PlexDuplicateCopy) {
   const sa = typeof a.size === 'number' ? a.size : Number.POSITIVE_INFINITY;
   const sb = typeof b.size === 'number' ? b.size : Number.POSITIVE_INFINITY;
@@ -103,6 +152,14 @@ function buildCopies(
 @Injectable()
 export class PlexDuplicatesService {
   constructor(private readonly plex: PlexServerService) {}
+
+  private pickRepresentativeCopyForMedia(
+    copies: PlexDuplicateCopy[],
+    mediaId: string,
+  ): PlexDuplicateCopy | null {
+    const reps = copies.filter((c) => c.mediaId === mediaId).slice().sort(sortBySizeDesc);
+    return reps[0] ?? null;
+  }
 
   /**
    * Movie duplicate cleanup:
@@ -177,6 +234,120 @@ export class PlexDuplicatesService {
           index: meta.index,
         },
       };
+    }
+
+    // Enforce: keep exactly 1 Plex Media (version) per ratingKey.
+    // If Plex reports multiple Media entries (multiple videos), delete all parts belonging to
+    // non-kept mediaIds. (This is stricter than the old part-level logic.)
+    const mediaCandidates = buildMediaCandidates(meta, preserveQualityTerms);
+    if (mediaCandidates.length > 1) {
+      let pref = deletePreference;
+      if (pref === 'newest' || pref === 'oldest') {
+        warnings.push(
+          `plex: deletePreference=${pref} not supported for per-item version cleanup; falling back to smallest_file`,
+        );
+        pref = 'smallest_file';
+      }
+
+      const keepPool = mediaCandidates.some((m) => m.preserved)
+        ? mediaCandidates.filter((m) => m.preserved)
+        : mediaCandidates;
+
+      const orderedKeep = keepPool.slice().sort((a, b) => {
+        const sa =
+          a.bestPartSize ??
+          (pref === 'smallest_file' ? Number.POSITIVE_INFINITY : 0);
+        const sb =
+          b.bestPartSize ??
+          (pref === 'smallest_file' ? Number.POSITIVE_INFINITY : 0);
+        // delete smallest => keep largest; delete largest => keep smallest
+        if (sa !== sb) return pref === 'smallest_file' ? sb - sa : sa - sb;
+
+        // Tie-breaker: higher resolution, then larger size.
+        const ra = resolutionPriority(a.videoResolution);
+        const rb = resolutionPriority(b.videoResolution);
+        if (ra !== rb) return rb - ra;
+        return (b.bestPartSize ?? 0) - (a.bestPartSize ?? 0);
+      });
+
+      const keptMediaId = orderedKeep[0]?.mediaId ?? null;
+      if (keptMediaId) {
+        const kept =
+          copies
+            .filter((c) => c.mediaId === keptMediaId)
+            .slice()
+            .sort(sortBySizeDesc)[0] ?? null;
+
+        const toDeleteMediaIds = Array.from(
+          new Set(
+            copies
+              .filter((c) => c.mediaId && c.mediaId !== keptMediaId)
+              .map((c) => c.mediaId as string),
+          ),
+        );
+
+        let deleted = 0;
+        let wouldDelete = 0;
+        let failures = 0;
+        const deletions: PlexDuplicateCleanupResult['deletions'] = [];
+
+        for (const mediaId of toDeleteMediaIds) {
+          const rep = this.pickRepresentativeCopyForMedia(copies, mediaId);
+          const base = rep ?? {
+            mediaId,
+            videoResolution: null,
+            partId: null,
+            partKey: null,
+            file: null,
+            size: null,
+            preserved: false,
+          };
+          if (dryRun) {
+            wouldDelete += 1;
+            deletions.push({ ...base, deleted: false });
+            continue;
+          }
+
+          try {
+            await this.plex.deleteMediaVersion({
+              baseUrl,
+              token,
+              ratingKey: meta.ratingKey,
+              mediaId,
+            });
+            deleted += 1;
+            deletions.push({ ...base, deleted: true });
+          } catch (err) {
+            failures += 1;
+            deletions.push({
+              ...base,
+              deleted: false,
+              error: (err as Error)?.message ?? String(err),
+            });
+          }
+        }
+
+        return {
+          dryRun,
+          ratingKey: meta.ratingKey,
+          title: meta.title,
+          type: meta.type,
+          copies: copies.length,
+          kept,
+          deleted,
+          wouldDelete,
+          failures,
+          warnings,
+          deletions,
+          metadata: {
+            tmdbIds: meta.tmdbIds,
+            tvdbIds: meta.tvdbIds,
+            year: meta.year,
+            parentIndex: meta.parentIndex,
+            index: meta.index,
+          },
+        };
+      }
     }
 
     // Respect preserve terms:
@@ -341,6 +512,98 @@ export class PlexDuplicatesService {
           index: meta.index,
         },
       };
+    }
+
+    // Enforce: keep exactly 1 Plex Media (version) per ratingKey.
+    const mediaCandidates = buildMediaCandidates(meta, []);
+    if (mediaCandidates.length > 1) {
+      const orderedMedia = mediaCandidates.slice().sort((a, b) => {
+        const pa = resolutionPriority(a.videoResolution);
+        const pb = resolutionPriority(b.videoResolution);
+        if (pa !== pb) return pb - pa; // best first
+        const sa = a.bestPartSize ?? 0;
+        const sb = b.bestPartSize ?? 0;
+        return sb - sa;
+      });
+
+      const keptMediaId = orderedMedia[0]?.mediaId ?? null;
+      if (keptMediaId) {
+        const kept =
+          copies
+            .filter((c) => c.mediaId === keptMediaId)
+            .slice()
+            .sort(sortBySizeDesc)[0] ?? null;
+
+        const toDeleteMediaIds = Array.from(
+          new Set(
+            copies
+              .filter((c) => c.mediaId && c.mediaId !== keptMediaId)
+              .map((c) => c.mediaId as string),
+          ),
+        );
+
+        let deleted = 0;
+        let wouldDelete = 0;
+        let failures = 0;
+        const deletions: PlexDuplicateCleanupResult['deletions'] = [];
+
+        for (const mediaId of toDeleteMediaIds) {
+          const rep = this.pickRepresentativeCopyForMedia(copies, mediaId);
+          const base = rep ?? {
+            mediaId,
+            videoResolution: null,
+            partId: null,
+            partKey: null,
+            file: null,
+            size: null,
+            preserved: false,
+          };
+          if (dryRun) {
+            wouldDelete += 1;
+            deletions.push({ ...base, deleted: false });
+            continue;
+          }
+
+          try {
+            await this.plex.deleteMediaVersion({
+              baseUrl,
+              token,
+              ratingKey: meta.ratingKey,
+              mediaId,
+            });
+            deleted += 1;
+            deletions.push({ ...base, deleted: true });
+          } catch (err) {
+            failures += 1;
+            deletions.push({
+              ...base,
+              deleted: false,
+              error: (err as Error)?.message ?? String(err),
+            });
+          }
+        }
+
+        return {
+          dryRun,
+          ratingKey: meta.ratingKey,
+          title: meta.title,
+          type: meta.type,
+          copies: copies.length,
+          kept,
+          deleted,
+          wouldDelete,
+          failures,
+          warnings,
+          deletions,
+          metadata: {
+            tmdbIds: meta.tmdbIds,
+            tvdbIds: meta.tvdbIds,
+            year: meta.year,
+            parentIndex: meta.parentIndex,
+            index: meta.index,
+          },
+        };
+      }
     }
 
     const ordered = copies.slice().sort((a, b) => {
