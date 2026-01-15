@@ -582,6 +582,7 @@ export class CleanupAfterAddingNewContentJob {
           await ctx.info('plex: duplicate movie group found', {
             tmdbId,
             candidates: items.length,
+            ratingKeys: items.map((i) => i.ratingKey),
           });
 
           // Load details for each candidate (so we can choose a winner).
@@ -683,6 +684,7 @@ export class CleanupAfterAddingNewContentJob {
             keepTitle: keep.title,
             preference: deletePreference,
             preservedPreferred: metas.some((m) => m.preserved),
+            deleteRatingKeys: deleteKeys,
           });
 
           // Unmonitor in Radarr once per TMDB group (best-effort).
@@ -731,6 +733,16 @@ export class CleanupAfterAddingNewContentJob {
                   200,
                   () => (movieStats.itemsTruncated = true),
                 );
+              }
+              if (!ok) {
+                await ctx.warn('radarr: failed to unmonitor (duplicate group)', {
+                  tmdbId,
+                  radarrId: toInt((candidate as unknown as Record<string, unknown>)['id']),
+                  title:
+                    typeof candidate.title === 'string'
+                      ? candidate.title
+                      : keep.title,
+                });
               }
               await ctx.info('radarr: unmonitor result (duplicate group)', {
                 ok,
@@ -908,6 +920,11 @@ export class CleanupAfterAddingNewContentJob {
                 if (radarrBaseUrl && radarrApiKey) {
                   if (!candidate) {
                     movieStats.radarrNotFound += 1;
+                  await ctx.warn('radarr: movie not found for duplicate-only item', {
+                    ratingKey: rk,
+                    tmdbId,
+                    title: dup.title,
+                  });
                   } else if (candidate.monitored) {
                     if (ctx.dryRun) {
                       movieStats.radarrWouldUnmonitor += 1;
@@ -929,7 +946,27 @@ export class CleanupAfterAddingNewContentJob {
                           () => (movieStats.itemsTruncated = true),
                         );
                       }
+                    if (!ok) {
+                      await ctx.warn('radarr: failed to unmonitor (duplicate-only item)', {
+                        ratingKey: rk,
+                        tmdbId,
+                        radarrId: toInt((candidate as unknown as Record<string, unknown>)['id']),
+                        title:
+                          typeof candidate.title === 'string'
+                            ? candidate.title
+                            : dup.title,
+                      });
                     }
+                    }
+                } else {
+                  await ctx.debug('radarr: already unmonitored (duplicate-only item)', {
+                    ratingKey: rk,
+                    tmdbId,
+                    title:
+                      typeof candidate.title === 'string'
+                        ? candidate.title
+                        : dup.title,
+                  });
                   }
                 }
               }
@@ -1219,6 +1256,14 @@ export class CleanupAfterAddingNewContentJob {
                       200,
                       () => (episodeStats.itemsTruncated = true),
                     );
+                  } else {
+                    await ctx.warn('sonarr: failed to unmonitor episode (duplicate group)', {
+                      title: showTitle,
+                      season,
+                      episode: epNum,
+                      sonarrSeriesId: toInt((series as unknown as Record<string, unknown>)['id']),
+                      sonarrEpisodeId: toInt((sonarrEp as unknown as Record<string, unknown>)['id']),
+                    });
                   }
                 }
               } catch (err) {
