@@ -336,11 +336,12 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   <div className="mt-2 space-y-2">
                     <button
                       type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => {
                         setIsHelpOpen(false);
                         navigate('/version-history');
                       }}
-                      className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5"
+                      className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5 touch-manipulation"
                     >
                       Version: {currentLabel ?? '—'}
                     </button>
