@@ -89,7 +89,7 @@ export function VersionHistoryPage() {
           <div className="space-y-6">
             <div className={cardClass}>
               <div className="text-white font-black text-2xl tracking-tight">
-                1.0.0.0
+                V1.0.0
               </div>
 
               <div className="mt-4 space-y-3 text-sm text-white/75 leading-relaxed">
