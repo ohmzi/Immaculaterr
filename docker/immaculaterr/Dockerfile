@@ -1,4 +1,6 @@
-FROM node:20-bookworm-slim AS builder
+ARG NODE_IMAGE=node:22-bookworm-slim
+
+FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -6,6 +8,11 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/*
+
+# Pin npm to ensure patched bundled deps (e.g. glob/cross-spawn) regardless of base-image npm version.
+ARG NPM_VERSION=11.7.0
+RUN npm i -g "npm@${NPM_VERSION}" \
+  && npm cache clean --force
 
 # 1) Install deps (cached)
 COPY package.json package-lock.json ./
@@ -23,7 +30,7 @@ COPY apps/web apps/web
 RUN npm run build
 
 
-FROM node:20-bookworm-slim AS runner
+FROM ${NODE_IMAGE} AS runner
 
 # Source of truth for the app's version is `apps/api/src/version.ts`.
 # (We do not inject APP_VERSION into the runtime container env; allowing APP_VERSION
@@ -47,10 +54,16 @@ WORKDIR /app
 # Debian package). The entrypoint uses built-in tools (`setpriv`/`runuser`/`su`)
 # to switch users after doing one-time permission fixes on the mounted data volume.
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
+
+# Pin npm to ensure patched bundled deps (e.g. glob/cross-spawn) regardless of base-image npm version.
+ARG NPM_VERSION=11.7.0
+RUN npm i -g "npm@${NPM_VERSION}" \
+  && npm cache clean --force
 
 # Install prod deps only
 COPY package.json package-lock.json ./
