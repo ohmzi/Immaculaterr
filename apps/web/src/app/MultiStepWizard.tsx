@@ -1,6 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, ExternalLink } from 'lucide-react';
+import { motion } from 'motion/react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Database,
+  ExternalLink,
+  Globe,
+  HardDrive,
+  Key,
+  Loader2,
+  Server,
+  ShieldCheck,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { testSavedIntegration } from '@/api/integrations';
@@ -33,6 +47,7 @@ const STEP_ORDER: WizardStep[] = [
 
 export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const queryClient = useQueryClient();
+  const CORE_STEPS: WizardStep[] = ['plex', 'tmdb', 'radarr', 'sonarr', 'google', 'openai'];
 
   // Restore wizard progress from localStorage if available
   const [currentStep, setCurrentStep] = useState<WizardStep>(() => {
@@ -86,6 +101,11 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   const getCurrentStepIndex = () => STEP_ORDER.indexOf(currentStep);
   const canGoBack = getCurrentStepIndex() > 0;
+
+  const isCoreStep = CORE_STEPS.includes(currentStep);
+  const coreStepNumber = isCoreStep ? CORE_STEPS.indexOf(currentStep) + 1 : 0;
+  const coreStepTotal = CORE_STEPS.length;
+  const coreProgressPct = isCoreStep ? Math.round((coreStepNumber / coreStepTotal) * 100) : 0;
 
   // Poll for Plex OAuth token
   useEffect(() => {
@@ -148,7 +168,26 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   };
 
   const startPlexOAuth = async () => {
+    // Mobile Safari (and some in-app browsers) will block popups if window.open is called
+    // after an async boundary. Open a placeholder window synchronously, then navigate it.
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const features = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+    const popup = window.open('about:blank', 'PlexOAuth', features);
+
     try {
+      if (popup) {
+        try {
+          popup.document.title = 'Plex Login';
+          popup.document.body.innerHTML =
+            '<div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 24px;">Loading Plex login…</div>';
+        } catch {
+          // Cross-origin / sandboxed environments may block access. Safe to ignore.
+        }
+      }
+
       const pin = await createPlexPin();
       setPlexOAuthPinId(pin.id);
       setIsPollingPlex(true);
@@ -161,17 +200,27 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         // Ignore localStorage errors
       }
 
-      // Open Plex OAuth page in a new window with specific features to prevent navigation
-      const width = 600;
-      const height = 700;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-      const features = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+      // Navigate the pre-opened window/tab to Plex auth.
+      if (popup) {
+        try {
+          popup.location.href = pin.authUrl;
+        } catch {
+          // Fallback: if we cannot set location for some reason, open a new tab.
+          window.open(pin.authUrl, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        // Popup blocked: fall back to same-window navigation (works in most native WebViews).
+        window.location.href = pin.authUrl;
+        return;
+      }
 
-      window.open(pin.authUrl, 'PlexOAuth', features);
-
-      toast.info('Please authorize in the Plex window...');
+      toast.info('Please authorize in the Plex window/tab...');
     } catch (error) {
+      try {
+        popup?.close();
+      } catch {
+        // ignore
+      }
       toast.error('Failed to start Plex OAuth');
       console.error(error);
     }
@@ -292,57 +341,131 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     switch (currentStep) {
       case 'welcome':
         return (
-          <div className="space-y-6 text-center">
-            <div className="mx-auto w-20 h-20 bg-yellow-100 dark:bg-yellow-900/20 rounded-full flex items-center justify-center">
-              <CheckCircle2 className="w-12 h-12 text-yellow-600 dark:text-yellow-400" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold mb-2">Welcome to Immaculaterr!</h2>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                This wizard will help you configure the required credentials to access your media server and start automation.
+          <div className="relative -mx-4 -my-4 overflow-hidden sm:-mx-6 sm:-my-6">
+            {/* Decorative background gradients inside the card */}
+            <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-emerald-500/20 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-yellow-500/10 blur-3xl" />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+              className="relative flex flex-col items-center px-8 py-12 text-center sm:px-12"
+            >
+              {/* Header Icon */}
+              <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-full bg-yellow-500/10 ring-1 ring-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.1)]">
+                <ShieldCheck className="h-10 w-10 text-yellow-500" />
+              </div>
+
+              {/* Title */}
+              <h1 className="mb-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                Welcome to Immaculaterr!
+              </h1>
+              <p className="mb-10 max-w-md text-zinc-400">
+                This wizard will help you configure the required credentials to access your media server
+                and start automation.
               </p>
-            </div>
-            <div className="bg-muted/50 rounded-lg p-4 max-w-md mx-auto">
-              <h3 className="font-semibold mb-2">What you'll need:</h3>
-              <ul className="text-sm text-muted-foreground space-y-1 text-left">
-                <li>✓ Plex Media Server URL and Token</li>
-                <li>✓ TMDB API Key</li>
-                <li>• Radarr (optional)</li>
-                <li>• Sonarr (optional)</li>
-                <li>• Other services (optional)</li>
-              </ul>
-            </div>
-            <Button onClick={handleNext} size="lg">
-              Get Started <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+
+              {/* Requirements List */}
+              <div className="mb-10 w-full rounded-2xl border border-white/5 bg-white/5 p-6 text-left shadow-inner">
+                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-300">
+                  What you&apos;ll need:
+                </h3>
+
+                <ul className="space-y-3">
+                  <RequirementItem
+                    icon={<Server className="h-4 w-4 text-emerald-400" />}
+                    text="Plex Media Server URL and Token"
+                    required
+                  />
+                  <RequirementItem
+                    icon={<Key className="h-4 w-4 text-emerald-400" />}
+                    text="TMDB API Key"
+                    required
+                  />
+                  <RequirementItem icon={<Database className="h-4 w-4 text-zinc-500" />} text="Radarr (optional)" />
+                  <RequirementItem icon={<HardDrive className="h-4 w-4 text-zinc-500" />} text="Sonarr (optional)" />
+                  <RequirementItem icon={<Globe className="h-4 w-4 text-zinc-500" />} text="Other services (optional)" />
+                </ul>
+              </div>
+
+              {/* Action Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleNext}
+                className="group relative flex w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-white px-8 py-4 text-lg font-semibold text-black shadow-lg shadow-white/10 transition-all hover:bg-zinc-100 hover:shadow-white/20"
+              >
+                <span>Get Started</span>
+                <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+              </motion.button>
+            </motion.div>
           </div>
         );
 
       case 'plex':
         return (
-          <div className="flex flex-col min-h-[480px]">
-            <div className="flex-1 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold mb-2">Configure Plex (Required)</h2>
-                <p className="text-sm text-muted-foreground">
-                  Connect to your Plex Media Server to manage your media library.
-                </p>
-              </div>
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Plex</span> Configuration
+              </>
+            }
+            subtitle="Connect your media server to enable library synchronization and automation."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  disabled={!canGoBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  onClick={() => saveAndValidatePlex.mutate()}
+                  disabled={!plexBaseUrl.trim() || !plexToken.trim() || saveAndValidatePlex.isPending}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveAndValidatePlex.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Validating...
+                    </>
+                  ) : (
+                    <>
+                      Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <div className="space-y-6">
 
               {/* OAuth Option */}
-              <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4">
+              <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <h3 className="font-semibold mb-1">Sign in with Plex (Recommended)</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Securely connect using OAuth. This will generate a permanent, non-expiring token for your scheduler.
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-base font-semibold text-white">Sign in with Plex</h3>
+                      <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-yellow-300">
+                        Recommended
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-400">
+                      Authenticate securely via Plex.tv. We&apos;ll automatically fetch your server URL and generate a
+                      permanent token.
                     </p>
                     {isPollingPlex && (
-                      <div className="mt-3 space-y-1">
-                        <p className="text-sm text-yellow-600 dark:text-yellow-400 font-medium">
-                          Waiting for authorization...
-                        </p>
-                        <p className="text-xs text-muted-foreground">
+                      <div className="mt-4 space-y-1">
+                        <p className="text-sm font-medium text-yellow-300">Waiting for authorization...</p>
+                        <p className="text-xs text-zinc-400">
                           You have up to 30 minutes to complete authorization. The token will never expire once created.
                         </p>
                         <button
@@ -356,393 +479,518 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                               // Ignore localStorage errors
                             }
                           }}
-                          className="text-xs underline text-muted-foreground hover:text-foreground"
+                          className="text-xs underline text-zinc-400 hover:text-white"
                         >
                           Cancel
                         </button>
                       </div>
                     )}
                   </div>
-                  <Button onClick={startPlexOAuth} disabled={isPollingPlex} size="sm">
+                  <Button
+                    onClick={startPlexOAuth}
+                    disabled={isPollingPlex}
+                    size="icon"
+                    className="h-12 w-12 rounded-full bg-yellow-500 text-black hover:bg-yellow-400"
+                    aria-label="Sign in with Plex"
+                  >
                     {isPollingPlex ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting...
-                      </>
+                      <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
-                      <>
-                        Sign in <ExternalLink className="ml-2 h-4 w-4" />
-                      </>
+                      <ExternalLink className="h-5 w-5" />
                     )}
                   </Button>
                 </div>
               </div>
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">Or enter manually</span>
-                </div>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  Or configure manually
+                </span>
+                <div className="h-px flex-1 bg-white/10" />
               </div>
 
               {/* Manual Entry */}
-              <div className="space-y-4">
+              <WizardSection>
+                <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="plexBaseUrl">Plex Server URL</Label>
+                  <Label
+                    htmlFor="plexBaseUrl"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Server URL
+                  </Label>
                   <Input
                     id="plexBaseUrl"
                     value={plexBaseUrl}
                     onChange={(e) => setPlexBaseUrl(e.target.value)}
                     placeholder="http://localhost:32400"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="plexToken">Plex Token</Label>
+                  <Label
+                    htmlFor="plexToken"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Plex Token
+                  </Label>
                   <Input
                     id="plexToken"
                     type="password"
                     value={plexToken}
                     onChange={(e) => setPlexToken(e.target.value)}
                     placeholder="Enter your Plex token"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Manual tokens are permanent and will work for scheduled jobs. Get your token from Plex settings.
-                  </p>
                 </div>
-              </div>
+                </div>
+              </WizardSection>
             </div>
-
-            {/* Fixed buttons at bottom */}
-            <div className="flex gap-3 mt-6 pt-6 border-t">
-              <Button variant="outline" onClick={handleBack} disabled={!canGoBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button
-                onClick={() => saveAndValidatePlex.mutate()}
-                disabled={!plexBaseUrl.trim() || !plexToken.trim() || saveAndValidatePlex.isPending}
-                className="flex-1"
-              >
-                {saveAndValidatePlex.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Validating...
-                  </>
-                ) : (
-                  <>
-                    Next <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+          </WizardShell>
         );
 
       case 'tmdb':
         return (
-          <div className="flex flex-col min-h-[480px]">
-            <div className="flex-1 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold mb-2">Configure TMDB (Required)</h2>
-                <p className="text-sm text-muted-foreground">
-                  The Movie Database API provides metadata enrichment for your media.
-                </p>
-              </div>
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">TMDB</span> Configuration
+              </>
+            }
+            subtitle="Add your TMDB API key to enrich your library with high-quality metadata."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  onClick={() => saveAndValidateTmdb.mutate()}
+                  disabled={!tmdbApiKey.trim() || saveAndValidateTmdb.isPending}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveAndValidateTmdb.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Validating...
+                    </>
+                  ) : (
+                    <>
+                      Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="tmdbApiKey">TMDB API Key</Label>
+                  <Label htmlFor="tmdbApiKey" className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                    TMDB API Key
+                  </Label>
                   <Input
                     id="tmdbApiKey"
                     type="password"
                     value={tmdbApiKey}
                     onChange={(e) => setTmdbApiKey(e.target.value)}
                     placeholder="Enter your TMDB API key"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-zinc-500">
                     Get your API key from{' '}
                     <a
                       href="https://www.themoviedb.org/settings/api"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="underline hover:text-foreground"
+                      className="underline decoration-white/20 underline-offset-4 hover:text-white"
                     >
                       themoviedb.org
                     </a>
+                    .
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-3 mt-6 pt-6 border-t">
-              <Button variant="outline" onClick={handleBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button
-                onClick={() => saveAndValidateTmdb.mutate()}
-                disabled={!tmdbApiKey.trim() || saveAndValidateTmdb.isPending}
-                className="flex-1"
-              >
-                {saveAndValidateTmdb.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Validating...
-                  </>
-                ) : (
-                  <>
-                    Next <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+            </WizardSection>
+          </WizardShell>
         );
 
       case 'radarr':
         return (
-          <div className="flex flex-col min-h-[480px]">
-            <div className="flex-1 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold mb-2">Configure Radarr (Optional)</h2>
-                <p className="text-sm text-muted-foreground">
-                  Radarr manages your movie collection. Skip if you don't use it.
-                </p>
-              </div>
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Radarr</span> Configuration
+              </>
+            }
+            subtitle="Optional: connect Radarr to manage and automate your movie collection."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={() => saveOptionalService.mutate('radarr')}
+                  disabled={!radarrBaseUrl.trim() || !radarrApiKey.trim() || saveOptionalService.isPending}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveOptionalService.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="radarrBaseUrl">Radarr URL</Label>
+                  <Label
+                    htmlFor="radarrBaseUrl"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Radarr URL
+                  </Label>
                   <Input
                     id="radarrBaseUrl"
                     value={radarrBaseUrl}
                     onChange={(e) => setRadarrBaseUrl(e.target.value)}
                     placeholder="http://localhost:7878"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="radarrApiKey">Radarr API Key</Label>
+                  <Label
+                    htmlFor="radarrApiKey"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Radarr API Key
+                  </Label>
                   <Input
                     id="radarrApiKey"
                     type="password"
                     value={radarrApiKey}
                     onChange={(e) => setRadarrApiKey(e.target.value)}
                     placeholder="Enter Radarr API key"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-3 mt-6 pt-6 border-t">
-              <Button variant="outline" onClick={handleBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button variant="ghost" onClick={handleSkip} className="flex-1">
-                Skip
-              </Button>
-              <Button
-                onClick={() => saveOptionalService.mutate('radarr')}
-                disabled={!radarrBaseUrl.trim() || !radarrApiKey.trim() || saveOptionalService.isPending}
-                className="flex-1"
-              >
-                {saveOptionalService.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                  </>
-                ) : (
-                  <>
-                    Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+            </WizardSection>
+          </WizardShell>
         );
 
       case 'sonarr':
         return (
-          <div className="flex flex-col min-h-[480px]">
-            <div className="flex-1 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold mb-2">Configure Sonarr (Optional)</h2>
-                <p className="text-sm text-muted-foreground">
-                  Sonarr manages your TV show collection. Skip if you don't use it.
-                </p>
-              </div>
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Sonarr</span> Configuration
+              </>
+            }
+            subtitle="Optional: connect Sonarr to manage and automate your TV show collection."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={() => saveOptionalService.mutate('sonarr')}
+                  disabled={!sonarrBaseUrl.trim() || !sonarrApiKey.trim() || saveOptionalService.isPending}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveOptionalService.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="sonarrBaseUrl">Sonarr URL</Label>
+                  <Label
+                    htmlFor="sonarrBaseUrl"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Sonarr URL
+                  </Label>
                   <Input
                     id="sonarrBaseUrl"
                     value={sonarrBaseUrl}
                     onChange={(e) => setSonarrBaseUrl(e.target.value)}
                     placeholder="http://localhost:8989"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sonarrApiKey">Sonarr API Key</Label>
+                  <Label
+                    htmlFor="sonarrApiKey"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Sonarr API Key
+                  </Label>
                   <Input
                     id="sonarrApiKey"
                     type="password"
                     value={sonarrApiKey}
                     onChange={(e) => setSonarrApiKey(e.target.value)}
                     placeholder="Enter Sonarr API key"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-3 mt-6 pt-6 border-t">
-              <Button variant="outline" onClick={handleBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button variant="ghost" onClick={handleSkip} className="flex-1">
-                Skip
-              </Button>
-              <Button
-                onClick={() => saveOptionalService.mutate('sonarr')}
-                disabled={!sonarrBaseUrl.trim() || !sonarrApiKey.trim() || saveOptionalService.isPending}
-                className="flex-1"
-              >
-                {saveOptionalService.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                  </>
-                ) : (
-                  <>
-                    Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+            </WizardSection>
+          </WizardShell>
         );
 
       case 'google':
         return (
-          <div className="flex flex-col min-h-[480px]">
-            <div className="flex-1 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold mb-2">Configure Google CSE (Optional)</h2>
-                <p className="text-sm text-muted-foreground">
-                  Google Custom Search Engine for advanced search features.
-                </p>
-              </div>
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Google</span> Configuration
+              </>
+            }
+            subtitle="Optional: add Google Custom Search Engine keys for advanced search features."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={() => saveOptionalService.mutate('google')}
+                  disabled={!googleSearchEngineId.trim() || !googleApiKey.trim() || saveOptionalService.isPending}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveOptionalService.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="googleSearchEngineId">Search Engine ID</Label>
+                  <Label
+                    htmlFor="googleSearchEngineId"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Search Engine ID
+                  </Label>
                   <Input
                     id="googleSearchEngineId"
                     value={googleSearchEngineId}
                     onChange={(e) => setGoogleSearchEngineId(e.target.value)}
                     placeholder="Enter search engine ID"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="googleApiKey">Google API Key</Label>
+                  <Label
+                    htmlFor="googleApiKey"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Google API Key
+                  </Label>
                   <Input
                     id="googleApiKey"
                     type="password"
                     value={googleApiKey}
                     onChange={(e) => setGoogleApiKey(e.target.value)}
                     placeholder="Enter Google API key"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-3 mt-6 pt-6 border-t">
-              <Button variant="outline" onClick={handleBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button variant="ghost" onClick={handleSkip} className="flex-1">
-                Skip
-              </Button>
-              <Button
-                onClick={() => saveOptionalService.mutate('google')}
-                disabled={!googleSearchEngineId.trim() || !googleApiKey.trim() || saveOptionalService.isPending}
-                className="flex-1"
-              >
-                {saveOptionalService.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                  </>
-                ) : (
-                  <>
-                    Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+            </WizardSection>
+          </WizardShell>
         );
 
       case 'openai':
         return (
-          <div className="flex flex-col min-h-[480px]">
-            <div className="flex-1 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold mb-2">Configure OpenAI (Optional)</h2>
-                <p className="text-sm text-muted-foreground">
-                  OpenAI API for AI-powered features and recommendations.
-                </p>
-              </div>
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">OpenAI</span> Configuration
+              </>
+            }
+            subtitle="Optional: enable AI-powered features and recommendations by adding your OpenAI API key."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={() => saveOptionalService.mutate('openai')}
+                  disabled={!openAiApiKey.trim() || saveOptionalService.isPending}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveOptionalService.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="openAiApiKey">OpenAI API Key</Label>
+                  <Label
+                    htmlFor="openAiApiKey"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    OpenAI API Key
+                  </Label>
                   <Input
                     id="openAiApiKey"
                     type="password"
                     value={openAiApiKey}
                     onChange={(e) => setOpenAiApiKey(e.target.value)}
                     placeholder="Enter OpenAI API key"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-3 mt-6 pt-6 border-t">
-              <Button variant="outline" onClick={handleBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button variant="ghost" onClick={handleSkip} className="flex-1">
-                Skip
-              </Button>
-              <Button
-                onClick={() => saveOptionalService.mutate('openai')}
-                disabled={!openAiApiKey.trim() || saveOptionalService.isPending}
-                className="flex-1"
-              >
-                {saveOptionalService.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                  </>
-                ) : (
-                  <>
-                    Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+            </WizardSection>
+          </WizardShell>
         );
 
       case 'complete':
         return (
-          <div className="space-y-6 text-center">
-            <div className="mx-auto w-20 h-20 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
-              <CheckCircle2 className="w-12 h-12 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold mb-2">Setup Complete!</h2>
-              <p className="text-muted-foreground max-w-md mx-auto">
+          <div className="relative -mx-4 -my-4 overflow-hidden text-center sm:-mx-6 sm:-my-6">
+            <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-emerald-500/18 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-yellow-500/10 blur-3xl" />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+              className="relative flex flex-col items-center px-8 py-12 sm:px-12"
+            >
+              <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.12)]">
+                <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+              </div>
+              <h1 className="mb-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Setup Complete!</h1>
+              <p className="mb-10 max-w-md text-zinc-400">
                 Your Immaculaterr instance is now configured and ready to use.
               </p>
-            </div>
-            <Button onClick={() => completeWizard.mutate()} size="lg" disabled={completeWizard.isPending}>
-              {completeWizard.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Finishing...
-                </>
-              ) : (
-                'Start Using Immaculaterr'
-              )}
-            </Button>
+              <Button
+                onClick={() => completeWizard.mutate()}
+                size="lg"
+                disabled={completeWizard.isPending}
+                className="h-12 w-full max-w-xs rounded-xl bg-white text-black hover:bg-zinc-100"
+              >
+                {completeWizard.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Finishing...
+                  </>
+                ) : (
+                  'Start Using Immaculaterr'
+                )}
+              </Button>
+            </motion.div>
           </div>
         );
 
@@ -752,26 +1000,86 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Progress indicator */}
-      {currentStep !== 'welcome' && currentStep !== 'complete' && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
-            <span>Step {getCurrentStepIndex()} of {STEP_ORDER.length - 2}</span>
-            <span>{Math.round((getCurrentStepIndex() / (STEP_ORDER.length - 1)) * 100)}%</span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-300"
-              style={{ width: `${(getCurrentStepIndex() / (STEP_ORDER.length - 1)) * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
+    <div className={currentStep === 'welcome' || currentStep === 'complete' ? 'w-full' : 'mx-auto w-full max-w-4xl'}>
+      {renderStepContent()}
+    </div>
+  );
+}
 
-      {/* Step content */}
-      <div className="bg-card border rounded-lg p-8">
-        {renderStepContent()}
+function RequirementItem({
+  icon,
+  text,
+  required = false,
+}: {
+  icon: ReactNode;
+  text: string;
+  required?: boolean;
+}) {
+  return (
+    <li className="flex items-center gap-3 text-zinc-300">
+      <div
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+          required ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-white/5 bg-white/5'
+        }`}
+      >
+        {required ? <Check className="h-4 w-4 text-emerald-500" /> : <div className="h-1.5 w-1.5 rounded-full bg-zinc-600" />}
+      </div>
+      <div className="flex flex-1 items-center gap-3">
+        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${required ? 'bg-white/5' : 'bg-transparent'}`}>
+          {icon}
+        </div>
+        <span className={required ? 'font-medium text-zinc-200' : 'text-zinc-400'}>{text}</span>
+      </div>
+    </li>
+  );
+}
+
+function WizardSection({ children }: { children: ReactNode }) {
+  return <div className="rounded-2xl border border-white/10 bg-white/5 p-6">{children}</div>;
+}
+
+function WizardShell(params: {
+  step: WizardStep;
+  title: ReactNode;
+  subtitle: string;
+  progress: { stepNumber: number; stepTotal: number; percent: number };
+  children: ReactNode;
+  actions: ReactNode;
+}) {
+  const { title, subtitle, progress, children, actions } = params;
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] px-6 py-6 sm:px-10 sm:py-10">
+      <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-yellow-500/8 blur-3xl" />
+
+      {/* Progress */}
+      <div className="relative mb-8">
+        <div className="mb-3 flex items-center justify-between text-sm text-zinc-400">
+          <span>
+            Step {progress.stepNumber} of {progress.stepTotal}
+          </span>
+          <span>{progress.percent}%</span>
+        </div>
+        <div className="h-2 rounded-full bg-white/10">
+          <div
+            className="h-2 rounded-full bg-yellow-400 transition-all duration-300"
+            style={{ width: `${progress.percent}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Title */}
+      <div className="relative mb-8">
+        <h2 className="text-3xl font-bold tracking-tight text-white">{title}</h2>
+        <p className="mt-2 text-sm text-zinc-400">{subtitle}</p>
+      </div>
+
+      {/* Body */}
+      <div className="relative">{children}</div>
+
+      {/* Actions */}
+      <div className="relative mt-8 flex flex-col gap-3 border-t border-white/10 pt-6 sm:flex-row">
+        {actions}
       </div>
     </div>
   );
