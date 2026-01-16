@@ -1083,8 +1083,11 @@ export function CommandCenterPage() {
                         {filteredRejectedItems.map((item) => {
                           const title =
                             item.mediaType === 'tv' && item.externalSource === 'tvdb'
-                              ? item.externalName ?? `TVDB ${item.externalId}`
-                              : `${item.externalSource.toUpperCase()}: ${item.externalId}`;
+                              ? item.externalName ?? 'Unknown show'
+                              : item.externalName ??
+                                (item.externalSource === 'tmdb'
+                                  ? `TMDB ${item.externalId}`
+                                  : `${item.externalSource.toUpperCase()}: ${item.externalId}`);
                           return (
                             <div
                               key={item.id}
@@ -1092,17 +1095,9 @@ export function CommandCenterPage() {
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                                  <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-bold uppercase tracking-wide text-white/70">
-                                    {item.mediaType === 'movie' ? 'Movie' : 'TV'}
-                                  </span>
                                   <span className="min-w-0 truncate rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-medium text-white/70">
                                     {title}
                                   </span>
-                                  {item.mediaType === 'tv' && item.externalSource === 'tvdb' ? (
-                                    <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-white/55">
-                                      TVDB: {item.externalId}
-                                    </span>
-                                  ) : null}
                                   <span className="shrink-0 rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-purple-200">
                                     {kindLabel(item.collectionKind)}
                                   </span>
