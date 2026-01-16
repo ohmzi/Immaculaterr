@@ -46,6 +46,15 @@ Screenshots
   <img src="assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
 </div>
 
+**Plex UI examples**
+
+<div align="center">
+  <img src="assets/screenshots/plex-immaculate-taste-mobile.png" alt="Plex mobile screenshot showing Immaculaterr recommendations" width="320" />
+  <br/>
+  <br/>
+  <img src="assets/screenshots/plex-immaculate-taste-desktop.png" alt="Plex desktop screenshot showing Immaculaterr recommendations" width="900" />
+</div>
+
 **Mobile UI (full mobile support)**
 
 <div align="center">
