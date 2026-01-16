@@ -54,7 +54,10 @@ export function AppShell() {
 
       {/* Main Content */}
       <main className={isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}>
-        <Outlet />
+        {/* Force route content to remount on path change.
+            This avoids rare cases where a previous page's state/overlays prevent the next page from rendering,
+            even though the URL changes (observed leaving Observatory). */}
+        <Outlet key={location.pathname} />
       </main>
 
       {/* Mobile app navigation */}
