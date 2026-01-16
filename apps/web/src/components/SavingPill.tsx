@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 function useMinDurationFlag(active: boolean, minMs: number) {
   const [visible, setVisible] = useState(active);
-  const startedAtRef = useRef<number | null>(active ? Date.now() : null);
+  const startedAtRef = useRef<number | null>(null);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {

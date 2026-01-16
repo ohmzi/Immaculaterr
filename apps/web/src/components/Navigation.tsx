@@ -95,9 +95,18 @@ export function Navigation() {
 
   const clearHelpCloseTimeout = () => {
     const t = helpCloseTimeoutRef.current;
-    if (t) window.clearTimeout(t);
+    if (t !== null) window.clearTimeout(t);
     helpCloseTimeoutRef.current = null;
   };
+
+  // Avoid leaking a pending timeout on unmount.
+  useEffect(() => {
+    return () => {
+      const t = helpCloseTimeoutRef.current;
+      if (t !== null) window.clearTimeout(t);
+      helpCloseTimeoutRef.current = null;
+    };
+  }, []);
 
   const scheduleHelpClose = () => {
     clearHelpCloseTimeout();
