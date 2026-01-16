@@ -52,6 +52,26 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const navigate = useNavigate();
 
+  const go = (to: string) => {
+    const dest = (to ?? '').trim();
+    if (!dest) return;
+
+    // Prefer SPA navigation.
+    navigate(dest);
+
+    // Touch/overlay edge-case safety: if something prevents router navigation
+    // (e.g., click swallowed or history blocked), fall back to a hard navigation.
+    window.setTimeout(() => {
+      try {
+        if (window.location.pathname !== dest) {
+          window.location.assign(dest);
+        }
+      } catch {
+        // ignore
+      }
+    }, 50);
+  };
+
   const updatesQuery = useQuery({
     queryKey: ['updates'],
     queryFn: getUpdates,
@@ -143,7 +163,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] touch-manipulation"
                     onClick={() => {
                       setSelectedIndex(null);
-                      navigate(item.to);
+                      go(item.to);
                     }}
                   >
                     {item.label}
@@ -254,7 +274,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
         <div className="flex items-center gap-3 px-4 py-3">
           {/* Logo */}
           <button
-            onClick={() => navigate('/')}
+            onClick={() => go('/')}
             className="flex min-w-0 items-center gap-2 active:opacity-70 transition-opacity touch-manipulation"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -327,7 +347,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     type="button"
                     onClick={() => {
                       setIsHelpOpen(false);
-                      navigate('/faq');
+                      go('/faq');
                     }}
                     className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                   >
@@ -340,7 +360,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => {
                         setIsHelpOpen(false);
-                        navigate('/version-history');
+                        go('/version-history');
                       }}
                       className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5 touch-manipulation"
                     >
