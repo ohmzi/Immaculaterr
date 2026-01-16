@@ -113,6 +113,42 @@ export class ObservatoryService {
       take: 1000,
     });
 
+    // Best-effort: resolve TMDB ids -> movie title via our datasets.
+    const tmdbIds = Array.from(
+      new Set(
+        rows
+          .filter((r) => r.mediaType === 'movie' && r.externalSource === 'tmdb')
+          .map((r) => Number.parseInt(String(r.externalId ?? ''), 10))
+          .filter((n) => Number.isFinite(n) && n > 0),
+      ),
+    );
+    const tmdbToTitle = new Map<number, string>();
+    if (tmdbIds.length > 0) {
+      const [imm, watched] = await Promise.all([
+        this.prisma.immaculateTasteMovieLibrary
+          .findMany({
+            where: { tmdbId: { in: tmdbIds } },
+            select: { tmdbId: true, title: true },
+            take: 5000,
+          })
+          .catch(() => []),
+        this.prisma.watchedMovieRecommendationLibrary
+          .findMany({
+            where: { tmdbId: { in: tmdbIds } },
+            select: { tmdbId: true, title: true },
+            take: 5000,
+          })
+          .catch(() => []),
+      ]);
+
+      for (const r of [...imm, ...watched]) {
+        const id = r.tmdbId;
+        const title = (r.title ?? '').trim();
+        if (!title) continue;
+        if (!tmdbToTitle.has(id)) tmdbToTitle.set(id, title);
+      }
+    }
+
     // Best-effort: resolve TVDB ids -> show title via Sonarr (if configured).
     const tvdbIds = Array.from(
       new Set(
@@ -148,6 +184,10 @@ export class ObservatoryService {
           r.externalSource === 'tvdb'
             ? Number.parseInt(String(r.externalId ?? ''), 10)
             : null;
+        const tmdbId =
+          r.externalSource === 'tmdb'
+            ? Number.parseInt(String(r.externalId ?? ''), 10)
+            : null;
         const derivedKind =
           r.source === 'immaculate'
             ? 'immaculateTaste'
@@ -160,7 +200,9 @@ export class ObservatoryService {
           externalName:
             r.mediaType === 'tv' && r.externalSource === 'tvdb' && tvdbId
               ? tvdbToTitle.get(tvdbId) ?? null
-              : null,
+              : r.mediaType === 'movie' && r.externalSource === 'tmdb' && tmdbId
+                ? tmdbToTitle.get(tmdbId) ?? null
+                : null,
           source: r.source,
           collectionKind: derivedKind as
             | 'immaculateTaste'
