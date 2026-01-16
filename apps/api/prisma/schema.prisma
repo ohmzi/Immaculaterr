@@ -160,6 +160,10 @@ model RejectedSuggestion {
   externalSource RejectedSuggestionExternalSource
   externalId     String
   source         RejectedSuggestionSource
+  // For watched-based rejections, this identifies which watched collection produced the suggestion.
+  // - 'immaculateTaste' | 'recentlyWatched' | 'changeOfTaste'
+  // (stored as string for sqlite/prisma simplicity)
+  collectionKind String?
   reason         String? // 'reject' | 'remove' (optional)
   createdAt      DateTime                         @default(now())
 
@@ -167,6 +171,7 @@ model RejectedSuggestion {
 
   @@unique([userId, mediaType, externalSource, externalId])
   @@index([userId, mediaType])
+  @@index([userId, mediaType, source])
 }
 
 model ImmaculateTasteMovie {

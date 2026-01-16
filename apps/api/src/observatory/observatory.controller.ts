@@ -5,6 +5,7 @@ import {
   Get,
   Post,
   Delete,
+  Param,
   Query,
   Req,
 } from '@nestjs/common';
@@ -108,6 +109,24 @@ export class ObservatoryController {
   @Delete('rejected/reset')
   async resetRejected(@Req() req: AuthenticatedRequest) {
     return await this.observatory.resetRejectedSuggestions({ userId: req.user.id });
+  }
+
+  @Get('rejected')
+  async listRejected(@Req() req: AuthenticatedRequest) {
+    return await this.observatory.listRejectedSuggestions({ userId: req.user.id });
+  }
+
+  @Delete('rejected/:id')
+  async deleteRejected(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') idRaw: string,
+  ) {
+    const id = String(idRaw ?? '').trim();
+    if (!id) throw new BadRequestException('id is required');
+    return await this.observatory.deleteRejectedSuggestion({
+      userId: req.user.id,
+      id,
+    });
   }
 }
 

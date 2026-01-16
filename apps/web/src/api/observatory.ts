@@ -157,3 +157,30 @@ export async function resetRejectedSuggestions() {
     { method: 'DELETE' },
   );
 }
+
+export type RejectedSuggestionItem = {
+  id: string;
+  mediaType: 'movie' | 'tv';
+  externalSource: 'tmdb' | 'tvdb';
+  externalId: string;
+  externalName: string | null;
+  source: 'immaculate' | 'watched';
+  collectionKind: 'immaculateTaste' | 'recentlyWatched' | 'changeOfTaste';
+  reason: 'reject' | 'remove';
+  createdAt: string;
+};
+
+export async function listRejectedSuggestions() {
+  return await fetchJson<{
+    ok: true;
+    items: RejectedSuggestionItem[];
+    total: number;
+  }>('/api/observatory/immaculate-taste/rejected');
+}
+
+export async function deleteRejectedSuggestion(id: string) {
+  return await fetchJson<{ ok: boolean; deleted?: number; error?: string }>(
+    `/api/observatory/immaculate-taste/rejected/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
