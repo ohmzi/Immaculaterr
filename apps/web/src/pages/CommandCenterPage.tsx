@@ -1103,7 +1103,6 @@ export function CommandCenterPage() {
                                   </span>
                                 </div>
                                 <div className="mt-1.5 text-xs text-white/40">
-                                  {item.reason === 'remove' ? 'Removed' : 'Rejected'} on{' '}
                                   {new Date(item.createdAt).toLocaleDateString()}
                                 </div>
                               </div>
