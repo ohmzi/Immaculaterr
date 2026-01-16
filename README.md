@@ -60,18 +60,18 @@
   - Windows and macOS support
 <div align="center">
   <p><b>Desktop UI</b></p>
-  <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
+  <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
+  <br/>
+  <p><b>Mobile UI (full mobile support)</b></p>
+  <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/showcase-mobile.gif" alt="Immaculaterr mobile UI showcase" width="320" />
   <br/>
   <br/>
   <p><b>Plex UI examples</b></p>
-  <img src="https://raw.githubusercontent.com/ohmzi/Immaculaterr/refs/heads/master/doc/assets/screenshots/plex_mobile_app_screenshot2.png" alt="Plex mobile screenshot showing Immaculaterr recommendations" width="320" />
+  <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/plex_mobile_app_screenshot2.png" alt="Plex mobile screenshot showing Immaculaterr recommendations" width="320" />
+  <br/>
+  <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/plex_pc_screenshot.png" alt="Plex desktop screenshot showing Immaculaterr recommendations" width="900" />
   <br/>
   <br/>
-  <img src="doc/assets/screenshots/plex-immaculate-taste-desktop.png" alt="Plex desktop screenshot showing Immaculaterr recommendations" width="900" />
-  <br/>
-  <br/>
-  <p><b>Mobile UI (full mobile support)</b></p>
-  <img src="https://raw.githubusercontent.com/ohmzi/Immaculaterr/refs/heads/master/doc/assets/screenshots/plex_pc_screenshot.png" alt="Immaculaterr mobile UI showcase" width="320" />
 </div>
 
 ## Getting started (Docker)
