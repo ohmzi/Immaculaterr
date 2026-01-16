@@ -101,7 +101,13 @@ export function Navigation() {
 
   const scheduleHelpClose = () => {
     clearHelpCloseTimeout();
-    // Small delay so moving from the button into the dropdown doesn't instantly close it.
+    // This hover-only behavior is unreliable on touch devices; prefer explicit outside-tap close.
+    // Keep a tiny delay for desktop mouse users only.
+    const canHover =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(hover: hover)').matches;
+    if (!canHover) return;
     helpCloseTimeoutRef.current = window.setTimeout(() => {
       setIsHelpOpen(false);
       helpCloseTimeoutRef.current = null;
@@ -377,11 +383,12 @@ export function Navigation() {
 
                           <button
                             type="button"
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => {
                               setIsHelpOpen(false);
                               navigate('/version-history');
                             }}
-                            className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5"
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5 touch-manipulation"
                           >
                             Version: {currentLabel ?? '—'}
                           </button>
