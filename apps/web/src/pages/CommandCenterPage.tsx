@@ -958,7 +958,9 @@ export function CommandCenterPage() {
           <AnimatePresence>
             {rejectedListOpen && (
               <motion.div
-                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                // Mobile: keep the modal within the visible area between the fixed top bar and bottom nav.
+                // Desktop/tablet: center as usual.
+                className="fixed inset-0 z-[100000] flex items-start sm:items-center justify-center px-4 pt-20 pb-28 sm:p-6"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -975,7 +977,7 @@ export function CommandCenterPage() {
                   exit={{ opacity: 0, y: 24, scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 26 }}
                   onClick={(e) => e.stopPropagation()}
-                  className="relative w-full sm:max-w-3xl max-h-[84vh] rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden flex flex-col"
+                  className="relative w-full sm:max-w-3xl max-h-[calc(100dvh-184px)] sm:max-h-[84vh] rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden flex flex-col"
                 >
                   <div className="p-6 sm:p-7 border-b border-white/10">
                     <div className="flex items-start justify-between gap-4">
