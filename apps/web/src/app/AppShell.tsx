@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -12,6 +12,17 @@ export function AppShell() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
+
+  // Safety cleanup: ensure Observatory-only global CSS never lingers across routes
+  // (especially important for mobile/PWA where scroll-snap can interfere with taps).
+  useEffect(() => {
+    try {
+      document.documentElement.classList.remove('observatory-snap');
+      document.body.classList.remove('observatory-snap');
+    } catch {
+      // ignore
+    }
+  }, [location.pathname]);
 
   const settingsQuery = useQuery({
     queryKey: ['settings'],
