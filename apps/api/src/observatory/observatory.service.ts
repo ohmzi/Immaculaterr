@@ -98,6 +98,91 @@ export class ObservatoryService {
     return { ok: true, deleted: res.count };
   }
 
+  async listRejectedSuggestions(params: { userId: string }) {
+    const { settings, secrets } = await this.settings.getInternalSettings(
+      params.userId,
+    );
+    const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
+    const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
+    const sonarrBaseUrl =
+      sonarrBaseUrlRaw && sonarrApiKey ? normalizeHttpUrl(sonarrBaseUrlRaw) : '';
+
+    const rows = await this.prisma.rejectedSuggestion.findMany({
+      where: { userId: params.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+    });
+
+    // Best-effort: resolve TVDB ids -> show title via Sonarr (if configured).
+    const tvdbIds = Array.from(
+      new Set(
+        rows
+          .filter((r) => r.mediaType === 'tv' && r.externalSource === 'tvdb')
+          .map((r) => Number.parseInt(String(r.externalId ?? ''), 10))
+          .filter((n) => Number.isFinite(n) && n > 0),
+      ),
+    );
+    const tvdbToTitle = new Map<number, string>();
+    if (tvdbIds.length > 0 && sonarrBaseUrl && sonarrApiKey) {
+      const series = await this.sonarr
+        .listSeries({ baseUrl: sonarrBaseUrl, apiKey: sonarrApiKey })
+        .catch(() => []);
+      for (const s of series) {
+        const id = (s as SonarrSeries | null)?.tvdbId;
+        const title = (s as SonarrSeries | null)?.title;
+        if (
+          typeof id === 'number' &&
+          Number.isFinite(id) &&
+          typeof title === 'string' &&
+          title.trim()
+        ) {
+          tvdbToTitle.set(id, title.trim());
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      items: rows.map((r) => {
+        const tvdbId =
+          r.externalSource === 'tvdb'
+            ? Number.parseInt(String(r.externalId ?? ''), 10)
+            : null;
+        const derivedKind =
+          r.source === 'immaculate'
+            ? 'immaculateTaste'
+            : (String(r.collectionKind ?? '').trim() || 'recentlyWatched');
+        return {
+          id: r.id,
+          mediaType: r.mediaType,
+          externalSource: r.externalSource,
+          externalId: r.externalId,
+          externalName:
+            r.mediaType === 'tv' && r.externalSource === 'tvdb' && tvdbId
+              ? tvdbToTitle.get(tvdbId) ?? null
+              : null,
+          source: r.source,
+          collectionKind: derivedKind as
+            | 'immaculateTaste'
+            | 'recentlyWatched'
+            | 'changeOfTaste',
+          reason: (r.reason ?? '') as 'reject' | 'remove',
+          createdAt: r.createdAt.toISOString(),
+        };
+      }),
+      total: rows.length,
+    };
+  }
+
+  async deleteRejectedSuggestion(params: { userId: string; id: string }) {
+    const row = await this.prisma.rejectedSuggestion.findFirst({
+      where: { id: params.id, userId: params.userId },
+    });
+    if (!row) return { ok: false, error: 'Not found' };
+    await this.prisma.rejectedSuggestion.delete({ where: { id: params.id } });
+    return { ok: true, deleted: 1 };
+  }
+
   async listMovies(params: {
     userId: string;
     librarySectionKey: string;
@@ -658,10 +743,12 @@ export class ObservatoryService {
                   externalSource: 'tmdb',
                   externalId: String(a.id),
                   source: 'immaculate',
+                  collectionKind: 'immaculateTaste',
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
                 update: {
                   source: 'immaculate',
+                  collectionKind: 'immaculateTaste',
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
               })
@@ -758,10 +845,12 @@ export class ObservatoryService {
                   externalSource: 'tvdb',
                   externalId: String(a.id),
                   source: 'immaculate',
+                  collectionKind: 'immaculateTaste',
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
                 update: {
                   source: 'immaculate',
+                  collectionKind: 'immaculateTaste',
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
               })
@@ -912,10 +1001,12 @@ export class ObservatoryService {
                   externalSource: 'tmdb',
                   externalId: String(id),
                   source: 'watched',
+                  collectionKind: params.collectionKind,
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
                 update: {
                   source: 'watched',
+                  collectionKind: params.collectionKind,
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
               })
@@ -1015,10 +1106,12 @@ export class ObservatoryService {
                   externalSource: 'tvdb',
                   externalId: String(id),
                   source: 'watched',
+                  collectionKind: params.collectionKind,
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
                 update: {
                   source: 'watched',
+                  collectionKind: params.collectionKind,
                   reason: action === 'remove' ? 'remove' : 'reject',
                 },
               })

@@ -9,6 +9,8 @@ import {
   Loader2,
   RotateCcw,
   Settings2,
+  Tv,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -16,7 +18,12 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getRadarrOptions, getSonarrOptions } from '@/api/integrations';
 import { getImmaculateTasteCollections, resetImmaculateTasteCollection } from '@/api/immaculate';
-import { resetRejectedSuggestions } from '@/api/observatory';
+import {
+  resetRejectedSuggestions,
+  listRejectedSuggestions,
+  deleteRejectedSuggestion,
+  type RejectedSuggestionItem,
+} from '@/api/observatory';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { FunCountSlider } from '@/components/FunCountSlider';
@@ -77,6 +84,11 @@ export function CommandCenterPage() {
     };
   } | null>(null);
   const [rejectedResetOpen, setRejectedResetOpen] = useState(false);
+  const [rejectedListOpen, setRejectedListOpen] = useState(false);
+  const [rejectedMediaTab, setRejectedMediaTab] = useState<'movie' | 'tv'>('movie');
+  const [rejectedKind, setRejectedKind] = useState<
+    'all' | 'immaculateTaste' | 'recentlyWatched' | 'changeOfTaste'
+  >('all');
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: getPublicSettings,
@@ -108,6 +120,34 @@ export function CommandCenterPage() {
       void queryClient.invalidateQueries({ queryKey: ['observatory'] });
     },
   });
+
+  const rejectedListQuery = useQuery({
+    queryKey: ['observatory', 'rejected'],
+    queryFn: listRejectedSuggestions,
+    enabled: rejectedListOpen,
+    staleTime: 0,
+    retry: 1,
+  });
+
+  const deleteRejectedMutation = useMutation({
+    mutationFn: async (id: string) => await deleteRejectedSuggestion(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['observatory', 'rejected'] });
+    },
+  });
+
+  const filteredRejectedItems = useMemo<RejectedSuggestionItem[]>(() => {
+    const items = rejectedListQuery.data?.items ?? [];
+    return items
+      .filter((i) => i.mediaType === rejectedMediaTab)
+      .filter((i) => (rejectedKind === 'all' ? true : i.collectionKind === rejectedKind));
+  }, [rejectedListQuery.data?.items, rejectedMediaTab, rejectedKind]);
+
+  const kindLabel = (k: RejectedSuggestionItem['collectionKind']) => {
+    if (k === 'immaculateTaste') return 'Immaculate Taste';
+    if (k === 'changeOfTaste') return 'Change of Taste';
+    return 'Recently Watched';
+  };
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
 
@@ -651,15 +691,27 @@ export function CommandCenterPage() {
             ) : null}
 
             <div className="mt-5">
-              <button
-                type="button"
-                disabled={resetRejectedMutation.isPending}
-                onClick={() => setRejectedResetOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
-              >
-                <RotateCcw className="w-4 h-4" />
-                Reset rejected list
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRejectedListOpen(true)}
+                  disabled={resetRejectedMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                >
+                  <Info className="w-4 h-4" />
+                  View rejected list
+                </button>
+
+                <button
+                  type="button"
+                  disabled={resetRejectedMutation.isPending}
+                  onClick={() => setRejectedResetOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset rejected list
+                </button>
+              </div>
             </div>
           </div>
 
@@ -894,6 +946,203 @@ export function CommandCenterPage() {
                             Reset
                           </>
                         )}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* View Rejected List Modal */}
+          <AnimatePresence>
+            {rejectedListOpen && (
+              <motion.div
+                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  if (deleteRejectedMutation.isPending) return;
+                  setRejectedListOpen(false);
+                }}
+              >
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+                <motion.div
+                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full sm:max-w-3xl max-h-[84vh] rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden flex flex-col"
+                >
+                  <div className="p-6 sm:p-7 border-b border-white/10">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                          Manage
+                        </div>
+                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                          Rejected Suggestions
+                        </h2>
+                        <p className="mt-2 text-sm text-white/60">
+                          Filter and remove items to let them appear in Observatory again.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (deleteRejectedMutation.isPending) return;
+                          setRejectedListOpen(false);
+                        }}
+                        className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                        aria-label="Close"
+                        disabled={deleteRejectedMutation.isPending}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* Tabs + filters */}
+                    <div className="mt-5 flex flex-col gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRejectedMediaTab('movie')}
+                          className={[
+                            'inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider border transition',
+                            rejectedMediaTab === 'movie'
+                              ? 'bg-[#facc15] text-black border-[#facc15]/30'
+                              : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+                          ].join(' ')}
+                        >
+                          <Film className="w-4 h-4" />
+                          Movies
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRejectedMediaTab('tv')}
+                          className={[
+                            'inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider border transition',
+                            rejectedMediaTab === 'tv'
+                              ? 'bg-[#facc15] text-black border-[#facc15]/30'
+                              : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+                          ].join(' ')}
+                        >
+                          <Tv className="w-4 h-4" />
+                          TV Shows
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {(
+                          [
+                            ['all', 'All'],
+                            ['immaculateTaste', 'Immaculate Taste'],
+                            ['recentlyWatched', 'Recently Watched'],
+                            ['changeOfTaste', 'Change of Taste'],
+                          ] as const
+                        ).map(([k, label]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setRejectedKind(k)}
+                            className={[
+                              'inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-semibold border transition',
+                              rejectedKind === k
+                                ? 'bg-purple-500/20 text-purple-100 border-purple-500/30'
+                                : 'bg-white/5 text-white/65 border-white/10 hover:bg-white/10',
+                            ].join(' ')}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-6 sm:p-7">
+                    {rejectedListQuery.isLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-6 h-6 animate-spin text-white/50" />
+                      </div>
+                    ) : rejectedListQuery.isError ? (
+                      <div className="flex items-start gap-2 text-sm text-red-200/90 py-4">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>Failed to load rejected list. Please try again.</span>
+                      </div>
+                    ) : filteredRejectedItems.length === 0 ? (
+                      <div className="text-center py-12 text-white/50 text-sm">
+                        No rejected suggestions found.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredRejectedItems.map((item) => {
+                          const title =
+                            item.mediaType === 'tv' && item.externalSource === 'tvdb'
+                              ? item.externalName ?? `TVDB ${item.externalId}`
+                              : `${item.externalSource.toUpperCase()}: ${item.externalId}`;
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                  <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-bold uppercase tracking-wide text-white/70">
+                                    {item.mediaType === 'movie' ? 'Movie' : 'TV'}
+                                  </span>
+                                  <span className="min-w-0 truncate rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-medium text-white/70">
+                                    {title}
+                                  </span>
+                                  {item.mediaType === 'tv' && item.externalSource === 'tvdb' ? (
+                                    <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[11px] text-white/55">
+                                      TVDB: {item.externalId}
+                                    </span>
+                                  ) : null}
+                                  <span className="shrink-0 rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-purple-200">
+                                    {kindLabel(item.collectionKind)}
+                                  </span>
+                                </div>
+                                <div className="mt-1.5 text-xs text-white/40">
+                                  {item.reason === 'remove' ? 'Removed' : 'Rejected'} on{' '}
+                                  {new Date(item.createdAt).toLocaleDateString()}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  deleteRejectedMutation.mutate(item.id, {
+                                    onSuccess: () => toast.success('Removed from rejected list.'),
+                                    onError: () => toast.error('Failed to remove.'),
+                                  })
+                                }
+                                disabled={deleteRejectedMutation.isPending}
+                                className="shrink-0 w-9 h-9 rounded-xl border border-white/10 bg-white/5 text-white/60 hover:bg-rose-500/20 hover:border-rose-500/30 hover:text-rose-200 transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                                aria-label="Remove from rejected list"
+                                title="Remove from rejected list"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-6 sm:p-7 border-t border-white/10">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-xs text-white/50">
+                        {filteredRejectedItems.length} item{filteredRejectedItems.length === 1 ? '' : 's'}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRejectedListOpen(false)}
+                        className="h-10 rounded-full px-5 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98]"
+                      >
+                        Done
                       </button>
                     </div>
                   </div>
