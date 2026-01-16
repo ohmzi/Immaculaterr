@@ -18,6 +18,8 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
 - [Collections & recommendations](#collections--recommendations)
   - [What Plex collections does the app create?](#what-plex-collections-does-the-app-create)
   - [What’s the difference between Immaculate Taste and Based on Latest Watched?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched)
+  - [How does the Immaculate Taste collection work?](#how-does-the-immaculate-taste-collection-work)
+  - [How do Immaculate Taste points work, and how do they decay?](#how-do-immaculate-taste-points-work-and-how-do-they-decay)
   - [What is Change of Taste and how is it chosen?](#what-is-change-of-taste-and-how-is-it-chosen)
   - [How are recommendation titles generated?](#how-are-recommendation-titles-generated)
   - [What does the ratio of future releases vs current releases do?](#what-does-the-ratio-of-future-releases-vs-current-releases-do)
@@ -135,6 +137,30 @@ Refresher jobs revisit the saved dataset, move items from pending → active whe
 Immaculate Taste is a longer-lived “taste profile” collection that refreshes over time.
 
 Based on Latest Watched is more “right now”: it uses your recent watch as a seed, generates suggestions, tracks pending/active items, and refreshes as titles become available.
+
+### How does the Immaculate Taste collection work?
+
+Immaculate Taste is a **per-library** dataset that grows and evolves as you watch things:
+
+- When the **Immaculate Taste Collection** job runs (typically after you finish a movie/show if the automation toggle is enabled), it generates new “taste” suggestions and updates a stored dataset for that Plex library.
+- Each suggested title is tracked as either:
+  - **Active**: it exists in Plex right now (eligible to be placed into the Plex collection), or
+  - **Pending**: it’s not in Plex yet (tracked for later activation).
+- The **Immaculate Taste Refresher** job later revisits that dataset, activates pending titles that have appeared in Plex, and rebuilds the Plex collection.
+
+One important detail: the **ordering** inside the Plex collection is not “highest points first”. For variety, the refresher shuffles items using TMDB rating tiers (high/mid/low) so you don’t just get a monotonically sorted list every time.
+
+### How do Immaculate Taste points work, and how do they decay?
+
+Each active title has an integer **points** value that acts like a “freshness meter”.
+
+- **Max points**: when a title is (re)suggested and it’s **active**, its points are set to `immaculateTaste.maxPoints` (default **50**).
+- **Pending titles**: when a title is suggested but **not in Plex**, it’s saved as **pending** with **0** points (so it doesn’t show up until it exists in Plex).
+- **Activation**: when a pending title later appears in Plex, the refresher marks it **active** and assigns points (currently **50** on activation).
+- **Decay**: on each points-update run, any **active** title that was **not suggested this run** loses **1 point**.
+- **Removal**: once an active title’s points reach **0**, it is removed from the active dataset (pending items are preserved).
+
+Practical takeaway: with the default max of **50**, a title that never gets re-suggested will typically stick around for roughly **50 future Immaculate Taste updates** before it falls out.
 
 ### What is Change of Taste and how is it chosen?
 

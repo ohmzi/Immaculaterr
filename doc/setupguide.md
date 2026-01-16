@@ -49,6 +49,66 @@ Then open:
 
 - `http://<server-ip>:5454/`
 
+Run with Docker Compose
+---
+
+Docker Compose templates are included in this repo under `docker/immaculaterr/`.
+
+Immaculaterr works best with **host networking** on Linux (so it can reach Plex/Radarr/Sonarr via `http://localhost:<port>`). The provided compose files default to `network_mode: host`.
+
+- Default (GHCR image, recommended):
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.yml up -d
+```
+
+- Docker Hub image (Portainer-friendly):
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.dockerhub.yml up -d
+```
+
+- Build locally from source (contributors / debugging):
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.source.yml up -d --build
+```
+
+Optional: set `APP_MASTER_KEY` via Compose secrets
+---
+
+An overlay file is provided: `docker/immaculaterr/docker-compose.secrets.yml`.
+
+```bash
+cd docker/immaculaterr
+mkdir -p secrets
+node ../../scripts/gen-master-key.mjs > secrets/app_master_key
+chmod 600 secrets/app_master_key
+
+docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d
+```
+
+Updating (Docker Compose)
+---
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
+```
+
+Logs / status (Docker Compose)
+---
+
+```bash
+cd docker/immaculaterr
+docker compose ps
+docker compose logs -f immaculaterr
+```
+
 
 Updating
 ---
