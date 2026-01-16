@@ -132,14 +132,15 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed bottom-28 left-4 right-4 z-40"
+            // Very high z-index so Dashboard hero visuals (charts/tooltips) can't steal taps on mobile.
+            className="fixed bottom-28 left-4 right-4 z-[1001]"
           >
             <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-[#0b0c0f]/70 p-4 shadow-2xl backdrop-blur-2xl">
               <div className="grid grid-cols-2 gap-2">
                 {navItems[selectedIndex].dropdown!.map((item, idx) => (
                   <button
                     key={idx}
-                    className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99]"
+                    className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] touch-manipulation"
                     onClick={() => {
                       setSelectedIndex(null);
                       navigate(item.to);
@@ -162,13 +163,13 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setSelectedIndex(null)}
-            className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm"
+            className="fixed inset-0 z-[1000] bg-black/20 backdrop-blur-sm"
           />
         )}
       </AnimatePresence>
 
       {/* Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-3">
+      <nav className="fixed bottom-0 left-0 right-0 z-[1002] px-4 pb-6 pt-3">
         <div className="relative mx-auto max-w-md">
           {/* Main glassy container */}
           <div className="relative overflow-visible rounded-[2rem] border border-white/10 bg-gray-900/80 shadow-2xl backdrop-blur-2xl">
@@ -233,7 +234,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     buttonRefs.current[index] = el;
                   }}
                   onClick={() => handleButtonClick(index)}
-                  className="relative z-20 rounded-full px-4 py-2.5 text-xs font-medium text-white/70 transition-all duration-200 hover:text-white active:bg-white/10 active:text-white active:scale-[0.98]"
+                  className="relative z-20 rounded-full px-4 py-2.5 text-xs font-medium text-white/70 transition-all duration-200 hover:text-white active:bg-white/10 active:text-white active:scale-[0.98] touch-manipulation"
                 >
                   <span className={selectedIndex === index ? 'text-white' : ''}>{item.label}</span>
                 </button>
@@ -249,12 +250,12 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
       </nav>
 
       {/* Top bar with logo and controls */}
-      <div className="fixed left-0 right-0 top-0 z-50 bg-black/40 backdrop-blur-xl lg:hidden">
+      <div className="fixed left-0 right-0 top-0 z-[1002] bg-black/40 backdrop-blur-xl lg:hidden">
         <div className="flex items-center gap-3 px-4 py-3">
           {/* Logo */}
           <button
             onClick={() => navigate('/')}
-            className="flex min-w-0 items-center gap-2 active:opacity-70 transition-opacity"
+            className="flex min-w-0 items-center gap-2 active:opacity-70 transition-opacity touch-manipulation"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               {/* Screen/Monitor */}
@@ -283,7 +284,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   return next;
                 });
               }}
-              className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95"
+              className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95 touch-manipulation"
             >
               <span className="inline-flex items-center gap-2">
                 Help
