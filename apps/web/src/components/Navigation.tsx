@@ -276,7 +276,9 @@ export function Navigation() {
                  buttonPositions[hoveredIndex] && 
                  buttonPositions[hoveredIndex].width > 0 && (
                   <motion.div
-                    layoutId="navIndicator"
+                    // IMPORTANT: Keep layoutId unique vs MobileNavigation to avoid Motion shared-layout collisions
+                    // (both components are mounted at the same time; one is only CSS-hidden).
+                    layoutId="navIndicatorDesktop"
                     initial={false}
                     animate={{
                       left: buttonPositions[hoveredIndex]?.left ?? 0,

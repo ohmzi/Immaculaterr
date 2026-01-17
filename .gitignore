@@ -2,9 +2,6 @@
 config/config.local.yaml
 config/config.local.yml
 
-# IDE/editor
-.idea/
-
 # Python bytecode/cache
 __pycache__/
 *.py[cod]
@@ -35,9 +32,7 @@ pnpm-debug.log*
 .DS_Store
 
 # Agent and design documentation (local-only, not for GitHub)
-agents.md
-design_system.md
-UI_COMPONENTS.md
 
 # Local deployment secrets (do NOT commit)
 docker/immaculaterr/secrets/
+/apps/api/prisma/tcp.sqlite

@@ -238,7 +238,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
                   {/* Selection indicator pill */}
                   <motion.div
-                    layoutId="navIndicator"
+                    // IMPORTANT: Keep layoutId unique vs desktop Navigation to avoid Motion shared-layout collisions
+                    // (both components are mounted at the same time; one is only CSS-hidden).
+                    layoutId="navIndicatorMobile"
                     initial={false}
                     animate={{
                       left: buttonPositions[selectedIndex].left,
