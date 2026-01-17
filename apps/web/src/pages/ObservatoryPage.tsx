@@ -96,6 +96,29 @@ function SwipeCard({
 
   const controls = useAnimation();
   const leavingRef = useRef(false);
+  // Defensive pointer-capture handling:
+  // Some mobile browsers + heavy drag interactions can end up in a "stuck" state where taps stop
+  // dispatching correctly after a swipe interaction. Explicitly capturing/releasing the pointer
+  // (and releasing on unmount) prevents lingering capture from blocking future UI interaction.
+  const pointerCaptureRef = useRef<{ el: HTMLDivElement; pointerId: number } | null>(
+    null,
+  );
+
+  const releasePointerCapture = () => {
+    const p = pointerCaptureRef.current;
+    if (!p) return;
+    try {
+      p.el.releasePointerCapture(p.pointerId);
+    } catch {
+      // ignore
+    }
+    pointerCaptureRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => releasePointerCapture();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const threshold = 120;
   const throwX = 520;
@@ -117,7 +140,20 @@ function SwipeCard({
       dragMomentum={false}
       // Lock swipe interactions to horizontal so the page doesn't scroll/bounce while swiping cards.
       style={{ x, rotate, opacity, touchAction: 'pan-x' }}
+      onPointerDown={(e) => {
+        // Ensure we always release capture on pointerup/cancel/unmount.
+        pointerCaptureRef.current = { el: e.currentTarget, pointerId: e.pointerId };
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+      }}
+      onPointerUp={() => releasePointerCapture()}
+      onPointerCancel={() => releasePointerCapture()}
       onDragEnd={(_, info) => {
+        // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
+        releasePointerCapture();
         if (disabled) return;
         if (leavingRef.current) return;
         if (info.offset.x > threshold) {

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 import { resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
+import { useSafeNavigate } from '@/lib/navigation';
 
 interface MobileNavigationProps {
   onLogout: () => void;
@@ -50,7 +50,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [resetError, setResetError] = useState<string | null>(null);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
 
   const go = (to: string) => {
     const dest = (to ?? '').trim();
@@ -67,20 +67,8 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
       return;
     }
 
-    // Prefer SPA navigation.
+    // Prefer SPA navigation with a safety fallback handled by useSafeNavigate.
     navigate(dest);
-
-    // Touch/overlay edge-case safety: if something prevents router navigation
-    // (e.g., click swallowed or history blocked), fall back to a hard navigation.
-    window.setTimeout(() => {
-      try {
-        if (window.location.pathname !== dest) {
-          window.location.assign(dest);
-        }
-      } catch {
-        // ignore
-      }
-    }, 50);
   };
 
   const updatesQuery = useQuery({
@@ -238,7 +226,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
                   {/* Selection indicator pill */}
                   <motion.div
-                    layoutId="navIndicator"
+                    // IMPORTANT: Keep layoutId unique vs desktop Navigation to avoid Motion shared-layout collisions
+                    // (both components are mounted at the same time; one is only CSS-hidden).
+                    layoutId="navIndicatorMobile"
                     initial={false}
                     animate={{
                       left: buttonPositions[selectedIndex].left,

@@ -1,12 +1,13 @@
 import { motion } from 'motion/react';
 import { ArrowLeft, Home } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
+import { useSafeNavigate } from '@/lib/navigation';
 
 export function NotFoundPage() {
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
 
   return (
     <section className="relative min-h-[calc(100vh-160px)] overflow-hidden">
