@@ -35,7 +35,7 @@ pnpm-debug.log*
 .DS_Store
 
 # Agent and design documentation (local-only, not for GitHub)
-agent.md
+agents.md
 design_system.md
 UI_COMPONENTS.md
 
