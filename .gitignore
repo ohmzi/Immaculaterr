@@ -1,7 +1,3 @@
-# Local-only config - do NOT commit
-config/config.local.yaml
-config/config.local.yml
-
 # Python bytecode/cache
 __pycache__/
 *.py[cod]
@@ -34,3 +30,7 @@ pnpm-debug.log*
 # Local deployment secrets - do NOT commit
 docker/immaculaterr/secrets/
 /apps/api/prisma/tcp.sqlite
+
+# Local-only config - do NOT commit
+config/config.local.yaml
+config/config.local.yml

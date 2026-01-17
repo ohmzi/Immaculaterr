@@ -152,6 +152,8 @@ function SwipeCard({
       onPointerUp={() => releasePointerCapture()}
       onPointerCancel={() => releasePointerCapture()}
       onDragEnd={(_, info) => {
+        // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
+        releasePointerCapture();
         if (disabled) return;
         if (leavingRef.current) return;
         if (info.offset.x > threshold) {
