@@ -78,7 +78,7 @@
 
 ### Install from the package
 
-**Option A (Docker Hub — best for Portainer search/discovery):**
+**Option A**
 
 ```bash
 docker pull ohmzii/immaculaterr:latest
