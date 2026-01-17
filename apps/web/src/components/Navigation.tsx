@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { logout, resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
+import { useSafeNavigate } from '@/lib/navigation';
 
 interface NavItem {
   label: string;
@@ -43,7 +43,7 @@ export function Navigation() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const queryClient = useQueryClient();
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);

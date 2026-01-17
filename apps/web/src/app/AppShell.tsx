@@ -17,6 +17,9 @@ export function AppShell() {
   // (especially important for mobile/PWA where scroll-snap can interfere with taps).
   useEffect(() => {
     try {
+      // Track the current router path for navigation fallbacks.
+      document.body.dataset.routerPath = location.pathname;
+
       document.documentElement.classList.remove('observatory-snap');
       document.body.classList.remove('observatory-snap');
 

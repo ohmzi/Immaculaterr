@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'motion/react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CircleAlert,
@@ -34,6 +34,7 @@ import {
   APP_BG_IMAGE_URL,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
+import { useSafeNavigate } from '@/lib/navigation';
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -292,7 +293,7 @@ function calculateNextRuns(draft: ScheduleDraft, count: number = 5): Date[] {
 const TASK_MANAGER_AUTO_EXPAND_SEEN_KEY = 'immaculaterr.taskManager.autoExpandSeen.v1';
 
 export function TaskManagerPage() {
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
