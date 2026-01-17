@@ -10,7 +10,7 @@ Thanks for helping improve Immaculaterr.
 
 ## Development setup
 
-See: `../doc/setupguide.md`
+See: [`../doc/setupguide.md`](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/setupguide.md)
 
 ## Pull requests
 
@@ -20,7 +20,6 @@ See: `../doc/setupguide.md`
 
 ## Reporting security issues
 
-Preferred: `https://github.com/ohmzi/Immaculaterr/security`
+Preferred: [`../doc/security`](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/security.md)
 
-Fallback: `https://forms.gle/wMpsDu9jPEY14dua6`
-
+Fallback: [`forum`](https://forms.gle/wMpsDu9jPEY14dua6)
