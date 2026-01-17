@@ -3,7 +3,6 @@ name: immaculaterr
 services:
   immaculaterr:
     container_name: Immaculaterr
-    # Build the image locally from the repo (useful for contributors / debugging).
     image: immaculaterr:local
     build:
       context: ../..
@@ -16,7 +15,6 @@ services:
       - DATABASE_URL=file:/data/tcp.sqlite
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
       - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
-      - UPDATE_CHECK_GITHUB_TOKEN=${UPDATE_CHECK_GITHUB_TOKEN:-}
       - APP_MASTER_KEY=${APP_MASTER_KEY:-}
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
       - APP_UMASK=${APP_UMASK:-}
