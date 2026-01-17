@@ -56,40 +56,27 @@ Docker Compose templates are included in this repo under `docker/immaculaterr/`.
 
 Immaculaterr works best with **host networking** on Linux (so it can reach Plex/Radarr/Sonarr via `http://localhost:<port>`). The provided compose files default to `network_mode: host`.
 
-- Default (GHCR image, recommended):
-
-```bash
-cd docker/immaculaterr
-docker compose -f docker-compose.yml up -d
-```
-
-- Docker Hub image (Portainer-friendly):
-
-```bash
-cd docker/immaculaterr
-docker compose -f docker-compose.dockerhub.yml up -d
-```
-
-- Build locally from source (contributors / debugging):
+- Build locally from sourcecode :
 
 ```bash
 cd docker/immaculaterr
 docker compose -f docker-compose.source.yml up -d --build
 ```
 
-Optional: set `APP_MASTER_KEY` via Compose secrets
----
-
-An overlay file is provided: `docker/immaculaterr/docker-compose.secrets.yml`.
+- GHCR image:
 
 ```bash
 cd docker/immaculaterr
-mkdir -p secrets
-node ../../scripts/gen-master-key.mjs > secrets/app_master_key
-chmod 600 secrets/app_master_key
-
-docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d
+docker compose -f docker-compose.yml up -d
 ```
+
+- Docker Hub image:
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.dockerhub.yml up -d
+```
+
 
 Updating (Docker Compose)
 ---
@@ -100,20 +87,16 @@ docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d
 ```
 
-Logs / status (Docker Compose)
+Updating (Portainer)
 ---
 
-```bash
-cd docker/immaculaterr
-docker compose ps
-docker compose logs -f immaculaterr
-```
+In Portainer: **Immaculaterr Container → Recreate → toggle Re-Pull Image → Recreate**. 
+Then Portainer will pull the latest image.
 
 
-Updating
+Updating (Docker)
 ---
-
-To update, pull the new tag and recreate the container (your volume stays intact).
+- If you prefer GHCR, replace the image with `ghcr.io/ohmzi/immaculaterr:latest`.
 
 ```bash
 docker pull ohmzii/immaculaterr:latest
@@ -131,20 +114,6 @@ docker run -d \
   --restart unless-stopped \
   ohmzii/immaculaterr:latest
 ```
-
-Notes
----
-
-- If you prefer GHCR, replace the image with `ghcr.io/ohmzi/immaculaterr:latest`.
-
-Portainer (optional)
----
-
-If you use Portainer and want a one-click deployment (no image typing/search), add this **App Template URL**:
-
-- `https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/portainer-templates.json`
-
-In Portainer: **Settings → App Templates → URL → Save**. Then you can deploy the **Immaculaterr** template from the App Templates screen.
 
 License
 ---
