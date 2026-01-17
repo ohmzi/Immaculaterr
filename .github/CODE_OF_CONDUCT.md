@@ -2,5 +2,5 @@
 
 We follow the Contributor Covenant Code of Conduct.
 
-See: `../doc/CODE_OF_CONDUCT.md`
+See: `[CODE_OF_CONDUCT.md](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/CODE_OF_CONDUCT.md)`
 
