@@ -5,6 +5,9 @@ services:
     container_name: Immaculaterr
     image: ohmzii/immaculaterr:latest
     network_mode: host
+    # Port mapping is ignored by Docker in host mode, but kept for UI visibility.
+    ports:
+      - "${IMM_HOST_PORT:-5454}:${APP_PORT:-5454}"
     environment:
       - HOST=0.0.0.0
       - PORT=${APP_PORT:-5454}
