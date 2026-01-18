@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 import { resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
+import { useSafeNavigate } from '@/lib/navigation';
 
 interface MobileNavigationProps {
   onLogout: () => void;
@@ -50,26 +50,25 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [resetError, setResetError] = useState<string | null>(null);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
 
   const go = (to: string) => {
     const dest = (to ?? '').trim();
     if (!dest) return;
 
-    // Prefer SPA navigation.
-    navigate(dest);
+    // iOS "Add to Home Screen" / standalone PWAs can have flaky SPA navigation,
+    // especially after visiting heavy animated/backdrop-filter pages (Observatory).
+    // Prefer a hard navigation there to guarantee leaving the current view.
+    const isStandalone =
+      window.matchMedia?.('(display-mode: standalone)')?.matches ||
+      Boolean((navigator as unknown as { standalone?: boolean } | undefined)?.standalone);
+    if (isStandalone) {
+      window.location.assign(dest);
+      return;
+    }
 
-    // Touch/overlay edge-case safety: if something prevents router navigation
-    // (e.g., click swallowed or history blocked), fall back to a hard navigation.
-    window.setTimeout(() => {
-      try {
-        if (window.location.pathname !== dest) {
-          window.location.assign(dest);
-        }
-      } catch {
-        // ignore
-      }
-    }, 50);
+    // Prefer SPA navigation with a safety fallback handled by useSafeNavigate.
+    navigate(dest);
   };
 
   const updatesQuery = useQuery({
@@ -227,7 +226,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
                   {/* Selection indicator pill */}
                   <motion.div
-                    layoutId="navIndicator"
+                    // IMPORTANT: Keep layoutId unique vs desktop Navigation to avoid Motion shared-layout collisions
+                    // (both components are mounted at the same time; one is only CSS-hidden).
+                    layoutId="navIndicatorMobile"
                     initial={false}
                     animate={{
                       left: buttonPositions[selectedIndex].left,

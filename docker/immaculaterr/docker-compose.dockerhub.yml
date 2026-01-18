@@ -15,7 +15,6 @@ services:
       - DATABASE_URL=file:/data/tcp.sqlite
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
       - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
-      # Optional but recommended: set a stable master key (or mount via APP_MASTER_KEY_FILE)
       - APP_MASTER_KEY=${APP_MASTER_KEY:-}
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
     volumes:

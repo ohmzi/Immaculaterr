@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -12,6 +12,49 @@ export function AppShell() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
+
+  // Safety cleanup: ensure Observatory-only global CSS never lingers across routes
+  // (especially important for mobile/PWA where scroll-snap can interfere with taps).
+  useEffect(() => {
+    try {
+      // Track the current router path for navigation fallbacks.
+      document.body.dataset.routerPath = location.pathname;
+
+      document.documentElement.classList.remove('observatory-snap');
+      document.body.classList.remove('observatory-snap');
+
+      // Extra safety: some mobile browsers + drag interactions (Motion/Framer drag)
+      // can leave behind global styles that effectively "block" taps/clicks until refresh.
+      // We aggressively clear the most common culprits on every route change.
+      const clearStyle = (el: HTMLElement) => {
+        el.style.removeProperty('touch-action');
+        el.style.removeProperty('user-select');
+        el.style.removeProperty('-webkit-user-select');
+        el.style.removeProperty('pointer-events');
+        el.style.removeProperty('overflow');
+        el.style.removeProperty('overscroll-behavior');
+        el.style.removeProperty('overscroll-behavior-y');
+      };
+      clearStyle(document.documentElement);
+      clearStyle(document.body);
+
+      // Clear any selection that can linger after drag gestures.
+      try {
+        window.getSelection?.()?.removeAllRanges?.();
+      } catch {
+        // ignore
+      }
+
+      // Ensure no element is holding focus/capture unexpectedly.
+      try {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      } catch {
+        // ignore
+      }
+    } catch {
+      // ignore
+    }
+  }, [location.pathname]);
 
   const settingsQuery = useQuery({
     queryKey: ['settings'],

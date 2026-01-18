@@ -3,30 +3,20 @@ name: immaculaterr
 services:
   immaculaterr:
     container_name: Immaculaterr
-    # Default: pull from GitHub Container Registry (GHCR). Override for forks via IMM_IMAGE/IMM_TAG.
     image: ${IMM_IMAGE:-ghcr.io/ohmzi/immaculaterr}:${IMM_TAG:-latest}
-    # Default to host networking (Linux), so Immaculaterr can reach host services like Plex/Radarr/Sonarr
-    # via localhost (same pattern as many media-stack containers).
-    # NOTE: host networking is Linux-only (not supported the same way on Docker Desktop).
     network_mode: host
     # Port mapping is ignored by Docker in host mode, but kept for UI visibility.
     ports:
       - "${IMM_HOST_PORT:-5454}:${APP_PORT:-5454}"
     environment:
       - HOST=0.0.0.0
-      # Internal listen port (inside the container). In most cases you can leave this at 5454.
-      # With host networking, the host port is the same as this listen port.
       - PORT=${APP_PORT:-5454}
-      # Persist DB + runtime state outside the container
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
-      # Update check (UI toast + Help menu indicator). Defaults to the upstream repo.
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
       - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
-      # Preferred: inject via deployment secrets
       - APP_MASTER_KEY=${APP_MASTER_KEY:-}
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
-      # Optional: override default secure umask (octal). Default is 077.
       - APP_UMASK=${APP_UMASK:-}
     volumes:
       - immaculaterr-data:/data

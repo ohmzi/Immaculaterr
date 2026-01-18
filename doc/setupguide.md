@@ -49,11 +49,54 @@ Then open:
 
 - `http://<server-ip>:5454/`
 
-
-Updating
+Run with Docker Compose
 ---
 
-To update, pull the new tag and recreate the container (your volume stays intact).
+Docker Compose templates are included in this repo under `docker/immaculaterr/`.
+
+Immaculaterr works best with **host networking** on Linux (so it can reach Plex/Radarr/Sonarr via `http://localhost:<port>`). The provided compose files default to `network_mode: host`.
+
+- Build locally from sourcecode :
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.source.yml up -d --build
+```
+
+- GHCR image:
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.yml up -d
+```
+
+- Docker Hub image:
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.dockerhub.yml up -d
+```
+
+
+Updating (Docker Compose)
+---
+
+```bash
+cd docker/immaculaterr
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
+```
+
+Updating (Portainer)
+---
+
+In Portainer: **Immaculaterr Container → Recreate → toggle Re-Pull Image → Recreate**. 
+Then Portainer will pull the latest image.
+
+
+Updating (Docker)
+---
+- If you prefer GHCR, replace the image with `ghcr.io/ohmzi/immaculaterr:latest`.
 
 ```bash
 docker pull ohmzii/immaculaterr:latest
@@ -71,20 +114,6 @@ docker run -d \
   --restart unless-stopped \
   ohmzii/immaculaterr:latest
 ```
-
-Notes
----
-
-- If you prefer GHCR, replace the image with `ghcr.io/ohmzi/immaculaterr:latest`.
-
-Portainer (optional)
----
-
-If you use Portainer and want a one-click deployment (no image typing/search), add this **App Template URL**:
-
-- `https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/portainer-templates.json`
-
-In Portainer: **Settings → App Templates → URL → Save**. Then you can deploy the **Immaculaterr** template from the App Templates screen.
 
 License
 ---

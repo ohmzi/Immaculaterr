@@ -96,6 +96,29 @@ function SwipeCard({
 
   const controls = useAnimation();
   const leavingRef = useRef(false);
+  // Defensive pointer-capture handling:
+  // Some mobile browsers + heavy drag interactions can end up in a "stuck" state where taps stop
+  // dispatching correctly after a swipe interaction. Explicitly capturing/releasing the pointer
+  // (and releasing on unmount) prevents lingering capture from blocking future UI interaction.
+  const pointerCaptureRef = useRef<{ el: HTMLDivElement; pointerId: number } | null>(
+    null,
+  );
+
+  const releasePointerCapture = () => {
+    const p = pointerCaptureRef.current;
+    if (!p) return;
+    try {
+      p.el.releasePointerCapture(p.pointerId);
+    } catch {
+      // ignore
+    }
+    pointerCaptureRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => releasePointerCapture();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const threshold = 120;
   const throwX = 520;
@@ -117,7 +140,20 @@ function SwipeCard({
       dragMomentum={false}
       // Lock swipe interactions to horizontal so the page doesn't scroll/bounce while swiping cards.
       style={{ x, rotate, opacity, touchAction: 'pan-x' }}
+      onPointerDown={(e) => {
+        // Ensure we always release capture on pointerup/cancel/unmount.
+        pointerCaptureRef.current = { el: e.currentTarget, pointerId: e.pointerId };
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+      }}
+      onPointerUp={() => releasePointerCapture()}
+      onPointerCancel={() => releasePointerCapture()}
       onDragEnd={(_, info) => {
+        // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
+        releasePointerCapture();
         if (disabled) return;
         if (leavingRef.current) return;
         if (info.offset.x > threshold) {
@@ -368,15 +404,9 @@ export function ObservatoryPage() {
   const watchedApplyTimerRef = useRef<number | null>(null);
   const watchedDeckKeyRef = useRef<string | null>(null);
 
-  // Mobile: enable gentle scroll snapping so the deck feels "locked" when in view.
-  useEffect(() => {
-    document.documentElement.classList.add('observatory-snap');
-    document.body.classList.add('observatory-snap');
-    return () => {
-      document.documentElement.classList.remove('observatory-snap');
-      document.body.classList.remove('observatory-snap');
-    };
-  }, []);
+  // IMPORTANT:
+  // We intentionally do not enable global scroll-snap on html/body here.
+  // It causes intermittent tap/routing lockups on iOS Safari / iOS PWAs after visiting this page.
 
   const collectionsQuery = useQuery({
     queryKey: ['immaculateTasteCollections'],
@@ -1231,7 +1261,7 @@ export function ObservatoryPage() {
   }, [activeCollectionTab, mediaTab, activeLibraryKey]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
           {/* Background (landing-page style, amber-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
@@ -1245,7 +1275,7 @@ export function ObservatoryPage() {
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
-      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+      <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
           <div className="mb-12">
             <motion.div
@@ -1411,7 +1441,7 @@ export function ObservatoryPage() {
                       : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                   </div>
 
-                  <div className="mt-6 observatory-snap-target">
+                  <div className="mt-6">
                     {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
                     <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
                       {deck.length ? (
@@ -1633,7 +1663,7 @@ export function ObservatoryPage() {
                       : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
                   </div>
 
-                  <div className="mt-6 observatory-snap-target">
+                  <div className="mt-6">
                     <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
                       {watchedDeck.length ? (
                         <div className="relative h-full">

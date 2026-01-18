@@ -1,15 +1,8 @@
-# Local-only config (contains real API keys/tokens/paths) - do NOT commit
-config/config.local.yaml
-config/config.local.yml
-
-# IDE/editor
-.idea/
-
 # Python bytecode/cache
 __pycache__/
 *.py[cod]
 
-# Runtime outputs (can contain sensitive info and are machine-specific)
+# Runtime outputs
 data/
 apps/data/
 .idea/
@@ -26,7 +19,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment files (keep examples committed)
+# Environment files
 .env
 .env.*
 !.env.example
@@ -34,10 +27,10 @@ pnpm-debug.log*
 # OS
 .DS_Store
 
-# Agent and design documentation (local-only, not for GitHub)
-agent.md
-design_system.md
-UI_COMPONENTS.md
-
-# Local deployment secrets (do NOT commit)
+# Local deployment secrets - do NOT commit
 docker/immaculaterr/secrets/
+/apps/api/prisma/tcp.sqlite
+
+# Local-only config - do NOT commit
+config/config.local.yaml
+config/config.local.yml
