@@ -9,6 +9,9 @@ services:
       context: ../..
       dockerfile: docker/immaculaterr/Dockerfile
     network_mode: host
+    # Port mapping is ignored by Docker in host mode, but kept for UI visibility.
+    ports:
+      - "${IMM_HOST_PORT:-5454}:${APP_PORT:-5454}"
     environment:
       - HOST=0.0.0.0
       - PORT=${APP_PORT:-5454}
@@ -16,7 +19,6 @@ services:
       - DATABASE_URL=file:/data/tcp.sqlite
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
       - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
-      - UPDATE_CHECK_GITHUB_TOKEN=${UPDATE_CHECK_GITHUB_TOKEN:-}
       - APP_MASTER_KEY=${APP_MASTER_KEY:-}
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
       - APP_UMASK=${APP_UMASK:-}
