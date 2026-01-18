@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.0.0.525
+1.0.0.530
 ---
 
 - Compose: keep host networking with visible port mappings.
