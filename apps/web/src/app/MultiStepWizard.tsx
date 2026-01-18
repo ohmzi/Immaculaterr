@@ -65,6 +65,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   // Plex state - restore from localStorage if available
   const [plexBaseUrl, setPlexBaseUrl] = useState('http://localhost:32400');
   const [plexToken, setPlexToken] = useState('');
+  const [plexTokenFromOAuth, setPlexTokenFromOAuth] = useState(false);
   const [plexOAuthPinId, setPlexOAuthPinId] = useState<number | null>(() => {
     try {
       const saved = localStorage.getItem('wizard_plex_pin_id');
@@ -116,6 +117,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         const result = await checkPlexPin(plexOAuthPinId);
         if (result.authToken) {
           setPlexToken(result.authToken);
+          setPlexTokenFromOAuth(true);
           setIsPollingPlex(false);
           setPlexOAuthPinId(null);
 
@@ -251,6 +253,12 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       handleNext();
     },
     onError: () => {
+      if (plexTokenFromOAuth) {
+        toast.error(
+          'Plex token was created, but authentication failed. Check the Plex Server URL in the wizard and make sure it matches your local Plex server.'
+        );
+        return;
+      }
       toast.error('Plex credentials are incorrect.');
     },
   });
@@ -539,7 +547,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="plexToken"
                     type="password"
                     value={plexToken}
-                    onChange={(e) => setPlexToken(e.target.value)}
+                    onChange={(e) => {
+                      setPlexToken(e.target.value);
+                      setPlexTokenFromOAuth(false);
+                    }}
                     placeholder="Enter your Plex token"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
