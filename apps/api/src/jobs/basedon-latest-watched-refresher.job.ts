@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
@@ -89,11 +90,14 @@ export class BasedonLatestWatchedRefresherJob {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
+    private readonly plexUsers: PlexUsersService,
     private readonly watchedRefresher: WatchedCollectionsRefresherService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
     const input = ctx.input ?? {};
+    const { plexUserId, plexUserTitle, pinCollections } =
+      await this.resolvePlexUserContext(ctx);
     const limitRaw = typeof input['limit'] === 'number' ? input['limit'] : null;
     const inputLimit =
       typeof limitRaw === 'number' && Number.isFinite(limitRaw)
@@ -151,6 +155,8 @@ export class BasedonLatestWatchedRefresherJob {
 
     await ctx.info('recentlyWatchedRefresher: start', {
       dryRun: ctx.dryRun,
+      plexUserId,
+      plexUserTitle,
       movieLibraries: movieSections.map((s) => s.title),
       tvLibraries: tvSections.map((s) => s.title),
       collectionsMovie: Array.from(MOVIE_COLLECTIONS),
@@ -165,6 +171,9 @@ export class BasedonLatestWatchedRefresherJob {
       plexBaseUrl,
       plexToken,
       machineIdentifier,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
       movieSections,
       tvSections,
       limit,
@@ -180,6 +189,24 @@ export class BasedonLatestWatchedRefresherJob {
     await ctx.info('recentlyWatchedRefresher: done', summary);
     const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
     return { summary: report as unknown as JsonObject };
+  }
+
+  private async resolvePlexUserContext(ctx: JobContext) {
+    const input = ctx.input ?? {};
+    const plexUserIdRaw =
+      typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+
+    const fromInput = plexUserIdRaw
+      ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
+      : null;
+    const resolved =
+      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+
+    return {
+      plexUserId: resolved.id,
+      plexUserTitle: resolved.plexAccountTitle,
+      pinCollections: resolved.isAdmin,
+    };
   }
 }
 

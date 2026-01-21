@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { SettingsService } from '../settings/settings.service';
@@ -63,6 +64,7 @@ export class BasedonLatestWatchedCollectionJob {
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
+    private readonly plexUsers: PlexUsersService,
     private readonly recommendations: RecommendationsService,
     private readonly tmdb: TmdbService,
     private readonly watchedRefresher: WatchedCollectionsRefresherService,
@@ -72,6 +74,8 @@ export class BasedonLatestWatchedCollectionJob {
 
   async run(ctx: JobContext): Promise<JobRunResult> {
     const input = ctx.input ?? {};
+    const { plexUserId, plexUserTitle, pinCollections } =
+      await this.resolvePlexUserContext(ctx);
     const mediaTypeRaw =
       typeof input['mediaType'] === 'string' ? input['mediaType'].trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
@@ -106,6 +110,8 @@ export class BasedonLatestWatchedCollectionJob {
       dryRun: ctx.dryRun,
       trigger: ctx.trigger,
       mediaType: mediaType || null,
+      plexUserId,
+      plexUserTitle,
       mode: isTv ? 'tv' : 'movie',
       seedTitle: seedTitle || null,
       seedYear,
@@ -124,6 +130,9 @@ export class BasedonLatestWatchedCollectionJob {
     if (isTv) {
       return await this.runTv({
         ctx,
+        plexUserId,
+        plexUserTitle,
+        pinCollections,
         seedTitle,
         seedYear,
         seedRatingKey,
@@ -424,6 +433,7 @@ export class BasedonLatestWatchedCollectionJob {
     for (const col of collectionsToBuild) {
       const summary = await this.processOneCollection({
         ctx,
+        plexUserId,
         tmdbApiKey,
         plexBaseUrl,
         plexToken,
@@ -449,6 +459,9 @@ export class BasedonLatestWatchedCollectionJob {
       plexBaseUrl,
       plexToken,
       machineIdentifier,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
       movieSections,
       tvSections: [],
       limit: collectionLimit,
@@ -471,6 +484,7 @@ export class BasedonLatestWatchedCollectionJob {
 
   private async processOneCollection(params: {
     ctx: JobContext;
+    plexUserId: string;
     tmdbApiKey: string;
     plexBaseUrl: string;
     plexToken: string;
@@ -492,6 +506,7 @@ export class BasedonLatestWatchedCollectionJob {
   }): Promise<JsonObject> {
     const {
       ctx,
+      plexUserId,
       tmdbApiKey,
       plexBaseUrl,
       plexToken,
@@ -752,11 +767,12 @@ export class BasedonLatestWatchedCollectionJob {
     let snapshotSaved = false;
     if (!ctx.dryRun) {
       await this.prisma.watchedMovieRecommendationLibrary.deleteMany({
-        where: { collectionName, librarySectionKey: movieSectionKey },
+        where: { plexUserId, collectionName, librarySectionKey: movieSectionKey },
       });
       if (snapshotRows.length) {
         await this.prisma.watchedMovieRecommendationLibrary.createMany({
           data: snapshotRows.map((r) => ({
+            plexUserId,
             collectionName,
             librarySectionKey: movieSectionKey,
             tmdbId: r.tmdbId,
@@ -851,7 +867,8 @@ export class BasedonLatestWatchedCollectionJob {
             await this.prisma.watchedMovieRecommendationLibrary
               .update({
                 where: {
-                  collectionName_librarySectionKey_tmdbId: {
+                  plexUserId_collectionName_librarySectionKey_tmdbId: {
+                    plexUserId,
                     collectionName,
                     librarySectionKey: movieSectionKey,
                     tmdbId: tmdbMatch.tmdbId,
@@ -908,6 +925,9 @@ export class BasedonLatestWatchedCollectionJob {
 
   private async runTv(params: {
     ctx: JobContext;
+    plexUserId: string;
+    plexUserTitle: string;
+    pinCollections: boolean;
     seedTitle: string;
     seedYear: number | null;
     seedRatingKey: string;
@@ -916,6 +936,9 @@ export class BasedonLatestWatchedCollectionJob {
   }): Promise<JobRunResult> {
     const {
       ctx,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
       seedTitle,
       seedYear,
       seedRatingKey,
@@ -1212,6 +1235,7 @@ export class BasedonLatestWatchedCollectionJob {
     for (const col of collectionsToBuild) {
       const summary = await this.processOneTvCollection({
         ctx,
+        plexUserId,
         tmdbApiKey,
         plexBaseUrl,
         plexToken,
@@ -1237,6 +1261,9 @@ export class BasedonLatestWatchedCollectionJob {
       plexBaseUrl,
       plexToken,
       machineIdentifier,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
       movieSections: [],
       tvSections,
       limit: collectionLimit,
@@ -1259,6 +1286,7 @@ export class BasedonLatestWatchedCollectionJob {
 
   private async processOneTvCollection(params: {
     ctx: JobContext;
+    plexUserId: string;
     tmdbApiKey: string;
     plexBaseUrl: string;
     plexToken: string;
@@ -1280,6 +1308,7 @@ export class BasedonLatestWatchedCollectionJob {
   }): Promise<JsonObject> {
     const {
       ctx,
+      plexUserId,
       tmdbApiKey,
       plexBaseUrl,
       plexToken,
@@ -1507,11 +1536,12 @@ export class BasedonLatestWatchedCollectionJob {
     let snapshotSaved = false;
     if (!ctx.dryRun) {
       await this.prisma.watchedShowRecommendationLibrary.deleteMany({
-        where: { collectionName, librarySectionKey: tvSectionKey },
+        where: { plexUserId, collectionName, librarySectionKey: tvSectionKey },
       });
       if (snapshotRows.length) {
         await this.prisma.watchedShowRecommendationLibrary.createMany({
           data: snapshotRows.map((r) => ({
+            plexUserId,
             collectionName,
             librarySectionKey: tvSectionKey,
             tvdbId: r.tvdbId,
@@ -1598,7 +1628,8 @@ export class BasedonLatestWatchedCollectionJob {
             await this.prisma.watchedShowRecommendationLibrary
               .update({
                 where: {
-                  collectionName_librarySectionKey_tvdbId: {
+                  plexUserId_collectionName_librarySectionKey_tvdbId: {
+                    plexUserId,
                     collectionName,
                     librarySectionKey: tvSectionKey,
                     tvdbId,
@@ -1646,6 +1677,24 @@ export class BasedonLatestWatchedCollectionJob {
 
     await ctx.info('collection_run(tv): done', summary);
     return summary;
+  }
+
+  private async resolvePlexUserContext(ctx: JobContext) {
+    const input = ctx.input ?? {};
+    const plexUserIdRaw =
+      typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+
+    const fromInput = plexUserIdRaw
+      ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
+      : null;
+    const resolved =
+      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+
+    return {
+      plexUserId: resolved.id,
+      plexUserTitle: resolved.plexAccountTitle,
+      pinCollections: resolved.isAdmin,
+    };
   }
 
   private async pickRadarrDefaults(params: {

@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
+import { buildUserCollectionHubOrder, buildUserCollectionName } from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
@@ -56,6 +58,12 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+const CURATED_COLLECTION_HUB_ORDER = [
+  'Based on your recently watched movie',
+  'Inspired by your Immaculate Taste',
+  'Change of Taste',
+] as const;
+
 @Injectable()
 export class ImmaculateTasteRefresherJob {
   private static readonly COLLECTION_NAME = 'Inspired by your Immaculate Taste';
@@ -66,6 +74,7 @@ export class ImmaculateTasteRefresherJob {
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
     private readonly plexCurated: PlexCuratedCollectionsService,
+    private readonly plexUsers: PlexUsersService,
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
     private readonly tmdb: TmdbService,
@@ -73,6 +82,8 @@ export class ImmaculateTasteRefresherJob {
 
   async run(ctx: JobContext): Promise<JobRunResult> {
     const input = ctx.input ?? {};
+    const { plexUserId, plexUserTitle, pinCollections } =
+      await this.resolvePlexUserContext(ctx);
     const limitRaw = typeof input['limit'] === 'number' ? input['limit'] : null;
     const limit =
       typeof limitRaw === 'number' && Number.isFinite(limitRaw)
@@ -189,14 +200,26 @@ export class ImmaculateTasteRefresherJob {
 
     const maxPoints =
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
+    const plexCollectionName = buildUserCollectionName(
+      ImmaculateTasteRefresherJob.COLLECTION_NAME,
+      plexUserTitle,
+    );
+    const collectionHubOrder = buildUserCollectionHubOrder(
+      CURATED_COLLECTION_HUB_ORDER,
+      plexUserTitle,
+    );
 
     await ctx.info('immaculateTasteRefresher: start', {
       dryRun: ctx.dryRun,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
       includeMovies,
       includeTv,
       movieLibraries: includeMovies ? orderedMovieSections.map((s) => s.title) : [],
       tvLibraries: includeTv ? effectiveTvSections.map((s) => s.title) : [],
       collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
+      plexCollectionName,
       maxPoints,
       activationPoints: ImmaculateTasteRefresherJob.ACTIVATION_POINTS,
       limit,
@@ -302,7 +325,7 @@ export class ImmaculateTasteRefresherJob {
           }
 
           const existing = await this.prisma.immaculateTasteMovieLibrary.count({
-            where: { librarySectionKey: sec.key },
+            where: { plexUserId, librarySectionKey: sec.key },
           });
           if (existing > 0) continue;
 
@@ -310,6 +333,7 @@ export class ImmaculateTasteRefresherJob {
           for (const batch of batches) {
             await this.prisma.immaculateTasteMovieLibrary.createMany({
               data: batch.map((r) => ({
+                plexUserId,
                 librarySectionKey: sec.key,
                 tmdbId: r.tmdbId,
                 title: r.title ?? undefined,
@@ -336,6 +360,7 @@ export class ImmaculateTasteRefresherJob {
     const seedLibrarySectionKey = preferredMovieSectionKey || canonicalMovieSectionKey;
     await this.immaculateTaste.ensureLegacyImported({
       ctx,
+      plexUserId,
       librarySectionKey: seedLibrarySectionKey,
       maxPoints,
     });
@@ -353,7 +378,7 @@ export class ImmaculateTasteRefresherJob {
 
       // Activate pending suggestions that now exist in THIS library.
       const pendingRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
-        where: { librarySectionKey: sec.key, status: 'pending' },
+        where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
         select: { tmdbId: true },
       });
       const toActivate = pendingRows
@@ -366,6 +391,7 @@ export class ImmaculateTasteRefresherJob {
         : (
             await this.immaculateTaste.activatePendingNowInPlex({
               ctx,
+              plexUserId,
               librarySectionKey: sec.key,
               tmdbIds: toActivate,
               pointsOnActivation: ImmaculateTasteRefresherJob.ACTIVATION_POINTS,
@@ -389,6 +415,7 @@ export class ImmaculateTasteRefresherJob {
       // Load active items for THIS library (eligible for collections).
       const activeRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
         where: {
+          plexUserId,
           librarySectionKey: sec.key,
           status: 'active',
           points: { gt: 0 },
@@ -437,7 +464,13 @@ export class ImmaculateTasteRefresherJob {
 
               await this.prisma.immaculateTasteMovieLibrary
                 .update({
-                  where: { librarySectionKey_tmdbId: { librarySectionKey: sec.key, tmdbId } },
+                  where: {
+                    plexUserId_librarySectionKey_tmdbId: {
+                      plexUserId,
+                      librarySectionKey: sec.key,
+                      tmdbId,
+                    },
+                  },
                   data: {
                     ...(voteAvg !== null ? { tmdbVoteAvg: voteAvg } : {}),
                     ...(voteCount !== null ? { tmdbVoteCount: voteCount } : {}),
@@ -523,9 +556,11 @@ export class ImmaculateTasteRefresherJob {
             token: plexToken,
             machineIdentifier,
             movieSectionKey: sec.key,
-            collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
+            collectionName: plexCollectionName,
             desiredItems: desiredLimited,
             randomizeOrder: false,
+            pinCollections,
+            collectionHubOrder,
           });
 
       plexByLibrary.push({
@@ -693,7 +728,7 @@ export class ImmaculateTasteRefresherJob {
           }
 
             const existing = await this.prisma.immaculateTasteShowLibrary.count({
-              where: { librarySectionKey: sec.key },
+              where: { plexUserId, librarySectionKey: sec.key },
             });
             if (existing > 0) continue;
 
@@ -701,6 +736,7 @@ export class ImmaculateTasteRefresherJob {
             for (const batch of batches) {
               await this.prisma.immaculateTasteShowLibrary.createMany({
                 data: batch.map((r) => ({
+                  plexUserId,
                   librarySectionKey: sec.key,
                   tvdbId: r.tvdbId,
                   tmdbId: r.tmdbId ?? undefined,
@@ -736,7 +772,7 @@ export class ImmaculateTasteRefresherJob {
 
         // Activate pending suggestions that now exist in THIS library.
         const pendingRows = await this.prisma.immaculateTasteShowLibrary.findMany({
-          where: { librarySectionKey: sec.key, status: 'pending' },
+          where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
           select: { tvdbId: true },
         });
         const toActivate = pendingRows
@@ -749,6 +785,7 @@ export class ImmaculateTasteRefresherJob {
           : (
               await this.immaculateTasteTv.activatePendingNowInPlex({
                 ctx,
+                plexUserId,
                 librarySectionKey: sec.key,
                 tvdbIds: toActivate,
                 pointsOnActivation: ImmaculateTasteRefresherJob.ACTIVATION_POINTS,
@@ -771,6 +808,7 @@ export class ImmaculateTasteRefresherJob {
 
         const activeRows = await this.prisma.immaculateTasteShowLibrary.findMany({
           where: {
+            plexUserId,
             librarySectionKey: sec.key,
             status: 'active',
             points: { gt: 0 },
@@ -825,7 +863,7 @@ export class ImmaculateTasteRefresherJob {
 
                 await this.prisma.immaculateTasteShowLibrary
                   .updateMany({
-                    where: { librarySectionKey: sec.key, tmdbId },
+                    where: { plexUserId, librarySectionKey: sec.key, tmdbId },
                     data: {
                       ...(voteAvg !== null ? { tmdbVoteAvg: voteAvg } : {}),
                       ...(voteCount !== null ? { tmdbVoteCount: voteCount } : {}),
@@ -913,9 +951,11 @@ export class ImmaculateTasteRefresherJob {
               machineIdentifier,
               movieSectionKey: sec.key,
               itemType: 2,
-              collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
+              collectionName: plexCollectionName,
               desiredItems: desiredLimited,
               randomizeOrder: false,
+              pinCollections,
+              collectionHubOrder,
             });
 
         plexByLibrary.push({
@@ -951,6 +991,8 @@ export class ImmaculateTasteRefresherJob {
     }
 
     const summary: JsonObject = {
+      plexUserId,
+      plexUserTitle,
       collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
       movie: movieSummary,
       tv: tvSummary,
@@ -959,6 +1001,24 @@ export class ImmaculateTasteRefresherJob {
     await ctx.info('immaculateTasteRefresher: done', summary);
     const report = buildImmaculateTasteRefresherReport({ ctx, raw: summary });
     return { summary: report as unknown as JsonObject };
+  }
+
+  private async resolvePlexUserContext(ctx: JobContext) {
+    const input = ctx.input ?? {};
+    const plexUserIdRaw =
+      typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+
+    const fromInput = plexUserIdRaw
+      ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
+      : null;
+    const resolved =
+      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+
+    return {
+      plexUserId: resolved.id,
+      plexUserTitle: resolved.plexAccountTitle,
+      pinCollections: resolved.isAdmin,
+    };
   }
 }
 

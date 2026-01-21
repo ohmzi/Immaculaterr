@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { RadarrService, type RadarrMovie } from '../radarr/radarr.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { SettingsService } from '../settings/settings.service';
@@ -85,6 +86,7 @@ export class ImmaculateTasteCollectionJob {
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
+    private readonly plexUsers: PlexUsersService,
     private readonly recommendations: RecommendationsService,
     private readonly tmdb: TmdbService,
     private readonly radarr: RadarrService,
@@ -96,6 +98,8 @@ export class ImmaculateTasteCollectionJob {
 
   async run(ctx: JobContext): Promise<JobRunResult> {
     const input = ctx.input ?? {};
+    const { plexUserId, plexUserTitle, pinCollections } =
+      await this.resolvePlexUserContext(ctx);
     const mediaTypeRaw =
       typeof input['mediaType'] === 'string' ? input['mediaType'].trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
@@ -130,6 +134,8 @@ export class ImmaculateTasteCollectionJob {
       dryRun: ctx.dryRun,
       trigger: ctx.trigger,
       mediaType: mediaType || null,
+      plexUserId,
+      plexUserTitle,
       mode: isTv ? 'tv' : 'movie',
       seedTitle: seedTitle || null,
       seedYear,
@@ -148,6 +154,9 @@ export class ImmaculateTasteCollectionJob {
     if (isTv) {
       return await this.runTv({
         ctx,
+        plexUserId,
+        plexUserTitle,
+        pinCollections,
         seedTitle,
         seedYear,
         seedRatingKey,
@@ -302,6 +311,7 @@ export class ImmaculateTasteCollectionJob {
 
     await this.immaculateTaste.ensureLegacyImported({
       ctx,
+      plexUserId,
       librarySectionKey: movieSectionKey,
       maxPoints,
     });
@@ -730,6 +740,7 @@ export class ImmaculateTasteCollectionJob {
       ? ({ dryRun: true } as JsonObject)
       : await this.immaculateTaste.applyPointsUpdate({
           ctx,
+          plexUserId,
           librarySectionKey: movieSectionKey,
           suggested: suggestedForPoints,
           maxPoints,
@@ -749,6 +760,7 @@ export class ImmaculateTasteCollectionJob {
         await this.prisma.immaculateTasteMovieLibrary
           .updateMany({
             where: {
+              plexUserId,
               librarySectionKey: movieSectionKey,
               tmdbId: { in: activeTmdbIds },
             },
@@ -762,6 +774,7 @@ export class ImmaculateTasteCollectionJob {
           await this.prisma.immaculateTasteMovieLibrary
             .updateMany({
               where: {
+                plexUserId,
                 librarySectionKey: movieSectionKey,
                 status: 'pending',
                 tmdbId: { in: missingTmdbIds },
@@ -775,6 +788,7 @@ export class ImmaculateTasteCollectionJob {
           await this.prisma.immaculateTasteMovieLibrary
             .updateMany({
               where: {
+                plexUserId,
                 librarySectionKey: movieSectionKey,
                 status: 'pending',
                 tmdbId: { in: missingTmdbIds },
@@ -790,6 +804,7 @@ export class ImmaculateTasteCollectionJob {
         await this.prisma.immaculateTasteMovieLibrary
           .updateMany({
             where: {
+              plexUserId,
               librarySectionKey: movieSectionKey,
               tmdbId: { in: radarrSentTmdbIds },
               sentToRadarrAt: null,
@@ -829,6 +844,9 @@ export class ImmaculateTasteCollectionJob {
         ...ctx,
         input: {
           ...(ctx.input ?? {}),
+          plexUserId,
+          plexUserTitle,
+          pinCollections,
           includeMovies: true,
           includeTv: false,
           movieSectionKey,
@@ -870,6 +888,9 @@ export class ImmaculateTasteCollectionJob {
 
   private async runTv(params: {
     ctx: JobContext;
+    plexUserId: string;
+    plexUserTitle: string;
+    pinCollections: boolean;
     seedTitle: string;
     seedYear: number | null;
     seedRatingKey: string;
@@ -878,6 +899,9 @@ export class ImmaculateTasteCollectionJob {
   }): Promise<JobRunResult> {
     const {
       ctx,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
       seedTitle,
       seedYear,
       seedRatingKey,
@@ -1038,7 +1062,11 @@ export class ImmaculateTasteCollectionJob {
       webContextFraction,
     });
 
-    await this.immaculateTasteTv.ensureLegacyImported({ ctx, maxPoints });
+    await this.immaculateTasteTv.ensureLegacyImported({
+      ctx,
+      plexUserId,
+      maxPoints,
+    });
 
     const requestedCount = Math.min(
       100,
@@ -1409,6 +1437,7 @@ export class ImmaculateTasteCollectionJob {
       ? ({ dryRun: true } as JsonObject)
       : await this.immaculateTasteTv.applyPointsUpdate({
           ctx,
+          plexUserId,
           librarySectionKey: tvSectionKey,
           suggested: suggestedForPoints,
           maxPoints,
@@ -1428,6 +1457,7 @@ export class ImmaculateTasteCollectionJob {
         await this.prisma.immaculateTasteShowLibrary
           .updateMany({
             where: {
+              plexUserId,
               librarySectionKey: tvSectionKey,
               tvdbId: { in: activeTvdbIds },
             },
@@ -1441,6 +1471,7 @@ export class ImmaculateTasteCollectionJob {
           await this.prisma.immaculateTasteShowLibrary
             .updateMany({
               where: {
+                plexUserId,
                 librarySectionKey: tvSectionKey,
                 status: 'pending',
                 tvdbId: { in: missingTvdbIds },
@@ -1453,6 +1484,7 @@ export class ImmaculateTasteCollectionJob {
           await this.prisma.immaculateTasteShowLibrary
             .updateMany({
               where: {
+                plexUserId,
                 librarySectionKey: tvSectionKey,
                 status: 'pending',
                 tvdbId: { in: missingTvdbIds },
@@ -1468,6 +1500,7 @@ export class ImmaculateTasteCollectionJob {
         await this.prisma.immaculateTasteShowLibrary
           .updateMany({
             where: {
+              plexUserId,
               librarySectionKey: tvSectionKey,
               tvdbId: { in: sonarrSentTvdbIds },
               sentToSonarrAt: null,
@@ -1507,6 +1540,9 @@ export class ImmaculateTasteCollectionJob {
         ...ctx,
         input: {
           ...(ctx.input ?? {}),
+          plexUserId,
+          plexUserTitle,
+          pinCollections,
           includeMovies: false,
           includeTv: true,
           tvSectionKey,
@@ -1544,6 +1580,24 @@ export class ImmaculateTasteCollectionJob {
     await ctx.info('immaculateTastePoints(tv): done', summary);
     const report = buildImmaculateTastePointsReport({ ctx, raw: summary });
     return { summary: report as unknown as JsonObject };
+  }
+
+  private async resolvePlexUserContext(ctx: JobContext) {
+    const input = ctx.input ?? {};
+    const plexUserIdRaw =
+      typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+
+    const fromInput = plexUserIdRaw
+      ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
+      : null;
+    const resolved =
+      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+
+    return {
+      plexUserId: resolved.id,
+      plexUserTitle: resolved.plexAccountTitle,
+      pinCollections: resolved.isAdmin,
+    };
   }
 
   private async pickRadarrDefaults(params: {

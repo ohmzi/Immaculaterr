@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import path from 'node:path';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { PlexServerService } from './plex-server.service';
+import { stripUserCollectionPrefix } from './plex-collections.utils';
 
 const CURATED_COLLECTION_HUB_ORDER = [
   'Based on your recently watched movie',
@@ -32,6 +33,8 @@ export class PlexCuratedCollectionsService {
     itemType?: 1 | 2;
     desiredItems: Array<{ ratingKey: string; title: string }>;
     randomizeOrder?: boolean;
+    pinCollections?: boolean;
+    collectionHubOrder?: string[];
   }): Promise<JsonObject> {
     const {
       ctx,
@@ -43,6 +46,8 @@ export class PlexCuratedCollectionsService {
       itemType = 1,
       desiredItems,
       randomizeOrder = false,
+      pinCollections = true,
+      collectionHubOrder,
     } = params;
 
     const mediaType = itemType === 2 ? 'tv' : 'movie';
@@ -501,7 +506,12 @@ export class PlexCuratedCollectionsService {
     }
 
     // Pin collections to home/library (only if items were added or collection existed)
-    if (plexCollectionKey && (added > 0 || existingCount > 0) && !ctx.dryRun) {
+    if (
+      pinCollections &&
+      plexCollectionKey &&
+      (added > 0 || existingCount > 0) &&
+      !ctx.dryRun
+    ) {
       try {
         await ctx.info('collection: pinning to home/library', {
           collectionName,
@@ -511,6 +521,8 @@ export class PlexCuratedCollectionsService {
           baseUrl,
           token,
           librarySectionKey: movieSectionKey,
+          collectionHubOrder:
+            collectionHubOrder ?? Array.from(CURATED_COLLECTION_HUB_ORDER),
         });
       } catch (err) {
         await ctx.warn('collection: failed to pin hubs (non-critical)', {
@@ -595,11 +607,12 @@ export class PlexCuratedCollectionsService {
     baseUrl: string;
     token: string;
     librarySectionKey: string;
+    collectionHubOrder: string[];
   }): Promise<void> {
-    const { ctx, baseUrl, token, librarySectionKey } = params;
+    const { ctx, baseUrl, token, librarySectionKey, collectionHubOrder } = params;
 
     const stats = {
-      requested: CURATED_COLLECTION_HUB_ORDER.length,
+      requested: collectionHubOrder.length,
       found: 0,
       updated: 0,
       missing: 0,
@@ -607,7 +620,7 @@ export class PlexCuratedCollectionsService {
     };
 
     // First, set visibility for all collections
-    for (const collectionName of CURATED_COLLECTION_HUB_ORDER) {
+    for (const collectionName of collectionHubOrder) {
       try {
         const collectionKey = await this.plexServer.findCollectionRatingKey({
           baseUrl,
@@ -658,7 +671,7 @@ export class PlexCuratedCollectionsService {
       const identifiers: string[] = [];
       const collections: string[] = [];
 
-      for (const collectionName of CURATED_COLLECTION_HUB_ORDER) {
+      for (const collectionName of collectionHubOrder) {
         try {
           const collectionKey = await this.plexServer.findCollectionRatingKey({
             baseUrl,
@@ -729,7 +742,9 @@ export class PlexCuratedCollectionsService {
     poster: string | null;
     background: string | null;
   } {
-    const normalizedName = collectionName.trim().toLowerCase();
+    const normalizedName = stripUserCollectionPrefix(collectionName)
+      .trim()
+      .toLowerCase();
     const collectionArtworkMap: Record<string, string> = {
       'inspired by your immaculate taste': 'immaculate_taste_collection',
       'based on your recently watched movie': 'recently_watched_collection',

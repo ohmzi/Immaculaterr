@@ -9,7 +9,9 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { PrismaService } from '../db/prisma.service';
+import { buildUserCollectionName } from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { immaculateTasteResetMarkerKey } from './immaculate-taste-reset';
 
@@ -46,11 +48,16 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-const IMMACULATE_PLEX_COLLECTION_NAME = 'Inspired by your Immaculate Taste';
+const IMMACULATE_PLEX_COLLECTION_BASE_NAME = 'Inspired by your Immaculate Taste';
 
 type ResetBody = {
   mediaType?: unknown;
   librarySectionKey?: unknown;
+};
+
+type ResetUserBody = {
+  plexUserId?: unknown;
+  mediaType?: unknown;
 };
 
 @Controller('immaculate-taste')
@@ -60,11 +67,15 @@ export class ImmaculateTasteController {
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
+    private readonly plexUsers: PlexUsersService,
   ) {}
 
   @Get('collections')
   async listCollections(@Req() req: AuthenticatedRequest) {
     const userId = req.user.id;
+    const adminPlexUser = await this.plexUsers.ensureAdminPlexUser({ userId });
+    const plexUserId = adminPlexUser.id;
+    const plexUserTitle = adminPlexUser.plexAccountTitle;
     const { settings, secrets } = await this.settingsService.getInternalSettings(
       userId,
     );
@@ -88,21 +99,27 @@ export class ImmaculateTasteController {
       (s) => (s.type ?? '').toLowerCase() === 'show',
     );
 
+    const collectionName = buildUserCollectionName(
+      IMMACULATE_PLEX_COLLECTION_BASE_NAME,
+      plexUserTitle,
+    );
+
     const movieEntries = await Promise.all(
       movieSections.map(async (sec) => {
         const [total, active, pending] = await Promise.all([
           this.prisma.immaculateTasteMovieLibrary.count({
-            where: { librarySectionKey: sec.key },
+            where: { plexUserId, librarySectionKey: sec.key },
           }),
           this.prisma.immaculateTasteMovieLibrary.count({
             where: {
+              plexUserId,
               librarySectionKey: sec.key,
               status: 'active',
               points: { gt: 0 },
             },
           }),
           this.prisma.immaculateTasteMovieLibrary.count({
-            where: { librarySectionKey: sec.key, status: 'pending' },
+            where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
           }),
         ]);
 
@@ -113,7 +130,7 @@ export class ImmaculateTasteController {
             baseUrl: plexBaseUrl,
             token: plexToken,
             librarySectionKey: sec.key,
-            collectionName: IMMACULATE_PLEX_COLLECTION_NAME,
+            collectionName,
           });
           if (collectionRatingKey) {
             const items = await this.plexServer.getCollectionItems({
@@ -133,7 +150,7 @@ export class ImmaculateTasteController {
           libraryTitle: sec.title,
           dataset: { total, active, pending },
           plex: {
-            collectionName: IMMACULATE_PLEX_COLLECTION_NAME,
+            collectionName,
             collectionRatingKey,
             itemCount: plexItemCount,
           },
@@ -145,17 +162,18 @@ export class ImmaculateTasteController {
       tvSections.map(async (sec) => {
         const [total, active, pending] = await Promise.all([
           this.prisma.immaculateTasteShowLibrary.count({
-            where: { librarySectionKey: sec.key },
+            where: { plexUserId, librarySectionKey: sec.key },
           }),
           this.prisma.immaculateTasteShowLibrary.count({
             where: {
+              plexUserId,
               librarySectionKey: sec.key,
               status: 'active',
               points: { gt: 0 },
             },
           }),
           this.prisma.immaculateTasteShowLibrary.count({
-            where: { librarySectionKey: sec.key, status: 'pending' },
+            where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
           }),
         ]);
 
@@ -166,7 +184,7 @@ export class ImmaculateTasteController {
             baseUrl: plexBaseUrl,
             token: plexToken,
             librarySectionKey: sec.key,
-            collectionName: IMMACULATE_PLEX_COLLECTION_NAME,
+            collectionName,
           });
           if (collectionRatingKey) {
             const items = await this.plexServer.getCollectionItems({
@@ -186,7 +204,7 @@ export class ImmaculateTasteController {
           libraryTitle: sec.title,
           dataset: { total, active, pending },
           plex: {
-            collectionName: IMMACULATE_PLEX_COLLECTION_NAME,
+            collectionName,
             collectionRatingKey,
             itemCount: plexItemCount,
           },
@@ -195,8 +213,42 @@ export class ImmaculateTasteController {
     );
 
     return {
-      collectionName: IMMACULATE_PLEX_COLLECTION_NAME,
+      collectionName,
       collections: [...movieEntries, ...tvEntries],
+    };
+  }
+
+  @Get('collections/users')
+  async listCollectionUsers(@Req() req: AuthenticatedRequest) {
+    await this.plexUsers.ensureAdminPlexUser({ userId: req.user.id });
+    const users = await this.prisma.plexUser.findMany({
+      orderBy: [{ isAdmin: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    const movieCounts = await this.prisma.immaculateTasteMovieLibrary.groupBy({
+      by: ['plexUserId'],
+      _count: { _all: true },
+    });
+    const tvCounts = await this.prisma.immaculateTasteShowLibrary.groupBy({
+      by: ['plexUserId'],
+      _count: { _all: true },
+    });
+
+    const movieByUser = new Map<string, number>(
+      movieCounts.map((row) => [row.plexUserId, row._count._all]),
+    );
+    const tvByUser = new Map<string, number>(
+      tvCounts.map((row) => [row.plexUserId, row._count._all]),
+    );
+
+    return {
+      users: users.map((user) => ({
+        id: user.id,
+        plexAccountTitle: user.plexAccountTitle,
+        isAdmin: user.isAdmin,
+        movieCount: movieByUser.get(user.id) ?? 0,
+        tvCount: tvByUser.get(user.id) ?? 0,
+      })),
     };
   }
 
@@ -214,6 +266,14 @@ export class ImmaculateTasteController {
     if (!librarySectionKey) {
       throw new BadRequestException('librarySectionKey is required');
     }
+
+    const adminPlexUser = await this.plexUsers.ensureAdminPlexUser({ userId });
+    const plexUserId = adminPlexUser.id;
+    const plexUserTitle = adminPlexUser.plexAccountTitle;
+    const collectionName = buildUserCollectionName(
+      IMMACULATE_PLEX_COLLECTION_BASE_NAME,
+      plexUserTitle,
+    );
 
     const { settings, secrets } = await this.settingsService.getInternalSettings(
       userId,
@@ -252,7 +312,7 @@ export class ImmaculateTasteController {
         baseUrl: plexBaseUrl,
         token: plexToken,
         librarySectionKey,
-        collectionName: IMMACULATE_PLEX_COLLECTION_NAME,
+        collectionName,
       });
       if (collectionRatingKey) {
         await this.plexServer.deleteCollection({
@@ -270,10 +330,10 @@ export class ImmaculateTasteController {
     const datasetDeleted =
       mediaType === 'movie'
         ? await this.prisma.immaculateTasteMovieLibrary.deleteMany({
-            where: { librarySectionKey },
+            where: { plexUserId, librarySectionKey },
           })
         : await this.prisma.immaculateTasteShowLibrary.deleteMany({
-            where: { librarySectionKey },
+            where: { plexUserId, librarySectionKey },
           });
 
     // Prevent legacy auto-bootstrap from restoring data immediately after a reset.
@@ -296,13 +356,127 @@ export class ImmaculateTasteController {
       librarySectionKey,
       libraryTitle: sec.title,
       plex: {
-        collectionName: IMMACULATE_PLEX_COLLECTION_NAME,
+        collectionName,
         collectionRatingKey,
         deleted: plexDeleted,
       },
       dataset: {
         deleted: datasetDeleted.count,
       },
+    };
+  }
+
+  @Post('collections/reset-user')
+  async resetUserCollections(@Req() req: AuthenticatedRequest, @Body() body: ResetUserBody) {
+    const userId = req.user.id;
+    const mediaTypeRaw = typeof body?.mediaType === 'string' ? body.mediaType.trim() : '';
+    const mediaType = mediaTypeRaw.toLowerCase();
+    const plexUserId =
+      typeof body?.plexUserId === 'string' ? body.plexUserId.trim() : '';
+
+    if (mediaType !== 'movie' && mediaType !== 'tv') {
+      throw new BadRequestException('mediaType must be "movie" or "tv"');
+    }
+    if (!plexUserId) {
+      throw new BadRequestException('plexUserId is required');
+    }
+
+    const plexUser = await this.plexUsers.getPlexUserById(plexUserId);
+    if (!plexUser) {
+      throw new BadRequestException('Plex user not found');
+    }
+
+    const { settings, secrets } = await this.settingsService.getInternalSettings(
+      userId,
+    );
+    const plexBaseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const plexToken =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!plexBaseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
+    if (!plexToken) throw new BadRequestException('Plex token is not set');
+    const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
+
+    const sections = await this.plexServer.getSections({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+    });
+    const targetType = mediaType === 'movie' ? 'movie' : 'show';
+    const targetSections = sections.filter(
+      (s) => (s.type ?? '').toLowerCase() === targetType,
+    );
+
+    const collectionName = buildUserCollectionName(
+      IMMACULATE_PLEX_COLLECTION_BASE_NAME,
+      plexUser.plexAccountTitle,
+    );
+
+    let plexDeleted = 0;
+    for (const sec of targetSections) {
+      try {
+        const collectionRatingKey = await this.plexServer.findCollectionRatingKey({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          librarySectionKey: sec.key,
+          collectionName,
+        });
+        if (!collectionRatingKey) continue;
+        await this.plexServer.deleteCollection({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          collectionRatingKey,
+        });
+        plexDeleted += 1;
+      } catch {
+        // ignore Plex flakiness
+      }
+    }
+
+    const datasetDeleted =
+      mediaType === 'movie'
+        ? await this.prisma.immaculateTasteMovieLibrary.deleteMany({
+            where: { plexUserId: plexUser.id },
+          })
+        : await this.prisma.immaculateTasteShowLibrary.deleteMany({
+            where: { plexUserId: plexUser.id },
+          });
+
+    const resetAt = new Date().toISOString();
+    await Promise.all(
+      targetSections.map((sec) =>
+        this.prisma.setting
+          .upsert({
+            where: {
+              key: immaculateTasteResetMarkerKey({
+                mediaType,
+                librarySectionKey: sec.key,
+              }),
+            },
+            update: { value: resetAt, encrypted: false },
+            create: {
+              key: immaculateTasteResetMarkerKey({
+                mediaType,
+                librarySectionKey: sec.key,
+              }),
+              value: resetAt,
+              encrypted: false,
+            },
+          })
+          .catch(() => undefined),
+      ),
+    );
+
+    return {
+      ok: true,
+      mediaType,
+      plexUserId: plexUser.id,
+      plexUserTitle: plexUser.plexAccountTitle,
+      plex: {
+        collectionName,
+        deleted: plexDeleted,
+        libraries: targetSections.length,
+      },
+      dataset: { deleted: datasetDeleted.count },
     };
   }
 }

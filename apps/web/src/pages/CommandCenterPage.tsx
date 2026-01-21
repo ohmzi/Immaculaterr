@@ -17,7 +17,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getRadarrOptions, getSonarrOptions } from '@/api/integrations';
-import { getImmaculateTasteCollections, resetImmaculateTasteCollection } from '@/api/immaculate';
+import {
+  getImmaculateTasteCollections,
+  getImmaculateTasteUserSummary,
+  resetImmaculateTasteCollection,
+  resetImmaculateTasteUserCollection,
+} from '@/api/immaculate';
 import {
   resetRejectedSuggestions,
   listRejectedSuggestions,
@@ -83,6 +88,15 @@ export function CommandCenterPage() {
       itemCount: number | null;
     };
   } | null>(null);
+  const [activeImmaculateUserId, setActiveImmaculateUserId] = useState<string | null>(
+    null,
+  );
+  const [immaculateUserResetTarget, setImmaculateUserResetTarget] = useState<{
+    plexUserId: string;
+    plexUserTitle: string;
+    mediaType: 'movie' | 'tv';
+    total: number;
+  } | null>(null);
   const [rejectedResetOpen, setRejectedResetOpen] = useState(false);
   const [rejectedListOpen, setRejectedListOpen] = useState(false);
   const [rejectedMediaTab, setRejectedMediaTab] = useState<'movie' | 'tv'>('movie');
@@ -105,10 +119,30 @@ export function CommandCenterPage() {
     retry: 1,
   });
 
+  const immaculateUsersQuery = useQuery({
+    queryKey: ['immaculateTaste', 'users'],
+    queryFn: getImmaculateTasteUserSummary,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
   const resetImmaculateMutation = useMutation({
     mutationFn: resetImmaculateTasteCollection,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'collections'] });
+      void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'users'] });
+    },
+  });
+
+  const resetImmaculateUserMutation = useMutation({
+    mutationFn: resetImmaculateTasteUserCollection,
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'collections'] });
+      void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'users'] });
+      toast.success(
+        `${data.plexUserTitle} ${data.mediaType === 'movie' ? 'movies' : 'TV'} reset (${data.dataset.deleted} removed).`,
+      );
     },
   });
 
@@ -142,6 +176,12 @@ export function CommandCenterPage() {
       .filter((i) => i.mediaType === rejectedMediaTab)
       .filter((i) => (rejectedKind === 'all' ? true : i.collectionKind === rejectedKind));
   }, [rejectedListQuery.data?.items, rejectedMediaTab, rejectedKind]);
+
+  const immaculateUsers = immaculateUsersQuery.data?.users ?? [];
+  const adminImmaculateUser =
+    immaculateUsers.find((user) => user.isAdmin) ?? immaculateUsers[0] ?? null;
+  const nonAdminImmaculateUsers = immaculateUsers.filter((user) => !user.isAdmin);
+  const hasMultipleImmaculateUsers = immaculateUsers.length > 1;
 
   const kindLabel = (k: RejectedSuggestionItem['collectionKind']) => {
     if (k === 'immaculateTaste') return 'Immaculate Taste';
@@ -393,6 +433,70 @@ export function CommandCenterPage() {
   const upcomingTarget = Math.max(0, Math.min(upcomingTargetRaw, maxUpcomingTarget));
   const releasedTarget = Math.max(0, effectiveRecommendationCount - upcomingTarget);
 
+  const renderAdminCollectionList = () => (
+    <div className="space-y-3">
+      {(immaculateCollectionsQuery.data?.collections ?? []).map((c) => {
+        const typeLabel = c.mediaType === 'movie' ? 'Movie' : 'TV';
+        const plexLabel =
+          c.plex.collectionRatingKey
+            ? typeof c.plex.itemCount === 'number'
+              ? `${c.plex.itemCount} items`
+              : '—'
+            : 'Not found';
+
+        return (
+          <div
+            key={`${c.mediaType}:${c.librarySectionKey}`}
+            className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+          >
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white/70">
+                  {typeLabel}
+                </span>
+                <div className="truncate text-sm font-semibold text-white">
+                  {c.libraryTitle}
+                </div>
+              </div>
+              <div className="mt-1 text-xs text-white/60">
+                Plex: {plexLabel} • Dataset: {c.dataset.total} tracked (
+                {c.dataset.active} active, {c.dataset.pending} pending)
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={resetImmaculateMutation.isPending}
+              onClick={() => {
+                setImmaculateResetTarget({
+                  mediaType: c.mediaType,
+                  librarySectionKey: c.librarySectionKey,
+                  libraryTitle: c.libraryTitle,
+                  dataset: c.dataset,
+                  plex: c.plex,
+                });
+              }}
+              className="inline-flex items-center gap-2 shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+            >
+              {resetImmaculateMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RotateCcw className="w-4 h-4" />
+              )}
+              Reset
+            </button>
+          </div>
+        );
+      })}
+
+      {!immaculateCollectionsQuery.isLoading &&
+      !immaculateCollectionsQuery.isError &&
+      (immaculateCollectionsQuery.data?.collections ?? []).length === 0 ? (
+        <div className="text-sm text-white/60">No Plex libraries found.</div>
+      ) : null}
+    </div>
+  );
+
   return (
     <SettingsPage
       pageTitle="Command Center"
@@ -588,7 +692,9 @@ export function CommandCenterPage() {
             </div>
 
             <p className="mt-3 text-sm text-white/70 leading-relaxed">
-              Pick a library to reset. This removes the Plex collection and clears its dataset.
+              {hasMultipleImmaculateUsers
+                ? 'Select a Plex user. Admin shows per-library resets, other users reset by media type.'
+                : 'Pick a library to reset. This removes the Plex collection and clears its dataset.'}
             </p>
 
             {immaculateCollectionsQuery.isError ? (
@@ -598,67 +704,143 @@ export function CommandCenterPage() {
               </div>
             ) : null}
 
-            <div className="mt-5 space-y-3">
-              {(immaculateCollectionsQuery.data?.collections ?? []).map((c) => {
-                const typeLabel = c.mediaType === 'movie' ? 'Movie' : 'TV';
-                const plexLabel =
-                  c.plex.collectionRatingKey
-                    ? typeof c.plex.itemCount === 'number'
-                      ? `${c.plex.itemCount} items`
-                      : '—'
-                    : 'Not found';
-
-                return (
-                  <div
-                    key={`${c.mediaType}:${c.librarySectionKey}`}
-                    className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white/70">
-                          {typeLabel}
-                        </span>
-                        <div className="truncate text-sm font-semibold text-white">
-                          {c.libraryTitle}
-                        </div>
-                      </div>
-                      <div className="mt-1 text-xs text-white/60">
-                        Plex: {plexLabel} • Dataset: {c.dataset.total} tracked ({c.dataset.active} active,{' '}
-                        {c.dataset.pending} pending)
-                      </div>
-                    </div>
-
+            {hasMultipleImmaculateUsers ? (
+              <div className="mt-5 space-y-3">
+                {adminImmaculateUser ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                     <button
                       type="button"
-                      disabled={resetImmaculateMutation.isPending}
-                      onClick={() => {
-                        setImmaculateResetTarget({
-                          mediaType: c.mediaType,
-                          librarySectionKey: c.librarySectionKey,
-                          libraryTitle: c.libraryTitle,
-                          dataset: c.dataset,
-                          plex: c.plex,
-                        });
-                      }}
-                      className="inline-flex items-center gap-2 shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                      onClick={() =>
+                        setActiveImmaculateUserId((prev) =>
+                          prev === adminImmaculateUser.id ? null : adminImmaculateUser.id,
+                        )
+                      }
+                      className="w-full flex items-center justify-between gap-4 text-left"
                     >
-                      {resetImmaculateMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <RotateCcw className="w-4 h-4" />
-                      )}
-                      Reset
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-[#facc15]/15 text-[#facc15] border border-[#facc15]/30">
+                            Admin
+                          </span>
+                          <div className="text-sm font-semibold text-white truncate">
+                            {adminImmaculateUser.plexAccountTitle || 'Admin'}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-xs text-white/60">
+                          Movie: {adminImmaculateUser.movieCount} • TV: {adminImmaculateUser.tvCount}
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold text-white/60">
+                        {activeImmaculateUserId === adminImmaculateUser.id ? 'Hide' : 'View'}
+                      </span>
                     </button>
-                  </div>
-                );
-              })}
 
-              {!immaculateCollectionsQuery.isLoading &&
-              !immaculateCollectionsQuery.isError &&
-              (immaculateCollectionsQuery.data?.collections ?? []).length === 0 ? (
-                <div className="text-sm text-white/60">No Plex libraries found.</div>
-              ) : null}
-            </div>
+                    {activeImmaculateUserId === adminImmaculateUser.id ? (
+                      <div className="mt-4">{renderAdminCollectionList()}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {nonAdminImmaculateUsers.map((user) => {
+                  const isActive = activeImmaculateUserId === user.id;
+                  const movieCount = user.movieCount ?? 0;
+                  const tvCount = user.tvCount ?? 0;
+                  return (
+                    <div
+                      key={user.id}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveImmaculateUserId((prev) => (prev === user.id ? null : user.id))
+                        }
+                        className="w-full flex items-center justify-between gap-4 text-left"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-white truncate">
+                            {user.plexAccountTitle || 'Plex User'}
+                          </div>
+                          <div className="mt-1 text-xs text-white/60">
+                            Movie: {movieCount} • TV: {tvCount}
+                          </div>
+                        </div>
+                        <span className="text-xs font-semibold text-white/60">
+                          {isActive ? 'Hide' : 'View'}
+                        </span>
+                      </button>
+
+                      {isActive ? (
+                        <div className="mt-4 overflow-x-auto">
+                          <table className="min-w-[420px] w-full text-sm text-white/80 border border-white/10 rounded-2xl overflow-hidden bg-white/5">
+                            <thead className="text-[11px] uppercase tracking-wider text-white/50">
+                              <tr className="bg-white/5">
+                                <th className="px-4 py-3 text-left font-semibold">User</th>
+                                <th className="px-4 py-3 text-left font-semibold">Movie</th>
+                                <th className="px-4 py-3 text-left font-semibold">TV Shows</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-t border-white/10">
+                                <td className="px-4 py-3 font-semibold text-white">
+                                  {user.plexAccountTitle || 'Plex User'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-xs text-white/70">
+                                      {movieCount} items
+                                    </span>
+                                    <button
+                                      type="button"
+                                      disabled={resetImmaculateUserMutation.isPending || movieCount === 0}
+                                      onClick={() =>
+                                        setImmaculateUserResetTarget({
+                                          plexUserId: user.id,
+                                          plexUserTitle: user.plexAccountTitle || 'Plex User',
+                                          mediaType: 'movie',
+                                          total: movieCount,
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      Reset
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-xs text-white/70">{tvCount} items</span>
+                                    <button
+                                      type="button"
+                                      disabled={resetImmaculateUserMutation.isPending || tvCount === 0}
+                                      onClick={() =>
+                                        setImmaculateUserResetTarget({
+                                          plexUserId: user.id,
+                                          plexUserTitle: user.plexAccountTitle || 'Plex User',
+                                          mediaType: 'tv',
+                                          total: tvCount,
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      Reset
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-5">{renderAdminCollectionList()}</div>
+            )}
           </div>
 
           {/* Reset Rejected List */}
@@ -828,6 +1010,130 @@ export function CommandCenterPage() {
                         disabled={resetImmaculateMutation.isPending}
                       >
                         {resetImmaculateMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Resetting…
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="w-4 h-4" />
+                            Reset
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Reset Immaculate Taste (User) - Confirm Dialog */}
+          <AnimatePresence>
+            {immaculateUserResetTarget && (
+              <motion.div
+                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  if (resetImmaculateUserMutation.isPending) return;
+                  setImmaculateUserResetTarget(null);
+                }}
+              >
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+                <motion.div
+                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-amber-500/10 overflow-hidden"
+                >
+                  <div className="p-6 sm:p-7">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                          Reset
+                        </div>
+                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                          Immaculate Taste (User)
+                        </h2>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white/10 text-white/75 border border-white/10">
+                            {immaculateUserResetTarget.mediaType === 'movie' ? 'Movie' : 'TV'}
+                          </span>
+                          <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white/10 text-white/75 border border-white/10">
+                            {immaculateUserResetTarget.plexUserTitle}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetImmaculateUserMutation.isPending) return;
+                          setImmaculateUserResetTarget(null);
+                        }}
+                        className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                        aria-label="Close"
+                        disabled={resetImmaculateUserMutation.isPending}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                      <div className="flex items-start gap-3">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-200" />
+                        <div className="min-w-0">
+                          <div className="text-white/85 font-semibold">
+                            This removes all {immaculateUserResetTarget.mediaType === 'movie' ? 'movie' : 'TV'} entries
+                            for this user across every Plex library.
+                          </div>
+                          <div className="mt-2 text-xs text-white/55">
+                            Items: {immaculateUserResetTarget.total}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {resetImmaculateUserMutation.isError ? (
+                      <div className="mt-4 flex items-start gap-2 text-sm text-red-200/90">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>{(resetImmaculateUserMutation.error as Error).message}</span>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setImmaculateUserResetTarget(null)}
+                        className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetImmaculateUserMutation.isPending}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetImmaculateUserMutation.isPending) return;
+                          const target = immaculateUserResetTarget;
+                          if (!target) return;
+                          resetImmaculateUserMutation.mutate(
+                            {
+                              plexUserId: target.plexUserId,
+                              mediaType: target.mediaType,
+                            },
+                            {
+                              onSuccess: () => setImmaculateUserResetTarget(null),
+                            },
+                          );
+                        }}
+                        className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetImmaculateUserMutation.isPending}
+                      >
+                        {resetImmaculateUserMutation.isPending ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
                             Resetting…
