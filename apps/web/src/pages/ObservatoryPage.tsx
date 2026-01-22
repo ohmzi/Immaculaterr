@@ -29,6 +29,13 @@ import {
   type WatchedCollectionKind,
 } from '@/api/observatory';
 import { cn } from '@/components/ui/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type Tab = 'movie' | 'tv';
 type Phase = 'pendingApprovals' | 'review';
@@ -1416,22 +1423,26 @@ export function ObservatoryPage() {
                       <div className="text-xs text-white/60 font-semibold">
                         Library
                       </div>
-                      <select
+                      <Select
                         value={activeLibraryKey}
-                        onChange={(e) => {
-                          if (mediaTab === 'movie') setMovieLibrary(e.target.value);
-                          else setTvLibrary(e.target.value);
+                        onValueChange={(value) => {
+                          if (mediaTab === 'movie') setMovieLibrary(value);
+                          else setTvLibrary(value);
                         }}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-white/20"
                       >
-                        {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
-                          (l) => (
-                            <option key={l.key} value={l.key}>
-                              {l.title}
-                            </option>
-                          ),
-                        )}
-                      </select>
+                        <SelectTrigger className="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-white/5 px-3 py-2 text-sm shadow-none">
+                          <SelectValue placeholder="Select library" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
+                            (l) => (
+                              <SelectItem key={l.key} value={l.key}>
+                                {l.title}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
@@ -1640,20 +1651,24 @@ export function ObservatoryPage() {
 
                     <div className="flex items-center gap-3">
                       <div className="text-xs text-white/60 font-semibold">Library</div>
-                      <select
+                      <Select
                         value={activeLibraryKey}
-                        onChange={(e) => {
-                          if (mediaTab === 'movie') setMovieLibrary(e.target.value);
-                          else setTvLibrary(e.target.value);
+                        onValueChange={(value) => {
+                          if (mediaTab === 'movie') setMovieLibrary(value);
+                          else setTvLibrary(value);
                         }}
-                        className="rounded-2xl border border-white/10 bg-transparent px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                       >
-                        {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => (
-                          <option key={l.key} value={l.key}>
-                            {l.title}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-transparent px-3 py-2 text-sm text-white/90 shadow-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition">
+                          <SelectValue placeholder="Select library" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => (
+                            <SelectItem key={l.key} value={l.key}>
+                              {l.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 

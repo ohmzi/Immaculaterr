@@ -20,6 +20,13 @@ import {
   APP_CARD_ROW_CLASS,
 } from '@/lib/ui-classes';
 import { decodeHtmlEntities } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 function statusPill(status: string) {
   switch (status) {
@@ -137,39 +144,47 @@ export function RewindPage() {
   const inputBaseClass =
     'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
   const inputClass = `w-full ${inputBaseClass}`;
-  const selectClass = `w-full ${inputBaseClass}`;
+  const selectTriggerClass = `w-full ${inputBaseClass}`;
 
   const filtersForm = (
     <div className="grid gap-4 md:grid-cols-3">
       <div>
         <label className={labelClass}>Job</label>
-        <select
-          value={jobId}
-          onChange={(e) => setJobId(e.target.value)}
-          className={selectClass}
+        <Select
+          value={jobId || 'all'}
+          onValueChange={(value) => setJobId(value === 'all' ? '' : value)}
         >
-          <option value="">All jobs</option>
-          {(jobsQuery.data?.jobs ?? []).map((j) => (
-            <option key={j.id} value={j.id}>
-              {j.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className={selectTriggerClass}>
+            <SelectValue placeholder="All jobs" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All jobs</SelectItem>
+            {(jobsQuery.data?.jobs ?? []).map((j) => (
+              <SelectItem key={j.id} value={j.id}>
+                {j.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div>
         <label className={labelClass}>Status</label>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className={selectClass}
+        <Select
+          value={status || 'any'}
+          onValueChange={(value) => setStatus(value === 'any' ? '' : value)}
         >
-          <option value="">Any</option>
-          <option value="RUNNING">RUNNING</option>
-          <option value="SUCCESS">SUCCESS</option>
-          <option value="FAILED">FAILED</option>
-          <option value="PENDING">PENDING</option>
-        </select>
+          <SelectTrigger className={selectTriggerClass}>
+            <SelectValue placeholder="Any" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">Any</SelectItem>
+            <SelectItem value="RUNNING">RUNNING</SelectItem>
+            <SelectItem value="SUCCESS">SUCCESS</SelectItem>
+            <SelectItem value="FAILED">FAILED</SelectItem>
+            <SelectItem value="PENDING">PENDING</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div>
