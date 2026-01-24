@@ -30,6 +30,13 @@ import { FunCountSlider } from '@/components/FunCountSlider';
 import { SavingPill } from '@/components/SavingPill';
 import { FunSplitSlider } from '@/components/FunSplitSlider';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { APP_HEADER_STATUS_PILL_BASE_CLASS } from '@/lib/ui-classes';
 
 function readBool(obj: unknown, path: string): boolean | null {
@@ -1247,86 +1254,96 @@ export function CommandCenterPage() {
                             <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
                             </label>
-                            <select
-                              value={draftRootFolderPath || effectiveDefaults.rootFolderPath}
-                      onChange={(e) => {
-                                const next = e.target.value;
-                                setDraftRootFolderPath(next);
-                                saveRadarrDefaultsMutation.mutate({
-                                  defaultRootFolderPath: next,
-                                });
-                              }}
-                              disabled={
-                                saveRadarrDefaultsMutation.isPending ||
-                                !radarrOptionsQuery.data?.rootFolders.length
-                              }
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
+                          <Select
+                            value={draftRootFolderPath || effectiveDefaults.rootFolderPath}
+                            onValueChange={(next) => {
+                              setDraftRootFolderPath(next);
+                              saveRadarrDefaultsMutation.mutate({
+                                defaultRootFolderPath: next,
+                              });
+                            }}
+                            disabled={
+                              saveRadarrDefaultsMutation.isPending ||
+                              !radarrOptionsQuery.data?.rootFolders.length
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select root folder" />
+                            </SelectTrigger>
+                            <SelectContent>
                               {(radarrOptionsQuery.data?.rootFolders ?? []).map((rf) => (
-                                <option key={rf.id} value={rf.path}>
+                                <SelectItem key={rf.id} value={rf.path}>
                                   {rf.path}
-                                </option>
+                                </SelectItem>
                               ))}
-                            </select>
+                            </SelectContent>
+                          </Select>
               </div>
 
                   <div>
                             <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Quality profile
                             </label>
-                            <select
-                              value={String(
-                                draftQualityProfileId || effectiveDefaults.qualityProfileId,
-                              )}
-                      onChange={(e) => {
-                                const next = Number.parseInt(e.target.value, 10);
-                                if (!Number.isFinite(next)) return;
-                                setDraftQualityProfileId(next);
-                                saveRadarrDefaultsMutation.mutate({
-                                  defaultQualityProfileId: next,
-                                });
-                              }}
-                      disabled={
-                                saveRadarrDefaultsMutation.isPending ||
-                                !radarrOptionsQuery.data?.qualityProfiles.length
-                              }
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
+                          <Select
+                            value={String(
+                              draftQualityProfileId || effectiveDefaults.qualityProfileId,
+                            )}
+                            onValueChange={(raw) => {
+                              const next = Number.parseInt(raw, 10);
+                              if (!Number.isFinite(next)) return;
+                              setDraftQualityProfileId(next);
+                              saveRadarrDefaultsMutation.mutate({
+                                defaultQualityProfileId: next,
+                              });
+                            }}
+                            disabled={
+                              saveRadarrDefaultsMutation.isPending ||
+                              !radarrOptionsQuery.data?.qualityProfiles.length
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select quality profile" />
+                            </SelectTrigger>
+                            <SelectContent>
                               {(radarrOptionsQuery.data?.qualityProfiles ?? []).map((qp) => (
-                                <option key={qp.id} value={String(qp.id)}>
+                                <SelectItem key={qp.id} value={String(qp.id)}>
                                   {qp.name}
-                                </option>
+                                </SelectItem>
                               ))}
-                            </select>
+                            </SelectContent>
+                          </Select>
                 </div>
 
                         <div>
                             <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Tag (optional)
                             </label>
-                            <select
-                              value={draftTagId ? String(draftTagId) : ''}
-                            onChange={(e) => {
-                                const raw = e.target.value;
-                                const next = raw ? Number.parseInt(raw, 10) : null;
-                                setDraftTagId(
-                                  Number.isFinite(next ?? NaN) ? (next as number) : null,
-                                );
-                                saveRadarrDefaultsMutation.mutate({
-                                  defaultTagId:
-                                    Number.isFinite(next ?? NaN) ? (next as number) : null,
-                                });
-                              }}
-                              disabled={saveRadarrDefaultsMutation.isPending}
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
-                              <option value="">No tag</option>
+                          <Select
+                            value={draftTagId !== null ? String(draftTagId) : 'none'}
+                            onValueChange={(raw) => {
+                              const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+                              const next = Number.isFinite(parsed ?? NaN)
+                                ? (parsed as number)
+                                : null;
+                              setDraftTagId(next);
+                              saveRadarrDefaultsMutation.mutate({
+                                defaultTagId: next,
+                              });
+                            }}
+                            disabled={saveRadarrDefaultsMutation.isPending}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="No tag" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No tag</SelectItem>
                               {(radarrOptionsQuery.data?.tags ?? []).map((t) => (
-                                <option key={t.id} value={String(t.id)}>
+                                <SelectItem key={t.id} value={String(t.id)}>
                                   {t.label}
-                                </option>
+                                </SelectItem>
                               ))}
-                            </select>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                   )}
@@ -1455,89 +1472,99 @@ export function CommandCenterPage() {
                             <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
                             </label>
-                            <select
-                              value={
-                                sonarrDraftRootFolderPath || sonarrEffectiveDefaults.rootFolderPath
-                              }
-                            onChange={(e) => {
-                                const next = e.target.value;
-                                setSonarrDraftRootFolderPath(next);
-                                saveSonarrDefaultsMutation.mutate({
-                                  defaultRootFolderPath: next,
-                                });
-                              }}
-                      disabled={
-                                saveSonarrDefaultsMutation.isPending ||
-                                !sonarrOptionsQuery.data?.rootFolders.length
-                              }
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
+                          <Select
+                            value={
+                              sonarrDraftRootFolderPath || sonarrEffectiveDefaults.rootFolderPath
+                            }
+                            onValueChange={(next) => {
+                              setSonarrDraftRootFolderPath(next);
+                              saveSonarrDefaultsMutation.mutate({
+                                defaultRootFolderPath: next,
+                              });
+                            }}
+                            disabled={
+                              saveSonarrDefaultsMutation.isPending ||
+                              !sonarrOptionsQuery.data?.rootFolders.length
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select root folder" />
+                            </SelectTrigger>
+                            <SelectContent>
                               {(sonarrOptionsQuery.data?.rootFolders ?? []).map((rf) => (
-                                <option key={rf.id} value={rf.path}>
+                                <SelectItem key={rf.id} value={rf.path}>
                                   {rf.path}
-                                </option>
+                                </SelectItem>
                               ))}
-                            </select>
+                            </SelectContent>
+                          </Select>
                 </div>
 
                         <div>
                             <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Quality profile
                             </label>
-                            <select
-                              value={String(
-                                sonarrDraftQualityProfileId ||
-                                  sonarrEffectiveDefaults.qualityProfileId,
-                              )}
-                            onChange={(e) => {
-                                const next = Number.parseInt(e.target.value, 10);
-                                if (!Number.isFinite(next)) return;
-                                setSonarrDraftQualityProfileId(next);
-                                saveSonarrDefaultsMutation.mutate({
-                                  defaultQualityProfileId: next,
-                                });
-                              }}
-                      disabled={
-                                saveSonarrDefaultsMutation.isPending ||
-                                !sonarrOptionsQuery.data?.qualityProfiles.length
-                              }
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
+                          <Select
+                            value={String(
+                              sonarrDraftQualityProfileId ||
+                                sonarrEffectiveDefaults.qualityProfileId,
+                            )}
+                            onValueChange={(raw) => {
+                              const next = Number.parseInt(raw, 10);
+                              if (!Number.isFinite(next)) return;
+                              setSonarrDraftQualityProfileId(next);
+                              saveSonarrDefaultsMutation.mutate({
+                                defaultQualityProfileId: next,
+                              });
+                            }}
+                            disabled={
+                              saveSonarrDefaultsMutation.isPending ||
+                              !sonarrOptionsQuery.data?.qualityProfiles.length
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select quality profile" />
+                            </SelectTrigger>
+                            <SelectContent>
                               {(sonarrOptionsQuery.data?.qualityProfiles ?? []).map((qp) => (
-                                <option key={qp.id} value={String(qp.id)}>
+                                <SelectItem key={qp.id} value={String(qp.id)}>
                                   {qp.name}
-                                </option>
+                                </SelectItem>
                               ))}
-                            </select>
+                            </SelectContent>
+                          </Select>
                 </div>
 
                         <div>
                             <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Tag (optional)
                             </label>
-                            <select
-                              value={sonarrDraftTagId ? String(sonarrDraftTagId) : ''}
-                            onChange={(e) => {
-                                const raw = e.target.value;
-                                const next = raw ? Number.parseInt(raw, 10) : null;
-                                setSonarrDraftTagId(
-                                  Number.isFinite(next ?? NaN) ? (next as number) : null,
-                                );
-                                saveSonarrDefaultsMutation.mutate({
-                                  defaultTagId:
-                                    Number.isFinite(next ?? NaN) ? (next as number) : null,
-                                });
-                              }}
-                              disabled={saveSonarrDefaultsMutation.isPending}
-                              className="w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition"
-                            >
-                              <option value="">No tag</option>
+                          <Select
+                            value={sonarrDraftTagId !== null ? String(sonarrDraftTagId) : 'none'}
+                            onValueChange={(raw) => {
+                              const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+                              const next = Number.isFinite(parsed ?? NaN)
+                                ? (parsed as number)
+                                : null;
+                              setSonarrDraftTagId(next);
+                              saveSonarrDefaultsMutation.mutate({
+                                defaultTagId: next,
+                              });
+                            }}
+                            disabled={saveSonarrDefaultsMutation.isPending}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="No tag" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No tag</SelectItem>
                               {(sonarrOptionsQuery.data?.tags ?? []).map((t) => (
-                                <option key={t.id} value={String(t.id)}>
+                                <SelectItem key={t.id} value={String(t.id)}>
                                   {t.label}
-                                </option>
+                                </SelectItem>
                               ))}
-                            </select>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                   )}
