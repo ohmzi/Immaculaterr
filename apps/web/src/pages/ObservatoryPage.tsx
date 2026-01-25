@@ -29,13 +29,7 @@ import {
   type WatchedCollectionKind,
 } from '@/api/observatory';
 import { cn } from '@/components/ui/utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { GlassSelect } from '@/components/ui/glass-select';
 
 type Tab = 'movie' | 'tv';
 type Phase = 'pendingApprovals' | 'review';
@@ -1423,26 +1417,19 @@ export function ObservatoryPage() {
                       <div className="text-xs text-white/60 font-semibold">
                         Library
                       </div>
-                      <Select
+                      <GlassSelect
                         value={activeLibraryKey}
+                        placeholder="Select library"
+                        options={(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => ({
+                          value: l.key,
+                          label: l.title,
+                        }))}
                         onValueChange={(value) => {
                           if (mediaTab === 'movie') setMovieLibrary(value);
                           else setTvLibrary(value);
                         }}
-                      >
-                        <SelectTrigger className="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-white/5 px-3 py-2 text-sm shadow-none">
-                          <SelectValue placeholder="Select library" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map(
-                            (l) => (
-                              <SelectItem key={l.key} value={l.key}>
-                                {l.title}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
+                        triggerClassName="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-white/5 px-3 py-2 text-sm shadow-none"
+                      />
                     </div>
                   </div>
 
@@ -1651,24 +1638,19 @@ export function ObservatoryPage() {
 
                     <div className="flex items-center gap-3">
                       <div className="text-xs text-white/60 font-semibold">Library</div>
-                      <Select
+                      <GlassSelect
                         value={activeLibraryKey}
+                        placeholder="Select library"
+                        options={(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => ({
+                          value: l.key,
+                          label: l.title,
+                        }))}
                         onValueChange={(value) => {
                           if (mediaTab === 'movie') setMovieLibrary(value);
                           else setTvLibrary(value);
                         }}
-                      >
-                        <SelectTrigger className="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-transparent px-3 py-2 text-sm text-white/90 shadow-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition">
-                          <SelectValue placeholder="Select library" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(mediaTab === 'movie' ? movieLibraries : tvLibraries).map((l) => (
-                            <SelectItem key={l.key} value={l.key}>
-                              {l.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        triggerClassName="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-transparent px-3 py-2 text-sm text-white/90 shadow-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
+                      />
                     </div>
                   </div>
 
