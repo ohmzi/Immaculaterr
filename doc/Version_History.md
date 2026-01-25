@@ -3,6 +3,12 @@ Version History
 
 This file tracks notable changes by version.
 
+1.0.0.532
+---
+
+- Web: fix Observatory page black-screen crash caused by Radix Select + React 19 ref loop.
+- Web: replace Observatory library dropdown with a custom glass dropdown (matches app styling).
+
 1.0.0.530
 ---
 
