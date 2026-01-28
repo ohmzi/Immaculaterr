@@ -262,6 +262,50 @@ export function JobRunDetailPage() {
     if (Number(obj.version) !== 1) return null;
     return obj;
   }, [run?.summary]);
+  const summaryRaw = useMemo(() => {
+    const s = run?.summary;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    const obj = s as Record<string, unknown>;
+    if (obj.template === 'jobReportV1' && isPlainObject(obj.raw))
+      return obj.raw as Record<string, unknown>;
+    return obj;
+  }, [run?.summary]);
+  const logInputContext = useMemo(() => {
+    const logs = logsQuery.data?.logs ?? [];
+    const startLog = logs.find((l) => String(l.message ?? '') === 'run: started');
+    if (!startLog || !isPlainObject(startLog.context)) return null;
+    const ctxRaw = startLog.context as Record<string, unknown>;
+    const inputRaw = ctxRaw['input'];
+    if (!isPlainObject(inputRaw)) return null;
+    const plexUserId = pickString(inputRaw, 'plexUserId') ?? '';
+    const plexUserTitle = pickString(inputRaw, 'plexUserTitle') ?? '';
+    const seedTitle = pickString(inputRaw, 'seedTitle') ?? '';
+    const seedYear = pickNumber(inputRaw, 'seedYear');
+    if (!plexUserId && !plexUserTitle && !seedTitle && seedYear === null) return null;
+    return { plexUserId, plexUserTitle, seedTitle, seedYear };
+  }, [logsQuery.data?.logs]);
+  const plexUserContext = useMemo(() => {
+    const plexUserId = summaryRaw ? pickString(summaryRaw, 'plexUserId') ?? '' : '';
+    const plexUserTitle = summaryRaw
+      ? pickString(summaryRaw, 'plexUserTitle') ?? ''
+      : '';
+    const fallbackId = logInputContext?.plexUserId ?? '';
+    const fallbackTitle = logInputContext?.plexUserTitle ?? '';
+    const resolvedId = plexUserId || fallbackId;
+    const resolvedTitle = plexUserTitle || fallbackTitle;
+    if (!resolvedId && !resolvedTitle) return null;
+    return { plexUserId: resolvedId, plexUserTitle: resolvedTitle };
+  }, [summaryRaw, logInputContext]);
+  const seedContext = useMemo(() => {
+    const seedTitle = summaryRaw ? pickString(summaryRaw, 'seedTitle') ?? '' : '';
+    const seedYear = summaryRaw ? pickNumber(summaryRaw, 'seedYear') : null;
+    const fallbackTitle = logInputContext?.seedTitle ?? '';
+    const fallbackYear = logInputContext?.seedYear ?? null;
+    const resolvedTitle = seedTitle || fallbackTitle;
+    const resolvedYear = seedYear ?? fallbackYear;
+    if (!resolvedTitle && resolvedYear === null) return null;
+    return { seedTitle: resolvedTitle, seedYear: resolvedYear };
+  }, [summaryRaw, logInputContext]);
   const jobName = useMemo(() => {
     const jobId = run?.jobId ?? '';
     if (!jobId) return null;
@@ -401,6 +445,24 @@ export function JobRunDetailPage() {
                       <div>
                         <span className="text-white/80 font-semibold">Finished:</span>{' '}
                         {new Date(run.finishedAt).toLocaleString()}
+                      </div>
+                    ) : null}
+                    {seedContext ? (
+                      <div>
+                        <span className="text-white/80 font-semibold">Seed:</span>{' '}
+                        {seedContext.seedTitle || '—'}
+                        {seedContext.seedYear !== null ? (
+                          <span className="text-white/50">{` (${seedContext.seedYear})`}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {plexUserContext ? (
+                      <div>
+                        <span className="text-white/80 font-semibold">Plex user:</span>{' '}
+                        {plexUserContext.plexUserTitle || plexUserContext.plexUserId}
+                        {plexUserContext.plexUserTitle && plexUserContext.plexUserId ? (
+                          <span className="text-white/50">{` (${plexUserContext.plexUserId})`}</span>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
