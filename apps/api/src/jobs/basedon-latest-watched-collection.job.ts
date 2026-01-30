@@ -11,7 +11,7 @@ import { WatchedCollectionsRefresherService } from '../watched-movie-recommendat
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
-import { metricRow } from './job-report-v1';
+import { issue, metricRow } from './job-report-v1';
 import { withJobRetry, withJobRetryOrNull } from './job-retry';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -431,44 +431,85 @@ export class BasedonLatestWatchedCollectionJob {
 
     const perCollection: JsonObject[] = [];
     for (const col of collectionsToBuild) {
-      const summary = await this.processOneCollection({
-        ctx,
-        plexUserId,
-        tmdbApiKey,
-        plexBaseUrl,
-        plexToken,
-        movieSectionKey,
-        collectionName: col.name,
-        recommendationTitles: col.titles,
-        recommendationStrategy: col.strategy,
-        recommendationDebug: col.debug,
-        approvalRequiredFromObservatory,
-        radarr: radarrEnabled
-          ? {
-              baseUrl: radarrBaseUrl,
-              apiKey: radarrApiKey,
-              defaults: radarrDefaults,
-            }
-          : null,
-      });
-      perCollection.push(summary);
+      try {
+        const summary = await this.processOneCollection({
+          ctx,
+          plexUserId,
+          seedTitle,
+          tmdbApiKey,
+          plexBaseUrl,
+          plexToken,
+          movieSectionKey,
+          collectionName: col.name,
+          recommendationTitles: col.titles,
+          recommendationStrategy: col.strategy,
+          recommendationDebug: col.debug,
+          approvalRequiredFromObservatory,
+          radarr: radarrEnabled
+            ? {
+                baseUrl: radarrBaseUrl,
+                apiKey: radarrApiKey,
+                defaults: radarrDefaults,
+              }
+            : null,
+        });
+        perCollection.push(summary);
+      } catch (err) {
+        // Ensure summary is created even on failure
+        await ctx.warn('collection_run: failed, creating error summary', {
+          collectionName: col.name,
+          error: (err as Error)?.message ?? String(err),
+        });
+        perCollection.push({
+          collectionName: col.name,
+          seedTitle,
+          plexUserId,
+          recommendationStrategy: col.strategy,
+          recommendationDebug: col.debug,
+          generated: col.titles.length,
+          generatedTitles: col.titles,
+          resolvedInPlex: 0,
+          missingInPlex: col.titles.length,
+          resolvedTitles: [],
+          missingTitles: col.titles,
+          excludedByRejectListTitles: [],
+          excludedByRejectListCount: 0,
+          snapshot: { saved: false, active: 0, pending: 0 },
+          radarr: { enabled: false, attempted: 0, added: 0, exists: 0, failed: 0, skipped: 0 },
+          radarrLists: { attempted: [], added: [], exists: [], failed: [], skipped: [] },
+          sampleMissing: col.titles.slice(0, 10),
+          sampleResolved: [],
+          error: (err as Error)?.message ?? String(err),
+        });
+      }
     }
 
-    const refresh = await this.watchedRefresher.refresh({
-      ctx,
-      plexBaseUrl,
-      plexToken,
-      machineIdentifier,
-      plexUserId,
-      plexUserTitle,
-      pinCollections,
-      movieSections,
-      tvSections: [],
-      limit: collectionLimit,
-      scope: { librarySectionKey: movieSectionKey, mode: 'movie' },
-    });
+    let refresh: JsonObject | null = null;
+    try {
+      refresh = await this.watchedRefresher.refresh({
+        ctx,
+        plexBaseUrl,
+        plexToken,
+        machineIdentifier,
+        plexUserId,
+        plexUserTitle,
+        pinCollections,
+        movieSections,
+        tvSections: [],
+        limit: collectionLimit,
+        scope: { librarySectionKey: movieSectionKey, mode: 'movie' },
+      });
+    } catch (err) {
+      const msg = (err as Error)?.message ?? String(err);
+      await ctx.warn('watchedMovieRecommendations: refresh failed (continuing)', {
+        error: msg,
+      });
+      refresh = { error: msg };
+    }
 
     const summary: JsonObject = {
+      plexUserId,
+      plexUserTitle,
       seedTitle,
       seedYear,
       movieSectionKey,
@@ -485,6 +526,7 @@ export class BasedonLatestWatchedCollectionJob {
   private async processOneCollection(params: {
     ctx: JobContext;
     plexUserId: string;
+    seedTitle: string;
     tmdbApiKey: string;
     plexBaseUrl: string;
     plexToken: string;
@@ -507,6 +549,7 @@ export class BasedonLatestWatchedCollectionJob {
     const {
       ctx,
       plexUserId,
+      seedTitle,
       tmdbApiKey,
       plexBaseUrl,
       plexToken,
@@ -898,6 +941,8 @@ export class BasedonLatestWatchedCollectionJob {
 
     const summary: JsonObject = {
       collectionName,
+      seedTitle,
+      plexUserId,
       recommendationStrategy,
       recommendationDebug,
       generated: recommendationTitles.length,
@@ -1233,44 +1278,85 @@ export class BasedonLatestWatchedCollectionJob {
 
     const perCollection: JsonObject[] = [];
     for (const col of collectionsToBuild) {
-      const summary = await this.processOneTvCollection({
-        ctx,
-        plexUserId,
-        tmdbApiKey,
-        plexBaseUrl,
-        plexToken,
-        tvSectionKey,
-        collectionName: col.name,
-        recommendationTitles: col.titles,
-        recommendationStrategy: col.strategy,
-        recommendationDebug: col.debug,
-        approvalRequiredFromObservatory,
-        sonarr: sonarrEnabled
-          ? {
-              baseUrl: sonarrBaseUrl,
-              apiKey: sonarrApiKey,
-              defaults: sonarrDefaults,
-            }
-          : null,
-      });
-      perCollection.push(summary);
+      try {
+        const summary = await this.processOneTvCollection({
+          ctx,
+          plexUserId,
+          seedTitle,
+          tmdbApiKey,
+          plexBaseUrl,
+          plexToken,
+          tvSectionKey,
+          collectionName: col.name,
+          recommendationTitles: col.titles,
+          recommendationStrategy: col.strategy,
+          recommendationDebug: col.debug,
+          approvalRequiredFromObservatory,
+          sonarr: sonarrEnabled
+            ? {
+                baseUrl: sonarrBaseUrl,
+                apiKey: sonarrApiKey,
+                defaults: sonarrDefaults,
+              }
+            : null,
+        });
+        perCollection.push(summary);
+      } catch (err) {
+        // Ensure summary is created even on failure
+        await ctx.warn('collection_run(tv): failed, creating error summary', {
+          collectionName: col.name,
+          error: (err as Error)?.message ?? String(err),
+        });
+        perCollection.push({
+          collectionName: col.name,
+          seedTitle,
+          plexUserId,
+          recommendationStrategy: col.strategy,
+          recommendationDebug: col.debug,
+          generated: col.titles.length,
+          generatedTitles: col.titles,
+          resolvedInPlex: 0,
+          missingInPlex: col.titles.length,
+          resolvedTitles: [],
+          missingTitles: col.titles,
+          excludedByRejectListTitles: [],
+          excludedByRejectListCount: 0,
+          snapshot: { saved: false, active: 0, pending: 0 },
+          sonarr: { enabled: false, attempted: 0, added: 0, exists: 0, failed: 0, skipped: 0 },
+          sonarrLists: { attempted: [], added: [], exists: [], failed: [], skipped: [] },
+          sampleMissing: col.titles.slice(0, 10),
+          sampleResolved: [],
+          error: (err as Error)?.message ?? String(err),
+        });
+      }
     }
 
-    const refresh = await this.watchedRefresher.refresh({
-      ctx,
-      plexBaseUrl,
-      plexToken,
-      machineIdentifier,
-      plexUserId,
-      plexUserTitle,
-      pinCollections,
-      movieSections: [],
-      tvSections,
-      limit: collectionLimit,
-      scope: { librarySectionKey: tvSectionKey, mode: 'tv' },
-    });
+    let refresh: JsonObject | null = null;
+    try {
+      refresh = await this.watchedRefresher.refresh({
+        ctx,
+        plexBaseUrl,
+        plexToken,
+        machineIdentifier,
+        plexUserId,
+        plexUserTitle,
+        pinCollections,
+        movieSections: [],
+        tvSections,
+        limit: collectionLimit,
+        scope: { librarySectionKey: tvSectionKey, mode: 'tv' },
+      });
+    } catch (err) {
+      const msg = (err as Error)?.message ?? String(err);
+      await ctx.warn('watchedShowRecommendations: refresh failed (continuing)', {
+        error: msg,
+      });
+      refresh = { error: msg };
+    }
 
     const summary: JsonObject = {
+      plexUserId,
+      plexUserTitle,
       seedTitle,
       seedYear,
       tvLibraryName,
@@ -1287,6 +1373,7 @@ export class BasedonLatestWatchedCollectionJob {
   private async processOneTvCollection(params: {
     ctx: JobContext;
     plexUserId: string;
+    seedTitle: string;
     tmdbApiKey: string;
     plexBaseUrl: string;
     plexToken: string;
@@ -1309,6 +1396,7 @@ export class BasedonLatestWatchedCollectionJob {
     const {
       ctx,
       plexUserId,
+      seedTitle,
       tmdbApiKey,
       plexBaseUrl,
       plexToken,
@@ -1654,6 +1742,8 @@ export class BasedonLatestWatchedCollectionJob {
 
     const summary: JsonObject = {
       collectionName,
+      seedTitle,
+      plexUserId,
       recommendationStrategy,
       recommendationDebug,
       generated: recommendationTitles.length,
@@ -1683,17 +1773,74 @@ export class BasedonLatestWatchedCollectionJob {
     const input = ctx.input ?? {};
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+    const plexUserTitleRaw =
+      typeof input['plexUserTitle'] === 'string'
+        ? input['plexUserTitle'].trim()
+        : '';
+    const plexAccountIdRaw = input['plexAccountId'];
+    const plexAccountId =
+      typeof plexAccountIdRaw === 'number' && Number.isFinite(plexAccountIdRaw)
+        ? Math.trunc(plexAccountIdRaw)
+        : typeof plexAccountIdRaw === 'string' && plexAccountIdRaw.trim()
+          ? Number.parseInt(plexAccountIdRaw.trim(), 10)
+          : null;
+    const plexAccountTitleRaw =
+      typeof input['plexAccountTitle'] === 'string'
+        ? input['plexAccountTitle'].trim()
+        : '';
+    const plexAccountTitle = plexAccountTitleRaw || plexUserTitleRaw;
 
     const fromInput = plexUserIdRaw
       ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
       : null;
-    const resolved =
-      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+    const normalize = (value: string | null | undefined) =>
+      String(value ?? '').trim().toLowerCase();
+    const titleMismatch =
+      Boolean(fromInput) &&
+      Boolean(plexAccountTitle) &&
+      normalize(fromInput?.plexAccountTitle) !== normalize(plexAccountTitle);
+
+    if (fromInput && !titleMismatch) {
+      return {
+        plexUserId: fromInput.id,
+        plexUserTitle: fromInput.plexAccountTitle,
+        pinCollections: fromInput.isAdmin,
+      };
+    }
+
+    if (plexAccountTitle) {
+      const byTitle = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountTitle,
+      });
+      if (byTitle) {
+        return {
+          plexUserId: byTitle.id,
+          plexUserTitle: byTitle.plexAccountTitle,
+          pinCollections: byTitle.isAdmin,
+        };
+      }
+    }
+
+    if (plexAccountId) {
+      const byAccount = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountId,
+        plexAccountTitle,
+      });
+      if (byAccount) {
+        return {
+          plexUserId: byAccount.id,
+          plexUserTitle: byAccount.plexAccountTitle,
+          pinCollections: byAccount.isAdmin,
+        };
+      }
+    }
+
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
 
     return {
-      plexUserId: resolved.id,
-      plexUserTitle: resolved.plexAccountTitle,
-      pinCollections: resolved.isAdmin,
+      plexUserId: admin.id,
+      plexUserTitle: admin.plexAccountTitle,
+      pinCollections: admin.isAdmin,
     };
   }
 
@@ -2002,6 +2149,19 @@ function buildWatchedLatestCollectionReport(params: {
           Boolean(c) && typeof c === 'object' && !Array.isArray(c),
       )
     : [];
+  const collectionErrors = collections
+    .map((c, idx) => {
+      const name =
+        String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+        `Collection ${idx + 1}`;
+      const err = String((c as Record<string, unknown>).error ?? '').trim();
+      return err ? { name, error: err } : null;
+    })
+    .filter((v): v is { name: string; error: string } => Boolean(v));
+  const hasCollectionErrors = collectionErrors.length > 0;
+  const collectionErrorIssues = collectionErrors.map((e) =>
+    issue('error', `${e.name}: ${e.error}`),
+  );
 
   const totals = {
     collections: collections.length,
@@ -2020,8 +2180,23 @@ function buildWatchedLatestCollectionReport(params: {
   const unit = isTv ? 'shows' : 'movies';
   const seedTitle = String((raw as Record<string, unknown>).seedTitle ?? '').trim();
   const seedYear = asNum((raw as Record<string, unknown>).seedYear);
+  const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
+  const plexUserTitle = String(
+    (raw as Record<string, unknown>).plexUserTitle ?? '',
+  ).trim();
 
   const tasks: JobReportV1['tasks'] = [];
+  const contextFacts: Array<{ label: string; value: JsonValue }> = [];
+  if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
+  if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+  if (contextFacts.length) {
+    tasks.push({
+      id: 'context',
+      title: 'Context',
+      status: 'success',
+      facts: contextFacts,
+    });
+  }
 
   // 1) Generate recommendations
   const recFacts: Array<{ label: string; value: JsonValue }> = [];
@@ -2102,8 +2277,9 @@ function buildWatchedLatestCollectionReport(params: {
   tasks.push({
     id: 'recommendations',
     title: 'Generate recommendations',
-    status: 'success',
+    status: hasCollectionErrors ? 'failed' : 'success',
     facts: recFacts,
+    issues: hasCollectionErrors ? collectionErrorIssues : undefined,
   });
 
   // 1.5) Excluded due to reject list (global blacklist)
@@ -2148,8 +2324,9 @@ function buildWatchedLatestCollectionReport(params: {
   tasks.push({
     id: 'plex_resolve',
     title: 'Resolve titles in Plex',
-    status: 'success',
+    status: hasCollectionErrors ? 'failed' : 'success',
     facts: resolveFacts,
+    issues: hasCollectionErrors ? collectionErrorIssues : undefined,
   });
 
   // 3) Radarr/Sonarr add missing
@@ -2259,13 +2436,23 @@ function buildWatchedLatestCollectionReport(params: {
   const refresh = isPlainObject(refreshRaw)
     ? (refreshRaw as Record<string, unknown>)
     : null;
+  const refreshError =
+    refresh && typeof refresh['error'] === 'string'
+      ? refresh['error'].trim()
+      : '';
+  const hasRefreshError = Boolean(refreshError);
   const sideRaw = refresh ? (isTv ? refresh['tv'] : refresh['movie']) : null;
   const side = isPlainObject(sideRaw) ? (sideRaw as Record<string, unknown>) : null;
   const byLibraryRaw = side?.['byLibrary'];
   const byLibrary = Array.isArray(byLibraryRaw)
     ? byLibraryRaw.filter((b): b is Record<string, unknown> => isPlainObject(b))
     : [];
+  const collectionNameFacts: Array<{ label: string; value: JsonValue }> = [];
+  const collectionNameSeen = new Set<string>();
   for (const lib of byLibrary) {
+    const libraryLabel = String(
+      lib['library'] ?? lib['librarySectionKey'] ?? 'Library',
+    ).trim();
     const colsRaw = lib['collections'];
     const cols = Array.isArray(colsRaw)
       ? colsRaw.filter((c): c is Record<string, unknown> => isPlainObject(c))
@@ -2273,6 +2460,18 @@ function buildWatchedLatestCollectionReport(params: {
     for (const c of cols) {
       const name = String(c['collectionName'] ?? '').trim();
       if (!name) continue;
+      const plex = isPlainObject(c['plex']) ? (c['plex'] as Record<string, unknown>) : null;
+      const fullName =
+        plex && typeof plex['collectionName'] === 'string'
+          ? String(plex['collectionName']).trim()
+          : '';
+      if (fullName) {
+        const label = `${libraryLabel || 'Library'} — ${name}`;
+        if (!collectionNameSeen.has(label)) {
+          collectionNameSeen.add(label);
+          collectionNameFacts.push({ label, value: fullName });
+        }
+      }
       const desired = uniqueStrings(asStringArray(c['desiredTitles']));
       if (!desired.length) continue;
       const existing = desiredByCollection.get(name) ?? [];
@@ -2297,11 +2496,27 @@ function buildWatchedLatestCollectionReport(params: {
   tasks.push({
     id: 'plex_collection',
     title: 'Refresh Plex collection',
-    status: anyDesired ? 'success' : 'skipped',
-    facts: plexFacts,
+    status: hasRefreshError ? 'failed' : anyDesired ? 'success' : 'skipped',
+    facts: hasRefreshError
+      ? [{ label: 'Error', value: refreshError }, ...plexFacts]
+      : plexFacts,
+    issues: hasRefreshError ? [issue('error', refreshError)] : undefined,
   });
+  if (collectionNameFacts.length || hasRefreshError) {
+    tasks.push({
+      id: 'plex_collection_names',
+      title: 'Plex collections created',
+      status: hasRefreshError ? 'failed' : 'success',
+      facts: hasRefreshError
+        ? [{ label: 'Error', value: refreshError }, ...collectionNameFacts]
+        : collectionNameFacts,
+      issues: hasRefreshError ? [issue('error', refreshError)] : undefined,
+    });
+  }
 
   const headlineSeed = seedTitle ? ` by ${seedTitle}` : '';
+  const viewerLabel = plexUserTitle || plexUserId;
+  const headlineViewer = viewerLabel ? ` by ${viewerLabel}` : '';
   const collectionNames = uniqueStrings(
     collections.map((c) => String(c.collectionName ?? '').trim()).filter(Boolean),
   );
@@ -2316,10 +2531,10 @@ function buildWatchedLatestCollectionReport(params: {
     trigger: ctx.trigger,
     headline:
       hasChangeOfTaste && hasRecentlyWatched
-        ? `Based on your recently watched and Change of Taste updated${headlineSeed}.`
+        ? `Based on your recently watched and Change of Taste updated${headlineSeed}${headlineViewer}.`
         : collectionNames.length
-          ? `${collectionNames.join(' • ')} updated${headlineSeed}.`
-          : `Collections updated${headlineSeed}.`,
+          ? `${collectionNames.join(' • ')} updated${headlineSeed}${headlineViewer}.`
+          : `Collections updated${headlineSeed}${headlineViewer}.`,
     sections: [
       {
         id: 'totals',

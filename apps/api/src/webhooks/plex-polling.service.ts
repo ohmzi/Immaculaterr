@@ -9,6 +9,7 @@ import {
   PlexRecentlyAddedItem,
   PlexServerService,
 } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { WebhooksService } from './webhooks.service';
@@ -70,7 +71,9 @@ type CollectionJobId = 'watchedMovieRecommendations' | 'immaculateTastePoints';
 
 type PendingCollectionRun = {
   jobId: CollectionJobId;
-  userId: string;
+  adminUserId: string;
+  plexUserId: string;
+  plexUserTitle: string;
   input: JsonObject;
   mediaType: string;
   seedTitle: string;
@@ -110,6 +113,14 @@ export class PlexPollingService implements OnModuleInit {
     process.env.PLEX_POLLING_MIN_DURATION_MS,
     60_000,
   );
+  private readonly nowPlayingLogIntervalMs = parseNumberEnv(
+    process.env.PLEX_POLLING_NOW_PLAYING_LOG_INTERVAL_MS,
+    30_000,
+  );
+  private readonly nowPlayingLogProgressStepMs = parseNumberEnv(
+    process.env.PLEX_POLLING_NOW_PLAYING_PROGRESS_STEP_MS,
+    60_000,
+  );
 
   private readonly recentlyAddedIntervalMs = parseNumberEnv(
     process.env.PLEX_POLLING_RECENTLY_ADDED_INTERVAL_MS,
@@ -123,12 +134,16 @@ export class PlexPollingService implements OnModuleInit {
   private readonly lastBySessionKey = new Map<string, SessionSnapshot>();
   private readonly recentTriggers = new Map<string, number>();
   private static readonly RECENT_TRIGGER_TTL_MS = 10 * 60_000;
+  private readonly nowPlayingLogStateBySessionKey = new Map<
+    string,
+    { lastLogAtMs: number; lastViewOffsetMs: number | null; lastRatingKey: string | null }
+  >();
 
   // Polling-only cooldown/queue for the two collection jobs.
   // This does NOT affect other jobs/triggers.
   private static readonly COLLECTION_COOLDOWN_MS = 10 * 60_000;
-  private readonly collectionCooldownUntilByUser = new Map<string, number>();
-  private readonly pendingCollectionRunsByUser = new Map<
+  private readonly collectionCooldownUntilByPlexUser = new Map<string, number>();
+  private readonly pendingCollectionRunsByPlexUser = new Map<
     string,
     PendingCollectionRunsByJob
   >();
@@ -147,6 +162,7 @@ export class PlexPollingService implements OnModuleInit {
     private readonly settingsService: SettingsService,
     private readonly jobsService: JobsService,
     private readonly plexServer: PlexServerService,
+    private readonly plexUsers: PlexUsersService,
     private readonly webhooksService: WebhooksService,
     private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
@@ -168,31 +184,31 @@ export class PlexPollingService implements OnModuleInit {
 
   private lastPolledAtMs: number | null = null;
 
-  private setCollectionCooldown(params: { userId: string; nowMs: number }) {
-    this.collectionCooldownUntilByUser.set(
-      params.userId,
+  private setCollectionCooldown(params: { plexUserId: string; nowMs: number }) {
+    this.collectionCooldownUntilByPlexUser.set(
+      params.plexUserId,
       params.nowMs + PlexPollingService.COLLECTION_COOLDOWN_MS,
     );
   }
 
   private enqueueCollectionRun(params: PendingCollectionRun) {
-    const cur = this.pendingCollectionRunsByUser.get(params.userId) ?? {};
+    const cur = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? {};
     const next: PendingCollectionRunsByJob = { ...cur };
     if (params.jobId === 'watchedMovieRecommendations') next.watched = params;
     else next.immaculate = params;
-    this.pendingCollectionRunsByUser.set(params.userId, next);
+    this.pendingCollectionRunsByPlexUser.set(params.plexUserId, next);
   }
 
-  private dequeueNextPendingCollectionRun(params: { userId: string }) {
-    const cur = this.pendingCollectionRunsByUser.get(params.userId) ?? null;
+  private dequeueNextPendingCollectionRun(params: { plexUserId: string }) {
+    const cur = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? null;
     if (!cur) return null;
     if (cur.watched) {
       const next = { ...cur };
       const run = next.watched;
       delete next.watched;
       if (!next.watched && !next.immaculate)
-        this.pendingCollectionRunsByUser.delete(params.userId);
-      else this.pendingCollectionRunsByUser.set(params.userId, next);
+        this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
+      else this.pendingCollectionRunsByPlexUser.set(params.plexUserId, next);
       return run;
     }
     if (cur.immaculate) {
@@ -200,23 +216,26 @@ export class PlexPollingService implements OnModuleInit {
       const run = next.immaculate;
       delete next.immaculate;
       if (!next.watched && !next.immaculate)
-        this.pendingCollectionRunsByUser.delete(params.userId);
-      else this.pendingCollectionRunsByUser.set(params.userId, next);
+        this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
+      else this.pendingCollectionRunsByPlexUser.set(params.plexUserId, next);
       return run;
     }
-    this.pendingCollectionRunsByUser.delete(params.userId);
+    this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
     return null;
   }
 
   private async flushPendingCollectionRuns(params: {
-    userId: string;
+    plexUserId: string;
     settings: Record<string, unknown>;
   }) {
     const now = Date.now();
-    const cooldownUntil = this.collectionCooldownUntilByUser.get(params.userId) ?? 0;
+    const cooldownUntil =
+      this.collectionCooldownUntilByPlexUser.get(params.plexUserId) ?? 0;
     if (now < cooldownUntil) return;
 
-    const pending = this.dequeueNextPendingCollectionRun({ userId: params.userId });
+    const pending = this.dequeueNextPendingCollectionRun({
+      plexUserId: params.plexUserId,
+    });
     if (!pending) return;
 
     const watchedEnabled =
@@ -234,25 +253,29 @@ export class PlexPollingService implements OnModuleInit {
         plexEvent: 'plexPolling.cooldown',
         mediaType: pending.mediaType,
         seedTitle: pending.seedTitle,
+        plexUserId: pending.plexUserId,
+        plexUserTitle: pending.plexUserTitle,
         skipped: { [pending.jobId]: 'cooldown_pending_dropped_disabled' },
       });
       return;
     }
 
     // Apply cooldown once we decide to run (regardless of success/failure), to protect Plex.
-    this.setCollectionCooldown({ userId: params.userId, nowMs: now });
+    this.setCollectionCooldown({ plexUserId: pending.plexUserId, nowMs: now });
     try {
       const run = await this.jobsService.runJob({
         jobId: pending.jobId,
         trigger: 'auto',
         dryRun: false,
-        userId: params.userId,
+        userId: pending.adminUserId,
         input: pending.input,
       });
       this.webhooksService.logPlexWebhookAutomation({
         plexEvent: 'plexPolling.cooldown',
         mediaType: pending.mediaType,
         seedTitle: pending.seedTitle,
+        plexUserId: pending.plexUserId,
+        plexUserTitle: pending.plexUserTitle,
         runs: { [pending.jobId]: run.id },
       });
     } catch (err) {
@@ -261,6 +284,8 @@ export class PlexPollingService implements OnModuleInit {
         plexEvent: 'plexPolling.cooldown',
         mediaType: pending.mediaType,
         seedTitle: pending.seedTitle,
+        plexUserId: pending.plexUserId,
+        plexUserTitle: pending.plexUserTitle,
         errors: { [pending.jobId]: msg },
       });
     }
@@ -282,10 +307,15 @@ export class PlexPollingService implements OnModuleInit {
       .catch(() => ({ settings: {}, secrets: {} }));
 
     // Drain any pending collection runs even if no active sessions exist.
-    await this.flushPendingCollectionRuns({
-      userId,
-      settings: settings as Record<string, unknown>,
-    });
+    const pendingPlexUsers = Array.from(
+      this.pendingCollectionRunsByPlexUser.keys(),
+    );
+    for (const plexUserId of pendingPlexUsers) {
+      await this.flushPendingCollectionRuns({
+        plexUserId,
+        settings: settings as Record<string, unknown>,
+      });
+    }
 
     const baseUrl = pickString(settings as Record<string, unknown>, 'plex.baseUrl');
     const token = pickString(secrets as Record<string, unknown>, 'plex.token');
@@ -317,18 +347,21 @@ export class PlexPollingService implements OnModuleInit {
     for (const [key, prev] of this.lastBySessionKey) {
       const current = sessions.find((s) => s.sessionKey === key) ?? null;
       if (!current) {
+        this.logNowPlayingEnded(prev, now);
         await this.handleEndedSession({
           userId,
           prev,
           settings: settings as Record<string, unknown>,
         });
         this.lastBySessionKey.delete(key);
+        this.nowPlayingLogStateBySessionKey.delete(key);
         continue;
       }
 
       const prevRatingKey = prev.ratingKey ?? '';
       const curRatingKey = current.ratingKey ?? '';
       if (prevRatingKey && curRatingKey && prevRatingKey !== curRatingKey) {
+        this.logNowPlayingEnded(prev, now);
         await this.handleEndedSession({
           userId,
           prev,
@@ -342,6 +375,7 @@ export class PlexPollingService implements OnModuleInit {
           reason: 'progress',
         });
         this.lastBySessionKey.set(key, nextWithTrigger);
+        this.logNowPlayingStarted(nextWithTrigger, now);
       } else {
         const merged = this.mergeSnapshot(prev, current, now);
         const mergedWithTrigger = await this.maybeTriggerWatchedAutomation({
@@ -351,6 +385,7 @@ export class PlexPollingService implements OnModuleInit {
           reason: 'progress',
         });
         this.lastBySessionKey.set(key, mergedWithTrigger);
+        this.logNowPlayingProgress(mergedWithTrigger, now);
       }
     }
 
@@ -365,6 +400,7 @@ export class PlexPollingService implements OnModuleInit {
           reason: 'progress',
         });
         this.lastBySessionKey.set(s.sessionKey, snapWithTrigger);
+        this.logNowPlayingStarted(snapWithTrigger, now);
       }
     }
 
@@ -768,6 +804,100 @@ export class PlexPollingService implements OnModuleInit {
     };
   }
 
+  private formatNowPlayingTitle(snap: SessionSnapshot): string {
+    if (snap.type === 'episode') {
+      const show = snap.grandparentTitle ?? '(show)';
+      const season = snap.parentIndex ? `S${snap.parentIndex}` : '';
+      const ep = snap.index ? `E${snap.index}` : '';
+      const se = season || ep ? ` ${[season, ep].filter(Boolean).join('')}` : '';
+      const episodeTitle = snap.title ? ` — ${snap.title}` : '';
+      return `${show}${se}${episodeTitle}`;
+    }
+    const title = snap.title ?? '(title)';
+    return snap.year ? `${title} (${snap.year})` : title;
+  }
+
+  private formatNowPlayingProgress(snap: SessionSnapshot): string | null {
+    const duration = snap.durationMs ?? null;
+    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    if (!duration || duration <= 0 || viewOffset === null || viewOffset < 0) return null;
+    const pct = Math.min(100, Math.max(0, Math.round((viewOffset / duration) * 100)));
+    const fmt = (ms: number) => {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    };
+    return `${pct}% (${fmt(viewOffset)}/${fmt(duration)})`;
+  }
+
+  private shouldLogNowPlaying(snap: SessionSnapshot, nowMs: number): boolean {
+    const state = this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
+    if (!state) return true;
+    if (state.lastRatingKey && snap.ratingKey && state.lastRatingKey !== snap.ratingKey) return true;
+    if (nowMs - state.lastLogAtMs >= this.nowPlayingLogIntervalMs) return true;
+    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    if (
+      viewOffset !== null &&
+      state.lastViewOffsetMs !== null &&
+      viewOffset - state.lastViewOffsetMs >= this.nowPlayingLogProgressStepMs
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private updateNowPlayingLogState(snap: SessionSnapshot, nowMs: number) {
+    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    this.nowPlayingLogStateBySessionKey.set(snap.sessionKey, {
+      lastLogAtMs: nowMs,
+      lastViewOffsetMs: viewOffset,
+      lastRatingKey: snap.ratingKey ?? null,
+    });
+  }
+
+  private logNowPlayingStarted(snap: SessionSnapshot, nowMs: number) {
+    if (!this.shouldLogNowPlaying(snap, nowMs)) return;
+    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const progress = this.formatNowPlayingProgress(snap);
+    const progressLabel = progress ? ` progress=${progress}` : '';
+    const library = snap.librarySectionTitle
+      ? ` library=${JSON.stringify(snap.librarySectionTitle)}`
+      : '';
+    const msg = `Plex now playing: started type=${snap.type} title=${JSON.stringify(this.formatNowPlayingTitle(snap))}${user}${progressLabel}${library} session=${snap.sessionKey}`;
+    this.logger.log(msg);
+    this.updateNowPlayingLogState(snap, nowMs);
+  }
+
+  private logNowPlayingProgress(snap: SessionSnapshot, nowMs: number) {
+    if (!this.shouldLogNowPlaying(snap, nowMs)) return;
+    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const progress = this.formatNowPlayingProgress(snap);
+    const progressLabel = progress ? ` progress=${progress}` : '';
+    const library = snap.librarySectionTitle
+      ? ` library=${JSON.stringify(snap.librarySectionTitle)}`
+      : '';
+    const msg = `Plex now playing: progress type=${snap.type} title=${JSON.stringify(this.formatNowPlayingTitle(snap))}${user}${progressLabel}${library} session=${snap.sessionKey}`;
+    this.logger.log(msg);
+    this.updateNowPlayingLogState(snap, nowMs);
+  }
+
+  private logNowPlayingEnded(snap: SessionSnapshot, nowMs: number) {
+    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const progress = this.formatNowPlayingProgress(snap);
+    const progressLabel = progress ? ` progress=${progress}` : '';
+    const library = snap.librarySectionTitle
+      ? ` library=${JSON.stringify(snap.librarySectionTitle)}`
+      : '';
+    const msg = `Plex now playing: ended type=${snap.type} title=${JSON.stringify(this.formatNowPlayingTitle(snap))}${user}${progressLabel}${library} session=${snap.sessionKey}`;
+    this.logger.log(msg);
+    this.updateNowPlayingLogState(snap, nowMs);
+  }
+
   private getProgressRatio(snapshot: SessionSnapshot): number | null {
     const duration = snapshot.durationMs ?? null;
     const viewOffset =
@@ -814,8 +944,9 @@ export class PlexPollingService implements OnModuleInit {
 
     // De-dupe across short time windows (protects against polling quirks and sessionKey resets).
     const now = Date.now();
+    const userKey = snap.userId ?? snap.userTitle ?? 'unknown';
     const makeDedupeKey = (jobId: string) =>
-      `${jobId}:${snap.type}:${snap.ratingKey ?? 'unknown'}:${snap.librarySectionId ?? 'unknown'}`;
+      `${jobId}:${userKey}:${snap.type}:${snap.ratingKey ?? 'unknown'}:${snap.librarySectionId ?? 'unknown'}`;
 
     let runWatched = false;
     let runImmaculate = false;
@@ -846,6 +977,14 @@ export class PlexPollingService implements OnModuleInit {
 
     // If we decided not to run anything (dedupe-only), just mark triggered flags and exit.
     if (!runWatched && !runImmaculate) return next;
+
+    const resolvedPlexUser = await this.plexUsers.resolvePlexUser({
+      plexAccountId: snap.userId ?? null,
+      plexAccountTitle: snap.userTitle ?? null,
+      userId,
+    });
+    const plexUserId = resolvedPlexUser.id;
+    const plexUserTitle = resolvedPlexUser.plexAccountTitle;
 
     const viewOffset =
       snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
@@ -908,6 +1047,10 @@ export class PlexPollingService implements OnModuleInit {
     const payloadInput = {
       source: 'plexPolling',
       plexEvent: 'media.scrobble',
+      plexUserId,
+      plexUserTitle,
+      plexAccountId: snap.userId ?? null,
+      plexAccountTitle: snap.userTitle ?? null,
       mediaType: mediaTypeLower,
       seedTitle,
       seedYear: mediaTypeLower === 'movie' ? (snap.year ?? null) : null,
@@ -948,13 +1091,16 @@ export class PlexPollingService implements OnModuleInit {
     }
 
     // Shared cooldown for collection jobs (polling-only).
-    const cooldownUntil = this.collectionCooldownUntilByUser.get(userId) ?? 0;
+    const cooldownUntil =
+      this.collectionCooldownUntilByPlexUser.get(plexUserId) ?? 0;
     const cooldownActive = now < cooldownUntil;
 
     const enqueue = (jobId: CollectionJobId) => {
       this.enqueueCollectionRun({
         jobId,
-        userId,
+        adminUserId: userId,
+        plexUserId,
+        plexUserTitle,
         input:
           jobId === 'watchedMovieRecommendations'
             ? (watchedInput as unknown as JsonObject)
@@ -996,7 +1142,7 @@ export class PlexPollingService implements OnModuleInit {
         } finally {
           ranNow = true;
           next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-          this.setCollectionCooldown({ userId, nowMs: now });
+          this.setCollectionCooldown({ plexUserId, nowMs: now });
         }
 
         // Queue immaculate for after cooldown.
@@ -1017,7 +1163,7 @@ export class PlexPollingService implements OnModuleInit {
         } finally {
           ranNow = true;
           next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-          this.setCollectionCooldown({ userId, nowMs: now });
+          this.setCollectionCooldown({ plexUserId, nowMs: now });
         }
       } else if (runImmaculate) {
         try {
@@ -1035,7 +1181,7 @@ export class PlexPollingService implements OnModuleInit {
         } finally {
           ranNow = true;
           next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
-          this.setCollectionCooldown({ userId, nowMs: now });
+          this.setCollectionCooldown({ plexUserId, nowMs: now });
         }
       }
     }
@@ -1044,6 +1190,8 @@ export class PlexPollingService implements OnModuleInit {
       plexEvent: 'media.scrobble',
       mediaType: snap.type,
       seedTitle,
+      plexUserId,
+      plexUserTitle,
       ...(Object.keys(runs).length ? { runs } : {}),
       ...(Object.keys(skipped).length ? { skipped } : {}),
       ...(Object.keys(errors).length ? { errors } : {}),

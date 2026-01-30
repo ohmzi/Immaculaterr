@@ -14,6 +14,7 @@ import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { WebhooksService } from './webhooks.service';
@@ -59,6 +60,7 @@ export class WebhooksController {
     private readonly jobsService: JobsService,
     private readonly authService: AuthService,
     private readonly settingsService: SettingsService,
+    private readonly plexUsers: PlexUsersService,
     private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
 
@@ -184,14 +186,28 @@ export class WebhooksController {
       const seedLibrarySectionTitle = payloadObj
         ? pickString(payloadObj, 'Metadata.librarySectionTitle')
         : '';
+      const plexAccountId = payloadObj ? pickNumber(payloadObj, 'Account.id') : null;
+      const plexAccountTitle = payloadObj ? pickString(payloadObj, 'Account.title') : '';
 
       if (seedTitle) {
         const userId = await this.authService.getFirstAdminUserId();
         if (userId) {
           try {
+            const plexUser = await this.plexUsers.resolvePlexUser({
+              plexAccountId,
+              plexAccountTitle,
+              userId,
+            });
+            const plexUserId = plexUser.id;
+            const plexUserTitle = plexUser.plexAccountTitle;
+
             const payloadInput = {
               source: 'plexWebhook',
               plexEvent,
+              plexUserId,
+              plexUserTitle,
+              plexAccountId,
+              plexAccountTitle: plexAccountTitle || null,
               mediaType: mediaTypeLower,
               seedTitle,
               seedYear: seedYear ?? null,
@@ -261,6 +277,8 @@ export class WebhooksController {
               plexEvent,
               mediaType,
               seedTitle,
+              plexUserId,
+              plexUserTitle,
               runs,
               ...(Object.keys(skipped).length ? { skipped } : {}),
               ...(Object.keys(errors).length ? { errors } : {}),

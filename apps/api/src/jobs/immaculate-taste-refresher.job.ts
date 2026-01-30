@@ -8,7 +8,7 @@ import { SettingsService } from '../settings/settings.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import { TmdbService } from '../tmdb/tmdb.service';
-import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import { immaculateTasteResetMarkerKey } from '../immaculate-taste-collection/immaculate-taste-reset';
@@ -548,9 +548,10 @@ export class ImmaculateTasteRefresherJob {
         },
       );
 
-      const plex = ctx.dryRun
-        ? null
-        : await this.plexCurated.rebuildMovieCollection({
+      let plex: JsonObject | null = null;
+      if (!ctx.dryRun) {
+        try {
+          plex = await this.plexCurated.rebuildMovieCollection({
             ctx,
             baseUrl: plexBaseUrl,
             token: plexToken,
@@ -562,6 +563,16 @@ export class ImmaculateTasteRefresherJob {
             pinCollections,
             collectionHubOrder,
           });
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          await ctx.warn('immaculateTasteRefresher: rebuild failed (movie)', {
+            library: sec.title,
+            movieSectionKey: sec.key,
+            error: msg,
+          });
+          plex = { error: msg };
+        }
+      }
 
       plexByLibrary.push({
         library: sec.title,
@@ -942,9 +953,10 @@ export class ImmaculateTasteRefresherJob {
           },
         );
 
-        const plex = ctx.dryRun
-          ? null
-          : await this.plexCurated.rebuildMovieCollection({
+        let plex: JsonObject | null = null;
+        if (!ctx.dryRun) {
+          try {
+            plex = await this.plexCurated.rebuildMovieCollection({
               ctx,
               baseUrl: plexBaseUrl,
               token: plexToken,
@@ -957,6 +969,16 @@ export class ImmaculateTasteRefresherJob {
               pinCollections,
               collectionHubOrder,
             });
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            await ctx.warn('immaculateTasteRefresher: rebuild failed (tv)', {
+              library: sec.title,
+              tvSectionKey: sec.key,
+              error: msg,
+            });
+            plex = { error: msg };
+          }
+        }
 
         plexByLibrary.push({
           library: sec.title,
@@ -1007,17 +1029,74 @@ export class ImmaculateTasteRefresherJob {
     const input = ctx.input ?? {};
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+    const plexUserTitleRaw =
+      typeof input['plexUserTitle'] === 'string'
+        ? input['plexUserTitle'].trim()
+        : '';
+    const plexAccountIdRaw = input['plexAccountId'];
+    const plexAccountId =
+      typeof plexAccountIdRaw === 'number' && Number.isFinite(plexAccountIdRaw)
+        ? Math.trunc(plexAccountIdRaw)
+        : typeof plexAccountIdRaw === 'string' && plexAccountIdRaw.trim()
+          ? Number.parseInt(plexAccountIdRaw.trim(), 10)
+          : null;
+    const plexAccountTitleRaw =
+      typeof input['plexAccountTitle'] === 'string'
+        ? input['plexAccountTitle'].trim()
+        : '';
+    const plexAccountTitle = plexAccountTitleRaw || plexUserTitleRaw;
 
     const fromInput = plexUserIdRaw
       ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
       : null;
-    const resolved =
-      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+    const normalize = (value: string | null | undefined) =>
+      String(value ?? '').trim().toLowerCase();
+    const titleMismatch =
+      Boolean(fromInput) &&
+      Boolean(plexAccountTitle) &&
+      normalize(fromInput?.plexAccountTitle) !== normalize(plexAccountTitle);
+
+    if (fromInput && !titleMismatch) {
+      return {
+        plexUserId: fromInput.id,
+        plexUserTitle: fromInput.plexAccountTitle,
+        pinCollections: fromInput.isAdmin,
+      };
+    }
+
+    if (plexAccountTitle) {
+      const byTitle = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountTitle,
+      });
+      if (byTitle) {
+        return {
+          plexUserId: byTitle.id,
+          plexUserTitle: byTitle.plexAccountTitle,
+          pinCollections: byTitle.isAdmin,
+        };
+      }
+    }
+
+    if (plexAccountId) {
+      const byAccount = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountId,
+        plexAccountTitle,
+      });
+      if (byAccount) {
+        return {
+          plexUserId: byAccount.id,
+          plexUserTitle: byAccount.plexAccountTitle,
+          pinCollections: byAccount.isAdmin,
+        };
+      }
+    }
+
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
 
     return {
-      plexUserId: resolved.id,
-      plexUserTitle: resolved.plexAccountTitle,
-      pinCollections: resolved.isAdmin,
+      plexUserId: admin.id,
+      plexUserTitle: admin.plexAccountTitle,
+      pinCollections: admin.isAdmin,
     };
   }
 }
@@ -1037,6 +1116,21 @@ function buildImmaculateTasteRefresherReport(params: {
 
   const tasks: JobReportV1['tasks'] = [];
   const issues: JobReportV1['issues'] = [];
+  const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
+  const plexUserTitle = String(
+    (raw as Record<string, unknown>).plexUserTitle ?? '',
+  ).trim();
+  const contextFacts: Array<{ label: string; value: JsonValue }> = [];
+  if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
+  if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+  if (contextFacts.length) {
+    tasks.push({
+      id: 'context',
+      title: 'Context',
+      status: 'success',
+      facts: contextFacts,
+    });
+  }
 
   const addLibraryTasks = (params: {
     prefix: string;
@@ -1056,6 +1150,10 @@ function buildImmaculateTasteRefresherReport(params: {
       const name = String(lib.library ?? lib.title ?? 'Library');
       const plex = isPlainObject(lib.plex) ? lib.plex : null;
       const plexSkipped = plex ? Boolean((plex as Record<string, unknown>).skipped) : false;
+      const plexError =
+        plex && typeof (plex as Record<string, unknown>).error === 'string'
+          ? String((plex as Record<string, unknown>).error).trim()
+          : null;
       const skipped = Boolean(lib.skipped) || plexSkipped;
       const reason =
         typeof lib.reason === 'string'
@@ -1069,14 +1167,17 @@ function buildImmaculateTasteRefresherReport(params: {
         ? asNum(plex.desiredCount)
         : asNum(lib.totalApplying) ?? null;
 
-      if (skipped) {
+      const failed = Boolean(plexError);
+      if (failed) {
+        issues.push(issue('error', `${params.titlePrefix} ${name}: ${plexError}`));
+      } else if (skipped) {
         issues.push(issue('warn', `${params.titlePrefix} ${name}: skipped${reason ? ` (${reason})` : ''}.`));
       }
 
       tasks.push({
         id: `${params.prefix}_${name}`,
         title: `${params.titlePrefix} ${name}`,
-        status: skipped ? 'skipped' : 'success',
+        status: failed ? 'failed' : skipped ? 'skipped' : 'success',
         rows: [
           metricRow({
             label: 'Collection items',
@@ -1098,6 +1199,7 @@ function buildImmaculateTasteRefresherReport(params: {
             : []),
           metricRow({ label: 'TMDB ratings backfilled', end: asNum(lib.tmdbBackfilled), unit: 'items' }),
         ],
+        issues: plexError ? [issue('error', plexError)] : undefined,
       });
     }
   };

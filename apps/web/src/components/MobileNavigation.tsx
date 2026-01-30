@@ -7,6 +7,7 @@ import { resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 import { useSafeNavigate } from '@/lib/navigation';
+import { createDebuggerUrl } from '@/lib/debugger';
 
 interface MobileNavigationProps {
   onLogout: () => void;
@@ -50,6 +51,8 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [resetError, setResetError] = useState<string | null>(null);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const debugLongPressTimeoutRef = useRef<number | null>(null);
+  const debugLongPressTriggeredRef = useRef(false);
   const navigate = useSafeNavigate();
 
   const go = (to: string) => {
@@ -140,6 +143,34 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
       setResetting(false);
     }
   };
+
+  const clearDebugLongPress = () => {
+    const t = debugLongPressTimeoutRef.current;
+    if (t !== null) window.clearTimeout(t);
+    debugLongPressTimeoutRef.current = null;
+  };
+
+  const openDebugger = () => {
+    setIsHelpOpen(false);
+    const url = createDebuggerUrl();
+    go(url);
+  };
+
+  const startDebugLongPress = (pointerType: string) => {
+    if (pointerType !== 'touch') return;
+    clearDebugLongPress();
+    debugLongPressTriggeredRef.current = false;
+    debugLongPressTimeoutRef.current = window.setTimeout(() => {
+      debugLongPressTriggeredRef.current = true;
+      openDebugger();
+    }, 1100);
+  };
+
+  useEffect(() => {
+    return () => {
+      clearDebugLongPress();
+    };
+  }, []);
 
   return (
     <>
@@ -358,8 +389,22 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   <div className="mt-2 space-y-2">
                     <button
                       type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={() => {
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        startDebugLongPress(e.pointerType);
+                      }}
+                      onPointerUp={() => clearDebugLongPress()}
+                      onPointerLeave={() => clearDebugLongPress()}
+                      onPointerCancel={() => clearDebugLongPress()}
+                      onClick={(event) => {
+                        if (debugLongPressTriggeredRef.current) {
+                          debugLongPressTriggeredRef.current = false;
+                          return;
+                        }
+                        if (event.altKey || event.shiftKey || event.metaKey) {
+                          openDebugger();
+                          return;
+                        }
                         setIsHelpOpen(false);
                         go('/version-history');
                       }}

@@ -3,7 +3,7 @@ import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
-import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
 
@@ -182,6 +182,8 @@ export class BasedonLatestWatchedRefresherJob {
 
     const summary: JsonObject = {
       dryRun: ctx.dryRun,
+      plexUserId,
+      plexUserTitle,
       limit,
       refresh,
     };
@@ -195,17 +197,74 @@ export class BasedonLatestWatchedRefresherJob {
     const input = ctx.input ?? {};
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+    const plexUserTitleRaw =
+      typeof input['plexUserTitle'] === 'string'
+        ? input['plexUserTitle'].trim()
+        : '';
+    const plexAccountIdRaw = input['plexAccountId'];
+    const plexAccountId =
+      typeof plexAccountIdRaw === 'number' && Number.isFinite(plexAccountIdRaw)
+        ? Math.trunc(plexAccountIdRaw)
+        : typeof plexAccountIdRaw === 'string' && plexAccountIdRaw.trim()
+          ? Number.parseInt(plexAccountIdRaw.trim(), 10)
+          : null;
+    const plexAccountTitleRaw =
+      typeof input['plexAccountTitle'] === 'string'
+        ? input['plexAccountTitle'].trim()
+        : '';
+    const plexAccountTitle = plexAccountTitleRaw || plexUserTitleRaw;
 
     const fromInput = plexUserIdRaw
       ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
       : null;
-    const resolved =
-      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+    const normalize = (value: string | null | undefined) =>
+      String(value ?? '').trim().toLowerCase();
+    const titleMismatch =
+      Boolean(fromInput) &&
+      Boolean(plexAccountTitle) &&
+      normalize(fromInput?.plexAccountTitle) !== normalize(plexAccountTitle);
+
+    if (fromInput && !titleMismatch) {
+      return {
+        plexUserId: fromInput.id,
+        plexUserTitle: fromInput.plexAccountTitle,
+        pinCollections: fromInput.isAdmin,
+      };
+    }
+
+    if (plexAccountTitle) {
+      const byTitle = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountTitle,
+      });
+      if (byTitle) {
+        return {
+          plexUserId: byTitle.id,
+          plexUserTitle: byTitle.plexAccountTitle,
+          pinCollections: byTitle.isAdmin,
+        };
+      }
+    }
+
+    if (plexAccountId) {
+      const byAccount = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountId,
+        plexAccountTitle,
+      });
+      if (byAccount) {
+        return {
+          plexUserId: byAccount.id,
+          plexUserTitle: byAccount.plexAccountTitle,
+          pinCollections: byAccount.isAdmin,
+        };
+      }
+    }
+
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
 
     return {
-      plexUserId: resolved.id,
-      plexUserTitle: resolved.plexAccountTitle,
-      pinCollections: resolved.isAdmin,
+      plexUserId: admin.id,
+      plexUserTitle: admin.plexAccountTitle,
+      pinCollections: admin.isAdmin,
     };
   }
 }
@@ -223,6 +282,21 @@ function buildRecentlyWatchedRefresherReport(params: {
 
   const tasks: JobReportV1['tasks'] = [];
   const issues: JobReportV1['issues'] = [];
+  const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
+  const plexUserTitle = String(
+    (raw as Record<string, unknown>).plexUserTitle ?? '',
+  ).trim();
+  const contextFacts: Array<{ label: string; value: JsonValue }> = [];
+  if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
+  if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+  if (contextFacts.length) {
+    tasks.push({
+      id: 'context',
+      title: 'Context',
+      status: 'success',
+      facts: contextFacts,
+    });
+  }
 
   const addSide = (params: {
     prefix: 'movie' | 'tv';

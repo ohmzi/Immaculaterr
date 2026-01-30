@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import path from 'node:path';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { PlexServerService } from './plex-server.service';
-import { stripUserCollectionPrefix } from './plex-collections.utils';
+import {
+  normalizeCollectionTitle,
+  stripUserCollectionPrefix,
+} from './plex-collections.utils';
 
 const CURATED_COLLECTION_HUB_ORDER = [
   'Based on your recently watched movie',
@@ -81,34 +84,167 @@ export class PlexCuratedCollectionsService {
 
     const desired = randomizeOrder ? shuffle(desiredBase.slice()) : desiredBase;
 
-    // Find existing Plex collection (if any)
-    let plexCollectionKey = await this.plexServer.findCollectionRatingKey({
+    // Collection names use format: "Collection Name (username)"
+
+    // Get all collections for this section
+    const allCollections = await this.plexServer.listCollectionsForSectionKey({
       baseUrl,
       token,
       librarySectionKey: movieSectionKey,
-      collectionName,
+      take: 500,
     });
 
-    let existingItems: Array<{ ratingKey: string; title: string }> = [];
-    if (plexCollectionKey) {
-      try {
-        existingItems = await this.plexServer.getCollectionItems({
-          baseUrl,
-          token,
-          collectionRatingKey: plexCollectionKey,
-        });
-      } catch (err) {
-        await ctx.warn(
-          'collection: failed to load existing items (continuing)',
-          {
-            collectionName,
-            plexCollectionKey,
-            error: (err as Error)?.message ?? String(err),
-          },
-        );
+    // Find matching collections: first try exact match, then normalized match
+    // Collection format: "Collection Name (username)"
+    const exactMatches: Array<{ ratingKey: string; title: string }> = [];
+    const normalizedMatches: Array<{ ratingKey: string; title: string }> = [];
+    
+    const normalizedTarget = normalizeCollectionTitle(collectionName);
+
+    for (const coll of allCollections) {
+      const collTitle = coll.title || '';
+      const collNormalized = normalizeCollectionTitle(collTitle);
+      
+      // Exact match (case-insensitive)
+      if (collTitle.toLowerCase() === collectionName.toLowerCase()) {
+        exactMatches.push(coll);
+      }
+      // Normalized match (handles variations in spaces, parentheses, etc.)
+      else if (collNormalized === normalizedTarget) {
+        normalizedMatches.push(coll);
       }
     }
-    const existingCount = existingItems.length;
+
+    // Prefer exact matches, but include normalized matches if no exact match
+    const matchingCollections = exactMatches.length > 0 ? exactMatches : normalizedMatches;
+
+    // Try to delete matching collections using their ratingKey (metadata ID)
+    let deletedSuccessfully = false;
+    if (!ctx.dryRun && matchingCollections.length) {
+      await ctx.info('collection: deleting existing Plex collections by ratingKey', {
+        collectionName,
+        targetRatingKeys: matchingCollections.map((c) => c.ratingKey),
+        matches: matchingCollections.map((c) => ({
+          title: c.title,
+          ratingKey: c.ratingKey,
+          matchType: exactMatches.includes(c) ? 'exact' : 'normalized',
+        })),
+      });
+      
+      for (const match of matchingCollections) {
+        try {
+          // Delete using the ratingKey (metadata ID) directly
+          await this.plexServer.deleteCollection({
+            baseUrl,
+            token,
+            collectionRatingKey: match.ratingKey,
+          });
+          await ctx.info('collection: successfully deleted', {
+            collectionName: match.title,
+            ratingKey: match.ratingKey,
+          });
+          deletedSuccessfully = true;
+        } catch (err) {
+          await ctx.warn('collection: failed to delete Plex collection by ratingKey, will remove items instead', {
+            collectionName: match.title,
+            ratingKey: match.ratingKey,
+            error: (err as Error)?.message ?? String(err),
+          });
+        }
+      }
+      
+      // Wait for deletion to complete and verify (up to 5 seconds)
+      if (deletedSuccessfully) {
+        const targetRatingKeys = new Set(matchingCollections.map((c) => c.ratingKey));
+        for (let i = 0; i < 20; i += 1) {
+          await sleep(250);
+          const remaining = await this.plexServer.listCollectionsForSectionKey({
+            baseUrl,
+            token,
+            librarySectionKey: movieSectionKey,
+            take: 500,
+          });
+          // Check if any of the deleted collections still exist by ratingKey
+          const stillThere = remaining.filter((c) => targetRatingKeys.has(c.ratingKey));
+          if (!stillThere.length) {
+            await ctx.info('collection: verified deletion complete', {
+              collectionName,
+              deletedCount: matchingCollections.length,
+            });
+            deletedSuccessfully = true;
+            break;
+          }
+          if (i === 19) {
+            await ctx.warn('collection: deletion verification timeout, collections may still exist', {
+              collectionName,
+              stillExisting: stillThere.map((c) => ({ title: c.title, ratingKey: c.ratingKey })),
+            });
+          }
+        }
+      }
+    }
+
+    let plexCollectionKey: string | null = null;
+    let existingItems: Array<{ ratingKey: string; title: string }> = [];
+    let existingCount = 0;
+
+    // Check if collection still exists after deletion attempt (in case deletion failed or didn't complete)
+    // If it exists, we need to get its items so we can remove them before adding new ones
+    if (!ctx.dryRun) {
+      // Wait a bit for deletion to propagate if it was successful
+      if (deletedSuccessfully) {
+        await sleep(500);
+      }
+      
+      for (let i = 0; i < 10; i += 1) {
+        plexCollectionKey = await this.plexServer.findCollectionRatingKey({
+          baseUrl,
+          token,
+          librarySectionKey: movieSectionKey,
+          collectionName,
+        });
+        if (!plexCollectionKey) {
+          // Collection was successfully deleted, we can create a new one
+          break;
+        }
+        // Collection still exists (deletion failed or didn't complete), get its items
+        try {
+          existingItems = await this.plexServer.getCollectionItems({
+            baseUrl,
+            token,
+            collectionRatingKey: plexCollectionKey,
+          });
+          existingCount = existingItems.length;
+          if (existingCount > 0) {
+            await ctx.info('collection: found existing collection with items, will remove them', {
+              collectionName,
+              plexCollectionKey,
+              existingCount,
+            });
+          } else {
+            await ctx.info('collection: found existing collection but it is empty', {
+              collectionName,
+              plexCollectionKey,
+            });
+          }
+          break;
+        } catch (err) {
+          await ctx.warn('collection: failed to get existing items, will retry', {
+            collectionName,
+            plexCollectionKey,
+            attempt: i + 1,
+            error: (err as Error)?.message ?? String(err),
+          });
+          // Retry after a short delay
+          await sleep(300);
+          if (i === 9) {
+            // Last attempt failed, assume collection is empty or broken
+            existingItems = [];
+            existingCount = 0;
+          }
+        }
+      }
+    }
 
     if (ctx.dryRun) {
       await ctx.info('collection: dry-run preview', {
@@ -137,76 +273,55 @@ export class PlexCuratedCollectionsService {
     let added = 0;
     let skipped = 0;
 
-    // If the collection already exists, delete it so we can recreate with a fresh order.
-    // This avoids cases where Plex keeps the old ordering even after remove/re-add.
-    if (plexCollectionKey) {
-      void ctx
-        .patchSummary({
-          progress: {
-            step: 'plex_collection_sync',
-            message: `Recreating Plex collection: ${collectionName}…`,
-            mediaType,
-            updatedAt: new Date().toISOString(),
-          },
-        })
-        .catch(() => undefined);
-      await ctx.info(
-        'collection: deleting existing Plex collection for refresh',
-        {
-          collectionName,
-          plexCollectionKey,
-          existingCount,
-        },
-      );
+    // Collections were deleted above to ensure a clean rebuild.
+    // If collection still exists, we'll remove its items before adding new ones.
 
-      try {
-        const oldKey = plexCollectionKey;
-        await this.plexServer.deleteCollection({
-          baseUrl,
-          token,
-          collectionRatingKey: oldKey,
-        });
-
-        // Best-effort: wait for deletion to propagate (avoids duplicate collections).
-        let gone = false;
-        for (let i = 0; i < 12; i += 1) {
-          const stillThere = await this.plexServer.findCollectionRatingKey({
+    // If collection exists, remove all existing items first
+    if (plexCollectionKey && existingCount > 0 && existingItems.length > 0) {
+      await ctx.info('collection: removing all existing items before rebuild', {
+        collectionName,
+        existingCount,
+        plexCollectionKey,
+      });
+      for (const item of existingItems) {
+        try {
+          await this.plexServer.removeItemFromCollection({
             baseUrl,
             token,
-            librarySectionKey: movieSectionKey,
-            collectionName,
+            collectionRatingKey: plexCollectionKey,
+            itemRatingKey: item.ratingKey,
           });
-          if (!stillThere) {
-            gone = true;
-            break;
-          }
-          await sleep(250);
-        }
-
-        if (gone) {
-          removed = existingCount;
-          plexCollectionKey = null;
-          existingItems = [];
-        } else {
-          await ctx.warn(
-            'collection: delete did not fully propagate; falling back to in-place refresh',
-            {
+          removed += 1;
+          if (removed % 100 === 0 || removed === existingItems.length) {
+            await ctx.info('collection: remove progress', {
               collectionName,
-              plexCollectionKey: oldKey,
-            },
-          );
-          plexCollectionKey = oldKey;
-        }
-      } catch (err) {
-        await ctx.warn(
-          'collection: failed to delete existing Plex collection; falling back to in-place refresh',
-          {
+              removed,
+              total: existingItems.length,
+            });
+            void ctx
+              .patchSummary({
+                progress: {
+                  step: 'plex_collection_remove',
+                  message: `Removing items from Plex collection: ${collectionName}`,
+                  current: removed,
+                  total: existingItems.length,
+                  unit: unitLabel,
+                  mediaType,
+                  updatedAt: new Date().toISOString(),
+                },
+              })
+              .catch(() => undefined);
+          }
+        } catch (err) {
+          await ctx.warn('collection: failed to remove item (continuing)', {
             collectionName,
-            plexCollectionKey,
+            ratingKey: item.ratingKey,
             error: (err as Error)?.message ?? String(err),
-          },
-        );
+          });
+        }
       }
+      // Wait a moment for removals to propagate
+      await sleep(500);
     }
 
     // Ensure Plex collection exists (create new if deleted/missing)
@@ -242,7 +357,7 @@ export class PlexCuratedCollectionsService {
         };
       }
 
-      await this.plexServer.createCollection({
+      const createdKey = await this.plexServer.createCollection({
         baseUrl,
         token,
         machineIdentifier,
@@ -251,17 +366,22 @@ export class PlexCuratedCollectionsService {
         type: itemType,
         initialItemRatingKey: first,
       });
+      if (createdKey) {
+        plexCollectionKey = createdKey;
+      }
 
-      // Find the newly created collection ratingKey (with small retry)
-      for (let i = 0; i < 10; i += 1) {
-        plexCollectionKey = await this.plexServer.findCollectionRatingKey({
-          baseUrl,
-          token,
-          librarySectionKey: movieSectionKey,
-          collectionName,
-        });
-        if (plexCollectionKey) break;
-        await sleep(200);
+      // Find the newly created collection ratingKey (with extended retry)
+      if (!plexCollectionKey) {
+        for (let i = 0; i < 25; i += 1) {
+          plexCollectionKey = await this.plexServer.findCollectionRatingKey({
+            baseUrl,
+            token,
+            librarySectionKey: movieSectionKey,
+            collectionName,
+          });
+          if (plexCollectionKey) break;
+          await sleep(400);
+        }
       }
 
       if (!plexCollectionKey) {
@@ -271,7 +391,6 @@ export class PlexCuratedCollectionsService {
       }
 
       // First item was included during createCollection (uri=...), add the rest in order.
-      removed = existingCount;
       added = 1;
       if (desired.length > 1) {
         await ctx.info('collection: adding items', {
@@ -320,45 +439,11 @@ export class PlexCuratedCollectionsService {
         }
       }
     } else {
-      // Fallback: refresh collection in-place (remove all, then re-add in desired order)
-      for (const item of existingItems) {
-        try {
-          await this.plexServer.removeItemFromCollection({
-            baseUrl,
-            token,
-            collectionRatingKey: plexCollectionKey,
-            itemRatingKey: item.ratingKey,
-          });
-          removed += 1;
-          if (removed % 100 === 0 || removed === existingItems.length) {
-            await ctx.info('collection: remove progress', {
-              collectionName,
-              removed,
-              total: existingItems.length,
-            });
-            void ctx
-              .patchSummary({
-                progress: {
-                  step: 'plex_collection_remove',
-                  message: `Removing items from Plex collection: ${collectionName}`,
-                  current: removed,
-                  total: existingItems.length,
-                  unit: unitLabel,
-                  mediaType,
-                  updatedAt: new Date().toISOString(),
-                },
-              })
-              .catch(() => undefined);
-          }
-        } catch (err) {
-          await ctx.warn('collection: failed to remove item (continuing)', {
-            collectionName,
-            ratingKey: item.ratingKey,
-            error: (err as Error)?.message ?? String(err),
-          });
-        }
-      }
-
+      // Collection exists: add all desired items (existing items were removed above)
+      await ctx.info('collection: adding items to existing collection', {
+        collectionName,
+        total: desired.length,
+      });
       for (const item of desired) {
         try {
           await this.plexServer.addItemToCollection({

@@ -86,12 +86,29 @@ function issueSummary(run: JobRun): string {
   return decodeHtmlEntities(msgs[0] ?? '');
 }
 
+function getPlexUserContext(run: JobRun): { plexUserId: string; plexUserTitle: string } {
+  const s = run.summary;
+  if (!s || typeof s !== 'object' || Array.isArray(s))
+    return { plexUserId: '', plexUserTitle: '' };
+  const obj = s as Record<string, unknown>;
+  const raw =
+    obj.template === 'jobReportV1' && isPlainObject(obj.raw)
+      ? (obj.raw as Record<string, unknown>)
+      : obj;
+  const plexUserId =
+    typeof raw.plexUserId === 'string' ? raw.plexUserId.trim() : '';
+  const plexUserTitle =
+    typeof raw.plexUserTitle === 'string' ? raw.plexUserTitle.trim() : '';
+  return { plexUserId, plexUserTitle };
+}
+
 export function RewindPage() {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
   const [jobId, setJobId] = useState('');
   const [status, setStatus] = useState('');
+  const [plexUserFilter, setPlexUserFilter] = useState('');
   const [q, setQ] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
@@ -119,16 +136,38 @@ export function RewindPage() {
     return runs.filter((r) => {
       if (jobId && r.jobId !== jobId) return false;
       if (status && r.status !== status) return false;
+      const { plexUserId, plexUserTitle } = getPlexUserContext(r);
+      const userKey = plexUserId || plexUserTitle;
+      if (plexUserFilter && userKey !== plexUserFilter) return false;
       if (!query) return true;
-      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)}`.toLowerCase();
+      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [historyQuery.data?.runs, jobId, status, q]);
+  }, [historyQuery.data?.runs, jobId, status, plexUserFilter, q]);
 
   const jobNameById = useMemo(() => {
     const jobs = jobsQuery.data?.jobs ?? [];
     return new Map(jobs.map((j) => [j.id, j.name] as const));
   }, [jobsQuery.data?.jobs]);
+
+  const plexUserOptions = useMemo(() => {
+    const runs = historyQuery.data?.runs ?? [];
+    const byKey = new Map<string, { id: string; title: string }>();
+    for (const run of runs) {
+      const { plexUserId, plexUserTitle } = getPlexUserContext(run);
+      if (!plexUserId && !plexUserTitle) continue;
+      const key = plexUserId || plexUserTitle;
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          id: key,
+          title: plexUserTitle || plexUserId,
+        });
+      }
+    }
+    return Array.from(byKey.values()).sort((a, b) =>
+      a.title.localeCompare(b.title),
+    );
+  }, [historyQuery.data?.runs]);
 
   const clearAllMutation = useMutation({
     mutationFn: async () => clearRuns(),
@@ -147,7 +186,7 @@ export function RewindPage() {
   const selectTriggerClass = `w-full ${inputBaseClass}`;
 
   const filtersForm = (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-4">
       <div>
         <label className={labelClass}>Job</label>
         <Select
@@ -188,11 +227,33 @@ export function RewindPage() {
       </div>
 
       <div>
+        <label className={labelClass}>User</label>
+        <Select
+          value={plexUserFilter || 'all'}
+          onValueChange={(value) =>
+            setPlexUserFilter(value === 'all' ? '' : value)
+          }
+        >
+          <SelectTrigger className={selectTriggerClass}>
+            <SelectValue placeholder="All users" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All users</SelectItem>
+            {plexUserOptions.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
         <label className={labelClass}>Search</label>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="jobId, status, error text…"
+          placeholder="jobId, user, status, error text…"
           className={inputClass}
         />
       </div>
@@ -298,7 +359,7 @@ export function RewindPage() {
                   <div className="mb-6">
                     <div className="text-2xl font-semibold text-white">Filters</div>
                     <div className="mt-2 text-sm text-white/70">
-                      Filter by job, status, or a quick text search.
+                      Filter by job, user, status, or a quick text search.
                     </div>
                   </div>
                   {filtersForm}
@@ -318,7 +379,7 @@ export function RewindPage() {
                           Filters
                         </div>
                         <div className="mt-2 text-sm text-white/70">
-                          Filter by job, status, or a quick text search.
+                          Filter by job, user, status, or a quick text search.
                         </div>
                       </div>
                       <ChevronDown
@@ -397,6 +458,8 @@ export function RewindPage() {
                         {filtered.map((run) => {
                           const ms = durationMs(run);
                           const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                          const { plexUserId, plexUserTitle } = getPlexUserContext(run);
+                          const userLabel = plexUserTitle || plexUserId;
                           const errorText = issueSummary(run);
                           const errorPreview = errorText
                             ? errorText.length > 140
@@ -426,6 +489,14 @@ export function RewindPage() {
                                     <span className="whitespace-nowrap">
                                       {modeLabel(run)}
                                     </span>
+                                    {userLabel ? (
+                                      <>
+                                        <span className="text-white/30">•</span>
+                                        <span className="whitespace-nowrap">
+                                          {userLabel}
+                                        </span>
+                                      </>
+                                    ) : null}
                                   </div>
                                 </div>
                                 <div className="shrink-0 flex flex-col items-end gap-2">
@@ -457,6 +528,7 @@ export function RewindPage() {
                             <tr>
                               <th className="px-3 py-3">Time</th>
                               <th className="px-3 py-3">Job</th>
+                              <th className="px-3 py-3">User</th>
                               <th className="px-3 py-3">Status</th>
                               <th className="px-3 py-3">Mode</th>
                               <th className="px-3 py-3">Duration</th>
@@ -467,6 +539,8 @@ export function RewindPage() {
                             {filtered.map((run) => {
                               const ms = durationMs(run);
                               const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                              const { plexUserId, plexUserTitle } = getPlexUserContext(run);
+                              const userLabel = plexUserTitle || plexUserId || '—';
                               return (
                                 <tr
                                   key={run.id}
@@ -481,6 +555,7 @@ export function RewindPage() {
                                     </Link>
                                   </td>
                                   <td className="px-3 py-3 text-white/85">{jobName}</td>
+                                  <td className="px-3 py-3 text-white/70">{userLabel}</td>
                                   <td className="px-3 py-3">
                                     <span
                                       className={[

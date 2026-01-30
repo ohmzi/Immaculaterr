@@ -90,6 +90,32 @@ function getProgressSnapshot(summary: JsonObject | null): JsonObject | null {
   return isPlainObject(raw) ? (raw as JsonObject) : null;
 }
 
+function extractInputContext(input?: JsonObject): JsonObject | null {
+  if (!input) return null;
+  const raw = input as Record<string, unknown>;
+  const out: JsonObject = {};
+  const plexUserId =
+    typeof raw['plexUserId'] === 'string' ? raw['plexUserId'].trim() : '';
+  const plexUserTitle =
+    typeof raw['plexUserTitle'] === 'string' ? raw['plexUserTitle'].trim() : '';
+  const seedTitle =
+    typeof raw['seedTitle'] === 'string' ? raw['seedTitle'].trim() : '';
+  const seedYearRaw = raw['seedYear'];
+  const seedYear =
+    typeof seedYearRaw === 'number' && Number.isFinite(seedYearRaw)
+      ? Math.trunc(seedYearRaw)
+      : typeof seedYearRaw === 'string' && seedYearRaw.trim()
+        ? Number.parseInt(seedYearRaw.trim(), 10)
+        : null;
+
+  if (plexUserId) out.plexUserId = plexUserId;
+  if (plexUserTitle) out.plexUserTitle = plexUserTitle;
+  if (seedTitle) out.seedTitle = seedTitle;
+  if (seedYear !== null && Number.isFinite(seedYear)) out.seedYear = seedYear;
+
+  return Object.keys(out).length ? out : null;
+}
+
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
@@ -252,12 +278,19 @@ export class JobsService {
     const startedAt = Date.now();
 
     try {
+      // Defensive shim for older builds referencing this legacy var.
+      if (!('alternateFormatName' in globalThis)) {
+        (globalThis as Record<string, unknown>).alternateFormatName = '';
+      }
+
       // Always set a minimal live summary upfront so the UI has something to show while running.
       // Jobs can overwrite/patch this with richer progress details.
+      const inputContext = extractInputContext(ctx.input);
       await ctx.setSummary({
         phase: 'starting',
         dryRun: ctx.dryRun,
         trigger: ctx.trigger,
+        ...(inputContext ?? {}),
         progress: {
           step: 'starting',
           message: 'Starting…',

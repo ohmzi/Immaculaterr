@@ -840,26 +840,36 @@ export class ImmaculateTasteCollectionJob {
           },
         })
         .catch(() => undefined);
-      const refresherResult = await this.immaculateTasteRefresher.run({
-        ...ctx,
-        input: {
-          ...(ctx.input ?? {}),
-          plexUserId,
-          plexUserTitle,
-          pinCollections,
-          includeMovies: true,
-          includeTv: false,
-          movieSectionKey,
-          movieLibraryName,
-        },
-      });
-      refresherSummary = refresherResult.summary ?? null;
-      await ctx.info('immaculateTastePoints: refresher done (chained)', {
-        refresher: refresherSummary,
-      });
+      try {
+        const refresherResult = await this.immaculateTasteRefresher.run({
+          ...ctx,
+          input: {
+            ...(ctx.input ?? {}),
+            plexUserId,
+            plexUserTitle,
+            pinCollections,
+            includeMovies: true,
+            includeTv: false,
+            movieSectionKey,
+            movieLibraryName,
+          },
+        });
+        refresherSummary = refresherResult.summary ?? null;
+        await ctx.info('immaculateTastePoints: refresher done (chained)', {
+          refresher: refresherSummary,
+        });
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        refresherSummary = { error: msg };
+        await ctx.warn('immaculateTastePoints: refresher failed (continuing)', {
+          error: msg,
+        });
+      }
     }
 
     const summary: JsonObject = {
+      plexUserId,
+      plexUserTitle,
       seedTitle,
       seedYear,
       recommendationStrategy: recs.strategy,
@@ -1536,26 +1546,36 @@ export class ImmaculateTasteCollectionJob {
           },
         })
         .catch(() => undefined);
-      const refresherResult = await this.immaculateTasteRefresher.run({
-        ...ctx,
-        input: {
-          ...(ctx.input ?? {}),
-          plexUserId,
-          plexUserTitle,
-          pinCollections,
-          includeMovies: false,
-          includeTv: true,
-          tvSectionKey,
-          tvLibraryName,
-        },
-      });
-      refresherSummary = refresherResult.summary ?? null;
-      await ctx.info('immaculateTastePoints(tv): refresher done (chained)', {
-        refresher: refresherSummary,
-      });
+      try {
+        const refresherResult = await this.immaculateTasteRefresher.run({
+          ...ctx,
+          input: {
+            ...(ctx.input ?? {}),
+            plexUserId,
+            plexUserTitle,
+            pinCollections,
+            includeMovies: false,
+            includeTv: true,
+            tvSectionKey,
+            tvLibraryName,
+          },
+        });
+        refresherSummary = refresherResult.summary ?? null;
+        await ctx.info('immaculateTastePoints(tv): refresher done (chained)', {
+          refresher: refresherSummary,
+        });
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        refresherSummary = { error: msg };
+        await ctx.warn('immaculateTastePoints(tv): refresher failed (continuing)', {
+          error: msg,
+        });
+      }
     }
 
     const summary: JsonObject = {
+      plexUserId,
+      plexUserTitle,
       seedTitle,
       seedYear,
       recommendationStrategy: recs.strategy,
@@ -1586,17 +1606,74 @@ export class ImmaculateTasteCollectionJob {
     const input = ctx.input ?? {};
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
+    const plexUserTitleRaw =
+      typeof input['plexUserTitle'] === 'string'
+        ? input['plexUserTitle'].trim()
+        : '';
+    const plexAccountIdRaw = input['plexAccountId'];
+    const plexAccountId =
+      typeof plexAccountIdRaw === 'number' && Number.isFinite(plexAccountIdRaw)
+        ? Math.trunc(plexAccountIdRaw)
+        : typeof plexAccountIdRaw === 'string' && plexAccountIdRaw.trim()
+          ? Number.parseInt(plexAccountIdRaw.trim(), 10)
+          : null;
+    const plexAccountTitleRaw =
+      typeof input['plexAccountTitle'] === 'string'
+        ? input['plexAccountTitle'].trim()
+        : '';
+    const plexAccountTitle = plexAccountTitleRaw || plexUserTitleRaw;
 
     const fromInput = plexUserIdRaw
       ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
       : null;
-    const resolved =
-      fromInput ?? (await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId }));
+    const normalize = (value: string | null | undefined) =>
+      String(value ?? '').trim().toLowerCase();
+    const titleMismatch =
+      Boolean(fromInput) &&
+      Boolean(plexAccountTitle) &&
+      normalize(fromInput?.plexAccountTitle) !== normalize(plexAccountTitle);
+
+    if (fromInput && !titleMismatch) {
+      return {
+        plexUserId: fromInput.id,
+        plexUserTitle: fromInput.plexAccountTitle,
+        pinCollections: fromInput.isAdmin,
+      };
+    }
+
+    if (plexAccountTitle) {
+      const byTitle = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountTitle,
+      });
+      if (byTitle) {
+        return {
+          plexUserId: byTitle.id,
+          plexUserTitle: byTitle.plexAccountTitle,
+          pinCollections: byTitle.isAdmin,
+        };
+      }
+    }
+
+    if (plexAccountId) {
+      const byAccount = await this.plexUsers.getOrCreateByPlexAccount({
+        plexAccountId,
+        plexAccountTitle,
+      });
+      if (byAccount) {
+        return {
+          plexUserId: byAccount.id,
+          plexUserTitle: byAccount.plexAccountTitle,
+          pinCollections: byAccount.isAdmin,
+        };
+      }
+    }
+
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
 
     return {
-      plexUserId: resolved.id,
-      plexUserTitle: resolved.plexAccountTitle,
-      pinCollections: resolved.isAdmin,
+      plexUserId: admin.id,
+      plexUserTitle: admin.plexAccountTitle,
+      pinCollections: admin.isAdmin,
     };
   }
 
@@ -1909,10 +1986,15 @@ function buildImmaculateTastePointsReport(params: {
     refresherObj && typeof refresherObj.skipped === 'boolean' ? refresherObj.skipped : null;
   const refresherReason =
     refresherObj && typeof refresherObj.reason === 'string' ? refresherObj.reason : null;
+  const refresherError =
+    refresherObj && typeof refresherObj.error === 'string'
+      ? refresherObj.error.trim()
+      : null;
 
   const issues = [
     ...(radarrFailed ? [issue('warn', `Radarr: ${radarrFailed} add(s) failed.`)] : []),
     ...(sonarrFailed ? [issue('warn', `Sonarr: ${sonarrFailed} add(s) failed.`)] : []),
+    ...(refresherError ? [issue('error', `Refresher failed: ${refresherError}`)] : []),
   ];
 
   const mode = sonarr ? 'tv' : 'movie';
@@ -1925,6 +2007,11 @@ function buildImmaculateTastePointsReport(params: {
   const excludedByRejectListCount =
     asNum(raw.excludedByRejectListCount) ?? excludedByRejectListTitles.length;
   const seedTitle = String(raw.seedTitle ?? '').trim();
+  const plexUserId = String(raw.plexUserId ?? '').trim();
+  const plexUserTitle = String(raw.plexUserTitle ?? '').trim();
+  const contextFacts: Array<{ label: string; value: JsonValue }> = [];
+  if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
+  if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
 
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
   const sonarrLists = isPlainObject(raw.sonarrLists) ? raw.sonarrLists : null;
@@ -2009,67 +2096,7 @@ function buildImmaculateTastePointsReport(params: {
     { label: 'Strategy', value: String(raw.recommendationStrategy ?? '') },
   );
 
-  return {
-    template: 'jobReportV1',
-    version: 1,
-    jobId: ctx.jobId,
-    dryRun: ctx.dryRun,
-    trigger: ctx.trigger,
-    headline:
-      mode === 'tv'
-        ? seedTitle
-          ? `Immaculate Taste (TV) updated by ${seedTitle}.`
-          : 'Immaculate Taste (TV) updated.'
-        : seedTitle
-          ? `Immaculate Taste updated by ${seedTitle}.`
-          : 'Immaculate Taste updated.',
-    sections: [
-      {
-        id: 'totals',
-        title: 'Totals',
-        rows: [
-          metricRow({ label: 'Recommendations generated', end: generated, unit: 'titles' }),
-          metricRow({ label: 'Resolved in Plex', end: resolvedInPlex, unit: 'items' }),
-          metricRow({ label: 'Missing in Plex', end: missingInPlex, unit: 'titles' }),
-        ],
-      },
-      {
-        id: 'points',
-        title: 'Points dataset',
-        rows: [
-          metricRow({
-            label: 'Rows (total)',
-            start: totalBefore,
-            changed:
-              totalBefore !== null && totalAfter !== null ? totalAfter - totalBefore : null,
-            end: totalAfter,
-            unit: 'rows',
-          }),
-          metricRow({
-            label: 'Rows (active)',
-            start: activeBefore,
-            changed:
-              activeBefore !== null && activeAfter !== null ? activeAfter - activeBefore : null,
-            end: activeAfter,
-            unit: 'rows',
-          }),
-          metricRow({
-            label: 'Rows (pending)',
-            start: pendingBefore,
-            changed:
-              pendingBefore !== null && pendingAfter !== null ? pendingAfter - pendingBefore : null,
-            end: pendingAfter,
-            unit: 'rows',
-          }),
-          metricRow({ label: 'Created active', end: points ? asNum(points.createdActive) : null, unit: 'rows' }),
-          metricRow({ label: 'Created pending', end: points ? asNum(points.createdPending) : null, unit: 'rows' }),
-          metricRow({ label: 'Activated from pending', end: points ? asNum(points.activatedFromPending) : null, unit: 'rows' }),
-          metricRow({ label: 'Decayed', end: points ? asNum(points.decayed) : null, unit: 'rows' }),
-          metricRow({ label: 'Removed', end: points ? asNum(points.removed) : null, unit: 'rows' }),
-        ],
-      },
-    ],
-    tasks: [
+  const tasks: JobReportV1['tasks'] = [
       {
         id: 'recommendations',
         title: 'Generate recommendations',
@@ -2244,13 +2271,106 @@ function buildImmaculateTastePointsReport(params: {
       {
         id: 'refresher',
         title: 'Refresh Plex collection (chained)',
-        status: refresherSkipped === true ? 'skipped' : 'success',
+        status: refresherError
+          ? 'failed'
+          : refresherSkipped === true
+            ? 'skipped'
+            : 'success',
         facts: [
           { label: 'skipped', value: refresherSkipped },
           { label: 'reason', value: refresherReason },
+          ...(refresherError ? [{ label: 'error', value: refresherError }] : []),
+        ],
+        issues: refresherError ? [issue('error', refresherError)] : undefined,
+      },
+    ];
+
+  if (contextFacts.length) {
+    tasks.unshift({
+      id: 'context',
+      title: 'Context',
+      status: 'success',
+      facts: contextFacts,
+    });
+  }
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: ctx.jobId,
+    dryRun: ctx.dryRun,
+    trigger: ctx.trigger,
+    headline:
+      mode === 'tv'
+        ? seedTitle
+          ? `Immaculate Taste (TV) updated by ${seedTitle}.`
+          : 'Immaculate Taste (TV) updated.'
+        : seedTitle
+          ? `Immaculate Taste updated by ${seedTitle}.`
+          : 'Immaculate Taste updated.',
+    sections: [
+      {
+        id: 'totals',
+        title: 'Totals',
+        rows: [
+          metricRow({ label: 'Recommendations generated', end: generated, unit: 'titles' }),
+          metricRow({ label: 'Resolved in Plex', end: resolvedInPlex, unit: 'items' }),
+          metricRow({ label: 'Missing in Plex', end: missingInPlex, unit: 'titles' }),
+        ],
+      },
+      {
+        id: 'points',
+        title: 'Points dataset',
+        rows: [
+          metricRow({
+            label: 'Rows (total)',
+            start: totalBefore,
+            changed:
+              totalBefore !== null && totalAfter !== null ? totalAfter - totalBefore : null,
+            end: totalAfter,
+            unit: 'rows',
+          }),
+          metricRow({
+            label: 'Rows (active)',
+            start: activeBefore,
+            changed:
+              activeBefore !== null && activeAfter !== null ? activeAfter - activeBefore : null,
+            end: activeAfter,
+            unit: 'rows',
+          }),
+          metricRow({
+            label: 'Rows (pending)',
+            start: pendingBefore,
+            changed:
+              pendingBefore !== null && pendingAfter !== null ? pendingAfter - pendingBefore : null,
+            end: pendingAfter,
+            unit: 'rows',
+          }),
+          metricRow({
+            label: 'Created active',
+            end: points ? asNum(points.createdActive) : null,
+            unit: 'rows',
+          }),
+          metricRow({
+            label: 'Created pending',
+            end: points ? asNum(points.createdPending) : null,
+            unit: 'rows',
+          }),
+          metricRow({
+            label: 'Activated from pending',
+            end: points ? asNum(points.activatedFromPending) : null,
+            unit: 'rows',
+          }),
+          metricRow({ label: 'Decayed', end: points ? asNum(points.decayed) : null, unit: 'rows' }),
+          metricRow({
+            label: 'Removed',
+            end: points ? asNum(points.removed) : null,
+            unit: 'rows',
+          }),
         ],
       },
     ],
+    tasks,
     issues,
     raw,
   };

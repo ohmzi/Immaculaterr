@@ -11,6 +11,20 @@ import { createIpRateLimitMiddleware } from './security/ip-rate-limit.middleware
 import { securityHeadersMiddleware } from './security/security-headers.middleware';
 import { readAppMeta } from './app.meta';
 
+function ensureLegacyGlobals() {
+  const g = globalThis as Record<string, unknown>;
+  if (!('alternateFormatName' in g)) {
+    g['alternateFormatName'] = '';
+    try {
+      const evalFn =
+        typeof g['eval'] === 'function' ? (g['eval'] as (code: string) => unknown) : null;
+      evalFn?.('var alternateFormatName = ""');
+    } catch {
+      // best-effort only
+    }
+  }
+}
+
 function parseTrustProxyEnv(
   raw: string | undefined,
 ): boolean | number | string | undefined {
@@ -31,6 +45,7 @@ function parseTrustProxyEnv(
 
 async function bootstrap() {
   await ensureBootstrapEnv();
+  ensureLegacyGlobals();
   const bootstrapLogger = new Logger('Bootstrap');
 
   process.on('unhandledRejection', (reason) => {
