@@ -95,6 +95,59 @@ function modePill(mode: RunModeLabel) {
   }
 }
 
+type MediaTypeKey = 'movie' | 'tv' | '';
+type MediaTypeLabel = 'Movie' | 'TV show' | '—';
+
+function normalizeMediaType(raw: string): MediaTypeKey {
+  const v = raw.trim().toLowerCase();
+  if (!v) return '';
+  if (v === 'movie' || v === 'movies' || v === 'film') return 'movie';
+  if (
+    v === 'tv' ||
+    v === 'show' ||
+    v === 'shows' ||
+    v === 'tvshow' ||
+    v === 'tv show' ||
+    v === 'series' ||
+    v === 'episode' ||
+    v === 'season'
+  ) {
+    return 'tv';
+  }
+  return '';
+}
+
+function mediaTypeLabel(key: MediaTypeKey): MediaTypeLabel {
+  if (key === 'movie') return 'Movie';
+  if (key === 'tv') return 'TV show';
+  return '—';
+}
+
+function mediaTypePill(key: MediaTypeKey) {
+  if (key === 'movie') return 'bg-fuchsia-500/15 text-fuchsia-200 border border-fuchsia-500/25';
+  if (key === 'tv') return 'bg-indigo-500/15 text-indigo-200 border border-indigo-500/25';
+  return 'bg-white/10 text-white/70 border border-white/10';
+}
+
+function pickStringish(obj: Record<string, unknown>, key: string): string {
+  const v = obj[key];
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  return '';
+}
+
+function resolveMediaTypeFromSummary(summary: Record<string, unknown>): MediaTypeKey {
+  const mediaType = normalizeMediaType(pickString(summary, 'mediaType') ?? '');
+  if (mediaType) return mediaType;
+  const mode = normalizeMediaType(pickString(summary, 'mode') ?? '');
+  if (mode) return mode;
+  const tvSectionKey = pickStringish(summary, 'tvSectionKey');
+  if (tvSectionKey) return 'tv';
+  const movieSectionKey = pickStringish(summary, 'movieSectionKey');
+  if (movieSectionKey) return 'movie';
+  return '';
+}
+
 function levelClass(level: string) {
   const l = level.toLowerCase();
   if (l === 'error') return 'text-red-200';
@@ -281,8 +334,10 @@ export function JobRunDetailPage() {
     const plexUserTitle = pickString(inputRaw, 'plexUserTitle') ?? '';
     const seedTitle = pickString(inputRaw, 'seedTitle') ?? '';
     const seedYear = pickNumber(inputRaw, 'seedYear');
-    if (!plexUserId && !plexUserTitle && !seedTitle && seedYear === null) return null;
-    return { plexUserId, plexUserTitle, seedTitle, seedYear };
+    const mediaType = normalizeMediaType(pickString(inputRaw, 'mediaType') ?? '');
+    if (!plexUserId && !plexUserTitle && !seedTitle && seedYear === null && !mediaType)
+      return null;
+    return { plexUserId, plexUserTitle, seedTitle, seedYear, mediaType };
   }, [logsQuery.data?.logs]);
   const plexUserContext = useMemo(() => {
     const plexUserId = summaryRaw ? pickString(summaryRaw, 'plexUserId') ?? '' : '';
@@ -305,6 +360,13 @@ export function JobRunDetailPage() {
     const resolvedYear = seedYear ?? fallbackYear;
     if (!resolvedTitle && resolvedYear === null) return null;
     return { seedTitle: resolvedTitle, seedYear: resolvedYear };
+  }, [summaryRaw, logInputContext]);
+  const mediaTypeContext = useMemo(() => {
+    const fromSummary = summaryRaw ? resolveMediaTypeFromSummary(summaryRaw) : '';
+    const fromLogs = logInputContext?.mediaType ?? '';
+    const key = (fromSummary || fromLogs || '') as MediaTypeKey;
+    if (!key) return null;
+    return { key, label: mediaTypeLabel(key) };
   }, [summaryRaw, logInputContext]);
   const jobName = useMemo(() => {
     const jobId = run?.jobId ?? '';
@@ -497,6 +559,16 @@ export function JobRunDetailPage() {
                         >
                           {modeLabel(run)}
                         </span>
+                        {mediaTypeContext ? (
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${mediaTypePill(
+                              mediaTypeContext.key,
+                            )}`}
+                            title="Media type"
+                          >
+                            {mediaTypeContext.label}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
 

@@ -102,6 +102,91 @@ function getPlexUserContext(run: JobRun): { plexUserId: string; plexUserTitle: s
   return { plexUserId, plexUserTitle };
 }
 
+function pickSummaryValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickSummaryString(obj: Record<string, unknown>, path: string): string {
+  const v = pickSummaryValue(obj, path);
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function normalizeMediaType(raw: string): 'movie' | 'tv' | null {
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (v === 'movie' || v === 'movies' || v === 'film') return 'movie';
+  if (
+    v === 'tv' ||
+    v === 'show' ||
+    v === 'shows' ||
+    v === 'tvshow' ||
+    v === 'tv show' ||
+    v === 'series' ||
+    v === 'episode' ||
+    v === 'season'
+  ) {
+    return 'tv';
+  }
+  return null;
+}
+
+function getMediaTypeContext(run: JobRun): { key: 'movie' | 'tv' | ''; label: string } {
+  const summary = run.summary;
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) {
+    return { key: '', label: '—' };
+  }
+
+  const obj = summary as Record<string, unknown>;
+  const raw =
+    obj.template === 'jobReportV1' && isPlainObject(obj.raw)
+      ? (obj.raw as Record<string, unknown>)
+      : obj;
+
+  const candidatePaths = [
+    'mediaType',
+    'media_type',
+    'mode',
+    'type',
+    'Metadata.type',
+    'metadata.type',
+    'input.mediaType',
+    'input.media_type',
+    'input.Metadata.type',
+    'input.metadata.type',
+  ];
+
+  const resolve = (source: Record<string, unknown>) => {
+    for (const path of candidatePaths) {
+      const normalized = normalizeMediaType(pickSummaryString(source, path));
+      if (normalized) return normalized;
+    }
+    return null;
+  };
+
+  let key = resolve(raw) ?? (raw !== obj ? resolve(obj) : null) ?? '';
+  if (!key) {
+    const tvSectionKey = pickSummaryString(raw, 'tvSectionKey');
+    const movieSectionKey = pickSummaryString(raw, 'movieSectionKey');
+    if (tvSectionKey) key = 'tv';
+    else if (movieSectionKey) key = 'movie';
+  }
+  if (!key) {
+    const rawRec = raw as Record<string, unknown>;
+    const hasSonarr = isPlainObject(rawRec['sonarr']);
+    const hasRadarr = isPlainObject(rawRec['radarr']);
+    if (hasSonarr && !hasRadarr) key = 'tv';
+    else if (hasRadarr && !hasSonarr) key = 'movie';
+  }
+  const label = key === 'movie' ? 'Movie' : key === 'tv' ? 'TV show' : '—';
+  return { key, label };
+}
+
 export function RewindPage() {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
@@ -109,6 +194,7 @@ export function RewindPage() {
   const [jobId, setJobId] = useState('');
   const [status, setStatus] = useState('');
   const [plexUserFilter, setPlexUserFilter] = useState('');
+  const [mediaTypeFilter, setMediaTypeFilter] = useState('');
   const [q, setQ] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
@@ -139,11 +225,13 @@ export function RewindPage() {
       const { plexUserId, plexUserTitle } = getPlexUserContext(r);
       const userKey = plexUserId || plexUserTitle;
       if (plexUserFilter && userKey !== plexUserFilter) return false;
+      const media = getMediaTypeContext(r);
+      if (mediaTypeFilter && media.key !== mediaTypeFilter) return false;
       if (!query) return true;
-      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle}`.toLowerCase();
+      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle} ${media.label}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [historyQuery.data?.runs, jobId, status, plexUserFilter, q]);
+  }, [historyQuery.data?.runs, jobId, status, plexUserFilter, mediaTypeFilter, q]);
 
   const jobNameById = useMemo(() => {
     const jobs = jobsQuery.data?.jobs ?? [];
@@ -186,7 +274,7 @@ export function RewindPage() {
   const selectTriggerClass = `w-full ${inputBaseClass}`;
 
   const filtersForm = (
-    <div className="grid gap-4 md:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-5">
       <div>
         <label className={labelClass}>Job</label>
         <Select
@@ -249,11 +337,30 @@ export function RewindPage() {
       </div>
 
       <div>
+        <label className={labelClass}>Media type</label>
+        <Select
+          value={mediaTypeFilter || 'all'}
+          onValueChange={(value) =>
+            setMediaTypeFilter(value === 'all' ? '' : value)
+          }
+        >
+          <SelectTrigger className={selectTriggerClass}>
+            <SelectValue placeholder="All types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="movie">Movie</SelectItem>
+            <SelectItem value="tv">TV show</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
         <label className={labelClass}>Search</label>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="jobId, user, status, error text…"
+          placeholder="jobId, user, media type, status, error text…"
           className={inputClass}
         />
       </div>
@@ -359,7 +466,7 @@ export function RewindPage() {
                   <div className="mb-6">
                     <div className="text-2xl font-semibold text-white">Filters</div>
                     <div className="mt-2 text-sm text-white/70">
-                      Filter by job, user, status, or a quick text search.
+                      Filter by job, user, media type, status, or a quick text search.
                     </div>
                   </div>
                   {filtersForm}
@@ -379,7 +486,7 @@ export function RewindPage() {
                           Filters
                         </div>
                         <div className="mt-2 text-sm text-white/70">
-                          Filter by job, user, status, or a quick text search.
+                          Filter by job, user, media type, status, or a quick text search.
                         </div>
                       </div>
                       <ChevronDown
@@ -460,6 +567,7 @@ export function RewindPage() {
                           const jobName = jobNameById.get(run.jobId) ?? run.jobId;
                           const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                           const userLabel = plexUserTitle || plexUserId;
+                          const media = getMediaTypeContext(run);
                           const errorText = issueSummary(run);
                           const errorPreview = errorText
                             ? errorText.length > 140
@@ -488,6 +596,10 @@ export function RewindPage() {
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
                                       {modeLabel(run)}
+                                    </span>
+                                    <span className="text-white/30">•</span>
+                                    <span className="whitespace-nowrap">
+                                      Media: {media.label}
                                     </span>
                                     {userLabel ? (
                                       <>
@@ -529,6 +641,7 @@ export function RewindPage() {
                               <th className="px-3 py-3">Time</th>
                               <th className="px-3 py-3">Job</th>
                               <th className="px-3 py-3">User</th>
+                              <th className="px-3 py-3">Media</th>
                               <th className="px-3 py-3">Status</th>
                               <th className="px-3 py-3">Mode</th>
                               <th className="px-3 py-3">Duration</th>
@@ -541,6 +654,7 @@ export function RewindPage() {
                               const jobName = jobNameById.get(run.jobId) ?? run.jobId;
                               const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                               const userLabel = plexUserTitle || plexUserId || '—';
+                              const media = getMediaTypeContext(run);
                               return (
                                 <tr
                                   key={run.id}
@@ -556,6 +670,7 @@ export function RewindPage() {
                                   </td>
                                   <td className="px-3 py-3 text-white/85">{jobName}</td>
                                   <td className="px-3 py-3 text-white/70">{userLabel}</td>
+                                  <td className="px-3 py-3 text-white/70">{media.label}</td>
                                   <td className="px-3 py-3">
                                     <span
                                       className={[

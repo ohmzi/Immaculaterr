@@ -2177,6 +2177,8 @@ function buildWatchedLatestCollectionReport(params: {
   }
 
   const isTv = Boolean(String((raw as Record<string, unknown>).tvSectionKey ?? '').trim());
+  const mediaType: 'movie' | 'tv' = isTv ? 'tv' : 'movie';
+  const rawWithMediaType = { ...raw, mediaType } as JsonObject;
   const unit = isTv ? 'shows' : 'movies';
   const seedTitle = String((raw as Record<string, unknown>).seedTitle ?? '').trim();
   const seedYear = asNum((raw as Record<string, unknown>).seedYear);
@@ -2549,6 +2551,6 @@ function buildWatchedLatestCollectionReport(params: {
     ],
     tasks,
     issues: [],
-    raw,
+    raw: rawWithMediaType,
   };
 }

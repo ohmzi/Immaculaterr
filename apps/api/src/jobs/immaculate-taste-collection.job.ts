@@ -105,6 +105,10 @@ export class ImmaculateTasteCollectionJob {
     const mediaType = mediaTypeRaw.toLowerCase();
     const isTv =
       mediaType === 'episode' || mediaType === 'show' || mediaType === 'tv';
+    const resolvedMediaType: 'movie' | 'tv' = isTv ? 'tv' : 'movie';
+    void ctx
+      .patchSummary({ mediaType: resolvedMediaType })
+      .catch(() => undefined);
 
     const seedTitleRaw =
       typeof input['seedTitle'] === 'string' ? input['seedTitle'].trim() : '';
@@ -868,6 +872,7 @@ export class ImmaculateTasteCollectionJob {
     }
 
     const summary: JsonObject = {
+      mediaType: 'movie',
       plexUserId,
       plexUserTitle,
       seedTitle,
@@ -1574,6 +1579,7 @@ export class ImmaculateTasteCollectionJob {
     }
 
     const summary: JsonObject = {
+      mediaType: 'tv',
       plexUserId,
       plexUserTitle,
       seedTitle,
@@ -1997,7 +2003,14 @@ function buildImmaculateTastePointsReport(params: {
     ...(refresherError ? [issue('error', `Refresher failed: ${refresherError}`)] : []),
   ];
 
-  const mode = sonarr ? 'tv' : 'movie';
+  const rawMediaType = String((raw as Record<string, unknown>).mediaType ?? '')
+    .trim()
+    .toLowerCase();
+  const normalizedMediaType =
+    rawMediaType === 'tv' || rawMediaType === 'movie' ? rawMediaType : '';
+  const mode: 'tv' | 'movie' =
+    (normalizedMediaType || (sonarr ? 'tv' : 'movie')) === 'tv' ? 'tv' : 'movie';
+  const rawWithMediaType = { ...raw, mediaType: mode } as JsonObject;
   const generatedTitles = uniqueStrings(asStringArray(raw.generatedTitles));
   const resolvedTitles = uniqueStrings(asStringArray(raw.resolvedTitles));
   const missingTitles = uniqueStrings(asStringArray(raw.missingTitles));
@@ -2372,6 +2385,6 @@ function buildImmaculateTastePointsReport(params: {
     ],
     tasks,
     issues,
-    raw,
+    raw: rawWithMediaType,
   };
 }
