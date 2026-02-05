@@ -299,6 +299,7 @@ function extractIdsFromGuids(
 @Injectable()
 export class PlexServerService {
   private readonly logger = new Logger(PlexServerService.name);
+  private readonly logHttp = process.env.PLEX_HTTP_LOGGING === 'true';
 
   async getMachineIdentifier(params: {
     baseUrl: string;
@@ -2112,7 +2113,11 @@ export class PlexServerService {
         );
       }
 
-      this.logger.debug(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
       const location = res.headers.get('location');
       if (location) {
         const match = location.match(/metadata\/(\d+)/i);
@@ -2255,7 +2260,11 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.debug(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       const ms = Date.now() - startedAt;
@@ -2312,7 +2321,11 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.debug(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       const ms = Date.now() - startedAt;
@@ -2450,9 +2463,11 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.debug(
-        `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
-      );
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
     } finally {
       clearTimeout(timeout);
     }
@@ -2490,7 +2505,11 @@ export class PlexServerService {
         );
       }
 
-      this.logger.debug(`Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
       const parsed: unknown = parser.parse(text) as unknown;
       return parsed;
     } catch (err) {

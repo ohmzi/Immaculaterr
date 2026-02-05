@@ -379,11 +379,6 @@ export function DebuggerPage() {
                   >
                     Updated: {plexLogUpdatedAt ? formatTime(plexLogUpdatedAt) : '—'}
                   </span>
-                  <span
-                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
-                  >
-                    Entries: {filteredPlexLogs.length}/{plexLogs.length}
-                  </span>
                 </div>
 
                 <div className="mt-5">
