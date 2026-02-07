@@ -2136,6 +2136,14 @@ function uniqueStrings(list: string[]): string[] {
   return out;
 }
 
+function sortTitles(list: string[]): string[] {
+  return list
+    .slice()
+    .sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }),
+    );
+}
+
 function buildWatchedLatestCollectionReport(params: {
   ctx: JobContext;
   raw: JsonObject;
@@ -2207,7 +2215,9 @@ function buildWatchedLatestCollectionReport(params: {
 
   for (const [idx, c] of collections.entries()) {
     const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
-    const generatedTitles = uniqueStrings(asStringArray(c.generatedTitles));
+    const generatedTitles = sortTitles(
+      uniqueStrings(asStringArray(c.generatedTitles)),
+    );
     const generatedCount = asNum(c.generated) ?? generatedTitles.length;
 
     const recommendationDebug = isPlainObject(c.recommendationDebug)
@@ -2222,14 +2232,16 @@ function buildWatchedLatestCollectionReport(params: {
     const openAiEnabled = Boolean(recommendationDebug?.openAiEnabled);
     const googleUsed = Boolean(recommendationUsed?.google);
 
-    const googleSuggestedTitles = uniqueStrings(
+    const googleSuggestedTitles = sortTitles(
+      uniqueStrings(
       asStringArray(recommendationDebug?.googleSuggestedTitles),
+      ),
     );
-    const openAiSuggestedTitles = uniqueStrings(
-      asStringArray(recommendationDebug?.openAiSuggestedTitles),
+    const openAiSuggestedTitles = sortTitles(
+      uniqueStrings(asStringArray(recommendationDebug?.openAiSuggestedTitles)),
     );
-    const tmdbSuggestedTitles = uniqueStrings(
-      asStringArray(recommendationDebug?.tmdbSuggestedTitles),
+    const tmdbSuggestedTitles = sortTitles(
+      uniqueStrings(asStringArray(recommendationDebug?.tmdbSuggestedTitles)),
     );
 
     recFacts.push({
@@ -2291,7 +2303,9 @@ function buildWatchedLatestCollectionReport(params: {
     const name =
       String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
       `Collection ${idx + 1}`;
-    const excludedTitles = uniqueStrings(asStringArray(c.excludedByRejectListTitles));
+    const excludedTitles = sortTitles(
+      uniqueStrings(asStringArray(c.excludedByRejectListTitles)),
+    );
     const excludedCount =
       asNum(c.excludedByRejectListCount) ?? excludedTitles.length;
     if (excludedCount) anyRejectExcluded = true;
@@ -2311,8 +2325,12 @@ function buildWatchedLatestCollectionReport(params: {
   const resolveFacts: Array<{ label: string; value: JsonValue }> = [];
   for (const [idx, c] of collections.entries()) {
     const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
-    const resolvedTitles = uniqueStrings(asStringArray(c.resolvedTitles ?? c.sampleResolved));
-    const missingTitles = uniqueStrings(asStringArray(c.missingTitles ?? c.sampleMissing));
+    const resolvedTitles = sortTitles(
+      uniqueStrings(asStringArray(c.resolvedTitles ?? c.sampleResolved)),
+    );
+    const missingTitles = sortTitles(
+      uniqueStrings(asStringArray(c.missingTitles ?? c.sampleMissing)),
+    );
     resolveFacts.push({
       label: `${name} — Resolved`,
       value: { count: resolvedTitles.length, unit, items: resolvedTitles },
@@ -2345,11 +2363,11 @@ function buildWatchedLatestCollectionReport(params: {
       if (enabled) sonarrFailed += asNum((sonarr as Record<string, unknown>)?.failed) ?? 0;
 
       const lists = isPlainObject(c.sonarrLists) ? c.sonarrLists : null;
-      const attempted = uniqueStrings(asStringArray(lists?.attempted));
-      const added = uniqueStrings(asStringArray(lists?.added));
-      const exists = uniqueStrings(asStringArray(lists?.exists));
-      const failed = uniqueStrings(asStringArray(lists?.failed));
-      const skipped = uniqueStrings(asStringArray(lists?.skipped));
+      const attempted = sortTitles(uniqueStrings(asStringArray(lists?.attempted)));
+      const added = sortTitles(uniqueStrings(asStringArray(lists?.added)));
+      const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
+      const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
+      const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
 
       const attemptedCount = sonarr ? asNum((sonarr as Record<string, unknown>).attempted) : null;
       const addedCount = sonarr ? asNum((sonarr as Record<string, unknown>).added) : null;
@@ -2394,11 +2412,11 @@ function buildWatchedLatestCollectionReport(params: {
       if (enabled) radarrFailed += asNum((radarr as Record<string, unknown>)?.failed) ?? 0;
 
       const lists = isPlainObject(c.radarrLists) ? c.radarrLists : null;
-      const attempted = uniqueStrings(asStringArray(lists?.attempted));
-      const added = uniqueStrings(asStringArray(lists?.added));
-      const exists = uniqueStrings(asStringArray(lists?.exists));
-      const failed = uniqueStrings(asStringArray(lists?.failed));
-      const skipped = uniqueStrings(asStringArray(lists?.skipped));
+      const attempted = sortTitles(uniqueStrings(asStringArray(lists?.attempted)));
+      const added = sortTitles(uniqueStrings(asStringArray(lists?.added)));
+      const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
+      const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
+      const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
 
       const attemptedCount = radarr ? asNum((radarr as Record<string, unknown>).attempted) : null;
       const addedCount = radarr ? asNum((radarr as Record<string, unknown>).added) : null;
@@ -2467,17 +2485,37 @@ function buildWatchedLatestCollectionReport(params: {
         plex && typeof plex['collectionName'] === 'string'
           ? String(plex['collectionName']).trim()
           : '';
+      const plexItems = plex ? asStringArray(plex['collectionItems']) : [];
+      const lastAddedTitle =
+        plex && typeof plex['lastAddedTitle'] === 'string'
+          ? String(plex['lastAddedTitle']).trim()
+          : '';
       if (fullName) {
         const label = `${libraryLabel || 'Library'} — ${name}`;
         if (!collectionNameSeen.has(label)) {
           collectionNameSeen.add(label);
-          collectionNameFacts.push({ label, value: fullName });
+          const lastAddedItems = sortTitles(
+            lastAddedTitle ? [lastAddedTitle] : [],
+          );
+          collectionNameFacts.push({
+            label,
+            value: lastAddedItems.length
+              ? { collectionName: fullName, lastAddedItems }
+              : fullName,
+          });
         }
+      }
+      if (plexItems.length && !desiredByCollection.has(name)) {
+        desiredByCollection.set(name, plexItems);
       }
       const desired = uniqueStrings(asStringArray(c['desiredTitles']));
       if (!desired.length) continue;
-      const existing = desiredByCollection.get(name) ?? [];
-      desiredByCollection.set(name, uniqueStrings(existing.concat(desired)));
+      if (!desiredByCollection.has(name)) {
+        desiredByCollection.set(name, desired);
+      } else if (!plexItems.length) {
+        const existing = desiredByCollection.get(name) ?? [];
+        desiredByCollection.set(name, uniqueStrings(existing.concat(desired)));
+      }
     }
   }
 
@@ -2491,7 +2529,12 @@ function buildWatchedLatestCollectionReport(params: {
     if (desiredTitles.length) anyDesired = true;
     plexFacts.push({
       label: name,
-      value: { count: desiredTitles.length, unit, items: desiredTitles },
+      value: {
+        count: desiredTitles.length,
+        unit,
+        items: desiredTitles,
+        order: 'plex',
+      },
     });
   }
 

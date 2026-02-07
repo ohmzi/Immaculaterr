@@ -185,6 +185,8 @@ export class PlexCuratedCollectionsService {
     }
 
     let plexCollectionKey: string | null = null;
+    let lastAddedTitle: string | null = null;
+    let collectionItems: string[] = [];
     let existingItems: Array<{ ratingKey: string; title: string }> = [];
     let existingCount = 0;
 
@@ -265,6 +267,8 @@ export class PlexCuratedCollectionsService {
         moved: desired.length,
         skipped: Math.max(0, desiredItems.length - desired.length),
         randomizeOrder,
+        lastAddedTitle: null,
+        collectionItems: desired.map((d) => d.title).filter(Boolean),
         sample: desired.slice(0, 10).map((d) => d.title),
       };
     }
@@ -354,6 +358,8 @@ export class PlexCuratedCollectionsService {
           moved: 0,
           skipped,
           randomizeOrder,
+          lastAddedTitle: null,
+          collectionItems: [],
         };
       }
 
@@ -392,6 +398,7 @@ export class PlexCuratedCollectionsService {
 
       // First item was included during createCollection (uri=...), add the rest in order.
       added = 1;
+      lastAddedTitle = desired[0]?.title ?? null;
       if (desired.length > 1) {
         await ctx.info('collection: adding items', {
           collectionName,
@@ -408,6 +415,7 @@ export class PlexCuratedCollectionsService {
             itemRatingKey: item.ratingKey,
           });
           added += 1;
+          lastAddedTitle = item.title || lastAddedTitle;
           if (added % 50 === 0 || added === desired.length) {
             await ctx.info('collection: add progress', {
               collectionName,
@@ -454,6 +462,7 @@ export class PlexCuratedCollectionsService {
             itemRatingKey: item.ratingKey,
           });
           added += 1;
+          lastAddedTitle = item.title || lastAddedTitle;
           if (added % 50 === 0 || added === desired.length) {
             await ctx.info('collection: add progress', {
               collectionName,
@@ -571,6 +580,39 @@ export class PlexCuratedCollectionsService {
       }
     }
 
+    // Fetch the collection order from Plex (best-effort).
+    collectionItems = desired.map((d) => d.title).filter(Boolean);
+    if (plexCollectionKey) {
+      let lastErr: unknown = null;
+      for (let i = 0; i < 5; i += 1) {
+        try {
+          const ordered = await this.plexServer.getCollectionItems({
+            baseUrl,
+            token,
+            collectionRatingKey: plexCollectionKey,
+          });
+          const titles = ordered
+            .map((it) => String(it.title ?? '').trim())
+            .filter(Boolean);
+          if (titles.length) {
+            collectionItems = titles;
+            break;
+          }
+          lastErr = null;
+        } catch (err) {
+          lastErr = err;
+        }
+        if (i < 4) await sleep(300);
+      }
+      if (lastErr) {
+        await ctx.warn('collection: failed to fetch ordered items (continuing)', {
+          collectionName,
+          plexCollectionKey,
+          error: (lastErr as Error)?.message ?? String(lastErr),
+        });
+      }
+    }
+
     // Set collection artwork if available (only if items were added or collection existed)
     if (plexCollectionKey && (added > 0 || existingCount > 0) && !ctx.dryRun) {
       try {
@@ -627,6 +669,8 @@ export class PlexCuratedCollectionsService {
       moved,
       skipped,
       randomizeOrder,
+      lastAddedTitle,
+      collectionItems,
       sample: desired.slice(0, 10).map((d) => d.title),
     };
   }

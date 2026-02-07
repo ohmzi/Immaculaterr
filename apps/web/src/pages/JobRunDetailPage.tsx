@@ -40,6 +40,14 @@ function pickString(obj: Record<string, unknown>, key: string): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
+function sortTitles(list: string[]): string[] {
+  return list
+    .slice()
+    .sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }),
+    );
+}
+
 async function copyToClipboard(text: string) {
   // Prefer async clipboard API when available (secure contexts).
   if (navigator?.clipboard?.writeText) {
@@ -291,6 +299,9 @@ export function JobRunDetailPage() {
   });
 
   const run = runQuery.data?.run;
+  const shouldSortFactItems =
+    run?.jobId === 'watchedMovieRecommendations' ||
+    run?.jobId === 'immaculateTastePoints';
 
   // The progress bar is a live "while you watch" indicator. Hide it shortly after completion so
   // old reports don't show a permanent "Completed" bar.
@@ -1794,6 +1805,7 @@ export function JobRunDetailPage() {
                             return title !== 'movie refresh' && title !== 'tv refresh';
                           })
                           .map((t, idx) => {
+                            const taskId = pickString(t, 'id') ?? '';
                             const title = pickString(t, 'title') ?? `Step ${idx + 1}`;
                             const status = pickString(t, 'status') ?? 'success';
                             const rowsRaw = t.rows;
@@ -1957,6 +1969,27 @@ export function JobRunDetailPage() {
                                         const labelRaw = String(f.label ?? '').trim() || 'Fact';
                                         const label = decodeHtmlEntities(labelRaw);
                                         const rawValue = (f as Record<string, unknown>).value;
+                                        const order = isPlainObject(rawValue)
+                                          ? pickString(rawValue, 'order')
+                                          : null;
+                                        const shouldSortList =
+                                          shouldSortFactItems &&
+                                          taskId !== 'plex_collection' &&
+                                          order !== 'plex';
+
+                                        const collectionDetails = (() => {
+                                          if (!isPlainObject(rawValue)) return null;
+                                          const collectionName = pickString(rawValue, 'collectionName');
+                                          if (!collectionName) return null;
+                                          const lastAddedItemsRaw = pickStringArray(
+                                            rawValue,
+                                            'lastAddedItems',
+                                          );
+                                          const lastAddedItems = shouldSortList
+                                            ? sortTitles(lastAddedItemsRaw)
+                                            : lastAddedItemsRaw;
+                                          return { collectionName, lastAddedItems };
+                                        })();
 
                                         const expandable = (() => {
                                           if (!isPlainObject(rawValue)) return null;
@@ -1976,7 +2009,67 @@ export function JobRunDetailPage() {
                                           return u ? `${s} ${u}` : s;
                                         };
 
+                                        if (collectionDetails) {
+                                          if (collectionDetails.lastAddedItems.length) {
+                                            return (
+                                              <details
+                                                key={`${idx}-${fi}-${label}`}
+                                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                                              >
+                                                <summary className="cursor-pointer list-none">
+                                                  <div className="text-[11px] text-white/60 font-mono">
+                                                    {label}
+                                                  </div>
+                                                  <div className="mt-1 text-xs text-white/80 font-mono break-words">
+                                                    {decodeHtmlEntities(collectionDetails.collectionName)}
+                                                    <span className="ml-2 text-white/50">
+                                                      (tap to view)
+                                                    </span>
+                                                  </div>
+                                                </summary>
+
+                                                <div className="mt-3 rounded-xl border border-white/10 bg-[#0b0c0f]/30 p-3">
+                                                  <div className="mb-2 text-[11px] text-white/60 font-mono">
+                                                    Last added
+                                                  </div>
+                                                  <div className="max-h-64 overflow-auto pr-1">
+                                                    <ul className="space-y-1 text-xs text-white/80 font-mono">
+                                                      {collectionDetails.lastAddedItems
+                                                        .slice(0, 50)
+                                                        .map((it, ii) => (
+                                                          <li
+                                                            key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
+                                                            className="whitespace-pre-wrap break-words"
+                                                          >
+                                                            {decodeHtmlEntities(it)}
+                                                          </li>
+                                                        ))}
+                                                    </ul>
+                                                  </div>
+                                                </div>
+                                              </details>
+                                            );
+                                          }
+
+                                          return (
+                                            <div
+                                              key={`${idx}-${fi}-${label}`}
+                                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                                            >
+                                              <div className="text-[11px] text-white/60 font-mono">
+                                                {label}
+                                              </div>
+                                              <div className="mt-1 text-xs text-white/80 font-mono break-words">
+                                                {decodeHtmlEntities(collectionDetails.collectionName)}
+                                              </div>
+                                            </div>
+                                          );
+                                        }
+
                                         if (expandable) {
+                                          const listItems = shouldSortList
+                                            ? sortTitles(expandable.items)
+                                            : expandable.items;
                                           return (
                                             <details
                                               key={`${idx}-${fi}-${label}`}
@@ -1988,7 +2081,7 @@ export function JobRunDetailPage() {
                                                 </div>
                                                 <div className="mt-1 text-xs text-white/80 font-mono break-words">
                                                   {formatCount(expandable.count, expandable.unit)}
-                                                  {expandable.items.length ? (
+                                                  {listItems.length ? (
                                                     <span className="ml-2 text-white/50">
                                                       (tap to view)
                                                     </span>
@@ -1996,14 +2089,14 @@ export function JobRunDetailPage() {
                                                 </div>
                                               </summary>
 
-                                              {expandable.items.length ? (
+                                              {listItems.length ? (
                                                 <div className="mt-3 rounded-xl border border-white/10 bg-[#0b0c0f]/30 p-3">
                                                   <div className="mb-2 text-[11px] text-white/60 font-mono">
-                                                    Items ({expandable.items.length})
+                                                    Items ({listItems.length})
                                                   </div>
                                                   <div className="max-h-64 overflow-auto pr-1">
                                                     <ul className="space-y-1 text-xs text-white/80 font-mono">
-                                                      {expandable.items.slice(0, 300).map((it, ii) => (
+                                                      {listItems.slice(0, 300).map((it, ii) => (
                                                         <li
                                                           key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
                                                           className="whitespace-pre-wrap break-words"

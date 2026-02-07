@@ -1132,12 +1132,24 @@ function buildImmaculateTasteRefresherReport(params: {
     });
   }
 
+  const asStringArray = (v: unknown): string[] => {
+    if (!Array.isArray(v)) return [];
+    const out: string[] = [];
+    for (const it of v) {
+      const s = String(it ?? '').trim();
+      if (!s) continue;
+      out.push(s);
+    }
+    return out;
+  };
+
   const addLibraryTasks = (params: {
     prefix: string;
     titlePrefix: string;
     byLibrary: unknown;
     sentLabel?: string;
     sentField?: 'sentToRadarr' | 'sentToSonarr';
+    unit?: string;
   }) => {
     const byLibrary = Array.isArray(params.byLibrary)
       ? params.byLibrary.filter(
@@ -1166,6 +1178,22 @@ function buildImmaculateTasteRefresherReport(params: {
       const desiredCount = plex
         ? asNum(plex.desiredCount)
         : asNum(lib.totalApplying) ?? null;
+      const plexItems = plex
+        ? asStringArray((plex as Record<string, unknown>).collectionItems)
+        : [];
+      const facts = plexItems.length
+        ? [
+            {
+              label: 'Collection order',
+              value: {
+                count: plexItems.length,
+                unit: params.unit ?? 'items',
+                items: plexItems,
+                order: 'plex',
+              },
+            },
+          ]
+        : [];
 
       const failed = Boolean(plexError);
       if (failed) {
@@ -1199,6 +1227,7 @@ function buildImmaculateTasteRefresherReport(params: {
             : []),
           metricRow({ label: 'TMDB ratings backfilled', end: asNum(lib.tmdbBackfilled), unit: 'items' }),
         ],
+        facts: facts.length ? facts : undefined,
         issues: plexError ? [issue('error', plexError)] : undefined,
       });
     }
@@ -1211,6 +1240,7 @@ function buildImmaculateTasteRefresherReport(params: {
       byLibrary: movie.plexByLibrary,
       sentLabel: 'Sent to Radarr',
       sentField: 'sentToRadarr',
+      unit: 'movies',
     });
   }
 
@@ -1221,6 +1251,7 @@ function buildImmaculateTasteRefresherReport(params: {
       byLibrary: tv.plexByLibrary,
       sentLabel: 'Sent to Sonarr',
       sentField: 'sentToSonarr',
+      unit: 'shows',
     });
   }
 

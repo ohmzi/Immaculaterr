@@ -1964,6 +1964,12 @@ function buildImmaculateTastePointsReport(params: {
     }
     return out;
   };
+  const sortTitles = (arr: string[]) =>
+    arr
+      .slice()
+      .sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }),
+      );
 
   const radarr = isPlainObject(raw.radarr) ? raw.radarr : null;
   const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : null;
@@ -1996,6 +2002,56 @@ function buildImmaculateTastePointsReport(params: {
     refresherObj && typeof refresherObj.error === 'string'
       ? refresherObj.error.trim()
       : null;
+  const refresherCollectionFacts: Array<{ label: string; value: JsonValue }> = [];
+  const refresherRaw =
+    refresherObj &&
+    refresherObj.template === 'jobReportV1' &&
+    isPlainObject(refresherObj.raw)
+      ? (refresherObj.raw as Record<string, unknown>)
+      : null;
+  const appendRefresherCollectionFacts = (
+    side: Record<string, unknown> | null,
+    labelPrefix: string,
+    unit: string,
+  ) => {
+    const byLibraryRaw = side?.plexByLibrary;
+    const byLibrary = Array.isArray(byLibraryRaw)
+      ? byLibraryRaw.filter(
+          (x): x is Record<string, unknown> =>
+            Boolean(x) && typeof x === 'object' && !Array.isArray(x),
+        )
+      : [];
+    for (const lib of byLibrary) {
+      const libraryLabel = String(lib.library ?? lib.title ?? 'Library').trim();
+      const plex = isPlainObject(lib.plex) ? lib.plex : null;
+      const plexItems = plex
+        ? asStringArray((plex as Record<string, unknown>).collectionItems)
+        : [];
+      if (!plexItems.length) continue;
+      const label = libraryLabel
+        ? `${labelPrefix} — ${libraryLabel}`
+        : labelPrefix;
+      refresherCollectionFacts.push({
+        label,
+        value: {
+          count: plexItems.length,
+          unit,
+          items: plexItems,
+          order: 'plex',
+        },
+      });
+    }
+  };
+  if (refresherRaw) {
+    const movieSide = isPlainObject(refresherRaw.movie)
+      ? (refresherRaw.movie as Record<string, unknown>)
+      : null;
+    const tvSide = isPlainObject(refresherRaw.tv)
+      ? (refresherRaw.tv as Record<string, unknown>)
+      : null;
+    appendRefresherCollectionFacts(movieSide, 'Movie collection', 'movies');
+    appendRefresherCollectionFacts(tvSide, 'TV collection', 'shows');
+  }
 
   const issues = [
     ...(radarrFailed ? [issue('warn', `Radarr: ${radarrFailed} add(s) failed.`)] : []),
@@ -2011,11 +2067,13 @@ function buildImmaculateTastePointsReport(params: {
   const mode: 'tv' | 'movie' =
     (normalizedMediaType || (sonarr ? 'tv' : 'movie')) === 'tv' ? 'tv' : 'movie';
   const rawWithMediaType = { ...raw, mediaType: mode } as JsonObject;
-  const generatedTitles = uniqueStrings(asStringArray(raw.generatedTitles));
-  const resolvedTitles = uniqueStrings(asStringArray(raw.resolvedTitles));
-  const missingTitles = uniqueStrings(asStringArray(raw.missingTitles));
-  const excludedByRejectListTitles = uniqueStrings(
-    asStringArray(raw.excludedByRejectListTitles),
+  const generatedTitles = sortTitles(
+    uniqueStrings(asStringArray(raw.generatedTitles)),
+  );
+  const resolvedTitles = sortTitles(uniqueStrings(asStringArray(raw.resolvedTitles)));
+  const missingTitles = sortTitles(uniqueStrings(asStringArray(raw.missingTitles)));
+  const excludedByRejectListTitles = sortTitles(
+    uniqueStrings(asStringArray(raw.excludedByRejectListTitles)),
   );
   const excludedByRejectListCount =
     asNum(raw.excludedByRejectListCount) ?? excludedByRejectListTitles.length;
@@ -2047,14 +2105,14 @@ function buildImmaculateTastePointsReport(params: {
   const openAiEnabled = Boolean(recommendationDebug?.openAiEnabled);
   const googleUsed = Boolean(recommendationUsed?.google);
 
-  const googleSuggestedTitles = uniqueStrings(
-    asStringArray(recommendationDebug?.googleSuggestedTitles),
+  const googleSuggestedTitles = sortTitles(
+    uniqueStrings(asStringArray(recommendationDebug?.googleSuggestedTitles)),
   );
-  const openAiSuggestedTitles = uniqueStrings(
-    asStringArray(recommendationDebug?.openAiSuggestedTitles),
+  const openAiSuggestedTitles = sortTitles(
+    uniqueStrings(asStringArray(recommendationDebug?.openAiSuggestedTitles)),
   );
-  const tmdbSuggestedTitles = uniqueStrings(
-    asStringArray(recommendationDebug?.tmdbSuggestedTitles),
+  const tmdbSuggestedTitles = sortTitles(
+    uniqueStrings(asStringArray(recommendationDebug?.tmdbSuggestedTitles)),
   );
 
   const recommendationFacts: Array<{ label: string; value: JsonValue }> = [];
@@ -2171,8 +2229,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(radarr.attempted),
                     unit: 'movies',
-                    items: uniqueStrings(
-                      radarrLists ? asStringArray(radarrLists.attempted) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        radarrLists ? asStringArray(radarrLists.attempted) : [],
+                      ),
                     ),
                   },
                 },
@@ -2181,8 +2241,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(radarr.added),
                     unit: 'movies',
-                    items: uniqueStrings(
-                      radarrLists ? asStringArray(radarrLists.added) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        radarrLists ? asStringArray(radarrLists.added) : [],
+                      ),
                     ),
                   },
                 },
@@ -2191,8 +2253,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(radarr.exists),
                     unit: 'movies',
-                    items: uniqueStrings(
-                      radarrLists ? asStringArray(radarrLists.exists) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        radarrLists ? asStringArray(radarrLists.exists) : [],
+                      ),
                     ),
                   },
                 },
@@ -2201,8 +2265,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(radarr.failed),
                     unit: 'movies',
-                    items: uniqueStrings(
-                      radarrLists ? asStringArray(radarrLists.failed) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        radarrLists ? asStringArray(radarrLists.failed) : [],
+                      ),
                     ),
                   },
                 },
@@ -2227,8 +2293,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(sonarr.attempted),
                     unit: 'shows',
-                    items: uniqueStrings(
-                      sonarrLists ? asStringArray(sonarrLists.attempted) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        sonarrLists ? asStringArray(sonarrLists.attempted) : [],
+                      ),
                     ),
                   },
                 },
@@ -2237,8 +2305,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(sonarr.added),
                     unit: 'shows',
-                    items: uniqueStrings(
-                      sonarrLists ? asStringArray(sonarrLists.added) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        sonarrLists ? asStringArray(sonarrLists.added) : [],
+                      ),
                     ),
                   },
                 },
@@ -2247,8 +2317,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(sonarr.exists),
                     unit: 'shows',
-                    items: uniqueStrings(
-                      sonarrLists ? asStringArray(sonarrLists.exists) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        sonarrLists ? asStringArray(sonarrLists.exists) : [],
+                      ),
                     ),
                   },
                 },
@@ -2257,8 +2329,10 @@ function buildImmaculateTastePointsReport(params: {
                   value: {
                     count: asNum(sonarr.failed),
                     unit: 'shows',
-                    items: uniqueStrings(
-                      sonarrLists ? asStringArray(sonarrLists.failed) : [],
+                    items: sortTitles(
+                      uniqueStrings(
+                        sonarrLists ? asStringArray(sonarrLists.failed) : [],
+                      ),
                     ),
                   },
                 },
@@ -2293,6 +2367,7 @@ function buildImmaculateTastePointsReport(params: {
           { label: 'skipped', value: refresherSkipped },
           { label: 'reason', value: refresherReason },
           ...(refresherError ? [{ label: 'error', value: refresherError }] : []),
+          ...refresherCollectionFacts,
         ],
         issues: refresherError ? [issue('error', refresherError)] : undefined,
       },
