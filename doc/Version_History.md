@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.0.0.532
+1.0.0.600
 ---
 
 - Web: fix Observatory page black-screen crash caused by Radix Select + React 19 ref loop.

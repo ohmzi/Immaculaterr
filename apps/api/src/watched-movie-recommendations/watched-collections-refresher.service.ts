@@ -201,25 +201,24 @@ export class WatchedCollectionsRefresherService {
           .map((id) => tmdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
-        const plex =
-          !ctx.dryRun && desiredItems.length
-            ? await this.plexCurated.rebuildMovieCollection({
-                ctx,
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                machineIdentifier,
-                movieSectionKey: sec.key,
-                itemType: 1,
-                collectionName: buildUserCollectionName(
-                  collectionName,
-                  plexUserTitle,
-                ),
-                desiredItems,
-                randomizeOrder: false,
-                pinCollections,
-                collectionHubOrder,
-              })
-            : null;
+        const plex = !ctx.dryRun
+          ? await this.plexCurated.rebuildMovieCollection({
+              ctx,
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              machineIdentifier,
+              movieSectionKey: sec.key,
+              itemType: 1,
+              collectionName: buildUserCollectionName(
+                collectionName,
+                plexUserTitle,
+              ),
+              desiredItems,
+              randomizeOrder: false,
+              pinCollections,
+              collectionHubOrder,
+            })
+          : null;
 
         perCollection.push({
           collectionName,
@@ -338,25 +337,24 @@ export class WatchedCollectionsRefresherService {
           .map((id) => tvdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
-        const plex =
-          !ctx.dryRun && desiredItems.length
-            ? await this.plexCurated.rebuildMovieCollection({
-                ctx,
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                machineIdentifier,
-                movieSectionKey: sec.key,
-                itemType: 2,
-                collectionName: buildUserCollectionName(
-                  collectionName,
-                  plexUserTitle,
-                ),
-                desiredItems,
-                randomizeOrder: false,
-                pinCollections,
-                collectionHubOrder,
-              })
-            : null;
+        const plex = !ctx.dryRun
+          ? await this.plexCurated.rebuildMovieCollection({
+              ctx,
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              machineIdentifier,
+              movieSectionKey: sec.key,
+              itemType: 2,
+              collectionName: buildUserCollectionName(
+                collectionName,
+                plexUserTitle,
+              ),
+              desiredItems,
+              randomizeOrder: false,
+              pinCollections,
+              collectionHubOrder,
+            })
+          : null;
 
         perCollection.push({
           collectionName,
