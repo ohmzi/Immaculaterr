@@ -3,6 +3,8 @@ import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import {
+  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  CURATED_TV_COLLECTION_HUB_ORDER,
   buildUserCollectionHubOrder,
   buildUserCollectionName,
 } from '../plex/plex-collections.utils';
@@ -46,6 +48,7 @@ export class WatchedCollectionsRefresherService {
     plexUserId: string;
     plexUserTitle: string;
     pinCollections?: boolean;
+    pinTarget?: 'admin' | 'friends';
     movieSections: PlexLibrarySection[];
     tvSections: PlexLibrarySection[];
     /**
@@ -62,6 +65,7 @@ export class WatchedCollectionsRefresherService {
     const limit = Math.max(1, Math.min(200, Math.trunc(params.limit || 15)));
     const scope = params.scope ?? null;
     const pinCollections = params.pinCollections ?? true;
+    const pinTarget = params.pinTarget ?? 'admin';
 
     const movieSections =
       scope?.mode === 'movie'
@@ -84,6 +88,7 @@ export class WatchedCollectionsRefresherService {
       plexUserId: params.plexUserId,
       plexUserTitle: params.plexUserTitle,
       pinCollections,
+      pinTarget,
       movieSections,
       limit,
     });
@@ -95,6 +100,7 @@ export class WatchedCollectionsRefresherService {
       plexUserId: params.plexUserId,
       plexUserTitle: params.plexUserTitle,
       pinCollections,
+      pinTarget,
       tvSections,
       limit,
     });
@@ -110,6 +116,7 @@ export class WatchedCollectionsRefresherService {
     plexUserId: string;
     plexUserTitle: string;
     pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     movieSections: PlexLibrarySection[];
     limit: number;
   }): Promise<JsonObject> {
@@ -121,13 +128,14 @@ export class WatchedCollectionsRefresherService {
       plexUserId,
       plexUserTitle,
       pinCollections,
+      pinTarget,
       movieSections,
       limit,
     } = params;
 
     const outByLibrary: JsonObject[] = [];
     const collectionHubOrder = buildUserCollectionHubOrder(
-      MOVIE_COLLECTIONS,
+      CURATED_MOVIE_COLLECTION_HUB_ORDER,
       plexUserTitle,
     );
 
@@ -216,6 +224,7 @@ export class WatchedCollectionsRefresherService {
               desiredItems,
               randomizeOrder: false,
               pinCollections,
+              pinTarget,
               collectionHubOrder,
             })
           : null;
@@ -248,6 +257,7 @@ export class WatchedCollectionsRefresherService {
     plexUserId: string;
     plexUserTitle: string;
     pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     tvSections: PlexLibrarySection[];
     limit: number;
   }): Promise<JsonObject> {
@@ -259,13 +269,14 @@ export class WatchedCollectionsRefresherService {
       plexUserId,
       plexUserTitle,
       pinCollections,
+      pinTarget,
       tvSections,
       limit,
     } = params;
 
     const outByLibrary: JsonObject[] = [];
     const collectionHubOrder = buildUserCollectionHubOrder(
-      TV_COLLECTIONS,
+      CURATED_TV_COLLECTION_HUB_ORDER,
       plexUserTitle,
     );
 
@@ -352,6 +363,7 @@ export class WatchedCollectionsRefresherService {
               desiredItems,
               randomizeOrder: false,
               pinCollections,
+              pinTarget,
               collectionHubOrder,
             })
           : null;
@@ -376,4 +388,3 @@ export class WatchedCollectionsRefresherService {
     return { collections: Array.from(TV_COLLECTIONS), byLibrary: outByLibrary };
   }
 }
-

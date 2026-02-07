@@ -98,6 +98,9 @@ export class BasedonLatestWatchedRefresherJob {
     const input = ctx.input ?? {};
     const { plexUserId, plexUserTitle, pinCollections } =
       await this.resolvePlexUserContext(ctx);
+    const pinTarget: 'admin' | 'friends' = pinCollections
+      ? 'admin'
+      : 'friends';
     const limitRaw = typeof input['limit'] === 'number' ? input['limit'] : null;
     const inputLimit =
       typeof limitRaw === 'number' && Number.isFinite(limitRaw)
@@ -161,6 +164,7 @@ export class BasedonLatestWatchedRefresherJob {
       tvLibraries: tvSections.map((s) => s.title),
       collectionsMovie: Array.from(MOVIE_COLLECTIONS),
       collectionsTv: Array.from(TV_COLLECTIONS),
+      pinTarget,
       limit,
       inputLimit,
       configuredLimit,
@@ -173,7 +177,8 @@ export class BasedonLatestWatchedRefresherJob {
       machineIdentifier,
       plexUserId,
       plexUserTitle,
-      pinCollections,
+      pinCollections: true,
+      pinTarget,
       movieSections,
       tvSections,
       limit,
@@ -409,4 +414,3 @@ function buildRecentlyWatchedRefresherReport(params: {
     raw,
   };
 }
-

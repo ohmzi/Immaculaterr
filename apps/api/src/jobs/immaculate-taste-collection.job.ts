@@ -100,6 +100,9 @@ export class ImmaculateTasteCollectionJob {
     const input = ctx.input ?? {};
     const { plexUserId, plexUserTitle, pinCollections } =
       await this.resolvePlexUserContext(ctx);
+    const pinTarget: 'admin' | 'friends' = pinCollections
+      ? 'admin'
+      : 'friends';
     const mediaTypeRaw =
       typeof input['mediaType'] === 'string' ? input['mediaType'].trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
@@ -141,6 +144,7 @@ export class ImmaculateTasteCollectionJob {
       plexUserId,
       plexUserTitle,
       mode: isTv ? 'tv' : 'movie',
+      pinTarget,
       seedTitle: seedTitle || null,
       seedYear,
       seedRatingKey: seedRatingKey || null,
@@ -160,7 +164,7 @@ export class ImmaculateTasteCollectionJob {
         ctx,
         plexUserId,
         plexUserTitle,
-        pinCollections,
+        pinTarget,
         seedTitle,
         seedYear,
         seedRatingKey,
@@ -851,7 +855,8 @@ export class ImmaculateTasteCollectionJob {
             ...(ctx.input ?? {}),
             plexUserId,
             plexUserTitle,
-            pinCollections,
+            pinCollections: true,
+            pinTarget,
             includeMovies: true,
             includeTv: false,
             movieSectionKey,
@@ -905,7 +910,7 @@ export class ImmaculateTasteCollectionJob {
     ctx: JobContext;
     plexUserId: string;
     plexUserTitle: string;
-    pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     seedTitle: string;
     seedYear: number | null;
     seedRatingKey: string;
@@ -916,7 +921,7 @@ export class ImmaculateTasteCollectionJob {
       ctx,
       plexUserId,
       plexUserTitle,
-      pinCollections,
+      pinTarget,
       seedTitle,
       seedYear,
       seedRatingKey,
@@ -1558,7 +1563,8 @@ export class ImmaculateTasteCollectionJob {
             ...(ctx.input ?? {}),
             plexUserId,
             plexUserTitle,
-            pinCollections,
+            pinCollections: true,
+            pinTarget,
             includeMovies: false,
             includeTv: true,
             tvSectionKey,

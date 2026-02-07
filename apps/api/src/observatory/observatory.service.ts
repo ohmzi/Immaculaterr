@@ -6,6 +6,8 @@ import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collec
 import type { JobContext } from '../jobs/jobs.types';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import {
+  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  CURATED_TV_COLLECTION_HUB_ORDER,
   buildUserCollectionHubOrder,
   buildUserCollectionName,
 } from '../plex/plex-collections.utils';
@@ -81,18 +83,6 @@ function watchedCollectionName(params: {
     : 'Based on your recently watched show';
 }
 
-const CURATED_MOVIE_COLLECTION_HUB_ORDER = [
-  'Based on your recently watched movie',
-  'Inspired by your Immaculate Taste',
-  'Change of Taste',
-] as const;
-
-const CURATED_TV_COLLECTION_HUB_ORDER = [
-  'Based on your recently watched show',
-  'Inspired by your Immaculate Taste',
-  'Change of Taste',
-] as const;
-
 @Injectable()
 export class ObservatoryService {
   constructor(
@@ -111,10 +101,14 @@ export class ObservatoryService {
 
   private async resolvePlexUserContext(userId: string) {
     const resolved = await this.plexUsers.ensureAdminPlexUser({ userId });
+    const pinTarget: 'admin' | 'friends' = resolved.isAdmin
+      ? 'admin'
+      : 'friends';
     return {
       plexUserId: resolved.id,
       plexUserTitle: resolved.plexAccountTitle,
       pinCollections: resolved.isAdmin,
+      pinTarget,
     };
   }
 
@@ -1251,7 +1245,7 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
-    const { plexUserId, plexUserTitle, pinCollections } =
+    const { plexUserId, plexUserTitle, pinTarget } =
       await this.resolvePlexUserContext(params.userId);
 
     const plexBaseUrlRaw =
@@ -1464,7 +1458,8 @@ export class ObservatoryService {
         machineIdentifier,
         plexUserId,
         plexUserTitle,
-        pinCollections,
+        pinCollections: true,
+        pinTarget,
         movieSections,
         tvSections: [],
         limit,
@@ -1615,7 +1610,8 @@ export class ObservatoryService {
       machineIdentifier,
       plexUserId,
       plexUserTitle,
-      pinCollections,
+      pinCollections: true,
+      pinTarget,
       movieSections: [],
       tvSections,
       limit,
@@ -1629,7 +1625,7 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
-    const { plexUserId, plexUserTitle, pinCollections } =
+    const { plexUserId, plexUserTitle, pinTarget } =
       await this.resolvePlexUserContext(params.userId);
 
     const plexBaseUrlRaw =
@@ -1677,7 +1673,7 @@ export class ObservatoryService {
         machineIdentifier,
         plexUserId,
         plexUserTitle,
-        pinCollections,
+        pinTarget,
         librarySectionKey: params.librarySectionKey,
         approvalRequired,
       });
@@ -1692,7 +1688,7 @@ export class ObservatoryService {
       machineIdentifier,
       plexUserId,
       plexUserTitle,
-      pinCollections,
+      pinTarget,
       librarySectionKey: params.librarySectionKey,
       approvalRequired,
     });
@@ -1707,7 +1703,7 @@ export class ObservatoryService {
     machineIdentifier: string;
     plexUserId: string;
     plexUserTitle: string;
-    pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     librarySectionKey: string;
     approvalRequired: boolean;
   }) {
@@ -1904,7 +1900,8 @@ export class ObservatoryService {
       itemType: 1,
       desiredItems,
       randomizeOrder: false,
-      pinCollections: params.pinCollections,
+      pinCollections: true,
+      pinTarget: params.pinTarget,
       collectionHubOrder,
     });
 
@@ -1932,7 +1929,7 @@ export class ObservatoryService {
     machineIdentifier: string;
     plexUserId: string;
     plexUserTitle: string;
-    pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     librarySectionKey: string;
     approvalRequired: boolean;
   }) {
@@ -2123,7 +2120,8 @@ export class ObservatoryService {
       itemType: 2,
       desiredItems,
       randomizeOrder: false,
-      pinCollections: params.pinCollections,
+      pinCollections: true,
+      pinTarget: params.pinTarget,
       collectionHubOrder,
     });
 
@@ -2202,4 +2200,3 @@ export class ObservatoryService {
     return { rootFolderPath, qualityProfileId, tagIds };
   }
 }
-

@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
-import { buildUserCollectionHubOrder, buildUserCollectionName } from '../plex/plex-collections.utils';
+import {
+  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  CURATED_TV_COLLECTION_HUB_ORDER,
+  buildUserCollectionHubOrder,
+  buildUserCollectionName,
+} from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
@@ -58,12 +63,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-const CURATED_COLLECTION_HUB_ORDER = [
-  'Based on your recently watched movie',
-  'Inspired by your Immaculate Taste',
-  'Change of Taste',
-] as const;
-
 @Injectable()
 export class ImmaculateTasteRefresherJob {
   private static readonly COLLECTION_NAME = 'Inspired by your Immaculate Taste';
@@ -84,6 +83,9 @@ export class ImmaculateTasteRefresherJob {
     const input = ctx.input ?? {};
     const { plexUserId, plexUserTitle, pinCollections } =
       await this.resolvePlexUserContext(ctx);
+    const pinTarget: 'admin' | 'friends' = pinCollections
+      ? 'admin'
+      : 'friends';
     const limitRaw = typeof input['limit'] === 'number' ? input['limit'] : null;
     const limit =
       typeof limitRaw === 'number' && Number.isFinite(limitRaw)
@@ -204,8 +206,12 @@ export class ImmaculateTasteRefresherJob {
       ImmaculateTasteRefresherJob.COLLECTION_NAME,
       plexUserTitle,
     );
-    const collectionHubOrder = buildUserCollectionHubOrder(
-      CURATED_COLLECTION_HUB_ORDER,
+    const movieCollectionHubOrder = buildUserCollectionHubOrder(
+      CURATED_MOVIE_COLLECTION_HUB_ORDER,
+      plexUserTitle,
+    );
+    const tvCollectionHubOrder = buildUserCollectionHubOrder(
+      CURATED_TV_COLLECTION_HUB_ORDER,
       plexUserTitle,
     );
 
@@ -214,6 +220,7 @@ export class ImmaculateTasteRefresherJob {
       plexUserId,
       plexUserTitle,
       pinCollections,
+      pinTarget,
       includeMovies,
       includeTv,
       movieLibraries: includeMovies ? orderedMovieSections.map((s) => s.title) : [],
@@ -560,8 +567,9 @@ export class ImmaculateTasteRefresherJob {
             collectionName: plexCollectionName,
             desiredItems: desiredLimited,
             randomizeOrder: false,
-            pinCollections,
-            collectionHubOrder,
+            pinCollections: true,
+            pinTarget,
+            collectionHubOrder: movieCollectionHubOrder,
           });
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
@@ -966,8 +974,9 @@ export class ImmaculateTasteRefresherJob {
               collectionName: plexCollectionName,
               desiredItems: desiredLimited,
               randomizeOrder: false,
-              pinCollections,
-              collectionHubOrder,
+              pinCollections: true,
+              pinTarget,
+              collectionHubOrder: tvCollectionHubOrder,
             });
           } catch (err) {
             const msg = (err as Error)?.message ?? String(err);

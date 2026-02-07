@@ -76,6 +76,9 @@ export class BasedonLatestWatchedCollectionJob {
     const input = ctx.input ?? {};
     const { plexUserId, plexUserTitle, pinCollections } =
       await this.resolvePlexUserContext(ctx);
+    const pinTarget: 'admin' | 'friends' = pinCollections
+      ? 'admin'
+      : 'friends';
     const mediaTypeRaw =
       typeof input['mediaType'] === 'string' ? input['mediaType'].trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
@@ -113,6 +116,7 @@ export class BasedonLatestWatchedCollectionJob {
       plexUserId,
       plexUserTitle,
       mode: isTv ? 'tv' : 'movie',
+      pinTarget,
       seedTitle: seedTitle || null,
       seedYear,
       seedRatingKey: seedRatingKey || null,
@@ -132,7 +136,7 @@ export class BasedonLatestWatchedCollectionJob {
         ctx,
         plexUserId,
         plexUserTitle,
-        pinCollections,
+        pinTarget,
         seedTitle,
         seedYear,
         seedRatingKey,
@@ -493,7 +497,8 @@ export class BasedonLatestWatchedCollectionJob {
         machineIdentifier,
         plexUserId,
         plexUserTitle,
-        pinCollections,
+        pinCollections: true,
+        pinTarget,
         movieSections,
         tvSections: [],
         limit: collectionLimit,
@@ -972,7 +977,7 @@ export class BasedonLatestWatchedCollectionJob {
     ctx: JobContext;
     plexUserId: string;
     plexUserTitle: string;
-    pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     seedTitle: string;
     seedYear: number | null;
     seedRatingKey: string;
@@ -983,7 +988,7 @@ export class BasedonLatestWatchedCollectionJob {
       ctx,
       plexUserId,
       plexUserTitle,
-      pinCollections,
+      pinTarget,
       seedTitle,
       seedYear,
       seedRatingKey,
@@ -1340,7 +1345,8 @@ export class BasedonLatestWatchedCollectionJob {
         machineIdentifier,
         plexUserId,
         plexUserTitle,
-        pinCollections,
+        pinCollections: true,
+        pinTarget,
         movieSections: [],
         tvSections,
         limit: collectionLimit,

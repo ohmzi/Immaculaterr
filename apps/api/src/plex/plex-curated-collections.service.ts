@@ -5,15 +5,15 @@ import path from 'node:path';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { PlexServerService } from './plex-server.service';
 import {
+  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  hasSameCuratedCollectionBase,
   normalizeCollectionTitle,
+  resolveCuratedCollectionBaseName,
+  sortCollectionNamesByCuratedBaseOrder,
   stripUserCollectionPrefix,
 } from './plex-collections.utils';
 
-const CURATED_COLLECTION_HUB_ORDER = [
-  'Based on your recently watched movie',
-  'Inspired by your Immaculate Taste',
-  'Change of Taste',
-] as const;
+type PinTarget = 'admin' | 'friends';
 
 @Injectable()
 export class PlexCuratedCollectionsService {
@@ -37,6 +37,7 @@ export class PlexCuratedCollectionsService {
     desiredItems: Array<{ ratingKey: string; title: string }>;
     randomizeOrder?: boolean;
     pinCollections?: boolean;
+    pinTarget?: PinTarget;
     collectionHubOrder?: string[];
   }): Promise<JsonObject> {
     const {
@@ -50,6 +51,7 @@ export class PlexCuratedCollectionsService {
       desiredItems,
       randomizeOrder = false,
       pinCollections = true,
+      pinTarget = 'admin',
       collectionHubOrder,
     } = params;
 
@@ -632,7 +634,7 @@ export class PlexCuratedCollectionsService {
       }
     }
 
-    // Pin collections to home/library (only if items were added or collection existed)
+    // Pin collection hubs (admin or friends target) when there is a material update.
     if (
       pinCollections &&
       plexCollectionKey &&
@@ -642,18 +644,22 @@ export class PlexCuratedCollectionsService {
       try {
         await ctx.info('collection: pinning to home/library', {
           collectionName,
+          pinTarget,
         });
         await this.pinCuratedCollectionHubs({
           ctx,
           baseUrl,
           token,
           librarySectionKey: movieSectionKey,
+          mediaType,
+          pinTarget,
           collectionHubOrder:
-            collectionHubOrder ?? Array.from(CURATED_COLLECTION_HUB_ORDER),
+            collectionHubOrder ?? Array.from(CURATED_MOVIE_COLLECTION_HUB_ORDER),
         });
       } catch (err) {
         await ctx.warn('collection: failed to pin hubs (non-critical)', {
           collectionName,
+          pinTarget,
           error: (err as Error)?.message ?? String(err),
         });
       }
@@ -736,95 +742,192 @@ export class PlexCuratedCollectionsService {
     baseUrl: string;
     token: string;
     librarySectionKey: string;
+    mediaType: 'movie' | 'tv';
+    pinTarget: PinTarget;
     collectionHubOrder: string[];
   }): Promise<void> {
-    const { ctx, baseUrl, token, librarySectionKey, collectionHubOrder } = params;
+    const {
+      ctx,
+      baseUrl,
+      token,
+      librarySectionKey,
+      mediaType,
+      pinTarget,
+      collectionHubOrder,
+    } = params;
+
+    const requestedOrder = sortCollectionNamesByCuratedBaseOrder({
+      collectionNames: collectionHubOrder,
+      mediaType,
+    });
+
+    const targetVisibility =
+      pinTarget === 'friends'
+        ? {
+            promotedToRecommended: 0,
+            promotedToOwnHome: 0,
+            promotedToSharedHome: 1,
+          }
+        : {
+            promotedToRecommended: 1,
+            promotedToOwnHome: 1,
+            promotedToSharedHome: 0,
+          };
 
     const stats = {
-      requested: collectionHubOrder.length,
+      requested: requestedOrder.length,
       found: 0,
+      exact: 0,
+      fallbackByBase: 0,
       updated: 0,
       missing: 0,
       failed: 0,
     };
 
-    // First, set visibility for all collections
-    for (const collectionName of collectionHubOrder) {
+    const allCollections = await this.plexServer.listCollectionsForSectionKey({
+      baseUrl,
+      token,
+      librarySectionKey,
+      take: 500,
+    });
+    const availableCollections = allCollections
+      .slice()
+      .sort((a, b) => a.title.localeCompare(b.title));
+    const usedCollectionKeys = new Set<string>();
+
+    const resolveRequestedUserSuffix = (name: string): string => {
+      const match = String(name ?? '')
+        .trim()
+        .match(/\(([^)]+)\)\s*$/);
+      return normalizeCollectionTitle(match?.[1] ?? '');
+    };
+    const targetMatches: Array<{
+      requestedCollectionName: string;
+      matchedCollectionName: string;
+      collectionKey: string;
+      matchType: 'exact' | 'base';
+    }> = [];
+    const missingCollections: string[] = [];
+
+    for (const requestedCollectionName of requestedOrder) {
+      const normalizedRequested = normalizeCollectionTitle(requestedCollectionName);
+      const exact = availableCollections.find((item) => {
+        if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
+        return normalizeCollectionTitle(item.title) === normalizedRequested;
+      });
+      if (exact) {
+        usedCollectionKeys.add(exact.ratingKey);
+        stats.found += 1;
+        stats.exact += 1;
+        targetMatches.push({
+          requestedCollectionName,
+          matchedCollectionName: exact.title,
+          collectionKey: exact.ratingKey,
+          matchType: 'exact',
+        });
+        continue;
+      }
+
+      const requestedUserSuffix = resolveRequestedUserSuffix(requestedCollectionName);
+      const fallbackCandidates = availableCollections.filter((item) => {
+        if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
+        return hasSameCuratedCollectionBase({
+          left: item.title,
+          right: requestedCollectionName,
+          mediaType,
+        });
+      });
+      const fallback = fallbackCandidates.sort((a, b) => {
+        const aSuffix = resolveRequestedUserSuffix(a.title);
+        const bSuffix = resolveRequestedUserSuffix(b.title);
+        const aUserPriority =
+          requestedUserSuffix && aSuffix === requestedUserSuffix ? 0 : 1;
+        const bUserPriority =
+          requestedUserSuffix && bSuffix === requestedUserSuffix ? 0 : 1;
+        if (aUserPriority !== bUserPriority) return aUserPriority - bUserPriority;
+        return normalizeCollectionTitle(a.title).localeCompare(
+          normalizeCollectionTitle(b.title),
+        );
+      })[0];
+
+      if (fallback) {
+        usedCollectionKeys.add(fallback.ratingKey);
+        stats.found += 1;
+        stats.fallbackByBase += 1;
+        targetMatches.push({
+          requestedCollectionName,
+          matchedCollectionName: fallback.title,
+          collectionKey: fallback.ratingKey,
+          matchType: 'base',
+        });
+      } else {
+        stats.missing += 1;
+        missingCollections.push(requestedCollectionName);
+      }
+    }
+
+    await ctx.info('hub_pin: resolved target collections', {
+      mediaType,
+      pinTarget,
+      requestedOrder,
+      matches: targetMatches.map((m) => ({
+        requestedCollectionName: m.requestedCollectionName,
+        matchedCollectionName: m.matchedCollectionName,
+        collectionKey: m.collectionKey,
+        matchType: m.matchType,
+        baseName: resolveCuratedCollectionBaseName({
+          collectionName: m.matchedCollectionName,
+          mediaType,
+        }),
+      })),
+      missingCollections,
+    });
+
+    for (const target of targetMatches) {
       try {
-        const collectionKey = await this.plexServer.findCollectionRatingKey({
+        await this.plexServer.setCollectionHubVisibility({
           baseUrl,
           token,
           librarySectionKey,
-          collectionName,
+          collectionRatingKey: target.collectionKey,
+          promotedToRecommended: targetVisibility.promotedToRecommended,
+          promotedToOwnHome: targetVisibility.promotedToOwnHome,
+          promotedToSharedHome: targetVisibility.promotedToSharedHome,
         });
-
-        if (!collectionKey) {
-          stats.missing += 1;
-          await ctx.debug('hub_pin: collection missing', { collectionName });
-          continue;
-        }
-
-        stats.found += 1;
-        try {
-          await this.plexServer.setCollectionHubVisibility({
-            baseUrl,
-            token,
-            librarySectionKey,
-            collectionRatingKey: collectionKey,
-            promotedToRecommended: 1,
-            promotedToOwnHome: 1,
-            promotedToSharedHome: 0,
-          });
-          stats.updated += 1;
-          await ctx.info('hub_pin: set visible_on(library,home)=ON', {
-            collectionName,
-          });
-        } catch (err) {
-          stats.failed += 1;
-          await ctx.warn('hub_pin: failed updating hub settings', {
-            collectionName,
-            error: (err as Error)?.message ?? String(err),
-          });
-        }
+        stats.updated += 1;
       } catch (err) {
         stats.failed += 1;
-        await ctx.warn('hub_pin: failed loading collection', {
-          collectionName,
+        await ctx.warn('hub_pin: failed updating hub settings', {
+          requestedCollectionName: target.requestedCollectionName,
+          matchedCollectionName: target.matchedCollectionName,
+          pinTarget,
           error: (err as Error)?.message ?? String(err),
         });
       }
     }
 
-    // Now reorder the hubs so they appear as top rows
     try {
       const identifiers: string[] = [];
-      const collections: string[] = [];
+      const matchedCollections: string[] = [];
 
-      for (const collectionName of collectionHubOrder) {
+      for (const target of targetMatches) {
         try {
-          const collectionKey = await this.plexServer.findCollectionRatingKey({
-            baseUrl,
-            token,
-            librarySectionKey,
-            collectionName,
-          });
-
-          if (!collectionKey) continue;
-
           const identifier = await this.plexServer.getCollectionHubIdentifier({
             baseUrl,
             token,
             librarySectionKey,
-            collectionRatingKey: collectionKey,
+            collectionRatingKey: target.collectionKey,
           });
 
           if (identifier) {
             identifiers.push(identifier);
-            collections.push(collectionName);
+            matchedCollections.push(target.matchedCollectionName);
           }
         } catch (err) {
           await ctx.debug('hub_pin: failed to get identifier', {
-            collectionName,
+            requestedCollectionName: target.requestedCollectionName,
+            matchedCollectionName: target.matchedCollectionName,
+            pinTarget,
             error: (err as Error)?.message ?? String(err),
           });
         }
@@ -854,17 +957,27 @@ export class PlexCuratedCollectionsService {
         }
 
         await ctx.info('hub_pin: reordered top collections', {
-          collections,
+          mediaType,
+          pinTarget,
+          requestedOrder,
+          matchedCollections,
           identifiers,
         });
       }
     } catch (err) {
       await ctx.warn('hub_pin: reorder failed (non-critical)', {
+        mediaType,
+        pinTarget,
         error: (err as Error)?.message ?? String(err),
       });
     }
 
-    await ctx.info('hub_pin: done', { stats });
+    await ctx.info('hub_pin: done', {
+      mediaType,
+      pinTarget,
+      requestedOrder,
+      stats,
+    });
   }
 
   private getArtworkPaths(collectionName: string): {
