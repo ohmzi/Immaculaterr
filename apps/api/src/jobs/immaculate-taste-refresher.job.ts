@@ -130,8 +130,8 @@ export class ImmaculateTasteRefresherJob {
     if (!plexToken) throw new Error('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const preferredMovieSectionKey =
-      inputMovieSectionKey || seedLibrarySectionId || '';
+    let preferredMovieSectionKey = inputMovieSectionKey || seedLibrarySectionId || '';
+    let preferredTvSectionKey = inputTvSectionKey || seedLibrarySectionId || '';
 
     const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
@@ -189,7 +189,79 @@ export class ImmaculateTasteRefresherJob {
     const effectiveTvSections =
       inputTvSectionKey && includeTv && !tvSections.length ? tvSectionsAll : tvSections;
 
-    let orderedMovieSections = effectiveMovieSections.slice().sort((a, b) => {
+    // Scope refresher runs to one relevant library when section key is not explicitly provided.
+    // This keeps reports clean and avoids touching unrelated libraries (e.g. "kids").
+    let scopedMovieSections = effectiveMovieSections.slice();
+    let scopedTvSections = effectiveTvSections.slice();
+    let movieScopeSource = inputMovieSectionKey ? 'input_movieSectionKey' : 'auto';
+    let tvScopeSource = inputTvSectionKey ? 'input_tvSectionKey' : 'auto';
+
+    if (includeMovies && scopedMovieSections.length && !inputMovieSectionKey) {
+      const scopedMovieSectionKeys = new Set(scopedMovieSections.map((s) => s.key));
+      const recentMovieLibraries = await this.prisma.immaculateTasteMovieLibrary.findMany({
+        where: {
+          plexUserId,
+          librarySectionKey: { in: scopedMovieSections.map((s) => s.key) },
+        },
+        select: { librarySectionKey: true, updatedAt: true },
+        orderBy: { updatedAt: 'desc' },
+        distinct: ['librarySectionKey'],
+      });
+      const latestScopedMovieSectionKey = recentMovieLibraries
+        .map((row) => row.librarySectionKey)
+        .find((key) => scopedMovieSectionKeys.has(key));
+      const fallbackMovieSection =
+        scopedMovieSections.find((s) => s.key === preferredMovieSectionKey) ??
+        scopedMovieSections.find((s) => s.title.toLowerCase() === 'movies') ??
+        scopedMovieSections[0];
+      const selectedMovieSectionKey =
+        preferredMovieSectionKey && scopedMovieSectionKeys.has(preferredMovieSectionKey)
+          ? preferredMovieSectionKey
+          : latestScopedMovieSectionKey ?? fallbackMovieSection?.key ?? '';
+      if (selectedMovieSectionKey) {
+        scopedMovieSections = scopedMovieSections.filter(
+          (s) => s.key === selectedMovieSectionKey,
+        );
+        preferredMovieSectionKey = selectedMovieSectionKey;
+        movieScopeSource = latestScopedMovieSectionKey
+          ? 'latest_movie_dataset'
+          : 'default_movie_library';
+      }
+    }
+
+    if (includeTv && scopedTvSections.length && !inputTvSectionKey) {
+      const scopedTvSectionKeys = new Set(scopedTvSections.map((s) => s.key));
+      const recentTvLibraries = await this.prisma.immaculateTasteShowLibrary.findMany({
+        where: {
+          plexUserId,
+          librarySectionKey: { in: scopedTvSections.map((s) => s.key) },
+        },
+        select: { librarySectionKey: true, updatedAt: true },
+        orderBy: { updatedAt: 'desc' },
+        distinct: ['librarySectionKey'],
+      });
+      const latestScopedTvSectionKey = recentTvLibraries
+        .map((row) => row.librarySectionKey)
+        .find((key) => scopedTvSectionKeys.has(key));
+      const fallbackTvSection =
+        scopedTvSections.find((s) => s.key === preferredTvSectionKey) ??
+        scopedTvSections.find((s) => s.title.toLowerCase() === 'tv shows') ??
+        scopedTvSections.find((s) => s.title.toLowerCase() === 'shows') ??
+        scopedTvSections[0];
+      const selectedTvSectionKey =
+        preferredTvSectionKey && scopedTvSectionKeys.has(preferredTvSectionKey)
+          ? preferredTvSectionKey
+          : latestScopedTvSectionKey ?? fallbackTvSection?.key ?? '';
+      if (selectedTvSectionKey) {
+        scopedTvSections = scopedTvSections.filter((s) => s.key === selectedTvSectionKey);
+        preferredTvSectionKey = selectedTvSectionKey;
+        tvScopeSource = latestScopedTvSectionKey
+          ? 'latest_tv_dataset'
+          : 'default_tv_library';
+      }
+    }
+
+    let orderedMovieSections = scopedMovieSections.slice().sort((a, b) => {
       if (a.key === preferredMovieSectionKey) return -1;
       if (b.key === preferredMovieSectionKey) return 1;
       return a.title.localeCompare(b.title);
@@ -224,7 +296,9 @@ export class ImmaculateTasteRefresherJob {
       includeMovies,
       includeTv,
       movieLibraries: includeMovies ? orderedMovieSections.map((s) => s.title) : [],
-      tvLibraries: includeTv ? effectiveTvSections.map((s) => s.title) : [],
+      tvLibraries: includeTv ? scopedTvSections.map((s) => s.title) : [],
+      movieScopeSource,
+      tvScopeSource,
       collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
       plexCollectionName,
       maxPoints,
@@ -267,24 +341,24 @@ export class ImmaculateTasteRefresherJob {
     }
 
     const canonicalMovieSectionKey = (() => {
-      const movies = effectiveMovieSections.find(
+      const movies = scopedMovieSections.find(
         (s) => s.title.toLowerCase() === 'movies',
       );
       if (movies) return movies.key;
-      const sorted = effectiveMovieSections.slice().sort((a, b) => {
+      const sorted = scopedMovieSections.slice().sort((a, b) => {
         const aCount = sectionTmdbToItem.get(a.key)?.size ?? 0;
         const bCount = sectionTmdbToItem.get(b.key)?.size ?? 0;
         if (aCount !== bCount) return bCount - aCount; // largest first
         return a.title.localeCompare(b.title);
       });
-      return sorted[0]?.key ?? effectiveMovieSections[0].key;
+      return sorted[0]?.key ?? scopedMovieSections[0].key;
     })();
 
     const canonicalMovieLibraryName =
-      effectiveMovieSections.find((s) => s.key === canonicalMovieSectionKey)?.title ??
-      effectiveMovieSections[0].title;
+      scopedMovieSections.find((s) => s.key === canonicalMovieSectionKey)?.title ??
+      scopedMovieSections[0].title;
 
-    orderedMovieSections = effectiveMovieSections.slice().sort((a, b) => {
+    orderedMovieSections = scopedMovieSections.slice().sort((a, b) => {
       if (a.key === preferredMovieSectionKey) return -1;
       if (b.key === preferredMovieSectionKey) return 1;
       if (a.key === canonicalMovieSectionKey) return -1;
@@ -661,13 +735,13 @@ export class ImmaculateTasteRefresherJob {
       );
     }
 
-    if (includeTv && effectiveTvSections.length) {
+    if (includeTv && scopedTvSections.length) {
       // Build TVDB mapping across all TV libraries so we can refresh the collection in each one.
       const sectionTvdbToItem = new Map<
         string,
         Map<number, { ratingKey: string; title: string }>
       >();
-      for (const sec of effectiveTvSections) {
+      for (const sec of scopedTvSections) {
         const tvdbMap = new Map<number, { ratingKey: string; title: string }>();
         const rows = await this.plexServer.listShowsWithTvdbIdsForSectionKey({
           baseUrl: plexBaseUrl,
@@ -685,24 +759,26 @@ export class ImmaculateTasteRefresherJob {
 
       const canonicalTvSectionKey = (() => {
         const preferred =
-          effectiveTvSections.find((s) => s.title.toLowerCase() === 'tv shows') ??
-          effectiveTvSections.find((s) => s.title.toLowerCase() === 'shows') ??
+          scopedTvSections.find((s) => s.title.toLowerCase() === 'tv shows') ??
+          scopedTvSections.find((s) => s.title.toLowerCase() === 'shows') ??
           null;
         if (preferred) return preferred.key;
-        const sorted = effectiveTvSections.slice().sort((a, b) => {
+        const sorted = scopedTvSections.slice().sort((a, b) => {
           const aCount = sectionTvdbToItem.get(a.key)?.size ?? 0;
           const bCount = sectionTvdbToItem.get(b.key)?.size ?? 0;
           if (aCount !== bCount) return bCount - aCount; // largest first
           return a.title.localeCompare(b.title);
         });
-        return sorted[0]?.key ?? effectiveTvSections[0].key;
+        return sorted[0]?.key ?? scopedTvSections[0].key;
       })();
 
       const canonicalTvLibraryName =
-        effectiveTvSections.find((s) => s.key === canonicalTvSectionKey)?.title ??
-        effectiveTvSections[0].title;
+        scopedTvSections.find((s) => s.key === canonicalTvSectionKey)?.title ??
+        scopedTvSections[0].title;
 
-      const orderedTvSections = effectiveTvSections.slice().sort((a, b) => {
+      const orderedTvSections = scopedTvSections.slice().sort((a, b) => {
+        if (a.key === preferredTvSectionKey) return -1;
+        if (b.key === preferredTvSectionKey) return 1;
         if (a.key === canonicalTvSectionKey) return -1;
         if (b.key === canonicalTvSectionKey) return 1;
         return a.title.localeCompare(b.title);

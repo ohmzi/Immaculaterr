@@ -14,6 +14,10 @@ import {
 } from './plex-collections.utils';
 
 type PinTarget = 'admin' | 'friends';
+type PreferredHubTarget = {
+  collectionName: string;
+  collectionKey: string;
+};
 
 @Injectable()
 export class PlexCuratedCollectionsService {
@@ -39,6 +43,7 @@ export class PlexCuratedCollectionsService {
     pinCollections?: boolean;
     pinTarget?: PinTarget;
     collectionHubOrder?: string[];
+    preferredHubTargets?: PreferredHubTarget[];
   }): Promise<JsonObject> {
     const {
       ctx,
@@ -53,6 +58,7 @@ export class PlexCuratedCollectionsService {
       pinCollections = true,
       pinTarget = 'admin',
       collectionHubOrder,
+      preferredHubTargets = [],
     } = params;
 
     const mediaType = itemType === 2 ? 'tv' : 'movie';
@@ -655,6 +661,10 @@ export class PlexCuratedCollectionsService {
           pinTarget,
           collectionHubOrder:
             collectionHubOrder ?? Array.from(CURATED_MOVIE_COLLECTION_HUB_ORDER),
+          preferredHubTargets: [
+            ...preferredHubTargets,
+            { collectionName, collectionKey: plexCollectionKey },
+          ],
         });
       } catch (err) {
         await ctx.warn('collection: failed to pin hubs (non-critical)', {
@@ -745,6 +755,7 @@ export class PlexCuratedCollectionsService {
     mediaType: 'movie' | 'tv';
     pinTarget: PinTarget;
     collectionHubOrder: string[];
+    preferredHubTargets?: PreferredHubTarget[];
   }): Promise<void> {
     const {
       ctx,
@@ -754,6 +765,7 @@ export class PlexCuratedCollectionsService {
       mediaType,
       pinTarget,
       collectionHubOrder,
+      preferredHubTargets = [],
     } = params;
 
     const requestedOrder = sortCollectionNamesByCuratedBaseOrder({
@@ -778,22 +790,12 @@ export class PlexCuratedCollectionsService {
       requested: requestedOrder.length,
       found: 0,
       exact: 0,
+      preferred: 0,
       fallbackByBase: 0,
       updated: 0,
       missing: 0,
       failed: 0,
     };
-
-    const allCollections = await this.plexServer.listCollectionsForSectionKey({
-      baseUrl,
-      token,
-      librarySectionKey,
-      take: 500,
-    });
-    const availableCollections = allCollections
-      .slice()
-      .sort((a, b) => a.title.localeCompare(b.title));
-    const usedCollectionKeys = new Set<string>();
 
     const resolveRequestedUserSuffix = (name: string): string => {
       const match = String(name ?? '')
@@ -801,75 +803,146 @@ export class PlexCuratedCollectionsService {
         .match(/\(([^)]+)\)\s*$/);
       return normalizeCollectionTitle(match?.[1] ?? '');
     };
-    const targetMatches: Array<{
+    type TargetMatch = {
       requestedCollectionName: string;
       matchedCollectionName: string;
       collectionKey: string;
-      matchType: 'exact' | 'base';
-    }> = [];
-    const missingCollections: string[] = [];
+      matchType: 'exact' | 'preferred' | 'base';
+    };
+    const resolveHubTargets = (allCollections: Array<{ ratingKey: string; title: string }>) => {
+      const availableCollections = allCollections
+        .slice()
+        .sort((a, b) => a.title.localeCompare(b.title));
+      const usedCollectionKeys = new Set<string>();
+      const targetMatches: TargetMatch[] = [];
+      const missingCollections: string[] = [];
+      let exact = 0;
+      let preferred = 0;
+      let fallbackByBase = 0;
 
-    for (const requestedCollectionName of requestedOrder) {
-      const normalizedRequested = normalizeCollectionTitle(requestedCollectionName);
-      const exact = availableCollections.find((item) => {
-        if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
-        return normalizeCollectionTitle(item.title) === normalizedRequested;
-      });
-      if (exact) {
-        usedCollectionKeys.add(exact.ratingKey);
-        stats.found += 1;
-        stats.exact += 1;
-        targetMatches.push({
-          requestedCollectionName,
-          matchedCollectionName: exact.title,
-          collectionKey: exact.ratingKey,
-          matchType: 'exact',
+      for (const requestedCollectionName of requestedOrder) {
+        const normalizedRequested = normalizeCollectionTitle(requestedCollectionName);
+        const exactMatch = availableCollections.find((item) => {
+          if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
+          return normalizeCollectionTitle(item.title) === normalizedRequested;
         });
-        continue;
+        if (exactMatch) {
+          usedCollectionKeys.add(exactMatch.ratingKey);
+          exact += 1;
+          targetMatches.push({
+            requestedCollectionName,
+            matchedCollectionName: exactMatch.title,
+            collectionKey: exactMatch.ratingKey,
+            matchType: 'exact',
+          });
+          continue;
+        }
+
+        const preferredMatch = preferredHubTargets.find((target) => {
+          if (!target.collectionKey || usedCollectionKeys.has(target.collectionKey)) {
+            return false;
+          }
+          const preferredName = String(target.collectionName ?? '').trim();
+          if (!preferredName) return false;
+          if (
+            normalizeCollectionTitle(preferredName) === normalizedRequested
+          ) {
+            return true;
+          }
+          return hasSameCuratedCollectionBase({
+            left: preferredName,
+            right: requestedCollectionName,
+            mediaType,
+          });
+        });
+        if (preferredMatch) {
+          usedCollectionKeys.add(preferredMatch.collectionKey);
+          preferred += 1;
+          targetMatches.push({
+            requestedCollectionName,
+            matchedCollectionName: preferredMatch.collectionName,
+            collectionKey: preferredMatch.collectionKey,
+            matchType: 'preferred',
+          });
+          continue;
+        }
+
+        const requestedUserSuffix = resolveRequestedUserSuffix(requestedCollectionName);
+        const fallbackCandidates = availableCollections.filter((item) => {
+          if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
+          return hasSameCuratedCollectionBase({
+            left: item.title,
+            right: requestedCollectionName,
+            mediaType,
+          });
+        });
+        const fallback = fallbackCandidates.sort((a, b) => {
+          const aSuffix = resolveRequestedUserSuffix(a.title);
+          const bSuffix = resolveRequestedUserSuffix(b.title);
+          const aUserPriority =
+            requestedUserSuffix && aSuffix === requestedUserSuffix ? 0 : 1;
+          const bUserPriority =
+            requestedUserSuffix && bSuffix === requestedUserSuffix ? 0 : 1;
+          if (aUserPriority !== bUserPriority) return aUserPriority - bUserPriority;
+          return normalizeCollectionTitle(a.title).localeCompare(
+            normalizeCollectionTitle(b.title),
+          );
+        })[0];
+
+        if (fallback) {
+          usedCollectionKeys.add(fallback.ratingKey);
+          fallbackByBase += 1;
+          targetMatches.push({
+            requestedCollectionName,
+            matchedCollectionName: fallback.title,
+            collectionKey: fallback.ratingKey,
+            matchType: 'base',
+          });
+        } else {
+          missingCollections.push(requestedCollectionName);
+        }
       }
 
-      const requestedUserSuffix = resolveRequestedUserSuffix(requestedCollectionName);
-      const fallbackCandidates = availableCollections.filter((item) => {
-        if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
-        return hasSameCuratedCollectionBase({
-          left: item.title,
-          right: requestedCollectionName,
-          mediaType,
-        });
-      });
-      const fallback = fallbackCandidates.sort((a, b) => {
-        const aSuffix = resolveRequestedUserSuffix(a.title);
-        const bSuffix = resolveRequestedUserSuffix(b.title);
-        const aUserPriority =
-          requestedUserSuffix && aSuffix === requestedUserSuffix ? 0 : 1;
-        const bUserPriority =
-          requestedUserSuffix && bSuffix === requestedUserSuffix ? 0 : 1;
-        if (aUserPriority !== bUserPriority) return aUserPriority - bUserPriority;
-        return normalizeCollectionTitle(a.title).localeCompare(
-          normalizeCollectionTitle(b.title),
-        );
-      })[0];
+      return { targetMatches, missingCollections, exact, preferred, fallbackByBase };
+    };
 
-      if (fallback) {
-        usedCollectionKeys.add(fallback.ratingKey);
-        stats.found += 1;
-        stats.fallbackByBase += 1;
-        targetMatches.push({
-          requestedCollectionName,
-          matchedCollectionName: fallback.title,
-          collectionKey: fallback.ratingKey,
-          matchType: 'base',
-        });
-      } else {
-        stats.missing += 1;
-        missingCollections.push(requestedCollectionName);
-      }
+    let listAttempt = 0;
+    let resolved = resolveHubTargets(
+      await this.plexServer.listCollectionsForSectionKey({
+        baseUrl,
+        token,
+        librarySectionKey,
+        take: 500,
+      }),
+    );
+
+    while (resolved.missingCollections.length > 0 && listAttempt < 6) {
+      listAttempt += 1;
+      await sleep(400);
+      resolved = resolveHubTargets(
+        await this.plexServer.listCollectionsForSectionKey({
+          baseUrl,
+          token,
+          librarySectionKey,
+          take: 500,
+        }),
+      );
+      if (resolved.missingCollections.length === 0) break;
     }
+
+    const targetMatches = resolved.targetMatches;
+    const missingCollections = resolved.missingCollections;
+    stats.found = targetMatches.length;
+    stats.exact = resolved.exact;
+    stats.preferred = resolved.preferred;
+    stats.fallbackByBase = resolved.fallbackByBase;
+    stats.missing = missingCollections.length;
 
     await ctx.info('hub_pin: resolved target collections', {
       mediaType,
       pinTarget,
       requestedOrder,
+      listAttempt,
       matches: targetMatches.map((m) => ({
         requestedCollectionName: m.requestedCollectionName,
         matchedCollectionName: m.matchedCollectionName,
@@ -910,18 +983,36 @@ export class PlexCuratedCollectionsService {
       const identifiers: string[] = [];
       const matchedCollections: string[] = [];
 
+      const resolveHubIdentifier = async (collectionKey: string): Promise<string | null> => {
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          const identifier = await this.plexServer
+            .getCollectionHubIdentifier({
+              baseUrl,
+              token,
+              librarySectionKey,
+              collectionRatingKey: collectionKey,
+            })
+            .catch(() => null);
+          if (identifier) return identifier;
+          if (attempt < 7) await sleep(300);
+        }
+        return null;
+      };
+
       for (const target of targetMatches) {
         try {
-          const identifier = await this.plexServer.getCollectionHubIdentifier({
-            baseUrl,
-            token,
-            librarySectionKey,
-            collectionRatingKey: target.collectionKey,
-          });
+          const identifier = await resolveHubIdentifier(target.collectionKey);
 
           if (identifier) {
             identifiers.push(identifier);
             matchedCollections.push(target.matchedCollectionName);
+          } else {
+            await ctx.debug('hub_pin: identifier unavailable after retries', {
+              requestedCollectionName: target.requestedCollectionName,
+              matchedCollectionName: target.matchedCollectionName,
+              collectionKey: target.collectionKey,
+              pinTarget,
+            });
           }
         } catch (err) {
           await ctx.debug('hub_pin: failed to get identifier', {

@@ -122,4 +122,112 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       after: 'hub-33',
     });
   });
+
+  it('retries hub target resolution when a freshly rebuilt collection is not visible on first list call', async () => {
+    const firstList = [
+      { ratingKey: '41', title: 'Based on your recently watched movie (plex laking)' },
+      { ratingKey: '42', title: 'Change of Taste (plex laking)' },
+    ];
+    const secondList = [
+      ...firstList,
+      { ratingKey: '43', title: 'Inspired by your Immaculate Taste (plex laking)' },
+    ];
+
+    const plexServer = {
+      listCollectionsForSectionKey: jest
+        .fn()
+        .mockResolvedValueOnce(firstList)
+        .mockResolvedValue(secondList),
+      setCollectionHubVisibility: jest.fn(async () => undefined),
+      getCollectionHubIdentifier: jest.fn(
+        async (args: { collectionRatingKey: string }) =>
+          `hub-${args.collectionRatingKey}`,
+      ),
+      moveHubRow: jest.fn(async () => undefined),
+    } as any;
+
+    const service = new PlexCuratedCollectionsService(plexServer);
+    const ctx = createTestCtx();
+
+    await (service as any).pinCuratedCollectionHubs({
+      ctx,
+      baseUrl: 'http://plex.local:32400',
+      token: 'token',
+      librarySectionKey: '1',
+      mediaType: 'movie',
+      pinTarget: 'friends',
+      collectionHubOrder: [
+        'Based on your recently watched movie (plex laking)',
+        'Change of Taste (plex laking)',
+        'Inspired by your Immaculate Taste (plex laking)',
+      ],
+    });
+
+    expect(plexServer.listCollectionsForSectionKey).toHaveBeenCalledTimes(2);
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenCalledTimes(3);
+    expect(plexServer.moveHubRow).toHaveBeenCalledTimes(3);
+  });
+
+  it('pins the freshly rebuilt collection using preferred key even when list endpoint still misses it', async () => {
+    const plexServer = {
+      listCollectionsForSectionKey: jest.fn(async () => [
+        { ratingKey: '61', title: 'Based on your recently watched movie (plex laking)' },
+        { ratingKey: '62', title: 'Change of Taste (plex laking)' },
+      ]),
+      setCollectionHubVisibility: jest.fn(async () => undefined),
+      getCollectionHubIdentifier: jest
+        .fn()
+        .mockImplementation(async (args: { collectionRatingKey: string }) => {
+          if (args.collectionRatingKey === '63') {
+            // Simulate eventual consistency in hub manage endpoint.
+            const seen = (plexServer.getCollectionHubIdentifier as any).mock.calls.filter(
+              (call: Array<{ collectionRatingKey: string }>) =>
+                call[0].collectionRatingKey === '63',
+            ).length;
+            return seen >= 2 ? 'hub-63' : null;
+          }
+          return `hub-${args.collectionRatingKey}`;
+        }),
+      moveHubRow: jest.fn(async () => undefined),
+    } as any;
+
+    const service = new PlexCuratedCollectionsService(plexServer);
+    const ctx = createTestCtx();
+
+    await (service as any).pinCuratedCollectionHubs({
+      ctx,
+      baseUrl: 'http://plex.local:32400',
+      token: 'token',
+      librarySectionKey: '1',
+      mediaType: 'movie',
+      pinTarget: 'friends',
+      collectionHubOrder: [
+        'Based on your recently watched movie (plex laking)',
+        'Change of Taste (plex laking)',
+        'Inspired by your Immaculate Taste (plex laking)',
+      ],
+      preferredHubTargets: [
+        {
+          collectionName: 'Inspired by your Immaculate Taste (plex laking)',
+          collectionKey: '63',
+        },
+      ],
+    });
+
+    expect(plexServer.listCollectionsForSectionKey).toHaveBeenCalledTimes(1);
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenCalledTimes(3);
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionRatingKey: '63',
+        promotedToSharedHome: 1,
+        promotedToOwnHome: 0,
+        promotedToRecommended: 0,
+      }),
+    );
+    expect(plexServer.moveHubRow).toHaveBeenCalledTimes(3);
+    expect(plexServer.moveHubRow.mock.calls[2][0]).toMatchObject({
+      identifier: 'hub-63',
+      after: 'hub-62',
+    });
+  });
 });

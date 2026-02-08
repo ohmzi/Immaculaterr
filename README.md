@@ -58,6 +58,30 @@
   - Discovering Media from film industries around the world
   - Email reports on media server health
   - Windows and macOS support
+
+## What changed in this branch (vs `develop`)
+
+This branch introduces **per-viewer Plex collections** and **per-user recommendation datasets**.
+
+- **Per-viewer independent collections**:
+  - Collections are now generated independently for each Plex viewer (for both Movies and TV).
+  - Collection names include the viewer identity (for example: `... (Viewer Name)`).
+  - A viewer’s suggestions are based on that viewer’s own watch activity and are not mixed with other viewers’ recommendation datasets.
+
+- **Pinning behavior by viewer role**:
+  - **Admin user runs**: curated collections are pinned to **Library Recommended** + **Home**.
+  - **Non-admin viewer runs**: curated collections are pinned to the top of **Friends Home**.
+
+- **Why non-admin uses Friends Home**:
+  - Plex currently does not allow reliably pinning these server-managed rows to each shared viewer’s own Home in this workflow.
+  - The fallback is pinning to **Friends Home** so the correct per-viewer collections are still surfaced prominently.
+  - Tradeoff: other viewers may see those rows in Friends Home, but each viewer’s own collection content is still generated from their own viewing behavior.
+
+- **Deterministic curated row order (Movies + TV)**:
+  1. `Based on your recently watched ...`
+  2. `Change of Taste`
+  3. `Inspired by your Immaculate Taste`
+  - Ordering ignores the trailing viewer-name suffix.
 <div align="center">
   <p><b>Desktop UI</b></p>
   <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
@@ -131,4 +155,3 @@ If it saves you time or runs 24/7 in your homelab, consider supporting developme
 ## License
 
 Immaculaterr is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
-
