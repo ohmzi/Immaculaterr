@@ -369,6 +369,8 @@ export class ImmaculateTasteController {
   @Post('collections/reset-user')
   async resetUserCollections(@Req() req: AuthenticatedRequest, @Body() body: ResetUserBody) {
     const userId = req.user.id;
+    await this.plexUsers.ensureAdminPlexUser({ userId });
+
     const mediaTypeRaw = typeof body?.mediaType === 'string' ? body.mediaType.trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
     const plexUserId =
@@ -480,5 +482,4 @@ export class ImmaculateTasteController {
     };
   }
 }
-
 
