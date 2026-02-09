@@ -13,10 +13,12 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What does Plex-Triggered Auto-Run mean?](#what-does-plex-triggered-auto-run-mean)
   - [When does Collection task trigger?](#when-does-collection-task-trigger)
   - [Why didn’t a job trigger even though I watched past the threshold?](#why-didnt-a-job-trigger-even-though-i-watched-past-the-threshold)
+  - [How does Plex Library Selection affect auto-runs and manual runs?](#how-does-plex-library-selection-affect-auto-runs-and-manual-runs)
   - [How can I run a job manually?](#how-can-i-run-a-job-manually)
   - [What is the difference between the Collection job and the Refresher job?](#what-is-the-difference-between-the-collection-job-and-the-refresher-job)
 - [Collections & recommendations](#collections--recommendations)
   - [What Plex collections does the app create?](#what-plex-collections-does-the-app-create)
+  - [How do per-viewer collections and Plex pin locations work?](#how-do-per-viewer-collections-and-plex-pin-locations-work)
   - [What’s the difference between Immaculate Taste and Based on Latest Watched?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched)
   - [How does the Immaculate Taste collection work?](#how-does-the-immaculate-taste-collection-work)
   - [How do Immaculate Taste points work, and how do they decay?](#how-do-immaculate-taste-points-work-and-how-do-they-decay)
@@ -111,6 +113,26 @@ By default, it triggers when Plex polling detects you’ve watched roughly 70% o
 - Plex polling is disabled (or not reaching Plex).
 - The item is too short (minimum duration rules can apply).
 - The job was recently triggered and deduped to prevent repeated runs.
+- The seed came from a Plex library you excluded in **Command Center → Plex Library Selection**.
+
+### How does Plex Library Selection affect auto-runs and manual runs?
+
+After Plex auth in onboarding, there is a dedicated **Plex Libraries** step.
+
+- Immaculaterr lists eligible movie/show libraries and preselects them by default.
+- You can deselect libraries you do not want included, but at least 1 library must stay selected.
+- You can change this later from **Command Center → Plex Library Selection**.
+- The model is exclusion-based (`excludedSectionKeys`), so new Plex libraries are auto-included unless you explicitly exclude them.
+
+How this affects runtime behavior:
+
+- **Auto triggers** (Plex polling + webhook scrobble): if the detected seed library is excluded, the run is skipped with reason `library_excluded`.
+- **Collection jobs** (manual + auto): candidate libraries are filtered first by your selection.
+  - If a seed resolves to an excluded library, the run is skipped (not failed).
+  - If no selected libraries remain for that media type, the run is skipped with `no_selected_movie_libraries` or `no_selected_tv_libraries`.
+- **Refresher jobs**: both targeted and sweep runs only operate on selected libraries. If nothing is eligible, you get a skipped summary instead of an error.
+
+Why this helps: it prevents unintended writes to libraries you want isolated (kids/test/archive), keeps behavior consistent across setup and run modes, and makes skip reasons explicit in reports.
 
 ### How can I run a job manually?
 
@@ -124,6 +146,11 @@ Collection jobs generate new suggestions based on a seed (what you watched), the
 
 Refresher jobs revisit the saved dataset, move items from pending → active when they appear in Plex, shuffle active items, and rebuild collections cleanly.
 
+Scope behavior:
+
+- Collection-triggered/chained refreshes stay scoped to the triggering viewer + library.
+- Standalone refresher runs (scheduled, or manual Run now without a scope) sweep all eligible viewers/libraries, using deterministic user ordering with admin processed last.
+
 ## Collections & recommendations
 
 ### What Plex collections does the app create?
@@ -131,6 +158,36 @@ Refresher jobs revisit the saved dataset, move items from pending → active whe
 - Inspired by your Immaculate Taste (Movies and TV)
 - Based on your recently watched movie/show
 - Change of Taste
+
+### How do per-viewer collections and Plex pin locations work?
+
+Each viewer now gets their own curated collection rows for Movies and TV. The viewer name is appended to the row title, for example: `Based on your recently watched show (ohmz_i)`.
+
+Under the hood, recommendation datasets are stored per viewer and per library. That keeps one viewer’s watch history from influencing another viewer’s recommendations.
+
+Pinning rules are role-based:
+
+- Admin viewer rows are pinned to **Library Recommended** and **Home**.
+- Non-admin viewer rows are pinned to **Friends Home**.
+
+Why non-admin rows use Friends Home:
+
+- With current Plex limits in this workflow, shared viewers cannot reliably pin these server-managed rows to their own Home.
+- The fallback is to pin viewer-specific rows at the top of **Friends Home**.
+- Tradeoff: other viewers may see those rows there, but the recommendations inside each row still come from the owning viewer’s watch activity.
+
+Curated row order is fixed everywhere (viewer suffix ignored):
+
+1. Based on your recently watched ...
+2. Change of Taste
+3. Inspired by your Immaculate Taste
+
+Row matching/order ignores trailing viewer suffixes, so priority stays deterministic across users.
+
+Also included with this update:
+
+- User-aware Command Center reset controls and Plex-user dataset management.
+- Expanded debugger/logging coverage and improved job reporting with clearer user/media context.
 
 ### What’s the difference between Immaculate Taste and Based on Latest Watched?
 
@@ -395,4 +452,3 @@ A title that is in Plex and eligible to appear in a curated collection.
 ### Refresher
 
 A job that revisits the saved dataset, activates newly-available items, shuffles, and rebuilds collections.
-
