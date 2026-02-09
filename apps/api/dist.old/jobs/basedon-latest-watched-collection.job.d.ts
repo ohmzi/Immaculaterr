@@ -1,0 +1,31 @@
+import { PrismaService } from '../db/prisma.service';
+import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
+import { RadarrService } from '../radarr/radarr.service';
+import { RecommendationsService } from '../recommendations/recommendations.service';
+import { SettingsService } from '../settings/settings.service';
+import { SonarrService } from '../sonarr/sonarr.service';
+import { TmdbService } from '../tmdb/tmdb.service';
+import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
+import type { JobContext, JobRunResult } from './jobs.types';
+export declare class BasedonLatestWatchedCollectionJob {
+    private readonly prisma;
+    private readonly settingsService;
+    private readonly plexServer;
+    private readonly plexUsers;
+    private readonly recommendations;
+    private readonly tmdb;
+    private readonly watchedRefresher;
+    private readonly radarr;
+    private readonly sonarr;
+    constructor(prisma: PrismaService, settingsService: SettingsService, plexServer: PlexServerService, plexUsers: PlexUsersService, recommendations: RecommendationsService, tmdb: TmdbService, watchedRefresher: WatchedCollectionsRefresherService, radarr: RadarrService, sonarr: SonarrService);
+    run(ctx: JobContext): Promise<JobRunResult>;
+    private processOneCollection;
+    private runTv;
+    private processOneTvCollection;
+    private resolvePlexUserContext;
+    private pickRadarrDefaults;
+    private pickSonarrDefaults;
+    private pickBestTmdbMatch;
+    private pickBestTmdbTvMatch;
+}

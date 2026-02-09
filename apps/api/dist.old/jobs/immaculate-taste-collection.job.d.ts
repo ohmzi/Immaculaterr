@@ -1,0 +1,33 @@
+import { PrismaService } from '../db/prisma.service';
+import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
+import { RadarrService } from '../radarr/radarr.service';
+import { RecommendationsService } from '../recommendations/recommendations.service';
+import { SettingsService } from '../settings/settings.service';
+import { SonarrService } from '../sonarr/sonarr.service';
+import { TmdbService } from '../tmdb/tmdb.service';
+import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
+import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
+import type { JobContext, JobRunResult } from './jobs.types';
+import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
+export declare class ImmaculateTasteCollectionJob {
+    private readonly prisma;
+    private readonly settingsService;
+    private readonly plexServer;
+    private readonly plexUsers;
+    private readonly recommendations;
+    private readonly tmdb;
+    private readonly radarr;
+    private readonly sonarr;
+    private readonly immaculateTaste;
+    private readonly immaculateTasteTv;
+    private readonly immaculateTasteRefresher;
+    constructor(prisma: PrismaService, settingsService: SettingsService, plexServer: PlexServerService, plexUsers: PlexUsersService, recommendations: RecommendationsService, tmdb: TmdbService, radarr: RadarrService, sonarr: SonarrService, immaculateTaste: ImmaculateTasteCollectionService, immaculateTasteTv: ImmaculateTasteShowCollectionService, immaculateTasteRefresher: ImmaculateTasteRefresherJob);
+    run(ctx: JobContext): Promise<JobRunResult>;
+    private runTv;
+    private resolvePlexUserContext;
+    private pickRadarrDefaults;
+    private pickSonarrDefaults;
+    private pickBestTmdbMatch;
+    private pickBestTmdbTvMatch;
+}
