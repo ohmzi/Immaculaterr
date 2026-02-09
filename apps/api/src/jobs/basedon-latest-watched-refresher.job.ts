@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
+import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
@@ -22,8 +23,6 @@ const TV_COLLECTIONS = [
   'Based on your recently watched show',
   'Change of Taste',
 ] as const;
-
-type PlexLibrarySection = { key: string; title: string; type?: string };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -166,15 +165,22 @@ export class BasedonLatestWatchedRefresherJob {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
+    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const movieSectionsAll = sections
-      .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+      .filter(
+        (s) =>
+          (s.type ?? '').toLowerCase() === 'movie' &&
+          selectedSectionKeySet.has(s.key),
+      )
       .sort((a, b) => a.title.localeCompare(b.title));
     const tvSectionsAll = sections
-      .filter((s) => (s.type ?? '').toLowerCase() === 'show')
+      .filter(
+        (s) =>
+          (s.type ?? '').toLowerCase() === 'show' &&
+          selectedSectionKeySet.has(s.key),
+      )
       .sort((a, b) => a.title.localeCompare(b.title));
-    if (!movieSectionsAll.length && !tvSectionsAll.length) {
-      throw new Error('No Plex movie or TV libraries found');
-    }
 
     let movieSections = includeMovies ? movieSectionsAll : [];
     let tvSections = includeTv ? tvSectionsAll : [];
@@ -188,11 +194,6 @@ export class BasedonLatestWatchedRefresherJob {
       tvSections = tvSections.filter((s) => tvKeySet.has(s.key));
     }
 
-    const machineIdentifier = await this.plexServer.getMachineIdentifier({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
-
     const configuredLimitRaw =
       pickNumber(settings, 'recommendations.collectionLimit') ?? 15;
     const configuredLimit = Math.max(
@@ -200,6 +201,62 @@ export class BasedonLatestWatchedRefresherJob {
       Math.min(200, Math.trunc(configuredLimitRaw || 15)),
     );
     const limit = inputLimit ?? configuredLimit;
+
+    const noMovieLibrariesForScope = includeMovies && movieSections.length === 0;
+    const noTvLibrariesForScope = includeTv && tvSections.length === 0;
+    if (
+      (!includeMovies || noMovieLibrariesForScope) &&
+      (!includeTv || noTvLibrariesForScope)
+    ) {
+      const skippedRefresh: JsonObject = {
+        skipped: true,
+        reasons: [
+          ...(noMovieLibrariesForScope ? ['no_selected_movie_libraries'] : []),
+          ...(noTvLibrariesForScope ? ['no_selected_tv_libraries'] : []),
+        ],
+        movie: includeMovies
+          ? {
+              skipped: true,
+              reason: 'no_selected_movie_libraries',
+            }
+          : {
+              skipped: true,
+              reason: 'disabled',
+            },
+        tv: includeTv
+          ? {
+              skipped: true,
+              reason: 'no_selected_tv_libraries',
+            }
+          : {
+              skipped: true,
+              reason: 'disabled',
+            },
+      };
+      const summary: JsonObject = {
+        mode,
+        dryRun: ctx.dryRun,
+        plexUserId,
+        plexUserTitle,
+        pinTarget,
+        limit,
+        refresh: skippedRefresh,
+      };
+      await ctx.info('recentlyWatchedRefresher: skipped (no selected libraries)', {
+        includeMovies,
+        includeTv,
+        forcedMovieSectionKeys,
+        forcedTvSectionKeys,
+        selectedSectionKeys: librarySelection.selectedSectionKeys,
+      });
+      const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
+      return { summary: report as unknown as JsonObject };
+    }
+
+    const machineIdentifier = await this.plexServer.getMachineIdentifier({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+    });
 
     await ctx.info('recentlyWatchedRefresher: start', {
       mode,
@@ -287,20 +344,22 @@ export class BasedonLatestWatchedRefresherJob {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
+    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const movieSectionsAll = sections
-      .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+      .filter(
+        (s) =>
+          (s.type ?? '').toLowerCase() === 'movie' &&
+          selectedSectionKeySet.has(s.key),
+      )
       .sort((a, b) => a.title.localeCompare(b.title));
     const tvSectionsAll = sections
-      .filter((s) => (s.type ?? '').toLowerCase() === 'show')
+      .filter(
+        (s) =>
+          (s.type ?? '').toLowerCase() === 'show' &&
+          selectedSectionKeySet.has(s.key),
+      )
       .sort((a, b) => a.title.localeCompare(b.title));
-    if (!movieSectionsAll.length && !tvSectionsAll.length) {
-      throw new Error('No Plex movie or TV libraries found');
-    }
-
-    const machineIdentifier = await this.plexServer.getMachineIdentifier({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
 
     const configuredLimitRaw =
       pickNumber(settings, 'recommendations.collectionLimit') ?? 15;
@@ -309,6 +368,43 @@ export class BasedonLatestWatchedRefresherJob {
       Math.min(200, Math.trunc(configuredLimitRaw || 15)),
     );
     const limit = inputLimit ?? configuredLimit;
+
+    const noMovieLibrariesForScope = includeMovies && movieSectionsAll.length === 0;
+    const noTvLibrariesForScope = includeTv && tvSectionsAll.length === 0;
+    if (
+      (!includeMovies || noMovieLibrariesForScope) &&
+      (!includeTv || noTvLibrariesForScope)
+    ) {
+      const summary: JsonObject = {
+        mode: 'sweep',
+        dryRun: ctx.dryRun,
+        limit,
+        includeMovies,
+        includeTv,
+        sweepOrder: SWEEP_ORDER,
+        usersProcessed: 0,
+        usersSucceeded: 0,
+        usersFailed: 0,
+        users: [],
+        skipped: true,
+        reasons: [
+          ...(noMovieLibrariesForScope ? ['no_selected_movie_libraries'] : []),
+          ...(noTvLibrariesForScope ? ['no_selected_tv_libraries'] : []),
+        ],
+      };
+      await ctx.info('recentlyWatchedRefresher: sweep skipped (no selected libraries)', {
+        includeMovies,
+        includeTv,
+        selectedSectionKeys: librarySelection.selectedSectionKeys,
+      });
+      const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
+      return { summary: report as unknown as JsonObject };
+    }
+
+    const machineIdentifier = await this.plexServer.getMachineIdentifier({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+    });
 
     const userIds = new Set<string>();
     if (includeMovies) {
@@ -381,6 +477,7 @@ export class BasedonLatestWatchedRefresherJob {
     const userSummaries: JsonObject[] = [];
     let usersSucceeded = 0;
     let usersFailed = 0;
+    let usersSkipped = 0;
 
     for (const user of orderedUsers) {
       const userIsAdmin = isAdminUser(user);
@@ -410,6 +507,43 @@ export class BasedonLatestWatchedRefresherJob {
       const tvSections = includeTv
         ? tvSectionsAll.filter((s) => tvLibraryKeys.has(s.key))
         : [];
+
+      const movieSkippedForScope = includeMovies && movieSections.length === 0;
+      const tvSkippedForScope = includeTv && tvSections.length === 0;
+      if (
+        (!includeMovies || movieSkippedForScope) &&
+        (!includeTv || tvSkippedForScope)
+      ) {
+        usersSkipped += 1;
+        userSummaries.push({
+          plexUserId: user.id,
+          plexUserTitle: user.plexAccountTitle,
+          isAdmin: userIsAdmin,
+          pinTarget,
+          refresh: {
+            skipped: true,
+            reasons: [
+              ...(movieSkippedForScope ? ['no_selected_movie_libraries'] : []),
+              ...(tvSkippedForScope ? ['no_selected_tv_libraries'] : []),
+            ],
+            movie: includeMovies
+              ? { skipped: true, reason: 'no_selected_movie_libraries' }
+              : { skipped: true, reason: 'disabled' },
+            tv: includeTv
+              ? { skipped: true, reason: 'no_selected_tv_libraries' }
+              : { skipped: true, reason: 'disabled' },
+          },
+        });
+        await ctx.info('recentlyWatchedRefresher: sweep user skipped (no selected libraries)', {
+          plexUserId: user.id,
+          plexUserTitle: user.plexAccountTitle,
+          includeMovies,
+          includeTv,
+          movieLibraryKeys: Array.from(movieLibraryKeys),
+          tvLibraryKeys: Array.from(tvLibraryKeys),
+        });
+        continue;
+      }
 
       await ctx.info('recentlyWatchedRefresher: sweep user start', {
         plexUserId: user.id,
@@ -472,6 +606,7 @@ export class BasedonLatestWatchedRefresherJob {
       usersProcessed: orderedUsers.length,
       usersSucceeded,
       usersFailed,
+      usersSkipped,
       users: userSummaries,
     };
 

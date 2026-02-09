@@ -7,6 +7,7 @@ import {
   buildUserCollectionHubOrder,
   buildUserCollectionName,
 } from '../plex/plex-collections.utils';
+import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
@@ -151,15 +152,28 @@ export class ImmaculateTasteRefresherJob {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
+    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
+    const allMovieSectionKeySet = new Set(
+      sections
+        .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+        .map((s) => s.key),
+    );
+    const allTvSectionKeySet = new Set(
+      sections
+        .filter((s) => (s.type ?? '').toLowerCase() === 'show')
+        .map((s) => s.key),
+    );
     const movieSectionsAll = sections.filter(
-      (s) => (s.type ?? '').toLowerCase() === 'movie',
+      (s) =>
+        (s.type ?? '').toLowerCase() === 'movie' &&
+        selectedSectionKeySet.has(s.key),
     );
     const tvSectionsAll = sections.filter(
-      (s) => (s.type ?? '').toLowerCase() === 'show',
+      (s) =>
+        (s.type ?? '').toLowerCase() === 'show' &&
+        selectedSectionKeySet.has(s.key),
     );
-    if (!movieSectionsAll.length && !tvSectionsAll.length) {
-      throw new Error('No Plex movie or TV libraries found');
-    }
 
     if (ctx.jobId === 'immaculateTasteRefresher') {
       void ctx
@@ -182,26 +196,50 @@ export class ImmaculateTasteRefresherJob {
     const tvSections = inputTvSectionKey
       ? tvSectionsAll.filter((s) => s.key === inputTvSectionKey)
       : tvSectionsAll;
+    const explicitMovieScopeExcluded =
+      Boolean(inputMovieSectionKey) &&
+      allMovieSectionKeySet.has(inputMovieSectionKey) &&
+      !selectedSectionKeySet.has(inputMovieSectionKey);
+    const explicitTvScopeExcluded =
+      Boolean(inputTvSectionKey) &&
+      allTvSectionKeySet.has(inputTvSectionKey) &&
+      !selectedSectionKeySet.has(inputTvSectionKey);
 
     if (inputMovieSectionKey && includeMovies && !movieSections.length) {
       await ctx.warn(
-        'immaculateTasteRefresher: requested movieSectionKey not found (falling back to all movie libraries)',
-        { movieSectionKey: inputMovieSectionKey },
+        explicitMovieScopeExcluded
+          ? 'immaculateTasteRefresher: requested movieSectionKey is excluded (skipping movie scope)'
+          : 'immaculateTasteRefresher: requested movieSectionKey not found in selected libraries (falling back to selected movie libraries)',
+        {
+          movieSectionKey: inputMovieSectionKey,
+          excluded: explicitMovieScopeExcluded,
+        },
       );
     }
     if (inputTvSectionKey && includeTv && !tvSections.length) {
       await ctx.warn(
-        'immaculateTasteRefresher: requested tvSectionKey not found (falling back to all TV libraries)',
-        { tvSectionKey: inputTvSectionKey },
+        explicitTvScopeExcluded
+          ? 'immaculateTasteRefresher: requested tvSectionKey is excluded (skipping TV scope)'
+          : 'immaculateTasteRefresher: requested tvSectionKey not found in selected libraries (falling back to selected TV libraries)',
+        {
+          tvSectionKey: inputTvSectionKey,
+          excluded: explicitTvScopeExcluded,
+        },
       );
     }
 
     const effectiveMovieSections =
       inputMovieSectionKey && includeMovies && !movieSections.length
-        ? movieSectionsAll
+        ? explicitMovieScopeExcluded
+          ? []
+          : movieSectionsAll
         : movieSections;
     const effectiveTvSections =
-      inputTvSectionKey && includeTv && !tvSections.length ? tvSectionsAll : tvSections;
+      inputTvSectionKey && includeTv && !tvSections.length
+        ? explicitTvScopeExcluded
+          ? []
+          : tvSectionsAll
+        : tvSections;
 
     // Default targeted behavior prefers a single relevant library unless explicitly scoped.
     let scopedMovieSections = effectiveMovieSections.slice();
@@ -360,8 +398,14 @@ export class ImmaculateTasteRefresherJob {
       pickString(secrets, 'tmdb.api_key') ||
       '';
 
-    let movieSummary: JsonObject = { skipped: true, reason: 'no_movie_libraries' };
-    let tvSummary: JsonObject = { skipped: true, reason: 'no_tv_libraries' };
+    let movieSummary: JsonObject = {
+      skipped: true,
+      reason: 'no_selected_movie_libraries',
+    };
+    let tvSummary: JsonObject = {
+      skipped: true,
+      reason: 'no_selected_tv_libraries',
+    };
 
     // Always do movies first, then TV, to avoid spiking Plex load across media types.
     if (includeMovies && orderedMovieSections.length) {
@@ -779,7 +823,7 @@ export class ImmaculateTasteRefresherJob {
       );
     } else {
       await ctx.info(
-        'immaculateTasteRefresher: no movie libraries (skipping movie collection)',
+        'immaculateTasteRefresher: no selected movie libraries (skipping movie collection)',
       );
     }
 
@@ -1141,7 +1185,7 @@ export class ImmaculateTasteRefresherJob {
       await ctx.info('immaculateTasteRefresher: TV disabled (skipping tv collection)');
     } else {
       await ctx.info(
-        'immaculateTasteRefresher: no TV libraries (skipping tv collection)',
+        'immaculateTasteRefresher: no selected TV libraries (skipping tv collection)',
       );
     }
 

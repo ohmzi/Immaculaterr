@@ -46,3 +46,30 @@ export function getSonarrOptions() {
   return fetchJson<SonarrOptionsResponse>('/api/integrations/sonarr/options');
 }
 
+export type PlexLibraryItem = {
+  key: string;
+  title: string;
+  type: 'movie' | 'show';
+  selected: boolean;
+};
+
+export type PlexLibrariesResponse = {
+  ok: true;
+  libraries: PlexLibraryItem[];
+  selectedSectionKeys: string[];
+  excludedSectionKeys: string[];
+  minimumRequired: number;
+  autoIncludeNewLibraries: true;
+};
+
+export function getPlexLibraries() {
+  return fetchJson<PlexLibrariesResponse>('/api/integrations/plex/libraries');
+}
+
+export function savePlexLibrarySelection(body: { selectedSectionKeys: string[] }) {
+  return fetchJson<PlexLibrariesResponse>('/api/integrations/plex/libraries', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}

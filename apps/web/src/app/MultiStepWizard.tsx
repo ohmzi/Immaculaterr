@@ -1,5 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -17,9 +17,14 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { testSavedIntegration } from '@/api/integrations';
+import {
+  getPlexLibraries,
+  savePlexLibrarySelection,
+  testSavedIntegration,
+} from '@/api/integrations';
 import { putSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,6 +32,7 @@ import { Label } from '@/components/ui/label';
 type WizardStep =
   | 'welcome'
   | 'plex'
+  | 'plexLibraries'
   | 'tmdb'
   | 'radarr'
   | 'sonarr'
@@ -37,6 +43,7 @@ type WizardStep =
 const STEP_ORDER: WizardStep[] = [
   'welcome',
   'plex',
+  'plexLibraries',
   'tmdb',
   'radarr',
   'sonarr',
@@ -47,7 +54,15 @@ const STEP_ORDER: WizardStep[] = [
 
 export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const queryClient = useQueryClient();
-  const CORE_STEPS: WizardStep[] = ['plex', 'tmdb', 'radarr', 'sonarr', 'google', 'openai'];
+  const CORE_STEPS: WizardStep[] = [
+    'plex',
+    'plexLibraries',
+    'tmdb',
+    'radarr',
+    'sonarr',
+    'google',
+    'openai',
+  ];
 
   // Restore wizard progress from localStorage if available
   const [currentStep, setCurrentStep] = useState<WizardStep>(() => {
@@ -81,6 +96,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       return false;
     }
   });
+  const [wizardSelectedLibraryKeys, setWizardSelectedLibraryKeys] = useState<
+    string[]
+  >([]);
+  const [libraryMinDialogOpen, setLibraryMinDialogOpen] = useState(false);
 
   // TMDB state
   const [tmdbApiKey, setTmdbApiKey] = useState('');
@@ -107,6 +126,21 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const coreStepNumber = isCoreStep ? CORE_STEPS.indexOf(currentStep) + 1 : 0;
   const coreStepTotal = CORE_STEPS.length;
   const coreProgressPct = isCoreStep ? Math.round((coreStepNumber / coreStepTotal) * 100) : 0;
+
+  const plexLibrariesQuery = useQuery({
+    queryKey: ['integrations', 'plex', 'libraries'],
+    queryFn: getPlexLibraries,
+    enabled: currentStep === 'plexLibraries',
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (currentStep !== 'plexLibraries') return;
+    if (!plexLibrariesQuery.data) return;
+    setWizardSelectedLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
+  }, [currentStep, plexLibrariesQuery.data]);
 
   // Poll for Plex OAuth token
   useEffect(() => {
@@ -260,6 +294,42 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         return;
       }
       toast.error('Plex credentials are incorrect.');
+    },
+  });
+
+  const toggleWizardLibrarySelection = (librarySectionKey: string, checked: boolean) => {
+    setWizardSelectedLibraryKeys((prev) => {
+      const has = prev.includes(librarySectionKey);
+      if (checked) {
+        if (has) return prev;
+        return [...prev, librarySectionKey];
+      }
+      if (!has) return prev;
+      if (prev.length <= 1) {
+        setLibraryMinDialogOpen(true);
+        return prev;
+      }
+      return prev.filter((key) => key !== librarySectionKey);
+    });
+  };
+
+  const savePlexLibrarySelectionStep = useMutation({
+    mutationFn: async () => {
+      if (wizardSelectedLibraryKeys.length < 1) {
+        throw new Error('Please keep at least one Plex library selected.');
+      }
+      return await savePlexLibrarySelection({
+        selectedSectionKeys: wizardSelectedLibraryKeys,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'plex', 'libraries'] });
+      toast.success('Saved Plex library selection.');
+      handleNext();
+    },
+    onError: (error: Error) => {
+      toast.error(error?.message ?? 'Couldn’t save Plex library selection.');
     },
   });
 
@@ -558,6 +628,125 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                 </div>
               </WizardSection>
             </div>
+          </WizardShell>
+        );
+
+      case 'plexLibraries':
+        return (
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Plex</span> Library Selection
+              </>
+            }
+            subtitle="Choose which Plex movie/TV libraries Immaculaterr can use. Excluded libraries are ignored for auto and manual collection runs."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  onClick={() => savePlexLibrarySelectionStep.mutate()}
+                  disabled={
+                    !plexLibrariesQuery.data?.libraries.length ||
+                    wizardSelectedLibraryKeys.length < 1 ||
+                    savePlexLibrarySelectionStep.isPending ||
+                    plexLibrariesQuery.isLoading
+                  }
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {savePlexLibrarySelectionStep.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
+              {plexLibrariesQuery.isLoading ? (
+                <div className="flex items-center gap-3 text-sm text-zinc-300">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading Plex libraries...
+                </div>
+              ) : plexLibrariesQuery.isError ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-red-200">
+                    Couldn&apos;t load Plex libraries. Check Plex settings and try
+                    again.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="h-10 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                    onClick={() => {
+                      void plexLibrariesQuery.refetch();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : !plexLibrariesQuery.data?.libraries.length ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-zinc-300">
+                    No movie or TV libraries were found in Plex. Immaculaterr
+                    requires at least one eligible library.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="h-10 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                    onClick={() => {
+                      void plexLibrariesQuery.refetch();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-xs text-zinc-500">
+                    Selected {wizardSelectedLibraryKeys.length} of{' '}
+                    {plexLibrariesQuery.data.libraries.length}. At least one
+                    library must stay selected.
+                  </p>
+                  <div className="space-y-2">
+                    {plexLibrariesQuery.data.libraries.map((lib) => (
+                      <label
+                        key={lib.key}
+                        className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-200"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={wizardSelectedLibraryKeys.includes(lib.key)}
+                          onChange={(e) =>
+                            toggleWizardLibrarySelection(lib.key, e.target.checked)
+                          }
+                          className="h-4 w-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
+                        />
+                        <span className="flex-1 truncate">{lib.title}</span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                          {lib.type === 'movie' ? 'Movie' : 'TV'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </WizardSection>
           </WizardShell>
         );
 
@@ -1011,9 +1200,21 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   };
 
   return (
-    <div className={currentStep === 'welcome' || currentStep === 'complete' ? 'w-full' : 'mx-auto w-full max-w-4xl'}>
-      {renderStepContent()}
-    </div>
+    <>
+      <div className={currentStep === 'welcome' || currentStep === 'complete' ? 'w-full' : 'mx-auto w-full max-w-4xl'}>
+        {renderStepContent()}
+      </div>
+      <ConfirmDialog
+        open={libraryMinDialogOpen}
+        onClose={() => setLibraryMinDialogOpen(false)}
+        onConfirm={() => setLibraryMinDialogOpen(false)}
+        title="At Least One Library Required"
+        description="Immaculaterr requires at least one Plex movie or TV library to stay selected."
+        confirmText="Got it"
+        cancelText="Close"
+        variant="primary"
+      />
+    </>
   );
 }
 

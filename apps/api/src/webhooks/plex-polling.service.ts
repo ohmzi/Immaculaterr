@@ -4,6 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
 import type { JsonObject } from '../jobs/jobs.types';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
+import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
 import {
   PlexNowPlayingSession,
   PlexRecentlyAddedItem,
@@ -1164,6 +1165,36 @@ export class PlexPollingService implements OnModuleInit {
       this.canScheduleSessionJob(sessionAutomationId, 'immaculateTastePoints') &&
       (ratio >= this.immaculateScrobbleThreshold || forceBothAtNinetyPercent);
     if (!shouldConsiderWatched && !shouldConsiderImmaculate) return snap;
+
+    const seedLibrarySectionKey =
+      typeof snap.librarySectionId === 'number' &&
+      Number.isFinite(snap.librarySectionId)
+        ? String(Math.trunc(snap.librarySectionId))
+        : '';
+    if (
+      seedLibrarySectionKey &&
+      isPlexLibrarySectionExcluded({
+        settings,
+        sectionKey: seedLibrarySectionKey,
+      })
+    ) {
+      const skipped: Record<string, string> = {};
+      if (shouldConsiderWatched) {
+        skipped.watchedMovieRecommendations = 'library_excluded';
+      }
+      if (shouldConsiderImmaculate) {
+        skipped.immaculateTastePoints = 'library_excluded';
+      }
+      this.webhooksService.logPlexWebhookAutomation({
+        plexEvent: 'media.scrobble',
+        mediaType: snap.type,
+        seedTitle,
+        plexUserId,
+        plexUserTitle,
+        skipped,
+      });
+      return snap;
+    }
 
     let next: SessionSnapshot = { ...snap };
 

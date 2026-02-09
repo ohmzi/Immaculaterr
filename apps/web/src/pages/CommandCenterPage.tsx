@@ -16,7 +16,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getRadarrOptions, getSonarrOptions } from '@/api/integrations';
+import {
+  getPlexLibraries,
+  getRadarrOptions,
+  getSonarrOptions,
+  savePlexLibrarySelection,
+} from '@/api/integrations';
 import {
   getImmaculateTasteCollections,
   getImmaculateTasteUserSummary,
@@ -43,6 +48,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { APP_HEADER_STATUS_PILL_BASE_CLASS } from '@/lib/ui-classes';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 function readBool(obj: unknown, path: string): boolean | null {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
@@ -117,6 +123,21 @@ export function CommandCenterPage() {
     refetchOnWindowFocus: false,
     retry: 1,
   });
+  const [plexLibraryMinDialogOpen, setPlexLibraryMinDialogOpen] =
+    useState(false);
+  const [draftSelectedPlexLibraryKeys, setDraftSelectedPlexLibraryKeys] =
+    useState<string[]>([]);
+  const plexLibrariesQuery = useQuery({
+    queryKey: ['integrations', 'plex', 'libraries'],
+    queryFn: getPlexLibraries,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  useEffect(() => {
+    if (!plexLibrariesQuery.data) return;
+    setDraftSelectedPlexLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
+  }, [plexLibrariesQuery.data]);
 
   const immaculateCollectionsQuery = useQuery({
     queryKey: ['immaculateTaste', 'collections'],
@@ -440,6 +461,50 @@ export function CommandCenterPage() {
   const upcomingTarget = Math.max(0, Math.min(upcomingTargetRaw, maxUpcomingTarget));
   const releasedTarget = Math.max(0, effectiveRecommendationCount - upcomingTarget);
 
+  const serverSelectedPlexLibraryKeys =
+    plexLibrariesQuery.data?.selectedSectionKeys ?? [];
+  const plexLibrarySelectionDirty = useMemo(() => {
+    if (!plexLibrariesQuery.data) return false;
+    if (draftSelectedPlexLibraryKeys.length !== serverSelectedPlexLibraryKeys.length) {
+      return true;
+    }
+    const serverSet = new Set(serverSelectedPlexLibraryKeys);
+    return draftSelectedPlexLibraryKeys.some((key) => !serverSet.has(key));
+  }, [
+    draftSelectedPlexLibraryKeys,
+    plexLibrariesQuery.data,
+    serverSelectedPlexLibraryKeys,
+  ]);
+
+  const togglePlexLibrarySelectionDraft = (
+    librarySectionKey: string,
+    checked: boolean,
+  ) => {
+    setDraftSelectedPlexLibraryKeys((prev) => {
+      const has = prev.includes(librarySectionKey);
+      if (checked) {
+        if (has) return prev;
+        return [...prev, librarySectionKey];
+      }
+      if (!has) return prev;
+      if (prev.length <= 1) {
+        setPlexLibraryMinDialogOpen(true);
+        return prev;
+      }
+      return prev.filter((key) => key !== librarySectionKey);
+    });
+  };
+
+  const savePlexLibrarySelectionMutation = useMutation({
+    mutationFn: async (selectedSectionKeys: string[]) =>
+      await savePlexLibrarySelection({ selectedSectionKeys }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['integrations', 'plex', 'libraries'], data);
+      setDraftSelectedPlexLibraryKeys(data.selectedSectionKeys);
+      toast.success('Plex library selection updated.');
+    },
+  });
+
   const renderAdminCollectionList = () => (
     <div className="space-y-3">
       {(immaculateCollectionsQuery.data?.collections ?? []).map((c) => {
@@ -667,6 +732,155 @@ export function CommandCenterPage() {
                     </div>
               </>
             )}
+          </div>
+
+          {/* Plex Library Selection */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-sky-400/10 focus-within:border-white/15 focus-within:shadow-sky-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-sky-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <Tv className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Plex Library Selection
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {plexLibrariesQuery.isLoading ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}>
+                    Checking…
+                  </span>
+                ) : plexLibrariesQuery.isError ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
+                    Error
+                  </span>
+                ) : null}
+                <SavingPill
+                  active={savePlexLibrarySelectionMutation.isPending}
+                  className="static"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Choose which movie/TV Plex libraries Immaculaterr can use. Excluded
+              libraries are ignored for auto and manual collection/refresher jobs.
+            </p>
+
+            {plexLibrariesQuery.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{(plexLibrariesQuery.error as Error).message}</span>
+              </div>
+            ) : null}
+
+            {!plexLibrariesQuery.isLoading &&
+            !plexLibrariesQuery.isError &&
+            !plexLibrariesQuery.data?.libraries.length ? (
+              <div className="mt-4 space-y-3">
+                <div className="text-sm text-white/70">
+                  No eligible Plex movie/TV libraries found. Add at least one in Plex,
+                  then retry.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void plexLibrariesQuery.refetch();
+                  }}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors active:scale-95"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Retry
+                </button>
+              </div>
+            ) : null}
+
+            {!plexLibrariesQuery.isLoading &&
+            !plexLibrariesQuery.isError &&
+            (plexLibrariesQuery.data?.libraries.length ?? 0) > 0 ? (
+              <div className="mt-5 space-y-4">
+                <div className="text-xs text-white/55">
+                  Selected {draftSelectedPlexLibraryKeys.length} of{' '}
+                  {plexLibrariesQuery.data?.libraries.length ?? 0}. Minimum 1
+                  required.
+                </div>
+
+                <div className="space-y-2">
+                  {(plexLibrariesQuery.data?.libraries ?? []).map((lib) => (
+                    <label
+                      key={lib.key}
+                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/85"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draftSelectedPlexLibraryKeys.includes(lib.key)}
+                        onChange={(e) =>
+                          togglePlexLibrarySelectionDraft(lib.key, e.target.checked)
+                        }
+                        className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
+                      />
+                      <span className="min-w-0 flex-1 truncate font-semibold">
+                        {lib.title}
+                      </span>
+                      <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/60">
+                        {lib.type === 'movie' ? 'Movie' : 'TV'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                {savePlexLibrarySelectionMutation.isError ? (
+                  <div className="flex items-start gap-2 text-sm text-red-200/90">
+                    <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>
+                      {(savePlexLibrarySelectionMutation.error as Error).message}
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraftSelectedPlexLibraryKeys(serverSelectedPlexLibraryKeys)
+                    }
+                    disabled={
+                      savePlexLibrarySelectionMutation.isPending ||
+                      !plexLibrarySelectionDirty
+                    }
+                    className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      savePlexLibrarySelectionMutation.mutate(
+                        draftSelectedPlexLibraryKeys,
+                      )
+                    }
+                    disabled={
+                      savePlexLibrarySelectionMutation.isPending ||
+                      !plexLibrarySelectionDirty ||
+                      draftSelectedPlexLibraryKeys.length < 1
+                    }
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                  >
+                    {savePlexLibrarySelectionMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      'Save selection'
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Reset Immaculate Taste */}
@@ -1460,6 +1674,17 @@ export function CommandCenterPage() {
             )}
           </AnimatePresence>
 
+          <ConfirmDialog
+            open={plexLibraryMinDialogOpen}
+            onClose={() => setPlexLibraryMinDialogOpen(false)}
+            onConfirm={() => setPlexLibraryMinDialogOpen(false)}
+            title="At Least One Library Required"
+            description="Immaculaterr requires at least one Plex movie or TV library to remain selected."
+            confirmText="Got it"
+            cancelText="Close"
+            variant="primary"
+          />
+
           {/* Radarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start sm:items-center justify-between gap-4">
@@ -1904,5 +2129,3 @@ export function CommandCenterPage() {
     />
   );
 }
-
-

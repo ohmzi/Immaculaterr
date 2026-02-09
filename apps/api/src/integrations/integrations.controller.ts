@@ -5,12 +5,19 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { GoogleService } from '../google/google.service';
 import { OpenAiService } from '../openai/openai.service';
+import {
+  buildExcludedSectionKeysFromSelected,
+  PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+  resolvePlexLibrarySelection,
+  sanitizeSectionKeys,
+} from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { SettingsService } from '../settings/settings.service';
@@ -56,6 +63,10 @@ function normalizeHttpUrl(raw: string): string {
   }
   return baseUrl;
 }
+
+type UpdatePlexLibrariesBody = {
+  selectedSectionKeys?: unknown;
+};
 
 @Controller('integrations')
 @ApiTags('integrations')
@@ -134,6 +145,122 @@ export class IntegrationsController {
     tags.sort((a, b) => a.label.localeCompare(b.label));
 
     return { ok: true, rootFolders, qualityProfiles, tags };
+  }
+
+  @Get('plex/libraries')
+  async plexLibraries(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!baseUrlRaw || !token) {
+      throw new BadRequestException('Plex is not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+    const sections = await this.plexServer.getSections({ baseUrl, token });
+    const selection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSet = new Set(selection.selectedSectionKeys);
+    const libraries = selection.eligibleLibraries.map((lib) => ({
+      key: lib.key,
+      title: lib.title,
+      type: lib.type,
+      selected: selectedSet.has(lib.key),
+    }));
+
+    return {
+      ok: true,
+      libraries,
+      selectedSectionKeys: selection.selectedSectionKeys,
+      excludedSectionKeys: selection.excludedSectionKeys,
+      minimumRequired: PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+      autoIncludeNewLibraries: true,
+    };
+  }
+
+  @Put('plex/libraries')
+  async savePlexLibraries(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdatePlexLibrariesBody,
+  ) {
+    const bodyObj = isPlainObject(body) ? body : {};
+    if (!Array.isArray(bodyObj['selectedSectionKeys'])) {
+      throw new BadRequestException('selectedSectionKeys must be an array');
+    }
+    const selectedSectionKeys = sanitizeSectionKeys(
+      bodyObj['selectedSectionKeys'],
+    );
+
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!baseUrlRaw || !token) {
+      throw new BadRequestException('Plex is not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+    const sections = await this.plexServer.getSections({ baseUrl, token });
+    const selection = resolvePlexLibrarySelection({ settings, sections });
+    if (!selection.eligibleLibraries.length) {
+      throw new BadRequestException('No Plex movie/TV libraries found');
+    }
+
+    if (selectedSectionKeys.length < PLEX_LIBRARY_SELECTION_MIN_SELECTED) {
+      throw new BadRequestException(
+        `At least ${PLEX_LIBRARY_SELECTION_MIN_SELECTED} library must be selected`,
+      );
+    }
+
+    const eligibleKeys = new Set(
+      selection.eligibleLibraries.map((lib) => lib.key),
+    );
+    const unknownKeys = selectedSectionKeys.filter((key) => !eligibleKeys.has(key));
+    if (unknownKeys.length) {
+      throw new BadRequestException(
+        `Unknown library section keys: ${unknownKeys.join(', ')}`,
+      );
+    }
+
+    const excludedSectionKeys = buildExcludedSectionKeysFromSelected({
+      eligibleLibraries: selection.eligibleLibraries,
+      selectedSectionKeys,
+    });
+
+    const nextSettings = await this.settingsService.updateSettings(userId, {
+      plex: {
+        librarySelection: {
+          excludedSectionKeys,
+        },
+      },
+    });
+
+    const nextSelection = resolvePlexLibrarySelection({
+      settings: nextSettings,
+      sections,
+    });
+    const selectedSet = new Set(nextSelection.selectedSectionKeys);
+    const libraries = nextSelection.eligibleLibraries.map((lib) => ({
+      key: lib.key,
+      title: lib.title,
+      type: lib.type,
+      selected: selectedSet.has(lib.key),
+    }));
+
+    return {
+      ok: true,
+      libraries,
+      selectedSectionKeys: nextSelection.selectedSectionKeys,
+      excludedSectionKeys: nextSelection.excludedSectionKeys,
+      minimumRequired: PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+      autoIncludeNewLibraries: true,
+    };
   }
 
   @Post('test/:integrationId')

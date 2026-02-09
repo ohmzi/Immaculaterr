@@ -14,6 +14,7 @@ import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
+import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
@@ -245,6 +246,16 @@ export class WebhooksController {
             const immaculateEnabled =
               pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ??
               false;
+            const seedLibrarySectionKey =
+              seedLibrarySectionId !== null
+                ? String(Math.trunc(seedLibrarySectionId))
+                : '';
+            const seedLibraryExcluded =
+              seedLibrarySectionKey &&
+              isPlexLibrarySectionExcluded({
+                settings,
+                sectionKey: seedLibrarySectionKey,
+              });
 
             // 1) Recently-watched recommendations (two collections)
             // NOTE: polling-only mode (70% progress) - do not trigger from webhooks.
@@ -256,6 +267,8 @@ export class WebhooksController {
             // 2) Immaculate Taste points update (dataset grows/decays over time)
             if (!immaculateEnabled) {
               skipped.immaculateTastePoints = 'disabled';
+            } else if (seedLibraryExcluded) {
+              skipped.immaculateTastePoints = 'library_excluded';
             } else {
               try {
                 const run = await this.jobsService.runJob({

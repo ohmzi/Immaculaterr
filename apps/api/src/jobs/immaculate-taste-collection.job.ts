@@ -10,6 +10,7 @@ import { TmdbService } from '../tmdb/tmdb.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
+import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import type { JobReportV1 } from './job-report-v1';
@@ -78,6 +79,58 @@ function normalizeHttpUrl(raw: string): string {
     throw new Error('baseUrl must be a valid http(s) URL');
   }
   return baseUrl;
+}
+
+function buildLibrarySelectionSkippedReport(params: {
+  ctx: JobContext;
+  mediaType: 'movie' | 'tv';
+  reason: 'library_excluded' | 'no_selected_movie_libraries' | 'no_selected_tv_libraries';
+  seedLibrarySectionId: string;
+  seedLibrarySectionTitle: string;
+}): JobReportV1 {
+  const reasonMessage =
+    params.reason === 'library_excluded'
+      ? 'Seed library is excluded by Plex library selection.'
+      : params.reason === 'no_selected_movie_libraries'
+        ? 'No selected movie libraries are available.'
+        : 'No selected TV libraries are available.';
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: params.ctx.jobId,
+    dryRun: params.ctx.dryRun,
+    trigger: params.ctx.trigger,
+    headline: `Run skipped (${params.mediaType}) due to Plex library selection.`,
+    sections: [],
+    tasks: [
+      {
+        id: 'library_selection_gate',
+        title: 'Plex library selection',
+        status: 'skipped',
+        facts: [
+          { label: 'Reason', value: params.reason },
+          {
+            label: 'Seed library section',
+            value: params.seedLibrarySectionId || 'not_provided',
+          },
+          {
+            label: 'Seed library title',
+            value: params.seedLibrarySectionTitle || 'unknown',
+          },
+        ],
+        issues: [issue('warn', reasonMessage)],
+      },
+    ],
+    issues: [issue('warn', reasonMessage)],
+    raw: {
+      skipped: true,
+      reason: params.reason,
+      mediaType: params.mediaType,
+      seedLibrarySectionId: params.seedLibrarySectionId || null,
+      seedLibrarySectionTitle: params.seedLibrarySectionTitle || null,
+    },
+  };
 }
 
 @Injectable()
@@ -210,13 +263,49 @@ export class ImmaculateTasteCollectionJob {
         this.plexServer.getSections({
           baseUrl: plexBaseUrl,
           token: plexToken,
-        }),
+      }),
       { ctx, label: 'plex: get libraries' },
     );
+    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
+    const excludedSectionKeySet = new Set(librarySelection.excludedSectionKeys);
+    if (
+      seedLibrarySectionIdRaw &&
+      excludedSectionKeySet.has(seedLibrarySectionIdRaw)
+    ) {
+      await ctx.warn('immaculateTastePoints: skipped (seed library excluded)', {
+        seedLibrarySectionId: seedLibrarySectionIdRaw,
+        seedLibrarySectionTitle: seedLibrarySectionTitle || null,
+      });
+      const report = buildLibrarySelectionSkippedReport({
+        ctx,
+        mediaType: 'movie',
+        reason: 'library_excluded',
+        seedLibrarySectionId: seedLibrarySectionIdRaw,
+        seedLibrarySectionTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
     const movieSections = sections
-      .filter((s) => (s.type ?? '').toLowerCase() === 'movie')
+      .filter(
+        (s) =>
+          (s.type ?? '').toLowerCase() === 'movie' &&
+          selectedSectionKeySet.has(s.key),
+      )
       .sort((a, b) => a.title.localeCompare(b.title));
-    if (!movieSections.length) throw new Error('No Plex movie libraries found');
+    if (!movieSections.length) {
+      await ctx.warn('immaculateTastePoints: skipped (no selected movie libraries)', {
+        selectedSectionKeys: librarySelection.selectedSectionKeys,
+      });
+      const report = buildLibrarySelectionSkippedReport({
+        ctx,
+        mediaType: 'movie',
+        reason: 'no_selected_movie_libraries',
+        seedLibrarySectionId: seedLibrarySectionIdRaw,
+        seedLibrarySectionTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
 
     // Prefer the library section Plex tells us the watched movie belongs to.
     let movieSectionKey = seedLibrarySectionIdRaw || '';
@@ -235,6 +324,23 @@ export class ImmaculateTasteCollectionJob {
       if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle)
         movieLibraryName = meta.librarySectionTitle;
+    }
+    if (movieSectionKey && excludedSectionKeySet.has(movieSectionKey)) {
+      await ctx.warn(
+        'immaculateTastePoints: skipped (resolved seed library excluded)',
+        {
+          seedLibrarySectionId: movieSectionKey,
+          seedLibrarySectionTitle: movieLibraryName || seedLibrarySectionTitle || null,
+        },
+      );
+      const report = buildLibrarySelectionSkippedReport({
+        ctx,
+        mediaType: 'movie',
+        reason: 'library_excluded',
+        seedLibrarySectionId: movieSectionKey,
+        seedLibrarySectionTitle: movieLibraryName || seedLibrarySectionTitle,
+      });
+      return { summary: report as unknown as JsonObject };
     }
 
     if (!movieSectionKey) {
@@ -966,13 +1072,49 @@ export class ImmaculateTasteCollectionJob {
         this.plexServer.getSections({
           baseUrl: plexBaseUrl,
           token: plexToken,
-        }),
+      }),
       { ctx, label: 'plex: get libraries' },
     );
+    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
+    const excludedSectionKeySet = new Set(librarySelection.excludedSectionKeys);
+    if (
+      seedLibrarySectionIdRaw &&
+      excludedSectionKeySet.has(seedLibrarySectionIdRaw)
+    ) {
+      await ctx.warn('immaculateTastePoints(tv): skipped (seed library excluded)', {
+        seedLibrarySectionId: seedLibrarySectionIdRaw,
+        seedLibrarySectionTitle: seedLibrarySectionTitle || null,
+      });
+      const report = buildLibrarySelectionSkippedReport({
+        ctx,
+        mediaType: 'tv',
+        reason: 'library_excluded',
+        seedLibrarySectionId: seedLibrarySectionIdRaw,
+        seedLibrarySectionTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
     const tvSections = sections
-      .filter((s) => (s.type ?? '').toLowerCase() === 'show')
+      .filter(
+        (s) =>
+          (s.type ?? '').toLowerCase() === 'show' &&
+          selectedSectionKeySet.has(s.key),
+      )
       .sort((a, b) => a.title.localeCompare(b.title));
-    if (!tvSections.length) throw new Error('No Plex TV libraries found');
+    if (!tvSections.length) {
+      await ctx.warn('immaculateTastePoints(tv): skipped (no selected TV libraries)', {
+        selectedSectionKeys: librarySelection.selectedSectionKeys,
+      });
+      const report = buildLibrarySelectionSkippedReport({
+        ctx,
+        mediaType: 'tv',
+        reason: 'no_selected_tv_libraries',
+        seedLibrarySectionId: seedLibrarySectionIdRaw,
+        seedLibrarySectionTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
 
     let tvSectionKey = seedLibrarySectionIdRaw || '';
     let tvLibraryName = seedLibrarySectionTitle || '';
@@ -989,6 +1131,23 @@ export class ImmaculateTasteCollectionJob {
       );
       if (meta?.librarySectionId) tvSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle) tvLibraryName = meta.librarySectionTitle;
+    }
+    if (tvSectionKey && excludedSectionKeySet.has(tvSectionKey)) {
+      await ctx.warn(
+        'immaculateTastePoints(tv): skipped (resolved seed library excluded)',
+        {
+          seedLibrarySectionId: tvSectionKey,
+          seedLibrarySectionTitle: tvLibraryName || seedLibrarySectionTitle || null,
+        },
+      );
+      const report = buildLibrarySelectionSkippedReport({
+        ctx,
+        mediaType: 'tv',
+        reason: 'library_excluded',
+        seedLibrarySectionId: tvSectionKey,
+        seedLibrarySectionTitle: tvLibraryName || seedLibrarySectionTitle,
+      });
+      return { summary: report as unknown as JsonObject };
     }
 
     if (!tvSectionKey) {
