@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Req,
@@ -48,7 +49,8 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-const IMMACULATE_PLEX_COLLECTION_BASE_NAME = 'Inspired by your Immaculate Taste';
+const IMMACULATE_PLEX_COLLECTION_BASE_NAME =
+  'Inspired by your Immaculate Taste';
 
 type ResetBody = {
   mediaType?: unknown;
@@ -70,21 +72,34 @@ export class ImmaculateTasteController {
     private readonly plexUsers: PlexUsersService,
   ) {}
 
+  private async assertAdminSession(userId: string): Promise<void> {
+    const adminUser = await this.prisma.user.findFirst({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!adminUser || adminUser.id !== userId) {
+      throw new ForbiddenException(
+        'Only the admin account can manage Immaculate Taste collections',
+      );
+    }
+  }
+
   @Get('collections')
   async listCollections(@Req() req: AuthenticatedRequest) {
     const userId = req.user.id;
+    await this.assertAdminSession(userId);
     const adminPlexUser = await this.plexUsers.ensureAdminPlexUser({ userId });
     const plexUserId = adminPlexUser.id;
     const plexUserTitle = adminPlexUser.plexAccountTitle;
-    const { settings, secrets } = await this.settingsService.getInternalSettings(
-      userId,
-    );
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
 
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const plexToken =
       pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
-    if (!plexBaseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
+    if (!plexBaseUrlRaw)
+      throw new BadRequestException('Plex baseUrl is not set');
     if (!plexToken) throw new BadRequestException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
@@ -119,7 +134,11 @@ export class ImmaculateTasteController {
             },
           }),
           this.prisma.immaculateTasteMovieLibrary.count({
-            where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
+            where: {
+              plexUserId,
+              librarySectionKey: sec.key,
+              status: 'pending',
+            },
           }),
         ]);
 
@@ -173,7 +192,11 @@ export class ImmaculateTasteController {
             },
           }),
           this.prisma.immaculateTasteShowLibrary.count({
-            where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
+            where: {
+              plexUserId,
+              librarySectionKey: sec.key,
+              status: 'pending',
+            },
           }),
         ]);
 
@@ -220,6 +243,7 @@ export class ImmaculateTasteController {
 
   @Get('collections/users')
   async listCollectionUsers(@Req() req: AuthenticatedRequest) {
+    await this.assertAdminSession(req.user.id);
     await this.plexUsers.ensureAdminPlexUser({ userId: req.user.id });
     const users = await this.prisma.plexUser.findMany({
       orderBy: [{ isAdmin: 'desc' }, { createdAt: 'asc' }],
@@ -253,12 +277,19 @@ export class ImmaculateTasteController {
   }
 
   @Post('collections/reset')
-  async resetCollection(@Req() req: AuthenticatedRequest, @Body() body: ResetBody) {
+  async resetCollection(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: ResetBody,
+  ) {
     const userId = req.user.id;
-    const mediaTypeRaw = typeof body?.mediaType === 'string' ? body.mediaType.trim() : '';
+    await this.assertAdminSession(userId);
+    const mediaTypeRaw =
+      typeof body?.mediaType === 'string' ? body.mediaType.trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
     const librarySectionKey =
-      typeof body?.librarySectionKey === 'string' ? body.librarySectionKey.trim() : '';
+      typeof body?.librarySectionKey === 'string'
+        ? body.librarySectionKey.trim()
+        : '';
 
     if (mediaType !== 'movie' && mediaType !== 'tv') {
       throw new BadRequestException('mediaType must be "movie" or "tv"');
@@ -275,15 +306,15 @@ export class ImmaculateTasteController {
       plexUserTitle,
     );
 
-    const { settings, secrets } = await this.settingsService.getInternalSettings(
-      userId,
-    );
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
 
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const plexToken =
       pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
-    if (!plexBaseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
+    if (!plexBaseUrlRaw)
+      throw new BadRequestException('Plex baseUrl is not set');
     if (!plexToken) throw new BadRequestException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
@@ -340,7 +371,9 @@ export class ImmaculateTasteController {
     // (Back-compat: the app can import legacy datasets when a library has 0 rows.)
     await this.prisma.setting
       .upsert({
-        where: { key: immaculateTasteResetMarkerKey({ mediaType, librarySectionKey }) },
+        where: {
+          key: immaculateTasteResetMarkerKey({ mediaType, librarySectionKey }),
+        },
         update: { value: new Date().toISOString(), encrypted: false },
         create: {
           key: immaculateTasteResetMarkerKey({ mediaType, librarySectionKey }),
@@ -367,11 +400,16 @@ export class ImmaculateTasteController {
   }
 
   @Post('collections/reset-user')
-  async resetUserCollections(@Req() req: AuthenticatedRequest, @Body() body: ResetUserBody) {
+  async resetUserCollections(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: ResetUserBody,
+  ) {
     const userId = req.user.id;
+    await this.assertAdminSession(userId);
     await this.plexUsers.ensureAdminPlexUser({ userId });
 
-    const mediaTypeRaw = typeof body?.mediaType === 'string' ? body.mediaType.trim() : '';
+    const mediaTypeRaw =
+      typeof body?.mediaType === 'string' ? body.mediaType.trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
     const plexUserId =
       typeof body?.plexUserId === 'string' ? body.plexUserId.trim() : '';
@@ -388,14 +426,14 @@ export class ImmaculateTasteController {
       throw new BadRequestException('Plex user not found');
     }
 
-    const { settings, secrets } = await this.settingsService.getInternalSettings(
-      userId,
-    );
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const plexToken =
       pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
-    if (!plexBaseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
+    if (!plexBaseUrlRaw)
+      throw new BadRequestException('Plex baseUrl is not set');
     if (!plexToken) throw new BadRequestException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
@@ -416,12 +454,13 @@ export class ImmaculateTasteController {
     let plexDeleted = 0;
     for (const sec of targetSections) {
       try {
-        const collectionRatingKey = await this.plexServer.findCollectionRatingKey({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey: sec.key,
-          collectionName,
-        });
+        const collectionRatingKey =
+          await this.plexServer.findCollectionRatingKey({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: sec.key,
+            collectionName,
+          });
         if (!collectionRatingKey) continue;
         await this.plexServer.deleteCollection({
           baseUrl: plexBaseUrl,
@@ -482,4 +521,3 @@ export class ImmaculateTasteController {
     };
   }
 }
-

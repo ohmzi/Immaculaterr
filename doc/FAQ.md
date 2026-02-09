@@ -385,6 +385,11 @@ The app won’t be able to decrypt previously saved secrets. You’ll need to re
 - Your app data directory (Docker volume) including the SQLite database.
 - Your master key (env var or key file), so encrypted secrets remain decryptable.
 - Any deployment configuration (compose files/env values).
+- By default, the container also writes a pre-migration SQLite snapshot before startup migrations under `/data/backups/pre-migrate`.
+  - `DB_PRE_MIGRATE_BACKUP=true|false` (default `true`)
+  - `DB_PRE_MIGRATE_BACKUP_KEEP=<count>` (default `10`)
+  - `DB_PRE_MIGRATE_BACKUP_DIR=<path>` (default `/data/backups/pre-migrate`)
+  - `DB_PRE_MIGRATE_BACKUP_STRICT=true|false` (default `false`, best-effort)
 
 ### Can I rotate the master key?
 
