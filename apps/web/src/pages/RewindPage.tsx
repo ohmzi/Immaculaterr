@@ -169,7 +169,8 @@ function getMediaTypeContext(run: JobRun): { key: 'movie' | 'tv' | ''; label: st
     return null;
   };
 
-  let key = resolve(raw) ?? (raw !== obj ? resolve(obj) : null) ?? '';
+  let key: 'movie' | 'tv' | '' =
+    resolve(raw) ?? (raw !== obj ? resolve(obj) : null) ?? '';
   if (!key) {
     const tvSectionKey = pickSummaryString(raw, 'tvSectionKey');
     const movieSectionKey = pickSummaryString(raw, 'movieSectionKey');
@@ -734,5 +735,4 @@ export function RewindPage() {
     </div>
   );
 }
-
 
