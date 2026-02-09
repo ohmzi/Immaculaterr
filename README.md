@@ -61,27 +61,54 @@
 
 ## What changed in this branch (vs `develop`)
 
-This branch introduces **per-viewer Plex collections** and **per-user recommendation datasets**.
+This branch (PR #103) adds a **per-viewer collection model** so recommendations are built and managed independently per Plex viewer.
 
-- **Per-viewer independent collections**:
-  - Collections are now generated independently for each Plex viewer (for both Movies and TV).
-  - Collection names include the viewer identity (for example: `... (Viewer Name)`).
-  - A viewer’s suggestions are based on that viewer’s own watch activity and are not mixed with other viewers’ recommendation datasets.
+- **Independent collections per viewer (Movies + TV)**:
+  - Each viewer now gets their own curated collection rows, with the viewer suffix in the title (example: `Based on your recently watched show (ohmz_i)`).
+  - Recommendation datasets are stored per viewer and per library, so one viewer’s watch history does not contaminate another viewer’s recommendations.
 
-- **Pinning behavior by viewer role**:
-  - **Admin user runs**: curated collections are pinned to **Library Recommended** + **Home**.
-  - **Non-admin viewer runs**: curated collections are pinned to the top of **Friends Home**.
+- **Role-based pin targets**:
+  - **Admin viewer** collections are pinned to **Library Recommended** and **Home**.
+  - **Non-admin viewer** collections are pinned to **Friends Home**.
 
-- **Why non-admin uses Friends Home**:
-  - Plex currently does not allow reliably pinning these server-managed rows to each shared viewer’s own Home in this workflow.
-  - The fallback is pinning to **Friends Home** so the correct per-viewer collections are still surfaced prominently.
-  - Tradeoff: other viewers may see those rows in Friends Home, but each viewer’s own collection content is still generated from their own viewing behavior.
+- **Why non-admin rows go to Friends Home**:
+  - Due to current Plex limitations, shared viewers cannot reliably pin these server-managed rows to their own Home in this workflow.
+  - The fallback is to pin those viewer-specific rows at the top of **Friends Home**.
+  - Tradeoff: other viewers can see those rows there, but the recommendations inside each row are still generated from the owning viewer’s watch activity.
 
-- **Deterministic curated row order (Movies + TV)**:
+- **Fixed curated row order everywhere (suffix ignored)**:
   1. `Based on your recently watched ...`
   2. `Change of Taste`
   3. `Inspired by your Immaculate Taste`
-  - Ordering ignores the trailing viewer-name suffix.
+  - Ordering/matching ignores trailing viewer name suffixes, so row priority stays deterministic across users.
+
+- **Refresher behavior update**:
+  - Collection-triggered/chained refresh remains scoped to the triggering viewer/library.
+  - Standalone refresher runs (scheduled or manual Run Now without scope) sweep all eligible users/libraries, with deterministic user ordering and admin processed last.
+
+- **Operational/UI updates included in this branch**:
+  - User-aware Command Center reset controls and Plex-user dataset management.
+  - Expanded debugger/logging surface and improved job run reporting for user/media context.
+
+- **Plex library selection gate (setup + command center + runtime enforcement)**:
+  - After Plex authentication in onboarding, there is now a dedicated **Plex Libraries** step.
+  - Immaculaterr lists all eligible Plex libraries (`movie` + `show`) and preselects them by default.
+  - You can deselect libraries you do not want included, but at least **1 library must remain selected**.
+  - Selection can be changed later from **Command Center → Plex Library Selection** with the same minimum-1 guard.
+  - The selection model is exclusion-based (`excludedSectionKeys`) so newly created Plex libraries are auto-included unless you explicitly exclude them.
+
+- **How this changes automation behavior**:
+  - **Auto triggers (Plex polling + webhook scrobble):** if the detected seed library is excluded, the collection automation is skipped with reason `library_excluded`.
+  - **Collection jobs (manual + auto):** movie/TV library candidates are filtered by selection first.  
+    If a seed resolves to an excluded library, the run is skipped (not failed).  
+    If no selected libraries remain for the target media type, the run is skipped with explicit reasons (`no_selected_movie_libraries` / `no_selected_tv_libraries`).
+  - **Refresher jobs:** targeted and sweep modes now operate only on selected libraries.  
+    Excluded libraries are ignored across forced/sweep scopes, and “none available” results return a skipped summary instead of throwing.
+
+- **Why this helps**:
+  - Prevents unintended writes/collection rebuilds in libraries you want isolated (for example: kids, test, or archive libraries).
+  - Keeps behavior predictable between onboarding, admin controls, auto-runs, and manual runs.
+  - Improves observability with explicit skip reasons instead of generic failures.
 <div align="center">
   <p><b>Desktop UI</b></p>
   <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI showcase" width="900" />
