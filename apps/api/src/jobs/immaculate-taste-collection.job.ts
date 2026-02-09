@@ -1616,6 +1616,7 @@ export class ImmaculateTasteCollectionJob {
 
   private async resolvePlexUserContext(ctx: JobContext) {
     const input = ctx.input ?? {};
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
     const plexUserTitleRaw =
@@ -1640,6 +1641,25 @@ export class ImmaculateTasteCollectionJob {
       : null;
     const normalize = (value: string | null | undefined) =>
       String(value ?? '').trim().toLowerCase();
+    const isAdminUser = (row: {
+      id: string;
+      plexAccountId: number | null;
+      plexAccountTitle: string;
+      isAdmin?: boolean;
+    }) => {
+      if (row.id === admin.id) return true;
+      if (
+        row.plexAccountId !== null &&
+        admin.plexAccountId !== null &&
+        row.plexAccountId === admin.plexAccountId
+      ) {
+        return true;
+      }
+      const rowTitle = normalize(row.plexAccountTitle);
+      const adminTitle = normalize(admin.plexAccountTitle);
+      if (rowTitle && adminTitle && rowTitle === adminTitle) return true;
+      return row.isAdmin === true;
+    };
     const titleMismatch =
       Boolean(fromInput) &&
       Boolean(plexAccountTitle) &&
@@ -1649,7 +1669,7 @@ export class ImmaculateTasteCollectionJob {
       return {
         plexUserId: fromInput.id,
         plexUserTitle: fromInput.plexAccountTitle,
-        pinCollections: fromInput.isAdmin,
+        pinCollections: isAdminUser(fromInput),
       };
     }
 
@@ -1661,7 +1681,7 @@ export class ImmaculateTasteCollectionJob {
         return {
           plexUserId: byTitle.id,
           plexUserTitle: byTitle.plexAccountTitle,
-          pinCollections: byTitle.isAdmin,
+          pinCollections: isAdminUser(byTitle),
         };
       }
     }
@@ -1675,17 +1695,15 @@ export class ImmaculateTasteCollectionJob {
         return {
           plexUserId: byAccount.id,
           plexUserTitle: byAccount.plexAccountTitle,
-          pinCollections: byAccount.isAdmin,
+          pinCollections: isAdminUser(byAccount),
         };
       }
     }
 
-    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
-
     return {
       plexUserId: admin.id,
       plexUserTitle: admin.plexAccountTitle,
-      pinCollections: admin.isAdmin,
+      pinCollections: true,
     };
   }
 
@@ -2030,6 +2048,9 @@ function buildImmaculateTastePointsReport(params: {
     for (const lib of byLibrary) {
       const libraryLabel = String(lib.library ?? lib.title ?? 'Library').trim();
       const plex = isPlainObject(lib.plex) ? lib.plex : null;
+      const collectionItemsSource = plex
+        ? String((plex as Record<string, unknown>).collectionItemsSource ?? '').trim()
+        : '';
       const plexItems = plex
         ? asStringArray((plex as Record<string, unknown>).collectionItems)
         : [];
@@ -2043,7 +2064,7 @@ function buildImmaculateTastePointsReport(params: {
           count: plexItems.length,
           unit,
           items: plexItems,
-          order: 'plex',
+          order: collectionItemsSource === 'desired_fallback' ? 'desired_fallback' : 'plex',
         },
       });
     }
@@ -2073,6 +2094,7 @@ function buildImmaculateTastePointsReport(params: {
   const mode: 'tv' | 'movie' =
     (normalizedMediaType || (sonarr ? 'tv' : 'movie')) === 'tv' ? 'tv' : 'movie';
   const rawWithMediaType = { ...raw, mediaType: mode } as JsonObject;
+  const normalizeTitle = (value: string) => String(value ?? '').trim().toLowerCase();
   const generatedTitles = sortTitles(
     uniqueStrings(asStringArray(raw.generatedTitles)),
   );
@@ -2173,6 +2195,39 @@ function buildImmaculateTastePointsReport(params: {
     { label: 'Strategy', value: String(raw.recommendationStrategy ?? '') },
   );
 
+  const finalCollectionTitles = uniqueStrings(
+    refresherCollectionFacts.flatMap((fact) => {
+      if (!isPlainObject(fact.value)) return [];
+      return asStringArray((fact.value as Record<string, unknown>).items);
+    }),
+  );
+  const finalCollectionTitleSet = new Set(
+    finalCollectionTitles.map((title) => normalizeTitle(title)),
+  );
+  const resolvedMissingFromFinal = finalCollectionTitleSet.size
+    ? resolvedTitles.filter((title) => !finalCollectionTitleSet.has(normalizeTitle(title)))
+    : [];
+  if (resolvedMissingFromFinal.length) {
+    issues.push(
+      issue(
+        'warn',
+        `${resolvedMissingFromFinal.length} resolved title(s) were not found in the final chained collection snapshot.`,
+      ),
+    );
+  }
+  const usedFallbackCollectionOrder = refresherCollectionFacts.some((fact) => {
+    if (!isPlainObject(fact.value)) return false;
+    return (fact.value as Record<string, unknown>).order === 'desired_fallback';
+  });
+  if (usedFallbackCollectionOrder) {
+    issues.push(
+      issue(
+        'warn',
+        'Chained refresher order snapshot used desired fallback for at least one library.',
+      ),
+    );
+  }
+
   const tasks: JobReportV1['tasks'] = [
       {
         id: 'recommendations',
@@ -2201,7 +2256,7 @@ function buildImmaculateTastePointsReport(params: {
         status: 'success',
         facts: [
           {
-            label: 'Resolved',
+            label: 'Resolved (this run)',
             value: {
               count: resolvedInPlex,
               unit: mode === 'tv' ? 'shows' : 'movies',
@@ -2373,6 +2428,18 @@ function buildImmaculateTastePointsReport(params: {
           { label: 'skipped', value: refresherSkipped },
           { label: 'reason', value: refresherReason },
           ...(refresherError ? [{ label: 'error', value: refresherError }] : []),
+          ...(finalCollectionTitleSet.size
+            ? [
+                {
+                  label: 'Resolved missing from final collection snapshot',
+                  value: {
+                    count: resolvedMissingFromFinal.length,
+                    unit: mode === 'tv' ? 'shows' : 'movies',
+                    items: resolvedMissingFromFinal,
+                  },
+                },
+              ]
+            : []),
           ...refresherCollectionFacts,
         ],
         issues: refresherError ? [issue('error', refresherError)] : undefined,

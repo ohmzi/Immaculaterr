@@ -12,24 +12,9 @@ import {
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
 
-function formatLevel(raw: string) {
-  const l = String(raw ?? '').toLowerCase();
-  if (l === 'error') return 'Error';
-  if (l === 'warn' || l === 'warning') return 'Warning';
-  if (l === 'debug') return 'Debug';
-  return 'Info';
-}
-
-function levelClass(raw: string) {
-  const l = String(raw ?? '').toLowerCase();
-  if (l === 'error') return 'text-red-200';
-  if (l === 'warn' || l === 'warning') return 'text-amber-200';
-  if (l === 'debug') return 'text-white/50';
-  return 'text-white/80';
-}
-
 type ServiceFilter =
   | 'immaculaterr'
+  | 'task'
   | 'plex'
   | 'tmdb'
   | 'radarr'
@@ -47,6 +32,11 @@ const SERVICE_FILTERS: Array<{
     id: 'immaculaterr',
     label: 'Immaculaterr',
     activeClass: 'bg-[#facc15]/15 text-[#fde68a] border-[#facc15]/25',
+  },
+  {
+    id: 'task',
+    label: 'Task',
+    activeClass: 'bg-teal-500/15 text-teal-100 border-teal-500/25',
   },
   {
     id: 'plex',
@@ -80,11 +70,78 @@ const SERVICE_FILTERS: Array<{
   },
 ] as const;
 
+const TYPE_TAG_ORDER: Exclude<ServiceFilter, 'errors'>[] = [
+  'task',
+  'plex',
+  'tmdb',
+  'radarr',
+  'sonarr',
+  'google',
+  'openai',
+  'immaculaterr',
+];
+
+const TYPE_TAG_CLASS: Record<Exclude<ServiceFilter, 'errors'>, string> = {
+  immaculaterr: 'bg-[#facc15]/15 text-[#fde68a] border-[#facc15]/25',
+  task: 'bg-teal-500/15 text-teal-100 border-teal-500/25',
+  plex: 'bg-emerald-500/15 text-emerald-100 border-emerald-500/25',
+  tmdb: 'bg-sky-500/15 text-sky-100 border-sky-500/25',
+  radarr: 'bg-orange-500/15 text-orange-100 border-orange-500/25',
+  sonarr: 'bg-violet-500/15 text-violet-100 border-violet-500/25',
+  google: 'bg-blue-500/15 text-blue-100 border-blue-500/25',
+  openai: 'bg-purple-500/15 text-purple-100 border-purple-500/25',
+};
+
+const TYPE_TAG_LABEL: Record<Exclude<ServiceFilter, 'errors'>, string> = {
+  immaculaterr: 'Immaculaterr',
+  task: 'Task',
+  plex: 'Plex',
+  tmdb: 'TMDB',
+  radarr: 'Radarr',
+  sonarr: 'Sonarr',
+  google: 'Google',
+  openai: 'OpenAI',
+};
+
+function logMatchesTask(line: { message?: string; context?: string | null }) {
+  const msg = String(line.message ?? '').toLowerCase();
+  const ctx = String(line.context ?? '').toLowerCase();
+  const hay = `${ctx} ${msg}`;
+
+  const jobContext =
+    ctx.includes('jobsservice') ||
+    ctx.includes('jobsscheduler') ||
+    ctx.includes('jobsretentionservice');
+  if (jobContext) return true;
+
+  const webhookAutomation =
+    ctx.includes('webhooksservice') &&
+    (msg.includes('plex automation:') ||
+      msg.includes('runs={') ||
+      msg.includes('skipped={') ||
+      msg.includes('errors={'));
+  if (webhookAutomation) return true;
+
+  return (
+    hay.includes('job started jobid=') ||
+    hay.includes('job passed jobid=') ||
+    hay.includes('job failed jobid=') ||
+    hay.includes('scheduled job failed') ||
+    hay.includes('skipping scheduled run') ||
+    hay.includes('trigger=schedule') ||
+    hay.includes('trigger=auto') ||
+    hay.includes('run: started') ||
+    hay.includes('run: finished') ||
+    hay.includes('run: failed')
+  );
+}
+
 function logMatchesAnyService(line: { message?: string; context?: string | null }) {
   const msg = String(line.message ?? '').toLowerCase();
   const ctx = String(line.context ?? '').toLowerCase();
   const hay = `${ctx} ${msg}`;
   return (
+    logMatchesTask(line) ||
     hay.includes('plex') ||
     hay.includes('tmdb') ||
     hay.includes('themoviedb') ||
@@ -110,6 +167,7 @@ function serviceTagsForLine(line: {
   const hay = `${ctx} ${msg}`;
 
   if (String(line.level ?? '').toLowerCase() === 'error') out.add('errors');
+  if (logMatchesTask(line)) out.add('task');
 
   if (
     hay.includes('plex') ||
@@ -166,12 +224,15 @@ export function LogsPage() {
       : logs;
 
     const active = selected;
-    if (!active.length) return byText;
+    const scoped = !active.length
+      ? byText
+      : byText.filter((l) => {
+          const tags = serviceTagsForLine(l);
+          return active.some((f) => tags.has(f));
+        });
 
-    return byText.filter((l) => {
-      const tags = serviceTagsForLine(l);
-      return active.some((f) => tags.has(f));
-    });
+    // Newest first.
+    return [...scoped].sort((a, b) => b.id - a.id);
   }, [logs, query, selected]);
 
   const clearMutation = useMutation({
@@ -375,7 +436,10 @@ export function LogsPage() {
                 </div>
 
                 {filtered.length ? (
-                  <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+                  <div
+                    className="overflow-auto select-text [-webkit-touch-callout:default]"
+                    style={{ maxHeight: 'calc(100vh - 280px)' }}
+                  >
                     <table className="w-full text-sm">
                       <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
                         <tr>
@@ -383,7 +447,7 @@ export function LogsPage() {
                             Timestamp
                           </th>
                           <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
-                            Level
+                            Type
                           </th>
                           <th className="border-b border-white/10 px-4 py-3">Message</th>
                         </tr>
@@ -398,18 +462,29 @@ export function LogsPage() {
                               {new Date(line.time).toLocaleTimeString()}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
-                              <span
-                                className={[
-                                  'font-mono text-xs font-semibold',
-                                  levelClass(line.level),
-                                ].join(' ')}
-                              >
-                                {formatLevel(line.level)}
-                              </span>
+                              {(() => {
+                                const tags = serviceTagsForLine(line);
+                                const orderedTypes = TYPE_TAG_ORDER.filter((tag) =>
+                                  tags.has(tag),
+                                );
+                                return (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {orderedTypes.map((tag) => (
+                                      <span
+                                        key={`${line.id}-${tag}`}
+                                        className={[
+                                          'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                                          TYPE_TAG_CLASS[tag],
+                                        ].join(' ')}
+                                      >
+                                        {TYPE_TAG_LABEL[tag]}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </td>
-                            <td className="px-4 py-3 font-mono text-xs text-white/85">
-                              {line.message}
-                            </td>
+                            <td className="px-4 py-3 font-mono text-xs text-white/85">{line.message}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -473,5 +548,3 @@ export function LogsPage() {
     </div>
   );
 }
-
-

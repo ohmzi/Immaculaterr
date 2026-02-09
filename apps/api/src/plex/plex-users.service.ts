@@ -263,25 +263,73 @@ export class PlexUsersService {
     const { fromId, toId } = params;
     if (fromId === toId) return;
 
-    await this.prisma.$transaction([
-      this.prisma.immaculateTasteMovieLibrary.updateMany({
-        where: { plexUserId: fromId },
-        data: { plexUserId: toId },
-      }),
-      this.prisma.immaculateTasteShowLibrary.updateMany({
-        where: { plexUserId: fromId },
-        data: { plexUserId: toId },
-      }),
-      this.prisma.watchedMovieRecommendationLibrary.updateMany({
-        where: { plexUserId: fromId },
-        data: { plexUserId: toId },
-      }),
-      this.prisma.watchedShowRecommendationLibrary.updateMany({
-        where: { plexUserId: fromId },
-        data: { plexUserId: toId },
-      }),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      // Delete source duplicates first so reassignment cannot violate composite IDs.
+      await tx.$executeRaw`
+        DELETE FROM "ImmaculateTasteMovieLibrary"
+        WHERE "plexUserId" = ${fromId}
+          AND EXISTS (
+            SELECT 1
+            FROM "ImmaculateTasteMovieLibrary" AS target
+            WHERE target."plexUserId" = ${toId}
+              AND target."librarySectionKey" = "ImmaculateTasteMovieLibrary"."librarySectionKey"
+              AND target."tmdbId" = "ImmaculateTasteMovieLibrary"."tmdbId"
+          )
+      `;
+      await tx.$executeRaw`
+        DELETE FROM "ImmaculateTasteShowLibrary"
+        WHERE "plexUserId" = ${fromId}
+          AND EXISTS (
+            SELECT 1
+            FROM "ImmaculateTasteShowLibrary" AS target
+            WHERE target."plexUserId" = ${toId}
+              AND target."librarySectionKey" = "ImmaculateTasteShowLibrary"."librarySectionKey"
+              AND target."tvdbId" = "ImmaculateTasteShowLibrary"."tvdbId"
+          )
+      `;
+      await tx.$executeRaw`
+        DELETE FROM "WatchedMovieRecommendationLibrary"
+        WHERE "plexUserId" = ${fromId}
+          AND EXISTS (
+            SELECT 1
+            FROM "WatchedMovieRecommendationLibrary" AS target
+            WHERE target."plexUserId" = ${toId}
+              AND target."collectionName" = "WatchedMovieRecommendationLibrary"."collectionName"
+              AND target."librarySectionKey" = "WatchedMovieRecommendationLibrary"."librarySectionKey"
+              AND target."tmdbId" = "WatchedMovieRecommendationLibrary"."tmdbId"
+          )
+      `;
+      await tx.$executeRaw`
+        DELETE FROM "WatchedShowRecommendationLibrary"
+        WHERE "plexUserId" = ${fromId}
+          AND EXISTS (
+            SELECT 1
+            FROM "WatchedShowRecommendationLibrary" AS target
+            WHERE target."plexUserId" = ${toId}
+              AND target."collectionName" = "WatchedShowRecommendationLibrary"."collectionName"
+              AND target."librarySectionKey" = "WatchedShowRecommendationLibrary"."librarySectionKey"
+              AND target."tvdbId" = "WatchedShowRecommendationLibrary"."tvdbId"
+          )
+      `;
 
-    await this.prisma.plexUser.delete({ where: { id: fromId } });
+      await tx.immaculateTasteMovieLibrary.updateMany({
+        where: { plexUserId: fromId },
+        data: { plexUserId: toId },
+      });
+      await tx.immaculateTasteShowLibrary.updateMany({
+        where: { plexUserId: fromId },
+        data: { plexUserId: toId },
+      });
+      await tx.watchedMovieRecommendationLibrary.updateMany({
+        where: { plexUserId: fromId },
+        data: { plexUserId: toId },
+      });
+      await tx.watchedShowRecommendationLibrary.updateMany({
+        where: { plexUserId: fromId },
+        data: { plexUserId: toId },
+      });
+
+      await tx.plexUser.delete({ where: { id: fromId } });
+    });
   }
 }

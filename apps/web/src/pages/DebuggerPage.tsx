@@ -20,7 +20,11 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { getPublicSettings } from '@/api/settings';
 import { getUpdates } from '@/api/updates';
 import { getMeOrNull } from '@/api/auth';
-import { listServerLogs, type ServerLogEntry } from '@/api/logs';
+import {
+  clearServerLogs,
+  listServerLogs,
+  type ServerLogEntry,
+} from '@/api/logs';
 import {
   Select,
   SelectContent,
@@ -134,14 +138,17 @@ export function DebuggerPage() {
   const [plexLogQuery, setPlexLogQuery] = useState('');
   const [plexLogCollapsed, setPlexLogCollapsed] = useState(false);
   const [plexLogPollMs, setPlexLogPollMs] = useState<number>(5000);
+  const [plexLogClearing, setPlexLogClearing] = useState(false);
   const [plexCopied, setPlexCopied] = useState(false);
   const plexLogLatestIdRef = useRef<number | null>(null);
   const plexLogLastFetchRef = useRef<number | null>(null);
+  const plexLogEpochRef = useRef(0);
 
   const refreshPlexLogs = useCallback(
     async (mode: 'initial' | 'poll') => {
       if (!accessAllowed) return;
       if (plexLogPaused && mode === 'poll') return;
+      const requestEpoch = plexLogEpochRef.current;
       if (mode === 'poll') {
         const last = plexLogLastFetchRef.current;
         const now = Date.now();
@@ -159,6 +166,7 @@ export function DebuggerPage() {
             ? plexLogLatestIdRef.current
             : undefined;
         const res = await listServerLogs({ afterId, limit: 500 });
+        if (requestEpoch !== plexLogEpochRef.current) return;
         plexLogLatestIdRef.current = res.latestId;
         if (res.logs.length) {
           const nextPlex = res.logs.filter(isPlexLog);
@@ -276,10 +284,23 @@ export function DebuggerPage() {
       // ignore copy errors (clipboard permissions)
     }
   };
-  const handlePlexClear = () => {
-    setPlexLogs([]);
+  const handlePlexClear = async () => {
+    if (plexLogClearing) return;
+    setPlexLogClearing(true);
+    // Invalidate any in-flight fetches so stale responses can't repopulate UI.
+    plexLogEpochRef.current += 1;
     setPlexLogError(null);
-    setPlexLogUpdatedAt(null);
+    try {
+      await clearServerLogs();
+      setPlexLogs([]);
+      setPlexLogUpdatedAt(new Date().toISOString());
+      plexLogLatestIdRef.current = null;
+      plexLogLastFetchRef.current = null;
+    } catch (err) {
+      setPlexLogError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlexLogClearing(false);
+    }
   };
 
   if (!accessAllowed) {
@@ -357,11 +378,16 @@ export function DebuggerPage() {
                   {plexCopied ? 'Copied' : 'Copy'}
                 </button>
                 <button
-                  onClick={handlePlexClear}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10"
+                  onClick={() => void handlePlexClear()}
+                  disabled={plexLogClearing}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10 disabled:opacity-60"
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Clear
+                  {plexLogClearing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  {plexLogClearing ? 'Clearing…' : 'Clear'}
                 </button>
               </div>
             </div>

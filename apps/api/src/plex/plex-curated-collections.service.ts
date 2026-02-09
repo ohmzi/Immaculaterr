@@ -195,6 +195,7 @@ export class PlexCuratedCollectionsService {
     let plexCollectionKey: string | null = null;
     let lastAddedTitle: string | null = null;
     let collectionItems: string[] = [];
+    let collectionItemsSource: 'plex' | 'desired_fallback' = 'desired_fallback';
     let existingItems: Array<{ ratingKey: string; title: string }> = [];
     let existingCount = 0;
 
@@ -371,15 +372,38 @@ export class PlexCuratedCollectionsService {
         };
       }
 
-      const createdKey = await this.plexServer.createCollection({
-        baseUrl,
-        token,
-        machineIdentifier,
-        librarySectionKey: movieSectionKey,
-        collectionName,
-        type: itemType,
-        initialItemRatingKey: first,
-      });
+      let createdKey: string | null = null;
+      try {
+        createdKey = await this.plexServer.createCollection({
+          baseUrl,
+          token,
+          machineIdentifier,
+          librarySectionKey: movieSectionKey,
+          collectionName,
+          type: itemType,
+          initialItemRatingKey: first,
+        });
+      } catch (err) {
+        await ctx.warn(
+          'collection: create with seeded item failed, retrying without seed item',
+          {
+            collectionName,
+            movieSectionKey,
+            itemType,
+            seedRatingKey: first,
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
+        createdKey = await this.plexServer.createCollection({
+          baseUrl,
+          token,
+          machineIdentifier,
+          librarySectionKey: movieSectionKey,
+          collectionName,
+          type: itemType,
+          initialItemRatingKey: null,
+        });
+      }
       if (createdKey) {
         plexCollectionKey = createdKey;
       }
@@ -404,16 +428,42 @@ export class PlexCuratedCollectionsService {
         );
       }
 
-      // First item was included during createCollection (uri=...), add the rest in order.
-      added = 1;
-      lastAddedTitle = desired[0]?.title ?? null;
-      if (desired.length > 1) {
-        await ctx.info('collection: adding items', {
+      // A collection created with `uri` can already contain one seed item.
+      // A fallback create (without uri) starts empty.
+      // Query current items and add only missing desired items.
+      let existingKeys = new Set<string>();
+      try {
+        const itemsAfterCreate = await this.plexServer.getCollectionItems({
+          baseUrl,
+          token,
+          collectionRatingKey: plexCollectionKey,
+        });
+        existingKeys = new Set(
+          itemsAfterCreate
+            .map((it) => String(it.ratingKey ?? '').trim())
+            .filter(Boolean),
+        );
+        if (existingKeys.size) {
+          await ctx.info('collection: created collection already has items', {
+            collectionName,
+            existingCount: existingKeys.size,
+          });
+        }
+      } catch (err) {
+        await ctx.warn('collection: failed to inspect items after create (continuing)', {
           collectionName,
-          total: desired.length,
+          plexCollectionKey,
+          error: (err as Error)?.message ?? String(err),
         });
       }
-      for (const item of desired.slice(1)) {
+
+      await ctx.info('collection: adding items', {
+        collectionName,
+        total: desired.length,
+      });
+      const addTargets = desired.filter((item) => !existingKeys.has(item.ratingKey));
+      for (let i = 0; i < addTargets.length; i += 1) {
+        const item = addTargets[i]!;
         try {
           await this.plexServer.addItemToCollection({
             baseUrl,
@@ -423,12 +473,13 @@ export class PlexCuratedCollectionsService {
             itemRatingKey: item.ratingKey,
           });
           added += 1;
+          existingKeys.add(item.ratingKey);
           lastAddedTitle = item.title || lastAddedTitle;
-          if (added % 50 === 0 || added === desired.length) {
+          if (added % 50 === 0 || i + 1 === addTargets.length) {
             await ctx.info('collection: add progress', {
               collectionName,
               added,
-              total: desired.length,
+              total: addTargets.length,
             });
             void ctx
               .patchSummary({
@@ -436,7 +487,7 @@ export class PlexCuratedCollectionsService {
                   step: 'plex_collection_add',
                   message: `Adding items to Plex collection: ${collectionName}`,
                   current: added,
-                  total: desired.length,
+                  total: addTargets.length,
                   unit: unitLabel,
                   mediaType,
                   updatedAt: new Date().toISOString(),
@@ -589,28 +640,53 @@ export class PlexCuratedCollectionsService {
     }
 
     // Fetch the collection order from Plex (best-effort).
+    // Retry until the returned set matches the desired set so report order reflects
+    // the final Plex state rather than an eventual-consistency intermediate snapshot.
     collectionItems = desired.map((d) => d.title).filter(Boolean);
     if (plexCollectionKey) {
       let lastErr: unknown = null;
-      for (let i = 0; i < 5; i += 1) {
+      const desiredKeys = desired.map((d) => d.ratingKey).filter(Boolean);
+      const desiredKeySet = new Set(desiredKeys);
+      for (let i = 0; i < 10; i += 1) {
         try {
           const ordered = await this.plexServer.getCollectionItems({
             baseUrl,
             token,
             collectionRatingKey: plexCollectionKey,
           });
+          const orderedKeys = ordered.map((it) => String(it.ratingKey ?? '')).filter(Boolean);
+          const orderedKeySet = new Set(orderedKeys);
+          const setsMatch =
+            orderedKeys.length === desiredKeySet.size &&
+            orderedKeySet.size === desiredKeySet.size &&
+            Array.from(desiredKeySet).every((key) => orderedKeySet.has(key));
+
+          if (!setsMatch) {
+            await ctx.debug('collection: ordered snapshot not fully settled yet', {
+              collectionName,
+              plexCollectionKey,
+              attempt: i + 1,
+              desiredCount: desiredKeySet.size,
+              observedCount: orderedKeys.length,
+            });
+            lastErr = null;
+            if (i < 9) await sleep(300);
+            continue;
+          }
+
           const titles = ordered
             .map((it) => String(it.title ?? '').trim())
             .filter(Boolean);
           if (titles.length) {
             collectionItems = titles;
+            collectionItemsSource = 'plex';
             break;
           }
           lastErr = null;
         } catch (err) {
           lastErr = err;
         }
-        if (i < 4) await sleep(300);
+        if (i < 9) await sleep(300);
       }
       if (lastErr) {
         await ctx.warn('collection: failed to fetch ordered items (continuing)', {
@@ -618,6 +694,16 @@ export class PlexCuratedCollectionsService {
           plexCollectionKey,
           error: (lastErr as Error)?.message ?? String(lastErr),
         });
+      } else if (collectionItemsSource !== 'plex') {
+        await ctx.warn(
+          'collection: using desired fallback order; Plex ordered snapshot did not settle in time',
+          {
+            collectionName,
+            plexCollectionKey,
+            desiredCount: desired.length,
+            fallbackCount: collectionItems.length,
+          },
+        );
       }
     }
 
@@ -687,6 +773,7 @@ export class PlexCuratedCollectionsService {
       randomizeOrder,
       lastAddedTitle,
       collectionItems,
+      collectionItemsSource,
       sample: desired.slice(0, 10).map((d) => d.title),
     };
   }
@@ -1025,26 +1112,17 @@ export class PlexCuratedCollectionsService {
       }
 
       if (identifiers.length > 0) {
-        // Move first to the top, then chain "after=" for the rest
-        const first = identifiers[0];
-        await this.plexServer.moveHubRow({
-          baseUrl,
-          token,
-          librarySectionKey,
-          identifier: first,
-          after: null,
-        });
-
-        let prev = first;
-        for (let i = 1; i < identifiers.length; i++) {
+        // Reorder robustly by moving from bottom->top in reverse desired order.
+        // This avoids transient ordering races when chaining `after=` moves.
+        for (let i = identifiers.length - 1; i >= 0; i -= 1) {
           await this.plexServer.moveHubRow({
             baseUrl,
             token,
             librarySectionKey,
             identifier: identifiers[i],
-            after: prev,
+            after: null,
           });
-          prev = identifiers[i];
+          if (i > 0) await sleep(120);
         }
 
         await ctx.info('hub_pin: reordered top collections', {
@@ -1053,6 +1131,7 @@ export class PlexCuratedCollectionsService {
           requestedOrder,
           matchedCollections,
           identifiers,
+          strategy: 'reverse_to_top',
         });
       }
     } catch (err) {

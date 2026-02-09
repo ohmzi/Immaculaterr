@@ -17,6 +17,11 @@ import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.typ
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import { immaculateTasteResetMarkerKey } from '../immaculate-taste-collection/immaculate-taste-reset';
+import {
+  SWEEP_ORDER,
+  hasExplicitRefresherScopeInput,
+  sortSweepUsers,
+} from './refresher-sweep.utils';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -81,6 +86,15 @@ export class ImmaculateTasteRefresherJob {
 
   async run(ctx: JobContext): Promise<JobRunResult> {
     const input = ctx.input ?? {};
+    const mode: 'targeted' | 'sweep' = hasExplicitRefresherScopeInput(input)
+      ? 'targeted'
+      : 'sweep';
+
+    if (mode === 'sweep') {
+      return await this.runSweep(ctx, input);
+    }
+
+    const forceAllLibraries = input['__forceAllLibraries'] === true;
     const { plexUserId, plexUserTitle, pinCollections } =
       await this.resolvePlexUserContext(ctx);
     const pinTarget: 'admin' | 'friends' = pinCollections
@@ -189,14 +203,46 @@ export class ImmaculateTasteRefresherJob {
     const effectiveTvSections =
       inputTvSectionKey && includeTv && !tvSections.length ? tvSectionsAll : tvSections;
 
-    // Scope refresher runs to one relevant library when section key is not explicitly provided.
-    // This keeps reports clean and avoids touching unrelated libraries (e.g. "kids").
+    // Default targeted behavior prefers a single relevant library unless explicitly scoped.
     let scopedMovieSections = effectiveMovieSections.slice();
     let scopedTvSections = effectiveTvSections.slice();
     let movieScopeSource = inputMovieSectionKey ? 'input_movieSectionKey' : 'auto';
     let tvScopeSource = inputTvSectionKey ? 'input_tvSectionKey' : 'auto';
 
-    if (includeMovies && scopedMovieSections.length && !inputMovieSectionKey) {
+    if (forceAllLibraries && includeMovies) {
+      const movieRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
+        where: { plexUserId },
+        select: { librarySectionKey: true },
+        distinct: ['librarySectionKey'],
+      });
+      const movieKeySet = new Set(movieRows.map((row) => row.librarySectionKey));
+      scopedMovieSections = scopedMovieSections.filter((s) => movieKeySet.has(s.key));
+      movieScopeSource = 'dataset_movie_libraries';
+      if (preferredMovieSectionKey && !movieKeySet.has(preferredMovieSectionKey)) {
+        preferredMovieSectionKey = '';
+      }
+    }
+
+    if (forceAllLibraries && includeTv) {
+      const tvRows = await this.prisma.immaculateTasteShowLibrary.findMany({
+        where: { plexUserId },
+        select: { librarySectionKey: true },
+        distinct: ['librarySectionKey'],
+      });
+      const tvKeySet = new Set(tvRows.map((row) => row.librarySectionKey));
+      scopedTvSections = scopedTvSections.filter((s) => tvKeySet.has(s.key));
+      tvScopeSource = 'dataset_tv_libraries';
+      if (preferredTvSectionKey && !tvKeySet.has(preferredTvSectionKey)) {
+        preferredTvSectionKey = '';
+      }
+    }
+
+    if (
+      includeMovies &&
+      scopedMovieSections.length &&
+      !inputMovieSectionKey &&
+      !forceAllLibraries
+    ) {
       const scopedMovieSectionKeys = new Set(scopedMovieSections.map((s) => s.key));
       const recentMovieLibraries = await this.prisma.immaculateTasteMovieLibrary.findMany({
         where: {
@@ -229,7 +275,7 @@ export class ImmaculateTasteRefresherJob {
       }
     }
 
-    if (includeTv && scopedTvSections.length && !inputTvSectionKey) {
+    if (includeTv && scopedTvSections.length && !inputTvSectionKey && !forceAllLibraries) {
       const scopedTvSectionKeys = new Set(scopedTvSections.map((s) => s.key));
       const recentTvLibraries = await this.prisma.immaculateTasteShowLibrary.findMany({
         where: {
@@ -288,11 +334,13 @@ export class ImmaculateTasteRefresherJob {
     );
 
     await ctx.info('immaculateTasteRefresher: start', {
+      mode,
       dryRun: ctx.dryRun,
       plexUserId,
       plexUserTitle,
       pinCollections,
       pinTarget,
+      forceAllLibraries,
       includeMovies,
       includeTv,
       movieLibraries: includeMovies ? orderedMovieSections.map((s) => s.title) : [],
@@ -1098,8 +1146,10 @@ export class ImmaculateTasteRefresherJob {
     }
 
     const summary: JsonObject = {
+      mode,
       plexUserId,
       plexUserTitle,
+      pinTarget,
       collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
       movie: movieSummary,
       tv: tvSummary,
@@ -1110,8 +1160,165 @@ export class ImmaculateTasteRefresherJob {
     return { summary: report as unknown as JsonObject };
   }
 
+  private async runSweep(
+    ctx: JobContext,
+    input: JsonObject,
+  ): Promise<JobRunResult> {
+    const includeMovies =
+      typeof input['includeMovies'] === 'boolean' ? input['includeMovies'] : true;
+    const includeTv = typeof input['includeTv'] === 'boolean' ? input['includeTv'] : true;
+    const limitRaw = typeof input['limit'] === 'number' ? input['limit'] : null;
+    const limit =
+      typeof limitRaw === 'number' && Number.isFinite(limitRaw)
+        ? Math.max(1, Math.trunc(limitRaw))
+        : null;
+
+    const userIds = new Set<string>();
+    if (includeMovies) {
+      const movieRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
+        select: { plexUserId: true },
+        distinct: ['plexUserId'],
+      });
+      for (const row of movieRows) userIds.add(row.plexUserId);
+    }
+    if (includeTv) {
+      const tvRows = await this.prisma.immaculateTasteShowLibrary.findMany({
+        select: { plexUserId: true },
+        distinct: ['plexUserId'],
+      });
+      for (const row of tvRows) userIds.add(row.plexUserId);
+    }
+
+    const users = userIds.size
+      ? await this.prisma.plexUser.findMany({
+          where: { id: { in: Array.from(userIds) } },
+          select: {
+            id: true,
+            plexAccountId: true,
+            plexAccountTitle: true,
+            isAdmin: true,
+            lastSeenAt: true,
+          },
+        })
+      : [];
+    const orderedUsers = sortSweepUsers(users);
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
+    const normalize = (value: string | null | undefined) =>
+      String(value ?? '').trim().toLowerCase();
+    const isAdminUser = (user: {
+      id: string;
+      plexAccountId: number | null;
+      plexAccountTitle: string;
+      isAdmin: boolean;
+    }) => {
+      if (user.id === admin.id) return true;
+      if (
+        user.plexAccountId !== null &&
+        admin.plexAccountId !== null &&
+        user.plexAccountId === admin.plexAccountId
+      ) {
+        return true;
+      }
+      const userTitle = normalize(user.plexAccountTitle);
+      const adminTitle = normalize(admin.plexAccountTitle);
+      if (userTitle && adminTitle && userTitle === adminTitle) return true;
+      return user.isAdmin;
+    };
+
+    await ctx.info('immaculateTasteRefresher: sweep start', {
+      mode: 'sweep',
+      includeMovies,
+      includeTv,
+      limit,
+      sweepOrder: SWEEP_ORDER,
+      usersSelected: orderedUsers.map((u) => ({
+        plexUserId: u.id,
+        plexUserTitle: u.plexAccountTitle,
+        isAdmin: isAdminUser(u),
+      })),
+    });
+
+    const usersSummary: JsonObject[] = [];
+    let usersSucceeded = 0;
+    let usersFailed = 0;
+
+    for (const user of orderedUsers) {
+      const userIsAdmin = isAdminUser(user);
+      const pinTarget: 'admin' | 'friends' = userIsAdmin ? 'admin' : 'friends';
+      try {
+        const childInput: JsonObject = {
+          plexUserId: user.id,
+          plexUserTitle: user.plexAccountTitle,
+          includeMovies,
+          includeTv,
+          __forceAllLibraries: true,
+          ...(limit !== null ? { limit } : {}),
+        };
+        const childRun = await this.run({
+          ...ctx,
+          input: childInput,
+        });
+        const childSummary = isPlainObject(childRun.summary)
+          ? (childRun.summary as Record<string, unknown>)
+          : null;
+        const childRaw =
+          childSummary && isPlainObject(childSummary['raw'])
+            ? (childSummary['raw'] as Record<string, unknown>)
+            : null;
+
+        usersSummary.push({
+          plexUserId: user.id,
+          plexUserTitle: user.plexAccountTitle,
+          isAdmin: userIsAdmin,
+          pinTarget,
+          movie:
+            childRaw && isPlainObject(childRaw['movie'])
+              ? (childRaw['movie'] as JsonObject)
+              : ({ skipped: true, reason: 'missing' } as JsonObject),
+          tv:
+            childRaw && isPlainObject(childRaw['tv'])
+              ? (childRaw['tv'] as JsonObject)
+              : ({ skipped: true, reason: 'missing' } as JsonObject),
+        });
+        usersSucceeded += 1;
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        usersSummary.push({
+          plexUserId: user.id,
+          plexUserTitle: user.plexAccountTitle,
+          isAdmin: userIsAdmin,
+          pinTarget,
+          error: msg,
+        });
+        usersFailed += 1;
+        await ctx.warn('immaculateTasteRefresher: sweep user failed (continuing)', {
+          plexUserId: user.id,
+          plexUserTitle: user.plexAccountTitle,
+          error: msg,
+        });
+      }
+    }
+
+    const summary: JsonObject = {
+      mode: 'sweep',
+      sweepOrder: SWEEP_ORDER,
+      includeMovies,
+      includeTv,
+      ...(limit !== null ? { limit } : {}),
+      usersProcessed: orderedUsers.length,
+      usersSucceeded,
+      usersFailed,
+      users: usersSummary,
+    };
+
+    await ctx.info('immaculateTasteRefresher: sweep done', summary);
+    const report = buildImmaculateTasteRefresherReport({ ctx, raw: summary });
+    return { summary: report as unknown as JsonObject };
+  }
+
   private async resolvePlexUserContext(ctx: JobContext) {
     const input = ctx.input ?? {};
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
     const plexUserTitleRaw =
@@ -1136,6 +1343,25 @@ export class ImmaculateTasteRefresherJob {
       : null;
     const normalize = (value: string | null | undefined) =>
       String(value ?? '').trim().toLowerCase();
+    const isAdminUser = (row: {
+      id: string;
+      plexAccountId: number | null;
+      plexAccountTitle: string;
+      isAdmin?: boolean;
+    }) => {
+      if (row.id === admin.id) return true;
+      if (
+        row.plexAccountId !== null &&
+        admin.plexAccountId !== null &&
+        row.plexAccountId === admin.plexAccountId
+      ) {
+        return true;
+      }
+      const rowTitle = normalize(row.plexAccountTitle);
+      const adminTitle = normalize(admin.plexAccountTitle);
+      if (rowTitle && adminTitle && rowTitle === adminTitle) return true;
+      return row.isAdmin === true;
+    };
     const titleMismatch =
       Boolean(fromInput) &&
       Boolean(plexAccountTitle) &&
@@ -1145,7 +1371,7 @@ export class ImmaculateTasteRefresherJob {
       return {
         plexUserId: fromInput.id,
         plexUserTitle: fromInput.plexAccountTitle,
-        pinCollections: fromInput.isAdmin,
+        pinCollections: isAdminUser(fromInput),
       };
     }
 
@@ -1157,7 +1383,7 @@ export class ImmaculateTasteRefresherJob {
         return {
           plexUserId: byTitle.id,
           plexUserTitle: byTitle.plexAccountTitle,
-          pinCollections: byTitle.isAdmin,
+          pinCollections: isAdminUser(byTitle),
         };
       }
     }
@@ -1171,17 +1397,15 @@ export class ImmaculateTasteRefresherJob {
         return {
           plexUserId: byAccount.id,
           plexUserTitle: byAccount.plexAccountTitle,
-          pinCollections: byAccount.isAdmin,
+          pinCollections: isAdminUser(byAccount),
         };
       }
     }
 
-    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
-
     return {
       plexUserId: admin.id,
       plexUserTitle: admin.plexAccountTitle,
-      pinCollections: admin.isAdmin,
+      pinCollections: true,
     };
   }
 }
@@ -1195,27 +1419,13 @@ function buildImmaculateTasteRefresherReport(params: {
   raw: JsonObject;
 }): JobReportV1 {
   const { ctx, raw } = params;
-
-  const movie = isPlainObject(raw.movie) ? raw.movie : null;
-  const tv = isPlainObject(raw.tv) ? raw.tv : null;
+  const mode =
+    typeof (raw as Record<string, unknown>).mode === 'string'
+      ? String((raw as Record<string, unknown>).mode)
+      : 'targeted';
 
   const tasks: JobReportV1['tasks'] = [];
   const issues: JobReportV1['issues'] = [];
-  const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
-  const plexUserTitle = String(
-    (raw as Record<string, unknown>).plexUserTitle ?? '',
-  ).trim();
-  const contextFacts: Array<{ label: string; value: JsonValue }> = [];
-  if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
-  if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
-  if (contextFacts.length) {
-    tasks.push({
-      id: 'context',
-      title: 'Context',
-      status: 'success',
-      facts: contextFacts,
-    });
-  }
 
   const asStringArray = (v: unknown): string[] => {
     if (!Array.isArray(v)) return [];
@@ -1318,26 +1528,127 @@ function buildImmaculateTasteRefresherReport(params: {
     }
   };
 
-  if (movie) {
-    addLibraryTasks({
-      prefix: 'movie_library',
-      titlePrefix: 'Movie library:',
-      byLibrary: movie.plexByLibrary,
-      sentLabel: 'Sent to Radarr',
-      sentField: 'sentToRadarr',
-      unit: 'movies',
-    });
-  }
+  if (mode === 'sweep') {
+    const usersRaw = (raw as Record<string, unknown>).users;
+    const users = Array.isArray(usersRaw)
+      ? usersRaw.filter(
+          (u): u is Record<string, unknown> =>
+            Boolean(u) && typeof u === 'object' && !Array.isArray(u),
+        )
+      : [];
 
-  if (tv) {
-    addLibraryTasks({
-      prefix: 'tv_library',
-      titlePrefix: 'TV library:',
-      byLibrary: tv.plexByLibrary,
-      sentLabel: 'Sent to Sonarr',
-      sentField: 'sentToSonarr',
-      unit: 'shows',
+    tasks.push({
+      id: 'sweep_context',
+      title: 'Sweep context',
+      status: 'success',
+      facts: [
+        {
+          label: 'Order',
+          value: String((raw as Record<string, unknown>).sweepOrder ?? SWEEP_ORDER),
+        },
+        {
+          label: 'Users processed',
+          value: asNum((raw as Record<string, unknown>).usersProcessed),
+        },
+        {
+          label: 'Users succeeded',
+          value: asNum((raw as Record<string, unknown>).usersSucceeded),
+        },
+        {
+          label: 'Users failed',
+          value: asNum((raw as Record<string, unknown>).usersFailed),
+        },
+      ],
     });
+
+    for (const user of users) {
+      const userId = String(user.plexUserId ?? '').trim() || 'unknown';
+      const userTitle = String(user.plexUserTitle ?? '').trim() || 'Unknown';
+      const userError =
+        typeof user.error === 'string' && user.error.trim() ? user.error.trim() : null;
+
+      tasks.push({
+        id: `context_${userId}`,
+        title: `Context — ${userTitle}`,
+        status: userError ? 'failed' : 'success',
+        facts: [
+          { label: 'Plex user', value: userTitle },
+          { label: 'Plex user id', value: userId },
+          { label: 'Pin target', value: String(user.pinTarget ?? '') },
+        ],
+      });
+
+      if (userError) {
+        issues.push(issue('error', `${userTitle}: ${userError}`));
+        continue;
+      }
+
+      const movie = isPlainObject(user.movie) ? user.movie : null;
+      const tv = isPlainObject(user.tv) ? user.tv : null;
+
+      if (movie) {
+        addLibraryTasks({
+          prefix: `movie_library_${userId}`,
+          titlePrefix: `Movie library (${userTitle}):`,
+          byLibrary: movie.plexByLibrary,
+          sentLabel: 'Sent to Radarr',
+          sentField: 'sentToRadarr',
+          unit: 'movies',
+        });
+      }
+
+      if (tv) {
+        addLibraryTasks({
+          prefix: `tv_library_${userId}`,
+          titlePrefix: `TV library (${userTitle}):`,
+          byLibrary: tv.plexByLibrary,
+          sentLabel: 'Sent to Sonarr',
+          sentField: 'sentToSonarr',
+          unit: 'shows',
+        });
+      }
+    }
+  } else {
+    const movie = isPlainObject(raw.movie) ? raw.movie : null;
+    const tv = isPlainObject(raw.tv) ? raw.tv : null;
+
+    const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
+    const plexUserTitle = String(
+      (raw as Record<string, unknown>).plexUserTitle ?? '',
+    ).trim();
+    const contextFacts: Array<{ label: string; value: JsonValue }> = [];
+    if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
+    if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+    if (contextFacts.length) {
+      tasks.push({
+        id: 'context',
+        title: 'Context',
+        status: 'success',
+        facts: contextFacts,
+      });
+    }
+
+    if (movie) {
+      addLibraryTasks({
+        prefix: 'movie_library',
+        titlePrefix: 'Movie library:',
+        byLibrary: movie.plexByLibrary,
+        sentLabel: 'Sent to Radarr',
+        sentField: 'sentToRadarr',
+        unit: 'movies',
+      });
+    }
+
+    if (tv) {
+      addLibraryTasks({
+        prefix: 'tv_library',
+        titlePrefix: 'TV library:',
+        byLibrary: tv.plexByLibrary,
+        sentLabel: 'Sent to Sonarr',
+        sentField: 'sentToSonarr',
+        unit: 'shows',
+      });
+    }
   }
 
   return {

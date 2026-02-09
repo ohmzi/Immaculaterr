@@ -2,9 +2,11 @@ import { PlexCuratedCollectionsService } from './plex-curated-collections.servic
 
 function createTestCtx() {
   return {
+    dryRun: false,
     info: jest.fn(async () => undefined),
     warn: jest.fn(async () => undefined),
     debug: jest.fn(async () => undefined),
+    patchSummary: jest.fn(async () => undefined),
   };
 }
 
@@ -53,16 +55,16 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
 
     expect(plexServer.moveHubRow).toHaveBeenCalledTimes(3);
     expect(plexServer.moveHubRow.mock.calls[0][0]).toMatchObject({
-      identifier: 'hub-11',
+      identifier: 'hub-13',
       after: null,
     });
     expect(plexServer.moveHubRow.mock.calls[1][0]).toMatchObject({
       identifier: 'hub-12',
-      after: 'hub-11',
+      after: null,
     });
     expect(plexServer.moveHubRow.mock.calls[2][0]).toMatchObject({
-      identifier: 'hub-13',
-      after: 'hub-12',
+      identifier: 'hub-11',
+      after: null,
     });
   });
 
@@ -110,16 +112,16 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
 
     expect(plexServer.moveHubRow).toHaveBeenCalledTimes(3);
     expect(plexServer.moveHubRow.mock.calls[0][0]).toMatchObject({
-      identifier: 'hub-32',
+      identifier: 'hub-31',
       after: null,
     });
     expect(plexServer.moveHubRow.mock.calls[1][0]).toMatchObject({
       identifier: 'hub-33',
-      after: 'hub-32',
+      after: null,
     });
     expect(plexServer.moveHubRow.mock.calls[2][0]).toMatchObject({
-      identifier: 'hub-31',
-      after: 'hub-33',
+      identifier: 'hub-32',
+      after: null,
     });
   });
 
@@ -225,9 +227,84 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       }),
     );
     expect(plexServer.moveHubRow).toHaveBeenCalledTimes(3);
-    expect(plexServer.moveHubRow.mock.calls[2][0]).toMatchObject({
+    expect(plexServer.moveHubRow.mock.calls[0][0]).toMatchObject({
       identifier: 'hub-63',
-      after: 'hub-62',
+      after: null,
+    });
+  });
+});
+
+describe('PlexCuratedCollectionsService rebuild fallback', () => {
+  it('retries create without seed item when seeded create fails and still adds all desired items', async () => {
+    const desired = [
+      { ratingKey: '233616', title: 'Game of Thrones' },
+      { ratingKey: '233617', title: 'Breaking Bad' },
+    ];
+
+    const plexServer = {
+      listCollectionsForSectionKey: jest.fn(async () => []),
+      findCollectionRatingKey: jest.fn(async () => null),
+      createCollection: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('HTTP 500'))
+        .mockResolvedValueOnce('new-tv'),
+      getCollectionItems: jest
+        .fn()
+        // Immediately after create-without-uri fallback: collection is empty.
+        .mockResolvedValueOnce([])
+        // Best-effort final order fetch after move operations.
+        .mockResolvedValue([
+          { ratingKey: '233616', title: 'Game of Thrones' },
+          { ratingKey: '233617', title: 'Breaking Bad' },
+        ]),
+      addItemToCollection: jest.fn(async () => undefined),
+      setCollectionSort: jest.fn(async () => undefined),
+      moveCollectionItem: jest.fn(async () => undefined),
+      uploadCollectionPoster: jest.fn(async () => undefined),
+      uploadCollectionBackground: jest.fn(async () => undefined),
+    } as any;
+
+    const service = new PlexCuratedCollectionsService(plexServer);
+    const ctx = createTestCtx();
+
+    const result = await service.rebuildMovieCollection({
+      ctx: ctx as any,
+      baseUrl: 'http://plex.local:32400',
+      token: 'token',
+      machineIdentifier: 'machine-1',
+      movieSectionKey: '3',
+      itemType: 2,
+      collectionName: 'Based on your recently watched show (ohmz_i)',
+      desiredItems: desired,
+      randomizeOrder: false,
+      pinCollections: false,
+    });
+
+    expect(plexServer.createCollection).toHaveBeenCalledTimes(2);
+    expect(plexServer.createCollection.mock.calls[0][0]).toMatchObject({
+      initialItemRatingKey: '233616',
+      type: 2,
+      librarySectionKey: '3',
+    });
+    expect(plexServer.createCollection.mock.calls[1][0]).toMatchObject({
+      initialItemRatingKey: null,
+      type: 2,
+      librarySectionKey: '3',
+    });
+
+    expect(plexServer.addItemToCollection).toHaveBeenCalledTimes(2);
+    expect(plexServer.addItemToCollection.mock.calls[0][0]).toMatchObject({
+      collectionRatingKey: 'new-tv',
+      itemRatingKey: '233616',
+    });
+    expect(plexServer.addItemToCollection.mock.calls[1][0]).toMatchObject({
+      collectionRatingKey: 'new-tv',
+      itemRatingKey: '233617',
+    });
+
+    expect(result).toMatchObject({
+      plexCollectionKey: 'new-tv',
+      desiredCount: 2,
     });
   });
 });

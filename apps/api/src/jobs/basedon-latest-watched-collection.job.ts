@@ -1777,6 +1777,7 @@ export class BasedonLatestWatchedCollectionJob {
 
   private async resolvePlexUserContext(ctx: JobContext) {
     const input = ctx.input ?? {};
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
     const plexUserTitleRaw =
@@ -1801,6 +1802,25 @@ export class BasedonLatestWatchedCollectionJob {
       : null;
     const normalize = (value: string | null | undefined) =>
       String(value ?? '').trim().toLowerCase();
+    const isAdminUser = (row: {
+      id: string;
+      plexAccountId: number | null;
+      plexAccountTitle: string;
+      isAdmin?: boolean;
+    }) => {
+      if (row.id === admin.id) return true;
+      if (
+        row.plexAccountId !== null &&
+        admin.plexAccountId !== null &&
+        row.plexAccountId === admin.plexAccountId
+      ) {
+        return true;
+      }
+      const rowTitle = normalize(row.plexAccountTitle);
+      const adminTitle = normalize(admin.plexAccountTitle);
+      if (rowTitle && adminTitle && rowTitle === adminTitle) return true;
+      return row.isAdmin === true;
+    };
     const titleMismatch =
       Boolean(fromInput) &&
       Boolean(plexAccountTitle) &&
@@ -1810,7 +1830,7 @@ export class BasedonLatestWatchedCollectionJob {
       return {
         plexUserId: fromInput.id,
         plexUserTitle: fromInput.plexAccountTitle,
-        pinCollections: fromInput.isAdmin,
+        pinCollections: isAdminUser(fromInput),
       };
     }
 
@@ -1822,7 +1842,7 @@ export class BasedonLatestWatchedCollectionJob {
         return {
           plexUserId: byTitle.id,
           plexUserTitle: byTitle.plexAccountTitle,
-          pinCollections: byTitle.isAdmin,
+          pinCollections: isAdminUser(byTitle),
         };
       }
     }
@@ -1836,17 +1856,15 @@ export class BasedonLatestWatchedCollectionJob {
         return {
           plexUserId: byAccount.id,
           plexUserTitle: byAccount.plexAccountTitle,
-          pinCollections: byAccount.isAdmin,
+          pinCollections: isAdminUser(byAccount),
         };
       }
     }
 
-    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
-
     return {
       plexUserId: admin.id,
       plexUserTitle: admin.plexAccountTitle,
-      pinCollections: admin.isAdmin,
+      pinCollections: true,
     };
   }
 
