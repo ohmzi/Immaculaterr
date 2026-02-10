@@ -129,4 +129,71 @@ describe('OverseerrService', () => {
     expect(result.status).toBe('failed');
     expect(result.error).toContain('HTTP 500');
   });
+
+  it('clears all Overseerr requests across paginated list results', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+    }));
+    const secondPage = [{ id: 101 }, { id: 102 }];
+
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ status: 200, json: { results: firstPage } }))
+      .mockResolvedValueOnce(mockResponse({ status: 200, json: { results: secondPage } }));
+    for (let i = 0; i < 102; i += 1) {
+      fetchMock.mockResolvedValueOnce(mockResponse({ status: 204 }));
+    }
+
+    const result = await service.clearAllRequests({
+      baseUrl: 'http://localhost:5055',
+      apiKey: 'secret',
+    });
+
+    expect(result).toEqual({
+      total: 102,
+      deleted: 102,
+      failed: 0,
+      failedRequestIds: [],
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:5055/api/v1/request?take=100&skip=0',
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      'http://localhost:5055/api/v1/request?take=100&skip=100',
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('http://localhost:5055/api/v1/request/1');
+    expect(fetchMock).toHaveBeenCalledTimes(104);
+  });
+
+  it('counts failed deletions and treats missing requests as deleted', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        mockResponse({ status: 200, json: { results: [{ id: 7 }, { id: 8 }, { id: 9 }] } }),
+      )
+      .mockResolvedValueOnce(mockResponse({ status: 204 }))
+      .mockResolvedValueOnce(mockResponse({ status: 404, text: 'Request not found.' }))
+      .mockResolvedValueOnce(mockResponse({ status: 500, text: 'boom' }));
+
+    const result = await service.clearAllRequests({
+      baseUrl: 'http://localhost:5055',
+      apiKey: 'secret',
+    });
+
+    expect(result).toEqual({
+      total: 3,
+      deleted: 2,
+      failed: 1,
+      failedRequestIds: [9],
+    });
+  });
+
+  it('throws when request listing fails', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ status: 500, text: 'internal error' }),
+    );
+
+    await expect(
+      service.clearAllRequests({ baseUrl: 'http://localhost:5055', apiKey: 'secret' }),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+  });
 });

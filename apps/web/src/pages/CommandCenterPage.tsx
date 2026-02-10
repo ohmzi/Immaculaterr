@@ -34,6 +34,7 @@ import {
   deleteRejectedSuggestion,
   type RejectedSuggestionItem,
 } from '@/api/observatory';
+import { resetOverseerrRequests } from '@/api/overseerr';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { FunCountSlider } from '@/components/FunCountSlider';
@@ -111,6 +112,7 @@ export function CommandCenterPage() {
     total: number;
   } | null>(null);
   const [rejectedResetOpen, setRejectedResetOpen] = useState(false);
+  const [overseerrResetOpen, setOverseerrResetOpen] = useState(false);
   const [rejectedListOpen, setRejectedListOpen] = useState(false);
   const [rejectedMediaTab, setRejectedMediaTab] = useState<'movie' | 'tv'>('movie');
   const [rejectedKind, setRejectedKind] = useState<
@@ -185,6 +187,19 @@ export function CommandCenterPage() {
     },
   });
 
+  const resetOverseerrMutation = useMutation({
+    mutationFn: resetOverseerrRequests,
+    onSuccess: (data) => {
+      if (data.failed > 0) {
+        toast.error(
+          `Overseerr reset finished with ${data.failed} failed request deletions (${data.deleted} removed).`,
+        );
+        return;
+      }
+      toast.success(`Overseerr requests reset (${data.deleted} removed).`);
+    },
+  });
+
   const rejectedListQuery = useQuery({
     queryKey: ['observatory', 'rejected'],
     queryFn: listRejectedSuggestions,
@@ -220,6 +235,20 @@ export function CommandCenterPage() {
   };
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
+  const overseerrEnabledFlag = readBool(
+    settingsQuery.data?.settings,
+    'overseerr.enabled',
+  );
+  const overseerrBaseUrl = readString(
+    settingsQuery.data?.settings,
+    'overseerr.baseUrl',
+  );
+  const overseerrHasSecret = Boolean(secretsPresent.overseerr);
+  // Back-compat: if overseerr.enabled isn't set, treat "secret present" as enabled.
+  const overseerrConfigured =
+    (overseerrEnabledFlag ?? overseerrHasSecret) &&
+    Boolean(overseerrBaseUrl) &&
+    overseerrHasSecret;
 
   const radarrEnabledFlag = readBool(settingsQuery.data?.settings, 'radarr.enabled');
   const radarrBaseUrl = readString(settingsQuery.data?.settings, 'radarr.baseUrl');
@@ -1086,6 +1115,99 @@ export function CommandCenterPage() {
             )}
           </div>
 
+          {/* Reset Overseerr Requests */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-cyan-400/10 focus-within:border-white/15 focus-within:shadow-cyan-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-cyan-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-cyan-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <RotateCcw className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Reset Overseerr Requests
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {settingsQuery.isLoading ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}>
+                    Checking…
+                  </span>
+                ) : settingsQuery.isError ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
+                    Error
+                  </span>
+                ) : overseerrConfigured ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}>
+                    Enabled
+                  </span>
+                ) : (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}>
+                    Not set up
+                  </span>
+                )}
+
+                <SavingPill active={resetOverseerrMutation.isPending} className="static" />
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Delete all Overseerr requests, regardless of status.
+            </p>
+
+            {settingsQuery.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>
+                  Couldn&apos;t load settings. Please open{' '}
+                  <Link
+                    to="/vault#vault-overseerr"
+                    className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                  >
+                    Vault
+                  </Link>{' '}
+                  and verify Overseerr configuration.
+                </span>
+              </div>
+            ) : !overseerrConfigured ? (
+              <div className="mt-3 text-sm text-white/65">
+                Set up Overseerr in{' '}
+                <Link
+                  to="/vault#vault-overseerr"
+                  className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                >
+                  Vault
+                </Link>{' '}
+                before using this reset.
+              </div>
+            ) : null}
+
+            {resetOverseerrMutation.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{(resetOverseerrMutation.error as Error).message}</span>
+              </div>
+            ) : null}
+
+            <div className="mt-5">
+              <button
+                type="button"
+                disabled={
+                  resetOverseerrMutation.isPending ||
+                  !overseerrConfigured ||
+                  settingsQuery.isLoading ||
+                  settingsQuery.isError
+                }
+                onClick={() => setOverseerrResetOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset Overseerr requests
+              </button>
+            </div>
+          </div>
+
           {/* Reset Rejected List */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-red-400/10 focus-within:border-white/15 focus-within:shadow-red-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-red-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
@@ -1377,6 +1499,113 @@ export function CommandCenterPage() {
                         disabled={resetImmaculateUserMutation.isPending}
                       >
                         {resetImmaculateUserMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Resetting…
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="w-4 h-4" />
+                            Reset
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Reset Overseerr Requests - Confirm Dialog */}
+          <AnimatePresence>
+            {overseerrResetOpen && (
+              <motion.div
+                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  if (resetOverseerrMutation.isPending) return;
+                  setOverseerrResetOpen(false);
+                }}
+              >
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+                <motion.div
+                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-cyan-500/10 overflow-hidden"
+                >
+                  <div className="p-6 sm:p-7">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                          Reset
+                        </div>
+                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                          Overseerr Requests
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetOverseerrMutation.isPending) return;
+                          setOverseerrResetOpen(false);
+                        }}
+                        className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                        aria-label="Close"
+                        disabled={resetOverseerrMutation.isPending}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                      <div className="flex items-start gap-3">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-cyan-200" />
+                        <div className="min-w-0">
+                          <div className="text-white/85 font-semibold">
+                            This will delete all requests in Overseerr, regardless of status.
+                          </div>
+                          <div className="mt-2 text-xs text-white/55">
+                            This action cannot be undone.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {resetOverseerrMutation.isError ? (
+                      <div className="mt-4 flex items-start gap-2 text-sm text-red-200/90">
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>{(resetOverseerrMutation.error as Error).message}</span>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setOverseerrResetOpen(false)}
+                        className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetOverseerrMutation.isPending}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resetOverseerrMutation.isPending) return;
+                          resetOverseerrMutation.mutate(undefined, {
+                            onSuccess: () => setOverseerrResetOpen(false),
+                          });
+                        }}
+                        className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={resetOverseerrMutation.isPending}
+                      >
+                        {resetOverseerrMutation.isPending ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
                             Resetting…

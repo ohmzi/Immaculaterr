@@ -8,8 +8,18 @@ export type OverseerrRequestResult = {
   error: string | null;
 };
 
+export type OverseerrClearAllRequestsResult = {
+  total: number;
+  deleted: number;
+  failed: number;
+  failedRequestIds: number[];
+};
+
 type OverseerrAuthMe = Record<string, unknown>;
 type OverseerrRequestResponse = Record<string, unknown>;
+type OverseerrRequestListResponse = {
+  results?: unknown;
+};
 
 @Injectable()
 export class OverseerrService {
@@ -90,6 +100,63 @@ export class OverseerrService {
     });
   }
 
+  async clearAllRequests(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<OverseerrClearAllRequestsResult> {
+    const { baseUrl, apiKey } = params;
+    const requestIds = await this.listAllRequestIds({ baseUrl, apiKey });
+    if (!requestIds.length) {
+      return { total: 0, deleted: 0, failed: 0, failedRequestIds: [] };
+    }
+
+    let deleted = 0;
+    const failedRequestIds: number[] = [];
+
+    for (const requestId of requestIds) {
+      const url = this.buildApiUrl(baseUrl, `/request/${requestId}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const res = await fetch(url, {
+          method: 'DELETE',
+          headers: {
+            Accept: 'application/json',
+            'X-Api-Key': apiKey,
+          },
+          signal: controller.signal,
+        });
+
+        // Treat already-missing request IDs as deleted; this can happen under race.
+        if (res.ok || res.status === 404) {
+          deleted += 1;
+          continue;
+        }
+
+        const body = await res.text().catch(() => '');
+        this.logger.warn(
+          `Overseerr request delete failed (${requestId}): HTTP ${res.status} ${body}`.trim(),
+        );
+        failedRequestIds.push(requestId);
+      } catch (err) {
+        this.logger.warn(
+          `Overseerr request delete failed (${requestId}): ${(err as Error)?.message ?? String(err)}`,
+        );
+        failedRequestIds.push(requestId);
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    return {
+      total: requestIds.length,
+      deleted,
+      failed: failedRequestIds.length,
+      failedRequestIds,
+    };
+  }
+
   private async requestMedia(params: {
     baseUrl: string;
     apiKey: string;
@@ -166,6 +233,73 @@ export class OverseerrService {
       bodyLower.includes('requested') ||
       bodyLower.includes('pending')
     );
+  }
+
+  private async listAllRequestIds(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<number[]> {
+    const { baseUrl, apiKey } = params;
+    const take = 100;
+    let skip = 0;
+    const requestIds: number[] = [];
+    const seen = new Set<number>();
+
+    for (;;) {
+      const url = this.buildApiUrl(baseUrl, `/request?take=${take}&skip=${skip}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            'X-Api-Key': apiKey,
+          },
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new BadGatewayException(
+            `Overseerr list requests failed: HTTP ${res.status} ${body}`.trim(),
+          );
+        }
+
+        const data = (await res.json()) as OverseerrRequestListResponse;
+        const rows = Array.isArray(data?.results) ? data.results : [];
+        for (const row of rows) {
+          const requestId = this.parseRequestId(row);
+          if (requestId === null || seen.has(requestId)) continue;
+          seen.add(requestId);
+          requestIds.push(requestId);
+        }
+
+        if (rows.length < take) break;
+        skip += take;
+      } catch (err) {
+        if (err instanceof BadGatewayException) throw err;
+        throw new BadGatewayException(
+          `Overseerr list requests failed: ${(err as Error)?.message ?? String(err)}`,
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    return requestIds;
+  }
+
+  private parseRequestId(value: unknown): number | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const raw = (value as Record<string, unknown>).id;
+    if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+    if (typeof raw === 'string' && raw.trim()) {
+      const n = Number.parseInt(raw, 10);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
   }
 
   private buildApiUrl(baseUrlRaw: string, path: string): string {
