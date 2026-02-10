@@ -7,6 +7,7 @@ import { RecommendationsService } from '../recommendations/recommendations.servi
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
+import { OverseerrService } from '../overseerr/overseerr.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
@@ -123,6 +124,7 @@ export class BasedonLatestWatchedCollectionJob {
     private readonly watchedRefresher: WatchedCollectionsRefresherService,
     private readonly radarr: RadarrService,
     private readonly sonarr: SonarrService,
+    private readonly overseerr: OverseerrService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
@@ -200,9 +202,27 @@ export class BasedonLatestWatchedCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
-    const approvalRequiredFromObservatory =
+    const approvalRequiredFromObservatorySaved =
       (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
         false) === true;
+    const overseerrModeSelected =
+      (pickBool(
+        settings,
+        'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+      ) ??
+        false) === true;
+    const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
+    const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
+    const overseerrConfiguredEnabled =
+      overseerrModeSelected &&
+      (pickBool(settings, 'overseerr.enabled') ?? Boolean(overseerrApiKey)) &&
+      Boolean(overseerrBaseUrlRaw) &&
+      Boolean(overseerrApiKey);
+    const overseerrBaseUrl = overseerrConfiguredEnabled
+      ? normalizeHttpUrl(overseerrBaseUrlRaw)
+      : '';
+    const approvalRequiredFromObservatory =
+      approvalRequiredFromObservatorySaved && !overseerrModeSelected;
 
     // --- Plex settings ---
     const plexBaseUrlRaw =
@@ -401,6 +421,9 @@ export class BasedonLatestWatchedCollectionJob {
       upcomingPercent,
       collectionLimit,
       webContextFraction,
+      approvalRequiredFromObservatorySaved,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
       approvalRequiredFromObservatory,
     });
 
@@ -498,9 +521,11 @@ export class BasedonLatestWatchedCollectionJob {
 
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(secrets, 'radarr.apiKey');
-    const fetchMissingRadarr =
+    const fetchMissingRadarrSaved =
       pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
       true;
+    const fetchMissingRadarr =
+      fetchMissingRadarrSaved && !overseerrModeSelected;
     // Back-compat: if radarr.enabled isn't set, treat "secret present" as enabled.
     const radarrEnabled =
       fetchMissingRadarr &&
@@ -558,6 +583,14 @@ export class BasedonLatestWatchedCollectionJob {
           recommendationStrategy: col.strategy,
           recommendationDebug: col.debug,
           approvalRequiredFromObservatory,
+          overseerrModeSelected,
+          overseerr:
+            overseerrModeSelected && overseerrConfiguredEnabled
+              ? {
+                  baseUrl: overseerrBaseUrl,
+                  apiKey: overseerrApiKey,
+                }
+              : null,
           radarr: radarrEnabled
             ? {
                 baseUrl: radarrBaseUrl,
@@ -588,6 +621,17 @@ export class BasedonLatestWatchedCollectionJob {
           excludedByRejectListTitles: [],
           excludedByRejectListCount: 0,
           snapshot: { saved: false, active: 0, pending: 0 },
+          overseerrModeSelected,
+          overseerr: {
+            selected: overseerrModeSelected,
+            enabled: overseerrConfiguredEnabled,
+            attempted: 0,
+            requested: 0,
+            exists: 0,
+            failed: 0,
+            skipped: 0,
+          },
+          overseerrLists: { attempted: [], requested: [], exists: [], failed: [], skipped: [] },
           radarr: { enabled: false, attempted: 0, added: 0, exists: 0, failed: 0, skipped: 0 },
           radarrLists: { attempted: [], added: [], exists: [], failed: [], skipped: [] },
           sampleMissing: col.titles.slice(0, 10),
@@ -628,6 +672,9 @@ export class BasedonLatestWatchedCollectionJob {
       seedYear,
       movieSectionKey,
       movieLibraryName,
+      approvalRequiredFromObservatory,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
       collections: perCollection,
       refresh,
     };
@@ -650,6 +697,11 @@ export class BasedonLatestWatchedCollectionJob {
     recommendationStrategy: string;
     recommendationDebug: JsonObject;
     approvalRequiredFromObservatory: boolean;
+    overseerrModeSelected: boolean;
+    overseerr: {
+      baseUrl: string;
+      apiKey: string;
+    } | null;
     radarr: {
           baseUrl: string;
           apiKey: string;
@@ -673,6 +725,8 @@ export class BasedonLatestWatchedCollectionJob {
       recommendationStrategy,
       recommendationDebug,
       approvalRequiredFromObservatory,
+      overseerrModeSelected,
+      overseerr,
       radarr,
     } = params;
 
@@ -947,6 +1001,89 @@ export class BasedonLatestWatchedCollectionJob {
       snapshotSaved = true;
     }
 
+    const overseerrStats = {
+      selected: overseerrModeSelected,
+      enabled: Boolean(overseerr),
+      attempted: 0,
+      requested: 0,
+      exists: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    const overseerrLists = {
+      attempted: [] as string[],
+      requested: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
+
+    if (!ctx.dryRun && overseerrModeSelected && missingTitles.length) {
+      if (!overseerr) {
+        await ctx.warn('overseerr: skipped (selected but not configured)', {
+          collectionName,
+          missingTitles: missingTitles.length,
+        });
+        overseerrStats.skipped += missingTitles.length;
+        overseerrLists.skipped.push(...missingTitles);
+      } else {
+        await ctx.info('overseerr: start', {
+          collectionName,
+          missingTitles: missingTitles.length,
+          sampleMissing: missingTitles.slice(0, 10),
+        });
+
+        for (const title of missingTitles) {
+          const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
+          if (!tmdbMatch) {
+            overseerrStats.skipped += 1;
+            overseerrLists.skipped.push(title.trim());
+            continue;
+          }
+
+          overseerrStats.attempted += 1;
+          overseerrLists.attempted.push(tmdbMatch.title);
+
+          const result = await withJobRetry(
+            () =>
+              this.overseerr.requestMovie({
+                baseUrl: overseerr.baseUrl,
+                apiKey: overseerr.apiKey,
+                tmdbId: tmdbMatch.tmdbId,
+              }),
+            {
+              ctx,
+              label: 'overseerr: request movie',
+              meta: { collectionName, title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
+            },
+          ).catch((err) => ({
+            status: 'failed' as const,
+            requestId: null,
+            error: (err as Error)?.message ?? String(err),
+          }));
+
+          if (result.status === 'requested') {
+            overseerrStats.requested += 1;
+            overseerrLists.requested.push(tmdbMatch.title);
+          } else if (result.status === 'exists') {
+            overseerrStats.exists += 1;
+            overseerrLists.exists.push(tmdbMatch.title);
+          } else {
+            overseerrStats.failed += 1;
+            overseerrLists.failed.push(tmdbMatch.title);
+            await ctx.warn('overseerr: request failed (continuing)', {
+              collectionName,
+              title: tmdbMatch.title,
+              tmdbId: tmdbMatch.tmdbId,
+              error: result.error ?? 'unknown',
+            });
+          }
+        }
+
+        await ctx.info('overseerr: done', { collectionName, ...overseerrStats });
+      }
+    }
+
     // Optional Radarr: add missing titles
     const radarrStats = {
       enabled: Boolean(radarr),
@@ -964,7 +1101,13 @@ export class BasedonLatestWatchedCollectionJob {
       skipped: [] as string[],
     };
 
-    if (!approvalRequiredFromObservatory && !ctx.dryRun && radarr && missingTitles.length) {
+    if (
+      !overseerrModeSelected &&
+      !approvalRequiredFromObservatory &&
+      !ctx.dryRun &&
+      radarr &&
+      missingTitles.length
+    ) {
       await ctx.info('radarr: start', {
         collectionName,
         missingTitles: missingTitles.length,
@@ -972,7 +1115,13 @@ export class BasedonLatestWatchedCollectionJob {
       });
     }
 
-    if (!approvalRequiredFromObservatory && !ctx.dryRun && radarr && missingTitles.length) {
+    if (
+      !overseerrModeSelected &&
+      !approvalRequiredFromObservatory &&
+      !ctx.dryRun &&
+      radarr &&
+      missingTitles.length
+    ) {
       const defaults = radarr.defaults;
       if (!defaults) {
         await ctx.warn('radarr: defaults unavailable (skipping adds)', {
@@ -1046,7 +1195,13 @@ export class BasedonLatestWatchedCollectionJob {
       }
     }
 
-    if (!approvalRequiredFromObservatory && !ctx.dryRun && radarr && missingTitles.length) {
+    if (
+      !overseerrModeSelected &&
+      !approvalRequiredFromObservatory &&
+      !ctx.dryRun &&
+      radarr &&
+      missingTitles.length
+    ) {
       await ctx.info('radarr: done', {
         collectionName,
         ...radarrStats,
@@ -1072,6 +1227,9 @@ export class BasedonLatestWatchedCollectionJob {
         active: snapshotActive,
         pending: snapshotPending,
       },
+      overseerrModeSelected,
+      overseerr: overseerrStats,
+      overseerrLists,
       radarr: radarrStats,
       radarrLists,
       sampleMissing: missingTitles.slice(0, 10),
@@ -1107,9 +1265,27 @@ export class BasedonLatestWatchedCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
-    const approvalRequiredFromObservatory =
+    const approvalRequiredFromObservatorySaved =
       (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
         false) === true;
+    const overseerrModeSelected =
+      (pickBool(
+        settings,
+        'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+      ) ??
+        false) === true;
+    const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
+    const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
+    const overseerrConfiguredEnabled =
+      overseerrModeSelected &&
+      (pickBool(settings, 'overseerr.enabled') ?? Boolean(overseerrApiKey)) &&
+      Boolean(overseerrBaseUrlRaw) &&
+      Boolean(overseerrApiKey);
+    const overseerrBaseUrl = overseerrConfiguredEnabled
+      ? normalizeHttpUrl(overseerrBaseUrlRaw)
+      : '';
+    const approvalRequiredFromObservatory =
+      approvalRequiredFromObservatorySaved && !overseerrModeSelected;
 
     // --- Plex settings ---
     const plexBaseUrlRaw =
@@ -1310,6 +1486,9 @@ export class BasedonLatestWatchedCollectionJob {
       upcomingPercent,
       collectionLimit,
       webContextFraction,
+      approvalRequiredFromObservatorySaved,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
       approvalRequiredFromObservatory,
     });
 
@@ -1406,9 +1585,11 @@ export class BasedonLatestWatchedCollectionJob {
 
     const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
-    const fetchMissingSonarr =
+    const fetchMissingSonarrSaved =
       pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
       true;
+    const fetchMissingSonarr =
+      fetchMissingSonarrSaved && !overseerrModeSelected;
     const sonarrEnabled =
       fetchMissingSonarr &&
       (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
@@ -1465,6 +1646,14 @@ export class BasedonLatestWatchedCollectionJob {
           recommendationStrategy: col.strategy,
           recommendationDebug: col.debug,
           approvalRequiredFromObservatory,
+          overseerrModeSelected,
+          overseerr:
+            overseerrModeSelected && overseerrConfiguredEnabled
+              ? {
+                  baseUrl: overseerrBaseUrl,
+                  apiKey: overseerrApiKey,
+                }
+              : null,
           sonarr: sonarrEnabled
             ? {
                 baseUrl: sonarrBaseUrl,
@@ -1495,6 +1684,17 @@ export class BasedonLatestWatchedCollectionJob {
           excludedByRejectListTitles: [],
           excludedByRejectListCount: 0,
           snapshot: { saved: false, active: 0, pending: 0 },
+          overseerrModeSelected,
+          overseerr: {
+            selected: overseerrModeSelected,
+            enabled: overseerrConfiguredEnabled,
+            attempted: 0,
+            requested: 0,
+            exists: 0,
+            failed: 0,
+            skipped: 0,
+          },
+          overseerrLists: { attempted: [], requested: [], exists: [], failed: [], skipped: [] },
           sonarr: { enabled: false, attempted: 0, added: 0, exists: 0, failed: 0, skipped: 0 },
           sonarrLists: { attempted: [], added: [], exists: [], failed: [], skipped: [] },
           sampleMissing: col.titles.slice(0, 10),
@@ -1535,6 +1735,9 @@ export class BasedonLatestWatchedCollectionJob {
       seedYear,
       tvLibraryName,
       tvSectionKey,
+      approvalRequiredFromObservatory,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
       collections: perCollection,
       refresh,
     };
@@ -1557,6 +1760,11 @@ export class BasedonLatestWatchedCollectionJob {
     recommendationStrategy: string;
     recommendationDebug: JsonObject;
     approvalRequiredFromObservatory: boolean;
+    overseerrModeSelected: boolean;
+    overseerr: {
+      baseUrl: string;
+      apiKey: string;
+    } | null;
     sonarr: {
       baseUrl: string;
       apiKey: string;
@@ -1580,6 +1788,8 @@ export class BasedonLatestWatchedCollectionJob {
       recommendationStrategy,
       recommendationDebug,
       approvalRequiredFromObservatory,
+      overseerrModeSelected,
+      overseerr,
       sonarr,
     } = params;
 
@@ -1822,6 +2032,98 @@ export class BasedonLatestWatchedCollectionJob {
       snapshotSaved = true;
     }
 
+    const overseerrStats = {
+      selected: overseerrModeSelected,
+      enabled: Boolean(overseerr),
+      attempted: 0,
+      requested: 0,
+      exists: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    const overseerrLists = {
+      attempted: [] as string[],
+      requested: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
+
+    if (!ctx.dryRun && overseerrModeSelected && missingTitles.length) {
+      if (!overseerr) {
+        await ctx.warn('overseerr: skipped (selected but not configured)', {
+          collectionName,
+          missingTitles: missingTitles.length,
+        });
+        overseerrStats.skipped += missingTitles.length;
+        overseerrLists.skipped.push(...missingTitles);
+      } else {
+        await ctx.info('overseerr: start', {
+          collectionName,
+          missingTitles: missingTitles.length,
+          sampleMissing: missingTitles.slice(0, 10),
+        });
+
+        for (const title of missingTitles) {
+          const ids = missingTitleToIds.get(title.trim()) ?? null;
+          const tmdbId = ids?.tmdbId ?? null;
+          const tvdbId = ids?.tvdbId ?? null;
+          if (!ids || tmdbId === null || tvdbId === null) {
+            overseerrStats.skipped += 1;
+            overseerrLists.skipped.push(title.trim());
+            continue;
+          }
+
+          overseerrStats.attempted += 1;
+          overseerrLists.attempted.push(ids.title);
+
+          const result = await withJobRetry(
+            () =>
+              this.overseerr.requestTvAllSeasons({
+                baseUrl: overseerr.baseUrl,
+                apiKey: overseerr.apiKey,
+                tmdbId,
+                tvdbId,
+              }),
+            {
+              ctx,
+              label: 'overseerr: request tv',
+              meta: {
+                collectionName,
+                title: ids.title,
+                tmdbId: ids.tmdbId,
+                tvdbId: ids.tvdbId,
+              },
+            },
+          ).catch((err) => ({
+            status: 'failed' as const,
+            requestId: null,
+            error: (err as Error)?.message ?? String(err),
+          }));
+
+          if (result.status === 'requested') {
+            overseerrStats.requested += 1;
+            overseerrLists.requested.push(ids.title);
+          } else if (result.status === 'exists') {
+            overseerrStats.exists += 1;
+            overseerrLists.exists.push(ids.title);
+          } else {
+            overseerrStats.failed += 1;
+            overseerrLists.failed.push(ids.title);
+            await ctx.warn('overseerr: request failed (continuing)', {
+              collectionName,
+              title: ids.title,
+              tmdbId: ids.tmdbId,
+              tvdbId: ids.tvdbId,
+              error: result.error ?? 'unknown',
+            });
+          }
+        }
+
+        await ctx.info('overseerr: done', { collectionName, ...overseerrStats });
+      }
+    }
+
     // --- Sonarr add missing series (best-effort)
     const sonarrStats = {
       enabled: Boolean(sonarr),
@@ -1839,7 +2141,13 @@ export class BasedonLatestWatchedCollectionJob {
       skipped: [] as string[],
     };
 
-    if (!approvalRequiredFromObservatory && !ctx.dryRun && sonarr && missingTitles.length) {
+    if (
+      !overseerrModeSelected &&
+      !approvalRequiredFromObservatory &&
+      !ctx.dryRun &&
+      sonarr &&
+      missingTitles.length
+    ) {
       const defaults = sonarr.defaults;
       if (!defaults) {
         await ctx.warn('sonarr: defaults unavailable (skipping adds)', {
@@ -1933,6 +2241,9 @@ export class BasedonLatestWatchedCollectionJob {
         active: snapshotActive,
         pending: snapshotPending,
       },
+      overseerrModeSelected,
+      overseerr: overseerrStats,
+      overseerrLists,
       sonarr: sonarrStats,
       sonarrLists,
       sampleMissing: missingTitles.slice(0, 10),
@@ -2541,7 +2852,96 @@ function buildWatchedLatestCollectionReport(params: {
     issues: hasCollectionErrors ? collectionErrorIssues : undefined,
   });
 
-  // 3) Radarr/Sonarr add missing
+  // 3) Overseerr request missing
+  const overseerrFacts: Array<{ label: string; value: JsonValue }> = [];
+  let overseerrSelected = false;
+  let overseerrEnabled = false;
+  let overseerrFailed = 0;
+  for (const [idx, c] of collections.entries()) {
+    const name =
+      String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+      `Collection ${idx + 1}`;
+    const overseerr = isPlainObject(c.overseerr) ? c.overseerr : null;
+    const selected = overseerr
+      ? Boolean((overseerr as Record<string, unknown>).selected)
+      : false;
+    const enabled = overseerr
+      ? Boolean((overseerr as Record<string, unknown>).enabled)
+      : false;
+    if (selected) overseerrSelected = true;
+    if (enabled) overseerrEnabled = true;
+    if (enabled) {
+      overseerrFailed +=
+        asNum((overseerr as Record<string, unknown>)?.failed) ?? 0;
+    }
+
+    const lists = isPlainObject(c.overseerrLists) ? c.overseerrLists : null;
+    const attempted = sortTitles(uniqueStrings(asStringArray(lists?.attempted)));
+    const requested = sortTitles(uniqueStrings(asStringArray(lists?.requested)));
+    const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
+    const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
+    const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
+
+    const attemptedCount = overseerr
+      ? asNum((overseerr as Record<string, unknown>).attempted)
+      : null;
+    const requestedCount = overseerr
+      ? asNum((overseerr as Record<string, unknown>).requested)
+      : null;
+    const existsCount = overseerr
+      ? asNum((overseerr as Record<string, unknown>).exists)
+      : null;
+    const failedCount = overseerr
+      ? asNum((overseerr as Record<string, unknown>).failed)
+      : null;
+    const skippedCount = overseerr
+      ? asNum((overseerr as Record<string, unknown>).skipped)
+      : null;
+
+    overseerrFacts.push(
+      { label: `${name} — Selected`, value: selected },
+      { label: `${name} — Configured`, value: enabled },
+      {
+        label: `${name} — Attempted`,
+        value: { count: attemptedCount, unit, items: attempted },
+      },
+      {
+        label: `${name} — Requested`,
+        value: { count: requestedCount, unit, items: requested },
+      },
+      {
+        label: `${name} — Exists`,
+        value: { count: existsCount, unit, items: exists },
+      },
+      {
+        label: `${name} — Failed`,
+        value: { count: failedCount, unit, items: failed },
+      },
+      {
+        label: `${name} — Skipped`,
+        value: { count: skippedCount, unit, items: skipped },
+      },
+    );
+  }
+
+  tasks.push({
+    id: 'overseerr_request',
+    title: `Overseerr: request missing ${unit}`,
+    status:
+      ctx.dryRun || !overseerrSelected || !overseerrEnabled
+        ? 'skipped'
+        : overseerrFailed
+          ? 'failed'
+          : 'success',
+    facts: [
+      { label: 'Selected', value: overseerrSelected },
+      { label: 'Configured', value: overseerrEnabled },
+      { label: 'Dry run', value: ctx.dryRun },
+      ...overseerrFacts,
+    ],
+  });
+
+  // 4) Radarr/Sonarr add missing
   if (isTv) {
     const sonarrFacts: Array<{ label: string; value: JsonValue }> = [];
     let sonarrEnabled = false;
@@ -2642,7 +3042,7 @@ function buildWatchedLatestCollectionReport(params: {
     });
   }
 
-  // 4) Refresh Plex collection
+  // 5) Refresh Plex collection
   const desiredByCollection = new Map<string, string[]>();
   const refreshRaw = (raw as Record<string, unknown>).refresh;
   const refresh = isPlainObject(refreshRaw)

@@ -19,6 +19,9 @@ describe('IntegrationsController plex libraries', () => {
       listCollectionsForSectionKey: jest.fn(),
       deleteCollection: jest.fn(),
     };
+    const overseerr = {
+      testConnection: jest.fn(),
+    };
     const controller = new IntegrationsController(
       prisma as never,
       settingsService as never,
@@ -28,8 +31,9 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       {} as never,
       {} as never,
+      overseerr as never,
     );
-    return { controller, prisma, settingsService, plexServer };
+    return { controller, prisma, settingsService, plexServer, overseerr };
   };
 
   it('GET /plex/libraries returns selected state', async () => {
@@ -203,5 +207,30 @@ describe('IntegrationsController plex libraries', () => {
     });
     expect(res.selectedSectionKeys).toEqual(['1']);
     expect((res as Record<string, unknown>)['cleanup']).toBeTruthy();
+  });
+
+  it('POST /test/overseerr validates with saved credentials', async () => {
+    const { controller, settingsService, overseerr } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        overseerr: { baseUrl: 'http://localhost:5055' },
+      },
+      secrets: {
+        overseerr: { apiKey: 'secret' },
+      },
+    });
+    overseerr.testConnection.mockResolvedValue({ ok: true });
+
+    const res = await controller.testSaved(
+      { user: { id: 'u1' } } as never,
+      'overseerr',
+      {},
+    );
+
+    expect(overseerr.testConnection).toHaveBeenCalledWith({
+      baseUrl: 'http://localhost:5055',
+      apiKey: 'secret',
+    });
+    expect(res).toEqual({ ok: true, result: { ok: true } });
   });
 });

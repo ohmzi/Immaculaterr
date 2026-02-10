@@ -95,7 +95,7 @@ const JOB_CONFIG: Record<
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-yellow-300',
     description:
-      'Updates your Immaculate Taste collection after you finish watching, and can send missing titles to Radarr/Sonarr.',
+      'Updates your Immaculate Taste collection after you finish watching, and can send missing titles to Radarr/Sonarr/Overseerr.',
   },
   immaculateTasteRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
@@ -392,8 +392,12 @@ export function TaskManagerPage() {
     useState(true);
   const [immaculateFetchMissingSonarr, setImmaculateFetchMissingSonarr] =
     useState(true);
+  const [immaculateFetchMissingOverseerr, setImmaculateFetchMissingOverseerr] =
+    useState(false);
   const [watchedFetchMissingRadarr, setWatchedFetchMissingRadarr] = useState(true);
   const [watchedFetchMissingSonarr, setWatchedFetchMissingSonarr] = useState(true);
+  const [watchedFetchMissingOverseerr, setWatchedFetchMissingOverseerr] =
+    useState(false);
   const [immaculateApprovalRequired, setImmaculateApprovalRequired] =
     useState(false);
   const [watchedApprovalRequired, setWatchedApprovalRequired] = useState(false);
@@ -566,8 +570,65 @@ export function TaskManagerPage() {
     },
   });
 
+  const overseerrModeMutation = useMutation({
+    mutationFn: async (params: {
+      jobId: 'immaculateTastePoints' | 'watchedMovieRecommendations';
+      enabled: boolean;
+    }) => {
+      if (!params.enabled) {
+        return putSettings({
+          settings: {
+            jobs: {
+              [params.jobId]: {
+                fetchMissing: {
+                  overseerr: false,
+                },
+              },
+            },
+          },
+        });
+      }
+
+      if (params.jobId === 'immaculateTastePoints') {
+        return putSettings({
+          settings: {
+            jobs: {
+              immaculateTastePoints: {
+                fetchMissing: {
+                  overseerr: true,
+                  radarr: false,
+                  sonarr: false,
+                },
+                approvalRequiredFromObservatory: false,
+                searchImmediately: false,
+              },
+            },
+          },
+        });
+      }
+
+      return putSettings({
+        settings: {
+          jobs: {
+            watchedMovieRecommendations: {
+              fetchMissing: {
+                overseerr: true,
+                radarr: false,
+                sonarr: false,
+              },
+              approvalRequiredFromObservatory: false,
+            },
+          },
+        },
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
   useEffect(() => {
-    if (fetchMissingMutation.isPending) return;
+    if (fetchMissingMutation.isPending || overseerrModeMutation.isPending) return;
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
 
@@ -577,6 +638,10 @@ export function TaskManagerPage() {
     setImmaculateFetchMissingSonarr(
       readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ?? true,
     );
+    setImmaculateFetchMissingOverseerr(
+      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.overseerr') ??
+        false,
+    );
     setWatchedFetchMissingRadarr(
       readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
         true,
@@ -584,6 +649,10 @@ export function TaskManagerPage() {
     setWatchedFetchMissingSonarr(
       readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
         true,
+    );
+    setWatchedFetchMissingOverseerr(
+      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.overseerr') ??
+        false,
     );
 
     setImmaculateApprovalRequired(
@@ -599,7 +668,11 @@ export function TaskManagerPage() {
         'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
       ) ?? false,
     );
-  }, [settingsQuery.data?.settings, fetchMissingMutation.isPending]);
+  }, [
+    settingsQuery.data?.settings,
+    fetchMissingMutation.isPending,
+    overseerrModeMutation.isPending,
+  ]);
 
   const immaculateApprovalRequiredMutation = useMutation({
     mutationFn: async (enabled: boolean) =>
@@ -628,6 +701,15 @@ export function TaskManagerPage() {
       queryClient.setQueryData(['publicSettings'], data);
     },
   });
+
+  const immaculateOverseerrMode = immaculateFetchMissingOverseerr;
+  const watchedOverseerrMode = watchedFetchMissingOverseerr;
+  const immaculateOverseerrModePending =
+    overseerrModeMutation.isPending &&
+    overseerrModeMutation.variables?.jobId === 'immaculateTastePoints';
+  const watchedOverseerrModePending =
+    overseerrModeMutation.isPending &&
+    overseerrModeMutation.variables?.jobId === 'watchedMovieRecommendations';
 
   useEffect(() => {
     if (!flashJob) return;
@@ -1748,7 +1830,9 @@ export function TaskManagerPage() {
                                             }}
                                             disabled={
                                               settingsQuery.isLoading ||
-                                              fetchMissingMutation.isPending
+                                              fetchMissingMutation.isPending ||
+                                              immaculateOverseerrMode ||
+                                              immaculateOverseerrModePending
                                             }
                                             className={cn(
                                               'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -1801,7 +1885,9 @@ export function TaskManagerPage() {
                                             }}
                                             disabled={
                                               settingsQuery.isLoading ||
-                                              fetchMissingMutation.isPending
+                                              fetchMissingMutation.isPending ||
+                                              immaculateOverseerrMode ||
+                                              immaculateOverseerrModePending
                                             }
                                             className={cn(
                                               'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -1860,7 +1946,9 @@ export function TaskManagerPage() {
                                           onPointerDown={(e) => e.stopPropagation()}
                                           disabled={
                                             settingsQuery.isLoading ||
-                                            immaculateStartSearchMutation.isPending
+                                            immaculateStartSearchMutation.isPending ||
+                                            immaculateOverseerrMode ||
+                                            immaculateOverseerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -1897,6 +1985,97 @@ export function TaskManagerPage() {
                                       <div className="flex items-start justify-between gap-4">
                                         <div className="min-w-0">
                                           <div className="text-sm font-semibold text-white">
+                                            Route missing items via Overseerr
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                            When enabled, new missing items are requested in Overseerr. Radarr/Sonarr direct send, immediate search, and Observatory approval are turned off for this task.
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={immaculateFetchMissingOverseerr}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = {
+                                              overseerr: immaculateFetchMissingOverseerr,
+                                              radarr: immaculateFetchMissingRadarr,
+                                              sonarr: immaculateFetchMissingSonarr,
+                                              approval: immaculateApprovalRequired,
+                                              search: immaculateStartSearchImmediately,
+                                            };
+                                            const next = !prev.overseerr;
+
+                                            if (next) {
+                                              setImmaculateFetchMissingOverseerr(true);
+                                              setImmaculateFetchMissingRadarr(false);
+                                              setImmaculateFetchMissingSonarr(false);
+                                              setImmaculateApprovalRequired(false);
+                                              setImmaculateStartSearchImmediately(false);
+                                            } else {
+                                              setImmaculateFetchMissingOverseerr(false);
+                                            }
+
+                                            overseerrModeMutation.mutate(
+                                              {
+                                                jobId: 'immaculateTastePoints',
+                                                enabled: next,
+                                              },
+                                              {
+                                                onError: () => {
+                                                  setImmaculateFetchMissingOverseerr(
+                                                    prev.overseerr,
+                                                  );
+                                                  setImmaculateFetchMissingRadarr(
+                                                    prev.radarr,
+                                                  );
+                                                  setImmaculateFetchMissingSonarr(
+                                                    prev.sonarr,
+                                                  );
+                                                  setImmaculateApprovalRequired(
+                                                    prev.approval,
+                                                  );
+                                                  setImmaculateStartSearchImmediately(
+                                                    prev.search,
+                                                  );
+                                                },
+                                              },
+                                            );
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            immaculateOverseerrModePending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            immaculateFetchMissingOverseerr
+                                              ? 'bg-cyan-400'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label="Toggle Overseerr mode for Immaculate Taste Collection"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              immaculateFetchMissingOverseerr
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {immaculateOverseerrModePending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
                                             Approval required from Observatory
                                           </div>
                                           <div className="mt-1 text-xs text-white/55 leading-relaxed">
@@ -1921,7 +2100,9 @@ export function TaskManagerPage() {
                                           onPointerDown={(e) => e.stopPropagation()}
                                           disabled={
                                             settingsQuery.isLoading ||
-                                            immaculateApprovalRequiredMutation.isPending
+                                            immaculateApprovalRequiredMutation.isPending ||
+                                            immaculateOverseerrMode ||
+                                            immaculateOverseerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -1984,7 +2165,9 @@ export function TaskManagerPage() {
                                           }}
                                           disabled={
                                             settingsQuery.isLoading ||
-                                            fetchMissingMutation.isPending
+                                            fetchMissingMutation.isPending ||
+                                            watchedOverseerrMode ||
+                                            watchedOverseerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -2038,7 +2221,9 @@ export function TaskManagerPage() {
                                           }}
                                           disabled={
                                             settingsQuery.isLoading ||
-                                            fetchMissingMutation.isPending
+                                            fetchMissingMutation.isPending ||
+                                            watchedOverseerrMode ||
+                                            watchedOverseerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -2069,6 +2254,92 @@ export function TaskManagerPage() {
                                     <div className="flex items-start justify-between gap-4">
                                       <div className="min-w-0">
                                         <div className="text-sm font-semibold text-white">
+                                          Route missing items via Overseerr
+                                        </div>
+                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                          When enabled, new missing items are requested in Overseerr. Radarr/Sonarr direct send and Observatory approval are turned off for this task.
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={watchedFetchMissingOverseerr}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const prev = {
+                                            overseerr: watchedFetchMissingOverseerr,
+                                            radarr: watchedFetchMissingRadarr,
+                                            sonarr: watchedFetchMissingSonarr,
+                                            approval: watchedApprovalRequired,
+                                          };
+                                          const next = !prev.overseerr;
+
+                                          if (next) {
+                                            setWatchedFetchMissingOverseerr(true);
+                                            setWatchedFetchMissingRadarr(false);
+                                            setWatchedFetchMissingSonarr(false);
+                                            setWatchedApprovalRequired(false);
+                                          } else {
+                                            setWatchedFetchMissingOverseerr(false);
+                                          }
+
+                                          overseerrModeMutation.mutate(
+                                            {
+                                              jobId: 'watchedMovieRecommendations',
+                                              enabled: next,
+                                            },
+                                            {
+                                              onError: () => {
+                                                setWatchedFetchMissingOverseerr(
+                                                  prev.overseerr,
+                                                );
+                                                setWatchedFetchMissingRadarr(
+                                                  prev.radarr,
+                                                );
+                                                setWatchedFetchMissingSonarr(
+                                                  prev.sonarr,
+                                                );
+                                                setWatchedApprovalRequired(
+                                                  prev.approval,
+                                                );
+                                              },
+                                            },
+                                          );
+                                        }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          watchedOverseerrModePending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          watchedFetchMissingOverseerr
+                                            ? 'bg-cyan-400'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle Overseerr mode for Based on Latest Watched Collection"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            watchedFetchMissingOverseerr
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {watchedOverseerrModePending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
                                           Approval required from Observatory
                                         </div>
                                         <div className="mt-1 text-xs text-white/55 leading-relaxed">
@@ -2092,7 +2363,9 @@ export function TaskManagerPage() {
                                         onPointerDown={(e) => e.stopPropagation()}
                                         disabled={
                                           settingsQuery.isLoading ||
-                                          watchedApprovalRequiredMutation.isPending
+                                          watchedApprovalRequiredMutation.isPending ||
+                                          watchedOverseerrMode ||
+                                          watchedOverseerrModePending
                                         }
                                         className={cn(
                                           'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',

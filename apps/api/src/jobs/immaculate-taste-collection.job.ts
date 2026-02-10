@@ -7,6 +7,7 @@ import { RecommendationsService } from '../recommendations/recommendations.servi
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
+import { OverseerrService } from '../overseerr/overseerr.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
@@ -144,6 +145,7 @@ export class ImmaculateTasteCollectionJob {
     private readonly tmdb: TmdbService,
     private readonly radarr: RadarrService,
     private readonly sonarr: SonarrService,
+    private readonly overseerr: OverseerrService,
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
     private readonly immaculateTasteRefresher: ImmaculateTasteRefresherJob,
@@ -399,11 +401,28 @@ export class ImmaculateTasteCollectionJob {
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
     const includeRefresherAfterUpdate =
       pickBool(settings, 'immaculateTaste.includeRefresherAfterUpdate') ?? true;
-    const startSearchImmediately =
+    const startSearchImmediatelySaved =
       pickBool(settings, 'jobs.immaculateTastePoints.searchImmediately') ?? false;
-    const approvalRequiredFromObservatory =
+    const approvalRequiredFromObservatorySaved =
       pickBool(settings, 'jobs.immaculateTastePoints.approvalRequiredFromObservatory') ??
       false;
+    const overseerrModeSelected =
+      (pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.overseerr') ??
+        false) === true;
+    const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
+    const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
+    const overseerrConfiguredEnabled =
+      overseerrModeSelected &&
+      (pickBool(settings, 'overseerr.enabled') ?? Boolean(overseerrApiKey)) &&
+      Boolean(overseerrBaseUrlRaw) &&
+      Boolean(overseerrApiKey);
+    const overseerrBaseUrl = overseerrConfiguredEnabled
+      ? normalizeHttpUrl(overseerrBaseUrlRaw)
+      : '';
+    const startSearchImmediately =
+      startSearchImmediatelySaved && !overseerrModeSelected;
+    const approvalRequiredFromObservatory =
+      approvalRequiredFromObservatorySaved && !overseerrModeSelected;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -418,6 +437,10 @@ export class ImmaculateTasteCollectionJob {
       upcomingPercent,
       maxPoints,
       includeRefresherAfterUpdate,
+      startSearchImmediatelySaved,
+      approvalRequiredFromObservatorySaved,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
       startSearchImmediately,
       approvalRequiredFromObservatory,
       webContextFraction,
@@ -670,12 +693,95 @@ export class ImmaculateTasteCollectionJob {
       if (match && rejectIds.has(String(match.tmdbId))) missingTitles.splice(i, 1);
     }
 
+    const overseerrStats = {
+      selected: overseerrModeSelected,
+      enabled: overseerrConfiguredEnabled,
+      attempted: 0,
+      requested: 0,
+      exists: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    const overseerrLists = {
+      attempted: [] as string[],
+      requested: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
+
+    if (!ctx.dryRun && overseerrModeSelected && missingTitles.length) {
+      if (!overseerrConfiguredEnabled) {
+        await ctx.warn('overseerr: skipped (selected but not configured)', {
+          missingTitles: missingTitles.length,
+        });
+        overseerrStats.skipped += missingTitles.length;
+        overseerrLists.skipped.push(
+          ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
+        );
+      } else {
+        await ctx.info('overseerr: start', {
+          missingTitles: missingTitles.length,
+          sampleMissing: missingTitles.slice(0, 10),
+        });
+
+        for (const title of missingTitles) {
+          const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
+          if (!tmdbMatch) {
+            overseerrStats.skipped += 1;
+            overseerrLists.skipped.push(title.trim());
+            continue;
+          }
+
+          overseerrStats.attempted += 1;
+          overseerrLists.attempted.push(tmdbMatch.title);
+
+          const result = await withJobRetry(
+            () =>
+              this.overseerr.requestMovie({
+                baseUrl: overseerrBaseUrl,
+                apiKey: overseerrApiKey,
+                tmdbId: tmdbMatch.tmdbId,
+              }),
+            {
+              ctx,
+              label: 'overseerr: request movie',
+              meta: { title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
+            },
+          ).catch((err) => ({
+            status: 'failed' as const,
+            requestId: null,
+            error: (err as Error)?.message ?? String(err),
+          }));
+
+          if (result.status === 'requested') {
+            overseerrStats.requested += 1;
+            overseerrLists.requested.push(tmdbMatch.title);
+          } else if (result.status === 'exists') {
+            overseerrStats.exists += 1;
+            overseerrLists.exists.push(tmdbMatch.title);
+          } else {
+            overseerrStats.failed += 1;
+            overseerrLists.failed.push(tmdbMatch.title);
+            await ctx.warn('overseerr: request failed (continuing)', {
+              title: tmdbMatch.title,
+              tmdbId: tmdbMatch.tmdbId,
+              error: result.error ?? 'unknown',
+            });
+          }
+        }
+
+        await ctx.info('overseerr: done', overseerrStats);
+      }
+    }
+
     // --- Optional Radarr: add missing titles (best-effort) ---
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(secrets, 'radarr.apiKey');
-    const fetchMissingRadarr =
+    const fetchMissingRadarrSaved =
       pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ??
       true;
+    const fetchMissingRadarr = fetchMissingRadarrSaved && !overseerrModeSelected;
     // Back-compat: if radarr.enabled isn't set, treat "secret present" as enabled.
     const radarrEnabled =
       fetchMissingRadarr &&
@@ -713,139 +819,144 @@ export class ImmaculateTasteCollectionJob {
           ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
         );
       } else {
-      await ctx.info('radarr: start', {
-        missingTitles: missingTitles.length,
-        sampleMissing: missingTitles.slice(0, 10),
-      });
+        await ctx.info('radarr: start', {
+          missingTitles: missingTitles.length,
+          sampleMissing: missingTitles.slice(0, 10),
+        });
 
-      const defaults = await withJobRetry(
-        () =>
-          this.pickRadarrDefaults({
+        const defaults = await withJobRetry(
+          () =>
+            this.pickRadarrDefaults({
+              ctx,
+              baseUrl: radarrBaseUrl,
+              apiKey: radarrApiKey,
+              preferredRootFolderPath:
+                pickString(settings, 'radarr.defaultRootFolderPath') ||
+                pickString(settings, 'radarr.rootFolderPath'),
+              preferredQualityProfileId:
+                Math.max(
+                  1,
+                  Math.trunc(
+                    pickNumber(settings, 'radarr.defaultQualityProfileId') ??
+                      pickNumber(settings, 'radarr.qualityProfileId') ??
+                      1,
+                  ),
+                ) || 1,
+              preferredTagId: (() => {
+                const v =
+                  pickNumber(settings, 'radarr.defaultTagId') ??
+                  pickNumber(settings, 'radarr.tagId');
+                return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+              })(),
+            }),
+          {
             ctx,
-            baseUrl: radarrBaseUrl,
-            apiKey: radarrApiKey,
-            preferredRootFolderPath:
-              pickString(settings, 'radarr.defaultRootFolderPath') ||
-              pickString(settings, 'radarr.rootFolderPath'),
-            preferredQualityProfileId:
-              Math.max(
-                1,
-                Math.trunc(
-                  pickNumber(settings, 'radarr.defaultQualityProfileId') ??
-                    pickNumber(settings, 'radarr.qualityProfileId') ??
-                    1,
-                ),
-              ) || 1,
-            preferredTagId: (() => {
-              const v =
-                pickNumber(settings, 'radarr.defaultTagId') ??
-                pickNumber(settings, 'radarr.tagId');
-              return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
-            })(),
-          }),
-        { ctx, label: 'radarr: resolve defaults', meta: { baseUrl: radarrBaseUrl } },
-      ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
+            label: 'radarr: resolve defaults',
+            meta: { baseUrl: radarrBaseUrl },
+          },
+        ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
 
-      if ('error' in defaults) {
-        await ctx.warn(
-          'radarr: defaults unavailable (skipping adds)',
-          defaults,
-        );
-      } else {
-        let radarrIndexByTmdb: Map<number, RadarrMovie> | null = null;
-        const ensureRadarrIndex = async () => {
-          if (radarrIndexByTmdb) return radarrIndexByTmdb;
-          const movies = await this.radarr.listMovies({
-            baseUrl: radarrBaseUrl,
-            apiKey: radarrApiKey,
-          });
-          const map = new Map<number, RadarrMovie>();
-          for (const m of movies) {
-            const tmdbId = typeof m.tmdbId === 'number' ? m.tmdbId : Number(m.tmdbId);
-            if (Number.isFinite(tmdbId) && tmdbId > 0) {
-              map.set(Math.trunc(tmdbId), m);
-            }
-          }
-          radarrIndexByTmdb = map;
-          return map;
-        };
-
-        for (const title of missingTitles) {
-          const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
-          if (!tmdbMatch) {
-            radarrStats.skipped += 1;
-            radarrLists.skipped.push(title.trim());
-            continue;
-          }
-          radarrStats.attempted += 1;
-          radarrLists.attempted.push(tmdbMatch.title);
-
-          try {
-            const result = await withJobRetry(
-              () =>
-                this.radarr.addMovie({
-                  baseUrl: radarrBaseUrl,
-                  apiKey: radarrApiKey,
-                  title: tmdbMatch.title,
-                  tmdbId: tmdbMatch.tmdbId,
-                  year: tmdbMatch.year ?? null,
-                  qualityProfileId: defaults.qualityProfileId,
-                  rootFolderPath: defaults.rootFolderPath,
-                  tags: defaults.tagIds,
-                  monitored: true,
-                  minimumAvailability: 'announced',
-                  searchForMovie: startSearchImmediately,
-                }),
-              {
-                ctx,
-                label: 'radarr: add movie',
-                meta: { title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
-              },
-            );
-            if (result.status === 'added') {
-              radarrStats.added += 1;
-              radarrLists.added.push(tmdbMatch.title);
-              radarrSentTmdbIds.push(tmdbMatch.tmdbId);
-            } else {
-              radarrStats.exists += 1;
-              radarrLists.exists.push(tmdbMatch.title);
-              radarrSentTmdbIds.push(tmdbMatch.tmdbId);
-
-              // Best-effort: ensure existing Radarr movies are monitored (matches the UI expectation).
-              const idx = await withJobRetryOrNull(() => ensureRadarrIndex(), {
-                ctx,
-                label: 'radarr: index movies',
-              });
-              const existing = idx ? idx.get(tmdbMatch.tmdbId) ?? null : null;
-              if (existing) {
-                await withJobRetry(
-                  () =>
-                    this.radarr.setMovieMonitored({
-                      baseUrl: radarrBaseUrl,
-                      apiKey: radarrApiKey,
-                      movie: existing,
-                      monitored: true,
-                    }),
-                  {
-                    ctx,
-                    label: 'radarr: set movie monitored',
-                    meta: { tmdbId: tmdbMatch.tmdbId },
-                  },
-                ).catch(() => undefined);
+        if ('error' in defaults) {
+          await ctx.warn(
+            'radarr: defaults unavailable (skipping adds)',
+            defaults,
+          );
+        } else {
+          let radarrIndexByTmdb: Map<number, RadarrMovie> | null = null;
+          const ensureRadarrIndex = async () => {
+            if (radarrIndexByTmdb) return radarrIndexByTmdb;
+            const movies = await this.radarr.listMovies({
+              baseUrl: radarrBaseUrl,
+              apiKey: radarrApiKey,
+            });
+            const map = new Map<number, RadarrMovie>();
+            for (const m of movies) {
+              const tmdbId =
+                typeof m.tmdbId === 'number' ? m.tmdbId : Number(m.tmdbId);
+              if (Number.isFinite(tmdbId) && tmdbId > 0) {
+                map.set(Math.trunc(tmdbId), m);
               }
             }
-          } catch (err) {
-            radarrStats.failed += 1;
-            radarrLists.failed.push(tmdbMatch.title);
-            await ctx.warn('radarr: add failed (continuing)', {
-              title,
-              error: (err as Error)?.message ?? String(err),
-            });
+            radarrIndexByTmdb = map;
+            return map;
+          };
+
+          for (const title of missingTitles) {
+            const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
+            if (!tmdbMatch) {
+              radarrStats.skipped += 1;
+              radarrLists.skipped.push(title.trim());
+              continue;
+            }
+            radarrStats.attempted += 1;
+            radarrLists.attempted.push(tmdbMatch.title);
+
+            try {
+              const result = await withJobRetry(
+                () =>
+                  this.radarr.addMovie({
+                    baseUrl: radarrBaseUrl,
+                    apiKey: radarrApiKey,
+                    title: tmdbMatch.title,
+                    tmdbId: tmdbMatch.tmdbId,
+                    year: tmdbMatch.year ?? null,
+                    qualityProfileId: defaults.qualityProfileId,
+                    rootFolderPath: defaults.rootFolderPath,
+                    tags: defaults.tagIds,
+                    monitored: true,
+                    minimumAvailability: 'announced',
+                    searchForMovie: startSearchImmediately,
+                  }),
+                {
+                  ctx,
+                  label: 'radarr: add movie',
+                  meta: { title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
+                },
+              );
+              if (result.status === 'added') {
+                radarrStats.added += 1;
+                radarrLists.added.push(tmdbMatch.title);
+                radarrSentTmdbIds.push(tmdbMatch.tmdbId);
+              } else {
+                radarrStats.exists += 1;
+                radarrLists.exists.push(tmdbMatch.title);
+                radarrSentTmdbIds.push(tmdbMatch.tmdbId);
+
+                // Best-effort: ensure existing Radarr movies are monitored (matches the UI expectation).
+                const idx = await withJobRetryOrNull(() => ensureRadarrIndex(), {
+                  ctx,
+                  label: 'radarr: index movies',
+                });
+                const existing = idx ? idx.get(tmdbMatch.tmdbId) ?? null : null;
+                if (existing) {
+                  await withJobRetry(
+                    () =>
+                      this.radarr.setMovieMonitored({
+                        baseUrl: radarrBaseUrl,
+                        apiKey: radarrApiKey,
+                        movie: existing,
+                        monitored: true,
+                      }),
+                    {
+                      ctx,
+                      label: 'radarr: set movie monitored',
+                      meta: { tmdbId: tmdbMatch.tmdbId },
+                    },
+                  ).catch(() => undefined);
+                }
+              }
+            } catch (err) {
+              radarrStats.failed += 1;
+              radarrLists.failed.push(tmdbMatch.title);
+              await ctx.warn('radarr: add failed (continuing)', {
+                title,
+                error: (err as Error)?.message ?? String(err),
+              });
+            }
           }
         }
-      }
 
-      await ctx.info('radarr: done', radarrStats);
+        await ctx.info('radarr: done', radarrStats);
       }
     }
 
@@ -998,6 +1109,11 @@ export class ImmaculateTasteCollectionJob {
       missingTitles,
       excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
       excludedByRejectListCount: excludedByRejectList.length,
+      approvalRequiredFromObservatory,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
+      overseerr: overseerrStats,
+      overseerrLists,
       radarr: radarrStats,
       radarrLists,
       startSearchImmediately,
@@ -1217,11 +1333,28 @@ export class ImmaculateTasteCollectionJob {
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
     const includeRefresherAfterUpdate =
       pickBool(settings, 'immaculateTaste.includeRefresherAfterUpdate') ?? true;
-    const startSearchImmediately =
+    const startSearchImmediatelySaved =
       pickBool(settings, 'jobs.immaculateTastePoints.searchImmediately') ?? false;
-    const approvalRequiredFromObservatory =
+    const approvalRequiredFromObservatorySaved =
       pickBool(settings, 'jobs.immaculateTastePoints.approvalRequiredFromObservatory') ??
       false;
+    const overseerrModeSelected =
+      (pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.overseerr') ??
+        false) === true;
+    const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
+    const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
+    const overseerrConfiguredEnabled =
+      overseerrModeSelected &&
+      (pickBool(settings, 'overseerr.enabled') ?? Boolean(overseerrApiKey)) &&
+      Boolean(overseerrBaseUrlRaw) &&
+      Boolean(overseerrApiKey);
+    const overseerrBaseUrl = overseerrConfiguredEnabled
+      ? normalizeHttpUrl(overseerrBaseUrlRaw)
+      : '';
+    const startSearchImmediately =
+      startSearchImmediatelySaved && !overseerrModeSelected;
+    const approvalRequiredFromObservatory =
+      approvalRequiredFromObservatorySaved && !overseerrModeSelected;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -1236,6 +1369,10 @@ export class ImmaculateTasteCollectionJob {
       upcomingPercent,
       maxPoints,
       includeRefresherAfterUpdate,
+      startSearchImmediatelySaved,
+      approvalRequiredFromObservatorySaved,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
       startSearchImmediately,
       approvalRequiredFromObservatory,
       webContextFraction,
@@ -1370,7 +1507,7 @@ export class ImmaculateTasteCollectionJob {
 
     const missingTitleToIds = new Map<
       string,
-      { tvdbId: number | null; title: string }
+      { tmdbId: number | null; tvdbId: number | null; title: string }
     >();
 
     const pushSuggested = (
@@ -1404,6 +1541,7 @@ export class ImmaculateTasteCollectionJob {
       if (!match) continue;
       pushSuggested(match, false);
       missingTitleToIds.set(title.trim(), {
+        tmdbId: match.tmdbId,
         tvdbId: match.tvdbId,
         title: match.title,
       });
@@ -1442,12 +1580,99 @@ export class ImmaculateTasteCollectionJob {
       if (ids?.tvdbId && rejectIds.has(String(ids.tvdbId))) missingTitles.splice(i, 1);
     }
 
+    const overseerrStats = {
+      selected: overseerrModeSelected,
+      enabled: overseerrConfiguredEnabled,
+      attempted: 0,
+      requested: 0,
+      exists: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    const overseerrLists = {
+      attempted: [] as string[],
+      requested: [] as string[],
+      exists: [] as string[],
+      failed: [] as string[],
+      skipped: [] as string[],
+    };
+
+    if (!ctx.dryRun && overseerrModeSelected && missingTitles.length) {
+      if (!overseerrConfiguredEnabled) {
+        await ctx.warn('overseerr: skipped (selected but not configured)', {
+          missingTitles: missingTitles.length,
+        });
+        overseerrStats.skipped += missingTitles.length;
+        overseerrLists.skipped.push(
+          ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
+        );
+      } else {
+        await ctx.info('overseerr: start', {
+          missingTitles: missingTitles.length,
+          sampleMissing: missingTitles.slice(0, 10),
+        });
+
+        for (const title of missingTitles) {
+          const ids = missingTitleToIds.get(title.trim()) ?? null;
+          const tmdbId = ids?.tmdbId ?? null;
+          const tvdbId = ids?.tvdbId ?? null;
+          if (!ids || tmdbId === null || tvdbId === null) {
+            overseerrStats.skipped += 1;
+            overseerrLists.skipped.push(title.trim());
+            continue;
+          }
+
+          overseerrStats.attempted += 1;
+          overseerrLists.attempted.push(ids.title);
+
+          const result = await withJobRetry(
+            () =>
+              this.overseerr.requestTvAllSeasons({
+                baseUrl: overseerrBaseUrl,
+                apiKey: overseerrApiKey,
+                tmdbId,
+                tvdbId,
+              }),
+            {
+              ctx,
+              label: 'overseerr: request tv',
+              meta: { title: ids.title, tmdbId: ids.tmdbId, tvdbId: ids.tvdbId },
+            },
+          ).catch((err) => ({
+            status: 'failed' as const,
+            requestId: null,
+            error: (err as Error)?.message ?? String(err),
+          }));
+
+          if (result.status === 'requested') {
+            overseerrStats.requested += 1;
+            overseerrLists.requested.push(ids.title);
+          } else if (result.status === 'exists') {
+            overseerrStats.exists += 1;
+            overseerrLists.exists.push(ids.title);
+          } else {
+            overseerrStats.failed += 1;
+            overseerrLists.failed.push(ids.title);
+            await ctx.warn('overseerr: request failed (continuing)', {
+              title: ids.title,
+              tmdbId: ids.tmdbId,
+              tvdbId: ids.tvdbId,
+              error: result.error ?? 'unknown',
+            });
+          }
+        }
+
+        await ctx.info('overseerr: done', overseerrStats);
+      }
+    }
+
     // --- Sonarr add missing series (best-effort)
     const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
-    const fetchMissingSonarr =
+    const fetchMissingSonarrSaved =
       pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ??
       true;
+    const fetchMissingSonarr = fetchMissingSonarrSaved && !overseerrModeSelected;
     const sonarrEnabled =
       fetchMissingSonarr &&
       (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
@@ -1484,130 +1709,135 @@ export class ImmaculateTasteCollectionJob {
           ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
         );
       } else {
-      const defaults = await withJobRetry(
-        () =>
-          this.pickSonarrDefaults({
+        const defaults = await withJobRetry(
+          () =>
+            this.pickSonarrDefaults({
+              ctx,
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
+              preferredRootFolderPath:
+                pickString(settings, 'sonarr.defaultRootFolderPath') ||
+                pickString(settings, 'sonarr.rootFolderPath'),
+              preferredQualityProfileId:
+                Math.max(
+                  1,
+                  Math.trunc(
+                    pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
+                      pickNumber(settings, 'sonarr.qualityProfileId') ??
+                      1,
+                  ),
+                ) || 1,
+              preferredTagId: (() => {
+                const v =
+                  pickNumber(settings, 'sonarr.defaultTagId') ??
+                  pickNumber(settings, 'sonarr.tagId');
+                return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+              })(),
+            }),
+          {
             ctx,
-            baseUrl: sonarrBaseUrl,
-            apiKey: sonarrApiKey,
-            preferredRootFolderPath:
-              pickString(settings, 'sonarr.defaultRootFolderPath') ||
-              pickString(settings, 'sonarr.rootFolderPath'),
-            preferredQualityProfileId:
-              Math.max(
-                1,
-                Math.trunc(
-                  pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
-                    pickNumber(settings, 'sonarr.qualityProfileId') ??
-                    1,
-                ),
-              ) || 1,
-            preferredTagId: (() => {
-              const v =
-                pickNumber(settings, 'sonarr.defaultTagId') ??
-                pickNumber(settings, 'sonarr.tagId');
-              return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
-            })(),
-          }),
-        { ctx, label: 'sonarr: resolve defaults', meta: { baseUrl: sonarrBaseUrl } },
-      ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
+            label: 'sonarr: resolve defaults',
+            meta: { baseUrl: sonarrBaseUrl },
+          },
+        ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
 
-      if ('error' in defaults) {
-        await ctx.warn('sonarr: defaults unavailable (skipping adds)', defaults);
-      } else {
-        // Best-effort: keep existing series monitored when they already exist in Sonarr.
-        let sonarrIndexByTvdb: Map<number, SonarrSeries> | null = null;
-        const ensureSonarrIndex = async () => {
-          if (sonarrIndexByTvdb) return sonarrIndexByTvdb;
-          const all = await this.sonarr.listSeries({
-            baseUrl: sonarrBaseUrl,
-            apiKey: sonarrApiKey,
-          });
-          const map = new Map<number, SonarrSeries>();
-          for (const s of all) {
-            const tvdbId = typeof s.tvdbId === 'number' ? s.tvdbId : Number(s.tvdbId);
-            if (Number.isFinite(tvdbId) && tvdbId > 0) {
-              map.set(Math.trunc(tvdbId), s);
-            }
-          }
-          sonarrIndexByTvdb = map;
-          return map;
-        };
-
-        for (const title of missingTitles) {
-          const ids = missingTitleToIds.get(title.trim()) ?? null;
-          if (!ids || !ids.tvdbId) {
-            sonarrStats.skipped += 1;
-            sonarrLists.skipped.push(title.trim());
-            continue;
-          }
-          const tvdbId = ids.tvdbId;
-          sonarrStats.attempted += 1;
-          sonarrLists.attempted.push(ids.title);
-
-          try {
-            const result = await withJobRetry(
-              () =>
-                this.sonarr.addSeries({
-                  baseUrl: sonarrBaseUrl,
-                  apiKey: sonarrApiKey,
-                  title: ids.title,
-                  tvdbId,
-                  qualityProfileId: defaults.qualityProfileId,
-                  rootFolderPath: defaults.rootFolderPath,
-                  tags: defaults.tagIds,
-                  monitored: true,
-                  searchForMissingEpisodes: startSearchImmediately,
-                  searchForCutoffUnmetEpisodes: startSearchImmediately,
-                }),
-              {
-                ctx,
-                label: 'sonarr: add series',
-                meta: { title: ids.title, tvdbId },
-              },
-            );
-            if (result.status === 'added') {
-              sonarrStats.added += 1;
-              sonarrLists.added.push(ids.title);
-              sonarrSentTvdbIds.push(tvdbId);
-            } else {
-              sonarrStats.exists += 1;
-              sonarrLists.exists.push(ids.title);
-              sonarrSentTvdbIds.push(tvdbId);
-
-              const idx = await withJobRetryOrNull(() => ensureSonarrIndex(), {
-                ctx,
-                label: 'sonarr: index series',
-              });
-              const existing = idx ? idx.get(ids.tvdbId) ?? null : null;
-              if (existing && existing.monitored === false) {
-                await withJobRetry(
-                  () =>
-                    this.sonarr.updateSeries({
-                      baseUrl: sonarrBaseUrl,
-                      apiKey: sonarrApiKey,
-                      series: { ...existing, monitored: true },
-                    }),
-                  {
-                    ctx,
-                    label: 'sonarr: set series monitored',
-                    meta: { tvdbId: ids.tvdbId },
-                  },
-                ).catch(() => undefined);
+        if ('error' in defaults) {
+          await ctx.warn('sonarr: defaults unavailable (skipping adds)', defaults);
+        } else {
+          // Best-effort: keep existing series monitored when they already exist in Sonarr.
+          let sonarrIndexByTvdb: Map<number, SonarrSeries> | null = null;
+          const ensureSonarrIndex = async () => {
+            if (sonarrIndexByTvdb) return sonarrIndexByTvdb;
+            const all = await this.sonarr.listSeries({
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
+            });
+            const map = new Map<number, SonarrSeries>();
+            for (const s of all) {
+              const tvdbId =
+                typeof s.tvdbId === 'number' ? s.tvdbId : Number(s.tvdbId);
+              if (Number.isFinite(tvdbId) && tvdbId > 0) {
+                map.set(Math.trunc(tvdbId), s);
               }
             }
-          } catch (err) {
-            sonarrStats.failed += 1;
-            sonarrLists.failed.push(ids.title);
-            await ctx.warn('sonarr: add failed (continuing)', {
-              title,
-              error: (err as Error)?.message ?? String(err),
-            });
+            sonarrIndexByTvdb = map;
+            return map;
+          };
+
+          for (const title of missingTitles) {
+            const ids = missingTitleToIds.get(title.trim()) ?? null;
+            if (!ids || !ids.tvdbId) {
+              sonarrStats.skipped += 1;
+              sonarrLists.skipped.push(title.trim());
+              continue;
+            }
+            const tvdbId = ids.tvdbId;
+            sonarrStats.attempted += 1;
+            sonarrLists.attempted.push(ids.title);
+
+            try {
+              const result = await withJobRetry(
+                () =>
+                  this.sonarr.addSeries({
+                    baseUrl: sonarrBaseUrl,
+                    apiKey: sonarrApiKey,
+                    title: ids.title,
+                    tvdbId,
+                    qualityProfileId: defaults.qualityProfileId,
+                    rootFolderPath: defaults.rootFolderPath,
+                    tags: defaults.tagIds,
+                    monitored: true,
+                    searchForMissingEpisodes: startSearchImmediately,
+                    searchForCutoffUnmetEpisodes: startSearchImmediately,
+                  }),
+                {
+                  ctx,
+                  label: 'sonarr: add series',
+                  meta: { title: ids.title, tvdbId },
+                },
+              );
+              if (result.status === 'added') {
+                sonarrStats.added += 1;
+                sonarrLists.added.push(ids.title);
+                sonarrSentTvdbIds.push(tvdbId);
+              } else {
+                sonarrStats.exists += 1;
+                sonarrLists.exists.push(ids.title);
+                sonarrSentTvdbIds.push(tvdbId);
+
+                const idx = await withJobRetryOrNull(() => ensureSonarrIndex(), {
+                  ctx,
+                  label: 'sonarr: index series',
+                });
+                const existing = idx ? idx.get(ids.tvdbId) ?? null : null;
+                if (existing && existing.monitored === false) {
+                  await withJobRetry(
+                    () =>
+                      this.sonarr.updateSeries({
+                        baseUrl: sonarrBaseUrl,
+                        apiKey: sonarrApiKey,
+                        series: { ...existing, monitored: true },
+                      }),
+                    {
+                      ctx,
+                      label: 'sonarr: set series monitored',
+                      meta: { tvdbId: ids.tvdbId },
+                    },
+                  ).catch(() => undefined);
+                }
+              }
+            } catch (err) {
+              sonarrStats.failed += 1;
+              sonarrLists.failed.push(ids.title);
+              await ctx.warn('sonarr: add failed (continuing)', {
+                title,
+                error: (err as Error)?.message ?? String(err),
+              });
+            }
           }
         }
-      }
 
-      await ctx.info('sonarr: done', sonarrStats);
+        await ctx.info('sonarr: done', sonarrStats);
       }
     }
 
@@ -1759,6 +1989,11 @@ export class ImmaculateTasteCollectionJob {
       missingTitles,
       excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
       excludedByRejectListCount: excludedByRejectList.length,
+      approvalRequiredFromObservatory,
+      overseerrModeSelected,
+      overseerrConfiguredEnabled,
+      overseerr: overseerrStats,
+      overseerrLists,
       sonarr: sonarrStats,
       sonarrLists,
       startSearchImmediately,
@@ -2156,6 +2391,7 @@ function buildImmaculateTastePointsReport(params: {
 
   const radarr = isPlainObject(raw.radarr) ? raw.radarr : null;
   const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : null;
+  const overseerr = isPlainObject(raw.overseerr) ? raw.overseerr : null;
   const points = isPlainObject(raw.points) ? raw.points : null;
 
   const generated = asNum(raw.generated) ?? 0;
@@ -2171,6 +2407,7 @@ function buildImmaculateTastePointsReport(params: {
 
   const radarrFailed = radarr ? (asNum(radarr.failed) ?? 0) : 0;
   const sonarrFailed = sonarr ? (asNum(sonarr.failed) ?? 0) : 0;
+  const overseerrFailed = overseerr ? (asNum(overseerr.failed) ?? 0) : 0;
 
   const refresher = raw.refresher;
   const refresherObj =
@@ -2240,6 +2477,9 @@ function buildImmaculateTastePointsReport(params: {
   }
 
   const issues = [
+    ...(overseerrFailed
+      ? [issue('warn', `Overseerr: ${overseerrFailed} request(s) failed.`)]
+      : []),
     ...(radarrFailed ? [issue('warn', `Radarr: ${radarrFailed} add(s) failed.`)] : []),
     ...(sonarrFailed ? [issue('warn', `Sonarr: ${sonarrFailed} add(s) failed.`)] : []),
     ...(refresherError ? [issue('error', `Refresher failed: ${refresherError}`)] : []),
@@ -2273,6 +2513,9 @@ function buildImmaculateTastePointsReport(params: {
 
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
   const sonarrLists = isPlainObject(raw.sonarrLists) ? raw.sonarrLists : null;
+  const overseerrLists = isPlainObject(raw.overseerrLists)
+    ? raw.overseerrLists
+    : null;
 
   const recommendationDebug = isPlainObject(raw.recommendationDebug)
     ? (raw.recommendationDebug as Record<string, unknown>)
@@ -2432,6 +2675,90 @@ function buildImmaculateTastePointsReport(params: {
           },
         ],
       },
+      ...(overseerr
+        ? [
+            {
+              id: 'overseerr_request',
+              title: 'Overseerr: request missing titles',
+              status:
+                ctx.dryRun ||
+                !Boolean(overseerr.selected) ||
+                !Boolean(overseerr.enabled)
+                  ? ('skipped' as const)
+                  : overseerrFailed
+                    ? ('failed' as const)
+                    : ('success' as const),
+              facts: [
+                { label: 'Selected', value: Boolean(overseerr.selected) },
+                { label: 'Configured', value: Boolean(overseerr.enabled) },
+                {
+                  label: 'Attempted',
+                  value: {
+                    count: asNum(overseerr.attempted),
+                    unit: mode === 'tv' ? 'shows' : 'movies',
+                    items: sortTitles(
+                      uniqueStrings(
+                        overseerrLists
+                          ? asStringArray(overseerrLists.attempted)
+                          : [],
+                      ),
+                    ),
+                  },
+                },
+                {
+                  label: 'Requested',
+                  value: {
+                    count: asNum(overseerr.requested),
+                    unit: mode === 'tv' ? 'shows' : 'movies',
+                    items: sortTitles(
+                      uniqueStrings(
+                        overseerrLists
+                          ? asStringArray(overseerrLists.requested)
+                          : [],
+                      ),
+                    ),
+                  },
+                },
+                {
+                  label: 'Exists',
+                  value: {
+                    count: asNum(overseerr.exists),
+                    unit: mode === 'tv' ? 'shows' : 'movies',
+                    items: sortTitles(
+                      uniqueStrings(
+                        overseerrLists ? asStringArray(overseerrLists.exists) : [],
+                      ),
+                    ),
+                  },
+                },
+                {
+                  label: 'Failed',
+                  value: {
+                    count: asNum(overseerr.failed),
+                    unit: mode === 'tv' ? 'shows' : 'movies',
+                    items: sortTitles(
+                      uniqueStrings(
+                        overseerrLists ? asStringArray(overseerrLists.failed) : [],
+                      ),
+                    ),
+                  },
+                },
+                {
+                  label: 'Skipped',
+                  value: {
+                    count: asNum(overseerr.skipped),
+                    unit: mode === 'tv' ? 'shows' : 'movies',
+                    items: sortTitles(
+                      uniqueStrings(
+                        overseerrLists ? asStringArray(overseerrLists.skipped) : [],
+                      ),
+                    ),
+                  },
+                },
+              ],
+            },
+          ]
+        : []),
       ...(radarr
         ? [
             {

@@ -13,6 +13,7 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 import { PrismaService } from '../db/prisma.service';
 import { GoogleService } from '../google/google.service';
 import { OpenAiService } from '../openai/openai.service';
+import { OverseerrService } from '../overseerr/overseerr.service';
 import {
   type PlexEligibleLibrary,
   buildExcludedSectionKeysFromSelected,
@@ -83,6 +84,7 @@ export class IntegrationsController {
     private readonly tmdb: TmdbService,
     private readonly google: GoogleService,
     private readonly openai: OpenAiService,
+    private readonly overseerr: OverseerrService,
   ) {}
 
   private async cleanupDeselectedPlexLibraries(params: {
@@ -465,6 +467,19 @@ export class IntegrationsController {
       const apiKey = pickString(secrets, 'tmdb.apiKey');
       if (!apiKey) throw new BadRequestException('TMDB apiKey is not set');
       const result = await this.tmdb.testConnection({ apiKey });
+      return { ok: true, result };
+    }
+
+    if (id === 'overseerr') {
+      const baseUrlRaw =
+        pickString(bodyObj, 'baseUrl') ||
+        pickString(settings, 'overseerr.baseUrl');
+      const apiKey = pickString(secrets, 'overseerr.apiKey');
+      if (!baseUrlRaw)
+        throw new BadRequestException('Overseerr baseUrl is not set');
+      if (!apiKey) throw new BadRequestException('Overseerr apiKey is not set');
+      const baseUrl = normalizeHttpUrl(baseUrlRaw);
+      const result = await this.overseerr.testConnection({ baseUrl, apiKey });
       return { ok: true, result };
     }
 

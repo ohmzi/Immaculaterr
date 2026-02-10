@@ -312,4 +312,44 @@ export function PlexLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function OverseerrLogo(props: SVGProps<SVGSVGElement>) {
+  const uid = useId().replace(/:/g, '');
+  const ringId = `overseerrRing-${uid}`;
+
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      width="24"
+      height="24"
+      aria-hidden="true"
+      {...props}
+    >
+      <defs>
+        <linearGradient
+          id={ringId}
+          x1="14"
+          y1="14"
+          x2="50"
+          y2="50"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor="#60a5fa" />
+          <stop offset="1" stopColor="#22d3ee" />
+        </linearGradient>
+      </defs>
+
+      <circle
+        cx="32"
+        cy="32"
+        r="22"
+        fill="none"
+        stroke={`url(#${ringId})`}
+        strokeWidth="8"
+        opacity="0.9"
+      />
+      <circle cx="32" cy="32" r="8" fill="#22d3ee" opacity="0.22" />
+      <circle cx="32" cy="32" r="4.5" fill="#e0f2fe" opacity="0.92" />
+    </svg>
+  );
+}
 

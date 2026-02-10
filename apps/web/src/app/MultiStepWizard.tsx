@@ -36,6 +36,7 @@ type WizardStep =
   | 'tmdb'
   | 'radarr'
   | 'sonarr'
+  | 'overseerr'
   | 'google'
   | 'openai'
   | 'complete';
@@ -47,6 +48,7 @@ const STEP_ORDER: WizardStep[] = [
   'tmdb',
   'radarr',
   'sonarr',
+  'overseerr',
   'google',
   'openai',
   'complete',
@@ -60,6 +62,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     'tmdb',
     'radarr',
     'sonarr',
+    'overseerr',
     'google',
     'openai',
   ];
@@ -111,6 +114,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   // Sonarr state
   const [sonarrBaseUrl, setSonarrBaseUrl] = useState('http://localhost:8989');
   const [sonarrApiKey, setSonarrApiKey] = useState('');
+
+  // Overseerr state
+  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
+  const [overseerrApiKey, setOverseerrApiKey] = useState('');
 
   // Google state
   const [googleSearchEngineId, setGoogleSearchEngineId] = useState('');
@@ -389,6 +396,47 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     },
   });
 
+  const saveAndValidateOverseerr = useMutation({
+    mutationFn: async () => {
+      const baseUrl = overseerrBaseUrl.trim();
+      const apiKey = overseerrApiKey.trim();
+      if (!baseUrl) throw new Error('Please enter Overseerr URL');
+      if (!apiKey) throw new Error('Please enter Overseerr API key');
+
+      toast.info('Validating Overseerr credentials...');
+      const res = await fetch('/api/overseerr/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl, apiKey }),
+      });
+      if (!res.ok) {
+        throw new Error('Overseerr credentials are incorrect.');
+      }
+
+      await putSettings({
+        settings: {
+          overseerr: {
+            enabled: true,
+            baseUrl,
+          },
+        },
+        secrets: {
+          overseerr: {
+            apiKey,
+          },
+        },
+      });
+      toast.success('Connected to Overseerr.');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      handleNext();
+    },
+    onError: (error: Error) => {
+      toast.error(error?.message ?? 'Couldn’t connect to Overseerr.');
+    },
+  });
+
   const completeWizard = useMutation({
     mutationFn: async () => {
       await putSettings({
@@ -463,6 +511,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   />
                   <RequirementItem icon={<Database className="h-4 w-4 text-zinc-500" />} text="Radarr (optional)" />
                   <RequirementItem icon={<HardDrive className="h-4 w-4 text-zinc-500" />} text="Sonarr (optional)" />
+                  <RequirementItem icon={<Server className="h-4 w-4 text-zinc-500" />} text="Overseerr (optional)" />
                   <RequirementItem icon={<Globe className="h-4 w-4 text-zinc-500" />} text="Other services (optional)" />
                 </ul>
               </div>
@@ -990,6 +1039,97 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     value={sonarrApiKey}
                     onChange={(e) => setSonarrApiKey(e.target.value)}
                     placeholder="Enter Sonarr API key"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
+                  />
+                </div>
+              </div>
+            </WizardSection>
+          </WizardShell>
+        );
+
+      case 'overseerr':
+        return (
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Overseerr</span> Configuration
+              </>
+            }
+            subtitle="Optional: connect Overseerr for centralized movie/show requests."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={() => saveAndValidateOverseerr.mutate()}
+                  disabled={
+                    !overseerrBaseUrl.trim() ||
+                    !overseerrApiKey.trim() ||
+                    saveAndValidateOverseerr.isPending
+                  }
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveAndValidateOverseerr.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Validating...
+                    </>
+                  ) : (
+                    <>
+                      Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="overseerrBaseUrl"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Overseerr URL
+                  </Label>
+                  <Input
+                    id="overseerrBaseUrl"
+                    value={overseerrBaseUrl}
+                    onChange={(e) => setOverseerrBaseUrl(e.target.value)}
+                    placeholder="http://localhost:5055"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="overseerrApiKey"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Overseerr API Key
+                  </Label>
+                  <Input
+                    id="overseerrApiKey"
+                    type="password"
+                    value={overseerrApiKey}
+                    onChange={(e) => setOverseerrApiKey(e.target.value)}
+                    placeholder="Enter Overseerr API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
