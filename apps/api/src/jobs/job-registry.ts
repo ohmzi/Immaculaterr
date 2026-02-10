@@ -38,7 +38,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'immaculateTasteRefresher',
     name: 'Immaculate Taste Refresher',
     description:
-      'Off-peak refresh of the "Inspired by your Immaculate Taste" Plex collection across all Plex movie and TV libraries.',
+      'Off-peak refresh of the "Inspired by your Immaculate Taste" Plex collection across all users and their Plex movie and TV libraries.',
     defaultScheduleCron: '0 3 * * *', // 3am daily (disabled by default)
   },
   {
@@ -52,7 +52,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'recentlyWatchedRefresher',
     name: 'Based on Latest Watched Refresher',
     description:
-      'Refreshes and reshuffles the curated Plex collections "Based on your recently watched movie" and "Change of Taste" across all Plex movie libraries.',
+      'Refreshes and reshuffles curated Plex collections for all users across their movie and TV libraries.',
     defaultScheduleCron: '0 2 * * *', // 2am daily (disabled by default)
   },
 ];

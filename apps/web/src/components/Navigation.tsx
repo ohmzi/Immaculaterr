@@ -7,6 +7,7 @@ import { logout, resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 import { useSafeNavigate } from '@/lib/navigation';
+import { createDebuggerUrl } from '@/lib/debugger';
 
 interface NavItem {
   label: string;
@@ -50,6 +51,8 @@ export function Navigation() {
   const didToastUpdateRef = useRef(false);
   const helpRef = useRef<HTMLDivElement | null>(null);
   const helpCloseTimeoutRef = useRef<number | null>(null);
+  const debugLongPressTimeoutRef = useRef<number | null>(null);
+  const debugLongPressTriggeredRef = useRef(false);
 
   const updatesQuery = useQuery({
     queryKey: ['updates'],
@@ -99,12 +102,34 @@ export function Navigation() {
     helpCloseTimeoutRef.current = null;
   };
 
+  const clearDebugLongPress = () => {
+    const t = debugLongPressTimeoutRef.current;
+    if (t !== null) window.clearTimeout(t);
+    debugLongPressTimeoutRef.current = null;
+  };
+
+  const openDebugger = () => {
+    setIsHelpOpen(false);
+    navigate(createDebuggerUrl());
+  };
+
+  const startDebugLongPress = (pointerType: string) => {
+    if (pointerType !== 'touch') return;
+    clearDebugLongPress();
+    debugLongPressTriggeredRef.current = false;
+    debugLongPressTimeoutRef.current = window.setTimeout(() => {
+      debugLongPressTriggeredRef.current = true;
+      openDebugger();
+    }, 1100);
+  };
+
   // Avoid leaking a pending timeout on unmount.
   useEffect(() => {
     return () => {
       const t = helpCloseTimeoutRef.current;
       if (t !== null) window.clearTimeout(t);
       helpCloseTimeoutRef.current = null;
+      clearDebugLongPress();
     };
   }, []);
 
@@ -394,11 +419,25 @@ export function Navigation() {
 
                           <button
                             type="button"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={() => {
-                              setIsHelpOpen(false);
-                              navigate('/version-history');
-                            }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      startDebugLongPress(e.pointerType);
+                    }}
+                    onPointerUp={() => clearDebugLongPress()}
+                    onPointerLeave={() => clearDebugLongPress()}
+                    onPointerCancel={() => clearDebugLongPress()}
+                    onClick={(event) => {
+                      if (debugLongPressTriggeredRef.current) {
+                        debugLongPressTriggeredRef.current = false;
+                        return;
+                      }
+                      if (event.altKey || event.shiftKey || event.metaKey) {
+                        openDebugger();
+                        return;
+                      }
+                      setIsHelpOpen(false);
+                      navigate('/version-history');
+                    }}
                             className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5 touch-manipulation"
                           >
                             Version: {currentLabel ?? '—'}

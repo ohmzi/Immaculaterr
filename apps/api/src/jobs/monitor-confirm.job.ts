@@ -32,6 +32,11 @@ function pickString(obj: Record<string, unknown>, path: string): string | null {
   return s ? s : null;
 }
 
+function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+  const v = pick(obj, path);
+  return typeof v === 'boolean' ? v : null;
+}
+
 function requireString(obj: Record<string, unknown>, path: string): string {
   const s = pickString(obj, path);
   if (!s) throw new Error(`Missing required setting: ${path}`);
@@ -95,6 +100,7 @@ export class MonitorConfirmJob {
         tvdbShows: 0,
       },
       radarr: {
+        configured: false,
         totalMonitored: 0,
         checked: 0,
         missingTmdbId: 0,
@@ -105,6 +111,7 @@ export class MonitorConfirmJob {
         sampleTitles: [],
       },
       sonarr: {
+        configured: false,
         totalSeries: 0,
         seriesProcessed: 0,
         episodesMonitoredBefore: 0,
@@ -114,7 +121,7 @@ export class MonitorConfirmJob {
         seriesWithMissing: 0,
         seasonsUnmonitored: 0,
         seriesUnmonitored: 0,
-        missingEpisodeSearchQueued: false,
+        missingEpisodeSearchQueued: null,
       },
     };
 
@@ -142,25 +149,59 @@ export class MonitorConfirmJob {
     const radarrBaseUrl =
       pickString(settings, 'radarr.baseUrl') ??
       pickString(settings, 'radarr.url') ??
-      requireString(settings, 'radarr.baseUrl');
+      null;
     const radarrApiKey =
       pickString(secrets, 'radarr.apiKey') ??
       pickString(secrets, 'radarrApiKey') ??
-      requireString(secrets, 'radarr.apiKey');
+      null;
+    const radarrEnabledSetting = pickBool(settings, 'radarr.enabled');
+    const radarrIntegrationEnabled =
+      (radarrEnabledSetting ?? Boolean(radarrApiKey)) === true;
+    const radarrConfigured =
+      radarrIntegrationEnabled && Boolean(radarrBaseUrl && radarrApiKey);
 
     const sonarrBaseUrl =
       pickString(settings, 'sonarr.baseUrl') ??
       pickString(settings, 'sonarr.url') ??
-      requireString(settings, 'sonarr.baseUrl');
+      null;
     const sonarrApiKey =
       pickString(secrets, 'sonarr.apiKey') ??
       pickString(secrets, 'sonarrApiKey') ??
-      requireString(secrets, 'sonarr.apiKey');
+      null;
+    const sonarrEnabledSetting = pickBool(settings, 'sonarr.enabled');
+    const sonarrIntegrationEnabled =
+      (sonarrEnabledSetting ?? Boolean(sonarrApiKey)) === true;
+    const sonarrConfigured =
+      sonarrIntegrationEnabled && Boolean(sonarrBaseUrl && sonarrApiKey);
+
+    if (!radarrConfigured && !sonarrConfigured) {
+      throw new Error(
+        'Monitor Confirm requires at least one configured integration: Radarr or Sonarr (baseUrl + apiKey).',
+      );
+    }
+
+    summary.radarr = {
+      ...(summary.radarr as unknown as Record<string, unknown>),
+      configured: radarrConfigured,
+    } as unknown as JsonObject;
+    summary.sonarr = {
+      ...(summary.sonarr as unknown as Record<string, unknown>),
+      configured: sonarrConfigured,
+      missingEpisodeSearchQueued: sonarrConfigured ? false : null,
+    } as unknown as JsonObject;
+    await ctx.patchSummary({
+      radarr: summary.radarr as unknown as JsonObject,
+      sonarr: summary.sonarr as unknown as JsonObject,
+    });
 
     await ctx.info('monitorConfirm: start', {
       dryRun: ctx.dryRun,
-      radarrBaseUrl,
-      sonarrBaseUrl,
+      radarrIntegrationEnabled,
+      sonarrIntegrationEnabled,
+      radarrConfigured,
+      sonarrConfigured,
+      ...(radarrConfigured ? { radarrBaseUrl } : {}),
+      ...(sonarrConfigured ? { sonarrBaseUrl } : {}),
       plexBaseUrl,
     });
     setProgress({
@@ -194,66 +235,60 @@ export class MonitorConfirmJob {
     };
     await ctx.patchSummary({ plex: summary.plex as unknown as JsonObject });
 
-    // --- Plex TMDB set (movies across all movie libraries)
-    await ctx.info('plex: building TMDB id set (all movie libraries)', {
-      libraries: movieSections.map((s) => s.title),
-    });
-    setProgress({
-      step: 'plex_tmdb_index',
-      message: 'Scanning Plex movie libraries for TMDB ids…',
-      current: 0,
-      total: movieSections.length,
-      unit: 'libraries',
-    });
-
     const plexTmdbIds = new Set<number>();
-    let movieLibIdx = 0;
-    for (const sec of movieSections) {
-      movieLibIdx += 1;
+    if (radarrConfigured) {
+      // --- Plex TMDB set (movies across all movie libraries)
+      await ctx.info('plex: building TMDB id set (all movie libraries)', {
+        libraries: movieSections.map((s) => s.title),
+      });
       setProgress({
         step: 'plex_tmdb_index',
-        message: `Scanning Plex movie library: ${sec.title}`,
-        current: movieLibIdx,
+        message: 'Scanning Plex movie libraries for TMDB ids…',
+        current: 0,
         total: movieSections.length,
         unit: 'libraries',
       });
-      const ids = await this.plexServer.getMovieTmdbIdSetForSectionKey({
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        librarySectionKey: sec.key,
-        sectionTitle: sec.title,
+
+      let movieLibIdx = 0;
+      for (const sec of movieSections) {
+        movieLibIdx += 1;
+        setProgress({
+          step: 'plex_tmdb_index',
+          message: `Scanning Plex movie library: ${sec.title}`,
+          current: movieLibIdx,
+          total: movieSections.length,
+          unit: 'libraries',
+        });
+        const ids = await this.plexServer.getMovieTmdbIdSetForSectionKey({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          librarySectionKey: sec.key,
+          sectionTitle: sec.title,
+        });
+        for (const id of ids) plexTmdbIds.add(id);
+        summary.plex = {
+          ...(summary.plex as unknown as Record<string, unknown>),
+          tmdbIds: plexTmdbIds.size,
+        } as unknown as JsonObject;
+        void ctx.patchSummary({ plex: summary.plex as unknown as JsonObject }).catch(
+          () => undefined,
+        );
+      }
+      await ctx.info('plex: TMDB id set built', {
+        size: plexTmdbIds.size,
+        sample: Array.from(plexTmdbIds).slice(0, 10),
       });
-      for (const id of ids) plexTmdbIds.add(id);
       summary.plex = {
         ...(summary.plex as unknown as Record<string, unknown>),
         tmdbIds: plexTmdbIds.size,
       } as unknown as JsonObject;
-      void ctx.patchSummary({ plex: summary.plex as unknown as JsonObject }).catch(
-        () => undefined,
-      );
+      await ctx.patchSummary({ plex: summary.plex as unknown as JsonObject });
+    } else {
+      await ctx.info('plex: skipped TMDB id index (Radarr not configured)');
     }
-    await ctx.info('plex: TMDB id set built', {
-      size: plexTmdbIds.size,
-      sample: Array.from(plexTmdbIds).slice(0, 10),
-    });
-    summary.plex = {
-      ...(summary.plex as unknown as Record<string, unknown>),
-      tmdbIds: plexTmdbIds.size,
-    } as unknown as JsonObject;
-    await ctx.patchSummary({ plex: summary.plex as unknown as JsonObject });
 
     // --- Radarr confirm
-    await ctx.info('radarr: loading monitored movies');
-    setProgress({
-      step: 'radarr_scan',
-      message: 'Loading Radarr monitored movies…',
-    });
-    const monitoredMovies = await this.radarr.listMonitoredMovies({
-      baseUrl: radarrBaseUrl,
-      apiKey: radarrApiKey,
-    });
-
-    const radarrTotalMonitored = monitoredMovies.length;
+    let radarrTotalMonitored = 0;
     let radarrAlreadyInPlex = 0;
     let radarrUnmonitored = 0;
     let radarrSkippedPathConflicts = 0;
@@ -261,115 +296,133 @@ export class MonitorConfirmJob {
     let radarrKeptMonitored = 0;
     let radarrMissingTmdbId = 0;
     const radarrSample: string[] = [];
-    summary.radarr = {
-      totalMonitored: radarrTotalMonitored,
-      checked: 0,
-      missingTmdbId: 0,
-      alreadyInPlex: 0,
-      keptMonitored: 0,
-      unmonitored: 0,
-      skippedPathConflicts: 0,
-      sampleTitles: [],
-    };
-    await ctx.patchSummary({ radarr: summary.radarr as unknown as JsonObject });
-    setProgress({
-      step: 'radarr_scan',
-      message: 'Scanning Radarr monitored movies…',
-      current: 0,
-      total: radarrTotalMonitored,
-      unit: 'movies',
-    });
+    if (radarrConfigured) {
+      await ctx.info('radarr: loading monitored movies');
+      setProgress({
+        step: 'radarr_scan',
+        message: 'Loading Radarr monitored movies…',
+      });
+      const monitoredMovies = await this.radarr.listMonitoredMovies({
+        baseUrl: radarrBaseUrl!,
+        apiKey: radarrApiKey!,
+      });
 
-    for (const movie of monitoredMovies) {
-      radarrChecked += 1;
-      const tmdbId = toInt(movie.tmdbId);
-      if (!tmdbId) {
-        radarrMissingTmdbId += 1;
-        await ctx.warn('radarr: movie missing tmdbId (skipping)', {
-          title:
-            typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
-          id: movie.id,
-        });
-        continue;
-      }
+      radarrTotalMonitored = monitoredMovies.length;
+      summary.radarr = {
+        configured: true,
+        totalMonitored: radarrTotalMonitored,
+        checked: 0,
+        missingTmdbId: 0,
+        alreadyInPlex: 0,
+        keptMonitored: 0,
+        unmonitored: 0,
+        skippedPathConflicts: 0,
+        sampleTitles: [],
+      };
+      await ctx.patchSummary({ radarr: summary.radarr as unknown as JsonObject });
+      setProgress({
+        step: 'radarr_scan',
+        message: 'Scanning Radarr monitored movies…',
+        current: 0,
+        total: radarrTotalMonitored,
+        unit: 'movies',
+      });
 
-      if (!plexTmdbIds.has(tmdbId)) {
-        radarrKeptMonitored += 1;
-        continue;
-      }
+      for (const movie of monitoredMovies) {
+        radarrChecked += 1;
+        const tmdbId = toInt(movie.tmdbId);
+        if (!tmdbId) {
+          radarrMissingTmdbId += 1;
+          await ctx.warn('radarr: movie missing tmdbId (skipping)', {
+            title:
+              typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`,
+            id: movie.id,
+          });
+          continue;
+        }
 
-      radarrAlreadyInPlex += 1;
-      const title =
-        typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
-      if (radarrSample.length < 25) radarrSample.push(title);
+        if (!plexTmdbIds.has(tmdbId)) {
+          radarrKeptMonitored += 1;
+          continue;
+        }
 
-      if (ctx.dryRun) {
-        radarrUnmonitored += 1;
-      } else {
-        const success = await this.radarr.setMovieMonitored({
-          baseUrl: radarrBaseUrl,
-          apiKey: radarrApiKey,
-          movie,
-          monitored: false,
-        });
+        radarrAlreadyInPlex += 1;
+        const title =
+          typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
+        if (radarrSample.length < 25) radarrSample.push(title);
 
-        if (success) {
+        if (ctx.dryRun) {
           radarrUnmonitored += 1;
         } else {
-          radarrSkippedPathConflicts += 1;
-          await ctx.warn(
-            'radarr: skipped unmonitor due to path conflict (duplicate path in Radarr)',
-            {
-              title,
-              tmdbId,
-            },
-          );
+          const success = await this.radarr.setMovieMonitored({
+            baseUrl: radarrBaseUrl!,
+            apiKey: radarrApiKey!,
+            movie,
+            monitored: false,
+          });
+
+          if (success) {
+            radarrUnmonitored += 1;
+          } else {
+            radarrSkippedPathConflicts += 1;
+            await ctx.warn(
+              'radarr: skipped unmonitor due to path conflict (duplicate path in Radarr)',
+              {
+                title,
+                tmdbId,
+              },
+            );
+          }
+        }
+
+        if (
+          radarrChecked % 50 === 0 ||
+          radarrChecked === radarrTotalMonitored
+        ) {
+          await ctx.info('radarr: progress', {
+            checked: radarrChecked,
+            totalMonitored: radarrTotalMonitored,
+            alreadyInPlex: radarrAlreadyInPlex,
+            unmonitored: radarrUnmonitored,
+            keptMonitored: radarrKeptMonitored,
+            skippedPathConflicts: radarrSkippedPathConflicts,
+          });
+          summary.radarr = {
+            configured: true,
+            totalMonitored: radarrTotalMonitored,
+            checked: radarrChecked,
+            missingTmdbId: radarrMissingTmdbId,
+            alreadyInPlex: radarrAlreadyInPlex,
+            keptMonitored: radarrKeptMonitored,
+            unmonitored: radarrUnmonitored,
+            skippedPathConflicts: radarrSkippedPathConflicts,
+            sampleTitles: radarrSample,
+          };
+          void ctx
+            .patchSummary({ radarr: summary.radarr as unknown as JsonObject })
+            .catch(() => undefined);
+          setProgress({
+            step: 'radarr_scan',
+            message: 'Scanning Radarr monitored movies…',
+            current: radarrChecked,
+            total: radarrTotalMonitored,
+            unit: 'movies',
+          });
         }
       }
 
-      if (
-        radarrChecked % 50 === 0 ||
-        radarrChecked === radarrTotalMonitored
-      ) {
-        await ctx.info('radarr: progress', {
-          checked: radarrChecked,
-          totalMonitored: radarrTotalMonitored,
-          alreadyInPlex: radarrAlreadyInPlex,
-          unmonitored: radarrUnmonitored,
-          keptMonitored: radarrKeptMonitored,
-          skippedPathConflicts: radarrSkippedPathConflicts,
-        });
-        summary.radarr = {
-          totalMonitored: radarrTotalMonitored,
-          checked: radarrChecked,
-          missingTmdbId: radarrMissingTmdbId,
-          alreadyInPlex: radarrAlreadyInPlex,
-          keptMonitored: radarrKeptMonitored,
-          unmonitored: radarrUnmonitored,
-          skippedPathConflicts: radarrSkippedPathConflicts,
-          sampleTitles: radarrSample,
-        };
-        void ctx
-          .patchSummary({ radarr: summary.radarr as unknown as JsonObject })
-          .catch(() => undefined);
-        setProgress({
-          step: 'radarr_scan',
-          message: 'Scanning Radarr monitored movies…',
-          current: radarrChecked,
-          total: radarrTotalMonitored,
-          unit: 'movies',
-        });
-      }
+      await ctx.info('radarr: summary', {
+        totalMonitored: radarrTotalMonitored,
+        alreadyInPlex: radarrAlreadyInPlex,
+        unmonitored: radarrUnmonitored,
+        skippedPathConflicts: radarrSkippedPathConflicts,
+        dryRun: ctx.dryRun,
+      });
+    } else {
+      await ctx.info('radarr: skipped (not configured)');
     }
-
-    await ctx.info('radarr: summary', {
-      totalMonitored: radarrTotalMonitored,
-      alreadyInPlex: radarrAlreadyInPlex,
-      unmonitored: radarrUnmonitored,
-      skippedPathConflicts: radarrSkippedPathConflicts,
-      dryRun: ctx.dryRun,
-    });
     summary.radarr = {
+      configured: radarrConfigured,
       totalMonitored: radarrTotalMonitored,
       checked: radarrChecked,
       missingTmdbId: radarrMissingTmdbId,
@@ -381,69 +434,63 @@ export class MonitorConfirmJob {
     };
     await ctx.patchSummary({ radarr: summary.radarr as unknown as JsonObject });
 
-    // --- Plex TVDB map (shows across all TV libraries)
-    await ctx.info('plex: building TVDB show map (all TV libraries)', {
-      libraries: tvSections.map((s) => s.title),
-    });
-    setProgress({
-      step: 'plex_tvdb_index',
-      message: 'Scanning Plex TV libraries for TVDB ids…',
-      current: 0,
-      total: tvSections.length,
-      unit: 'libraries',
-    });
     const plexTvdbRatingKeys = new Map<number, string[]>();
-    let tvLibIdx = 0;
-    for (const sec of tvSections) {
-      tvLibIdx += 1;
+    if (sonarrConfigured) {
+      // --- Plex TVDB map (shows across all TV libraries)
+      await ctx.info('plex: building TVDB show map (all TV libraries)', {
+        libraries: tvSections.map((s) => s.title),
+      });
       setProgress({
         step: 'plex_tvdb_index',
-        message: `Scanning Plex TV library: ${sec.title}`,
-        current: tvLibIdx,
+        message: 'Scanning Plex TV libraries for TVDB ids…',
+        current: 0,
         total: tvSections.length,
         unit: 'libraries',
       });
-      const map = await this.plexServer.getTvdbShowMapForSectionKey({
-        baseUrl: plexBaseUrl,
-        token: plexToken,
-        librarySectionKey: sec.key,
-        sectionTitle: sec.title,
-      });
-      for (const [tvdbId, ratingKey] of map.entries()) {
-        const prev = plexTvdbRatingKeys.get(tvdbId) ?? [];
-        if (!prev.includes(ratingKey)) prev.push(ratingKey);
-        plexTvdbRatingKeys.set(tvdbId, prev);
+      let tvLibIdx = 0;
+      for (const sec of tvSections) {
+        tvLibIdx += 1;
+        setProgress({
+          step: 'plex_tvdb_index',
+          message: `Scanning Plex TV library: ${sec.title}`,
+          current: tvLibIdx,
+          total: tvSections.length,
+          unit: 'libraries',
+        });
+        const map = await this.plexServer.getTvdbShowMapForSectionKey({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          librarySectionKey: sec.key,
+          sectionTitle: sec.title,
+        });
+        for (const [tvdbId, ratingKey] of map.entries()) {
+          const prev = plexTvdbRatingKeys.get(tvdbId) ?? [];
+          if (!prev.includes(ratingKey)) prev.push(ratingKey);
+          plexTvdbRatingKeys.set(tvdbId, prev);
+        }
+        summary.plex = {
+          ...(summary.plex as unknown as Record<string, unknown>),
+          tvdbShows: plexTvdbRatingKeys.size,
+        } as unknown as JsonObject;
+        void ctx.patchSummary({ plex: summary.plex as unknown as JsonObject }).catch(
+          () => undefined,
+        );
       }
+      await ctx.info('plex: TVDB show map built', {
+        size: plexTvdbRatingKeys.size,
+        sampleTvdbIds: Array.from(plexTvdbRatingKeys.keys()).slice(0, 10),
+      });
       summary.plex = {
         ...(summary.plex as unknown as Record<string, unknown>),
         tvdbShows: plexTvdbRatingKeys.size,
       } as unknown as JsonObject;
-      void ctx.patchSummary({ plex: summary.plex as unknown as JsonObject }).catch(
-        () => undefined,
-      );
+      await ctx.patchSummary({ plex: summary.plex as unknown as JsonObject });
+    } else {
+      await ctx.info('plex: skipped TVDB show index (Sonarr not configured)');
     }
-    await ctx.info('plex: TVDB show map built', {
-      size: plexTvdbRatingKeys.size,
-      sampleTvdbIds: Array.from(plexTvdbRatingKeys.keys()).slice(0, 10),
-    });
-    summary.plex = {
-      ...(summary.plex as unknown as Record<string, unknown>),
-      tvdbShows: plexTvdbRatingKeys.size,
-    } as unknown as JsonObject;
-    await ctx.patchSummary({ plex: summary.plex as unknown as JsonObject });
 
     // --- Sonarr confirm (episodes)
-    await ctx.info('sonarr: loading monitored series');
-    setProgress({
-      step: 'sonarr_scan',
-      message: 'Loading Sonarr monitored series…',
-    });
-    const monitoredSeries = await this.sonarr.listMonitoredSeries({
-      baseUrl: sonarrBaseUrl,
-      apiKey: sonarrApiKey,
-    });
-
-    const sonarrSeriesTotal = monitoredSeries.length;
+    let sonarrSeriesTotal = 0;
     let sonarrEpisodesChecked = 0;
     let sonarrEpisodesInPlex = 0;
     let sonarrEpisodesUnmonitored = 0;
@@ -452,234 +499,251 @@ export class MonitorConfirmJob {
     let sonarrSeasonsUnmonitored = 0;
     let sonarrSeriesProcessed = 0;
     let sonarrEpisodesMonitoredBefore = 0;
-
-    summary.sonarr = {
-      totalSeries: sonarrSeriesTotal,
-      seriesProcessed: 0,
-      episodesMonitoredBefore: 0,
-      episodesChecked: 0,
-      episodesInPlex: 0,
-      episodesUnmonitored: 0,
-      seriesWithMissing: 0,
-      seasonsUnmonitored: 0,
-      seriesUnmonitored: 0,
-      missingEpisodeSearchQueued: false,
-    };
-    await ctx.patchSummary({ sonarr: summary.sonarr as unknown as JsonObject });
-    setProgress({
-      step: 'sonarr_scan',
-      message: 'Scanning Sonarr monitored series…',
-      current: 0,
-      total: sonarrSeriesTotal,
-      unit: 'series',
-    });
-
-    for (const series of monitoredSeries) {
-      sonarrSeriesProcessed += 1;
-      const tvdbId = toInt(series.tvdbId);
-      const title =
-        typeof series.title === 'string' ? series.title : `series#${series.id}`;
-      if (!tvdbId) {
-        await ctx.warn('sonarr: series missing tvdbId (skipping)', { title });
-        continue;
-      }
-
-      const showRatingKeys = plexTvdbRatingKeys.get(tvdbId) ?? [];
-      if (showRatingKeys.length === 0) {
-        continue;
-      }
-
-      // Union episodes across all Plex libraries where the show exists.
-      const plexEpisodes = new Set<string>();
-      for (const ratingKey of showRatingKeys) {
-        const eps = await this.plexServer.getEpisodesSet({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          showRatingKey: ratingKey,
-        });
-        for (const k of eps) plexEpisodes.add(k);
-      }
-
-      const episodes = await this.sonarr.getEpisodesBySeries({
-        baseUrl: sonarrBaseUrl,
-        apiKey: sonarrApiKey,
-        seriesId: series.id,
+    let sonarrSearchQueued: boolean | null = null;
+    if (sonarrConfigured) {
+      await ctx.info('sonarr: loading monitored series');
+      setProgress({
+        step: 'sonarr_scan',
+        message: 'Loading Sonarr monitored series…',
+      });
+      const monitoredSeries = await this.sonarr.listMonitoredSeries({
+        baseUrl: sonarrBaseUrl!,
+        apiKey: sonarrApiKey!,
       });
 
-      const episodesBySeason = new Map<number, SonarrEpisode[]>();
-      for (const ep of episodes) {
-        const season = toInt(ep.seasonNumber);
-        if (!season) continue;
-        const list = episodesBySeason.get(season) ?? [];
-        list.push(ep);
-        episodesBySeason.set(season, list);
-      }
+      sonarrSeriesTotal = monitoredSeries.length;
+      summary.sonarr = {
+        configured: true,
+        totalSeries: sonarrSeriesTotal,
+        seriesProcessed: 0,
+        episodesMonitoredBefore: 0,
+        episodesChecked: 0,
+        episodesInPlex: 0,
+        episodesUnmonitored: 0,
+        seriesWithMissing: 0,
+        seasonsUnmonitored: 0,
+        seriesUnmonitored: 0,
+        missingEpisodeSearchQueued: false,
+      };
+      await ctx.patchSummary({ sonarr: summary.sonarr as unknown as JsonObject });
+      setProgress({
+        step: 'sonarr_scan',
+        message: 'Scanning Sonarr monitored series…',
+        current: 0,
+        total: sonarrSeriesTotal,
+        unit: 'series',
+      });
 
-      let hasMissing = false;
-      const completeSeasons: number[] = [];
-      const incompleteSeasons: number[] = [];
+      for (const series of monitoredSeries) {
+        sonarrSeriesProcessed += 1;
+        const tvdbId = toInt(series.tvdbId);
+        const title =
+          typeof series.title === 'string' ? series.title : `series#${series.id}`;
+        if (!tvdbId) {
+          await ctx.warn('sonarr: series missing tvdbId (skipping)', { title });
+          continue;
+        }
 
-      for (const [season, seasonEpisodes] of episodesBySeason.entries()) {
-        let seasonMissing = 0;
-        let seasonEpisodesInPlex = 0;
-        const seasonEpisodesToUnmonitor: SonarrEpisode[] = [];
+        const showRatingKeys = plexTvdbRatingKeys.get(tvdbId) ?? [];
+        if (showRatingKeys.length === 0) {
+          continue;
+        }
 
-        // Process all episodes in the season (matching Python script logic)
-        for (const ep of seasonEpisodes) {
-          const epNum = toInt(ep.episodeNumber);
-          if (!epNum) continue;
-          sonarrEpisodesChecked += 1;
+        // Union episodes across all Plex libraries where the show exists.
+        const plexEpisodes = new Set<string>();
+        for (const ratingKey of showRatingKeys) {
+          const eps = await this.plexServer.getEpisodesSet({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            showRatingKey: ratingKey,
+          });
+          for (const k of eps) plexEpisodes.add(k);
+        }
 
-          const epKey = episodeKey(season, epNum);
-          const isInPlex = plexEpisodes.has(epKey);
-          const isMonitored = Boolean(ep.monitored);
-          if (isMonitored) sonarrEpisodesMonitoredBefore += 1;
+        const episodes = await this.sonarr.getEpisodesBySeries({
+          baseUrl: sonarrBaseUrl!,
+          apiKey: sonarrApiKey!,
+          seriesId: series.id,
+        });
 
-          if (isInPlex) {
-            sonarrEpisodesInPlex += 1;
-            seasonEpisodesInPlex += 1;
-            if (isMonitored) {
-              seasonEpisodesToUnmonitor.push(ep);
+        const episodesBySeason = new Map<number, SonarrEpisode[]>();
+        for (const ep of episodes) {
+          const season = toInt(ep.seasonNumber);
+          if (!season) continue;
+          const list = episodesBySeason.get(season) ?? [];
+          list.push(ep);
+          episodesBySeason.set(season, list);
+        }
+
+        let hasMissing = false;
+        const completeSeasons: number[] = [];
+        const incompleteSeasons: number[] = [];
+
+        for (const [season, seasonEpisodes] of episodesBySeason.entries()) {
+          let seasonMissing = 0;
+          let seasonEpisodesInPlex = 0;
+          const seasonEpisodesToUnmonitor: SonarrEpisode[] = [];
+
+          // Process all episodes in the season (matching Python script logic)
+          for (const ep of seasonEpisodes) {
+            const epNum = toInt(ep.episodeNumber);
+            if (!epNum) continue;
+            sonarrEpisodesChecked += 1;
+
+            const epKey = episodeKey(season, epNum);
+            const isInPlex = plexEpisodes.has(epKey);
+            const isMonitored = Boolean(ep.monitored);
+            if (isMonitored) sonarrEpisodesMonitoredBefore += 1;
+
+            if (isInPlex) {
+              sonarrEpisodesInPlex += 1;
+              seasonEpisodesInPlex += 1;
+              if (isMonitored) {
+                seasonEpisodesToUnmonitor.push(ep);
+              }
+            } else {
+              seasonMissing += 1;
+              hasMissing = true;
             }
-          } else {
-            seasonMissing += 1;
-            hasMissing = true;
+          }
+
+          // Unmonitor episodes that are in Plex (matching Python script logic)
+          if (seasonEpisodesToUnmonitor.length > 0) {
+            for (const ep of seasonEpisodesToUnmonitor) {
+              if (ctx.dryRun) {
+                sonarrEpisodesUnmonitored += 1;
+              } else {
+                const success = await this.sonarr.setEpisodeMonitored({
+                  baseUrl: sonarrBaseUrl!,
+                  apiKey: sonarrApiKey!,
+                  episode: ep,
+                  monitored: false,
+                });
+                if (success) {
+                  sonarrEpisodesUnmonitored += 1;
+                } else {
+                  await ctx.warn('sonarr: failed to unmonitor episode', {
+                    title,
+                    season,
+                    episode: toInt(ep.episodeNumber),
+                  });
+                }
+              }
+            }
+
+            await ctx.info('sonarr: season episode unmonitor complete', {
+              title,
+              season,
+              episodesUnmonitored: seasonEpisodesToUnmonitor.length,
+              dryRun: ctx.dryRun,
+            });
+          }
+
+          // Check if season is complete (all episodes in Plex)
+          if (seasonMissing === 0 && seasonEpisodes.length > 0) {
+            completeSeasons.push(season);
+          } else if (seasonMissing > 0) {
+            incompleteSeasons.push(season);
           }
         }
 
-        // Unmonitor episodes that are in Plex (matching Python script logic)
-        if (seasonEpisodesToUnmonitor.length > 0) {
-          for (const ep of seasonEpisodesToUnmonitor) {
-            if (ctx.dryRun) {
-              sonarrEpisodesUnmonitored += 1;
-            } else {
-              const success = await this.sonarr.setEpisodeMonitored({
-                baseUrl: sonarrBaseUrl,
-                apiKey: sonarrApiKey,
-                episode: ep,
-                monitored: false,
-              });
-              if (success) {
-                sonarrEpisodesUnmonitored += 1;
-              } else {
-                await ctx.warn('sonarr: failed to unmonitor episode', {
-                  title,
-                  season,
-                  episode: toInt(ep.episodeNumber),
-                });
-              }
-            }
-          }
+        if (hasMissing) {
+          sonarrSeriesWithMissing += 1;
+        }
 
-          await ctx.info('sonarr: season episode unmonitor complete', {
+        // Season/series unmonitoring (via series update)
+        const updatedSeries: SonarrSeries = { ...series };
+        const seasons = Array.isArray(series.seasons)
+          ? series.seasons.map((s) => ({ ...s }))
+          : [];
+        let changedSeries = false;
+
+        for (const seasonNum of completeSeasons) {
+          const seasonObj = seasons.find(
+            (s) => toInt(s.seasonNumber) === seasonNum,
+          );
+          if (seasonObj && seasonObj.monitored) {
+            seasonObj.monitored = false;
+            sonarrSeasonsUnmonitored += 1;
+            changedSeries = true;
+          }
+        }
+
+        const seriesComplete =
+          incompleteSeasons.length === 0 && completeSeasons.length > 0;
+        if (seriesComplete && updatedSeries.monitored) {
+          updatedSeries.monitored = false;
+          sonarrSeriesUnmonitored += 1;
+          changedSeries = true;
+        }
+
+        if (changedSeries) {
+          updatedSeries.seasons = seasons;
+          if (!ctx.dryRun) {
+            await this.sonarr.updateSeries({
+              baseUrl: sonarrBaseUrl!,
+              apiKey: sonarrApiKey!,
+              series: updatedSeries,
+            });
+          }
+          await ctx.info('sonarr: updated series monitoring', {
             title,
-            season,
-            episodesUnmonitored: seasonEpisodesToUnmonitor.length,
+            completeSeasons,
+            seriesComplete,
             dryRun: ctx.dryRun,
           });
         }
 
-        // Check if season is complete (all episodes in Plex)
-        if (seasonMissing === 0 && seasonEpisodes.length > 0) {
-          completeSeasons.push(season);
-        } else if (seasonMissing > 0) {
-          incompleteSeasons.push(season);
-        }
-      }
-
-      if (hasMissing) {
-        sonarrSeriesWithMissing += 1;
-      }
-
-      // Season/series unmonitoring (via series update)
-      const updatedSeries: SonarrSeries = { ...series };
-      const seasons = Array.isArray(series.seasons)
-        ? series.seasons.map((s) => ({ ...s }))
-        : [];
-      let changedSeries = false;
-
-      for (const seasonNum of completeSeasons) {
-        const seasonObj = seasons.find(
-          (s) => toInt(s.seasonNumber) === seasonNum,
-        );
-        if (seasonObj && seasonObj.monitored) {
-          seasonObj.monitored = false;
-          sonarrSeasonsUnmonitored += 1;
-          changedSeries = true;
-        }
-      }
-
-      const seriesComplete =
-        incompleteSeasons.length === 0 && completeSeasons.length > 0;
-      if (seriesComplete && updatedSeries.monitored) {
-        updatedSeries.monitored = false;
-        sonarrSeriesUnmonitored += 1;
-        changedSeries = true;
-      }
-
-      if (changedSeries) {
-        updatedSeries.seasons = seasons;
-        if (!ctx.dryRun) {
-          await this.sonarr.updateSeries({
-            baseUrl: sonarrBaseUrl,
-            apiKey: sonarrApiKey,
-            series: updatedSeries,
+        if (sonarrSeriesProcessed % 10 === 0 || sonarrSeriesProcessed === sonarrSeriesTotal) {
+          await ctx.info('sonarr: progress', {
+            seriesProcessed: sonarrSeriesProcessed,
+            totalSeries: sonarrSeriesTotal,
+            episodesChecked: sonarrEpisodesChecked,
+            episodesUnmonitored: sonarrEpisodesUnmonitored,
+            seasonsUnmonitored: sonarrSeasonsUnmonitored,
+            seriesUnmonitored: sonarrSeriesUnmonitored,
+          });
+          summary.sonarr = {
+            configured: true,
+            totalSeries: sonarrSeriesTotal,
+            seriesProcessed: sonarrSeriesProcessed,
+            episodesMonitoredBefore: sonarrEpisodesMonitoredBefore,
+            episodesChecked: sonarrEpisodesChecked,
+            episodesInPlex: sonarrEpisodesInPlex,
+            episodesUnmonitored: sonarrEpisodesUnmonitored,
+            seriesWithMissing: sonarrSeriesWithMissing,
+            seasonsUnmonitored: sonarrSeasonsUnmonitored,
+            seriesUnmonitored: sonarrSeriesUnmonitored,
+            missingEpisodeSearchQueued: false,
+          };
+          void ctx
+            .patchSummary({ sonarr: summary.sonarr as unknown as JsonObject })
+            .catch(() => undefined);
+          setProgress({
+            step: 'sonarr_scan',
+            message: 'Scanning Sonarr monitored series…',
+            current: sonarrSeriesProcessed,
+            total: sonarrSeriesTotal,
+            unit: 'series',
           });
         }
-        await ctx.info('sonarr: updated series monitoring', {
-          title,
-          completeSeasons,
-          seriesComplete,
-          dryRun: ctx.dryRun,
-        });
       }
 
-      if (sonarrSeriesProcessed % 10 === 0 || sonarrSeriesProcessed === sonarrSeriesTotal) {
-        await ctx.info('sonarr: progress', {
-          seriesProcessed: sonarrSeriesProcessed,
-          totalSeries: sonarrSeriesTotal,
-          episodesChecked: sonarrEpisodesChecked,
-          episodesUnmonitored: sonarrEpisodesUnmonitored,
-          seasonsUnmonitored: sonarrSeasonsUnmonitored,
-          seriesUnmonitored: sonarrSeriesUnmonitored,
+      // Sonarr search monitored
+      if (ctx.dryRun) {
+        sonarrSearchQueued = false;
+        await ctx.info('sonarr: dry-run; skipping MissingEpisodeSearch trigger');
+      } else {
+        sonarrSearchQueued = await this.sonarr.searchMonitoredEpisodes({
+          baseUrl: sonarrBaseUrl!,
+          apiKey: sonarrApiKey!,
         });
-        summary.sonarr = {
-          totalSeries: sonarrSeriesTotal,
-          seriesProcessed: sonarrSeriesProcessed,
-          episodesMonitoredBefore: sonarrEpisodesMonitoredBefore,
-          episodesChecked: sonarrEpisodesChecked,
-          episodesInPlex: sonarrEpisodesInPlex,
-          episodesUnmonitored: sonarrEpisodesUnmonitored,
-          seriesWithMissing: sonarrSeriesWithMissing,
-          seasonsUnmonitored: sonarrSeasonsUnmonitored,
-          seriesUnmonitored: sonarrSeriesUnmonitored,
-          missingEpisodeSearchQueued: false,
-        };
-        void ctx
-          .patchSummary({ sonarr: summary.sonarr as unknown as JsonObject })
-          .catch(() => undefined);
-        setProgress({
-          step: 'sonarr_scan',
-          message: 'Scanning Sonarr monitored series…',
-          current: sonarrSeriesProcessed,
-          total: sonarrSeriesTotal,
-          unit: 'series',
+        await ctx.info('sonarr: MissingEpisodeSearch queued', {
+          ok: sonarrSearchQueued,
         });
       }
-    }
-
-    // Sonarr search monitored
-    let sonarrSearchQueued = false;
-    if (ctx.dryRun) {
-      await ctx.info('sonarr: dry-run; skipping MissingEpisodeSearch trigger');
     } else {
-      sonarrSearchQueued = await this.sonarr.searchMonitoredEpisodes({
-        baseUrl: sonarrBaseUrl,
-        apiKey: sonarrApiKey,
-      });
-      await ctx.info('sonarr: MissingEpisodeSearch queued', {
-        ok: sonarrSearchQueued,
-      });
+      await ctx.info('sonarr: skipped (not configured)');
     }
 
     summary.plex = {
@@ -690,6 +754,7 @@ export class MonitorConfirmJob {
       tvdbShows: plexTvdbRatingKeys.size,
     };
     summary.radarr = {
+      configured: radarrConfigured,
       totalMonitored: radarrTotalMonitored,
       checked: radarrChecked,
       missingTmdbId: radarrMissingTmdbId,
@@ -700,6 +765,7 @@ export class MonitorConfirmJob {
       sampleTitles: radarrSample,
     };
     summary.sonarr = {
+      configured: sonarrConfigured,
       totalSeries: sonarrSeriesTotal,
       seriesProcessed: sonarrSeriesProcessed,
       episodesMonitoredBefore: sonarrEpisodesMonitoredBefore,
@@ -732,6 +798,10 @@ function asNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+function asBool(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
 function buildMonitorConfirmReport(params: {
   ctx: JobContext;
   raw: JsonObject;
@@ -748,6 +818,7 @@ function buildMonitorConfirmReport(params: {
   const plexTvLibraries = Array.isArray(plex.tvLibraries) ? plex.tvLibraries.length : null;
 
   const radarrTotalMonitored = asNum(radarr.totalMonitored) ?? 0;
+  const radarrConfigured = asBool(radarr.configured) ?? true;
   const radarrUnmonitored = asNum(radarr.unmonitored) ?? 0;
   const radarrEndMonitored = Math.max(0, radarrTotalMonitored - radarrUnmonitored);
   const radarrAlreadyInPlex = asNum(radarr.alreadyInPlex) ?? 0;
@@ -756,6 +827,7 @@ function buildMonitorConfirmReport(params: {
   const radarrSkipped = radarrMissingTmdbId + radarrSkippedPathConflicts;
 
   const sonarrTotalSeries = asNum(sonarr.totalSeries) ?? 0;
+  const sonarrConfigured = asBool(sonarr.configured) ?? true;
   const sonarrSeriesUnmonitored = asNum(sonarr.seriesUnmonitored) ?? 0;
   const sonarrEndSeriesMonitored = Math.max(0, sonarrTotalSeries - sonarrSeriesUnmonitored);
   const sonarrEpisodesMonitoredBefore = asNum(sonarr.episodesMonitoredBefore) ?? null;
@@ -786,7 +858,7 @@ function buildMonitorConfirmReport(params: {
           ),
         ]
       : []),
-    ...(!ctx.dryRun && sonarrSearchQueued === false
+    ...(sonarrConfigured && !ctx.dryRun && sonarrSearchQueued === false
       ? [issue('warn', 'Sonarr: MissingEpisodeSearch was not queued.')]
       : []),
   ];
@@ -876,7 +948,7 @@ function buildMonitorConfirmReport(params: {
       {
         id: 'radarr_monitor_confirm',
         title: 'Radarr: unmonitor movies already in Plex',
-        status: 'success',
+        status: radarrConfigured ? 'success' : 'skipped',
         rows: [
           metricRow({
             label: 'Monitored movies',
@@ -892,6 +964,7 @@ function buildMonitorConfirmReport(params: {
           }),
           metricRow({ label: 'Skipped', end: radarrSkipped, unit: 'movies' }),
         ],
+        facts: [{ label: 'Configured', value: radarrConfigured }],
         issues: [
           ...(radarrMissingTmdbId
             ? [issue('warn', `${radarrMissingTmdbId} missing TMDB id (skipped).`)]
@@ -904,7 +977,7 @@ function buildMonitorConfirmReport(params: {
       {
         id: 'sonarr_monitor_confirm',
         title: 'Sonarr: unmonitor episodes already in Plex',
-        status: 'success',
+        status: sonarrConfigured ? 'success' : 'skipped',
         rows: [
           metricRow({
             label: 'Monitored episodes',
@@ -915,17 +988,25 @@ function buildMonitorConfirmReport(params: {
           }),
           metricRow({ label: 'Episodes checked', end: asNum(sonarr.episodesChecked), unit: 'episodes' }),
         ],
+        facts: [{ label: 'Configured', value: sonarrConfigured }],
       },
       {
         id: 'sonarr_missing_episode_search',
         title: 'Sonarr: MissingEpisodeSearch',
-        status: ctx.dryRun ? 'skipped' : sonarrSearchQueued ? 'success' : 'failed',
+        status: !sonarrConfigured
+          ? 'skipped'
+          : ctx.dryRun
+            ? 'skipped'
+            : sonarrSearchQueued
+              ? 'success'
+              : 'failed',
         facts: [
+          { label: 'configured', value: sonarrConfigured },
           { label: 'queued', value: sonarrSearchQueued },
           { label: 'dryRun', value: ctx.dryRun },
         ],
         issues:
-          !ctx.dryRun && sonarrSearchQueued === false
+          sonarrConfigured && !ctx.dryRun && sonarrSearchQueued === false
             ? [issue('error', 'Search was not queued.')]
             : [],
       },

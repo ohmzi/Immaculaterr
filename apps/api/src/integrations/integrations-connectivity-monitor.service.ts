@@ -42,7 +42,7 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-type ServiceKey = 'tmdb' | 'radarr' | 'sonarr' | 'openai' | 'google';
+type ServiceKey = 'tmdb' | 'radarr' | 'sonarr' | 'openai' | 'google' | 'overseerr';
 type ServiceStatus = 'unknown' | 'not_configured' | 'online' | 'offline';
 
 @Injectable()
@@ -152,6 +152,7 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       this.checkTmdb(s, sec),
       this.checkRadarr(s, sec),
       this.checkSonarr(s, sec),
+      this.checkOverseerr(s, sec),
       this.checkOpenAi(s, sec),
       this.checkGoogle(s, sec),
     ]);
@@ -216,6 +217,33 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     const url = new URL('api/v3/system/status', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
 
     await this.probeHttp('sonarr', url, {
+      headers: { Accept: 'application/json', 'X-Api-Key': apiKey },
+      timeoutMs: 10_000,
+    });
+  }
+
+  private async checkOverseerr(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
+    const enabled =
+      (pickBool(settings, 'overseerr.enabled') ?? Boolean(pickString(secrets, 'overseerr.apiKey'))) &&
+      Boolean(pickString(settings, 'overseerr.baseUrl')) &&
+      Boolean(pickString(secrets, 'overseerr.apiKey'));
+    if (!enabled) {
+      this.setStatus('overseerr', 'not_configured', null, {
+        reason: 'disabled_or_missing',
+      });
+      return;
+    }
+
+    const baseUrl = normalizeHttpUrl(pickString(settings, 'overseerr.baseUrl'));
+    const apiKey = pickString(secrets, 'overseerr.apiKey');
+    const root = new URL(baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
+    const rootPath = root.pathname.replace(/\/+$/, '');
+    root.pathname = rootPath.toLowerCase().endsWith('/api/v1')
+      ? `${rootPath.slice(0, rootPath.length - '/api/v1'.length) || ''}/`
+      : `${rootPath || ''}/`;
+    const url = new URL('api/v1/auth/me', root.toString()).toString();
+
+    await this.probeHttp('overseerr', url, {
       headers: { Accept: 'application/json', 'X-Api-Key': apiKey },
       timeoutMs: 10_000,
     });
@@ -306,4 +334,3 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     }
   }
 }
-

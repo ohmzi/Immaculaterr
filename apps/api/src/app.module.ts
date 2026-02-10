@@ -12,6 +12,7 @@ import { SonarrModule } from './sonarr/sonarr.module';
 import { GoogleModule } from './google/google.module';
 import { TmdbModule } from './tmdb/tmdb.module';
 import { OpenAiModule } from './openai/openai.module';
+import { OverseerrModule } from './overseerr/overseerr.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { SettingsModule } from './settings/settings.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -57,6 +58,7 @@ const staticImports = existsSync(webDistPath)
     GoogleModule,
     TmdbModule,
     OpenAiModule,
+    OverseerrModule,
   ],
   controllers: [AppController],
   providers: [

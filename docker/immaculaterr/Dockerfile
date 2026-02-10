@@ -1,13 +1,11 @@
-ARG NODE_IMAGE=node:22-bookworm-slim
+ARG NODE_IMAGE=node:25-trixie-slim
 
 FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
-# Prisma engines need OpenSSL available during generation/build.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates openssl \
-  && rm -rf /var/lib/apt/lists/*
+# Keep builder image minimal; do not install distro OpenSSL packages.
+# Prisma may log OpenSSL detection warnings during generate, but generation works.
 
 # Pin npm to ensure patched bundled deps (e.g. glob/cross-spawn) regardless of base-image npm version.
 ARG NPM_VERSION=11.7.0
@@ -53,10 +51,8 @@ WORKDIR /app
 # flagged by image scanners due to the Go stdlib version used to build the
 # Debian package). The entrypoint uses built-in tools (`setpriv`/`runuser`/`su`)
 # to switch users after doing one-time permission fixes on the mounted data volume.
-RUN apt-get update \
-  && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+# NOTE: Do not install distro OpenSSL in the runtime image; we rely on the Node
+# base image defaults to reduce exposure to OpenSSL CVEs from apt packages.
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
 
@@ -90,4 +86,3 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 5454
 
 CMD ["/entrypoint.sh"]
-

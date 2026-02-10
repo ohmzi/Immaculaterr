@@ -3,7 +3,39 @@ Version History
 
 This file tracks notable changes by version.
 
-1.0.0.532
+1.5.0
+---
+
+- Per-viewer personalization for Movies + TV:
+  - Curated rows are created per Plex viewer.
+  - Recommendation datasets are isolated per viewer and per library.
+- Role-based Plex pinning:
+  - Admin rows pin to Library Recommended + Home.
+  - Shared-user rows pin to Friends Home.
+- Deterministic curated row ordering:
+  - Based on your recently watched
+  - Change of Taste
+  - Inspired by your Immaculate Taste
+- Plex library selection guardrails:
+  - Configure included movie/show libraries in onboarding and Command Center.
+  - New Plex movie/show libraries auto-enable unless disabled.
+  - Disabled/unavailable libraries are skipped safely with clear report output.
+- Refresher scoping improvements:
+  - Chained refreshes stay scoped to triggering viewer/library.
+  - Standalone sweeps run users/libraries in deterministic order, admin last.
+- Overseerr integration improvements:
+  - Optional centralized missing-item flow per task card.
+  - Command Center reset control for Overseerr requests.
+- Observatory improvements:
+  - Swipe-left adds a suggestion to the rejected list.
+  - Command Center reset for rejected list.
+  - Fixed black-screen crash and replaced library selector with a custom glass dropdown.
+- Operational and compose/update-check reliability updates:
+  - Expanded user-aware reset/debug/reporting coverage.
+  - Compose keeps host networking with visible mapped ports.
+  - Removed GitHub token env dependency from update checks.
+
+1.0.0.600
 ---
 
 - Web: fix Observatory page black-screen crash caused by Radix Select + React 19 ref loop.
@@ -37,4 +69,3 @@ This file tracks notable changes by version.
   - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
 - Job reports & logs:
   - Step-by-step breakdowns, metrics tables, and run history.
-

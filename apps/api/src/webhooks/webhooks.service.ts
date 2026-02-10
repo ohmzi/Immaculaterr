@@ -188,6 +188,8 @@ export class WebhooksService {
     plexEvent: string;
     mediaType: string;
     seedTitle?: string;
+    plexUserId?: string;
+    plexUserTitle?: string;
     runs?: Record<string, string>;
     skipped?: Record<string, string>;
     errors?: Record<string, string>;
@@ -195,6 +197,8 @@ export class WebhooksService {
     const ev = (params.plexEvent || '').trim() || '(unknown)';
     const type = (params.mediaType || '').trim();
     const seed = (params.seedTitle || '').trim();
+    const plexUserId = (params.plexUserId || '').trim();
+    const plexUserTitle = (params.plexUserTitle || '').trim();
     const runs = params.runs ?? {};
     const skipped = params.skipped ?? {};
     const errors = params.errors ?? {};
@@ -202,6 +206,9 @@ export class WebhooksService {
     const parts: string[] = [];
     parts.push(`Plex automation: ${ev}${type ? ` type=${type}` : ''}`);
     if (seed) parts.push(`seed=${JSON.stringify(truncate(seed, 80))}`);
+    if (plexUserTitle)
+      parts.push(`user=${JSON.stringify(truncate(plexUserTitle, 40))}`);
+    if (plexUserId) parts.push(`plexUserId=${plexUserId}`);
     if (Object.keys(runs).length) {
       parts.push(
         `runs=${JSON.stringify(runs)}`,

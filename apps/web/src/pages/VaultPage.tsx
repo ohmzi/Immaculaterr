@@ -21,6 +21,7 @@ import {
 import {
   GoogleLogo,
   OpenAiLogo,
+  OverseerrLogo,
   PlexLogo,
   RadarrLogo,
   SonarrLogo,
@@ -108,26 +109,31 @@ export function SettingsPage({
     const plexBaseUrlSaved = readString(settings, 'plex.baseUrl');
     const radarrBaseUrlSaved = readString(settings, 'radarr.baseUrl');
     const sonarrBaseUrlSaved = readString(settings, 'sonarr.baseUrl');
+    const overseerrBaseUrlSaved = readString(settings, 'overseerr.baseUrl');
     const googleSearchEngineIdSaved = readString(settings, 'google.searchEngineId');
 
     if (plexBaseUrlSaved) setPlexBaseUrl(plexBaseUrlSaved);
     if (radarrBaseUrlSaved) setRadarrBaseUrl(radarrBaseUrlSaved);
     if (sonarrBaseUrlSaved) setSonarrBaseUrl(sonarrBaseUrlSaved);
+    if (overseerrBaseUrlSaved) setOverseerrBaseUrl(overseerrBaseUrlSaved);
     if (googleSearchEngineIdSaved) setGoogleSearchEngineId(googleSearchEngineIdSaved);
 
     // Prefer explicit enabled flags from settings. Fallback to secrets-present for legacy configs.
     const radarrEnabledSaved = readBool(settings, 'radarr.enabled');
     const sonarrEnabledSaved = readBool(settings, 'sonarr.enabled');
+    const overseerrEnabledSaved = readBool(settings, 'overseerr.enabled');
     const googleEnabledSaved = readBool(settings, 'google.enabled');
     const openAiEnabledSaved = readBool(settings, 'openai.enabled');
 
     const nextRadarrEnabled = radarrEnabledSaved ?? Boolean(secrets.radarr);
     const nextSonarrEnabled = sonarrEnabledSaved ?? Boolean(secrets.sonarr);
+    const nextOverseerrEnabled = overseerrEnabledSaved ?? Boolean(secrets.overseerr);
     const nextGoogleEnabled = googleEnabledSaved ?? Boolean(secrets.google);
     const nextOpenAiEnabled = openAiEnabledSaved ?? Boolean(secrets.openai);
 
     setRadarrEnabled(nextRadarrEnabled);
     setSonarrEnabled(nextSonarrEnabled);
+    setOverseerrEnabled(nextOverseerrEnabled);
     setGoogleEnabled(nextGoogleEnabled);
     setOpenAiEnabled(nextOpenAiEnabled);
 
@@ -138,6 +144,7 @@ export function SettingsPage({
       setTmdbTouched(false);
       setRadarrTouched(false);
       setSonarrTouched(false);
+      setOverseerrTouched(false);
       setGoogleTouched(false);
       setOpenAiTouched(false);
 
@@ -145,6 +152,9 @@ export function SettingsPage({
       setTmdbTestOk(Boolean(secrets.tmdb) ? true : null);
       setRadarrTestOk(nextRadarrEnabled && Boolean(secrets.radarr) ? true : null);
       setSonarrTestOk(nextSonarrEnabled && Boolean(secrets.sonarr) ? true : null);
+      setOverseerrTestOk(
+        nextOverseerrEnabled && Boolean(secrets.overseerr) ? true : null,
+      );
       setGoogleTestOk(
         nextGoogleEnabled && Boolean(secrets.google) && Boolean(googleSearchEngineIdSaved) ? true : null,
       );
@@ -196,6 +206,9 @@ export function SettingsPage({
   const [sonarrBaseUrl, setSonarrBaseUrl] = useState('http://localhost:8989');
   const [sonarrApiKey, setSonarrApiKey] = useState('');
 
+  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
+  const [overseerrApiKey, setOverseerrApiKey] = useState('');
+
   const [tmdbApiKey, setTmdbApiKey] = useState('');
 
   const [googleSearchEngineId, setGoogleSearchEngineId] = useState('');
@@ -214,6 +227,9 @@ export function SettingsPage({
     if (secretsPresent.sonarr && !sonarrApiKey) {
       setSonarrApiKey(MASKED_SECRET);
     }
+    if (secretsPresent.overseerr && !overseerrApiKey) {
+      setOverseerrApiKey(MASKED_SECRET);
+    }
     if (secretsPresent.tmdb && !tmdbApiKey) {
       setTmdbApiKey(MASKED_SECRET);
     }
@@ -228,6 +244,7 @@ export function SettingsPage({
   // Service toggle states
   const [radarrEnabled, setRadarrEnabled] = useState(false);
   const [sonarrEnabled, setSonarrEnabled] = useState(false);
+  const [overseerrEnabled, setOverseerrEnabled] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [openAiEnabled, setOpenAiEnabled] = useState(false);
 
@@ -242,6 +259,7 @@ export function SettingsPage({
   const [tmdbTouched, setTmdbTouched] = useState(false);
   const [radarrTouched, setRadarrTouched] = useState(false);
   const [sonarrTouched, setSonarrTouched] = useState(false);
+  const [overseerrTouched, setOverseerrTouched] = useState(false);
   const [googleTouched, setGoogleTouched] = useState(false);
   const [openAiTouched, setOpenAiTouched] = useState(false);
 
@@ -249,6 +267,7 @@ export function SettingsPage({
   const [tmdbTestOk, setTmdbTestOk] = useState<boolean | null>(null);
   const [radarrTestOk, setRadarrTestOk] = useState<boolean | null>(null);
   const [sonarrTestOk, setSonarrTestOk] = useState<boolean | null>(null);
+  const [overseerrTestOk, setOverseerrTestOk] = useState<boolean | null>(null);
   const [googleTestOk, setGoogleTestOk] = useState<boolean | null>(null);
   const [openAiTestOk, setOpenAiTestOk] = useState<boolean | null>(null);
 
@@ -256,6 +275,7 @@ export function SettingsPage({
   const [tmdbIsTesting, setTmdbIsTesting] = useState(false);
   const [radarrIsTesting, setRadarrIsTesting] = useState(false);
   const [sonarrIsTesting, setSonarrIsTesting] = useState(false);
+  const [overseerrIsTesting, setOverseerrIsTesting] = useState(false);
   const [googleIsTesting, setGoogleIsTesting] = useState(false);
   const [openAiIsTesting, setOpenAiIsTesting] = useState(false);
 
@@ -263,6 +283,7 @@ export function SettingsPage({
   const tmdbTestRunId = useRef(0);
   const radarrTestRunId = useRef(0);
   const sonarrTestRunId = useRef(0);
+  const overseerrTestRunId = useRef(0);
   const googleTestRunId = useRef(0);
   const openAiTestRunId = useRef(0);
 
@@ -403,12 +424,15 @@ export function SettingsPage({
       // Optional services (diff-based patches; only when toggled on)
       const curRadarrBaseUrl = readString(currentSettings, 'radarr.baseUrl');
       const curSonarrBaseUrl = readString(currentSettings, 'sonarr.baseUrl');
+      const curOverseerrBaseUrl = readString(currentSettings, 'overseerr.baseUrl');
       const curGoogleSearchEngineId = readString(currentSettings, 'google.searchEngineId');
 
       const curRadarrEnabled =
         readBool(currentSettings, 'radarr.enabled') ?? Boolean(secretsPresent.radarr);
       const curSonarrEnabled =
         readBool(currentSettings, 'sonarr.enabled') ?? Boolean(secretsPresent.sonarr);
+      const curOverseerrEnabled =
+        readBool(currentSettings, 'overseerr.enabled') ?? Boolean(secretsPresent.overseerr);
       const curGoogleEnabled =
         readBool(currentSettings, 'google.enabled') ?? Boolean(secretsPresent.google);
       const curOpenAiEnabled =
@@ -416,10 +440,12 @@ export function SettingsPage({
 
       const nextRadarrBaseUrl = radarrBaseUrl.trim();
       const nextSonarrBaseUrl = sonarrBaseUrl.trim();
+      const nextOverseerrBaseUrl = overseerrBaseUrl.trim();
       const nextGoogleSearchEngineId = googleSearchEngineId.trim();
 
       const radarrEnabledChanged = radarrEnabled !== curRadarrEnabled;
       const sonarrEnabledChanged = sonarrEnabled !== curSonarrEnabled;
+      const overseerrEnabledChanged = overseerrEnabled !== curOverseerrEnabled;
       const googleEnabledChanged = googleEnabled !== curGoogleEnabled;
       const openAiEnabledChanged = openAiEnabled !== curOpenAiEnabled;
 
@@ -427,6 +453,10 @@ export function SettingsPage({
         radarrEnabled && Boolean(nextRadarrBaseUrl) && nextRadarrBaseUrl !== curRadarrBaseUrl;
       const sonarrBaseChanged =
         sonarrEnabled && Boolean(nextSonarrBaseUrl) && nextSonarrBaseUrl !== curSonarrBaseUrl;
+      const overseerrBaseChanged =
+        overseerrEnabled &&
+        Boolean(nextOverseerrBaseUrl) &&
+        nextOverseerrBaseUrl !== curOverseerrBaseUrl;
       const googleIdChanged =
         googleEnabled &&
         Boolean(nextGoogleSearchEngineId) &&
@@ -441,6 +471,11 @@ export function SettingsPage({
       if (sonarrEnabledChanged) sonarrSettings.enabled = sonarrEnabled;
       if (sonarrBaseChanged) sonarrSettings.baseUrl = nextSonarrBaseUrl;
       if (Object.keys(sonarrSettings).length) settingsPatch.sonarr = sonarrSettings;
+
+      const overseerrSettings: Record<string, unknown> = {};
+      if (overseerrEnabledChanged) overseerrSettings.enabled = overseerrEnabled;
+      if (overseerrBaseChanged) overseerrSettings.baseUrl = nextOverseerrBaseUrl;
+      if (Object.keys(overseerrSettings).length) settingsPatch.overseerr = overseerrSettings;
 
       const googleSettings: Record<string, unknown> = {};
       if (googleEnabledChanged) googleSettings.enabled = googleEnabled;
@@ -473,6 +508,15 @@ export function SettingsPage({
         sonarrEnabled && Boolean(sonarrKeyTrimmed) && sonarrKeyTrimmed !== MASKED_SECRET;
       if (sonarrKeyChanged) {
         secretsPatch.sonarr = { apiKey: sonarrKeyTrimmed };
+      }
+
+      const overseerrKeyTrimmed = overseerrApiKey.trim();
+      const overseerrKeyChanged =
+        overseerrEnabled &&
+        Boolean(overseerrKeyTrimmed) &&
+        overseerrKeyTrimmed !== MASKED_SECRET;
+      if (overseerrKeyChanged) {
+        secretsPatch.overseerr = { apiKey: overseerrKeyTrimmed };
       }
 
       const googleKeyTrimmed = googleApiKey.trim();
@@ -570,6 +614,34 @@ export function SettingsPage({
         if (!res.ok) throw new Error('Sonarr credentials are incorrect.');
       }
 
+      // Overseerr: validate if baseUrl/apiKey changed (and enabled)
+      const overseerrBecameEnabled = overseerrEnabled && !curOverseerrEnabled;
+      if (
+        overseerrEnabled &&
+        (overseerrBecameEnabled || overseerrBaseChanged || overseerrKeyChanged)
+      ) {
+        if (!nextOverseerrBaseUrl) throw new Error('Please enter Overseerr Base URL');
+        if (!overseerrKeyChanged && !secretsPresent.overseerr) {
+          throw new Error('Please enter Overseerr API Key');
+        }
+
+        const res = overseerrKeyChanged
+          ? await fetch('/api/overseerr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                baseUrl: nextOverseerrBaseUrl,
+                apiKey: overseerrKeyTrimmed,
+              }),
+            })
+          : await fetch('/api/integrations/test/overseerr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl: nextOverseerrBaseUrl }),
+            });
+        if (!res.ok) throw new Error('Overseerr credentials are incorrect.');
+      }
+
       // Google: validate if searchEngineId/apiKey changed (and enabled)
       const googleBecameEnabled = googleEnabled && !curGoogleEnabled;
       if (googleEnabled && (googleBecameEnabled || googleIdChanged || googleKeyChanged)) {
@@ -630,6 +702,7 @@ export function SettingsPage({
       setPlexToken('');
       setRadarrApiKey('');
       setSonarrApiKey('');
+      setOverseerrApiKey('');
       setTmdbApiKey('');
       setGoogleApiKey('');
       setOpenAiApiKey('');
@@ -646,7 +719,7 @@ export function SettingsPage({
 
   const integrationEnabledMutation = useMutation({
     mutationFn: async (params: {
-      integration: 'radarr' | 'sonarr' | 'google' | 'openai';
+      integration: 'radarr' | 'sonarr' | 'overseerr' | 'google' | 'openai';
       enabled: boolean;
     }) =>
       putSettings({
@@ -879,6 +952,93 @@ export function SettingsPage({
       return false;
     } catch {
       showError('Couldn’t connect to Sonarr. Check the URL and API key.');
+      return false;
+    }
+  };
+
+  const testOverseerrConnection = async (
+    mode: TestMode = 'manual',
+  ): Promise<boolean | null> => {
+    const toastId =
+      mode === 'manual' ? toast.loading('Testing Overseerr connection...') : undefined;
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
+      if (mode === 'background') return;
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
+    };
+    const showSuccess = (message: string) => {
+      if (!toastId) return;
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
+    };
+
+    try {
+      const baseUrl = overseerrBaseUrl.trim();
+      const apiKey = overseerrApiKey.trim();
+
+      if (!baseUrl) {
+        showError('Please enter Overseerr Base URL', { immediate: true });
+        return null;
+      }
+      if (!secretsPresent.overseerr && !apiKey) {
+        showError('Please enter Overseerr API Key', { immediate: true });
+        return null;
+      }
+
+      const response =
+        secretsPresent.overseerr && (!apiKey || apiKey === MASKED_SECRET)
+          ? await fetch('/api/integrations/test/overseerr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl }),
+            })
+          : await fetch('/api/overseerr/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ baseUrl, apiKey }),
+            });
+
+      if (response.ok) {
+        if (mode === 'manual') showSuccess('Connected to Overseerr.');
+        return true;
+      }
+
+      const error = await response
+        .json()
+        .catch(() => ({ message: response.statusText }));
+      const msg = error.message || response.statusText;
+      const lower = String(msg).toLowerCase();
+      if (
+        lower.includes('http 401') ||
+        lower.includes('http 403') ||
+        lower.includes('unauthorized')
+      ) {
+        showError('Overseerr API key is incorrect.');
+      } else if (
+        lower.includes('timeout') ||
+        lower.includes('econnrefused') ||
+        lower.includes('enotfound') ||
+        lower.includes('failed to fetch')
+      ) {
+        showError('Couldn’t reach Overseerr. Check the URL.');
+      } else {
+        showError('Couldn’t connect to Overseerr. Check the URL and API key.');
+      }
+      return false;
+    } catch {
+      showError('Couldn’t connect to Overseerr. Check the URL and API key.');
       return false;
     }
   };
@@ -1172,6 +1332,27 @@ export function SettingsPage({
     return typeof result === 'boolean' ? result : null;
   };
 
+  const runOverseerrTest = async (mode: TestMode): Promise<boolean | null> => {
+    const runId = ++overseerrTestRunId.current;
+    const startedAt = Date.now();
+    setOverseerrIsTesting(true);
+    const result = await testOverseerrConnection(mode);
+    if (overseerrTestRunId.current !== runId) return null;
+
+    if (typeof result === 'boolean') {
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, 1000 - elapsed);
+      if (remaining) {
+        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+        if (overseerrTestRunId.current !== runId) return null;
+      }
+    }
+
+    setOverseerrIsTesting(false);
+    if (typeof result === 'boolean') setOverseerrTestOk(result);
+    return typeof result === 'boolean' ? result : null;
+  };
+
   const runGoogleTest = async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++googleTestRunId.current;
     const startedAt = Date.now();
@@ -1334,7 +1515,14 @@ export function SettingsPage({
       void runTmdbLandingCheck();
 
       const tasks: Array<{
-        key: 'plex' | 'tmdb' | 'radarr' | 'sonarr' | 'google' | 'openai';
+        key:
+          | 'plex'
+          | 'tmdb'
+          | 'radarr'
+          | 'sonarr'
+          | 'overseerr'
+          | 'google'
+          | 'openai';
         label: string;
         run: () => Promise<boolean | null>;
         disableOnFail: boolean;
@@ -1346,6 +1534,7 @@ export function SettingsPage({
       // Optional integrations (active if enabled in persisted settings)
       if (radarrEnabled) tasks.push({ key: 'radarr', label: 'Radarr', run: () => runRadarrTest('background'), disableOnFail: true });
       if (sonarrEnabled) tasks.push({ key: 'sonarr', label: 'Sonarr', run: () => runSonarrTest('background'), disableOnFail: true });
+      if (overseerrEnabled) tasks.push({ key: 'overseerr', label: 'Overseerr', run: () => runOverseerrTest('background'), disableOnFail: true });
       if (googleEnabled) tasks.push({ key: 'google', label: 'Google', run: () => runGoogleTest('background'), disableOnFail: true });
       if (openAiEnabled) tasks.push({ key: 'openai', label: 'OpenAI', run: () => runOpenAiTest('background'), disableOnFail: true });
 
@@ -1379,6 +1568,9 @@ export function SettingsPage({
           } else if (r.key === 'sonarr') {
             setSonarrEnabled(false);
             disablePatch.sonarr = { enabled: false };
+          } else if (r.key === 'overseerr') {
+            setOverseerrEnabled(false);
+            disablePatch.overseerr = { enabled: false };
           } else if (r.key === 'google') {
             setGoogleEnabled(false);
             disablePatch.google = { enabled: false };
@@ -1412,6 +1604,7 @@ export function SettingsPage({
     secretsPresent.tmdb,
     radarrEnabled,
     sonarrEnabled,
+    overseerrEnabled,
     googleEnabled,
     openAiEnabled,
     queryClient,
@@ -1485,6 +1678,9 @@ export function SettingsPage({
     radarrTouched || (Boolean(radarrApiKey.trim()) && radarrApiKey.trim() !== MASKED_SECRET);
   const sonarrNeedsTest =
     sonarrTouched || (Boolean(sonarrApiKey.trim()) && sonarrApiKey.trim() !== MASKED_SECRET);
+  const overseerrNeedsTest =
+    overseerrTouched ||
+    (Boolean(overseerrApiKey.trim()) && overseerrApiKey.trim() !== MASKED_SECRET);
   const googleNeedsTest =
     googleTouched || (Boolean(googleApiKey.trim()) && googleApiKey.trim() !== MASKED_SECRET);
   const openAiNeedsTest =
@@ -1528,6 +1724,17 @@ export function SettingsPage({
         : sonarrTestOk === false
           ? 'inactive'
           : sonarrNeedsTest
+            ? 'test'
+            : 'inactive';
+  const overseerrStatus: StatusPillVariant = !overseerrEnabled
+    ? 'inactive'
+    : overseerrIsTesting
+      ? 'testing'
+      : overseerrTestOk === true
+        ? 'active'
+        : overseerrTestOk === false
+          ? 'inactive'
+          : overseerrNeedsTest
             ? 'test'
             : 'inactive';
   const googleStatus: StatusPillVariant = !googleEnabled
@@ -2152,6 +2359,196 @@ export function SettingsPage({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Overseerr Settings */}
+              <div id="vault-overseerr" className="relative scroll-mt-24">
+                <AnimatePresence initial={false}>
+                  {flashCard?.id === 'vault-overseerr' && (
+                    <motion.div
+                      key={`${flashCard.nonce}-glow-overseerr`}
+                      className="pointer-events-none absolute inset-0 rounded-3xl"
+                      initial={{ boxShadow: '0 0 0px rgba(34, 211, 238, 0)' }}
+                      animate={{
+                        boxShadow: [
+                          '0 0 0px rgba(34, 211, 238, 0)',
+                          '0 0 30px rgba(34, 211, 238, 0.45)',
+                          '0 0 0px rgba(34, 211, 238, 0)',
+                          '0 0 30px rgba(34, 211, 238, 0.45)',
+                          '0 0 0px rgba(34, 211, 238, 0)',
+                          '0 0 30px rgba(34, 211, 238, 0.45)',
+                          '0 0 0px rgba(34, 211, 238, 0)',
+                        ],
+                      }}
+                      exit={{ boxShadow: '0 0 0px rgba(34, 211, 238, 0)' }}
+                      transition={{ duration: 3.8, ease: 'easeInOut' }}
+                    />
+                  )}
+                </AnimatePresence>
+
+                <div className={`${cardClass} group`}>
+                  <div className={cardHeaderClass}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-cyan-300">
+                        <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                          <OverseerrLogo className="w-7 h-7" />
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h2 className={cardTitleClass}>Overseerr</h2>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="Overseerr API key help"
+                              className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                            >
+                              <Info className="w-4 h-4" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            align="start"
+                            className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                          >
+                            <div className="space-y-2 text-sm text-white/80">
+                              <div>Find your Overseerr API key in Settings.</div>
+                              <a
+                                href="http://localhost:5055/settings"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[#67e8f9] hover:text-[#a5f3fc] underline underline-offset-4"
+                              >
+                                Overseerr → Settings
+                              </a>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                      <button
+                        type="button"
+                        disabled={
+                          !overseerrEnabled ||
+                          overseerrStatus === 'testing' ||
+                          (overseerrStatus === 'inactive' && overseerrTestOk !== false)
+                        }
+                        onClick={() => void runOverseerrTest('manual')}
+                        className={statusPillClass(overseerrStatus)}
+                        aria-label={`Overseerr status: ${statusLabel(overseerrStatus)}`}
+                      >
+                        {overseerrStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span
+                            className={`h-2 w-2 rounded-full ${statusDotClass(overseerrStatus)}`}
+                          />
+                        )}
+                        {statusLabel(overseerrStatus)}
+                      </button>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={overseerrEnabled}
+                        onClick={() => {
+                          const prev = overseerrEnabled;
+                          const next = !overseerrEnabled;
+                          setOverseerrEnabled(next);
+                          setOverseerrTestOk(null);
+                          overseerrTestRunId.current += 1;
+                          setOverseerrIsTesting(false);
+
+                          integrationEnabledMutation.mutate(
+                            { integration: 'overseerr', enabled: next },
+                            {
+                              onError: (err) => {
+                                setOverseerrEnabled(prev);
+                                toast.error(
+                                  (err as Error)?.message ??
+                                    'Failed to save Overseerr enabled state',
+                                );
+                              },
+                            },
+                          );
+
+                          if (!next) return;
+                          const apiKey = overseerrApiKey.trim();
+                          const usesSavedCreds =
+                            secretsPresent.overseerr &&
+                            (!apiKey || apiKey === MASKED_SECRET);
+                          if (usesSavedCreds && !overseerrTouched) {
+                            void runOverseerrTest('auto');
+                          }
+                        }}
+                        disabled={
+                          integrationEnabledMutation.isPending &&
+                          integrationEnabledMutation.variables?.integration ===
+                            'overseerr'
+                        }
+                        className={toggleTrackClass(overseerrEnabled)}
+                        aria-label="Toggle Overseerr"
+                      >
+                        <span className={toggleThumbClass(overseerrEnabled)} />
+                      </button>
+                    </div>
+                  </div>
+                  <AnimatePresence initial={false}>
+                    {overseerrEnabled && (
+                      <motion.div
+                        initial={
+                          allowCardExpandAnimations.current
+                            ? { height: 0, opacity: 0 }
+                            : false
+                        }
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className={labelClass}>Base URL</label>
+                            <input
+                              type="text"
+                              value={overseerrBaseUrl}
+                              onChange={(e) => {
+                                setOverseerrTouched(true);
+                                setOverseerrTestOk(null);
+                                setOverseerrBaseUrl(e.target.value);
+                              }}
+                              placeholder="http://localhost:5055"
+                              className={inputClass}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>API Key</label>
+                            <input
+                              type="password"
+                              value={overseerrApiKey}
+                              onChange={(e) => {
+                                setOverseerrTouched(true);
+                                setOverseerrTestOk(null);
+                                setOverseerrApiKey(e.target.value);
+                              }}
+                              onBlur={() => {
+                                const apiKey = overseerrApiKey.trim();
+                                if (!overseerrEnabled) return;
+                                if (!apiKey || apiKey === MASKED_SECRET) return;
+                                void runOverseerrTest('auto');
+                              }}
+                              placeholder={
+                                secretsPresent.overseerr
+                                  ? 'Saved (enter new to replace)'
+                                  : 'Enter Overseerr API key'
+                              }
+                              className={inputClass}
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 

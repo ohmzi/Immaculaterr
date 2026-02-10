@@ -1,11 +1,19 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
 import type { DownloadApprovalStatus } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import type { JobContext } from '../jobs/jobs.types';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
+import {
+  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  CURATED_TV_COLLECTION_HUB_ORDER,
+  buildUserCollectionHubOrder,
+  buildUserCollectionName,
+} from '../plex/plex-collections.utils';
+import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { type RadarrMovie, RadarrService } from '../radarr/radarr.service';
 import { SettingsService } from '../settings/settings.service';
 import { type SonarrSeries, SonarrService } from '../sonarr/sonarr.service';
@@ -76,6 +84,18 @@ function watchedCollectionName(params: {
     : 'Based on your recently watched show';
 }
 
+function readEffectiveApproval(params: {
+  settings: Record<string, unknown>;
+  approvalPath: string;
+  overseerrPath: string;
+}): boolean {
+  const approvalRequired =
+    (pickBool(params.settings, params.approvalPath) ?? false) === true;
+  const overseerrModeSelected =
+    (pickBool(params.settings, params.overseerrPath) ?? false) === true;
+  return approvalRequired && !overseerrModeSelected;
+}
+
 @Injectable()
 export class ObservatoryService {
   constructor(
@@ -83,6 +103,7 @@ export class ObservatoryService {
     private readonly settings: SettingsService,
     private readonly plexServer: PlexServerService,
     private readonly plexCurated: PlexCuratedCollectionsService,
+    private readonly plexUsers: PlexUsersService,
     private readonly radarr: RadarrService,
     private readonly sonarr: SonarrService,
     private readonly tmdb: TmdbService,
@@ -90,6 +111,35 @@ export class ObservatoryService {
     private readonly immaculateTv: ImmaculateTasteShowCollectionService,
     private readonly watchedRefresher: WatchedCollectionsRefresherService,
   ) {}
+
+  private async resolvePlexUserContext(userId: string) {
+    const resolved = await this.plexUsers.ensureAdminPlexUser({ userId });
+    const pinTarget: 'admin' | 'friends' = resolved.isAdmin
+      ? 'admin'
+      : 'friends';
+    return {
+      plexUserId: resolved.id,
+      plexUserTitle: resolved.plexAccountTitle,
+      pinCollections: resolved.isAdmin,
+      pinTarget,
+    };
+  }
+
+  private assertLibrarySectionAllowed(params: {
+    settings: Record<string, unknown>;
+    librarySectionKey: string;
+  }) {
+    if (
+      isPlexLibrarySectionExcluded({
+        settings: params.settings,
+        sectionKey: params.librarySectionKey,
+      })
+    ) {
+      throw new BadRequestException(
+        'librarySectionKey is excluded by Plex library selection',
+      );
+    }
+  }
 
   async resetRejectedSuggestions(params: { userId: string }) {
     const res = await this.prisma.rejectedSuggestion.deleteMany({
@@ -233,17 +283,24 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
+    const { plexUserId } = await this.resolvePlexUserContext(params.userId);
 
     const rows = await this.prisma.immaculateTasteMovieLibrary.findMany({
       where:
         params.mode === 'pendingApproval'
           ? {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               status: 'pending',
               downloadApproval: 'pending',
             }
           : {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               downloadApproval: { not: 'rejected' },
             },
@@ -270,7 +327,8 @@ export class ObservatoryService {
           await this.prisma.immaculateTasteMovieLibrary
             .update({
               where: {
-                librarySectionKey_tmdbId: {
+                plexUserId_librarySectionKey_tmdbId: {
+                  plexUserId,
                   librarySectionKey: params.librarySectionKey,
                   tmdbId: r.tmdbId,
                 },
@@ -285,6 +343,7 @@ export class ObservatoryService {
     // Re-read poster paths for the ones we might have updated.
     const out = await this.prisma.immaculateTasteMovieLibrary.findMany({
       where: {
+        plexUserId,
         librarySectionKey: params.librarySectionKey,
         tmdbId: { in: rows.map((r) => r.tmdbId) },
         ...(params.mode === 'pendingApproval'
@@ -324,9 +383,11 @@ export class ObservatoryService {
         sentToRadarrAt: r.sentToRadarrAt?.toISOString() ?? null,
         posterUrl: posterUrlFromPath(r.tmdbPosterPath ?? null),
       })),
-      approvalRequiredFromObservatory:
-        (pickBool(settings, 'jobs.immaculateTastePoints.approvalRequiredFromObservatory') ??
-          false) === true,
+      approvalRequiredFromObservatory: readEffectiveApproval({
+        settings,
+        approvalPath: 'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+        overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
+      }),
     };
   }
 
@@ -334,17 +395,24 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
+    const { plexUserId } = await this.resolvePlexUserContext(params.userId);
 
     const rows = await this.prisma.immaculateTasteShowLibrary.findMany({
       where:
         params.mode === 'pendingApproval'
           ? {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               status: 'pending',
               downloadApproval: 'pending',
             }
           : {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               downloadApproval: { not: 'rejected' },
             },
@@ -372,7 +440,8 @@ export class ObservatoryService {
           await this.prisma.immaculateTasteShowLibrary
             .update({
               where: {
-                librarySectionKey_tvdbId: {
+                plexUserId_librarySectionKey_tvdbId: {
+                  plexUserId,
                   librarySectionKey: params.librarySectionKey,
                   tvdbId: r.tvdbId,
                 },
@@ -386,6 +455,7 @@ export class ObservatoryService {
 
     const out = await this.prisma.immaculateTasteShowLibrary.findMany({
       where: {
+        plexUserId,
         librarySectionKey: params.librarySectionKey,
         tvdbId: { in: rows.map((r) => r.tvdbId) },
         ...(params.mode === 'pendingApproval'
@@ -427,9 +497,11 @@ export class ObservatoryService {
         sentToSonarrAt: r.sentToSonarrAt?.toISOString() ?? null,
         posterUrl: posterUrlFromPath(r.tmdbPosterPath ?? null),
       })),
-      approvalRequiredFromObservatory:
-        (pickBool(settings, 'jobs.immaculateTastePoints.approvalRequiredFromObservatory') ??
-          false) === true,
+      approvalRequiredFromObservatory: readEffectiveApproval({
+        settings,
+        approvalPath: 'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+        overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
+      }),
     };
   }
 
@@ -442,7 +514,12 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
+    const { plexUserId } = await this.resolvePlexUserContext(params.userId);
     const collectionName = watchedCollectionName({
       mediaType: 'movie',
       kind: params.collectionKind,
@@ -452,12 +529,14 @@ export class ObservatoryService {
       where:
         params.mode === 'pendingApproval'
           ? {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               collectionName,
               status: 'pending',
               downloadApproval: 'pending',
             }
           : {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               collectionName,
               downloadApproval: { not: 'rejected' },
@@ -485,7 +564,8 @@ export class ObservatoryService {
           await this.prisma.watchedMovieRecommendationLibrary
             .update({
               where: {
-                collectionName_librarySectionKey_tmdbId: {
+                plexUserId_collectionName_librarySectionKey_tmdbId: {
+                  plexUserId,
                   collectionName,
                   librarySectionKey: params.librarySectionKey,
                   tmdbId: r.tmdbId,
@@ -500,6 +580,7 @@ export class ObservatoryService {
 
     const out = await this.prisma.watchedMovieRecommendationLibrary.findMany({
       where: {
+        plexUserId,
         librarySectionKey: params.librarySectionKey,
         collectionName,
         tmdbId: { in: rows.map((r) => r.tmdbId) },
@@ -540,12 +621,12 @@ export class ObservatoryService {
         sentToRadarrAt: r.sentToRadarrAt?.toISOString() ?? null,
         posterUrl: posterUrlFromPath(r.tmdbPosterPath ?? null),
       })),
-      approvalRequiredFromObservatory:
-        (pickBool(
-          settings,
+      approvalRequiredFromObservatory: readEffectiveApproval({
+        settings,
+        approvalPath:
           'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-        ) ??
-          false) === true,
+        overseerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+      }),
     };
   }
 
@@ -558,7 +639,12 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
+    const { plexUserId } = await this.resolvePlexUserContext(params.userId);
     const collectionName = watchedCollectionName({
       mediaType: 'tv',
       kind: params.collectionKind,
@@ -568,12 +654,14 @@ export class ObservatoryService {
       where:
         params.mode === 'pendingApproval'
           ? {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               collectionName,
               status: 'pending',
               downloadApproval: 'pending',
             }
           : {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               collectionName,
               downloadApproval: { not: 'rejected' },
@@ -604,7 +692,8 @@ export class ObservatoryService {
           await this.prisma.watchedShowRecommendationLibrary
             .update({
               where: {
-                collectionName_librarySectionKey_tvdbId: {
+                plexUserId_collectionName_librarySectionKey_tvdbId: {
+                  plexUserId,
                   collectionName,
                   librarySectionKey: params.librarySectionKey,
                   tvdbId: r.tvdbId,
@@ -619,6 +708,7 @@ export class ObservatoryService {
 
     const out = await this.prisma.watchedShowRecommendationLibrary.findMany({
       where: {
+        plexUserId,
         librarySectionKey: params.librarySectionKey,
         collectionName,
         tvdbId: { in: rows.map((r) => r.tvdbId) },
@@ -661,12 +751,12 @@ export class ObservatoryService {
         sentToSonarrAt: r.sentToSonarrAt?.toISOString() ?? null,
         posterUrl: posterUrlFromPath(r.tmdbPosterPath ?? null),
       })),
-      approvalRequiredFromObservatory:
-        (pickBool(
-          settings,
+      approvalRequiredFromObservatory: readEffectiveApproval({
+        settings,
+        approvalPath:
           'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-        ) ??
-          false) === true,
+        overseerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+      }),
     };
   }
 
@@ -676,9 +766,15 @@ export class ObservatoryService {
     mediaType: 'movie' | 'tv';
     decisions: unknown[];
   }) {
+    const { settings } = await this.settings.getInternalSettings(params.userId);
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     // Save-only: no side effects here.
     let applied = 0;
     let ignored = 0;
+    const { plexUserId } = await this.resolvePlexUserContext(params.userId);
 
     const actions = params.decisions
       .map((d) => (isPlainObject(d) ? d : null))
@@ -713,7 +809,8 @@ export class ObservatoryService {
             const row = await this.prisma.immaculateTasteMovieLibrary
               .findUnique({
                 where: {
-                  librarySectionKey_tmdbId: {
+                  plexUserId_librarySectionKey_tmdbId: {
+                    plexUserId,
                     librarySectionKey: params.librarySectionKey,
                     tmdbId: a.id,
                   },
@@ -729,7 +826,8 @@ export class ObservatoryService {
               row.status === 'pending' ? 'pending' : 'none';
             await this.prisma.immaculateTasteMovieLibrary.update({
               where: {
-                librarySectionKey_tmdbId: {
+                plexUserId_librarySectionKey_tmdbId: {
+                  plexUserId,
                   librarySectionKey: params.librarySectionKey,
                   tmdbId: a.id,
                 },
@@ -760,7 +858,8 @@ export class ObservatoryService {
           }
           const updated = await this.prisma.immaculateTasteMovieLibrary.update({
             where: {
-              librarySectionKey_tmdbId: {
+              plexUserId_librarySectionKey_tmdbId: {
+                plexUserId,
                 librarySectionKey: params.librarySectionKey,
                 tmdbId: a.id,
               },
@@ -816,7 +915,8 @@ export class ObservatoryService {
             const row = await this.prisma.immaculateTasteShowLibrary
               .findUnique({
                 where: {
-                  librarySectionKey_tvdbId: {
+                  plexUserId_librarySectionKey_tvdbId: {
+                    plexUserId,
                     librarySectionKey: params.librarySectionKey,
                     tvdbId: a.id,
                   },
@@ -832,7 +932,8 @@ export class ObservatoryService {
               row.status === 'pending' ? 'pending' : 'none';
             await this.prisma.immaculateTasteShowLibrary.update({
               where: {
-                librarySectionKey_tvdbId: {
+                plexUserId_librarySectionKey_tvdbId: {
+                  plexUserId,
                   librarySectionKey: params.librarySectionKey,
                   tvdbId: a.id,
                 },
@@ -863,7 +964,8 @@ export class ObservatoryService {
           }
           await this.prisma.immaculateTasteShowLibrary.update({
             where: {
-              librarySectionKey_tvdbId: {
+              plexUserId_librarySectionKey_tvdbId: {
+                plexUserId,
                 librarySectionKey: params.librarySectionKey,
                 tvdbId: a.id,
               },
@@ -928,7 +1030,13 @@ export class ObservatoryService {
     collectionKind: WatchedCollectionKind;
     decisions: unknown[];
   }) {
+    const { settings } = await this.settings.getInternalSettings(params.userId);
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const { librarySectionKey, mediaType } = params;
+    const { plexUserId } = await this.resolvePlexUserContext(params.userId);
     const collectionName = watchedCollectionName({
       mediaType,
       kind: params.collectionKind,
@@ -968,7 +1076,8 @@ export class ObservatoryService {
             const row = await this.prisma.watchedMovieRecommendationLibrary
               .findUnique({
                 where: {
-                  collectionName_librarySectionKey_tmdbId: {
+                  plexUserId_collectionName_librarySectionKey_tmdbId: {
+                    plexUserId,
                     collectionName,
                     librarySectionKey,
                     tmdbId: id,
@@ -985,7 +1094,8 @@ export class ObservatoryService {
               row.status === 'pending' ? 'pending' : 'none';
             await this.prisma.watchedMovieRecommendationLibrary.update({
               where: {
-                collectionName_librarySectionKey_tmdbId: {
+                plexUserId_collectionName_librarySectionKey_tmdbId: {
+                  plexUserId,
                   collectionName,
                   librarySectionKey,
                   tmdbId: id,
@@ -1018,7 +1128,8 @@ export class ObservatoryService {
 
           await this.prisma.watchedMovieRecommendationLibrary.update({
             where: {
-              collectionName_librarySectionKey_tmdbId: {
+              plexUserId_collectionName_librarySectionKey_tmdbId: {
+                plexUserId,
                 collectionName,
                 librarySectionKey,
                 tmdbId: id,
@@ -1073,7 +1184,8 @@ export class ObservatoryService {
             const row = await this.prisma.watchedShowRecommendationLibrary
               .findUnique({
                 where: {
-                  collectionName_librarySectionKey_tvdbId: {
+                  plexUserId_collectionName_librarySectionKey_tvdbId: {
+                    plexUserId,
                     collectionName,
                     librarySectionKey,
                     tvdbId: id,
@@ -1090,7 +1202,8 @@ export class ObservatoryService {
               row.status === 'pending' ? 'pending' : 'none';
             await this.prisma.watchedShowRecommendationLibrary.update({
               where: {
-                collectionName_librarySectionKey_tvdbId: {
+                plexUserId_collectionName_librarySectionKey_tvdbId: {
+                  plexUserId,
                   collectionName,
                   librarySectionKey,
                   tvdbId: id,
@@ -1123,7 +1236,8 @@ export class ObservatoryService {
 
           await this.prisma.watchedShowRecommendationLibrary.update({
             where: {
-              collectionName_librarySectionKey_tvdbId: {
+              plexUserId_collectionName_librarySectionKey_tvdbId: {
+                plexUserId,
                 collectionName,
                 librarySectionKey,
                 tvdbId: id,
@@ -1190,6 +1304,12 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
+    const { plexUserId, plexUserTitle, pinTarget } =
+      await this.resolvePlexUserContext(params.userId);
 
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
@@ -1199,12 +1319,18 @@ export class ObservatoryService {
     if (!plexToken) throw new BadGatewayException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const approvalRequired =
+    const overseerrModeSelected =
       (pickBool(
         settings,
-        'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
+        'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
       ) ??
         false) === true;
+    const approvalRequired = readEffectiveApproval({
+      settings,
+      approvalPath:
+        'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
+      overseerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+    });
 
     const ctx: JobContext = {
       jobId: 'observatoryApplyWatched',
@@ -1262,6 +1388,7 @@ export class ObservatoryService {
         pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
         true;
       const radarrEnabled =
+        !overseerrModeSelected &&
         fetchMissingRadarr &&
         (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
         Boolean(radarrBaseUrlRaw) &&
@@ -1270,6 +1397,7 @@ export class ObservatoryService {
 
       const rejected = await this.prisma.watchedMovieRecommendationLibrary.findMany({
         where: {
+          plexUserId,
           librarySectionKey: params.librarySectionKey,
           collectionName: { in: collectionNames },
           downloadApproval: 'rejected',
@@ -1281,6 +1409,7 @@ export class ObservatoryService {
       const approved = approvalRequired
         ? await this.prisma.watchedMovieRecommendationLibrary.findMany({
             where: {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               collectionName: { in: collectionNames },
               status: 'pending',
@@ -1370,6 +1499,7 @@ export class ObservatoryService {
           await this.prisma.watchedMovieRecommendationLibrary
             .updateMany({
               where: {
+                plexUserId,
                 librarySectionKey: params.librarySectionKey,
                 collectionName: { in: collectionNames },
                 tmdbId: r.tmdbId,
@@ -1384,6 +1514,7 @@ export class ObservatoryService {
       // Remove rejected items from the dataset.
       await this.prisma.watchedMovieRecommendationLibrary.deleteMany({
         where: {
+          plexUserId,
           librarySectionKey: params.librarySectionKey,
           collectionName: { in: collectionNames },
           downloadApproval: 'rejected',
@@ -1395,13 +1526,24 @@ export class ObservatoryService {
         plexBaseUrl,
         plexToken,
         machineIdentifier,
+        plexUserId,
+        plexUserTitle,
+        pinCollections: true,
+        pinTarget,
         movieSections,
         tvSections: [],
         limit,
         scope: { librarySectionKey: params.librarySectionKey, mode: 'movie' },
       });
 
-      return { ok: true, approvalRequired, unmonitored, sent, refresh };
+      return {
+        ok: true,
+        approvalRequired,
+        overseerrModeSelected,
+        unmonitored,
+        sent,
+        refresh,
+      };
     }
 
     // TV
@@ -1411,6 +1553,7 @@ export class ObservatoryService {
       pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
       true;
     const sonarrEnabled =
+      !overseerrModeSelected &&
       fetchMissingSonarr &&
       (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
       Boolean(sonarrBaseUrlRaw) &&
@@ -1419,6 +1562,7 @@ export class ObservatoryService {
 
     const rejected = await this.prisma.watchedShowRecommendationLibrary.findMany({
       where: {
+        plexUserId,
         librarySectionKey: params.librarySectionKey,
         collectionName: { in: collectionNames },
         downloadApproval: 'rejected',
@@ -1430,6 +1574,7 @@ export class ObservatoryService {
     const approved = approvalRequired
       ? await this.prisma.watchedShowRecommendationLibrary.findMany({
           where: {
+            plexUserId,
             librarySectionKey: params.librarySectionKey,
             collectionName: { in: collectionNames },
             status: 'pending',
@@ -1515,6 +1660,7 @@ export class ObservatoryService {
         await this.prisma.watchedShowRecommendationLibrary
           .updateMany({
             where: {
+              plexUserId,
               librarySectionKey: params.librarySectionKey,
               collectionName: { in: collectionNames },
               tvdbId: r.tvdbId,
@@ -1528,6 +1674,7 @@ export class ObservatoryService {
 
     await this.prisma.watchedShowRecommendationLibrary.deleteMany({
       where: {
+        plexUserId,
         librarySectionKey: params.librarySectionKey,
         collectionName: { in: collectionNames },
         downloadApproval: 'rejected',
@@ -1539,19 +1686,36 @@ export class ObservatoryService {
       plexBaseUrl,
       plexToken,
       machineIdentifier,
+      plexUserId,
+      plexUserTitle,
+      pinCollections: true,
+      pinTarget,
       movieSections: [],
       tvSections,
       limit,
       scope: { librarySectionKey: params.librarySectionKey, mode: 'tv' },
     });
 
-    return { ok: true, approvalRequired, unmonitored, sent, refresh };
+    return {
+      ok: true,
+      approvalRequired,
+      overseerrModeSelected,
+      unmonitored,
+      sent,
+      refresh,
+    };
   }
 
   async apply(params: { userId: string; librarySectionKey: string; mediaType: 'movie' | 'tv' }) {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
+    const { plexUserId, plexUserTitle, pinTarget } =
+      await this.resolvePlexUserContext(params.userId);
 
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
@@ -1561,9 +1725,14 @@ export class ObservatoryService {
     if (!plexToken) throw new BadGatewayException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const approvalRequired =
-      (pickBool(settings, 'jobs.immaculateTastePoints.approvalRequiredFromObservatory') ??
+    const overseerrModeSelected =
+      (pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.overseerr') ??
         false) === true;
+    const approvalRequired = readEffectiveApproval({
+      settings,
+      approvalPath: 'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+      overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
+    });
 
     // Treat this as an apply-style operation (no real JobRun persistence).
     const ctx: JobContext = {
@@ -1596,8 +1765,12 @@ export class ObservatoryService {
         plexBaseUrl,
         plexToken,
         machineIdentifier,
+        plexUserId,
+        plexUserTitle,
+        pinTarget,
         librarySectionKey: params.librarySectionKey,
         approvalRequired,
+        overseerrModeSelected,
       });
     }
 
@@ -1608,8 +1781,12 @@ export class ObservatoryService {
       plexBaseUrl,
       plexToken,
       machineIdentifier,
+      plexUserId,
+      plexUserTitle,
+      pinTarget,
       librarySectionKey: params.librarySectionKey,
       approvalRequired,
+      overseerrModeSelected,
     });
   }
 
@@ -1620,8 +1797,12 @@ export class ObservatoryService {
     plexBaseUrl: string;
     plexToken: string;
     machineIdentifier: string;
+    plexUserId: string;
+    plexUserTitle: string;
+    pinTarget: 'admin' | 'friends';
     librarySectionKey: string;
     approvalRequired: boolean;
+    overseerrModeSelected: boolean;
   }) {
     const radarrBaseUrlRaw = pickString(params.settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(params.secrets, 'radarr.apiKey');
@@ -1629,6 +1810,7 @@ export class ObservatoryService {
       pickBool(params.settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ??
       true;
     const radarrEnabled =
+      !params.overseerrModeSelected &&
       fetchMissingRadarr &&
       (pickBool(params.settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
       Boolean(radarrBaseUrlRaw) &&
@@ -1637,10 +1819,11 @@ export class ObservatoryService {
 
     const startSearchImmediately =
       (pickBool(params.settings, 'jobs.immaculateTastePoints.searchImmediately') ??
-        false) === true;
+        false) === true && !params.overseerrModeSelected;
 
     const rejected = await this.prisma.immaculateTasteMovieLibrary.findMany({
       where: {
+        plexUserId: params.plexUserId,
         librarySectionKey: params.librarySectionKey,
         downloadApproval: 'rejected',
       },
@@ -1651,6 +1834,7 @@ export class ObservatoryService {
     const approved = params.approvalRequired
       ? await this.prisma.immaculateTasteMovieLibrary.findMany({
           where: {
+            plexUserId: params.plexUserId,
             librarySectionKey: params.librarySectionKey,
             status: 'pending',
             downloadApproval: 'approved',
@@ -1742,7 +1926,8 @@ export class ObservatoryService {
         await this.prisma.immaculateTasteMovieLibrary
           .update({
             where: {
-              librarySectionKey_tmdbId: {
+              plexUserId_librarySectionKey_tmdbId: {
+                plexUserId: params.plexUserId,
                 librarySectionKey: params.librarySectionKey,
                 tmdbId: r.tmdbId,
               },
@@ -1758,7 +1943,11 @@ export class ObservatoryService {
     let removedRows = 0;
     if (rejectedIds.length) {
       const res = await this.prisma.immaculateTasteMovieLibrary.deleteMany({
-        where: { librarySectionKey: params.librarySectionKey, tmdbId: { in: rejectedIds } },
+        where: {
+          plexUserId: params.plexUserId,
+          librarySectionKey: params.librarySectionKey,
+          tmdbId: { in: rejectedIds },
+        },
       });
       removedRows = res.count;
     }
@@ -1776,6 +1965,7 @@ export class ObservatoryService {
     }
 
     const activeRows = await this.immaculateMovies.getActiveMovies({
+      plexUserId: params.plexUserId,
       librarySectionKey: params.librarySectionKey,
       minPoints: 1,
     });
@@ -1790,16 +1980,27 @@ export class ObservatoryService {
       .map((id) => tmdbToItem.get(id))
       .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
+    const collectionName = buildUserCollectionName(
+      'Inspired by your Immaculate Taste',
+      params.plexUserTitle,
+    );
+    const collectionHubOrder = buildUserCollectionHubOrder(
+      CURATED_MOVIE_COLLECTION_HUB_ORDER,
+      params.plexUserTitle,
+    );
     const plex = await this.plexCurated.rebuildMovieCollection({
       ctx: params.ctx,
       baseUrl: params.plexBaseUrl,
       token: params.plexToken,
       machineIdentifier: params.machineIdentifier,
       movieSectionKey: params.librarySectionKey,
-      collectionName: 'Inspired by your Immaculate Taste',
+      collectionName,
       itemType: 1,
       desiredItems,
       randomizeOrder: false,
+      pinCollections: true,
+      pinTarget: params.pinTarget,
+      collectionHubOrder,
     });
 
     return {
@@ -1807,6 +2008,7 @@ export class ObservatoryService {
       mediaType: 'movie',
       librarySectionKey: params.librarySectionKey,
       approvalRequiredFromObservatory: params.approvalRequired,
+      overseerrModeSelected: params.overseerrModeSelected,
       radarr: {
         enabled: radarrEnabled,
         sent,
@@ -1824,8 +2026,12 @@ export class ObservatoryService {
     plexBaseUrl: string;
     plexToken: string;
     machineIdentifier: string;
+    plexUserId: string;
+    plexUserTitle: string;
+    pinTarget: 'admin' | 'friends';
     librarySectionKey: string;
     approvalRequired: boolean;
+    overseerrModeSelected: boolean;
   }) {
     const sonarrBaseUrlRaw = pickString(params.settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(params.secrets, 'sonarr.apiKey');
@@ -1833,6 +2039,7 @@ export class ObservatoryService {
       pickBool(params.settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ??
       true;
     const sonarrEnabled =
+      !params.overseerrModeSelected &&
       fetchMissingSonarr &&
       (pickBool(params.settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
       Boolean(sonarrBaseUrlRaw) &&
@@ -1841,10 +2048,11 @@ export class ObservatoryService {
 
     const startSearchImmediately =
       (pickBool(params.settings, 'jobs.immaculateTastePoints.searchImmediately') ??
-        false) === true;
+        false) === true && !params.overseerrModeSelected;
 
     const rejected = await this.prisma.immaculateTasteShowLibrary.findMany({
       where: {
+        plexUserId: params.plexUserId,
         librarySectionKey: params.librarySectionKey,
         downloadApproval: 'rejected',
       },
@@ -1854,6 +2062,7 @@ export class ObservatoryService {
 
     const approved = await this.prisma.immaculateTasteShowLibrary.findMany({
       where: {
+        plexUserId: params.plexUserId,
         librarySectionKey: params.librarySectionKey,
         status: 'pending',
         downloadApproval: 'approved',
@@ -1941,7 +2150,8 @@ export class ObservatoryService {
         await this.prisma.immaculateTasteShowLibrary
           .update({
             where: {
-              librarySectionKey_tvdbId: {
+              plexUserId_librarySectionKey_tvdbId: {
+                plexUserId: params.plexUserId,
                 librarySectionKey: params.librarySectionKey,
                 tvdbId: r.tvdbId,
               },
@@ -1956,7 +2166,11 @@ export class ObservatoryService {
     let removedRows = 0;
     if (rejectedIds.length) {
       const res = await this.prisma.immaculateTasteShowLibrary.deleteMany({
-        where: { librarySectionKey: params.librarySectionKey, tvdbId: { in: rejectedIds } },
+        where: {
+          plexUserId: params.plexUserId,
+          librarySectionKey: params.librarySectionKey,
+          tvdbId: { in: rejectedIds },
+        },
       });
       removedRows = res.count;
     }
@@ -1974,6 +2188,7 @@ export class ObservatoryService {
     }
 
     const activeRows = await this.immaculateTv.getActiveShows({
+      plexUserId: params.plexUserId,
       librarySectionKey: params.librarySectionKey,
       minPoints: 1,
     });
@@ -1988,16 +2203,27 @@ export class ObservatoryService {
       .map((id) => tvdbToItem.get(id))
       .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
+    const collectionName = buildUserCollectionName(
+      'Inspired by your Immaculate Taste',
+      params.plexUserTitle,
+    );
+    const collectionHubOrder = buildUserCollectionHubOrder(
+      CURATED_TV_COLLECTION_HUB_ORDER,
+      params.plexUserTitle,
+    );
     const plex = await this.plexCurated.rebuildMovieCollection({
       ctx: params.ctx,
       baseUrl: params.plexBaseUrl,
       token: params.plexToken,
       machineIdentifier: params.machineIdentifier,
       movieSectionKey: params.librarySectionKey,
-      collectionName: 'Inspired by your Immaculate Taste',
+      collectionName,
       itemType: 2,
       desiredItems,
       randomizeOrder: false,
+      pinCollections: true,
+      pinTarget: params.pinTarget,
+      collectionHubOrder,
     });
 
     return {
@@ -2005,6 +2231,7 @@ export class ObservatoryService {
       mediaType: 'tv',
       librarySectionKey: params.librarySectionKey,
       approvalRequiredFromObservatory: params.approvalRequired,
+      overseerrModeSelected: params.overseerrModeSelected,
       sonarr: {
         enabled: sonarrEnabled,
         sent,
@@ -2075,4 +2302,3 @@ export class ObservatoryService {
     return { rootFolderPath, qualityProfileId, tagIds };
   }
 }
-

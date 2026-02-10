@@ -10,6 +10,7 @@ apps/data/
 # Node / web build artifacts
 node_modules/
 **/dist/
+**/dist.old/
 **/.vite/
 coverage/
 

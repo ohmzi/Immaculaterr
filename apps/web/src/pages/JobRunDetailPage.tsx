@@ -40,6 +40,14 @@ function pickString(obj: Record<string, unknown>, key: string): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
+function sortTitles(list: string[]): string[] {
+  return list
+    .slice()
+    .sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }),
+    );
+}
+
 async function copyToClipboard(text: string) {
   // Prefer async clipboard API when available (secure contexts).
   if (navigator?.clipboard?.writeText) {
@@ -93,6 +101,59 @@ function modePill(mode: RunModeLabel) {
     case 'Manual':
       return 'bg-purple-500/15 text-purple-200 border border-purple-500/25';
   }
+}
+
+type MediaTypeKey = 'movie' | 'tv' | '';
+type MediaTypeLabel = 'Movie' | 'TV show' | '—';
+
+function normalizeMediaType(raw: string): MediaTypeKey {
+  const v = raw.trim().toLowerCase();
+  if (!v) return '';
+  if (v === 'movie' || v === 'movies' || v === 'film') return 'movie';
+  if (
+    v === 'tv' ||
+    v === 'show' ||
+    v === 'shows' ||
+    v === 'tvshow' ||
+    v === 'tv show' ||
+    v === 'series' ||
+    v === 'episode' ||
+    v === 'season'
+  ) {
+    return 'tv';
+  }
+  return '';
+}
+
+function mediaTypeLabel(key: MediaTypeKey): MediaTypeLabel {
+  if (key === 'movie') return 'Movie';
+  if (key === 'tv') return 'TV show';
+  return '—';
+}
+
+function mediaTypePill(key: MediaTypeKey) {
+  if (key === 'movie') return 'bg-fuchsia-500/15 text-fuchsia-200 border border-fuchsia-500/25';
+  if (key === 'tv') return 'bg-indigo-500/15 text-indigo-200 border border-indigo-500/25';
+  return 'bg-white/10 text-white/70 border border-white/10';
+}
+
+function pickStringish(obj: Record<string, unknown>, key: string): string {
+  const v = obj[key];
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  return '';
+}
+
+function resolveMediaTypeFromSummary(summary: Record<string, unknown>): MediaTypeKey {
+  const mediaType = normalizeMediaType(pickString(summary, 'mediaType') ?? '');
+  if (mediaType) return mediaType;
+  const mode = normalizeMediaType(pickString(summary, 'mode') ?? '');
+  if (mode) return mode;
+  const tvSectionKey = pickStringish(summary, 'tvSectionKey');
+  if (tvSectionKey) return 'tv';
+  const movieSectionKey = pickStringish(summary, 'movieSectionKey');
+  if (movieSectionKey) return 'movie';
+  return '';
 }
 
 function levelClass(level: string) {
@@ -238,6 +299,9 @@ export function JobRunDetailPage() {
   });
 
   const run = runQuery.data?.run;
+  const shouldSortFactItems =
+    run?.jobId === 'watchedMovieRecommendations' ||
+    run?.jobId === 'immaculateTastePoints';
 
   // The progress bar is a live "while you watch" indicator. Hide it shortly after completion so
   // old reports don't show a permanent "Completed" bar.
@@ -262,6 +326,59 @@ export function JobRunDetailPage() {
     if (Number(obj.version) !== 1) return null;
     return obj;
   }, [run?.summary]);
+  const summaryRaw = useMemo(() => {
+    const s = run?.summary;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    const obj = s as Record<string, unknown>;
+    if (obj.template === 'jobReportV1' && isPlainObject(obj.raw))
+      return obj.raw as Record<string, unknown>;
+    return obj;
+  }, [run?.summary]);
+  const logInputContext = useMemo(() => {
+    const logs = logsQuery.data?.logs ?? [];
+    const startLog = logs.find((l) => String(l.message ?? '') === 'run: started');
+    if (!startLog || !isPlainObject(startLog.context)) return null;
+    const ctxRaw = startLog.context as Record<string, unknown>;
+    const inputRaw = ctxRaw['input'];
+    if (!isPlainObject(inputRaw)) return null;
+    const plexUserId = pickString(inputRaw, 'plexUserId') ?? '';
+    const plexUserTitle = pickString(inputRaw, 'plexUserTitle') ?? '';
+    const seedTitle = pickString(inputRaw, 'seedTitle') ?? '';
+    const seedYear = pickNumber(inputRaw, 'seedYear');
+    const mediaType = normalizeMediaType(pickString(inputRaw, 'mediaType') ?? '');
+    if (!plexUserId && !plexUserTitle && !seedTitle && seedYear === null && !mediaType)
+      return null;
+    return { plexUserId, plexUserTitle, seedTitle, seedYear, mediaType };
+  }, [logsQuery.data?.logs]);
+  const plexUserContext = useMemo(() => {
+    const plexUserId = summaryRaw ? pickString(summaryRaw, 'plexUserId') ?? '' : '';
+    const plexUserTitle = summaryRaw
+      ? pickString(summaryRaw, 'plexUserTitle') ?? ''
+      : '';
+    const fallbackId = logInputContext?.plexUserId ?? '';
+    const fallbackTitle = logInputContext?.plexUserTitle ?? '';
+    const resolvedId = plexUserId || fallbackId;
+    const resolvedTitle = plexUserTitle || fallbackTitle;
+    if (!resolvedId && !resolvedTitle) return null;
+    return { plexUserId: resolvedId, plexUserTitle: resolvedTitle };
+  }, [summaryRaw, logInputContext]);
+  const seedContext = useMemo(() => {
+    const seedTitle = summaryRaw ? pickString(summaryRaw, 'seedTitle') ?? '' : '';
+    const seedYear = summaryRaw ? pickNumber(summaryRaw, 'seedYear') : null;
+    const fallbackTitle = logInputContext?.seedTitle ?? '';
+    const fallbackYear = logInputContext?.seedYear ?? null;
+    const resolvedTitle = seedTitle || fallbackTitle;
+    const resolvedYear = seedYear ?? fallbackYear;
+    if (!resolvedTitle && resolvedYear === null) return null;
+    return { seedTitle: resolvedTitle, seedYear: resolvedYear };
+  }, [summaryRaw, logInputContext]);
+  const mediaTypeContext = useMemo(() => {
+    const fromSummary = summaryRaw ? resolveMediaTypeFromSummary(summaryRaw) : '';
+    const fromLogs = logInputContext?.mediaType ?? '';
+    const key = (fromSummary || fromLogs || '') as MediaTypeKey;
+    if (!key) return null;
+    return { key, label: mediaTypeLabel(key) };
+  }, [summaryRaw, logInputContext]);
   const jobName = useMemo(() => {
     const jobId = run?.jobId ?? '';
     if (!jobId) return null;
@@ -403,6 +520,24 @@ export function JobRunDetailPage() {
                         {new Date(run.finishedAt).toLocaleString()}
                       </div>
                     ) : null}
+                    {seedContext ? (
+                      <div>
+                        <span className="text-white/80 font-semibold">Seed:</span>{' '}
+                        {seedContext.seedTitle || '—'}
+                        {seedContext.seedYear !== null ? (
+                          <span className="text-white/50">{` (${seedContext.seedYear})`}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {plexUserContext ? (
+                      <div>
+                        <span className="text-white/80 font-semibold">Plex user:</span>{' '}
+                        {plexUserContext.plexUserTitle || plexUserContext.plexUserId}
+                        {plexUserContext.plexUserTitle && plexUserContext.plexUserId ? (
+                          <span className="text-white/50">{` (${plexUserContext.plexUserId})`}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
 
                   {run.errorMessage ? (
@@ -435,6 +570,16 @@ export function JobRunDetailPage() {
                         >
                           {modeLabel(run)}
                         </span>
+                        {mediaTypeContext ? (
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${mediaTypePill(
+                              mediaTypeContext.key,
+                            )}`}
+                            title="Media type"
+                          >
+                            {mediaTypeContext.label}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
 
@@ -1660,6 +1805,7 @@ export function JobRunDetailPage() {
                             return title !== 'movie refresh' && title !== 'tv refresh';
                           })
                           .map((t, idx) => {
+                            const taskId = pickString(t, 'id') ?? '';
                             const title = pickString(t, 'title') ?? `Step ${idx + 1}`;
                             const status = pickString(t, 'status') ?? 'success';
                             const rowsRaw = t.rows;
@@ -1823,6 +1969,27 @@ export function JobRunDetailPage() {
                                         const labelRaw = String(f.label ?? '').trim() || 'Fact';
                                         const label = decodeHtmlEntities(labelRaw);
                                         const rawValue = (f as Record<string, unknown>).value;
+                                        const order = isPlainObject(rawValue)
+                                          ? pickString(rawValue, 'order')
+                                          : null;
+                                        const shouldSortList =
+                                          shouldSortFactItems &&
+                                          taskId !== 'plex_collection' &&
+                                          order !== 'plex';
+
+                                        const collectionDetails = (() => {
+                                          if (!isPlainObject(rawValue)) return null;
+                                          const collectionName = pickString(rawValue, 'collectionName');
+                                          if (!collectionName) return null;
+                                          const lastAddedItemsRaw = pickStringArray(
+                                            rawValue,
+                                            'lastAddedItems',
+                                          );
+                                          const lastAddedItems = shouldSortList
+                                            ? sortTitles(lastAddedItemsRaw)
+                                            : lastAddedItemsRaw;
+                                          return { collectionName, lastAddedItems };
+                                        })();
 
                                         const expandable = (() => {
                                           if (!isPlainObject(rawValue)) return null;
@@ -1842,7 +2009,67 @@ export function JobRunDetailPage() {
                                           return u ? `${s} ${u}` : s;
                                         };
 
+                                        if (collectionDetails) {
+                                          if (collectionDetails.lastAddedItems.length) {
+                                            return (
+                                              <details
+                                                key={`${idx}-${fi}-${label}`}
+                                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                                              >
+                                                <summary className="cursor-pointer list-none">
+                                                  <div className="text-[11px] text-white/60 font-mono">
+                                                    {label}
+                                                  </div>
+                                                  <div className="mt-1 text-xs text-white/80 font-mono break-words">
+                                                    {decodeHtmlEntities(collectionDetails.collectionName)}
+                                                    <span className="ml-2 text-white/50">
+                                                      (tap to view)
+                                                    </span>
+                                                  </div>
+                                                </summary>
+
+                                                <div className="mt-3 rounded-xl border border-white/10 bg-[#0b0c0f]/30 p-3">
+                                                  <div className="mb-2 text-[11px] text-white/60 font-mono">
+                                                    Last added
+                                                  </div>
+                                                  <div className="max-h-64 overflow-auto pr-1">
+                                                    <ul className="space-y-1 text-xs text-white/80 font-mono">
+                                                      {collectionDetails.lastAddedItems
+                                                        .slice(0, 50)
+                                                        .map((it, ii) => (
+                                                          <li
+                                                            key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
+                                                            className="whitespace-pre-wrap break-words"
+                                                          >
+                                                            {decodeHtmlEntities(it)}
+                                                          </li>
+                                                        ))}
+                                                    </ul>
+                                                  </div>
+                                                </div>
+                                              </details>
+                                            );
+                                          }
+
+                                          return (
+                                            <div
+                                              key={`${idx}-${fi}-${label}`}
+                                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                                            >
+                                              <div className="text-[11px] text-white/60 font-mono">
+                                                {label}
+                                              </div>
+                                              <div className="mt-1 text-xs text-white/80 font-mono break-words">
+                                                {decodeHtmlEntities(collectionDetails.collectionName)}
+                                              </div>
+                                            </div>
+                                          );
+                                        }
+
                                         if (expandable) {
+                                          const listItems = shouldSortList
+                                            ? sortTitles(expandable.items)
+                                            : expandable.items;
                                           return (
                                             <details
                                               key={`${idx}-${fi}-${label}`}
@@ -1854,7 +2081,7 @@ export function JobRunDetailPage() {
                                                 </div>
                                                 <div className="mt-1 text-xs text-white/80 font-mono break-words">
                                                   {formatCount(expandable.count, expandable.unit)}
-                                                  {expandable.items.length ? (
+                                                  {listItems.length ? (
                                                     <span className="ml-2 text-white/50">
                                                       (tap to view)
                                                     </span>
@@ -1862,14 +2089,14 @@ export function JobRunDetailPage() {
                                                 </div>
                                               </summary>
 
-                                              {expandable.items.length ? (
+                                              {listItems.length ? (
                                                 <div className="mt-3 rounded-xl border border-white/10 bg-[#0b0c0f]/30 p-3">
                                                   <div className="mb-2 text-[11px] text-white/60 font-mono">
-                                                    Items ({expandable.items.length})
+                                                    Items ({listItems.length})
                                                   </div>
                                                   <div className="max-h-64 overflow-auto pr-1">
                                                     <ul className="space-y-1 text-xs text-white/80 font-mono">
-                                                      {expandable.items.slice(0, 300).map((it, ii) => (
+                                                      {listItems.slice(0, 300).map((it, ii) => (
                                                         <li
                                                           key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
                                                           className="whitespace-pre-wrap break-words"

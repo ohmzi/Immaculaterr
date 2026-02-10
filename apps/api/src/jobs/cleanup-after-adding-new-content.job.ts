@@ -37,6 +37,11 @@ function pickString(obj: Record<string, unknown>, path: string): string | null {
   return s ? s : null;
 }
 
+function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+  const v = pick(obj, path);
+  return typeof v === 'boolean' ? v : null;
+}
+
 function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   const v = pick(obj, path);
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -224,8 +229,11 @@ export class CleanupAfterAddingNewContentJob {
       pickString(settings, 'radarr.url') ??
       null;
     const radarrApiKey = pickString(secrets, 'radarr.apiKey') ?? null;
+    const radarrEnabledSetting = pickBool(settings, 'radarr.enabled');
+    const radarrIntegrationEnabled =
+      (radarrEnabledSetting ?? Boolean(radarrApiKey)) === true;
     const radarrBaseUrl =
-      radarrBaseUrlRaw && radarrApiKey
+      radarrIntegrationEnabled && radarrBaseUrlRaw && radarrApiKey
         ? normalizeHttpUrl(radarrBaseUrlRaw)
         : null;
 
@@ -234,8 +242,11 @@ export class CleanupAfterAddingNewContentJob {
       pickString(settings, 'sonarr.url') ??
       null;
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey') ?? null;
+    const sonarrEnabledSetting = pickBool(settings, 'sonarr.enabled');
+    const sonarrIntegrationEnabled =
+      (sonarrEnabledSetting ?? Boolean(sonarrApiKey)) === true;
     const sonarrBaseUrl =
-      sonarrBaseUrlRaw && sonarrApiKey
+      sonarrIntegrationEnabled && sonarrBaseUrlRaw && sonarrApiKey
         ? normalizeHttpUrl(sonarrBaseUrlRaw)
         : null;
 
@@ -363,12 +374,14 @@ export class CleanupAfterAddingNewContentJob {
       let radarrMovies: RadarrMovie[] = [];
       const radarrByTmdb = new Map<number, RadarrMovie>();
       const radarrByNormTitle = new Map<string, RadarrMovie>();
+      let fullSweepRadarrConnected: boolean | null = null;
       if (radarrBaseUrl && radarrApiKey) {
         try {
           radarrMovies = await this.radarr.listMovies({
             baseUrl: radarrBaseUrl,
             apiKey: radarrApiKey,
           });
+          fullSweepRadarrConnected = true;
           for (const m of radarrMovies) {
             const tmdb = toInt(m.tmdbId);
             if (tmdb) radarrByTmdb.set(tmdb, m);
@@ -377,6 +390,7 @@ export class CleanupAfterAddingNewContentJob {
           }
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
+          fullSweepRadarrConnected = false;
           sweepWarnings.push(
             `radarr: failed to load movies (continuing): ${msg}`,
           );
@@ -391,12 +405,14 @@ export class CleanupAfterAddingNewContentJob {
       const sonarrByTvdb = new Map<number, SonarrSeries>();
       const sonarrByNormTitle = new Map<string, SonarrSeries>();
       const sonarrEpisodesCache = new Map<number, Map<string, SonarrEpisode>>();
+      let fullSweepSonarrConnected: boolean | null = null;
       if (sonarrBaseUrl && sonarrApiKey) {
         try {
           sonarrSeriesList = await this.sonarr.listSeries({
             baseUrl: sonarrBaseUrl,
             apiKey: sonarrApiKey,
           });
+          fullSweepSonarrConnected = true;
           for (const s of sonarrSeriesList) {
             const tvdb = toInt(s.tvdbId);
             if (tvdb) sonarrByTvdb.set(tvdb, s);
@@ -405,6 +421,7 @@ export class CleanupAfterAddingNewContentJob {
           }
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
+          fullSweepSonarrConnected = false;
           sweepWarnings.push(
             `sonarr: failed to load series (continuing): ${msg}`,
           );
@@ -2067,11 +2084,13 @@ export class CleanupAfterAddingNewContentJob {
 
       summary.radarr = {
         ...(summary.radarr as unknown as Record<string, unknown>),
+        connected: fullSweepRadarrConnected,
         moviesUnmonitored: ctx.dryRun ? 0 : sweepRadarrUnmonitored,
         moviesWouldUnmonitor: ctx.dryRun ? sweepRadarrUnmonitored : 0,
       } as unknown as JsonObject;
       summary.sonarr = {
         ...(summary.sonarr as unknown as Record<string, unknown>),
+        connected: fullSweepSonarrConnected,
         episodesUnmonitored: ctx.dryRun ? 0 : sweepSonarrEpisodeUnmonitored,
         episodesWouldUnmonitor: ctx.dryRun ? sweepSonarrEpisodeUnmonitored : 0,
         seasonsUnmonitored: ctx.dryRun ? 0 : sonarrSeasonsUnmonitored,
@@ -3640,7 +3659,7 @@ function asNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-function buildMediaAddedCleanupReport(params: {
+export function buildMediaAddedCleanupReport(params: {
   ctx: JobContext;
   raw: JsonObject;
 }): JobReportV1 {
@@ -3681,24 +3700,6 @@ function buildMediaAddedCleanupReport(params: {
 
   const asBool = (v: unknown): boolean | null =>
     typeof v === 'boolean' ? v : null;
-
-  // Friendly, deduped integration issues (avoid leaking low-level error text into the UI).
-  // We still preserve raw warnings in `raw`, but the report "Issues" card should show
-  // high-signal summaries like "Unable to connect to Radarr".
-  const radarrConfigured = radarr ? asBool(radarr.configured) : null;
-  const radarrConnected = radarr ? asBool(radarr.connected) : null;
-  const sonarrConfigured = sonarr ? asBool(sonarr.configured) : null;
-  const sonarrConnected = sonarr ? asBool(sonarr.connected) : null;
-
-  const hasRadarrIssue =
-    (radarrConfigured === true && radarrConnected === false) ||
-    warningsRaw.some((w) => w.toLowerCase().startsWith('radarr:'));
-  const hasSonarrIssue =
-    (sonarrConfigured === true && sonarrConnected === false) ||
-    warningsRaw.some((w) => w.toLowerCase().startsWith('sonarr:'));
-
-  if (hasRadarrIssue) issues.push(issue('warn', 'Unable to connect to Radarr.'));
-  if (hasSonarrIssue) issues.push(issue('warn', 'Unable to connect to Sonarr.'));
 
   for (const w of warningsRaw) {
     const lower = w.toLowerCase();
@@ -3792,9 +3793,16 @@ function buildMediaAddedCleanupReport(params: {
         episodeDuplicatesDeleted > 0 || candidates > 1 || (copies !== null && copies > 1);
     }
 
-    // Collect warnings into issues (so they show up in the UI Issues section)
+    // Keep ARR connectivity noise out of the top-level Issues list.
     if (Array.isArray(duplicates.warnings)) {
-      issues.push(...issuesFromWarnings(duplicates.warnings));
+      const duplicateWarnings = duplicates.warnings
+        .map((w) => String(w ?? '').trim())
+        .filter(Boolean)
+        .filter((w) => {
+          const lower = w.toLowerCase();
+          return !lower.startsWith('radarr:') && !lower.startsWith('sonarr:');
+        });
+      issues.push(...issuesFromWarnings(duplicateWarnings));
     }
   }
 
@@ -3928,82 +3936,70 @@ function buildMediaAddedCleanupReport(params: {
       ? String((duplicates as Record<string, unknown>).mode).trim() === 'fullSweep'
       : false;
 
-  const arrService =
-    mediaType === 'movie'
-      ? ('radarr' as const)
-      : mediaType === 'episode' || mediaType === 'show' || mediaType === 'season'
-        ? ('sonarr' as const)
-        : null;
+  const radarrApplicable = isFullSweep || mediaType === 'movie';
+  const sonarrApplicable =
+    isFullSweep ||
+    mediaType === 'episode' ||
+    mediaType === 'show' ||
+    mediaType === 'season';
 
-  const arrTask = (() => {
-    if (!arrService) {
-      return {
-        status: 'skipped' as const,
-        facts: [
-          { label: 'Service', value: 'n/a' },
-          { label: 'Note', value: 'Not applicable for this media type.' },
-        ],
-        issues: [],
-      };
-    }
-
-    const rec = arrService === 'radarr' ? radarr : sonarr;
+  const buildArrMonitoringTask = (
+    service: 'radarr' | 'sonarr',
+    applicable: boolean,
+  ) => {
+    const rec = service === 'radarr' ? radarr : sonarr;
     const configured = rec ? asBool(rec.configured) : null;
     const connected = rec ? asBool(rec.connected) : null;
-    const error = rec && typeof rec.error === 'string' ? rec.error : null;
+    const serviceName = service === 'radarr' ? 'Radarr' : 'Sonarr';
 
-    // Unmonitor counts (movie: Radarr movies; TV: Sonarr episodes/season best-effort)
-    const unmonitored = (() => {
-      if (!rec) return null;
-      if (arrService === 'radarr') {
-        const c = ctx.dryRun ? num(rec.moviesWouldUnmonitor) : num(rec.moviesUnmonitored);
-        if (c !== null) return c;
-        return asBool(ctx.dryRun ? rec.wouldUnmonitor : rec.unmonitored) ? 1 : 0;
-      }
-      const c = ctx.dryRun ? num(rec.episodesWouldUnmonitor) : num(rec.episodesUnmonitored);
-      if (c !== null) return c;
-      return asBool(ctx.dryRun ? rec.wouldUnmonitor : rec.episodeUnmonitored) ? 1 : 0;
-    })();
+    const status =
+      !applicable ||
+      configured === false ||
+      (configured === true && connected === false)
+        ? ('skipped' as const)
+        : ('success' as const);
+
+    const result =
+      !applicable
+        ? 'Not applicable for this media type.'
+        : configured === false
+          ? 'Skipped: not configured.'
+          : configured === true && connected === false
+            ? 'Skipped: unavailable during this run.'
+            : 'Processed.';
 
     const facts: Array<{ label: string; value: JsonValue }> = [
-      { label: 'Service', value: arrService === 'radarr' ? 'Radarr' : 'Sonarr' },
       { label: 'Configured', value: configured },
       { label: 'Connected', value: connected },
-      ...(error ? [{ label: 'Error', value: error }] : []),
+      { label: 'Result', value: result },
     ];
 
-    if (arrService === 'radarr' && rec) {
-      facts.push(
-        { label: 'Movie found', value: asBool(rec.movieFound) },
-        { label: 'Unmonitored', value: unmonitored },
-      );
-    }
-    if (arrService === 'sonarr' && rec) {
-      facts.push(
-        { label: 'Series found', value: asBool(rec.seriesFound) },
-        ...(mediaType === 'episode' ? [{ label: 'Episode found', value: asBool(rec.episodeFound) }] : []),
-        { label: 'Unmonitored', value: unmonitored },
-      );
-    }
-
-    const failReasons: string[] = [];
-    if (configured === false) {
-      failReasons.push(
-        `${arrService === 'radarr' ? 'Radarr' : 'Sonarr'} not configured.`,
-      );
-    } else if (configured === true && connected === false) {
-      failReasons.push(
-        `Unable to connect to ${arrService === 'radarr' ? 'Radarr' : 'Sonarr'}.`,
-      );
+    if (service === 'radarr') {
+      facts.push({
+        label: ctx.dryRun ? 'Movies would unmonitor' : 'Movies unmonitored',
+        value: radarrMovieUnmonitored,
+      });
+    } else {
+      facts.push({
+        label: ctx.dryRun ? 'Episodes would unmonitor' : 'Episodes unmonitored',
+        value: sonarrEpisodeUnmonitored,
+      });
+      if (sonarrSeasonUnmonitored !== null) {
+        facts.push({
+          label: ctx.dryRun ? 'Seasons would unmonitor' : 'Seasons unmonitored',
+          value: sonarrSeasonUnmonitored,
+        });
+      }
     }
 
-    // This job still provides value (duplicates + watchlist) even if ARR isn't reachable.
-    // Treat ARR problems as "hiccups" (warnings), not a hard failure that flips the run red.
-    const status = failReasons.length ? ('skipped' as const) : ('success' as const);
-    const issues = failReasons.length ? failReasons.map((m) => issue('warn', m)) : [];
-
-    return { status, facts, issues };
-  })();
+    return {
+      id: `arr_${service}`,
+      title: `Updated ${serviceName} monitoring`,
+      status,
+      facts,
+      issues: [],
+    };
+  };
 
   const tasks: JobReportV1['tasks'] = isFullSweep
     ? [
@@ -4219,33 +4215,8 @@ function buildMediaAddedCleanupReport(params: {
           ],
           issues: watchlistChecked ? [] : [issue('error', 'Plex watchlist reconciliation was not executed.')],
         },
-        {
-          id: 'arr',
-          title: 'Updated Radarr/Sonarr monitoring',
-          status:
-            (radarr && asBool(radarr.configured) === false) &&
-            (sonarr && asBool(sonarr.configured) === false)
-              ? 'skipped'
-              : 'success',
-          facts: [
-            { label: 'Radarr movies', value: radarrMovieUnmonitored },
-            { label: 'Sonarr episodes', value: sonarrEpisodeUnmonitored },
-            ...(sonarr && num((sonarr as Record<string, unknown>).seasonsUnmonitored) !== null
-              ? [{ label: 'Sonarr seasons', value: num((sonarr as Record<string, unknown>).seasonsUnmonitored) ?? 0 }]
-              : []),
-            ...(ctx.dryRun && sonarr && num((sonarr as Record<string, unknown>).seasonsWouldUnmonitor) !== null
-              ? [{ label: 'Sonarr seasons (dry-run)', value: num((sonarr as Record<string, unknown>).seasonsWouldUnmonitor) ?? 0 }]
-              : []),
-          ],
-          issues: [
-            ...(radarr && asBool(radarr.configured) === false
-              ? [issue('warn', 'Radarr not configured.')]
-              : []),
-            ...(sonarr && asBool(sonarr.configured) === false
-              ? [issue('warn', 'Sonarr not configured.')]
-              : []),
-          ],
-        },
+        buildArrMonitoringTask('radarr', true),
+        buildArrMonitoringTask('sonarr', true),
       ]
     : [
         {
@@ -4296,18 +4267,8 @@ function buildMediaAddedCleanupReport(params: {
               ? [issue('error', 'Plex watchlist check was not executed.')]
               : [],
         },
-        {
-          id: 'arr',
-          title:
-            arrService === 'radarr'
-              ? 'Scanned in Radarr'
-              : arrService === 'sonarr'
-                ? 'Scanned in Sonarr'
-                : 'Scanned in Radarr/Sonarr',
-          status: arrTask.status,
-          facts: arrTask.facts,
-          issues: arrTask.issues,
-        },
+        buildArrMonitoringTask('radarr', radarrApplicable),
+        buildArrMonitoringTask('sonarr', sonarrApplicable),
       ];
 
   // Summary sections (requested)

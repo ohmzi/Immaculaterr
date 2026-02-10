@@ -1,5 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { XMLParser } from 'fast-xml-parser';
+import { normalizeCollectionTitle } from './plex-collections.utils';
 
 type PlexSection = {
   key: string;
@@ -298,6 +299,7 @@ function extractIdsFromGuids(
 @Injectable()
 export class PlexServerService {
   private readonly logger = new Logger(PlexServerService.name);
+  private readonly logHttp = process.env.PLEX_HTTP_LOGGING === 'true';
 
   async getMachineIdentifier(params: {
     baseUrl: string;
@@ -1863,6 +1865,8 @@ export class PlexServerService {
     collectionName: string;
   }): Promise<string | null> {
     const { baseUrl, token, librarySectionKey, collectionName } = params;
+    const target = normalizeCollectionTitle(collectionName);
+    if (!target) return null;
     const url = new URL(
       `library/sections/${encodeURIComponent(
         librarySectionKey,
@@ -1878,12 +1882,63 @@ export class PlexServerService {
 
     for (const item of items) {
       const title = typeof item.title === 'string' ? item.title : '';
-      if (title.toLowerCase() !== collectionName.toLowerCase()) continue;
+      if (!normalizeCollectionTitle(title)) continue;
+      if (normalizeCollectionTitle(title) !== target) continue;
       const ratingKey = item.ratingKey ? String(item.ratingKey) : '';
       if (ratingKey) return ratingKey;
     }
 
+    try {
+      const fallbackItems = await this.listCollectionsForSectionKey({
+        baseUrl,
+        token,
+        librarySectionKey,
+        take: 400,
+      });
+      for (const item of fallbackItems) {
+        if (!normalizeCollectionTitle(item.title)) continue;
+        if (normalizeCollectionTitle(item.title) !== target) continue;
+        if (item.ratingKey) return item.ratingKey;
+      }
+    } catch {
+      // ignore fallback errors
+    }
+
     return null;
+  }
+
+  async listCollectionsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    take?: number;
+  }): Promise<Array<{ ratingKey: string; title: string }>> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const take = Number.isFinite(params.take ?? NaN) ? (params.take as number) : 200;
+
+    const fetchCollections = async (path: string) => {
+      const url = new URL(path, normalizeBaseUrl(baseUrl));
+      url.searchParams.set('X-Plex-Container-Start', '0');
+      url.searchParams.set('X-Plex-Container-Size', String(Math.max(1, Math.min(500, take))));
+      const xml = asPlexXml(await this.fetchXml(url.toString(), token, 20000));
+      const container = xml.MediaContainer;
+      const items = asPlexMetadataArray(container);
+      return items
+        .map((m) => ({
+          ratingKey: m.ratingKey ? String(m.ratingKey) : '',
+          title: typeof m.title === 'string' ? m.title : '',
+        }))
+        .filter((x) => x.ratingKey && x.title);
+    };
+
+    const primary = await fetchCollections(
+      `library/sections/${encodeURIComponent(librarySectionKey)}/collections`,
+    );
+    if (primary.length > 0) return primary;
+
+    return await fetchCollections(
+      `library/sections/${encodeURIComponent(librarySectionKey)}/all?type=18`,
+    );
   }
 
   async getCollectionItems(params: {
@@ -2002,7 +2057,7 @@ export class PlexServerService {
     collectionName: string;
     type: 1 | 2; // 1=movie, 2=show
     initialItemRatingKey?: string | null;
-  }) {
+  }): Promise<string | null> {
     const {
       baseUrl,
       token,
@@ -2031,7 +2086,58 @@ export class PlexServerService {
       `library/collections?${q.toString()}`,
       normalizeBaseUrl(baseUrl),
     ).toString();
-    await this.fetchNoContent(url, token, 'POST', 30000);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/xml',
+          'X-Plex-Token': token,
+        },
+        signal: controller.signal,
+      });
+      const text = await res.text().catch(() => '');
+      const ms = Date.now() - startedAt;
+
+      if (!res.ok) {
+        this.logger.warn(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${text}`.trim(),
+        );
+        throw new BadGatewayException(
+          `Plex request failed: POST ${url} -> HTTP ${res.status} ${text}`.trim(),
+        );
+      }
+
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
+      const location = res.headers.get('location');
+      if (location) {
+        const match = location.match(/metadata\/(\d+)/i);
+        if (match?.[1]) return match[1];
+      }
+      if (!text) return null;
+
+      try {
+        const xml = asPlexXml(parser.parse(text) as unknown);
+        const container = xml.MediaContainer;
+        const items = asPlexMetadataArray(container);
+        const first = items[0];
+        const ratingKey = first?.ratingKey ? String(first.ratingKey).trim() : '';
+        return ratingKey || null;
+      } catch {
+        return null;
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async addItemToCollection(params: {
@@ -2154,7 +2260,11 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.debug(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       const ms = Date.now() - startedAt;
@@ -2211,7 +2321,11 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.debug(`Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`);
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       const ms = Date.now() - startedAt;
@@ -2349,9 +2463,11 @@ export class PlexServerService {
       }
 
       const ms = Date.now() - startedAt;
-      this.logger.debug(
-        `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
-      );
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
     } finally {
       clearTimeout(timeout);
     }
@@ -2389,7 +2505,11 @@ export class PlexServerService {
         );
       }
 
-      this.logger.debug(`Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+      }
       const parsed: unknown = parser.parse(text) as unknown;
       return parsed;
     } catch (err) {

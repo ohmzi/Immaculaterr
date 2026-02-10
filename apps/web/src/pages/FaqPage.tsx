@@ -47,7 +47,7 @@ export function FaqPage() {
               </p>
               <p>
                 It does not download media by itself—it can optionally send missing titles to
-                Radarr/Sonarr, which do the downloading.
+                Radarr/Sonarr or Overseerr, which handle the request/download workflows.
               </p>
             </>
           ),
@@ -59,7 +59,7 @@ export function FaqPage() {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 <span className="font-semibold text-white/85">Vault</span>: connect services (Plex,
-                Radarr/Sonarr, TMDB, optional Google/OpenAI).
+                Radarr/Sonarr/Overseerr, TMDB, optional Google/OpenAI).
               </li>
               <li>
                 <span className="font-semibold text-white/85">Command Center</span>: tune how the
@@ -83,7 +83,12 @@ export function FaqPage() {
                 (and TMDB at minimum for best results).
               </li>
               <li>
-                Optionally connect Radarr/Sonarr (only if you want “Fetch Missing items” behavior).
+                Optionally connect Radarr/Sonarr and/or Overseerr (only if you want “Fetch Missing
+                items” behavior).
+              </li>
+              <li>
+                In Task Manager, choose your missing-item route per task card: direct ARR route or
+                Overseerr route.
               </li>
               <li>
                 Go to <span className="font-semibold text-white/85">Task Manager</span> and enable{' '}
@@ -151,7 +156,45 @@ export function FaqPage() {
               <li>
                 The job was recently triggered and deduped to prevent repeated runs.
               </li>
+              <li>
+                The seed came from a Plex library you excluded in{' '}
+                <span className="font-semibold text-white/85">
+                  Command Center → Plex Library Selection
+                </span>
+                .
+              </li>
             </ul>
+          ),
+        },
+        {
+          id: 'automation-library-selection-impact',
+          question: 'How does Plex Library Selection affect auto-runs and manual runs?',
+          answer: (
+            <>
+              <p>
+                After Plex setup, you can choose which movie/show libraries Immaculaterr is allowed
+                to use. You can update this any time from{' '}
+                <span className="font-semibold text-white/85">
+                  Command Center → Plex Library Selection
+                </span>
+                .
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  If a run targets a library you turned off, that part is skipped instead of failing
+                  the whole job.
+                </li>
+                <li>
+                  If no selected libraries are available for that media type, the run will show a
+                  clear skipped reason in the report.
+                </li>
+                <li>
+                  When you save after de-selecting a library, Immaculaterr warns you because that
+                  library’s suggestion dataset is removed and its curated collections are removed from
+                  Plex.
+                </li>
+              </ul>
+            </>
           ),
         },
         {
@@ -183,6 +226,10 @@ export function FaqPage() {
                 dataset, move items from pending → active when they appear in Plex, shuffle active
                 items, and rebuild collections cleanly.
               </p>
+              <p>
+                Collection-triggered refreshes stay scoped to the triggering viewer/library, while
+                standalone refresher runs sweep all eligible viewers/libraries.
+              </p>
             </>
           ),
         },
@@ -204,6 +251,26 @@ export function FaqPage() {
           ),
         },
         {
+          id: 'collections-viewer-pinning',
+          question: 'How do per-viewer collections and Plex pin locations work?',
+          answer: (
+            <>
+              <p>
+                Each viewer gets their own recommendation rows, and each viewer’s dataset is kept
+                separate so one person’s watch habits do not change another person’s suggestions.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Admin viewer rows are pinned to Library Recommended and Home.</li>
+                <li>Shared-user rows are pinned to Friends Home.</li>
+              </ul>
+              <p>
+                The row order is always consistent: Based on your recently watched, then Change of
+                Taste, then Inspired by your Immaculate Taste.
+              </p>
+            </>
+          ),
+        },
+        {
           id: 'collections-immaculate-vs-watched',
           question: 'What’s the difference between “Immaculate Taste” and “Based on Latest Watched”?',
           answer: (
@@ -216,6 +283,51 @@ export function FaqPage() {
                 generates suggestions, tracks pending/active items, and refreshes as titles become
                 available.
               </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-immaculate-how',
+          question: 'How does the Immaculate Taste collection work?',
+          answer: (
+            <>
+              <p>
+                Immaculate Taste is a long-lived per-library suggestion set that evolves over time.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  The collection job adds or refreshes suggestions when new seeds are processed.
+                </li>
+                <li>
+                  Suggestions are tracked as active (already in Plex) or pending (not in Plex yet).
+                </li>
+                <li>
+                  Refresher jobs promote pending titles to active when they appear in Plex, then
+                  rebuild the collection.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'collections-immaculate-points',
+          question: 'How do Immaculate Taste points work?',
+          answer: (
+            <>
+              <p>
+                Points act like a freshness score for active titles in Immaculate Taste.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Freshly suggested active titles get high points.</li>
+                <li>Pending titles start at zero points until they appear in Plex.</li>
+                <li>
+                  Active titles gradually lose points over future updates if they are not suggested
+                  again.
+                </li>
+                <li>
+                  When points run out, titles can drop from the active set to keep the list fresh.
+                </li>
+              </ul>
             </>
           ),
         },
@@ -319,8 +431,9 @@ export function FaqPage() {
                 items can later become active once they appear in Plex.
               </p>
               <p>
-                If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send the
-                missing items to Radarr/Sonarr.
+                If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send
+                missing items to Radarr/Sonarr directly, or to Overseerr if Overseerr mode is enabled
+                for that task.
               </p>
             </>
           ),
@@ -396,6 +509,10 @@ export function FaqPage() {
                 When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you{' '}
                 <span className="font-semibold text-white/85">swipe right</span> on them in Observatory.
               </p>
+              <p>
+                Note: this applies to direct ARR mode. If you enable Overseerr routing for that task,
+                Observatory approval is automatically disabled for that task.
+              </p>
             </>
           ),
         },
@@ -464,17 +581,103 @@ export function FaqPage() {
     },
     {
       id: 'arr',
-      title: 'Radarr / Sonarr',
+      title: 'Radarr / Sonarr / Overseerr',
       items: [
         {
           id: 'arr-fetch-missing',
           question: 'What does “Fetch Missing items” actually do?',
           answer: (
             <p>
-              It allows certain collection jobs to send missing recommendations to Radarr (movies) or
-              Sonarr (TV) so your downloader stack can grab them. If disabled, the app will still
-              track “pending” items but won’t send anything to ARR.
+              It allows collection jobs to push missing recommendations out of Immaculaterr. You can
+              route them directly to Radarr/Sonarr, or route them to Overseerr. If disabled, the app
+              still tracks pending items but does not send requests anywhere.
             </p>
+          ),
+        },
+        {
+          id: 'arr-overseerr-setup',
+          question: 'How do I set up Overseerr mode in simple steps?',
+          answer: (
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>
+                Go to <span className="font-semibold text-white/85">Vault</span> and set Overseerr URL
+                + API key.
+              </li>
+              <li>Enable Overseerr in Vault and run the test.</li>
+              <li>
+                Go to <span className="font-semibold text-white/85">Task Manager</span> and turn on{' '}
+                <span className="font-semibold text-white/85">
+                  Route missing items via Overseerr
+                </span>{' '}
+                for each task you want (Immaculate Taste and/or Based on Latest Watched).
+              </li>
+              <li>
+                Run the task. New missing titles from that task will be requested in Overseerr.
+              </li>
+            </ol>
+          ),
+        },
+        {
+          id: 'arr-overseerr-routing',
+          question: 'What changes when I turn on “Route missing items via Overseerr”?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Missing titles from that task are sent to Overseerr instead of direct ARR sends.</li>
+              <li>Direct Radarr/Sonarr toggles for that task are turned off.</li>
+              <li>Approval required from Observatory is turned off for that task.</li>
+              <li>
+                For Immaculate Taste, <span className="font-semibold text-white/85">Start search immediately</span>{' '}
+                is also turned off.
+              </li>
+              <li>
+                Suggestions, pending/active tracking, and Plex collection updates still continue as
+                normal.
+              </li>
+              <li>
+                If Overseerr is unavailable for a run, those requests are skipped for that run and
+                are not sent to Radarr/Sonarr as a fallback.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'arr-overseerr-vs-observatory',
+          question: 'What is the difference between in-app approval mode and Overseerr mode?',
+          answer: (
+            <>
+              <p>
+                <span className="font-semibold text-white/85">In-app approval mode</span>: you approve
+                in Observatory, then Immaculaterr sends approved items directly to Radarr/Sonarr.
+              </p>
+              <p>
+                <span className="font-semibold text-white/85">Overseerr mode</span>: Immaculaterr sends
+                missing items to Overseerr, and Overseerr becomes the place where request workflow is
+                handled.
+              </p>
+              <p>
+                Use one flow per task card. If Overseerr mode is on, Immaculaterr’s Observatory approval
+                flow for sending is disabled for that task.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'arr-overseerr-reset',
+          question: 'How do I clear all Overseerr requests from Immaculaterr?',
+          answer: (
+            <>
+              <p>
+                Go to <span className="font-semibold text-white/85">Command Center</span> and use{' '}
+                <span className="font-semibold text-white/85">Reset Overseerr Requests</span>.
+              </p>
+              <p>
+                You’ll get a confirmation dialog. Once confirmed, Immaculaterr asks Overseerr to
+                delete all requests regardless of status.
+              </p>
+              <p>
+                This only clears Overseerr requests. It does not delete your existing Plex media files.
+              </p>
+            </>
           ),
         },
         {
@@ -659,7 +862,8 @@ export function FaqPage() {
         },
         {
           id: 'troubleshooting-urls',
-          question: 'Immaculaterr can’t reach Plex/Radarr/Sonarr — what URL should I use from Docker?',
+          question:
+            'Immaculaterr can’t reach Plex/Radarr/Sonarr/Overseerr — what URL should I use from Docker?',
           answer: (
             <>
               <p>
@@ -924,4 +1128,3 @@ export function FaqPage() {
     </div>
   );
 }
-

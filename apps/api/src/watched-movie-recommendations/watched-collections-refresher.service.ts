@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
+import {
+  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  CURATED_TV_COLLECTION_HUB_ORDER,
+  buildUserCollectionHubOrder,
+  buildUserCollectionName,
+} from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 
 const MOVIE_COLLECTIONS = [
@@ -39,6 +45,10 @@ export class WatchedCollectionsRefresherService {
     plexBaseUrl: string;
     plexToken: string;
     machineIdentifier: string;
+    plexUserId: string;
+    plexUserTitle: string;
+    pinCollections?: boolean;
+    pinTarget?: 'admin' | 'friends';
     movieSections: PlexLibrarySection[];
     tvSections: PlexLibrarySection[];
     /**
@@ -54,6 +64,8 @@ export class WatchedCollectionsRefresherService {
     const { ctx } = params;
     const limit = Math.max(1, Math.min(200, Math.trunc(params.limit || 15)));
     const scope = params.scope ?? null;
+    const pinCollections = params.pinCollections ?? true;
+    const pinTarget = params.pinTarget ?? 'admin';
 
     const movieSections =
       scope?.mode === 'movie'
@@ -73,6 +85,10 @@ export class WatchedCollectionsRefresherService {
       plexBaseUrl: params.plexBaseUrl,
       plexToken: params.plexToken,
       machineIdentifier: params.machineIdentifier,
+      plexUserId: params.plexUserId,
+      plexUserTitle: params.plexUserTitle,
+      pinCollections,
+      pinTarget,
       movieSections,
       limit,
     });
@@ -81,6 +97,10 @@ export class WatchedCollectionsRefresherService {
       plexBaseUrl: params.plexBaseUrl,
       plexToken: params.plexToken,
       machineIdentifier: params.machineIdentifier,
+      plexUserId: params.plexUserId,
+      plexUserTitle: params.plexUserTitle,
+      pinCollections,
+      pinTarget,
       tvSections,
       limit,
     });
@@ -93,13 +113,31 @@ export class WatchedCollectionsRefresherService {
     plexBaseUrl: string;
     plexToken: string;
     machineIdentifier: string;
+    plexUserId: string;
+    plexUserTitle: string;
+    pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     movieSections: PlexLibrarySection[];
     limit: number;
   }): Promise<JsonObject> {
-    const { ctx, plexBaseUrl, plexToken, machineIdentifier, movieSections, limit } =
-      params;
+    const {
+      ctx,
+      plexBaseUrl,
+      plexToken,
+      machineIdentifier,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
+      pinTarget,
+      movieSections,
+      limit,
+    } = params;
 
     const outByLibrary: JsonObject[] = [];
+    const collectionHubOrder = buildUserCollectionHubOrder(
+      CURATED_MOVIE_COLLECTION_HUB_ORDER,
+      plexUserTitle,
+    );
 
     for (const sec of movieSections) {
       // Build tmdbId -> (ratingKey,title) map for this library.
@@ -121,7 +159,12 @@ export class WatchedCollectionsRefresherService {
         // Activate pending items that are now in Plex.
         const pending = await this.prisma.watchedMovieRecommendationLibrary.findMany(
           {
-            where: { collectionName, librarySectionKey: sec.key, status: 'pending' },
+            where: {
+              plexUserId,
+              collectionName,
+              librarySectionKey: sec.key,
+              status: 'pending',
+            },
             select: { tmdbId: true },
           },
         );
@@ -133,6 +176,7 @@ export class WatchedCollectionsRefresherService {
           : (
               await this.prisma.watchedMovieRecommendationLibrary.updateMany({
                 where: {
+                  plexUserId,
                   collectionName,
                   librarySectionKey: sec.key,
                   status: 'pending',
@@ -145,7 +189,12 @@ export class WatchedCollectionsRefresherService {
         // Read active snapshot and rebuild Plex collection from it.
         const active = await this.prisma.watchedMovieRecommendationLibrary.findMany(
           {
-            where: { collectionName, librarySectionKey: sec.key, status: 'active' },
+            where: {
+              plexUserId,
+              collectionName,
+              librarySectionKey: sec.key,
+              status: 'active',
+            },
             select: { tmdbId: true },
           },
         );
@@ -160,20 +209,25 @@ export class WatchedCollectionsRefresherService {
           .map((id) => tmdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
-        const plex =
-          !ctx.dryRun && desiredItems.length
-            ? await this.plexCurated.rebuildMovieCollection({
-                ctx,
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                machineIdentifier,
-                movieSectionKey: sec.key,
-                itemType: 1,
+        const plex = !ctx.dryRun
+          ? await this.plexCurated.rebuildMovieCollection({
+              ctx,
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              machineIdentifier,
+              movieSectionKey: sec.key,
+              itemType: 1,
+              collectionName: buildUserCollectionName(
                 collectionName,
-                desiredItems,
-                randomizeOrder: false,
-              })
-            : null;
+                plexUserTitle,
+              ),
+              desiredItems,
+              randomizeOrder: false,
+              pinCollections,
+              pinTarget,
+              collectionHubOrder,
+            })
+          : null;
 
         perCollection.push({
           collectionName,
@@ -200,13 +254,31 @@ export class WatchedCollectionsRefresherService {
     plexBaseUrl: string;
     plexToken: string;
     machineIdentifier: string;
+    plexUserId: string;
+    plexUserTitle: string;
+    pinCollections: boolean;
+    pinTarget: 'admin' | 'friends';
     tvSections: PlexLibrarySection[];
     limit: number;
   }): Promise<JsonObject> {
-    const { ctx, plexBaseUrl, plexToken, machineIdentifier, tvSections, limit } =
-      params;
+    const {
+      ctx,
+      plexBaseUrl,
+      plexToken,
+      machineIdentifier,
+      plexUserId,
+      plexUserTitle,
+      pinCollections,
+      pinTarget,
+      tvSections,
+      limit,
+    } = params;
 
     const outByLibrary: JsonObject[] = [];
+    const collectionHubOrder = buildUserCollectionHubOrder(
+      CURATED_TV_COLLECTION_HUB_ORDER,
+      plexUserTitle,
+    );
 
     for (const sec of tvSections) {
       // Build tvdbId -> (ratingKey,title) map for this library.
@@ -227,7 +299,12 @@ export class WatchedCollectionsRefresherService {
       for (const collectionName of TV_COLLECTIONS) {
         const pending = await this.prisma.watchedShowRecommendationLibrary.findMany(
           {
-            where: { collectionName, librarySectionKey: sec.key, status: 'pending' },
+            where: {
+              plexUserId,
+              collectionName,
+              librarySectionKey: sec.key,
+              status: 'pending',
+            },
             select: { tvdbId: true },
           },
         );
@@ -239,6 +316,7 @@ export class WatchedCollectionsRefresherService {
           : (
               await this.prisma.watchedShowRecommendationLibrary.updateMany({
                 where: {
+                  plexUserId,
                   collectionName,
                   librarySectionKey: sec.key,
                   status: 'pending',
@@ -250,7 +328,12 @@ export class WatchedCollectionsRefresherService {
 
         const active = await this.prisma.watchedShowRecommendationLibrary.findMany(
           {
-            where: { collectionName, librarySectionKey: sec.key, status: 'active' },
+            where: {
+              plexUserId,
+              collectionName,
+              librarySectionKey: sec.key,
+              status: 'active',
+            },
             select: { tvdbId: true },
           },
         );
@@ -265,20 +348,25 @@ export class WatchedCollectionsRefresherService {
           .map((id) => tvdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
-        const plex =
-          !ctx.dryRun && desiredItems.length
-            ? await this.plexCurated.rebuildMovieCollection({
-                ctx,
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                machineIdentifier,
-                movieSectionKey: sec.key,
-                itemType: 2,
+        const plex = !ctx.dryRun
+          ? await this.plexCurated.rebuildMovieCollection({
+              ctx,
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              machineIdentifier,
+              movieSectionKey: sec.key,
+              itemType: 2,
+              collectionName: buildUserCollectionName(
                 collectionName,
-                desiredItems,
-                randomizeOrder: false,
-              })
-            : null;
+                plexUserTitle,
+              ),
+              desiredItems,
+              randomizeOrder: false,
+              pinCollections,
+              pinTarget,
+              collectionHubOrder,
+            })
+          : null;
 
         perCollection.push({
           collectionName,
@@ -300,4 +388,3 @@ export class WatchedCollectionsRefresherService {
     return { collections: Array.from(TV_COLLECTIONS), byLibrary: outByLibrary };
   }
 }
-
