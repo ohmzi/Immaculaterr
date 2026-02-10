@@ -470,6 +470,18 @@ export function HeroSection() {
   const showBlur = !hasData;
 
   const [statsMedia, setStatsMedia] = useState<'movies' | 'tv'>('movies');
+  const moviesHasStats = moviesTotal > 0;
+  const tvHasStats = tvTotal > 0;
+
+  useEffect(() => {
+    if (!hasData) return;
+    setStatsMedia((current) => {
+      if (current === 'movies' && !moviesHasStats && tvHasStats) return 'tv';
+      if (current === 'tv' && !tvHasStats && moviesHasStats) return 'movies';
+      return current;
+    });
+  }, [hasData, moviesHasStats, tvHasStats]);
+
   const toggleStatsMedia = () =>
     setStatsMedia((m) => (m === 'movies' ? 'tv' : 'movies'));
 

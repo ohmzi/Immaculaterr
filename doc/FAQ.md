@@ -13,10 +13,12 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What does Plex-Triggered Auto-Run mean?](#what-does-plex-triggered-auto-run-mean)
   - [When does Collection task trigger?](#when-does-collection-task-trigger)
   - [Why didn’t a job trigger even though I watched past the threshold?](#why-didnt-a-job-trigger-even-though-i-watched-past-the-threshold)
+  - [How does Plex Library Selection affect auto-runs and manual runs?](#how-does-plex-library-selection-affect-auto-runs-and-manual-runs)
   - [How can I run a job manually?](#how-can-i-run-a-job-manually)
   - [What is the difference between the Collection job and the Refresher job?](#what-is-the-difference-between-the-collection-job-and-the-refresher-job)
 - [Collections & recommendations](#collections--recommendations)
   - [What Plex collections does the app create?](#what-plex-collections-does-the-app-create)
+  - [How do per-viewer collections and Plex pin locations work?](#how-do-per-viewer-collections-and-plex-pin-locations-work)
   - [What’s the difference between Immaculate Taste and Based on Latest Watched?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched)
   - [How does the Immaculate Taste collection work?](#how-does-the-immaculate-taste-collection-work)
   - [How do Immaculate Taste points work, and how do they decay?](#how-do-immaculate-taste-points-work-and-how-do-they-decay)
@@ -33,8 +35,12 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [How do I require approval before sending anything to Radarr/Sonarr?](#how-do-i-require-approval-before-sending-anything-to-radarrsonarr)
   - [What do swipes do, and can I use keyboard shortcuts?](#what-do-swipes-do-and-can-i-use-keyboard-shortcuts)
   - [Why does Observatory say there are no suggestions for my library?](#why-does-observatory-say-there-are-no-suggestions-for-my-library)
-- [Radarr / Sonarr](#radarr--sonarr)
+- [Radarr / Sonarr / Overseerr](#radarr--sonarr--overseerr)
   - [What does Fetch Missing items actually do?](#what-does-fetch-missing-items-actually-do)
+  - [How do I set up Overseerr mode in simple steps?](#how-do-i-set-up-overseerr-mode-in-simple-steps)
+  - [What changes when I turn on Route missing items via Overseerr?](#what-changes-when-i-turn-on-route-missing-items-via-overseerr)
+  - [What is the difference between in-app approval mode and Overseerr mode?](#what-is-the-difference-between-in-app-approval-mode-and-overseerr-mode)
+  - [How do I clear all Overseerr requests from Immaculaterr?](#how-do-i-clear-all-overseerr-requests-from-immaculaterr)
   - [If I disable Radarr/Sonarr toggles, what changes?](#if-i-disable-radarrsonarr-toggles-what-changes)
   - [Will it ever delete movies/shows?](#will-it-ever-delete-moviesshows)
   - [What happens during Cleanup after adding new content?](#what-happens-during-cleanup-after-adding-new-content)
@@ -52,7 +58,7 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [Can I rotate the master key?](#can-i-rotate-the-master-key)
 - [Troubleshooting](#troubleshooting)
   - [I can’t log in / I keep getting logged out — what do I check?](#i-cant-log-in--i-keep-getting-logged-out--what-do-i-check)
-  - [Immaculaterr can’t reach Plex/Radarr/Sonarr — what URL should I use from Docker?](#immaculaterr-cant-reach-plexradarrsonarr--what-url-should-i-use-from-docker)
+  - [Immaculaterr can’t reach Plex/Radarr/Sonarr/Overseerr — what URL should I use from Docker?](#immaculaterr-cant-reach-plexradarrsonarroverseerr--what-url-should-i-use-from-docker)
   - [TMDB requests fail — what’s required and where do I configure it?](#tmdb-requests-fail--whats-required-and-where-do-i-configure-it)
   - [A job ran but the report looks empty — what does that mean?](#a-job-ran-but-the-report-looks-empty--what-does-that-mean)
   - [Collections created but no poster shows — why?](#collections-created-but-no-poster-shows--why)
@@ -72,11 +78,11 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
 
 Immaculaterr is a Plex “autopilot” that watches your Plex activity, generates curated recommendation collections, and runs a few safety-focused cleanup jobs so your library stays tidy.
 
-It does not download media by itself—it can optionally send missing titles to Radarr/Sonarr, which do the downloading.
+It does not download media by itself—it can optionally send missing titles to Radarr/Sonarr or Overseerr, which handle the request/download workflows.
 
 ### What are the three main pages I need to understand?
 
-- Vault: connect services (Plex, Radarr/Sonarr, TMDB, optional Google/OpenAI).
+- Vault: connect services (Plex, Radarr/Sonarr/Overseerr, TMDB, optional Google/OpenAI).
 - Command Center: tune how the app behaves (defaults and dials).
 - Task Manager: run jobs manually, and enable/disable Auto-Run.
 
@@ -84,8 +90,9 @@ It does not download media by itself—it can optionally send missing titles to 
 
 1. Create your admin login when prompted.
 2. Go to Vault and connect Plex (and TMDB at minimum for best results).
-3. Optionally connect Radarr/Sonarr (only if you want “Fetch Missing items” behavior).
-4. Go to Task Manager and enable Auto-Run for the jobs you want.
+3. Optionally connect Radarr/Sonarr and/or Overseerr (only if you want “Fetch Missing items” behavior).
+4. In Task Manager, choose your missing-item route per task card: direct ARR route or Overseerr route.
+5. Go to Task Manager and enable Auto-Run for the jobs you want.
 
 ### What port does Immaculaterr use and how do I access it?
 
@@ -111,6 +118,29 @@ By default, it triggers when Plex polling detects you’ve watched roughly 70% o
 - Plex polling is disabled (or not reaching Plex).
 - The item is too short (minimum duration rules can apply).
 - The job was recently triggered and deduped to prevent repeated runs.
+- The seed came from a Plex library you excluded in **Command Center → Plex Library Selection**.
+
+### How does Plex Library Selection affect auto-runs and manual runs?
+
+After Plex auth in onboarding, there is a dedicated **Plex Libraries** step.
+
+- Immaculaterr lists eligible movie/show libraries and preselects them by default.
+- You can deselect libraries you do not want included, but at least 1 library must stay selected.
+- You can change this later from **Command Center → Plex Library Selection**.
+- New movie/show libraries are included automatically unless you turn them off.
+
+How this affects runtime behavior:
+
+- Auto triggers and manual runs only use selected libraries.
+- If a run targets a turned-off library, that part is skipped instead of failing the whole job.
+- If no selected libraries are available for that media type, the run shows a clear skipped summary.
+- Refresher jobs also respect the same library selection rules.
+
+Important:
+
+- When you save after de-selecting a library, Immaculaterr warns you because that library’s suggestion dataset is removed and its curated collections are removed from Plex.
+
+Why this helps: it prevents unintended writes to libraries you want isolated (kids/test/archive), keeps behavior consistent across setup and run modes, and makes skip reasons explicit in reports.
 
 ### How can I run a job manually?
 
@@ -124,6 +154,11 @@ Collection jobs generate new suggestions based on a seed (what you watched), the
 
 Refresher jobs revisit the saved dataset, move items from pending → active when they appear in Plex, shuffle active items, and rebuild collections cleanly.
 
+Scope behavior:
+
+- Collection-triggered/chained refreshes stay scoped to the triggering viewer + library.
+- Standalone refresher runs (scheduled, or manual Run now without a scope) sweep all eligible viewers/libraries, using deterministic user ordering with admin processed last.
+
 ## Collections & recommendations
 
 ### What Plex collections does the app create?
@@ -131,6 +166,36 @@ Refresher jobs revisit the saved dataset, move items from pending → active whe
 - Inspired by your Immaculate Taste (Movies and TV)
 - Based on your recently watched movie/show
 - Change of Taste
+
+### How do per-viewer collections and Plex pin locations work?
+
+Each viewer now gets their own curated collection rows for Movies and TV. The viewer name is appended to the row title, for example: `Based on your recently watched show (ohmz_i)`.
+
+Under the hood, recommendation datasets are stored per viewer and per library. That keeps one viewer’s watch history from influencing another viewer’s recommendations.
+
+Pinning rules are role-based:
+
+- Admin viewer rows are pinned to **Library Recommended** and **Home**.
+- Non-admin viewer rows are pinned to **Friends Home**.
+
+Why non-admin rows use Friends Home:
+
+- With current Plex limits in this workflow, shared viewers cannot reliably pin these server-managed rows to their own Home.
+- The fallback is to pin viewer-specific rows at the top of **Friends Home**.
+- Tradeoff: other viewers may see those rows there, but the recommendations inside each row still come from the owning viewer’s watch activity.
+
+Curated row order is fixed everywhere (viewer suffix ignored):
+
+1. Based on your recently watched ...
+2. Change of Taste
+3. Inspired by your Immaculate Taste
+
+Row matching/order ignores trailing viewer suffixes, so priority stays deterministic across users.
+
+Also included with this update:
+
+- User-aware Command Center reset controls and Plex-user dataset management.
+- Expanded debugger/logging coverage and improved job reporting with clearer user/media context.
 
 ### What’s the difference between Immaculate Taste and Based on Latest Watched?
 
@@ -154,7 +219,7 @@ One important detail: the **ordering** inside the Plex collection is not “high
 
 Each active title has an integer **points** value that acts like a “freshness meter”.
 
-- **Max points**: when a title is (re)suggested and it’s **active**, its points are set to `immaculateTaste.maxPoints` (default **50**).
+- **Max points**: when a title is (re)suggested and it’s **active**, its points are reset to the current max (default **50**).
 - **Pending titles**: when a title is suggested but **not in Plex**, it’s saved as **pending** with **0** points (so it doesn’t show up until it exists in Plex).
 - **Activation**: when a pending title later appears in Plex, the refresher marks it **active** and assigns points (currently **50** on activation).
 - **Decay**: on each points-update run, any **active** title that was **not suggested this run** loses **1 point**.
@@ -197,7 +262,7 @@ This dial lives in Command Center → Recommendations. It controls how many sugg
 - **Current releases**: already released and typically available to watch now
 - **Future releases**: upcoming titles that may not be released yet
 
-Under the hood it sets `recommendations.upcomingPercent` (default 25%). The system enforces that **released stays at least 25%**, so upcoming is effectively capped (max 75%).
+Under the hood it uses a saved recommendation mix setting (default 25% upcoming). The system enforces that **released stays at least 25%**, so upcoming is effectively capped (max 75%).
 
 ### Why do I see not enabled or skipped?
 
@@ -210,7 +275,7 @@ Those cards are always shown for transparency:
 
 It’s recorded as pending. Pending items can later become active once they appear in Plex.
 
-If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send the missing items to Radarr/Sonarr.
+If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send missing items to Radarr/Sonarr directly, or to Overseerr if Overseerr mode is enabled for that task.
 
 ### How does the refresher move items from pending to active?
 
@@ -238,6 +303,8 @@ In Task Manager → Immaculate Taste Collection, turn on **Approval required fro
 
 When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you **swipe right** on them in Observatory.
 
+Note: this applies to direct ARR mode. If you enable Overseerr routing for that task, Observatory approval is automatically disabled for that task.
+
 ### What do swipes do, and can I use keyboard shortcuts?
 
 - Swipe right: approve (in approval mode) or keep (in review mode)
@@ -259,11 +326,42 @@ It usually means the collection job hasn’t generated suggestions yet for that 
 
 Please continue using Plex and let suggestions build up, or run the collection task manually from Task Manager for that media type to generate suggestions.
 
-## Radarr / Sonarr
+## Radarr / Sonarr / Overseerr
 
 ### What does Fetch Missing items actually do?
 
-It allows certain collection jobs to send missing recommendations to Radarr (movies) or Sonarr (TV) so your downloader stack can grab them. If disabled, the app will still track pending items but won’t send anything to ARR.
+It allows collection jobs to push missing recommendations out of Immaculaterr. You can route them directly to Radarr/Sonarr, or route them to Overseerr. If disabled, the app still tracks pending items but does not send requests anywhere.
+
+### How do I set up Overseerr mode in simple steps?
+
+1. Go to **Vault** and set Overseerr URL + API key.
+2. Enable Overseerr in Vault and run the test.
+3. Go to **Task Manager** and turn on **Route missing items via Overseerr** for each task you want (Immaculate Taste and/or Based on Latest Watched).
+4. Run the task. New missing titles from that task will be requested in Overseerr.
+
+### What changes when I turn on Route missing items via Overseerr?
+
+- Missing titles from that task are sent to Overseerr instead of direct ARR sends.
+- Direct Radarr/Sonarr toggles for that task are turned off.
+- Approval required from Observatory is turned off for that task.
+- For Immaculate Taste, **Start search immediately** is also turned off.
+- Suggestions, pending/active tracking, and Plex collection updates still continue as normal.
+- If Overseerr is unavailable for a run, those requests are skipped for that run and are not sent to Radarr/Sonarr as a fallback.
+
+### What is the difference between in-app approval mode and Overseerr mode?
+
+- **In-app approval mode**: you approve in Observatory, then Immaculaterr sends approved items directly to Radarr/Sonarr.
+- **Overseerr mode**: Immaculaterr sends missing items to Overseerr, and Overseerr becomes the place where request workflow is handled.
+
+Use one flow per task card. If Overseerr mode is on, Immaculaterr’s Observatory approval flow for sending is disabled for that task.
+
+### How do I clear all Overseerr requests from Immaculaterr?
+
+Go to **Command Center** and use **Reset Overseerr Requests**.
+
+You’ll get a confirmation dialog. Once confirmed, Immaculaterr asks Overseerr to delete all requests regardless of status.
+
+This only clears Overseerr requests. It does not delete your existing Plex media files.
 
 ### If I disable Radarr/Sonarr toggles, what changes?
 
@@ -328,6 +426,11 @@ The app won’t be able to decrypt previously saved secrets. You’ll need to re
 - Your app data directory (Docker volume) including the SQLite database.
 - Your master key (env var or key file), so encrypted secrets remain decryptable.
 - Any deployment configuration (compose files/env values).
+- By default, the container also writes a pre-migration SQLite snapshot before startup migrations under `/data/backups/pre-migrate`.
+  - `DB_PRE_MIGRATE_BACKUP=true|false` (default `true`)
+  - `DB_PRE_MIGRATE_BACKUP_KEEP=<count>` (default `10`)
+  - `DB_PRE_MIGRATE_BACKUP_DIR=<path>` (default `/data/backups/pre-migrate`)
+  - `DB_PRE_MIGRATE_BACKUP_STRICT=true|false` (default `false`, best-effort)
 
 ### Can I rotate the master key?
 
@@ -341,7 +444,7 @@ You can, but anything encrypted with the old key won’t decrypt with the new on
 - Reverse proxy headers (X-Forwarded-Proto) if applicable
 - Browser blocking cookies (private browsing, strict settings, etc.)
 
-### Immaculaterr can’t reach Plex/Radarr/Sonarr — what URL should I use from Docker?
+### Immaculaterr can’t reach Plex/Radarr/Sonarr/Overseerr — what URL should I use from Docker?
 
 On Linux with host networking: `http://localhost:<port>`
 
@@ -395,4 +498,3 @@ A title that is in Plex and eligible to appear in a curated collection.
 ### Refresher
 
 A job that revisits the saved dataset, activates newly-available items, shuffles, and rebuilds collections.
-

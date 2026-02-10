@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { GoogleModule } from '../google/google.module';
 import { OpenAiModule } from '../openai/openai.module';
+import { OverseerrModule } from '../overseerr/overseerr.module';
 import { PlexModule } from '../plex/plex.module';
 import { RadarrModule } from '../radarr/radarr.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -20,6 +21,7 @@ import { IntegrationsConnectivityMonitorService } from './integrations-connectiv
     TmdbModule,
     GoogleModule,
     OpenAiModule,
+    OverseerrModule,
   ],
   controllers: [IntegrationsController],
   providers: [IntegrationsConnectivityMonitorService],

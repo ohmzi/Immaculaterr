@@ -26,6 +26,8 @@ export type PlexLibraryGrowthVersionResponse = {
   version: string;
 };
 
+const LIBRARY_GROWTH_ALGO_REV = '2';
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -187,7 +189,7 @@ export class PlexAnalyticsService {
     })();
 
     const signatureHash = createHash('sha256')
-      .update(signatureSeed)
+      .update(`${signatureSeed}:${LIBRARY_GROWTH_ALGO_REV}`)
       .digest('hex')
       .slice(0, 16);
 
@@ -227,13 +229,15 @@ export class PlexAnalyticsService {
     }
 
     const sections = await this.plexServer.getSections({ baseUrl, token });
-    const movie = sections.find(
+    const movieSections = sections.filter(
       (s) => (s.type ?? '').toLowerCase() === 'movie',
     );
-    const tv = sections.find((s) => (s.type ?? '').toLowerCase() === 'show');
+    const tvSections = sections.filter(
+      (s) => (s.type ?? '').toLowerCase() === 'show',
+    );
 
     // If the server has no movie/show libraries, just return empty analytics.
-    if (!movie || !tv) {
+    if (!movieSections.length && !tvSections.length) {
       const data: PlexLibraryGrowthResponse = {
         ok: true,
         series: [],
@@ -254,20 +258,43 @@ export class PlexAnalyticsService {
     }
 
     this.logger.log(
-      `Computing Plex library growth userId=${userId} movie=${movie.title} tv=${tv.title}`,
+      `Computing Plex library growth userId=${userId} movieLibraries=${movieSections.length} tvLibraries=${tvSections.length}`,
     );
 
+    const loadAddedAtForSections = async (
+      kind: 'movie' | 'tv',
+      targetSections: Array<{ key: string; title: string }>,
+    ) => {
+      if (!targetSections.length) return [] as number[];
+      const perSection = await Promise.all(
+        targetSections.map(async (sec) => {
+          try {
+            const values = await this.plexServer.getAddedAtTimestampsForSection(
+              {
+                baseUrl,
+                token,
+                librarySectionKey: sec.key,
+              },
+            );
+            this.logger.log(
+              `Plex growth source kind=${kind} section=${sec.title} key=${sec.key} items=${values.length}`,
+            );
+            return values;
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            this.logger.warn(
+              `Failed loading Plex growth timestamps kind=${kind} section=${sec.title} key=${sec.key}: ${msg}`,
+            );
+            return [] as number[];
+          }
+        }),
+      );
+      return perSection.flat();
+    };
+
     const [movieAddedAtSeconds, tvAddedAtSeconds] = await Promise.all([
-      this.plexServer.getAddedAtTimestampsForSection({
-        baseUrl,
-        token,
-        librarySectionKey: movie.key,
-      }),
-      this.plexServer.getAddedAtTimestampsForSection({
-        baseUrl,
-        token,
-        librarySectionKey: tv.key,
-      }),
+      loadAddedAtForSections('movie', movieSections),
+      loadAddedAtForSections('tv', tvSections),
     ]);
 
     const series = buildCumulativeMonthlySeries({

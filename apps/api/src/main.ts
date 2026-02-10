@@ -10,6 +10,23 @@ import { createOriginCheckMiddleware } from './security/origin-check.middleware'
 import { createIpRateLimitMiddleware } from './security/ip-rate-limit.middleware';
 import { securityHeadersMiddleware } from './security/security-headers.middleware';
 import { readAppMeta } from './app.meta';
+import { PlexUsersService } from './plex/plex-users.service';
+
+function ensureLegacyGlobals() {
+  const g = globalThis as Record<string, unknown>;
+  if (!('alternateFormatName' in g)) {
+    g['alternateFormatName'] = '';
+    try {
+      const evalFn =
+        typeof g['eval'] === 'function'
+          ? (g['eval'] as (code: string) => unknown)
+          : null;
+      evalFn?.('var alternateFormatName = ""');
+    } catch {
+      // best-effort only
+    }
+  }
+}
 
 function parseTrustProxyEnv(
   raw: string | undefined,
@@ -31,6 +48,7 @@ function parseTrustProxyEnv(
 
 async function bootstrap() {
   await ensureBootstrapEnv();
+  ensureLegacyGlobals();
   const bootstrapLogger = new Logger('Bootstrap');
 
   process.on('unhandledRejection', (reason) => {
@@ -45,6 +63,17 @@ async function bootstrap() {
     logger: new BufferedLogger(),
   });
 
+  // Transition safety: keep PlexUser admin/backfill state consistent across legacy DB upgrades.
+  try {
+    const plexUsers = app.get(PlexUsersService);
+    await plexUsers.ensureAdminPlexUser({ userId: null });
+    await plexUsers.backfillAdminOnMissing();
+  } catch (err) {
+    bootstrapLogger.warn(
+      `Plex user transition guard skipped: ${(err as Error)?.message ?? String(err)}`,
+    );
+  }
+
   // Reverse-proxy correctness (req.ip, req.secure, etc.). Configurable via TRUST_PROXY.
   // Defaults to 1 hop in production to support typical single reverse-proxy deployments.
   const trustProxy =
@@ -53,10 +82,9 @@ async function bootstrap() {
   if (trustProxy !== undefined) {
     const httpAdapter = app.getHttpAdapter();
     // Nest uses Express by default; set trust proxy on the underlying Express app instance.
-    (httpAdapter.getInstance() as { set?: (k: string, v: unknown) => void })?.set?.(
-      'trust proxy',
-      trustProxy,
-    );
+    (
+      httpAdapter.getInstance() as { set?: (k: string, v: unknown) => void }
+    )?.set?.('trust proxy', trustProxy);
   }
 
   app.use(securityHeadersMiddleware);

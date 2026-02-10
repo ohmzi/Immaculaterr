@@ -14,6 +14,8 @@ import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
+import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { WebhooksService } from './webhooks.service';
@@ -59,6 +61,7 @@ export class WebhooksController {
     private readonly jobsService: JobsService,
     private readonly authService: AuthService,
     private readonly settingsService: SettingsService,
+    private readonly plexUsers: PlexUsersService,
     private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
 
@@ -184,14 +187,28 @@ export class WebhooksController {
       const seedLibrarySectionTitle = payloadObj
         ? pickString(payloadObj, 'Metadata.librarySectionTitle')
         : '';
+      const plexAccountId = payloadObj ? pickNumber(payloadObj, 'Account.id') : null;
+      const plexAccountTitle = payloadObj ? pickString(payloadObj, 'Account.title') : '';
 
       if (seedTitle) {
         const userId = await this.authService.getFirstAdminUserId();
         if (userId) {
           try {
+            const plexUser = await this.plexUsers.resolvePlexUser({
+              plexAccountId,
+              plexAccountTitle,
+              userId,
+            });
+            const plexUserId = plexUser.id;
+            const plexUserTitle = plexUser.plexAccountTitle;
+
             const payloadInput = {
               source: 'plexWebhook',
               plexEvent,
+              plexUserId,
+              plexUserTitle,
+              plexAccountId,
+              plexAccountTitle: plexAccountTitle || null,
               mediaType: mediaTypeLower,
               seedTitle,
               seedYear: seedYear ?? null,
@@ -229,6 +246,16 @@ export class WebhooksController {
             const immaculateEnabled =
               pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ??
               false;
+            const seedLibrarySectionKey =
+              seedLibrarySectionId !== null
+                ? String(Math.trunc(seedLibrarySectionId))
+                : '';
+            const seedLibraryExcluded =
+              seedLibrarySectionKey &&
+              isPlexLibrarySectionExcluded({
+                settings,
+                sectionKey: seedLibrarySectionKey,
+              });
 
             // 1) Recently-watched recommendations (two collections)
             // NOTE: polling-only mode (70% progress) - do not trigger from webhooks.
@@ -240,6 +267,8 @@ export class WebhooksController {
             // 2) Immaculate Taste points update (dataset grows/decays over time)
             if (!immaculateEnabled) {
               skipped.immaculateTastePoints = 'disabled';
+            } else if (seedLibraryExcluded) {
+              skipped.immaculateTastePoints = 'library_excluded';
             } else {
               try {
                 const run = await this.jobsService.runJob({
@@ -261,6 +290,8 @@ export class WebhooksController {
               plexEvent,
               mediaType,
               seedTitle,
+              plexUserId,
+              plexUserTitle,
               runs,
               ...(Object.keys(skipped).length ? { skipped } : {}),
               ...(Object.keys(errors).length ? { errors } : {}),

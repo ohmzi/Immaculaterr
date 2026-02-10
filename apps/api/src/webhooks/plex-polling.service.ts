@@ -4,11 +4,13 @@ import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
 import type { JsonObject } from '../jobs/jobs.types';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
+import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
 import {
   PlexNowPlayingSession,
   PlexRecentlyAddedItem,
   PlexServerService,
 } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { WebhooksService } from './webhooks.service';
@@ -69,17 +71,38 @@ type SessionSnapshot = PlexNowPlayingSession & {
 type CollectionJobId = 'watchedMovieRecommendations' | 'immaculateTastePoints';
 
 type PendingCollectionRun = {
+  runId: string;
   jobId: CollectionJobId;
-  userId: string;
+  adminUserId: string;
+  plexUserId: string;
+  plexUserTitle: string;
   input: JsonObject;
   mediaType: string;
   seedTitle: string;
+  sessionAutomationId: string;
   enqueuedAtMs: number;
+  attempt: number;
 };
 
-type PendingCollectionRunsByJob = {
-  watched?: PendingCollectionRun;
-  immaculate?: PendingCollectionRun;
+type SessionCollectionJobStatus =
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'success'
+  | 'failed';
+
+type SessionAutomationState = {
+  sessionAutomationId: string;
+  sessionKey: string;
+  plexUserId: string;
+  plexUserTitle: string;
+  mediaType: string;
+  ratingKey: string;
+  seedTitle: string;
+  createdAtMs: number;
+  lastSeenAtMs: number;
+  maxProgressRatio: number;
+  jobs: Record<CollectionJobId, SessionCollectionJobStatus>;
 };
 
 @Injectable()
@@ -106,8 +129,21 @@ export class PlexPollingService implements OnModuleInit {
     );
     return v > 1 ? v / 100 : v;
   })();
+  private readonly forceBothScrobbleThreshold = (() => {
+    const v = parseFloatEnv(process.env.PLEX_POLLING_FORCE_BOTH_THRESHOLD, 0.9);
+    const normalized = v > 1 ? v / 100 : v;
+    return Math.min(1, Math.max(0, normalized));
+  })();
   private readonly minDurationMs = parseNumberEnv(
     process.env.PLEX_POLLING_MIN_DURATION_MS,
+    60_000,
+  );
+  private readonly nowPlayingLogIntervalMs = parseNumberEnv(
+    process.env.PLEX_POLLING_NOW_PLAYING_LOG_INTERVAL_MS,
+    30_000,
+  );
+  private readonly nowPlayingLogProgressStepMs = parseNumberEnv(
+    process.env.PLEX_POLLING_NOW_PLAYING_PROGRESS_STEP_MS,
     60_000,
   );
 
@@ -121,16 +157,24 @@ export class PlexPollingService implements OnModuleInit {
   );
 
   private readonly lastBySessionKey = new Map<string, SessionSnapshot>();
-  private readonly recentTriggers = new Map<string, number>();
-  private static readonly RECENT_TRIGGER_TTL_MS = 10 * 60_000;
+  private static readonly SESSION_AUTOMATION_STATE_TTL_MS = 12 * 60 * 60_000;
+  private static readonly MAX_COLLECTION_JOB_ATTEMPTS = 3;
+  private readonly sessionAutomationStateById = new Map<
+    string,
+    SessionAutomationState
+  >();
+  private readonly nowPlayingLogStateBySessionKey = new Map<
+    string,
+    { lastLogAtMs: number; lastViewOffsetMs: number | null; lastRatingKey: string | null }
+  >();
 
   // Polling-only cooldown/queue for the two collection jobs.
   // This does NOT affect other jobs/triggers.
   private static readonly COLLECTION_COOLDOWN_MS = 10 * 60_000;
-  private readonly collectionCooldownUntilByUser = new Map<string, number>();
-  private readonly pendingCollectionRunsByUser = new Map<
+  private readonly collectionCooldownUntilByPlexUser = new Map<string, number>();
+  private readonly pendingCollectionRunsByPlexUser = new Map<
     string,
-    PendingCollectionRunsByJob
+    PendingCollectionRun[]
   >();
 
   private lastRecentlyAddedPollAtMs: number | null = null;
@@ -147,13 +191,14 @@ export class PlexPollingService implements OnModuleInit {
     private readonly settingsService: SettingsService,
     private readonly jobsService: JobsService,
     private readonly plexServer: PlexServerService,
+    private readonly plexUsers: PlexUsersService,
     private readonly webhooksService: WebhooksService,
     private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
 
   onModuleInit() {
     this.logger.log(
-      `Plex polling ${this.enabled ? 'ENABLED' : 'disabled'} intervalMs=${this.intervalMs} watchedThreshold=${this.watchedScrobbleThreshold} immaculateThreshold=${this.immaculateScrobbleThreshold} minDurationMs=${this.minDurationMs}`,
+      `Plex polling ${this.enabled ? 'ENABLED' : 'disabled'} intervalMs=${this.intervalMs} watchedThreshold=${this.watchedScrobbleThreshold} immaculateThreshold=${this.immaculateScrobbleThreshold} forceBothThreshold=${this.forceBothScrobbleThreshold} minDurationMs=${this.minDurationMs}`,
     );
     // Let the app fully boot first.
     setTimeout(() => void this.pollOnce(), 15_000);
@@ -168,55 +213,231 @@ export class PlexPollingService implements OnModuleInit {
 
   private lastPolledAtMs: number | null = null;
 
-  private setCollectionCooldown(params: { userId: string; nowMs: number }) {
-    this.collectionCooldownUntilByUser.set(
-      params.userId,
+  private setCollectionCooldown(params: { plexUserId: string; nowMs: number }) {
+    this.collectionCooldownUntilByPlexUser.set(
+      params.plexUserId,
       params.nowMs + PlexPollingService.COLLECTION_COOLDOWN_MS,
     );
   }
 
-  private enqueueCollectionRun(params: PendingCollectionRun) {
-    const cur = this.pendingCollectionRunsByUser.get(params.userId) ?? {};
-    const next: PendingCollectionRunsByJob = { ...cur };
-    if (params.jobId === 'watchedMovieRecommendations') next.watched = params;
-    else next.immaculate = params;
-    this.pendingCollectionRunsByUser.set(params.userId, next);
+  private buildSessionAutomationId(params: {
+    sessionKey: string;
+    plexUserId: string;
+    mediaType: string;
+    ratingKey: string;
+  }) {
+    return `${params.plexUserId}:${params.mediaType}:${params.ratingKey}:${params.sessionKey}`;
   }
 
-  private dequeueNextPendingCollectionRun(params: { userId: string }) {
-    const cur = this.pendingCollectionRunsByUser.get(params.userId) ?? null;
-    if (!cur) return null;
-    if (cur.watched) {
-      const next = { ...cur };
-      const run = next.watched;
-      delete next.watched;
-      if (!next.watched && !next.immaculate)
-        this.pendingCollectionRunsByUser.delete(params.userId);
-      else this.pendingCollectionRunsByUser.set(params.userId, next);
+  private getOrCreateSessionAutomationState(params: {
+    sessionAutomationId: string;
+    sessionKey: string;
+    plexUserId: string;
+    plexUserTitle: string;
+    mediaType: string;
+    ratingKey: string;
+    seedTitle: string;
+    nowMs: number;
+    progressRatio: number;
+  }) {
+    const existing = this.sessionAutomationStateById.get(params.sessionAutomationId);
+    if (existing) {
+      existing.lastSeenAtMs = params.nowMs;
+      existing.maxProgressRatio = Math.max(
+        existing.maxProgressRatio,
+        params.progressRatio,
+      );
+      if (!existing.seedTitle && params.seedTitle) existing.seedTitle = params.seedTitle;
+      return existing;
+    }
+
+    const created: SessionAutomationState = {
+      sessionAutomationId: params.sessionAutomationId,
+      sessionKey: params.sessionKey,
+      plexUserId: params.plexUserId,
+      plexUserTitle: params.plexUserTitle,
+      mediaType: params.mediaType,
+      ratingKey: params.ratingKey,
+      seedTitle: params.seedTitle,
+      createdAtMs: params.nowMs,
+      lastSeenAtMs: params.nowMs,
+      maxProgressRatio: params.progressRatio,
+      jobs: {
+        watchedMovieRecommendations: 'idle',
+        immaculateTastePoints: 'idle',
+      },
+    };
+    this.sessionAutomationStateById.set(params.sessionAutomationId, created);
+    return created;
+  }
+
+  private getSessionJobStatus(
+    sessionAutomationId: string,
+    jobId: CollectionJobId,
+  ): SessionCollectionJobStatus {
+    const state = this.sessionAutomationStateById.get(sessionAutomationId);
+    if (!state) return 'idle';
+    return state.jobs[jobId];
+  }
+
+  private setSessionJobStatus(
+    sessionAutomationId: string,
+    jobId: CollectionJobId,
+    status: SessionCollectionJobStatus,
+    nowMs: number,
+  ) {
+    const state = this.sessionAutomationStateById.get(sessionAutomationId);
+    if (!state) return;
+    state.jobs[jobId] = status;
+    state.lastSeenAtMs = nowMs;
+  }
+
+  private canScheduleSessionJob(sessionAutomationId: string, jobId: CollectionJobId) {
+    const status = this.getSessionJobStatus(sessionAutomationId, jobId);
+    return status !== 'queued' && status !== 'running' && status !== 'success';
+  }
+
+  private pruneSessionAutomationState(nowMs: number) {
+    for (const [id, state] of this.sessionAutomationStateById) {
+      const ageMs = nowMs - state.lastSeenAtMs;
+      if (ageMs < PlexPollingService.SESSION_AUTOMATION_STATE_TTL_MS) continue;
+
+      const hasInFlight =
+        state.jobs.watchedMovieRecommendations === 'queued' ||
+        state.jobs.watchedMovieRecommendations === 'running' ||
+        state.jobs.immaculateTastePoints === 'queued' ||
+        state.jobs.immaculateTastePoints === 'running';
+      if (hasInFlight) continue;
+
+      this.sessionAutomationStateById.delete(id);
+    }
+  }
+
+  private async enqueueCollectionRun(
+    params: Omit<PendingCollectionRun, 'runId'> & { runId?: string },
+  ): Promise<{ queued: boolean; runId: string | null; error: string | null }> {
+    const queue = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
+    const exists = queue.some(
+      (run) =>
+        run.jobId === params.jobId &&
+        run.sessionAutomationId === params.sessionAutomationId,
+    );
+    if (exists) return { queued: false, runId: null, error: null };
+
+    let runId = params.runId?.trim() ?? '';
+    if (!runId) {
+      try {
+        const queuedRun = await this.jobsService.queueJob({
+          jobId: params.jobId,
+          trigger: 'auto',
+          dryRun: false,
+          userId: params.adminUserId,
+          input: params.input,
+        });
+        runId = queuedRun.id;
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        this.logger.warn(
+          `Failed to persist queued run jobId=${params.jobId} plexUserId=${params.plexUserId}: ${msg}`,
+        );
+        return { queued: false, runId: null, error: msg };
+      }
+    }
+
+    queue.push({
+      ...params,
+      runId,
+    });
+    queue.sort((a, b) => a.enqueuedAtMs - b.enqueuedAtMs);
+    this.pendingCollectionRunsByPlexUser.set(params.plexUserId, queue);
+    this.setSessionJobStatus(
+      params.sessionAutomationId,
+      params.jobId,
+      'queued',
+      params.enqueuedAtMs,
+    );
+    return { queued: true, runId, error: null };
+  }
+
+  private dequeueNextPendingCollectionRun(params: { plexUserId: string }) {
+    const queue = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
+    if (!queue.length) {
+      this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
+      return null;
+    }
+
+    while (queue.length) {
+      const run = queue.shift()!;
+      const state = this.getSessionJobStatus(run.sessionAutomationId, run.jobId);
+      if (state === 'success' || state === 'running') continue;
+
+      if (!queue.length) this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
+      else this.pendingCollectionRunsByPlexUser.set(params.plexUserId, queue);
       return run;
     }
-    if (cur.immaculate) {
-      const next = { ...cur };
-      const run = next.immaculate;
-      delete next.immaculate;
-      if (!next.watched && !next.immaculate)
-        this.pendingCollectionRunsByUser.delete(params.userId);
-      else this.pendingCollectionRunsByUser.set(params.userId, next);
-      return run;
-    }
-    this.pendingCollectionRunsByUser.delete(params.userId);
+
+    this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
     return null;
   }
 
+  private async runCollectionJobNow(params: {
+    jobId: CollectionJobId;
+    runId?: string;
+    adminUserId: string;
+    input: JsonObject;
+    sessionAutomationId: string;
+    nowMs: number;
+  }) {
+    this.setSessionJobStatus(
+      params.sessionAutomationId,
+      params.jobId,
+      'running',
+      params.nowMs,
+    );
+    try {
+      const run = params.runId
+        ? await this.jobsService.startQueuedJob({
+            runId: params.runId,
+            input: params.input,
+          })
+        : await this.jobsService.runJob({
+            jobId: params.jobId,
+            trigger: 'auto',
+            dryRun: false,
+            userId: params.adminUserId,
+            input: params.input,
+          });
+      this.setSessionJobStatus(
+        params.sessionAutomationId,
+        params.jobId,
+        'success',
+        Date.now(),
+      );
+      return { runId: run.id, error: null };
+    } catch (err) {
+      const msg = (err as Error)?.message ?? String(err);
+      this.setSessionJobStatus(
+        params.sessionAutomationId,
+        params.jobId,
+        'failed',
+        Date.now(),
+      );
+      return { runId: null, error: msg };
+    }
+  }
+
   private async flushPendingCollectionRuns(params: {
-    userId: string;
+    plexUserId: string;
     settings: Record<string, unknown>;
   }) {
     const now = Date.now();
-    const cooldownUntil = this.collectionCooldownUntilByUser.get(params.userId) ?? 0;
+    const cooldownUntil =
+      this.collectionCooldownUntilByPlexUser.get(params.plexUserId) ?? 0;
     if (now < cooldownUntil) return;
 
-    const pending = this.dequeueNextPendingCollectionRun({ userId: params.userId });
+    const pending = this.dequeueNextPendingCollectionRun({
+      plexUserId: params.plexUserId,
+    });
     if (!pending) return;
 
     const watchedEnabled =
@@ -230,40 +451,88 @@ export class PlexPollingService implements OnModuleInit {
         ? watchedEnabled
         : immaculateEnabled;
     if (!enabled) {
+      await this.jobsService.failQueuedJob({
+        runId: pending.runId,
+        errorMessage: 'Queued run dropped because the job is disabled.',
+      });
+      this.setSessionJobStatus(
+        pending.sessionAutomationId,
+        pending.jobId,
+        'failed',
+        now,
+      );
       this.webhooksService.logPlexWebhookAutomation({
         plexEvent: 'plexPolling.cooldown',
         mediaType: pending.mediaType,
         seedTitle: pending.seedTitle,
+        plexUserId: pending.plexUserId,
+        plexUserTitle: pending.plexUserTitle,
         skipped: { [pending.jobId]: 'cooldown_pending_dropped_disabled' },
       });
       return;
     }
 
     // Apply cooldown once we decide to run (regardless of success/failure), to protect Plex.
-    this.setCollectionCooldown({ userId: params.userId, nowMs: now });
-    try {
-      const run = await this.jobsService.runJob({
-        jobId: pending.jobId,
-        trigger: 'auto',
-        dryRun: false,
-        userId: params.userId,
-        input: pending.input,
-      });
+    this.setCollectionCooldown({ plexUserId: pending.plexUserId, nowMs: now });
+    const result = await this.runCollectionJobNow({
+      jobId: pending.jobId,
+      runId: pending.runId,
+      adminUserId: pending.adminUserId,
+      input: pending.input,
+      sessionAutomationId: pending.sessionAutomationId,
+      nowMs: now,
+    });
+    if (result.runId) {
       this.webhooksService.logPlexWebhookAutomation({
         plexEvent: 'plexPolling.cooldown',
         mediaType: pending.mediaType,
         seedTitle: pending.seedTitle,
-        runs: { [pending.jobId]: run.id },
+        plexUserId: pending.plexUserId,
+        plexUserTitle: pending.plexUserTitle,
+        runs: { [pending.jobId]: result.runId },
       });
-    } catch (err) {
-      const msg = (err as Error)?.message ?? String(err);
-      this.webhooksService.logPlexWebhookAutomation({
-        plexEvent: 'plexPolling.cooldown',
-        mediaType: pending.mediaType,
-        seedTitle: pending.seedTitle,
-        errors: { [pending.jobId]: msg },
+      return;
+    }
+
+    const errors: Record<string, string> = {};
+    errors[pending.jobId] = result.error ?? 'unknown_error';
+    const skipped: Record<string, string> = {};
+    let requeued = false;
+    if (pending.attempt < PlexPollingService.MAX_COLLECTION_JOB_ATTEMPTS) {
+      const nextAttempt = pending.attempt + 1;
+      const queued = await this.enqueueCollectionRun({
+        ...pending,
+        enqueuedAtMs: Date.now(),
+        attempt: nextAttempt,
+      });
+      if (queued.queued) {
+        requeued = true;
+        skipped[pending.jobId] = `retry_queued_attempt_${nextAttempt}`;
+      } else if (queued.error) {
+        errors[pending.jobId] = `${errors[pending.jobId]} | retry_queue_failed: ${queued.error}`;
+      }
+    }
+
+    if (!requeued) {
+      const failReason =
+        pending.attempt >= PlexPollingService.MAX_COLLECTION_JOB_ATTEMPTS
+          ? `Queued run failed after ${pending.attempt} attempt(s): ${errors[pending.jobId]}`
+          : `Queued run failed before start: ${errors[pending.jobId]}`;
+      await this.jobsService.failQueuedJob({
+        runId: pending.runId,
+        errorMessage: failReason,
       });
     }
+
+    this.webhooksService.logPlexWebhookAutomation({
+      plexEvent: 'plexPolling.cooldown',
+      mediaType: pending.mediaType,
+      seedTitle: pending.seedTitle,
+      plexUserId: pending.plexUserId,
+      plexUserTitle: pending.plexUserTitle,
+      ...(Object.keys(skipped).length ? { skipped } : {}),
+      errors,
+    });
   }
 
   private async pollOnce() {
@@ -282,10 +551,15 @@ export class PlexPollingService implements OnModuleInit {
       .catch(() => ({ settings: {}, secrets: {} }));
 
     // Drain any pending collection runs even if no active sessions exist.
-    await this.flushPendingCollectionRuns({
-      userId,
-      settings: settings as Record<string, unknown>,
-    });
+    const pendingPlexUsers = Array.from(
+      this.pendingCollectionRunsByPlexUser.keys(),
+    );
+    for (const plexUserId of pendingPlexUsers) {
+      await this.flushPendingCollectionRuns({
+        plexUserId,
+        settings: settings as Record<string, unknown>,
+      });
+    }
 
     const baseUrl = pickString(settings as Record<string, unknown>, 'plex.baseUrl');
     const token = pickString(secrets as Record<string, unknown>, 'plex.token');
@@ -317,18 +591,21 @@ export class PlexPollingService implements OnModuleInit {
     for (const [key, prev] of this.lastBySessionKey) {
       const current = sessions.find((s) => s.sessionKey === key) ?? null;
       if (!current) {
+        this.logNowPlayingEnded(prev, now);
         await this.handleEndedSession({
           userId,
           prev,
           settings: settings as Record<string, unknown>,
         });
         this.lastBySessionKey.delete(key);
+        this.nowPlayingLogStateBySessionKey.delete(key);
         continue;
       }
 
       const prevRatingKey = prev.ratingKey ?? '';
       const curRatingKey = current.ratingKey ?? '';
       if (prevRatingKey && curRatingKey && prevRatingKey !== curRatingKey) {
+        this.logNowPlayingEnded(prev, now);
         await this.handleEndedSession({
           userId,
           prev,
@@ -342,6 +619,7 @@ export class PlexPollingService implements OnModuleInit {
           reason: 'progress',
         });
         this.lastBySessionKey.set(key, nextWithTrigger);
+        this.logNowPlayingStarted(nextWithTrigger, now);
       } else {
         const merged = this.mergeSnapshot(prev, current, now);
         const mergedWithTrigger = await this.maybeTriggerWatchedAutomation({
@@ -351,6 +629,7 @@ export class PlexPollingService implements OnModuleInit {
           reason: 'progress',
         });
         this.lastBySessionKey.set(key, mergedWithTrigger);
+        this.logNowPlayingProgress(mergedWithTrigger, now);
       }
     }
 
@@ -365,15 +644,12 @@ export class PlexPollingService implements OnModuleInit {
           reason: 'progress',
         });
         this.lastBySessionKey.set(s.sessionKey, snapWithTrigger);
+        this.logNowPlayingStarted(snapWithTrigger, now);
       }
     }
 
-    // Best-effort cleanup of recent trigger dedupe map.
-    for (const [k, ts] of this.recentTriggers) {
-      if (now - ts > PlexPollingService.RECENT_TRIGGER_TTL_MS) {
-        this.recentTriggers.delete(k);
-      }
-    }
+    // Best-effort cleanup of stale session automation state.
+    this.pruneSessionAutomationState(now);
 
     // Defensive: if Plex returns no sessions, currentKeys is empty; that's fine.
     void currentKeys;
@@ -768,6 +1044,100 @@ export class PlexPollingService implements OnModuleInit {
     };
   }
 
+  private formatNowPlayingTitle(snap: SessionSnapshot): string {
+    if (snap.type === 'episode') {
+      const show = snap.grandparentTitle ?? '(show)';
+      const season = snap.parentIndex ? `S${snap.parentIndex}` : '';
+      const ep = snap.index ? `E${snap.index}` : '';
+      const se = season || ep ? ` ${[season, ep].filter(Boolean).join('')}` : '';
+      const episodeTitle = snap.title ? ` — ${snap.title}` : '';
+      return `${show}${se}${episodeTitle}`;
+    }
+    const title = snap.title ?? '(title)';
+    return snap.year ? `${title} (${snap.year})` : title;
+  }
+
+  private formatNowPlayingProgress(snap: SessionSnapshot): string | null {
+    const duration = snap.durationMs ?? null;
+    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    if (!duration || duration <= 0 || viewOffset === null || viewOffset < 0) return null;
+    const pct = Math.min(100, Math.max(0, Math.round((viewOffset / duration) * 100)));
+    const fmt = (ms: number) => {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    };
+    return `${pct}% (${fmt(viewOffset)}/${fmt(duration)})`;
+  }
+
+  private shouldLogNowPlaying(snap: SessionSnapshot, nowMs: number): boolean {
+    const state = this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
+    if (!state) return true;
+    if (state.lastRatingKey && snap.ratingKey && state.lastRatingKey !== snap.ratingKey) return true;
+    if (nowMs - state.lastLogAtMs >= this.nowPlayingLogIntervalMs) return true;
+    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    if (
+      viewOffset !== null &&
+      state.lastViewOffsetMs !== null &&
+      viewOffset - state.lastViewOffsetMs >= this.nowPlayingLogProgressStepMs
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private updateNowPlayingLogState(snap: SessionSnapshot, nowMs: number) {
+    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    this.nowPlayingLogStateBySessionKey.set(snap.sessionKey, {
+      lastLogAtMs: nowMs,
+      lastViewOffsetMs: viewOffset,
+      lastRatingKey: snap.ratingKey ?? null,
+    });
+  }
+
+  private logNowPlayingStarted(snap: SessionSnapshot, nowMs: number) {
+    if (!this.shouldLogNowPlaying(snap, nowMs)) return;
+    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const progress = this.formatNowPlayingProgress(snap);
+    const progressLabel = progress ? ` progress=${progress}` : '';
+    const library = snap.librarySectionTitle
+      ? ` library=${JSON.stringify(snap.librarySectionTitle)}`
+      : '';
+    const msg = `Plex now playing: started type=${snap.type} title=${JSON.stringify(this.formatNowPlayingTitle(snap))}${user}${progressLabel}${library} session=${snap.sessionKey}`;
+    this.logger.log(msg);
+    this.updateNowPlayingLogState(snap, nowMs);
+  }
+
+  private logNowPlayingProgress(snap: SessionSnapshot, nowMs: number) {
+    if (!this.shouldLogNowPlaying(snap, nowMs)) return;
+    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const progress = this.formatNowPlayingProgress(snap);
+    const progressLabel = progress ? ` progress=${progress}` : '';
+    const library = snap.librarySectionTitle
+      ? ` library=${JSON.stringify(snap.librarySectionTitle)}`
+      : '';
+    const msg = `Plex now playing: progress type=${snap.type} title=${JSON.stringify(this.formatNowPlayingTitle(snap))}${user}${progressLabel}${library} session=${snap.sessionKey}`;
+    this.logger.log(msg);
+    this.updateNowPlayingLogState(snap, nowMs);
+  }
+
+  private logNowPlayingEnded(snap: SessionSnapshot, nowMs: number) {
+    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const progress = this.formatNowPlayingProgress(snap);
+    const progressLabel = progress ? ` progress=${progress}` : '';
+    const library = snap.librarySectionTitle
+      ? ` library=${JSON.stringify(snap.librarySectionTitle)}`
+      : '';
+    const msg = `Plex now playing: ended type=${snap.type} title=${JSON.stringify(this.formatNowPlayingTitle(snap))}${user}${progressLabel}${library} session=${snap.sessionKey}`;
+    this.logger.log(msg);
+    this.updateNowPlayingLogState(snap, nowMs);
+  }
+
   private getProgressRatio(snapshot: SessionSnapshot): number | null {
     const duration = snapshot.durationMs ?? null;
     const viewOffset =
@@ -801,51 +1171,85 @@ export class PlexPollingService implements OnModuleInit {
     const immaculateEnabled =
       pickBool(settings, 'jobs.webhookEnabled.immaculateTastePoints') ?? false;
     if (!watchedEnabled && !immaculateEnabled) return snap;
+    const mediaTypeLower = snap.type;
+    const showTitle =
+      mediaTypeLower === 'episode' ? (snap.grandparentTitle ?? '') : '';
+    const seedTitle = normalizeTitleForMatching(
+      mediaTypeLower === 'episode' ? showTitle : (snap.title ?? ''),
+    );
+    if (!seedTitle) return snap;
 
+    const resolvedPlexUser = await this.plexUsers.resolvePlexUser({
+      plexAccountId: snap.userId ?? null,
+      plexAccountTitle: snap.userTitle ?? null,
+      userId,
+    });
+    const plexUserId = resolvedPlexUser.id;
+    const plexUserTitle = resolvedPlexUser.plexAccountTitle;
+    const now = Date.now();
+    const sessionAutomationId = this.buildSessionAutomationId({
+      sessionKey: snap.sessionKey,
+      plexUserId,
+      mediaType: snap.type,
+      ratingKey: snap.ratingKey ?? 'unknown',
+    });
+    this.getOrCreateSessionAutomationState({
+      sessionAutomationId,
+      sessionKey: snap.sessionKey,
+      plexUserId,
+      plexUserTitle,
+      mediaType: snap.type,
+      ratingKey: snap.ratingKey ?? 'unknown',
+      seedTitle,
+      nowMs: now,
+      progressRatio: ratio,
+    });
+
+    const forceBothAtNinetyPercent = ratio >= this.forceBothScrobbleThreshold;
     const shouldConsiderWatched =
       watchedEnabled &&
-      !snap.watchedTriggered &&
-      ratio >= this.watchedScrobbleThreshold;
+      this.canScheduleSessionJob(
+        sessionAutomationId,
+        'watchedMovieRecommendations',
+      ) &&
+      (ratio >= this.watchedScrobbleThreshold || forceBothAtNinetyPercent);
     const shouldConsiderImmaculate =
       immaculateEnabled &&
-      !snap.immaculateTriggered &&
-      ratio >= this.immaculateScrobbleThreshold;
+      this.canScheduleSessionJob(sessionAutomationId, 'immaculateTastePoints') &&
+      (ratio >= this.immaculateScrobbleThreshold || forceBothAtNinetyPercent);
     if (!shouldConsiderWatched && !shouldConsiderImmaculate) return snap;
 
-    // De-dupe across short time windows (protects against polling quirks and sessionKey resets).
-    const now = Date.now();
-    const makeDedupeKey = (jobId: string) =>
-      `${jobId}:${snap.type}:${snap.ratingKey ?? 'unknown'}:${snap.librarySectionId ?? 'unknown'}`;
-
-    let runWatched = false;
-    let runImmaculate = false;
+    const seedLibrarySectionKey =
+      typeof snap.librarySectionId === 'number' &&
+      Number.isFinite(snap.librarySectionId)
+        ? String(Math.trunc(snap.librarySectionId))
+        : '';
+    if (
+      seedLibrarySectionKey &&
+      isPlexLibrarySectionExcluded({
+        settings,
+        sectionKey: seedLibrarySectionKey,
+      })
+    ) {
+      const skipped: Record<string, string> = {};
+      if (shouldConsiderWatched) {
+        skipped.watchedMovieRecommendations = 'library_excluded';
+      }
+      if (shouldConsiderImmaculate) {
+        skipped.immaculateTastePoints = 'library_excluded';
+      }
+      this.webhooksService.logPlexWebhookAutomation({
+        plexEvent: 'media.scrobble',
+        mediaType: snap.type,
+        seedTitle,
+        plexUserId,
+        plexUserTitle,
+        skipped,
+      });
+      return snap;
+    }
 
     let next: SessionSnapshot = { ...snap };
-
-    if (shouldConsiderWatched) {
-      const key = makeDedupeKey('watchedMovieRecommendations');
-      const last = this.recentTriggers.get(key) ?? 0;
-      if (now - last < PlexPollingService.RECENT_TRIGGER_TTL_MS) {
-        next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-      } else {
-        this.recentTriggers.set(key, now);
-        runWatched = true;
-      }
-    }
-
-    if (shouldConsiderImmaculate) {
-      const key = makeDedupeKey('immaculateTastePoints');
-      const last = this.recentTriggers.get(key) ?? 0;
-      if (now - last < PlexPollingService.RECENT_TRIGGER_TTL_MS) {
-        next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
-      } else {
-        this.recentTriggers.set(key, now);
-        runImmaculate = true;
-      }
-    }
-
-    // If we decided not to run anything (dedupe-only), just mark triggered flags and exit.
-    if (!runWatched && !runImmaculate) return next;
 
     const viewOffset =
       snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
@@ -873,6 +1277,10 @@ export class PlexPollingService implements OnModuleInit {
         source: params.reason,
         thresholdWatchedMovieRecommendations: this.watchedScrobbleThreshold,
         thresholdImmaculateTastePoints: this.immaculateScrobbleThreshold,
+        thresholdForceBothCollections: this.forceBothScrobbleThreshold,
+        forceBothCollections: forceBothAtNinetyPercent,
+        sessionKey: snap.sessionKey,
+        sessionAutomationId,
       },
       Account: {
         title: snap.userTitle ?? undefined,
@@ -895,19 +1303,16 @@ export class PlexPollingService implements OnModuleInit {
     });
 
     // Build the same "seed" input structure the webhook controller uses.
-    const mediaTypeLower = snap.type;
-    const showTitle =
-      mediaTypeLower === 'episode' ? (snap.grandparentTitle ?? '') : '';
     const episodeTitle =
       mediaTypeLower === 'episode' ? (snap.title ?? '') : '';
-    const seedTitle = normalizeTitleForMatching(
-      mediaTypeLower === 'episode' ? showTitle : (snap.title ?? ''),
-    );
-    if (!seedTitle) return snap;
 
     const payloadInput = {
       source: 'plexPolling',
       plexEvent: 'media.scrobble',
+      plexUserId,
+      plexUserTitle,
+      plexAccountId: snap.userId ?? null,
+      plexAccountTitle: snap.userTitle ?? null,
       mediaType: mediaTypeLower,
       seedTitle,
       seedYear: mediaTypeLower === 'movie' ? (snap.year ?? null) : null,
@@ -926,6 +1331,9 @@ export class PlexPollingService implements OnModuleInit {
       persistedPath: persisted.path,
       progress: ratio,
       reason: params.reason,
+      sessionKey: snap.sessionKey,
+      sessionAutomationId,
+      forceBothAtNinetyPercent,
     } as const;
     const watchedInput = {
       ...payloadInput,
@@ -939,104 +1347,115 @@ export class PlexPollingService implements OnModuleInit {
     const runs: Record<string, string> = {};
     const errors: Record<string, string> = {};
     const skipped: Record<string, string> = {};
-
-    if (watchedEnabled && !runWatched) {
-      skipped.watchedMovieRecommendations = 'dedupe_or_already_triggered';
+    const jobsToHandle: Array<{
+      jobId: CollectionJobId;
+      input: JsonObject;
+    }> = [];
+    if (shouldConsiderWatched) {
+      jobsToHandle.push({
+        jobId: 'watchedMovieRecommendations',
+        input: watchedInput as unknown as JsonObject,
+      });
+    } else if (watchedEnabled) {
+      const status = this.getSessionJobStatus(
+        sessionAutomationId,
+        'watchedMovieRecommendations',
+      );
+      skipped.watchedMovieRecommendations = `already_${status}`;
     }
-    if (immaculateEnabled && !runImmaculate) {
-      skipped.immaculateTastePoints = 'dedupe_or_already_triggered';
+    if (shouldConsiderImmaculate) {
+      jobsToHandle.push({
+        jobId: 'immaculateTastePoints',
+        input: immaculateInput as unknown as JsonObject,
+      });
+    } else if (immaculateEnabled) {
+      const status = this.getSessionJobStatus(
+        sessionAutomationId,
+        'immaculateTastePoints',
+      );
+      skipped.immaculateTastePoints = `already_${status}`;
     }
+    if (!jobsToHandle.length) return next;
 
     // Shared cooldown for collection jobs (polling-only).
-    const cooldownUntil = this.collectionCooldownUntilByUser.get(userId) ?? 0;
+    const cooldownUntil =
+      this.collectionCooldownUntilByPlexUser.get(plexUserId) ?? 0;
     const cooldownActive = now < cooldownUntil;
 
-    const enqueue = (jobId: CollectionJobId) => {
-      this.enqueueCollectionRun({
-        jobId,
-        userId,
-        input:
-          jobId === 'watchedMovieRecommendations'
-            ? (watchedInput as unknown as JsonObject)
-            : (immaculateInput as unknown as JsonObject),
+    const enqueue = async (params: {
+      jobId: CollectionJobId;
+      input: JsonObject;
+      reason: string;
+    }) => {
+      const queued = await this.enqueueCollectionRun({
+        jobId: params.jobId,
+        adminUserId: userId,
+        plexUserId,
+        plexUserTitle,
+        input: params.input,
         mediaType: snap.type,
         seedTitle,
+        sessionAutomationId,
         enqueuedAtMs: now,
+        attempt: 1,
       });
-      if (jobId === 'watchedMovieRecommendations') {
-        skipped.watchedMovieRecommendations = 'cooldown_pending';
-        next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
+      if (params.jobId === 'watchedMovieRecommendations') {
+        if (queued.queued) {
+          skipped.watchedMovieRecommendations = params.reason;
+          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
+        } else if (queued.error) {
+          errors.watchedMovieRecommendations = `queue_failed: ${queued.error}`;
+        } else {
+          skipped.watchedMovieRecommendations = 'already_queued_or_processed';
+          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
+        }
       } else {
-        skipped.immaculateTastePoints = 'cooldown_pending';
-        next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+        if (queued.queued) {
+          skipped.immaculateTastePoints = params.reason;
+          next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+        } else if (queued.error) {
+          errors.immaculateTastePoints = `queue_failed: ${queued.error}`;
+        } else {
+          skipped.immaculateTastePoints = 'already_queued_or_processed';
+          next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+        }
       }
     };
 
-    let ranNow = false;
-
     if (cooldownActive) {
-      if (runWatched) enqueue('watchedMovieRecommendations');
-      if (runImmaculate) enqueue('immaculateTastePoints');
+      for (const job of jobsToHandle) {
+        await enqueue({
+          jobId: job.jobId,
+          input: job.input,
+          reason: 'cooldown_pending',
+        });
+      }
     } else {
-      // If both are eligible, we prefer watched first and queue immaculate behind cooldown.
-      if (runWatched && runImmaculate) {
-        // Run watched now.
-        try {
-          const run = await this.jobsService.runJob({
-            jobId: 'watchedMovieRecommendations',
-            trigger: 'auto',
-            dryRun: false,
-            userId,
-            input: watchedInput,
-          });
-          runs.watchedMovieRecommendations = run.id;
-        } catch (err) {
-          errors.watchedMovieRecommendations =
-            (err as Error)?.message ?? String(err);
-        } finally {
-          ranNow = true;
-          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-          this.setCollectionCooldown({ userId, nowMs: now });
-        }
+      const [first, ...rest] = jobsToHandle;
+      if (first) {
+        const result = await this.runCollectionJobNow({
+          jobId: first.jobId,
+          adminUserId: userId,
+          input: first.input,
+          sessionAutomationId,
+          nowMs: now,
+        });
+        if (result.runId) runs[first.jobId] = result.runId;
+        else if (result.error) errors[first.jobId] = result.error;
 
-        // Queue immaculate for after cooldown.
-        enqueue('immaculateTastePoints');
-      } else if (runWatched) {
-        try {
-          const run = await this.jobsService.runJob({
-            jobId: 'watchedMovieRecommendations',
-            trigger: 'auto',
-            dryRun: false,
-            userId,
-            input: watchedInput,
-          });
-          runs.watchedMovieRecommendations = run.id;
-        } catch (err) {
-          errors.watchedMovieRecommendations =
-            (err as Error)?.message ?? String(err);
-        } finally {
-          ranNow = true;
+        if (first.jobId === 'watchedMovieRecommendations') {
           next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-          this.setCollectionCooldown({ userId, nowMs: now });
-        }
-      } else if (runImmaculate) {
-        try {
-          const run = await this.jobsService.runJob({
-            jobId: 'immaculateTastePoints',
-            trigger: 'auto',
-            dryRun: false,
-            userId,
-            input: immaculateInput,
-          });
-          runs.immaculateTastePoints = run.id;
-        } catch (err) {
-          errors.immaculateTastePoints =
-            (err as Error)?.message ?? String(err);
-        } finally {
-          ranNow = true;
+        } else {
           next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
-          this.setCollectionCooldown({ userId, nowMs: now });
         }
+        this.setCollectionCooldown({ plexUserId, nowMs: now });
+      }
+      for (const job of rest) {
+        await enqueue({
+          jobId: job.jobId,
+          input: job.input,
+          reason: 'queued_after_first_run',
+        });
       }
     }
 
@@ -1044,14 +1463,13 @@ export class PlexPollingService implements OnModuleInit {
       plexEvent: 'media.scrobble',
       mediaType: snap.type,
       seedTitle,
+      plexUserId,
+      plexUserTitle,
       ...(Object.keys(runs).length ? { runs } : {}),
       ...(Object.keys(skipped).length ? { skipped } : {}),
       ...(Object.keys(errors).length ? { errors } : {}),
     });
 
-    // `next` already contains the appropriate triggered flags (dedupe, queued, or ran-now).
-    // ranNow is unused beyond readability, but kept here to make intent explicit.
-    void ranNow;
     return next;
   }
 
@@ -1069,4 +1487,3 @@ export class PlexPollingService implements OnModuleInit {
     });
   }
 }
-

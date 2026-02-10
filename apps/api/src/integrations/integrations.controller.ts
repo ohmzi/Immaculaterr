@@ -5,12 +5,23 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import { PrismaService } from '../db/prisma.service';
 import { GoogleService } from '../google/google.service';
 import { OpenAiService } from '../openai/openai.service';
+import { OverseerrService } from '../overseerr/overseerr.service';
+import {
+  type PlexEligibleLibrary,
+  buildExcludedSectionKeysFromSelected,
+  PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+  resolvePlexLibrarySelection,
+  sanitizeSectionKeys,
+} from '../plex/plex-library-selection.utils';
+import { resolveCuratedCollectionBaseName } from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { SettingsService } from '../settings/settings.service';
@@ -57,10 +68,15 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
+type UpdatePlexLibrariesBody = {
+  selectedSectionKeys?: unknown;
+};
+
 @Controller('integrations')
 @ApiTags('integrations')
 export class IntegrationsController {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
     private readonly radarr: RadarrService,
@@ -68,7 +84,120 @@ export class IntegrationsController {
     private readonly tmdb: TmdbService,
     private readonly google: GoogleService,
     private readonly openai: OpenAiService,
+    private readonly overseerr: OverseerrService,
   ) {}
+
+  private async cleanupDeselectedPlexLibraries(params: {
+    baseUrl: string;
+    token: string;
+    deselectedLibraries: PlexEligibleLibrary[];
+  }) {
+    const sectionKeys = params.deselectedLibraries
+      .map((lib) => String(lib.key ?? '').trim())
+      .filter(Boolean);
+
+    const emptyResult = {
+      deselectedSectionKeys: sectionKeys,
+      db: {
+        immaculateMovieDeleted: 0,
+        immaculateTvDeleted: 0,
+        watchedMovieDeleted: 0,
+        watchedTvDeleted: 0,
+        totalDeleted: 0,
+      },
+      plex: {
+        librariesChecked: 0,
+        collectionsDeleted: 0,
+        errors: 0,
+      },
+    };
+
+    if (!sectionKeys.length) return emptyResult;
+
+    const [immaculateMovieDeletedRes, immaculateTvDeletedRes, watchedMovieDeletedRes, watchedTvDeletedRes] =
+      await this.prisma.$transaction([
+        this.prisma.immaculateTasteMovieLibrary.deleteMany({
+          where: { librarySectionKey: { in: sectionKeys } },
+        }),
+        this.prisma.immaculateTasteShowLibrary.deleteMany({
+          where: { librarySectionKey: { in: sectionKeys } },
+        }),
+        this.prisma.watchedMovieRecommendationLibrary.deleteMany({
+          where: { librarySectionKey: { in: sectionKeys } },
+        }),
+        this.prisma.watchedShowRecommendationLibrary.deleteMany({
+          where: { librarySectionKey: { in: sectionKeys } },
+        }),
+      ]);
+
+    let librariesChecked = 0;
+    let collectionsDeleted = 0;
+    let plexErrors = 0;
+    for (const lib of params.deselectedLibraries) {
+      const mediaType = lib.type === 'movie' ? 'movie' : lib.type === 'show' ? 'tv' : null;
+      if (!mediaType) continue;
+      librariesChecked += 1;
+
+      try {
+        const collections = await this.plexServer.listCollectionsForSectionKey({
+          baseUrl: params.baseUrl,
+          token: params.token,
+          librarySectionKey: lib.key,
+          take: 500,
+        });
+        const seenRatingKeys = new Set<string>();
+        for (const collection of collections) {
+          const ratingKey = String(collection.ratingKey ?? '').trim();
+          if (!ratingKey || seenRatingKeys.has(ratingKey)) continue;
+          seenRatingKeys.add(ratingKey);
+
+          const curatedBase = resolveCuratedCollectionBaseName({
+            collectionName: String(collection.title ?? ''),
+            mediaType,
+          });
+          if (!curatedBase) continue;
+
+          try {
+            await this.plexServer.deleteCollection({
+              baseUrl: params.baseUrl,
+              token: params.token,
+              collectionRatingKey: ratingKey,
+            });
+            collectionsDeleted += 1;
+          } catch {
+            plexErrors += 1;
+          }
+        }
+      } catch {
+        plexErrors += 1;
+      }
+    }
+
+    const immaculateMovieDeleted = immaculateMovieDeletedRes.count;
+    const immaculateTvDeleted = immaculateTvDeletedRes.count;
+    const watchedMovieDeleted = watchedMovieDeletedRes.count;
+    const watchedTvDeleted = watchedTvDeletedRes.count;
+
+    return {
+      deselectedSectionKeys: sectionKeys,
+      db: {
+        immaculateMovieDeleted,
+        immaculateTvDeleted,
+        watchedMovieDeleted,
+        watchedTvDeleted,
+        totalDeleted:
+          immaculateMovieDeleted +
+          immaculateTvDeleted +
+          watchedMovieDeleted +
+          watchedTvDeleted,
+      },
+      plex: {
+        librariesChecked,
+        collectionsDeleted,
+        errors: plexErrors,
+      },
+    };
+  }
 
   @Get('radarr/options')
   async radarrOptions(@Req() req: AuthenticatedRequest) {
@@ -136,6 +265,145 @@ export class IntegrationsController {
     return { ok: true, rootFolders, qualityProfiles, tags };
   }
 
+  @Get('plex/libraries')
+  async plexLibraries(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!baseUrlRaw || !token) {
+      throw new BadRequestException('Plex is not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+    const sections = await this.plexServer.getSections({ baseUrl, token });
+    const selection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSet = new Set(selection.selectedSectionKeys);
+    const libraries = selection.eligibleLibraries.map((lib) => ({
+      key: lib.key,
+      title: lib.title,
+      type: lib.type,
+      selected: selectedSet.has(lib.key),
+    }));
+
+    return {
+      ok: true,
+      libraries,
+      selectedSectionKeys: selection.selectedSectionKeys,
+      excludedSectionKeys: selection.excludedSectionKeys,
+      minimumRequired: PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+      autoIncludeNewLibraries: true,
+    };
+  }
+
+  @Put('plex/libraries')
+  async savePlexLibraries(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdatePlexLibrariesBody,
+  ) {
+    const bodyObj = isPlainObject(body) ? body : {};
+    if (!Array.isArray(bodyObj['selectedSectionKeys'])) {
+      throw new BadRequestException('selectedSectionKeys must be an array');
+    }
+    const selectedSectionKeys = sanitizeSectionKeys(
+      bodyObj['selectedSectionKeys'],
+    );
+
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!baseUrlRaw || !token) {
+      throw new BadRequestException('Plex is not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+    const sections = await this.plexServer.getSections({ baseUrl, token });
+    const selection = resolvePlexLibrarySelection({ settings, sections });
+    if (!selection.eligibleLibraries.length) {
+      throw new BadRequestException('No Plex movie/TV libraries found');
+    }
+
+    if (selectedSectionKeys.length < PLEX_LIBRARY_SELECTION_MIN_SELECTED) {
+      throw new BadRequestException(
+        `At least ${PLEX_LIBRARY_SELECTION_MIN_SELECTED} library must be selected`,
+      );
+    }
+
+    const eligibleKeys = new Set(
+      selection.eligibleLibraries.map((lib) => lib.key),
+    );
+    const unknownKeys = selectedSectionKeys.filter((key) => !eligibleKeys.has(key));
+    if (unknownKeys.length) {
+      throw new BadRequestException(
+        `Unknown library section keys: ${unknownKeys.join(', ')}`,
+      );
+    }
+
+    const excludedSectionKeys = buildExcludedSectionKeysFromSelected({
+      eligibleLibraries: selection.eligibleLibraries,
+      selectedSectionKeys,
+    });
+    const requestedSelectedSet = new Set(selectedSectionKeys);
+    const deselectedSectionKeys = selection.selectedSectionKeys.filter(
+      (key) => !requestedSelectedSet.has(key),
+    );
+    const deselectedSet = new Set(deselectedSectionKeys);
+    const deselectedLibraries = selection.eligibleLibraries.filter((lib) =>
+      deselectedSet.has(lib.key),
+    );
+
+    const nextSettings = await this.settingsService.updateSettings(userId, {
+      plex: {
+        librarySelection: {
+          excludedSectionKeys,
+        },
+      },
+    });
+
+    const nextSelection = resolvePlexLibrarySelection({
+      settings: nextSettings,
+      sections,
+    });
+    const selectedSet = new Set(nextSelection.selectedSectionKeys);
+    const libraries = nextSelection.eligibleLibraries.map((lib) => ({
+      key: lib.key,
+      title: lib.title,
+      type: lib.type,
+      selected: selectedSet.has(lib.key),
+    }));
+
+    const cleanup =
+      deselectedLibraries.length > 0
+        ? await this.cleanupDeselectedPlexLibraries({
+            baseUrl,
+            token,
+            deselectedLibraries,
+          }).catch(() => ({
+            deselectedSectionKeys,
+            db: null,
+            plex: null,
+            error: 'cleanup_failed',
+          }))
+        : null;
+
+    return {
+      ok: true,
+      libraries,
+      selectedSectionKeys: nextSelection.selectedSectionKeys,
+      excludedSectionKeys: nextSelection.excludedSectionKeys,
+      minimumRequired: PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+      autoIncludeNewLibraries: true,
+      ...(cleanup ? { cleanup } : {}),
+    };
+  }
+
   @Post('test/:integrationId')
   async testSaved(
     @Req() req: AuthenticatedRequest,
@@ -199,6 +467,19 @@ export class IntegrationsController {
       const apiKey = pickString(secrets, 'tmdb.apiKey');
       if (!apiKey) throw new BadRequestException('TMDB apiKey is not set');
       const result = await this.tmdb.testConnection({ apiKey });
+      return { ok: true, result };
+    }
+
+    if (id === 'overseerr') {
+      const baseUrlRaw =
+        pickString(bodyObj, 'baseUrl') ||
+        pickString(settings, 'overseerr.baseUrl');
+      const apiKey = pickString(secrets, 'overseerr.apiKey');
+      if (!baseUrlRaw)
+        throw new BadRequestException('Overseerr baseUrl is not set');
+      if (!apiKey) throw new BadRequestException('Overseerr apiKey is not set');
+      const baseUrl = normalizeHttpUrl(baseUrlRaw);
+      const result = await this.overseerr.testConnection({ baseUrl, apiKey });
       return { ok: true, result };
     }
 

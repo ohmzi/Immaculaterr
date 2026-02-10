@@ -57,6 +57,25 @@ model UserSecrets {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model PlexUser {
+  id               String   @id @default(cuid())
+  plexAccountId    Int?
+  plexAccountTitle String
+  isAdmin          Boolean  @default(false)
+  lastSeenAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  immaculateTasteMovieLibraries      ImmaculateTasteMovieLibrary[]
+  immaculateTasteShowLibraries       ImmaculateTasteShowLibrary[]
+  watchedMovieRecommendationLibraries WatchedMovieRecommendationLibrary[]
+  watchedShowRecommendationLibraries  WatchedShowRecommendationLibrary[]
+
+  @@unique([plexAccountId])
+  @@index([plexAccountTitle])
+  @@index([isAdmin])
+}
+
 enum JobRunStatus {
   PENDING
   RUNNING
@@ -220,6 +239,7 @@ model WatchedMovieRecommendation {
 // Library-specific points dataset for Immaculate Taste (movies).
 // This prevents multi-library setups from overriding each other.
 model ImmaculateTasteMovieLibrary {
+  plexUserId        String
   librarySectionKey String
   tmdbId            Int
   title             String?
@@ -241,15 +261,19 @@ model ImmaculateTasteMovieLibrary {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@id([librarySectionKey, tmdbId])
-  @@index([librarySectionKey])
-  @@index([librarySectionKey, status])
-  @@index([librarySectionKey, points])
-  @@index([librarySectionKey, tmdbVoteAvg])
+  plexUser PlexUser @relation(fields: [plexUserId], references: [id], onDelete: Cascade)
+
+  @@id([plexUserId, librarySectionKey, tmdbId])
+  @@index([plexUserId])
+  @@index([plexUserId, librarySectionKey])
+  @@index([plexUserId, librarySectionKey, status])
+  @@index([plexUserId, librarySectionKey, points])
+  @@index([plexUserId, librarySectionKey, tmdbVoteAvg])
 }
 
 // Library-specific points dataset for "Based on Latest Watched" collections (movies).
 model WatchedMovieRecommendationLibrary {
+  plexUserId        String
   collectionName    String
   librarySectionKey String
   tmdbId            Int
@@ -270,13 +294,16 @@ model WatchedMovieRecommendationLibrary {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@id([collectionName, librarySectionKey, tmdbId])
-  @@index([librarySectionKey])
-  @@index([librarySectionKey, collectionName, status])
-  @@index([librarySectionKey, collectionName, tmdbVoteAvg])
-  @@index([librarySectionKey, collectionName, downloadApproval])
-  @@index([librarySectionKey, collectionName, sentToRadarrAt])
-  @@index([tmdbId])
+  plexUser PlexUser @relation(fields: [plexUserId], references: [id], onDelete: Cascade)
+
+  @@id([plexUserId, collectionName, librarySectionKey, tmdbId])
+  @@index([plexUserId])
+  @@index([plexUserId, librarySectionKey])
+  @@index([plexUserId, librarySectionKey, collectionName, status])
+  @@index([plexUserId, librarySectionKey, collectionName, tmdbVoteAvg])
+  @@index([plexUserId, librarySectionKey, collectionName, downloadApproval])
+  @@index([plexUserId, librarySectionKey, collectionName, sentToRadarrAt])
+  @@index([plexUserId, tmdbId])
 }
 
 model ImmaculateTasteShow {
@@ -302,6 +329,7 @@ model ImmaculateTasteShow {
 
 // Library-specific points dataset for Immaculate Taste (TV).
 model ImmaculateTasteShowLibrary {
+  plexUserId        String
   librarySectionKey String
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
   tvdbId            Int
@@ -325,12 +353,15 @@ model ImmaculateTasteShowLibrary {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@id([librarySectionKey, tvdbId])
-  @@index([librarySectionKey])
-  @@index([tmdbId])
-  @@index([librarySectionKey, status])
-  @@index([librarySectionKey, points])
-  @@index([librarySectionKey, tmdbVoteAvg])
+  plexUser PlexUser @relation(fields: [plexUserId], references: [id], onDelete: Cascade)
+
+  @@id([plexUserId, librarySectionKey, tvdbId])
+  @@index([plexUserId])
+  @@index([plexUserId, librarySectionKey])
+  @@index([plexUserId, tmdbId])
+  @@index([plexUserId, librarySectionKey, status])
+  @@index([plexUserId, librarySectionKey, points])
+  @@index([plexUserId, librarySectionKey, tmdbVoteAvg])
 }
 
 model WatchedShowRecommendation {
@@ -358,6 +389,7 @@ model WatchedShowRecommendation {
 
 // Library-specific points dataset for "Based on Latest Watched" collections (TV).
 model WatchedShowRecommendationLibrary {
+  plexUserId        String
   collectionName    String
   librarySectionKey String
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
@@ -380,13 +412,16 @@ model WatchedShowRecommendationLibrary {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@id([collectionName, librarySectionKey, tvdbId])
-  @@index([librarySectionKey])
-  @@index([tmdbId])
-  @@index([librarySectionKey, collectionName, status])
-  @@index([librarySectionKey, collectionName, tmdbVoteAvg])
-  @@index([librarySectionKey, collectionName, downloadApproval])
-  @@index([librarySectionKey, collectionName, sentToSonarrAt])
+  plexUser PlexUser @relation(fields: [plexUserId], references: [id], onDelete: Cascade)
+
+  @@id([plexUserId, collectionName, librarySectionKey, tvdbId])
+  @@index([plexUserId])
+  @@index([plexUserId, librarySectionKey])
+  @@index([plexUserId, tmdbId])
+  @@index([plexUserId, librarySectionKey, collectionName, status])
+  @@index([plexUserId, librarySectionKey, collectionName, tmdbVoteAvg])
+  @@index([plexUserId, librarySectionKey, collectionName, downloadApproval])
+  @@index([plexUserId, librarySectionKey, collectionName, sentToSonarrAt])
 }
 
 // Legacy table preserved by historical migrations (not used by Prisma Client).

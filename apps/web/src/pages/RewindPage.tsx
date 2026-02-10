@@ -36,6 +36,8 @@ function statusPill(status: string) {
       return 'bg-red-500/15 text-red-200 border border-red-500/25';
     case 'RUNNING':
       return 'bg-amber-500/15 text-amber-200 border border-amber-500/25';
+    case 'PENDING':
+      return 'bg-sky-500/15 text-sky-200 border border-sky-500/25';
     default:
       return 'bg-white/10 text-white/70 border border-white/10';
   }
@@ -49,6 +51,28 @@ function durationMs(run: JobRun): number | null {
   return Math.max(0, b - a);
 }
 
+const PENDING_QUEUE_SLOT_MS = 10 * 60_000;
+
+function estimatePendingRemainingMs(run: JobRun, allRuns: JobRun[]): number | null {
+  if (run.status !== 'PENDING') return null;
+  const queuedAt = Date.parse(run.startedAt);
+  if (!Number.isFinite(queuedAt)) return null;
+
+  const pendingForJob = allRuns
+    .filter((r) => r.jobId === run.jobId && r.status === 'PENDING')
+    .sort((a, b) => {
+      const at = Date.parse(a.startedAt);
+      const bt = Date.parse(b.startedAt);
+      if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt;
+      return a.id.localeCompare(b.id);
+    });
+  const position = pendingForJob.findIndex((r) => r.id === run.id);
+  if (position < 0) return null;
+
+  const estimatedStartAt = queuedAt + (position + 1) * PENDING_QUEUE_SLOT_MS;
+  return Math.max(0, estimatedStartAt - Date.now());
+}
+
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -58,6 +82,24 @@ function formatDuration(ms: number): string {
   const h = Math.floor(m / 60);
   const mm = m % 60;
   return `${h}h ${mm}m`;
+}
+
+function formatRemaining(ms: number): string {
+  if (ms < 30_000) return 'starting soon';
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes < 60) return `~${minutes}m remaining`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem ? `~${hours}h ${rem}m remaining` : `~${hours}h remaining`;
+}
+
+function formatRunDuration(run: JobRun, allRuns: JobRun[]): string {
+  if (run.status === 'PENDING') {
+    const remainingMs = estimatePendingRemainingMs(run, allRuns);
+    return remainingMs === null ? '—' : formatRemaining(remainingMs);
+  }
+  const ms = durationMs(run);
+  return ms === null ? '—' : formatDuration(ms);
 }
 
 function modeLabel(run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' {
@@ -86,12 +128,116 @@ function issueSummary(run: JobRun): string {
   return decodeHtmlEntities(msgs[0] ?? '');
 }
 
+function getPlexUserContext(run: JobRun): { plexUserId: string; plexUserTitle: string } {
+  const s = run.summary;
+  if (!s || typeof s !== 'object' || Array.isArray(s))
+    return { plexUserId: '', plexUserTitle: '' };
+  const obj = s as Record<string, unknown>;
+  const raw =
+    obj.template === 'jobReportV1' && isPlainObject(obj.raw)
+      ? (obj.raw as Record<string, unknown>)
+      : obj;
+  const plexUserId =
+    typeof raw.plexUserId === 'string' ? raw.plexUserId.trim() : '';
+  const plexUserTitle =
+    typeof raw.plexUserTitle === 'string' ? raw.plexUserTitle.trim() : '';
+  return { plexUserId, plexUserTitle };
+}
+
+function pickSummaryValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickSummaryString(obj: Record<string, unknown>, path: string): string {
+  const v = pickSummaryValue(obj, path);
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function normalizeMediaType(raw: string): 'movie' | 'tv' | null {
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (v === 'movie' || v === 'movies' || v === 'film') return 'movie';
+  if (
+    v === 'tv' ||
+    v === 'show' ||
+    v === 'shows' ||
+    v === 'tvshow' ||
+    v === 'tv show' ||
+    v === 'series' ||
+    v === 'episode' ||
+    v === 'season'
+  ) {
+    return 'tv';
+  }
+  return null;
+}
+
+function getMediaTypeContext(run: JobRun): { key: 'movie' | 'tv' | ''; label: string } {
+  const summary = run.summary;
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) {
+    return { key: '', label: '—' };
+  }
+
+  const obj = summary as Record<string, unknown>;
+  const raw =
+    obj.template === 'jobReportV1' && isPlainObject(obj.raw)
+      ? (obj.raw as Record<string, unknown>)
+      : obj;
+
+  const candidatePaths = [
+    'mediaType',
+    'media_type',
+    'mode',
+    'type',
+    'Metadata.type',
+    'metadata.type',
+    'input.mediaType',
+    'input.media_type',
+    'input.Metadata.type',
+    'input.metadata.type',
+  ];
+
+  const resolve = (source: Record<string, unknown>) => {
+    for (const path of candidatePaths) {
+      const normalized = normalizeMediaType(pickSummaryString(source, path));
+      if (normalized) return normalized;
+    }
+    return null;
+  };
+
+  let key: 'movie' | 'tv' | '' =
+    resolve(raw) ?? (raw !== obj ? resolve(obj) : null) ?? '';
+  if (!key) {
+    const tvSectionKey = pickSummaryString(raw, 'tvSectionKey');
+    const movieSectionKey = pickSummaryString(raw, 'movieSectionKey');
+    if (tvSectionKey) key = 'tv';
+    else if (movieSectionKey) key = 'movie';
+  }
+  if (!key) {
+    const rawRec = raw as Record<string, unknown>;
+    const hasSonarr = isPlainObject(rawRec['sonarr']);
+    const hasRadarr = isPlainObject(rawRec['radarr']);
+    if (hasSonarr && !hasRadarr) key = 'tv';
+    else if (hasRadarr && !hasSonarr) key = 'movie';
+  }
+  const label = key === 'movie' ? 'Movie' : key === 'tv' ? 'TV show' : '—';
+  return { key, label };
+}
+
 export function RewindPage() {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
   const [jobId, setJobId] = useState('');
   const [status, setStatus] = useState('');
+  const [plexUserFilter, setPlexUserFilter] = useState('');
+  const [mediaTypeFilter, setMediaTypeFilter] = useState('');
   const [q, setQ] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
@@ -119,16 +265,40 @@ export function RewindPage() {
     return runs.filter((r) => {
       if (jobId && r.jobId !== jobId) return false;
       if (status && r.status !== status) return false;
+      const { plexUserId, plexUserTitle } = getPlexUserContext(r);
+      const userKey = plexUserId || plexUserTitle;
+      if (plexUserFilter && userKey !== plexUserFilter) return false;
+      const media = getMediaTypeContext(r);
+      if (mediaTypeFilter && media.key !== mediaTypeFilter) return false;
       if (!query) return true;
-      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)}`.toLowerCase();
+      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle} ${media.label}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [historyQuery.data?.runs, jobId, status, q]);
+  }, [historyQuery.data?.runs, jobId, status, plexUserFilter, mediaTypeFilter, q]);
 
   const jobNameById = useMemo(() => {
     const jobs = jobsQuery.data?.jobs ?? [];
     return new Map(jobs.map((j) => [j.id, j.name] as const));
   }, [jobsQuery.data?.jobs]);
+
+  const plexUserOptions = useMemo(() => {
+    const runs = historyQuery.data?.runs ?? [];
+    const byKey = new Map<string, { id: string; title: string }>();
+    for (const run of runs) {
+      const { plexUserId, plexUserTitle } = getPlexUserContext(run);
+      if (!plexUserId && !plexUserTitle) continue;
+      const key = plexUserId || plexUserTitle;
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          id: key,
+          title: plexUserTitle || plexUserId,
+        });
+      }
+    }
+    return Array.from(byKey.values()).sort((a, b) =>
+      a.title.localeCompare(b.title),
+    );
+  }, [historyQuery.data?.runs]);
 
   const clearAllMutation = useMutation({
     mutationFn: async () => clearRuns(),
@@ -147,7 +317,7 @@ export function RewindPage() {
   const selectTriggerClass = `w-full ${inputBaseClass}`;
 
   const filtersForm = (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-5">
       <div>
         <label className={labelClass}>Job</label>
         <Select
@@ -188,11 +358,52 @@ export function RewindPage() {
       </div>
 
       <div>
+        <label className={labelClass}>User</label>
+        <Select
+          value={plexUserFilter || 'all'}
+          onValueChange={(value) =>
+            setPlexUserFilter(value === 'all' ? '' : value)
+          }
+        >
+          <SelectTrigger className={selectTriggerClass}>
+            <SelectValue placeholder="All users" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All users</SelectItem>
+            {plexUserOptions.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <label className={labelClass}>Media type</label>
+        <Select
+          value={mediaTypeFilter || 'all'}
+          onValueChange={(value) =>
+            setMediaTypeFilter(value === 'all' ? '' : value)
+          }
+        >
+          <SelectTrigger className={selectTriggerClass}>
+            <SelectValue placeholder="All types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="movie">Movie</SelectItem>
+            <SelectItem value="tv">TV show</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
         <label className={labelClass}>Search</label>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="jobId, status, error text…"
+          placeholder="jobId, user, media type, status, error text…"
           className={inputClass}
         />
       </div>
@@ -298,7 +509,7 @@ export function RewindPage() {
                   <div className="mb-6">
                     <div className="text-2xl font-semibold text-white">Filters</div>
                     <div className="mt-2 text-sm text-white/70">
-                      Filter by job, status, or a quick text search.
+                      Filter by job, user, media type, status, or a quick text search.
                     </div>
                   </div>
                   {filtersForm}
@@ -318,7 +529,7 @@ export function RewindPage() {
                           Filters
                         </div>
                         <div className="mt-2 text-sm text-white/70">
-                          Filter by job, status, or a quick text search.
+                          Filter by job, user, media type, status, or a quick text search.
                         </div>
                       </div>
                       <ChevronDown
@@ -395,8 +606,14 @@ export function RewindPage() {
                       {/* Mobile: stacked run cards */}
                       <div className="sm:hidden space-y-3">
                         {filtered.map((run) => {
-                          const ms = durationMs(run);
                           const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                          const { plexUserId, plexUserTitle } = getPlexUserContext(run);
+                          const userLabel = plexUserTitle || plexUserId;
+                          const media = getMediaTypeContext(run);
+                          const durationLabel = formatRunDuration(
+                            run,
+                            historyQuery.data?.runs ?? [],
+                          );
                           const errorText = issueSummary(run);
                           const errorPreview = errorText
                             ? errorText.length > 140
@@ -420,12 +637,24 @@ export function RewindPage() {
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
-                                      {ms === null ? '—' : formatDuration(ms)}
+                                      {durationLabel}
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
                                       {modeLabel(run)}
                                     </span>
+                                    <span className="text-white/30">•</span>
+                                    <span className="whitespace-nowrap">
+                                      Media: {media.label}
+                                    </span>
+                                    {userLabel ? (
+                                      <>
+                                        <span className="text-white/30">•</span>
+                                        <span className="whitespace-nowrap">
+                                          {userLabel}
+                                        </span>
+                                      </>
+                                    ) : null}
                                   </div>
                                 </div>
                                 <div className="shrink-0 flex flex-col items-end gap-2">
@@ -457,6 +686,8 @@ export function RewindPage() {
                             <tr>
                               <th className="px-3 py-3">Time</th>
                               <th className="px-3 py-3">Job</th>
+                              <th className="px-3 py-3">User</th>
+                              <th className="px-3 py-3">Media</th>
                               <th className="px-3 py-3">Status</th>
                               <th className="px-3 py-3">Mode</th>
                               <th className="px-3 py-3">Duration</th>
@@ -465,8 +696,14 @@ export function RewindPage() {
                           </thead>
                           <tbody>
                             {filtered.map((run) => {
-                              const ms = durationMs(run);
                               const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                              const { plexUserId, plexUserTitle } = getPlexUserContext(run);
+                              const userLabel = plexUserTitle || plexUserId || '—';
+                              const media = getMediaTypeContext(run);
+                              const durationLabel = formatRunDuration(
+                                run,
+                                historyQuery.data?.runs ?? [],
+                              );
                               return (
                                 <tr
                                   key={run.id}
@@ -481,6 +718,8 @@ export function RewindPage() {
                                     </Link>
                                   </td>
                                   <td className="px-3 py-3 text-white/85">{jobName}</td>
+                                  <td className="px-3 py-3 text-white/70">{userLabel}</td>
+                                  <td className="px-3 py-3 text-white/70">{media.label}</td>
                                   <td className="px-3 py-3">
                                     <span
                                       className={[
@@ -495,7 +734,7 @@ export function RewindPage() {
                                     {modeLabel(run)}
                                   </td>
                                   <td className="px-3 py-3 text-white/60">
-                                    {ms === null ? '—' : formatDuration(ms)}
+                                    {durationLabel}
                                   </td>
                                   <td className="px-3 py-3 text-red-200/80">
                                     {(() => {
@@ -544,5 +783,3 @@ export function RewindPage() {
     </div>
   );
 }
-
-

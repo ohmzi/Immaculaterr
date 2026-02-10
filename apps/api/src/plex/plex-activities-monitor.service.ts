@@ -121,10 +121,6 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
           `Plex activities polling: FAILED error=${JSON.stringify(error ?? 'unknown')}${meta ? ` ${JSON.stringify(meta)}` : ''}`,
         );
         this.lastNoisyErrorLogAtMs = now;
-      } else if (next === 'ok') {
-        this.logger.debug(
-          `Plex activities polling: OK${meta ? ` ${JSON.stringify(meta)}` : ''}`,
-        );
       } else if (next === 'not_configured') {
         this.logger.debug(
           `Plex activities polling: not configured${meta ? ` ${JSON.stringify(meta)}` : ''}`,

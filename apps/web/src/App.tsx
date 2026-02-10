@@ -14,6 +14,7 @@ import { VaultPage } from '@/pages/VaultPage';
 import { CommandCenterPage } from '@/pages/CommandCenterPage';
 import { FaqPage } from '@/pages/FaqPage';
 import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
+import { DebuggerPage } from '@/pages/DebuggerPage';
 
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="command-center" element={<CommandCenterPage />} />
             <Route path="faq" element={<FaqPage />} />
             <Route path="version-history" element={<VersionHistoryPage />} />
+            <Route path="__debug/:token" element={<DebuggerPage />} />
             <Route path="task-manager" element={<TaskManagerPage />} />
             <Route path="rewind" element={<RewindPage />} />
             <Route path="rewind/:runId" element={<JobRunDetailPage />} />

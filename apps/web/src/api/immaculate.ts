@@ -15,9 +15,25 @@ export type ImmaculateTasteCollectionsResponse = {
   }>;
 };
 
+export type ImmaculateTasteUserSummaryResponse = {
+  users: Array<{
+    id: string;
+    plexAccountTitle: string;
+    isAdmin: boolean;
+    movieCount: number;
+    tvCount: number;
+  }>;
+};
+
 export async function getImmaculateTasteCollections() {
   return await fetchJson<ImmaculateTasteCollectionsResponse>(
     '/api/immaculate-taste/collections',
+  );
+}
+
+export async function getImmaculateTasteUserSummary() {
+  return await fetchJson<ImmaculateTasteUserSummaryResponse>(
+    '/api/immaculate-taste/collections/users',
   );
 }
 
@@ -37,6 +53,28 @@ export async function resetImmaculateTasteCollection(params: {
     };
     dataset: { deleted: number };
   }>('/api/immaculate-taste/collections/reset', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+}
+
+export async function resetImmaculateTasteUserCollection(params: {
+  plexUserId: string;
+  mediaType: 'movie' | 'tv';
+}) {
+  return await fetchJson<{
+    ok: true;
+    mediaType: 'movie' | 'tv';
+    plexUserId: string;
+    plexUserTitle: string;
+    plex: {
+      collectionName: string;
+      deleted: number;
+      libraries: number;
+    };
+    dataset: { deleted: number };
+  }>('/api/immaculate-taste/collections/reset-user', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(params),
