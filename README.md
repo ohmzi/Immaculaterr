@@ -34,10 +34,6 @@
 
 ## What it does
 
-- **Overseerr integration (optional centralized request flow)**:
-  - Route missing movie/TV requests to Overseerr instead of direct ARR sends.
-  - Works per task card, so you can choose where missing titles go.
-  - Includes Command Center reset control to clear all Overseerr requests when needed.
 - **Plex-triggered automation**:
   - Automatically reacts to Plex library activity and runs smart workflows in real time.
 - **Scheduler automation**:
@@ -74,6 +70,10 @@
 - **Observatory**:
   - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
   - Swipe left adds a suggestion to your rejected list (it won’t be suggested again). You can clear this via **Command Center → Reset Rejected List**.
+- **Overseerr integration (optional centralized request flow)**:
+  - Route missing movie/TV requests to Overseerr instead of direct ARR sends.
+  - Works per task card, so you can choose where missing titles go.
+  - Includes Command Center reset control to clear all Overseerr requests when needed.
 - **Job reports & logs**:
   - Step-by-step breakdowns, metrics tables, and run history.
 - **Operational visibility and controls**:
