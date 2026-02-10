@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:25-trixie-slim
+ARG NODE_IMAGE=node:22-bookworm-slim
 
 FROM ${NODE_IMAGE} AS builder
 
