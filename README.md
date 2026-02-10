@@ -43,7 +43,7 @@
   - Based on your recently watched (refreshes on every watch)
   - Change of Taste (refreshes on every watch)
 - **Per-viewer personalization (Movies + TV)**:
-  - Each Plex viewer gets their own curated rows (for example: `Based on your recently watched show (ohmz_i)`).
+  - Each Plex viewer gets their own curated rows (for example: `Based on your recently watched show (userName)`).
   - Recommendation datasets are isolated per viewer and per library, so one viewer’s history does not influence another viewer’s rows.
 - **Role-based Plex pinning**:
   - Admin viewer rows are pinned to **Library Recommended** and **Home**.
