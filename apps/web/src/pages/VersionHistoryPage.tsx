@@ -89,6 +89,105 @@ export function VersionHistoryPage() {
           <div className="space-y-6">
             <div className={cardClass}>
               <div className="text-white font-black text-2xl tracking-tight">
+                V1.5.0
+              </div>
+
+              <div className="mt-4 space-y-3 text-sm text-white/75 leading-relaxed">
+                <div className="text-white/90 font-semibold">
+                  Per-viewer personalization (Movies + TV)
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Each Plex viewer gets their own curated rows for recently watched, change of
+                    taste, and immaculate taste collections.
+                  </li>
+                  <li>
+                    Recommendation datasets are isolated per viewer and per library so one viewer
+                    does not affect another viewer's rows.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">Role-based Plex pinning</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Admin rows pin to Library Recommended and Home.</li>
+                  <li>
+                    Shared-user rows pin to Friends Home to match current Plex shared-user
+                    behavior.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">
+                  Deterministic curated row ordering
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Based on your recently watched</li>
+                  <li>Change of Taste</li>
+                  <li>Inspired by your Immaculate Taste</li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">
+                  Plex library selection guardrails
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Select movie/show libraries during onboarding and later in Command Center.
+                  </li>
+                  <li>New Plex movie/show libraries are auto-included unless disabled.</li>
+                  <li>
+                    Disabled or temporarily unavailable libraries are skipped safely with clear run
+                    report visibility.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">
+                  Refresher scoping and scheduling improvements
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Chained refreshes stay scoped to the triggering viewer and library.</li>
+                  <li>
+                    Standalone refresher runs sweep eligible users/libraries in deterministic
+                    order, with admin processed last.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">
+                  Overseerr integration (optional centralized request flow)
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Route missing movie/TV requests to Overseerr per task card.</li>
+                  <li>Command Center includes a reset action for Overseerr requests.</li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">
+                  Observatory workflow upgrades
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Swipe-left now adds suggestions to a rejected list so they are not suggested
+                    again.
+                  </li>
+                  <li>Command Center can reset the rejected list.</li>
+                  <li>
+                    Fixed an Observatory black-screen crash and replaced library selection with a
+                    custom glass dropdown.
+                  </li>
+                </ul>
+
+                <div className="pt-2 text-white/90 font-semibold">
+                  Operational visibility and reliability updates
+                </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    Expanded user-aware reset/debug controls and clearer user/media run reporting.
+                  </li>
+                  <li>Compose keeps host networking while still showing mapped ports.</li>
+                  <li>Removed GitHub token env dependency from update checks.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className={cardClass}>
+              <div className="text-white font-black text-2xl tracking-tight">
                 V1.0.0
               </div>
 
@@ -156,4 +255,3 @@ export function VersionHistoryPage() {
     </div>
   );
 }
-
