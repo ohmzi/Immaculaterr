@@ -1985,6 +1985,62 @@ export function TaskManagerPage() {
                                       <div className="flex items-start justify-between gap-4">
                                         <div className="min-w-0">
                                           <div className="text-sm font-semibold text-white">
+                                            Approval required from Observatory
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                            When enabled, missing items won’t be sent to Radarr/Sonarr until you swipe right in Observatory.
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={immaculateApprovalRequired}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = immaculateApprovalRequired;
+                                            const next = !prev;
+                                            setImmaculateApprovalRequired(next);
+                                            immaculateApprovalRequiredMutation.mutate(next, {
+                                              onError: () =>
+                                                setImmaculateApprovalRequired(prev),
+                                            });
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            immaculateApprovalRequiredMutation.isPending ||
+                                            immaculateOverseerrMode ||
+                                            immaculateOverseerrModePending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            immaculateApprovalRequired
+                                              ? 'bg-teal-400'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label="Toggle Observatory approval for Immaculate Taste Collection"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              immaculateApprovalRequired
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {immaculateApprovalRequiredMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
                                             Route missing items via Overseerr
                                           </div>
                                           <div className="mt-1 text-xs text-white/55 leading-relaxed">
@@ -2065,62 +2121,6 @@ export function TaskManagerPage() {
                                             )}
                                           >
                                             {immaculateOverseerrModePending && (
-                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                            )}
-                                          </span>
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
-                                      <div className="flex items-start justify-between gap-4">
-                                        <div className="min-w-0">
-                                          <div className="text-sm font-semibold text-white">
-                                            Approval required from Observatory
-                                          </div>
-                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
-                                            When enabled, missing items won’t be sent to Radarr/Sonarr until you swipe right in Observatory.
-                                          </div>
-                                        </div>
-
-                                        <button
-                                          type="button"
-                                          role="switch"
-                                          aria-checked={immaculateApprovalRequired}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = immaculateApprovalRequired;
-                                            const next = !prev;
-                                            setImmaculateApprovalRequired(next);
-                                            immaculateApprovalRequiredMutation.mutate(next, {
-                                              onError: () =>
-                                                setImmaculateApprovalRequired(prev),
-                                            });
-                                          }}
-                                          onPointerDown={(e) => e.stopPropagation()}
-                                          disabled={
-                                            settingsQuery.isLoading ||
-                                            immaculateApprovalRequiredMutation.isPending ||
-                                            immaculateOverseerrMode ||
-                                            immaculateOverseerrModePending
-                                          }
-                                          className={cn(
-                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                            immaculateApprovalRequired
-                                              ? 'bg-teal-400'
-                                              : 'bg-[#2a2438] border-2 border-white/10',
-                                          )}
-                                          aria-label="Toggle Observatory approval for Immaculate Taste Collection"
-                                        >
-                                          <span
-                                            className={cn(
-                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                              immaculateApprovalRequired
-                                                ? 'translate-x-6'
-                                                : 'translate-x-1',
-                                            )}
-                                          >
-                                            {immaculateApprovalRequiredMutation.isPending && (
                                               <Loader2 className="h-3 w-3 animate-spin text-black/70" />
                                             )}
                                           </span>
@@ -2254,6 +2254,61 @@ export function TaskManagerPage() {
                                     <div className="flex items-start justify-between gap-4">
                                       <div className="min-w-0">
                                         <div className="text-sm font-semibold text-white">
+                                          Approval required from Observatory
+                                        </div>
+                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                          When enabled, missing items won’t be sent to Radarr/Sonarr until you swipe right in Observatory.
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={watchedApprovalRequired}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const prev = watchedApprovalRequired;
+                                          const next = !prev;
+                                          setWatchedApprovalRequired(next);
+                                          watchedApprovalRequiredMutation.mutate(next, {
+                                            onError: () => setWatchedApprovalRequired(prev),
+                                          });
+                                        }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          watchedApprovalRequiredMutation.isPending ||
+                                          watchedOverseerrMode ||
+                                          watchedOverseerrModePending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          watchedApprovalRequired
+                                            ? 'bg-teal-400'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle Observatory approval for Based on Latest Watched Collection"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            watchedApprovalRequired
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {watchedApprovalRequiredMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
                                           Route missing items via Overseerr
                                         </div>
                                         <div className="mt-1 text-xs text-white/55 leading-relaxed">
@@ -2329,61 +2384,6 @@ export function TaskManagerPage() {
                                           )}
                                         >
                                           {watchedOverseerrModePending && (
-                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                          )}
-                                        </span>
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3 rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="min-w-0">
-                                        <div className="text-sm font-semibold text-white">
-                                          Approval required from Observatory
-                                        </div>
-                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
-                                          When enabled, missing items won’t be sent to Radarr/Sonarr until you swipe right in Observatory.
-                                        </div>
-                                      </div>
-
-                                      <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={watchedApprovalRequired}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const prev = watchedApprovalRequired;
-                                          const next = !prev;
-                                          setWatchedApprovalRequired(next);
-                                          watchedApprovalRequiredMutation.mutate(next, {
-                                            onError: () => setWatchedApprovalRequired(prev),
-                                          });
-                                        }}
-                                        onPointerDown={(e) => e.stopPropagation()}
-                                        disabled={
-                                          settingsQuery.isLoading ||
-                                          watchedApprovalRequiredMutation.isPending ||
-                                          watchedOverseerrMode ||
-                                          watchedOverseerrModePending
-                                        }
-                                        className={cn(
-                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                          watchedApprovalRequired
-                                            ? 'bg-teal-400'
-                                            : 'bg-[#2a2438] border-2 border-white/10',
-                                        )}
-                                        aria-label="Toggle Observatory approval for Based on Latest Watched Collection"
-                                      >
-                                        <span
-                                          className={cn(
-                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                            watchedApprovalRequired
-                                              ? 'translate-x-6'
-                                              : 'translate-x-1',
-                                          )}
-                                        >
-                                          {watchedApprovalRequiredMutation.isPending && (
                                             <Loader2 className="h-3 w-3 animate-spin text-black/70" />
                                           )}
                                         </span>
