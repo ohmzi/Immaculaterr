@@ -47,6 +47,8 @@ type ScheduleDraft = {
   advancedCron?: string | null; // present if stored cron isn't representable by simple UI
 };
 
+type IntegrationSetupTarget = 'radarr' | 'sonarr' | 'overseerr';
+
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup', // webhook/manual input only
   'immaculateTastePoints', // webhook/manual input only
@@ -128,6 +130,11 @@ function readPath(obj: unknown, path: string): unknown {
 function readBool(obj: unknown, path: string): boolean | null {
   const v = readPath(obj, path);
   return typeof v === 'boolean' ? v : null;
+}
+
+function readString(obj: unknown, path: string): string {
+  const v = readPath(obj, path);
+  return typeof v === 'string' ? v.trim() : '';
 }
 
 function pad2(n: number) {
@@ -299,6 +306,9 @@ export function TaskManagerPage() {
   const titleIconGlowControls = useAnimation();
   const [arrRequiresSetupOpen, setArrRequiresSetupOpen] = useState(false);
   const [arrRequiresSetupJobId, setArrRequiresSetupJobId] = useState<string | null>(null);
+  const [integrationSetupOpen, setIntegrationSetupOpen] = useState(false);
+  const [integrationSetupTarget, setIntegrationSetupTarget] =
+    useState<IntegrationSetupTarget | null>(null);
   const [arrPing, setArrPing] = useState<{
     loading: boolean;
     radarrOk: boolean | null;
@@ -402,6 +412,16 @@ export function TaskManagerPage() {
     useState(false);
   const [watchedApprovalRequired, setWatchedApprovalRequired] = useState(false);
 
+  const openIntegrationSetupDialog = (target: IntegrationSetupTarget) => {
+    setIntegrationSetupTarget(target);
+    setIntegrationSetupOpen(true);
+  };
+
+  const closeIntegrationSetupDialog = () => {
+    setIntegrationSetupOpen(false);
+    setIntegrationSetupTarget(null);
+  };
+
   const markAutoExpandSeen = (jobId: string) => {
     setAutoExpandSeen((prev) => {
       if (prev[jobId] === true) return prev;
@@ -415,18 +435,35 @@ export function TaskManagerPage() {
     });
   };
 
+  const publicSettings = settingsQuery.data?.settings;
+  const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
+
   const isRadarrEnabled = (() => {
-    const settings = settingsQuery.data?.settings;
-    const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
-    const saved = readBool(settings, 'radarr.enabled');
+    const saved = readBool(publicSettings, 'radarr.enabled');
     return (saved ?? Boolean(secretsPresent.radarr)) === true;
   })();
   const isSonarrEnabled = (() => {
-    const settings = settingsQuery.data?.settings;
-    const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
-    const saved = readBool(settings, 'sonarr.enabled');
+    const saved = readBool(publicSettings, 'sonarr.enabled');
     return (saved ?? Boolean(secretsPresent.sonarr)) === true;
   })();
+  const isOverseerrEnabled = (() => {
+    const saved = readBool(publicSettings, 'overseerr.enabled');
+    return (saved ?? Boolean(secretsPresent.overseerr)) === true;
+  })();
+
+  const hasRadarrBaseUrl = Boolean(readString(publicSettings, 'radarr.baseUrl'));
+  const hasSonarrBaseUrl = Boolean(readString(publicSettings, 'sonarr.baseUrl'));
+  const hasOverseerrBaseUrl = Boolean(readString(publicSettings, 'overseerr.baseUrl'));
+  const hasRadarrApiKey = Boolean(secretsPresent.radarr);
+  const hasSonarrApiKey = Boolean(secretsPresent.sonarr);
+  const hasOverseerrApiKey = Boolean(secretsPresent.overseerr);
+
+  const canEnableRadarrTaskToggles =
+    isRadarrEnabled && hasRadarrBaseUrl && hasRadarrApiKey;
+  const canEnableSonarrTaskToggles =
+    isSonarrEnabled && hasSonarrBaseUrl && hasSonarrApiKey;
+  const canEnableOverseerrTaskToggles =
+    isOverseerrEnabled && hasOverseerrBaseUrl && hasOverseerrApiKey;
 
   // Background ARR reachability ping when entering Task Manager (fast validation).
   useEffect(() => {
@@ -1032,6 +1069,99 @@ export function TaskManagerPage() {
       timeoutIds.forEach((id) => clearTimeout(id));
     };
   }, [drafts, jobsQuery.data?.jobs]);
+
+  const integrationSetupMeta = (() => {
+    if (integrationSetupTarget === 'radarr') {
+      return {
+        id: 'radarr' as const,
+        label: 'Radarr',
+        enabled: isRadarrEnabled,
+        hasBaseUrl: hasRadarrBaseUrl,
+        hasApiKey: hasRadarrApiKey,
+      };
+    }
+    if (integrationSetupTarget === 'sonarr') {
+      return {
+        id: 'sonarr' as const,
+        label: 'Sonarr',
+        enabled: isSonarrEnabled,
+        hasBaseUrl: hasSonarrBaseUrl,
+        hasApiKey: hasSonarrApiKey,
+      };
+    }
+    if (integrationSetupTarget === 'overseerr') {
+      return {
+        id: 'overseerr' as const,
+        label: 'Overseerr',
+        enabled: isOverseerrEnabled,
+        hasBaseUrl: hasOverseerrBaseUrl,
+        hasApiKey: hasOverseerrApiKey,
+      };
+    }
+    return null;
+  })();
+
+  const integrationSetupDescription = (() => {
+    if (!integrationSetupMeta) return null;
+    const vaultPath = `/vault#vault-${integrationSetupMeta.id}`;
+    const missingParts = [
+      ...(!integrationSetupMeta.hasBaseUrl ? ['base URL'] : []),
+      ...(!integrationSetupMeta.hasApiKey ? ['API key'] : []),
+    ];
+    const missingText =
+      missingParts.length > 1
+        ? `${missingParts.slice(0, -1).join(', ')} and ${missingParts[missingParts.length - 1]}`
+        : (missingParts[0] ?? '');
+
+    return (
+      <div className="space-y-2">
+        <div className="text-white/85 font-semibold">
+          This toggle needs <span className="text-white">{integrationSetupMeta.label}</span>{' '}
+          available.
+        </div>
+        <div className="text-sm text-white/70">
+          {!integrationSetupMeta.enabled ? (
+            <>
+              {integrationSetupMeta.label} is currently disabled. Enable it in{' '}
+              <Link
+                to={vaultPath}
+                className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+              >
+                {integrationSetupMeta.label}
+              </Link>{' '}
+              in the Vault.
+            </>
+          ) : missingParts.length > 0 ? (
+            <>
+              {integrationSetupMeta.label} is not fully configured. Add {missingText} in{' '}
+              <Link
+                to={vaultPath}
+                className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+              >
+                {integrationSetupMeta.label}
+              </Link>{' '}
+              in the Vault.
+            </>
+          ) : (
+            <>
+              Check{' '}
+              <Link
+                to={vaultPath}
+                className="underline underline-offset-4 decoration-white/30 hover:decoration-white/70 text-white"
+              >
+                {integrationSetupMeta.label}
+              </Link>{' '}
+              in the Vault.
+            </>
+          )}
+        </div>
+        <div className="text-xs text-white/55">
+          Tip: tap the {integrationSetupMeta.label} link above to jump straight to that Vault
+          card.
+        </div>
+      </div>
+    );
+  })();
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -1816,6 +1946,10 @@ export function TaskManagerPage() {
                                               e.stopPropagation();
                                               const prev = immaculateFetchMissingRadarr;
                                               const next = !prev;
+                                              if (next && !canEnableRadarrTaskToggles) {
+                                                openIntegrationSetupDialog('radarr');
+                                                return;
+                                              }
                                               setImmaculateFetchMissingRadarr(next);
                                               fetchMissingMutation.mutate(
                                                 {
@@ -1871,6 +2005,10 @@ export function TaskManagerPage() {
                                               e.stopPropagation();
                                               const prev = immaculateFetchMissingSonarr;
                                               const next = !prev;
+                                              if (next && !canEnableSonarrTaskToggles) {
+                                                openIntegrationSetupDialog('sonarr');
+                                                return;
+                                              }
                                               setImmaculateFetchMissingSonarr(next);
                                               fetchMissingMutation.mutate(
                                                 {
@@ -2062,6 +2200,10 @@ export function TaskManagerPage() {
                                               search: immaculateStartSearchImmediately,
                                             };
                                             const next = !prev.overseerr;
+                                            if (next && !canEnableOverseerrTaskToggles) {
+                                              openIntegrationSetupDialog('overseerr');
+                                              return;
+                                            }
 
                                             if (next) {
                                               setImmaculateFetchMissingOverseerr(true);
@@ -2150,6 +2292,10 @@ export function TaskManagerPage() {
                                             e.stopPropagation();
                                             const prev = watchedFetchMissingRadarr;
                                             const next = !prev;
+                                            if (next && !canEnableRadarrTaskToggles) {
+                                              openIntegrationSetupDialog('radarr');
+                                              return;
+                                            }
                                             setWatchedFetchMissingRadarr(next);
 
                                             fetchMissingMutation.mutate(
@@ -2206,6 +2352,10 @@ export function TaskManagerPage() {
                                             e.stopPropagation();
                                             const prev = watchedFetchMissingSonarr;
                                             const next = !prev;
+                                            if (next && !canEnableSonarrTaskToggles) {
+                                              openIntegrationSetupDialog('sonarr');
+                                              return;
+                                            }
                                             setWatchedFetchMissingSonarr(next);
 
                                             fetchMissingMutation.mutate(
@@ -2329,6 +2479,10 @@ export function TaskManagerPage() {
                                             approval: watchedApprovalRequired,
                                           };
                                           const next = !prev.overseerr;
+                                          if (next && !canEnableOverseerrTaskToggles) {
+                                            openIntegrationSetupDialog('overseerr');
+                                            return;
+                                          }
 
                                           if (next) {
                                             setWatchedFetchMissingOverseerr(true);
@@ -2439,6 +2593,10 @@ export function TaskManagerPage() {
                                           e.stopPropagation();
                                           const prev = arrMonitoredIncludeRadarr;
                                           const next = !arrMonitoredIncludeRadarr;
+                                          if (next && !canEnableRadarrTaskToggles) {
+                                            openIntegrationSetupDialog('radarr');
+                                            return;
+                                          }
                                           setArrMonitoredIncludeRadarr(next);
                                           arrMonitoredSearchOptionsMutation.mutate(
                                             { includeRadarr: next },
@@ -2490,6 +2648,10 @@ export function TaskManagerPage() {
                                           e.stopPropagation();
                                           const prev = arrMonitoredIncludeSonarr;
                                           const next = !arrMonitoredIncludeSonarr;
+                                          if (next && !canEnableSonarrTaskToggles) {
+                                            openIntegrationSetupDialog('sonarr');
+                                            return;
+                                          }
                                           setArrMonitoredIncludeSonarr(next);
                                           arrMonitoredSearchOptionsMutation.mutate(
                                             { includeSonarr: next },
@@ -3367,6 +3529,26 @@ export function TaskManagerPage() {
             </div>
           </div>
         }
+        confirmText="Open Vault"
+        cancelText="Close"
+        variant="primary"
+      />
+
+      <ConfirmDialog
+        open={integrationSetupOpen}
+        onClose={closeIntegrationSetupDialog}
+        onConfirm={() => {
+          const target = integrationSetupMeta?.id;
+          closeIntegrationSetupDialog();
+          navigate(target ? `/vault#vault-${target}` : '/vault');
+        }}
+        label="Setup required"
+        title={
+          integrationSetupMeta
+            ? `Enable ${integrationSetupMeta.label}`
+            : 'Enable Integration'
+        }
+        description={integrationSetupDescription}
         confirmText="Open Vault"
         cancelText="Close"
         variant="primary"
