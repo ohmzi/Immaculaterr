@@ -11,6 +11,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { PrismaService } from '../db/prisma.service';
 import { buildUserCollectionName } from '../plex/plex-collections.utils';
+import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
@@ -107,11 +108,17 @@ export class ImmaculateTasteController {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
+    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const movieSections = sections.filter(
-      (s) => (s.type ?? '').toLowerCase() === 'movie',
+      (s) =>
+        (s.type ?? '').toLowerCase() === 'movie' &&
+        selectedSectionKeySet.has(String(s.key ?? '').trim()),
     );
     const tvSections = sections.filter(
-      (s) => (s.type ?? '').toLowerCase() === 'show',
+      (s) =>
+        (s.type ?? '').toLowerCase() === 'show' &&
+        selectedSectionKeySet.has(String(s.key ?? '').trim()),
     );
 
     const collectionName = buildUserCollectionName(

@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
 import type { DownloadApprovalStatus } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
@@ -11,6 +11,7 @@ import {
   buildUserCollectionHubOrder,
   buildUserCollectionName,
 } from '../plex/plex-collections.utils';
+import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { type RadarrMovie, RadarrService } from '../radarr/radarr.service';
@@ -110,6 +111,22 @@ export class ObservatoryService {
       pinCollections: resolved.isAdmin,
       pinTarget,
     };
+  }
+
+  private assertLibrarySectionAllowed(params: {
+    settings: Record<string, unknown>;
+    librarySectionKey: string;
+  }) {
+    if (
+      isPlexLibrarySectionExcluded({
+        settings: params.settings,
+        sectionKey: params.librarySectionKey,
+      })
+    ) {
+      throw new BadRequestException(
+        'librarySectionKey is excluded by Plex library selection',
+      );
+    }
   }
 
   async resetRejectedSuggestions(params: { userId: string }) {
@@ -254,6 +271,10 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
     const { plexUserId } = await this.resolvePlexUserContext(params.userId);
 
@@ -360,6 +381,10 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
     const { plexUserId } = await this.resolvePlexUserContext(params.userId);
 
@@ -473,6 +498,10 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
     const { plexUserId } = await this.resolvePlexUserContext(params.userId);
     const collectionName = watchedCollectionName({
@@ -594,6 +623,10 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const tmdbApiKey = pickString(secrets, 'tmdb.apiKey');
     const { plexUserId } = await this.resolvePlexUserContext(params.userId);
     const collectionName = watchedCollectionName({
@@ -717,6 +750,11 @@ export class ObservatoryService {
     mediaType: 'movie' | 'tv';
     decisions: unknown[];
   }) {
+    const { settings } = await this.settings.getInternalSettings(params.userId);
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     // Save-only: no side effects here.
     let applied = 0;
     let ignored = 0;
@@ -976,6 +1014,11 @@ export class ObservatoryService {
     collectionKind: WatchedCollectionKind;
     decisions: unknown[];
   }) {
+    const { settings } = await this.settings.getInternalSettings(params.userId);
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const { librarySectionKey, mediaType } = params;
     const { plexUserId } = await this.resolvePlexUserContext(params.userId);
     const collectionName = watchedCollectionName({
@@ -1245,6 +1288,10 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const { plexUserId, plexUserTitle, pinTarget } =
       await this.resolvePlexUserContext(params.userId);
 
@@ -1625,6 +1672,10 @@ export class ObservatoryService {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
+    this.assertLibrarySectionAllowed({
+      settings,
+      librarySectionKey: params.librarySectionKey,
+    });
     const { plexUserId, plexUserTitle, pinTarget } =
       await this.resolvePlexUserContext(params.userId);
 

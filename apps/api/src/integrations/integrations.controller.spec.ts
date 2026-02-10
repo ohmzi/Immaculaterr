@@ -3,14 +3,24 @@ import { IntegrationsController } from './integrations.controller';
 
 describe('IntegrationsController plex libraries', () => {
   const makeController = () => {
+    const prisma = {
+      $transaction: jest.fn(),
+      immaculateTasteMovieLibrary: { deleteMany: jest.fn() },
+      immaculateTasteShowLibrary: { deleteMany: jest.fn() },
+      watchedMovieRecommendationLibrary: { deleteMany: jest.fn() },
+      watchedShowRecommendationLibrary: { deleteMany: jest.fn() },
+    };
     const settingsService = {
       getInternalSettings: jest.fn(),
       updateSettings: jest.fn(),
     };
     const plexServer = {
       getSections: jest.fn(),
+      listCollectionsForSectionKey: jest.fn(),
+      deleteCollection: jest.fn(),
     };
     const controller = new IntegrationsController(
+      prisma as never,
       settingsService as never,
       plexServer as never,
       {} as never,
@@ -19,7 +29,7 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       {} as never,
     );
-    return { controller, settingsService, plexServer };
+    return { controller, prisma, settingsService, plexServer };
   };
 
   it('GET /plex/libraries returns selected state', async () => {
@@ -128,5 +138,70 @@ describe('IntegrationsController plex libraries', () => {
     expect(res.selectedSectionKeys).toEqual(['2']);
     expect(res.excludedSectionKeys).toEqual(['3', '1']);
   });
-});
 
+  it('PUT /plex/libraries cleans deselected library data and curated Plex collections', async () => {
+    const { controller, prisma, settingsService, plexServer } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl: 'http://plex:32400',
+          librarySelection: { excludedSectionKeys: [] },
+        },
+      },
+      secrets: { plex: { token: 'token' } },
+    });
+    plexServer.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    settingsService.updateSettings.mockResolvedValue({
+      plex: {
+        baseUrl: 'http://plex:32400',
+        librarySelection: { excludedSectionKeys: ['2'] },
+      },
+    });
+    const mockedTx = [
+      { count: 11 },
+      { count: 7 },
+      { count: 5 },
+      { count: 3 },
+    ];
+    prisma.$transaction.mockResolvedValue(mockedTx);
+    plexServer.listCollectionsForSectionKey.mockResolvedValue([
+      { ratingKey: '101', title: 'Inspired by your Immaculate Taste (Admin)' },
+      { ratingKey: '102', title: 'Some other collection' },
+    ]);
+    plexServer.deleteCollection.mockResolvedValue(undefined);
+
+    const res = await controller.savePlexLibraries(
+      { user: { id: 'u1' } } as never,
+      { selectedSectionKeys: ['1'] },
+    );
+
+    expect(prisma.immaculateTasteMovieLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { librarySectionKey: { in: ['2'] } },
+    });
+    expect(prisma.immaculateTasteShowLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { librarySectionKey: { in: ['2'] } },
+    });
+    expect(prisma.watchedMovieRecommendationLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { librarySectionKey: { in: ['2'] } },
+    });
+    expect(prisma.watchedShowRecommendationLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { librarySectionKey: { in: ['2'] } },
+    });
+    expect(plexServer.listCollectionsForSectionKey).toHaveBeenCalledWith({
+      baseUrl: 'http://plex:32400',
+      token: 'token',
+      librarySectionKey: '2',
+      take: 500,
+    });
+    expect(plexServer.deleteCollection).toHaveBeenCalledWith({
+      baseUrl: 'http://plex:32400',
+      token: 'token',
+      collectionRatingKey: '101',
+    });
+    expect(res.selectedSectionKeys).toEqual(['1']);
+    expect((res as Record<string, unknown>)['cleanup']).toBeTruthy();
+  });
+});

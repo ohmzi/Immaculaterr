@@ -498,9 +498,12 @@ export function CommandCenterPage() {
   const savePlexLibrarySelectionMutation = useMutation({
     mutationFn: async (selectedSectionKeys: string[]) =>
       await savePlexLibrarySelection({ selectedSectionKeys }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.setQueryData(['integrations', 'plex', 'libraries'], data);
       setDraftSelectedPlexLibraryKeys(data.selectedSectionKeys);
+      await queryClient.invalidateQueries({
+        queryKey: ['immaculateTasteCollections'],
+      });
       toast.success('Plex library selection updated.');
     },
   });

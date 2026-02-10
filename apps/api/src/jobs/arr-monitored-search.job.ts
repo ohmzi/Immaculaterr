@@ -97,31 +97,41 @@ export class ArrMonitoredSearchJob {
       pickString(settings, 'radarr.baseUrl') ?? pickString(settings, 'radarr.url');
     const radarrApiKey =
       pickString(secrets, 'radarr.apiKey') ?? pickString(secrets, 'radarrApiKey');
-    const radarrConfigured = Boolean(radarrBaseUrlRaw && radarrApiKey);
+    const radarrEnabledSetting = pickBool(settings, 'radarr.enabled');
+    const radarrIntegrationEnabled =
+      (radarrEnabledSetting ?? Boolean(radarrApiKey)) === true;
+    const radarrConfigured =
+      radarrIntegrationEnabled && Boolean(radarrBaseUrlRaw && radarrApiKey);
     const radarrBaseUrl = radarrBaseUrlRaw ? normalizeHttpUrl(radarrBaseUrlRaw) : null;
 
     const sonarrBaseUrlRaw =
       pickString(settings, 'sonarr.baseUrl') ?? pickString(settings, 'sonarr.url');
     const sonarrApiKey =
       pickString(secrets, 'sonarr.apiKey') ?? pickString(secrets, 'sonarrApiKey');
-    const sonarrConfigured = Boolean(sonarrBaseUrlRaw && sonarrApiKey);
+    const sonarrEnabledSetting = pickBool(settings, 'sonarr.enabled');
+    const sonarrIntegrationEnabled =
+      (sonarrEnabledSetting ?? Boolean(sonarrApiKey)) === true;
+    const sonarrConfigured =
+      sonarrIntegrationEnabled && Boolean(sonarrBaseUrlRaw && sonarrApiKey);
     const sonarrBaseUrl = sonarrBaseUrlRaw ? normalizeHttpUrl(sonarrBaseUrlRaw) : null;
 
     raw['radarr'] = {
       enabled: includeRadarr,
+      integrationEnabled: radarrIntegrationEnabled,
       configured: radarrConfigured,
       baseUrl: radarrBaseUrl,
     };
     raw['sonarr'] = {
       enabled: includeSonarr,
+      integrationEnabled: sonarrIntegrationEnabled,
       configured: sonarrConfigured,
       baseUrl: sonarrBaseUrl,
     };
 
-    if (includeRadarr && !radarrConfigured) {
+    if (includeRadarr && !radarrConfigured && radarrIntegrationEnabled) {
       issues.push(issue('warn', 'Radarr is enabled but not configured.'));
     }
-    if (includeSonarr && !sonarrConfigured) {
+    if (includeSonarr && !sonarrConfigured && sonarrIntegrationEnabled) {
       issues.push(issue('warn', 'Sonarr is enabled but not configured.'));
     }
 
@@ -150,9 +160,17 @@ export class ArrMonitoredSearchJob {
       tasks.push({
         id: 'radarr',
         title: 'Radarr: MissingMoviesSearch (monitored)',
-        status: 'failed',
-        issues: [issue('warn', 'Radarr not configured (missing baseUrl and/or apiKey).')],
-        facts: [{ label: 'Enabled', value: true }],
+        status: 'skipped',
+        facts: [
+          { label: 'Enabled', value: true },
+          { label: 'Configured', value: false },
+          {
+            label: 'Result',
+            value: radarrIntegrationEnabled
+              ? 'Skipped: not configured.'
+              : 'Skipped: integration disabled in Vault.',
+          },
+        ],
       });
     } else if (ctx.dryRun) {
       tasks.push({
@@ -250,9 +268,17 @@ export class ArrMonitoredSearchJob {
       tasks.push({
         id: 'sonarr',
         title: 'Sonarr: MissingEpisodeSearch (monitored)',
-        status: 'failed',
-        issues: [issue('warn', 'Sonarr not configured (missing baseUrl and/or apiKey).')],
-        facts: [{ label: 'Enabled', value: true }],
+        status: 'skipped',
+        facts: [
+          { label: 'Enabled', value: true },
+          { label: 'Configured', value: false },
+          {
+            label: 'Result',
+            value: sonarrIntegrationEnabled
+              ? 'Skipped: not configured.'
+              : 'Skipped: integration disabled in Vault.',
+          },
+        ],
       });
     } else if (ctx.dryRun) {
       tasks.push({
@@ -370,6 +396,5 @@ export class ArrMonitoredSearchJob {
     return { summary: report as unknown as JsonObject };
   }
 }
-
 
 
