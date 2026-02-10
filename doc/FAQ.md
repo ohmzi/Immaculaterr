@@ -35,8 +35,12 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [How do I require approval before sending anything to Radarr/Sonarr?](#how-do-i-require-approval-before-sending-anything-to-radarrsonarr)
   - [What do swipes do, and can I use keyboard shortcuts?](#what-do-swipes-do-and-can-i-use-keyboard-shortcuts)
   - [Why does Observatory say there are no suggestions for my library?](#why-does-observatory-say-there-are-no-suggestions-for-my-library)
-- [Radarr / Sonarr](#radarr--sonarr)
+- [Radarr / Sonarr / Overseerr](#radarr--sonarr--overseerr)
   - [What does Fetch Missing items actually do?](#what-does-fetch-missing-items-actually-do)
+  - [How do I set up Overseerr mode in simple steps?](#how-do-i-set-up-overseerr-mode-in-simple-steps)
+  - [What changes when I turn on Route missing items via Overseerr?](#what-changes-when-i-turn-on-route-missing-items-via-overseerr)
+  - [What is the difference between in-app approval mode and Overseerr mode?](#what-is-the-difference-between-in-app-approval-mode-and-overseerr-mode)
+  - [How do I clear all Overseerr requests from Immaculaterr?](#how-do-i-clear-all-overseerr-requests-from-immaculaterr)
   - [If I disable Radarr/Sonarr toggles, what changes?](#if-i-disable-radarrsonarr-toggles-what-changes)
   - [Will it ever delete movies/shows?](#will-it-ever-delete-moviesshows)
   - [What happens during Cleanup after adding new content?](#what-happens-during-cleanup-after-adding-new-content)
@@ -54,7 +58,7 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [Can I rotate the master key?](#can-i-rotate-the-master-key)
 - [Troubleshooting](#troubleshooting)
   - [I can’t log in / I keep getting logged out — what do I check?](#i-cant-log-in--i-keep-getting-logged-out--what-do-i-check)
-  - [Immaculaterr can’t reach Plex/Radarr/Sonarr — what URL should I use from Docker?](#immaculaterr-cant-reach-plexradarrsonarr--what-url-should-i-use-from-docker)
+  - [Immaculaterr can’t reach Plex/Radarr/Sonarr/Overseerr — what URL should I use from Docker?](#immaculaterr-cant-reach-plexradarrsonarroverseerr--what-url-should-i-use-from-docker)
   - [TMDB requests fail — what’s required and where do I configure it?](#tmdb-requests-fail--whats-required-and-where-do-i-configure-it)
   - [A job ran but the report looks empty — what does that mean?](#a-job-ran-but-the-report-looks-empty--what-does-that-mean)
   - [Collections created but no poster shows — why?](#collections-created-but-no-poster-shows--why)
@@ -74,11 +78,11 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
 
 Immaculaterr is a Plex “autopilot” that watches your Plex activity, generates curated recommendation collections, and runs a few safety-focused cleanup jobs so your library stays tidy.
 
-It does not download media by itself—it can optionally send missing titles to Radarr/Sonarr, which do the downloading.
+It does not download media by itself—it can optionally send missing titles to Radarr/Sonarr or Overseerr, which handle the request/download workflows.
 
 ### What are the three main pages I need to understand?
 
-- Vault: connect services (Plex, Radarr/Sonarr, TMDB, optional Google/OpenAI).
+- Vault: connect services (Plex, Radarr/Sonarr/Overseerr, TMDB, optional Google/OpenAI).
 - Command Center: tune how the app behaves (defaults and dials).
 - Task Manager: run jobs manually, and enable/disable Auto-Run.
 
@@ -86,8 +90,9 @@ It does not download media by itself—it can optionally send missing titles to 
 
 1. Create your admin login when prompted.
 2. Go to Vault and connect Plex (and TMDB at minimum for best results).
-3. Optionally connect Radarr/Sonarr (only if you want “Fetch Missing items” behavior).
-4. Go to Task Manager and enable Auto-Run for the jobs you want.
+3. Optionally connect Radarr/Sonarr and/or Overseerr (only if you want “Fetch Missing items” behavior).
+4. In Task Manager, choose your missing-item route per task card: direct ARR route or Overseerr route.
+5. Go to Task Manager and enable Auto-Run for the jobs you want.
 
 ### What port does Immaculaterr use and how do I access it?
 
@@ -267,7 +272,7 @@ Those cards are always shown for transparency:
 
 It’s recorded as pending. Pending items can later become active once they appear in Plex.
 
-If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send the missing items to Radarr/Sonarr.
+If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send missing items to Radarr/Sonarr directly, or to Overseerr if Overseerr mode is enabled for that task.
 
 ### How does the refresher move items from pending to active?
 
@@ -295,6 +300,8 @@ In Task Manager → Immaculate Taste Collection, turn on **Approval required fro
 
 When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you **swipe right** on them in Observatory.
 
+Note: this applies to direct ARR mode. If you enable Overseerr routing for that task, Observatory approval is automatically disabled for that task.
+
 ### What do swipes do, and can I use keyboard shortcuts?
 
 - Swipe right: approve (in approval mode) or keep (in review mode)
@@ -316,11 +323,41 @@ It usually means the collection job hasn’t generated suggestions yet for that 
 
 Please continue using Plex and let suggestions build up, or run the collection task manually from Task Manager for that media type to generate suggestions.
 
-## Radarr / Sonarr
+## Radarr / Sonarr / Overseerr
 
 ### What does Fetch Missing items actually do?
 
-It allows certain collection jobs to send missing recommendations to Radarr (movies) or Sonarr (TV) so your downloader stack can grab them. If disabled, the app will still track pending items but won’t send anything to ARR.
+It allows collection jobs to push missing recommendations out of Immaculaterr. You can route them directly to Radarr/Sonarr, or route them to Overseerr. If disabled, the app still tracks pending items but does not send requests anywhere.
+
+### How do I set up Overseerr mode in simple steps?
+
+1. Go to **Vault** and set Overseerr URL + API key.
+2. Enable Overseerr in Vault and run the test.
+3. Go to **Task Manager** and turn on **Route missing items via Overseerr** for each task you want (Immaculate Taste and/or Based on Latest Watched).
+4. Run the task. New missing titles from that task will be requested in Overseerr.
+
+### What changes when I turn on Route missing items via Overseerr?
+
+- Missing titles from that task are sent to Overseerr instead of direct ARR sends.
+- Direct Radarr/Sonarr toggles for that task are turned off.
+- Approval required from Observatory is turned off for that task.
+- For Immaculate Taste, **Start search immediately** is also turned off.
+- Suggestions, pending/active tracking, and Plex collection updates still continue as normal.
+
+### What is the difference between in-app approval mode and Overseerr mode?
+
+- **In-app approval mode**: you approve in Observatory, then Immaculaterr sends approved items directly to Radarr/Sonarr.
+- **Overseerr mode**: Immaculaterr sends missing items to Overseerr, and Overseerr becomes the place where request workflow is handled.
+
+Use one flow per task card. If Overseerr mode is on, Immaculaterr’s Observatory approval flow for sending is disabled for that task.
+
+### How do I clear all Overseerr requests from Immaculaterr?
+
+Go to **Command Center** and use **Reset Overseerr Requests**.
+
+You’ll get a confirmation dialog. Once confirmed, Immaculaterr asks Overseerr to delete all requests regardless of status.
+
+This only clears Overseerr requests. It does not delete your existing Plex media files.
 
 ### If I disable Radarr/Sonarr toggles, what changes?
 
@@ -403,7 +440,7 @@ You can, but anything encrypted with the old key won’t decrypt with the new on
 - Reverse proxy headers (X-Forwarded-Proto) if applicable
 - Browser blocking cookies (private browsing, strict settings, etc.)
 
-### Immaculaterr can’t reach Plex/Radarr/Sonarr — what URL should I use from Docker?
+### Immaculaterr can’t reach Plex/Radarr/Sonarr/Overseerr — what URL should I use from Docker?
 
 On Linux with host networking: `http://localhost:<port>`
 

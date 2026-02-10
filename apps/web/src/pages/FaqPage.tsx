@@ -47,7 +47,7 @@ export function FaqPage() {
               </p>
               <p>
                 It does not download media by itself—it can optionally send missing titles to
-                Radarr/Sonarr, which do the downloading.
+                Radarr/Sonarr or Overseerr, which handle the request/download workflows.
               </p>
             </>
           ),
@@ -59,7 +59,7 @@ export function FaqPage() {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 <span className="font-semibold text-white/85">Vault</span>: connect services (Plex,
-                Radarr/Sonarr, TMDB, optional Google/OpenAI).
+                Radarr/Sonarr/Overseerr, TMDB, optional Google/OpenAI).
               </li>
               <li>
                 <span className="font-semibold text-white/85">Command Center</span>: tune how the
@@ -83,7 +83,12 @@ export function FaqPage() {
                 (and TMDB at minimum for best results).
               </li>
               <li>
-                Optionally connect Radarr/Sonarr (only if you want “Fetch Missing items” behavior).
+                Optionally connect Radarr/Sonarr and/or Overseerr (only if you want “Fetch Missing
+                items” behavior).
+              </li>
+              <li>
+                In Task Manager, choose your missing-item route per task card: direct ARR route or
+                Overseerr route.
               </li>
               <li>
                 Go to <span className="font-semibold text-white/85">Task Manager</span> and enable{' '}
@@ -319,8 +324,9 @@ export function FaqPage() {
                 items can later become active once they appear in Plex.
               </p>
               <p>
-                If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send the
-                missing items to Radarr/Sonarr.
+                If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send
+                missing items to Radarr/Sonarr directly, or to Overseerr if Overseerr mode is enabled
+                for that task.
               </p>
             </>
           ),
@@ -396,6 +402,10 @@ export function FaqPage() {
                 When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you{' '}
                 <span className="font-semibold text-white/85">swipe right</span> on them in Observatory.
               </p>
+              <p>
+                Note: this applies to direct ARR mode. If you enable Overseerr routing for that task,
+                Observatory approval is automatically disabled for that task.
+              </p>
             </>
           ),
         },
@@ -464,17 +474,99 @@ export function FaqPage() {
     },
     {
       id: 'arr',
-      title: 'Radarr / Sonarr',
+      title: 'Radarr / Sonarr / Overseerr',
       items: [
         {
           id: 'arr-fetch-missing',
           question: 'What does “Fetch Missing items” actually do?',
           answer: (
             <p>
-              It allows certain collection jobs to send missing recommendations to Radarr (movies) or
-              Sonarr (TV) so your downloader stack can grab them. If disabled, the app will still
-              track “pending” items but won’t send anything to ARR.
+              It allows collection jobs to push missing recommendations out of Immaculaterr. You can
+              route them directly to Radarr/Sonarr, or route them to Overseerr. If disabled, the app
+              still tracks pending items but does not send requests anywhere.
             </p>
+          ),
+        },
+        {
+          id: 'arr-overseerr-setup',
+          question: 'How do I set up Overseerr mode in simple steps?',
+          answer: (
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>
+                Go to <span className="font-semibold text-white/85">Vault</span> and set Overseerr URL
+                + API key.
+              </li>
+              <li>Enable Overseerr in Vault and run the test.</li>
+              <li>
+                Go to <span className="font-semibold text-white/85">Task Manager</span> and turn on{' '}
+                <span className="font-semibold text-white/85">
+                  Route missing items via Overseerr
+                </span>{' '}
+                for each task you want (Immaculate Taste and/or Based on Latest Watched).
+              </li>
+              <li>
+                Run the task. New missing titles from that task will be requested in Overseerr.
+              </li>
+            </ol>
+          ),
+        },
+        {
+          id: 'arr-overseerr-routing',
+          question: 'What changes when I turn on “Route missing items via Overseerr”?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Missing titles from that task are sent to Overseerr instead of direct ARR sends.</li>
+              <li>Direct Radarr/Sonarr toggles for that task are turned off.</li>
+              <li>Approval required from Observatory is turned off for that task.</li>
+              <li>
+                For Immaculate Taste, <span className="font-semibold text-white/85">Start search immediately</span>{' '}
+                is also turned off.
+              </li>
+              <li>
+                Suggestions, pending/active tracking, and Plex collection updates still continue as
+                normal.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'arr-overseerr-vs-observatory',
+          question: 'What is the difference between in-app approval mode and Overseerr mode?',
+          answer: (
+            <>
+              <p>
+                <span className="font-semibold text-white/85">In-app approval mode</span>: you approve
+                in Observatory, then Immaculaterr sends approved items directly to Radarr/Sonarr.
+              </p>
+              <p>
+                <span className="font-semibold text-white/85">Overseerr mode</span>: Immaculaterr sends
+                missing items to Overseerr, and Overseerr becomes the place where request workflow is
+                handled.
+              </p>
+              <p>
+                Use one flow per task card. If Overseerr mode is on, Immaculaterr’s Observatory approval
+                flow for sending is disabled for that task.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'arr-overseerr-reset',
+          question: 'How do I clear all Overseerr requests from Immaculaterr?',
+          answer: (
+            <>
+              <p>
+                Go to <span className="font-semibold text-white/85">Command Center</span> and use{' '}
+                <span className="font-semibold text-white/85">Reset Overseerr Requests</span>.
+              </p>
+              <p>
+                You’ll get a confirmation dialog. Once confirmed, Immaculaterr asks Overseerr to
+                delete all requests regardless of status.
+              </p>
+              <p>
+                This only clears Overseerr requests. It does not delete your existing Plex media files.
+              </p>
+            </>
           ),
         },
         {
@@ -659,7 +751,8 @@ export function FaqPage() {
         },
         {
           id: 'troubleshooting-urls',
-          question: 'Immaculaterr can’t reach Plex/Radarr/Sonarr — what URL should I use from Docker?',
+          question:
+            'Immaculaterr can’t reach Plex/Radarr/Sonarr/Overseerr — what URL should I use from Docker?',
           answer: (
             <>
               <p>
@@ -924,4 +1017,3 @@ export function FaqPage() {
     </div>
   );
 }
-

@@ -34,6 +34,10 @@
 
 ## What it does
 
+- **Overseerr integration (optional centralized request flow)**:
+  - Route missing movie/TV requests to Overseerr instead of direct ARR sends.
+  - Works per task card, so you can choose where missing titles go.
+  - Includes Command Center reset control to clear all Overseerr requests when needed.
 - **Plex-triggered automation**:
   - Automatically reacts to Plex library activity and runs smart workflows in real time.
 - **Scheduler automation**:
@@ -60,13 +64,13 @@
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Plex library selection guardrails**:
   - Select included movie/show libraries during onboarding and later from **Command Center → Plex Library Selection**.
-  - Selection is exclusion-based (`excludedSectionKeys`), so new Plex libraries are auto-included unless explicitly excluded.
-  - Auto/manual jobs skip excluded or unavailable targets with explicit reasons (for example `library_excluded`, `no_selected_movie_libraries`, `no_selected_tv_libraries`) instead of failing.
+  - New Plex movie/show libraries are included automatically unless you turn them off.
+  - If a run targets a library you turned off (or a library that is temporarily unavailable), that part is skipped safely and shown clearly in the run report instead of failing the whole job.
 - **Refresher scoping behavior**:
   - Collection-triggered/chained refresh stays scoped to the triggering viewer/library.
   - Standalone refresher runs (scheduled or manual without scope) sweep eligible users/libraries in deterministic order, with admin processed last.
 - **Radarr + Sonarr integration**:
-  - Seamlessly organizes your media collection and automatically sends  movies and series to ARR downloaders for monitoring and acquisition.
+  - Seamlessly organizes your media collection and sends movies/series directly to ARR downloaders when Overseerr mode is off.
 - **Observatory**:
   - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
   - Swipe left adds a suggestion to your rejected list (it won’t be suggested again). You can clear this via **Command Center → Reset Rejected List**.
@@ -124,9 +128,10 @@ docker pull ghcr.io/ohmzi/immaculaterr:latest
 
 See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupguide.md)
 
-Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/TMDB/OpenAI/Google as desired).
+Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/Overseerr/TMDB/OpenAI/Google as desired).
 
 Tip: **Command Center → Reset Immaculate Taste Collection** deletes the Plex collection and clears the saved dataset for a selected library (then rerun the collection job to rebuild).
+Tip: **Command Center → Reset Overseerr Requests** clears all Overseerr requests (all statuses) after confirmation.
 
 ## Documentation
 
