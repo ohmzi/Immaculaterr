@@ -125,6 +125,8 @@ export function CommandCenterPage() {
   });
   const [plexLibraryMinDialogOpen, setPlexLibraryMinDialogOpen] =
     useState(false);
+  const [plexLibraryDeselectDialogOpen, setPlexLibraryDeselectDialogOpen] =
+    useState(false);
   const [draftSelectedPlexLibraryKeys, setDraftSelectedPlexLibraryKeys] =
     useState<string[]>([]);
   const plexLibrariesQuery = useQuery({
@@ -475,6 +477,18 @@ export function CommandCenterPage() {
     plexLibrariesQuery.data,
     serverSelectedPlexLibraryKeys,
   ]);
+  const deselectedPlexLibraries = useMemo(() => {
+    if (!plexLibrariesQuery.data) return [];
+    const serverSelectedSet = new Set(serverSelectedPlexLibraryKeys);
+    const draftSelectedSet = new Set(draftSelectedPlexLibraryKeys);
+    return (plexLibrariesQuery.data.libraries ?? []).filter(
+      (lib) => serverSelectedSet.has(lib.key) && !draftSelectedSet.has(lib.key),
+    );
+  }, [
+    draftSelectedPlexLibraryKeys,
+    plexLibrariesQuery.data,
+    serverSelectedPlexLibraryKeys,
+  ]);
 
   const togglePlexLibrarySelectionDraft = (
     librarySectionKey: string,
@@ -501,6 +515,7 @@ export function CommandCenterPage() {
     onSuccess: async (data) => {
       queryClient.setQueryData(['integrations', 'plex', 'libraries'], data);
       setDraftSelectedPlexLibraryKeys(data.selectedSectionKeys);
+      setPlexLibraryDeselectDialogOpen(false);
       await queryClient.invalidateQueries({
         queryKey: ['immaculateTasteCollections'],
       });
@@ -860,11 +875,15 @@ export function CommandCenterPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      if (deselectedPlexLibraries.length > 0) {
+                        setPlexLibraryDeselectDialogOpen(true);
+                        return;
+                      }
                       savePlexLibrarySelectionMutation.mutate(
                         draftSelectedPlexLibraryKeys,
-                      )
-                    }
+                      );
+                    }}
                     disabled={
                       savePlexLibrarySelectionMutation.isPending ||
                       !plexLibrarySelectionDirty ||
@@ -1676,6 +1695,55 @@ export function CommandCenterPage() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          <ConfirmDialog
+            open={plexLibraryDeselectDialogOpen}
+            onClose={() => setPlexLibraryDeselectDialogOpen(false)}
+            onConfirm={() => {
+              savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
+            }}
+            title="Remove Selected Libraries?"
+            description={
+              <div className="space-y-2">
+                <div className="text-white/85 font-semibold">
+                  De-selecting libraries will remove that library&apos;s
+                  suggestions database in Immaculaterr.
+                </div>
+                <div className="text-xs text-white/55">
+                  Curated collections for deselected libraries will also be
+                  removed from Plex.
+                </div>
+              </div>
+            }
+            details={
+              deselectedPlexLibraries.length ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-white/50">
+                    Libraries to remove
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {deselectedPlexLibraries.map((lib) => (
+                      <span
+                        key={lib.key}
+                        className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/80"
+                      >
+                        {lib.title}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null
+            }
+            confirmText="Save and remove"
+            cancelText="Keep libraries"
+            variant="danger"
+            confirming={savePlexLibrarySelectionMutation.isPending}
+            error={
+              savePlexLibrarySelectionMutation.isError
+                ? (savePlexLibrarySelectionMutation.error as Error).message
+                : null
+            }
+          />
 
           <ConfirmDialog
             open={plexLibraryMinDialogOpen}
