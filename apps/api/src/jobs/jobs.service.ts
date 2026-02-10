@@ -90,6 +90,25 @@ function getProgressSnapshot(summary: JsonObject | null): JsonObject | null {
   return isPlainObject(raw) ? (raw as JsonObject) : null;
 }
 
+function buildQueuedSummary(params: {
+  trigger: JobRunTrigger;
+  dryRun: boolean;
+  input?: JsonObject;
+}): JsonObject {
+  const inputContext = extractInputContext(params.input);
+  return {
+    phase: 'queued',
+    dryRun: params.dryRun,
+    trigger: params.trigger,
+    ...(inputContext ?? {}),
+    progress: {
+      step: 'queued',
+      message: 'Queued…',
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
 function extractInputContext(input?: JsonObject): JsonObject | null {
   if (!input) return null;
   const raw = input as Record<string, unknown>;
@@ -101,6 +120,8 @@ function extractInputContext(input?: JsonObject): JsonObject | null {
   const seedTitle =
     typeof raw['seedTitle'] === 'string' ? raw['seedTitle'].trim() : '';
   const seedYearRaw = raw['seedYear'];
+  const mediaType =
+    typeof raw['mediaType'] === 'string' ? raw['mediaType'].trim() : '';
   const seedYear =
     typeof seedYearRaw === 'number' && Number.isFinite(seedYearRaw)
       ? Math.trunc(seedYearRaw)
@@ -110,6 +131,7 @@ function extractInputContext(input?: JsonObject): JsonObject | null {
 
   if (plexUserId) out.plexUserId = plexUserId;
   if (plexUserTitle) out.plexUserTitle = plexUserTitle;
+  if (mediaType) out.mediaType = mediaType;
   if (seedTitle) out.seedTitle = seedTitle;
   if (seedYear !== null && Number.isFinite(seedYear)) out.seedYear = seedYear;
 
@@ -183,15 +205,155 @@ export class JobsService {
     }
     this.runningJobIds.add(jobId);
 
-    const run = await this.prisma.jobRun.create({
+    const run = await this.prisma.jobRun
+      .create({
+        data: {
+          jobId,
+          userId,
+          trigger,
+          dryRun,
+          status: 'RUNNING',
+        },
+      })
+      .catch((err) => {
+        this.runningJobIds.delete(jobId);
+        throw err;
+      });
+
+    try {
+      this.launchRunExecution({
+        runId: run.id,
+        jobId,
+        userId,
+        trigger,
+        dryRun,
+        input,
+      });
+    } catch (err) {
+      this.runningJobIds.delete(jobId);
+      throw err;
+    }
+
+    return run;
+  }
+
+  async queueJob(params: {
+    jobId: string;
+    trigger: JobRunTrigger;
+    dryRun: boolean;
+    userId: string;
+    input?: JsonObject;
+  }) {
+    const { jobId, trigger, dryRun, userId, input } = params;
+    const def = findJobDefinition(jobId);
+    if (!def) throw new NotFoundException(`Unknown job: ${jobId}`);
+
+    const summary = buildQueuedSummary({ trigger, dryRun, input });
+
+    return await this.prisma.jobRun.create({
       data: {
         jobId,
         userId,
         trigger,
         dryRun,
-        status: 'RUNNING',
+        status: 'PENDING',
+        summary: summary ?? Prisma.DbNull,
       },
     });
+  }
+
+  async startQueuedJob(params: { runId: string; input?: JsonObject }) {
+    const { runId, input } = params;
+    const run = await this.prisma.jobRun.findUnique({ where: { id: runId } });
+    if (!run) throw new NotFoundException('Run not found');
+
+    if (run.status !== 'PENDING') {
+      throw new ConflictException(
+        `Queued run is no longer pending: runId=${runId} status=${run.status}`,
+      );
+    }
+
+    const userId = run.userId?.trim();
+    if (!userId) {
+      throw new ConflictException(`Queued run missing userId: runId=${runId}`);
+    }
+
+    const jobId = run.jobId;
+    if (this.runningJobIds.has(jobId)) {
+      throw new ConflictException(`Job already running: ${jobId}`);
+    }
+    this.runningJobIds.add(jobId);
+
+    let startedRun = run;
+    try {
+      startedRun = await this.prisma.jobRun.update({
+        where: { id: runId },
+        data: {
+          status: 'RUNNING',
+          errorMessage: null,
+        },
+      });
+    } catch (err) {
+      this.runningJobIds.delete(jobId);
+      throw err;
+    }
+
+    try {
+      this.launchRunExecution({
+        runId,
+        jobId,
+        userId,
+        trigger: run.trigger,
+        dryRun: run.dryRun,
+        input,
+      });
+    } catch (err) {
+      this.runningJobIds.delete(jobId);
+      throw err;
+    }
+
+    return startedRun;
+  }
+
+  async failQueuedJob(params: { runId: string; errorMessage: string }) {
+    const runId = params.runId.trim();
+    const errorMessage = params.errorMessage.trim();
+    if (!runId || !errorMessage) return { updated: false };
+
+    const now = new Date();
+    const updateRes = await this.prisma.jobRun.updateMany({
+      where: { id: runId, status: 'PENDING' },
+      data: {
+        status: 'FAILED',
+        finishedAt: now,
+        errorMessage,
+      },
+    });
+    if (!updateRes.count) return { updated: false };
+
+    await this.prisma.jobLogLine
+      .create({
+        data: {
+          runId,
+          level: 'error',
+          message: 'run: failed before start',
+          context: { error: errorMessage },
+        },
+      })
+      .catch(() => undefined);
+
+    return { updated: true };
+  }
+
+  private launchRunExecution(params: {
+    runId: string;
+    jobId: string;
+    userId: string;
+    trigger: JobRunTrigger;
+    dryRun: boolean;
+    input?: JsonObject;
+  }) {
+    const { runId, jobId, userId, trigger, dryRun, input } = params;
 
     // Best-effort live summary snapshot support (persisted to JobRun.summary).
     // This powers the "Summary" section of the run detail UI while the job is RUNNING.
@@ -202,14 +364,14 @@ export class JobsService {
         .catch(() => undefined)
         .then(async () => {
           await this.prisma.jobRun.update({
-            where: { id: run.id },
+            where: { id: runId },
             data: { summary: snapshot ?? Prisma.DbNull },
           });
         })
         .catch((err) => {
           // Avoid crashing the job if a summary write fails; logs still persist.
           this.logger.warn(
-            `[${jobId}#${run.id}] summary write failed: ${errToMessage(err)}`,
+            `[${jobId}#${runId}] summary write failed: ${errToMessage(err)}`,
           );
         });
       return summaryWriteChain;
@@ -225,7 +387,7 @@ export class JobsService {
     ) => {
       await this.prisma.jobLogLine.create({
         data: {
-          runId: run.id,
+          runId,
           level,
           message,
           context: context ?? Prisma.DbNull,
@@ -235,7 +397,7 @@ export class JobsService {
 
     const ctx: JobContext = {
       jobId,
-      runId: run.id,
+      runId,
       userId,
       dryRun,
       trigger,
@@ -257,15 +419,11 @@ export class JobsService {
     };
 
     // Run in the background so API calls return quickly; status/logs are persisted.
-    void this.executeJobRun({ ctx, runId: run.id, awaitSummaryWrites }).catch(
-      (err) => {
+    void this.executeJobRun({ ctx, runId, awaitSummaryWrites }).catch((err) => {
       this.logger.error(
-        `Unhandled job execution error jobId=${jobId} runId=${run.id}: ${errToMessage(err)}`,
+        `Unhandled job execution error jobId=${jobId} runId=${runId}: ${errToMessage(err)}`,
       );
-      },
-    );
-
-    return run;
+    });
   }
 
   private async executeJobRun(params: {

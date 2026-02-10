@@ -71,6 +71,7 @@ type SessionSnapshot = PlexNowPlayingSession & {
 type CollectionJobId = 'watchedMovieRecommendations' | 'immaculateTastePoints';
 
 type PendingCollectionRun = {
+  runId: string;
   jobId: CollectionJobId;
   adminUserId: string;
   plexUserId: string;
@@ -312,16 +313,41 @@ export class PlexPollingService implements OnModuleInit {
     }
   }
 
-  private enqueueCollectionRun(params: PendingCollectionRun): boolean {
+  private async enqueueCollectionRun(
+    params: Omit<PendingCollectionRun, 'runId'> & { runId?: string },
+  ): Promise<{ queued: boolean; runId: string | null; error: string | null }> {
     const queue = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
     const exists = queue.some(
       (run) =>
         run.jobId === params.jobId &&
         run.sessionAutomationId === params.sessionAutomationId,
     );
-    if (exists) return false;
+    if (exists) return { queued: false, runId: null, error: null };
 
-    queue.push(params);
+    let runId = params.runId?.trim() ?? '';
+    if (!runId) {
+      try {
+        const queuedRun = await this.jobsService.queueJob({
+          jobId: params.jobId,
+          trigger: 'auto',
+          dryRun: false,
+          userId: params.adminUserId,
+          input: params.input,
+        });
+        runId = queuedRun.id;
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        this.logger.warn(
+          `Failed to persist queued run jobId=${params.jobId} plexUserId=${params.plexUserId}: ${msg}`,
+        );
+        return { queued: false, runId: null, error: msg };
+      }
+    }
+
+    queue.push({
+      ...params,
+      runId,
+    });
     queue.sort((a, b) => a.enqueuedAtMs - b.enqueuedAtMs);
     this.pendingCollectionRunsByPlexUser.set(params.plexUserId, queue);
     this.setSessionJobStatus(
@@ -330,7 +356,7 @@ export class PlexPollingService implements OnModuleInit {
       'queued',
       params.enqueuedAtMs,
     );
-    return true;
+    return { queued: true, runId, error: null };
   }
 
   private dequeueNextPendingCollectionRun(params: { plexUserId: string }) {
@@ -356,6 +382,7 @@ export class PlexPollingService implements OnModuleInit {
 
   private async runCollectionJobNow(params: {
     jobId: CollectionJobId;
+    runId?: string;
     adminUserId: string;
     input: JsonObject;
     sessionAutomationId: string;
@@ -368,13 +395,18 @@ export class PlexPollingService implements OnModuleInit {
       params.nowMs,
     );
     try {
-      const run = await this.jobsService.runJob({
-        jobId: params.jobId,
-        trigger: 'auto',
-        dryRun: false,
-        userId: params.adminUserId,
-        input: params.input,
-      });
+      const run = params.runId
+        ? await this.jobsService.startQueuedJob({
+            runId: params.runId,
+            input: params.input,
+          })
+        : await this.jobsService.runJob({
+            jobId: params.jobId,
+            trigger: 'auto',
+            dryRun: false,
+            userId: params.adminUserId,
+            input: params.input,
+          });
       this.setSessionJobStatus(
         params.sessionAutomationId,
         params.jobId,
@@ -419,6 +451,10 @@ export class PlexPollingService implements OnModuleInit {
         ? watchedEnabled
         : immaculateEnabled;
     if (!enabled) {
+      await this.jobsService.failQueuedJob({
+        runId: pending.runId,
+        errorMessage: 'Queued run dropped because the job is disabled.',
+      });
       this.setSessionJobStatus(
         pending.sessionAutomationId,
         pending.jobId,
@@ -440,6 +476,7 @@ export class PlexPollingService implements OnModuleInit {
     this.setCollectionCooldown({ plexUserId: pending.plexUserId, nowMs: now });
     const result = await this.runCollectionJobNow({
       jobId: pending.jobId,
+      runId: pending.runId,
       adminUserId: pending.adminUserId,
       input: pending.input,
       sessionAutomationId: pending.sessionAutomationId,
@@ -460,17 +497,33 @@ export class PlexPollingService implements OnModuleInit {
     const errors: Record<string, string> = {};
     errors[pending.jobId] = result.error ?? 'unknown_error';
     const skipped: Record<string, string> = {};
+    let requeued = false;
     if (pending.attempt < PlexPollingService.MAX_COLLECTION_JOB_ATTEMPTS) {
       const nextAttempt = pending.attempt + 1;
-      const queued = this.enqueueCollectionRun({
+      const queued = await this.enqueueCollectionRun({
         ...pending,
         enqueuedAtMs: Date.now(),
         attempt: nextAttempt,
       });
-      if (queued) {
+      if (queued.queued) {
+        requeued = true;
         skipped[pending.jobId] = `retry_queued_attempt_${nextAttempt}`;
+      } else if (queued.error) {
+        errors[pending.jobId] = `${errors[pending.jobId]} | retry_queue_failed: ${queued.error}`;
       }
     }
+
+    if (!requeued) {
+      const failReason =
+        pending.attempt >= PlexPollingService.MAX_COLLECTION_JOB_ATTEMPTS
+          ? `Queued run failed after ${pending.attempt} attempt(s): ${errors[pending.jobId]}`
+          : `Queued run failed before start: ${errors[pending.jobId]}`;
+      await this.jobsService.failQueuedJob({
+        runId: pending.runId,
+        errorMessage: failReason,
+      });
+    }
+
     this.webhooksService.logPlexWebhookAutomation({
       plexEvent: 'plexPolling.cooldown',
       mediaType: pending.mediaType,
@@ -1329,8 +1382,12 @@ export class PlexPollingService implements OnModuleInit {
       this.collectionCooldownUntilByPlexUser.get(plexUserId) ?? 0;
     const cooldownActive = now < cooldownUntil;
 
-    const enqueue = (params: { jobId: CollectionJobId; input: JsonObject; reason: string }) => {
-      const queued = this.enqueueCollectionRun({
+    const enqueue = async (params: {
+      jobId: CollectionJobId;
+      input: JsonObject;
+      reason: string;
+    }) => {
+      const queued = await this.enqueueCollectionRun({
         jobId: params.jobId,
         adminUserId: userId,
         plexUserId,
@@ -1343,21 +1400,31 @@ export class PlexPollingService implements OnModuleInit {
         attempt: 1,
       });
       if (params.jobId === 'watchedMovieRecommendations') {
-        skipped.watchedMovieRecommendations = queued
-          ? params.reason
-          : 'already_queued_or_processed';
-        next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
+        if (queued.queued) {
+          skipped.watchedMovieRecommendations = params.reason;
+          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
+        } else if (queued.error) {
+          errors.watchedMovieRecommendations = `queue_failed: ${queued.error}`;
+        } else {
+          skipped.watchedMovieRecommendations = 'already_queued_or_processed';
+          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
+        }
       } else {
-        skipped.immaculateTastePoints = queued
-          ? params.reason
-          : 'already_queued_or_processed';
-        next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+        if (queued.queued) {
+          skipped.immaculateTastePoints = params.reason;
+          next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+        } else if (queued.error) {
+          errors.immaculateTastePoints = `queue_failed: ${queued.error}`;
+        } else {
+          skipped.immaculateTastePoints = 'already_queued_or_processed';
+          next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+        }
       }
     };
 
     if (cooldownActive) {
       for (const job of jobsToHandle) {
-        enqueue({
+        await enqueue({
           jobId: job.jobId,
           input: job.input,
           reason: 'cooldown_pending',
@@ -1384,7 +1451,7 @@ export class PlexPollingService implements OnModuleInit {
         this.setCollectionCooldown({ plexUserId, nowMs: now });
       }
       for (const job of rest) {
-        enqueue({
+        await enqueue({
           jobId: job.jobId,
           input: job.input,
           reason: 'queued_after_first_run',

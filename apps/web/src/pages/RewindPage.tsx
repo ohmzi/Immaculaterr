@@ -36,6 +36,8 @@ function statusPill(status: string) {
       return 'bg-red-500/15 text-red-200 border border-red-500/25';
     case 'RUNNING':
       return 'bg-amber-500/15 text-amber-200 border border-amber-500/25';
+    case 'PENDING':
+      return 'bg-sky-500/15 text-sky-200 border border-sky-500/25';
     default:
       return 'bg-white/10 text-white/70 border border-white/10';
   }
@@ -49,6 +51,28 @@ function durationMs(run: JobRun): number | null {
   return Math.max(0, b - a);
 }
 
+const PENDING_QUEUE_SLOT_MS = 10 * 60_000;
+
+function estimatePendingRemainingMs(run: JobRun, allRuns: JobRun[]): number | null {
+  if (run.status !== 'PENDING') return null;
+  const queuedAt = Date.parse(run.startedAt);
+  if (!Number.isFinite(queuedAt)) return null;
+
+  const pendingForJob = allRuns
+    .filter((r) => r.jobId === run.jobId && r.status === 'PENDING')
+    .sort((a, b) => {
+      const at = Date.parse(a.startedAt);
+      const bt = Date.parse(b.startedAt);
+      if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt;
+      return a.id.localeCompare(b.id);
+    });
+  const position = pendingForJob.findIndex((r) => r.id === run.id);
+  if (position < 0) return null;
+
+  const estimatedStartAt = queuedAt + (position + 1) * PENDING_QUEUE_SLOT_MS;
+  return Math.max(0, estimatedStartAt - Date.now());
+}
+
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -58,6 +82,24 @@ function formatDuration(ms: number): string {
   const h = Math.floor(m / 60);
   const mm = m % 60;
   return `${h}h ${mm}m`;
+}
+
+function formatRemaining(ms: number): string {
+  if (ms < 30_000) return 'starting soon';
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes < 60) return `~${minutes}m remaining`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem ? `~${hours}h ${rem}m remaining` : `~${hours}h remaining`;
+}
+
+function formatRunDuration(run: JobRun, allRuns: JobRun[]): string {
+  if (run.status === 'PENDING') {
+    const remainingMs = estimatePendingRemainingMs(run, allRuns);
+    return remainingMs === null ? '—' : formatRemaining(remainingMs);
+  }
+  const ms = durationMs(run);
+  return ms === null ? '—' : formatDuration(ms);
 }
 
 function modeLabel(run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' {
@@ -564,11 +606,14 @@ export function RewindPage() {
                       {/* Mobile: stacked run cards */}
                       <div className="sm:hidden space-y-3">
                         {filtered.map((run) => {
-                          const ms = durationMs(run);
                           const jobName = jobNameById.get(run.jobId) ?? run.jobId;
                           const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                           const userLabel = plexUserTitle || plexUserId;
                           const media = getMediaTypeContext(run);
+                          const durationLabel = formatRunDuration(
+                            run,
+                            historyQuery.data?.runs ?? [],
+                          );
                           const errorText = issueSummary(run);
                           const errorPreview = errorText
                             ? errorText.length > 140
@@ -592,7 +637,7 @@ export function RewindPage() {
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
-                                      {ms === null ? '—' : formatDuration(ms)}
+                                      {durationLabel}
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
@@ -651,11 +696,14 @@ export function RewindPage() {
                           </thead>
                           <tbody>
                             {filtered.map((run) => {
-                              const ms = durationMs(run);
                               const jobName = jobNameById.get(run.jobId) ?? run.jobId;
                               const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                               const userLabel = plexUserTitle || plexUserId || '—';
                               const media = getMediaTypeContext(run);
+                              const durationLabel = formatRunDuration(
+                                run,
+                                historyQuery.data?.runs ?? [],
+                              );
                               return (
                                 <tr
                                   key={run.id}
@@ -686,7 +734,7 @@ export function RewindPage() {
                                     {modeLabel(run)}
                                   </td>
                                   <td className="px-3 py-3 text-white/60">
-                                    {ms === null ? '—' : formatDuration(ms)}
+                                    {durationLabel}
                                   </td>
                                   <td className="px-3 py-3 text-red-200/80">
                                     {(() => {
@@ -735,4 +783,3 @@ export function RewindPage() {
     </div>
   );
 }
-
