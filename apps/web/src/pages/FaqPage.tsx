@@ -156,7 +156,45 @@ export function FaqPage() {
               <li>
                 The job was recently triggered and deduped to prevent repeated runs.
               </li>
+              <li>
+                The seed came from a Plex library you excluded in{' '}
+                <span className="font-semibold text-white/85">
+                  Command Center → Plex Library Selection
+                </span>
+                .
+              </li>
             </ul>
+          ),
+        },
+        {
+          id: 'automation-library-selection-impact',
+          question: 'How does Plex Library Selection affect auto-runs and manual runs?',
+          answer: (
+            <>
+              <p>
+                After Plex setup, you can choose which movie/show libraries Immaculaterr is allowed
+                to use. You can update this any time from{' '}
+                <span className="font-semibold text-white/85">
+                  Command Center → Plex Library Selection
+                </span>
+                .
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  If a run targets a library you turned off, that part is skipped instead of failing
+                  the whole job.
+                </li>
+                <li>
+                  If no selected libraries are available for that media type, the run will show a
+                  clear skipped reason in the report.
+                </li>
+                <li>
+                  When you save after de-selecting a library, Immaculaterr warns you because that
+                  library’s suggestion dataset is removed and its curated collections are removed from
+                  Plex.
+                </li>
+              </ul>
+            </>
           ),
         },
         {
@@ -188,6 +226,10 @@ export function FaqPage() {
                 dataset, move items from pending → active when they appear in Plex, shuffle active
                 items, and rebuild collections cleanly.
               </p>
+              <p>
+                Collection-triggered refreshes stay scoped to the triggering viewer/library, while
+                standalone refresher runs sweep all eligible viewers/libraries.
+              </p>
             </>
           ),
         },
@@ -209,6 +251,26 @@ export function FaqPage() {
           ),
         },
         {
+          id: 'collections-viewer-pinning',
+          question: 'How do per-viewer collections and Plex pin locations work?',
+          answer: (
+            <>
+              <p>
+                Each viewer gets their own recommendation rows, and each viewer’s dataset is kept
+                separate so one person’s watch habits do not change another person’s suggestions.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Admin viewer rows are pinned to Library Recommended and Home.</li>
+                <li>Shared-user rows are pinned to Friends Home.</li>
+              </ul>
+              <p>
+                The row order is always consistent: Based on your recently watched, then Change of
+                Taste, then Inspired by your Immaculate Taste.
+              </p>
+            </>
+          ),
+        },
+        {
           id: 'collections-immaculate-vs-watched',
           question: 'What’s the difference between “Immaculate Taste” and “Based on Latest Watched”?',
           answer: (
@@ -221,6 +283,51 @@ export function FaqPage() {
                 generates suggestions, tracks pending/active items, and refreshes as titles become
                 available.
               </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-immaculate-how',
+          question: 'How does the Immaculate Taste collection work?',
+          answer: (
+            <>
+              <p>
+                Immaculate Taste is a long-lived per-library suggestion set that evolves over time.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  The collection job adds or refreshes suggestions when new seeds are processed.
+                </li>
+                <li>
+                  Suggestions are tracked as active (already in Plex) or pending (not in Plex yet).
+                </li>
+                <li>
+                  Refresher jobs promote pending titles to active when they appear in Plex, then
+                  rebuild the collection.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'collections-immaculate-points',
+          question: 'How do Immaculate Taste points work?',
+          answer: (
+            <>
+              <p>
+                Points act like a freshness score for active titles in Immaculate Taste.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Freshly suggested active titles get high points.</li>
+                <li>Pending titles start at zero points until they appear in Plex.</li>
+                <li>
+                  Active titles gradually lose points over future updates if they are not suggested
+                  again.
+                </li>
+                <li>
+                  When points run out, titles can drop from the active set to keep the list fresh.
+                </li>
+              </ul>
             </>
           ),
         },
@@ -525,6 +632,10 @@ export function FaqPage() {
               <li>
                 Suggestions, pending/active tracking, and Plex collection updates still continue as
                 normal.
+              </li>
+              <li>
+                If Overseerr is unavailable for a run, those requests are skipped for that run and
+                are not sent to Radarr/Sonarr as a fallback.
               </li>
             </ul>
           ),

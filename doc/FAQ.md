@@ -127,15 +127,18 @@ After Plex auth in onboarding, there is a dedicated **Plex Libraries** step.
 - Immaculaterr lists eligible movie/show libraries and preselects them by default.
 - You can deselect libraries you do not want included, but at least 1 library must stay selected.
 - You can change this later from **Command Center → Plex Library Selection**.
-- The model is exclusion-based (`excludedSectionKeys`), so new Plex libraries are auto-included unless you explicitly exclude them.
+- New movie/show libraries are included automatically unless you turn them off.
 
 How this affects runtime behavior:
 
-- **Auto triggers** (Plex polling + webhook scrobble): if the detected seed library is excluded, the run is skipped with reason `library_excluded`.
-- **Collection jobs** (manual + auto): candidate libraries are filtered first by your selection.
-  - If a seed resolves to an excluded library, the run is skipped (not failed).
-  - If no selected libraries remain for that media type, the run is skipped with `no_selected_movie_libraries` or `no_selected_tv_libraries`.
-- **Refresher jobs**: both targeted and sweep runs only operate on selected libraries. If nothing is eligible, you get a skipped summary instead of an error.
+- Auto triggers and manual runs only use selected libraries.
+- If a run targets a turned-off library, that part is skipped instead of failing the whole job.
+- If no selected libraries are available for that media type, the run shows a clear skipped summary.
+- Refresher jobs also respect the same library selection rules.
+
+Important:
+
+- When you save after de-selecting a library, Immaculaterr warns you because that library’s suggestion dataset is removed and its curated collections are removed from Plex.
 
 Why this helps: it prevents unintended writes to libraries you want isolated (kids/test/archive), keeps behavior consistent across setup and run modes, and makes skip reasons explicit in reports.
 
@@ -216,7 +219,7 @@ One important detail: the **ordering** inside the Plex collection is not “high
 
 Each active title has an integer **points** value that acts like a “freshness meter”.
 
-- **Max points**: when a title is (re)suggested and it’s **active**, its points are set to `immaculateTaste.maxPoints` (default **50**).
+- **Max points**: when a title is (re)suggested and it’s **active**, its points are reset to the current max (default **50**).
 - **Pending titles**: when a title is suggested but **not in Plex**, it’s saved as **pending** with **0** points (so it doesn’t show up until it exists in Plex).
 - **Activation**: when a pending title later appears in Plex, the refresher marks it **active** and assigns points (currently **50** on activation).
 - **Decay**: on each points-update run, any **active** title that was **not suggested this run** loses **1 point**.
@@ -259,7 +262,7 @@ This dial lives in Command Center → Recommendations. It controls how many sugg
 - **Current releases**: already released and typically available to watch now
 - **Future releases**: upcoming titles that may not be released yet
 
-Under the hood it sets `recommendations.upcomingPercent` (default 25%). The system enforces that **released stays at least 25%**, so upcoming is effectively capped (max 75%).
+Under the hood it uses a saved recommendation mix setting (default 25% upcoming). The system enforces that **released stays at least 25%**, so upcoming is effectively capped (max 75%).
 
 ### Why do I see not enabled or skipped?
 
@@ -343,6 +346,7 @@ It allows collection jobs to push missing recommendations out of Immaculaterr. Y
 - Approval required from Observatory is turned off for that task.
 - For Immaculate Taste, **Start search immediately** is also turned off.
 - Suggestions, pending/active tracking, and Plex collection updates still continue as normal.
+- If Overseerr is unavailable for a run, those requests are skipped for that run and are not sent to Radarr/Sonarr as a fallback.
 
 ### What is the difference between in-app approval mode and Overseerr mode?
 

@@ -34,12 +34,16 @@
 
 ## What it does
 
+- **Overseerr integration (optional centralized request flow)**:
+  - Route missing movie/TV requests to Overseerr instead of direct ARR sends.
+  - Enable it per task card, so each task can use its own missing-item flow.
+  - Includes a Command Center reset control to clear all Overseerr requests when needed.
 - **Plex-triggered automation**:
   - Automatically reacts to Plex library activity and runs smart workflows in real time.
 - **Scheduler automation**:
-  - Off hours fetching media or refreshing the Plex home screen.
+  - Handles off-hours fetching and Plex home refresh workflows.
 - **Curated Movies and TV Shows collections**:
-  - Inspired by your Immaculate Taste (long term collection)
+  - Inspired by your Immaculate Taste (long-term collection)
   - Based on your recently watched (refreshes on every watch)
   - Change of Taste (refreshes on every watch)
 - **Per-viewer personalization (Movies + TV)**:
@@ -55,30 +59,26 @@
   - Ordering ignores trailing viewer suffixes, so row priority stays consistent across users.
 - **Recommendation engine**:
   - TMDB-powered suggestions
-  - Optional - Google + OpenAI 
+  - Optional: Google + OpenAI
 - **Keeps a snapshot database:**
-  - Recommmended database for refresher task to monitor titles as they become available in Plex.
+  - Stores recommendation data so refresher jobs can detect when pending titles become available in Plex.
 - **Plex library selection guardrails**:
-  - Select included movie/show libraries during onboarding and later from **Command Center → Plex Library Selection**.
+  - Choose which movie/show libraries are included during onboarding and later from **Command Center → Plex Library Selection**.
   - New Plex movie/show libraries are included automatically unless you turn them off.
-  - If a run targets a library you turned off (or a library that is temporarily unavailable), that part is skipped safely and shown clearly in the run report instead of failing the whole job.
+  - If a run targets a turned-off or temporarily unavailable library, that part is skipped safely and shown clearly in the run report instead of failing the whole job.
 - **Refresher scoping behavior**:
   - Collection-triggered/chained refresh stays scoped to the triggering viewer/library.
   - Standalone refresher runs (scheduled or manual without scope) sweep eligible users/libraries in deterministic order, with admin processed last.
 - **Radarr + Sonarr integration**:
-  - Seamlessly organizes your media collection and sends movies/series directly to ARR downloaders when Overseerr mode is off.
+  - Sends movies/series directly to ARR downloaders when Overseerr mode is off.
 - **Observatory**:
   - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
   - Swipe left adds a suggestion to your rejected list (it won’t be suggested again). You can clear this via **Command Center → Reset Rejected List**.
-- **Overseerr integration (optional centralized request flow)**:
-  - Route missing movie/TV requests to Overseerr instead of direct ARR sends.
-  - Works per task card, so you can choose where missing titles go.
-  - Includes Command Center reset control to clear all Overseerr requests when needed.
 - **Job reports & logs**:
   - Step-by-step breakdowns, metrics tables, and run history.
 - **Operational visibility and controls**:
   - User-aware Command Center reset controls, Plex-user dataset management, expanded debugger coverage, and clearer user/media run reporting.
-- **More features on the way:**
+- **More features on the way**:
   - Discovering Media from film industries around the world
   - Email reports on media server health
   - Windows and macOS support
@@ -130,8 +130,10 @@ See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupgu
 
 Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/Overseerr/TMDB/OpenAI/Google as desired).
 
-Tip: **Command Center → Reset Immaculate Taste Collection** deletes the Plex collection and clears the saved dataset for a selected library (then rerun the collection job to rebuild).
-Tip: **Command Center → Reset Overseerr Requests** clears all Overseerr requests (all statuses) after confirmation.
+Tips:
+
+- **Command Center → Reset Immaculate Taste Collection** deletes the Plex collection and clears the saved dataset for a selected library (then rerun the collection job to rebuild).
+- **Command Center → Reset Overseerr Requests** clears all Overseerr requests (all statuses) after confirmation.
 
 ## Documentation
 
