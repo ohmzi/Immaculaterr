@@ -10,6 +10,10 @@ export function WhatsNewModal(props: {
   acknowledging?: boolean;
 }) {
   const { open, entry, versionLabel, onAcknowledge, acknowledging = false } = props;
+  const highlights =
+    entry?.popupHighlights && entry.popupHighlights.length > 0
+      ? entry.popupHighlights
+      : (entry?.sections ?? []).map((section) => section.title).slice(0, 5);
 
   return (
     <AnimatePresence>
@@ -43,26 +47,23 @@ export function WhatsNewModal(props: {
                 </span>
               </div>
               <p className="mt-1 text-xs text-white/55 sm:text-sm">
-                Release notes for this update.
+                Quick highlights for this update.
               </p>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
-              <div className="space-y-4">
-                {entry.sections.map((section, sectionIndex) => (
-                  <section
-                    key={`${section.title}-${sectionIndex}`}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              <div className="space-y-2">
+                {highlights.map((line, index) => (
+                  <div
+                    key={`${line}-${index}`}
+                    className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
                   >
-                    <h3 className="text-sm font-semibold text-white/90 sm:text-base">
-                      {section.title}
-                    </h3>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-white/70 sm:text-sm">
-                      {section.bullets.map((bullet, bulletIndex) => (
-                        <li key={`${section.title}-${bulletIndex}`}>{bullet}</li>
-                      ))}
-                    </ul>
-                  </section>
+                    <span
+                      aria-hidden="true"
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#facc15]"
+                    />
+                    <p className="text-sm leading-relaxed text-white/80">{line}</p>
+                  </div>
                 ))}
               </div>
             </div>

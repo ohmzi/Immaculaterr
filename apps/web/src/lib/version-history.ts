@@ -5,6 +5,7 @@ export type VersionHistorySection = {
 
 export type VersionHistoryEntry = {
   version: string;
+  popupHighlights: string[];
   sections: VersionHistorySection[];
 };
 
@@ -18,6 +19,13 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.5.0',
+    popupHighlights: [
+      'Recommendations now feel more personal for each Plex viewer.',
+      'Plex row placement is smarter for admin and shared users.',
+      'Library selection is easier to manage and safer during setup and later edits.',
+      'You can optionally route missing requests through Overseerr in one place.',
+      'Observatory is more stable and makes it easier to reject repeats.',
+    ],
     sections: [
       {
         title: 'Per-viewer personalization (Movies + TV)',
@@ -79,6 +87,13 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   },
   {
     version: '1.0.0',
+    popupHighlights: [
+      'Immaculaterr can auto-run from Plex activity and schedules.',
+      'It builds curated rows from what you watch and what you like.',
+      'Optional integrations connect suggestions and downloads across your stack.',
+      'Observatory helps you quickly approve or skip suggestions.',
+      'Rewind gives clear run history and logs.',
+    ],
     sections: [
       {
         title: 'Plex-triggered automation',
