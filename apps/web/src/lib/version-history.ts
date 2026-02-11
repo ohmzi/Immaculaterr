@@ -5,6 +5,7 @@ export type VersionHistorySection = {
 
 export type VersionHistoryEntry = {
   version: string;
+  popupHighlights: string[];
   sections: VersionHistorySection[];
 };
 
@@ -17,7 +18,15 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.5.0',
+    version: '1.5.1',
+    popupHighlights: [
+      'Recommendations (Movies + TV): now personalized per Plex viewer.',
+      'Plex pinning: row placement is smarter for admin and shared users.',
+      'Plex library selection: safer setup and easier ongoing management.',
+      'Overseerr integration: optional centralized missing-request routing.',
+      'Observatory: improved stability and easier reject-list workflow.',
+      'Task Manager > Cleanup After Adding New Content: independent action toggles.',
+    ],
     sections: [
       {
         title: 'Per-viewer personalization (Movies + TV)',
@@ -75,10 +84,25 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Removed GitHub token env dependency from update checks.',
         ],
       },
+      {
+        title: 'Cleanup After Adding New Content',
+        bullets: [
+          'Choose any combination of duplicate cleanup, ARR unmonitoring, and watchlist removal.',
+          'Turning off ARR unmonitoring now disables all ARR monitoring mutations for this task.',
+          'If all cleanup toggles are off, the task runs as a no-op and reports skipped actions.',
+        ],
+      },
     ],
   },
   {
     version: '1.0.0',
+    popupHighlights: [
+      'Immaculaterr can auto-run from Plex activity and schedules.',
+      'It builds curated rows from what you watch and what you like.',
+      'Optional integrations connect suggestions and downloads across your stack.',
+      'Observatory helps you quickly approve or skip suggestions.',
+      'Rewind gives clear run history and logs.',
+    ],
     sections: [
       {
         title: 'Plex-triggered automation',

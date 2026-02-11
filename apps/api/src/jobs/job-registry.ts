@@ -17,7 +17,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'mediaAddedCleanup',
     name: 'Cleanup After Adding New Content',
     description:
-      'Auto-run: triggered by Plex webhooks when new media is added (duplicate cleanup across all libraries + unmonitor + watchlist removal when complete). Run Now: full sweep across all libraries + watchlist reconciliation.',
+      'Auto-run: triggered by Plex webhooks when new media is added. Run Now: full sweep across all libraries. Cleanup actions (duplicate cleanup, ARR unmonitoring, and watchlist removal) are configurable in Task Manager.',
     defaultScheduleCron: undefined,
   },
   {

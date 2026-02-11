@@ -67,6 +67,81 @@ function createJob() {
 }
 
 describe('CleanupAfterAddingNewContentJob', () => {
+  it('returns a no-op summary when all cleanup features are disabled', async () => {
+    const { job, settings, plexServer, radarr, sonarr } = createJob();
+    const ctx = createContext({});
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        jobs: {
+          mediaAddedCleanup: {
+            features: {
+              deleteDuplicates: false,
+              unmonitorInArr: false,
+              removeFromWatchlist: false,
+            },
+          },
+        },
+      },
+      secrets: {},
+    });
+
+    const result = await job.run(ctx);
+    const report = result.summary as unknown as Record<string, unknown>;
+    const raw = report.raw as Record<string, unknown>;
+    const features = raw.features as Record<string, unknown>;
+
+    expect(raw.skipped).toBe(true);
+    expect(raw.skipReason).toBe('no_features_enabled');
+    expect(features.deleteDuplicates).toBe(false);
+    expect(features.unmonitorInArr).toBe(false);
+    expect(features.removeFromWatchlist).toBe(false);
+    expect(plexServer.getSections).not.toHaveBeenCalled();
+    expect(radarr.listMovies).not.toHaveBeenCalled();
+    expect(sonarr.listSeries).not.toHaveBeenCalled();
+  });
+
+  it('does not execute duplicate or ARR mutation paths when those toggles are disabled', async () => {
+    const { job, settings, plexServer, radarr, sonarr } = createJob();
+    const ctx = createContext({
+      mediaType: 'episode',
+      showTitle: 'Example Show',
+      seasonNumber: 1,
+      episodeNumber: 2,
+    });
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex.local:32400' },
+        jobs: {
+          mediaAddedCleanup: {
+            features: {
+              deleteDuplicates: false,
+              unmonitorInArr: false,
+              removeFromWatchlist: true,
+            },
+          },
+        },
+      },
+      secrets: {
+        plex: { token: 'plex-token' },
+      },
+    });
+    plexServer.getSections.mockResolvedValue([]);
+
+    const result = await job.run(ctx);
+    const report = result.summary as unknown as Record<string, unknown>;
+    const raw = report.raw as Record<string, unknown>;
+    const duplicates = raw.duplicates as Record<string, unknown>;
+    const sonarrSummary = raw.sonarr as Record<string, unknown>;
+
+    expect(duplicates.mode).toBe('disabled');
+    expect(duplicates.reason).toBe('feature_disabled');
+    expect(sonarrSummary.connected).toBeNull();
+    expect(radarr.listMovies).not.toHaveBeenCalled();
+    expect(sonarr.listSeries).not.toHaveBeenCalled();
+  });
+
   it('treats disabled Radarr/Sonarr as not configured even when credentials are saved', async () => {
     const { job, settings, plexServer, radarr, sonarr } = createJob();
     const ctx = createContext({ mediaType: 'movie' });

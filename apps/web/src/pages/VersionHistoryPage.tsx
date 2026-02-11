@@ -15,6 +15,31 @@ export function VersionHistoryPage() {
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
 
+  const splitFeatureDetail = (
+    value: string,
+  ): { feature: string; detail: string } | null => {
+    const idx = value.indexOf(':');
+    if (idx <= 0) return null;
+    const feature = value.slice(0, idx).trim();
+    const detail = value.slice(idx + 1).trim();
+    if (!feature || !detail) return null;
+    return { feature, detail };
+  };
+
+  const renderFeatureDetail = (
+    value: string,
+    classes: { feature: string; detail: string },
+  ) => {
+    const parsed = splitFeatureDetail(value);
+    if (!parsed) return value;
+    return (
+      <>
+        <span className={classes.feature}>{parsed.feature}:</span>{' '}
+        <span className={classes.detail}>{parsed.detail}</span>
+      </>
+    );
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, amber-tinted) */}
@@ -95,10 +120,28 @@ export function VersionHistoryPage() {
                 <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/75">
                   {entry.sections.map((section, sectionIndex) => (
                     <div key={`${section.title}-${sectionIndex}`} className={sectionIndex ? 'pt-2' : ''}>
-                      <div className="font-semibold text-white/90">{section.title}</div>
+                      <div className="font-semibold text-white/90">
+                        {(() => {
+                          const parsed = splitFeatureDetail(section.title);
+                          if (!parsed) {
+                            return <span className="text-[#facc15]">{section.title}</span>;
+                          }
+                          return (
+                            <>
+                              <span className="text-[#facc15]">{parsed.feature}:</span>{' '}
+                              <span className="text-white/90">{parsed.detail}</span>
+                            </>
+                          );
+                        })()}
+                      </div>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
                         {section.bullets.map((bullet, bulletIndex) => (
-                          <li key={`${section.title}-${bulletIndex}`}>{bullet}</li>
+                          <li key={`${section.title}-${bulletIndex}`}>
+                            {renderFeatureDetail(bullet, {
+                              feature: 'text-[#facc15] font-medium',
+                              detail: 'text-white/75',
+                            })}
+                          </li>
                         ))}
                       </ul>
                     </div>

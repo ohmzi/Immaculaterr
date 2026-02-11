@@ -1495,6 +1495,25 @@ export function JobRunDetailPage() {
                             watchlistRaw && typeof watchlistRaw === 'object' && !Array.isArray(watchlistRaw)
                               ? (watchlistRaw as Record<string, unknown>)
                               : null;
+                          const featuresRaw = s.features;
+                          const features =
+                            featuresRaw &&
+                            typeof featuresRaw === 'object' &&
+                            !Array.isArray(featuresRaw)
+                              ? (featuresRaw as Record<string, unknown>)
+                              : null;
+                          const deleteDuplicates =
+                            typeof features?.deleteDuplicates === 'boolean'
+                              ? features.deleteDuplicates
+                              : true;
+                          const unmonitorInArr =
+                            typeof features?.unmonitorInArr === 'boolean'
+                              ? features.unmonitorInArr
+                              : true;
+                          const removeFromWatchlist =
+                            typeof features?.removeFromWatchlist === 'boolean'
+                              ? features.removeFromWatchlist
+                              : true;
 
                           const skipped = typeof s.skipped === 'boolean' ? s.skipped : false;
                           const mediaType = pickString(s, 'mediaType');
@@ -1524,6 +1543,12 @@ export function JobRunDetailPage() {
                                       <span className="text-white font-semibold">Title:</span> {title}
                                     </div>
                                   ) : null}
+                                  <div>
+                                    <span className="text-white font-semibold">Actions:</span>{' '}
+                                    dedupe {deleteDuplicates ? 'on' : 'off'} · ARR unmonitor{' '}
+                                    {unmonitorInArr ? 'on' : 'off'} · watchlist{' '}
+                                    {removeFromWatchlist ? 'on' : 'off'}
+                                  </div>
                                   {skipped ? (
                                     <div className="text-amber-200">Skipped (see warnings/logs)</div>
                                   ) : null}
@@ -2365,5 +2390,4 @@ export function JobRunDetailPage() {
     </div>
   );
 }
-
 

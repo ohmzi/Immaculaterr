@@ -85,7 +85,7 @@ const JOB_CONFIG: Record<
     icon: <CheckCircle2 className="w-8 h-8" />,
     color: 'text-teal-300',
     description:
-      'Cleans up new Plex media: dedupes, unmonitors extras, and tidies your watchlist.',
+      'Cleans up new Plex media with configurable actions: dedupe, ARR unmonitoring, and watchlist cleanup.',
   },
   recentlyWatchedRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
@@ -398,6 +398,14 @@ export function TaskManagerPage() {
   const [webhookAutoRun, setWebhookAutoRun] = useState<Record<string, boolean>>({});
   const [arrMonitoredIncludeRadarr, setArrMonitoredIncludeRadarr] = useState(true);
   const [arrMonitoredIncludeSonarr, setArrMonitoredIncludeSonarr] = useState(true);
+  const [mediaAddedCleanupDeleteDuplicates, setMediaAddedCleanupDeleteDuplicates] =
+    useState(true);
+  const [mediaAddedCleanupUnmonitorInArr, setMediaAddedCleanupUnmonitorInArr] =
+    useState(true);
+  const [
+    mediaAddedCleanupRemoveFromWatchlist,
+    setMediaAddedCleanupRemoveFromWatchlist,
+  ] = useState(true);
   const [immaculateFetchMissingRadarr, setImmaculateFetchMissingRadarr] =
     useState(true);
   const [immaculateFetchMissingSonarr, setImmaculateFetchMissingSonarr] =
@@ -593,6 +601,41 @@ export function TaskManagerPage() {
     setArrMonitoredIncludeRadarr(includeRadarr ?? true);
     setArrMonitoredIncludeSonarr(includeSonarr ?? true);
   }, [settingsQuery.data?.settings, arrMonitoredSearchOptionsMutation.isPending]);
+
+  const mediaAddedCleanupFeaturesMutation = useMutation({
+    mutationFn: async (patch: {
+      deleteDuplicates?: boolean;
+      unmonitorInArr?: boolean;
+      removeFromWatchlist?: boolean;
+    }) =>
+      putSettings({
+        settings: {
+          jobs: {
+            mediaAddedCleanup: {
+              features: patch,
+            },
+          },
+        },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
+  useEffect(() => {
+    if (mediaAddedCleanupFeaturesMutation.isPending) return;
+    const settings = settingsQuery.data?.settings;
+    if (!settings) return;
+    setMediaAddedCleanupDeleteDuplicates(
+      readBool(settings, 'jobs.mediaAddedCleanup.features.deleteDuplicates') ?? true,
+    );
+    setMediaAddedCleanupUnmonitorInArr(
+      readBool(settings, 'jobs.mediaAddedCleanup.features.unmonitorInArr') ?? true,
+    );
+    setMediaAddedCleanupRemoveFromWatchlist(
+      readBool(settings, 'jobs.mediaAddedCleanup.features.removeFromWatchlist') ?? true,
+    );
+  }, [settingsQuery.data?.settings, mediaAddedCleanupFeaturesMutation.isPending]);
 
   const fetchMissingMutation = useMutation({
     mutationFn: async (params: {
@@ -1340,8 +1383,13 @@ export function TaskManagerPage() {
                   false);
               const iconPulseActive = cardIconPulse?.jobId === job.id;
               const isExpanded = expandedCards[job.id] ?? false;
+              const mediaAddedCleanupAllDisabled =
+                !mediaAddedCleanupDeleteDuplicates &&
+                !mediaAddedCleanupUnmonitorInArr &&
+                !mediaAddedCleanupRemoveFromWatchlist;
               const canExpand =
                 (supportsSchedule && Boolean(job.schedule || job.defaultScheduleCron)) ||
+                job.id === 'mediaAddedCleanup' ||
                 job.id === 'immaculateTastePoints' ||
                 job.id === 'watchedMovieRecommendations';
 
@@ -1461,6 +1509,8 @@ export function TaskManagerPage() {
                                 scheduleMutation.variables?.jobId === job.id) ||
                               (webhookAutoRunMutation.isPending &&
                                 webhookAutoRunMutation.variables?.jobId === job.id) ||
+                              (job.id === 'mediaAddedCleanup' &&
+                                mediaAddedCleanupFeaturesMutation.isPending) ||
                               (job.id === 'immaculateTastePoints' &&
                                 immaculateIncludeRefresherMutation.isPending)
                             }
@@ -1573,7 +1623,8 @@ export function TaskManagerPage() {
                               const next = !webhookEnabled;
                               const shouldAutoExpandOnce =
                                 next &&
-                                (job.id === 'immaculateTastePoints' ||
+                                (job.id === 'mediaAddedCleanup' ||
+                                  job.id === 'immaculateTastePoints' ||
                                   job.id === 'watchedMovieRecommendations') &&
                                 autoExpandSeen[job.id] !== true;
                               setWebhookAutoRun((p) => ({ ...p, [job.id]: next }));
@@ -1779,7 +1830,8 @@ export function TaskManagerPage() {
                   {!supportsSchedule && (
                     <AnimatePresence initial={false}>
                       {isExpanded &&
-                        (job.id === 'immaculateTastePoints' ||
+                        (job.id === 'mediaAddedCleanup' ||
+                          job.id === 'immaculateTastePoints' ||
                           job.id === 'watchedMovieRecommendations') && (
                           <motion.div
                             data-no-card-toggle="true"
@@ -1796,7 +1848,190 @@ export function TaskManagerPage() {
                           >
                             <div className="px-6 md:px-8 py-5">
                               <div className="flex flex-col gap-3">
-                                {job.id === 'immaculateTastePoints' ? (
+                                {job.id === 'mediaAddedCleanup' ? (
+                                  <div className="rounded-2xl bg-[#0F0B15]/35 border border-white/5 p-4">
+                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                      Cleanup actions
+                                    </div>
+
+                                    <div className="mt-3 flex flex-col gap-3">
+                                      <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
+                                            Delete duplicate media
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                            Deduplicate recently downloaded movies and episodes.
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={mediaAddedCleanupDeleteDuplicates}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = mediaAddedCleanupDeleteDuplicates;
+                                            const next = !prev;
+                                            setMediaAddedCleanupDeleteDuplicates(next);
+                                            mediaAddedCleanupFeaturesMutation.mutate(
+                                              { deleteDuplicates: next },
+                                              {
+                                                onError: () =>
+                                                  setMediaAddedCleanupDeleteDuplicates(prev),
+                                              },
+                                            );
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            mediaAddedCleanupFeaturesMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            mediaAddedCleanupDeleteDuplicates
+                                              ? 'bg-[#facc15]'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label="Toggle duplicate deletion for cleanup after adding new content"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              mediaAddedCleanupDeleteDuplicates
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {mediaAddedCleanupFeaturesMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+
+                                      <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
+                                            Unmonitor recently downloaded media
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                            Enable ARR monitoring mutations for matched movies, episodes, and seasons.
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={mediaAddedCleanupUnmonitorInArr}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = mediaAddedCleanupUnmonitorInArr;
+                                            const next = !prev;
+                                            setMediaAddedCleanupUnmonitorInArr(next);
+                                            mediaAddedCleanupFeaturesMutation.mutate(
+                                              { unmonitorInArr: next },
+                                              {
+                                                onError: () =>
+                                                  setMediaAddedCleanupUnmonitorInArr(prev),
+                                              },
+                                            );
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            mediaAddedCleanupFeaturesMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            mediaAddedCleanupUnmonitorInArr
+                                              ? 'bg-[#facc15]'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label="Toggle ARR unmonitoring for cleanup after adding new content"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              mediaAddedCleanupUnmonitorInArr
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {mediaAddedCleanupFeaturesMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+
+                                      <div className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3">
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-white">
+                                            Remove recently added media from watchlist
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                            Remove completed items from Plex watchlist reconciliation logic.
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          role="switch"
+                                          aria-checked={mediaAddedCleanupRemoveFromWatchlist}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const prev = mediaAddedCleanupRemoveFromWatchlist;
+                                            const next = !prev;
+                                            setMediaAddedCleanupRemoveFromWatchlist(next);
+                                            mediaAddedCleanupFeaturesMutation.mutate(
+                                              { removeFromWatchlist: next },
+                                              {
+                                                onError: () =>
+                                                  setMediaAddedCleanupRemoveFromWatchlist(prev),
+                                              },
+                                            );
+                                          }}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          disabled={
+                                            settingsQuery.isLoading ||
+                                            mediaAddedCleanupFeaturesMutation.isPending
+                                          }
+                                          className={cn(
+                                            'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                            mediaAddedCleanupRemoveFromWatchlist
+                                              ? 'bg-[#facc15]'
+                                              : 'bg-[#2a2438] border-2 border-white/10',
+                                          )}
+                                          aria-label="Toggle watchlist cleanup for cleanup after adding new content"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                              mediaAddedCleanupRemoveFromWatchlist
+                                                ? 'translate-x-6'
+                                                : 'translate-x-1',
+                                            )}
+                                          >
+                                            {mediaAddedCleanupFeaturesMutation.isPending && (
+                                              <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                            )}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {mediaAddedCleanupAllDisabled && (
+                                      <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                                        All cleanup actions are disabled. Runs will complete as a no-op.
+                                      </div>
+                                    )}
+
+                                    {mediaAddedCleanupFeaturesMutation.isError && (
+                                      <div className="mt-3 flex items-center gap-2 text-sm text-red-300">
+                                        <CircleAlert className="w-4 h-4" />
+                                        {(mediaAddedCleanupFeaturesMutation.error as Error).message}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : job.id === 'immaculateTastePoints' ? (
                                   <>
                                     <div
                                       role="button"
