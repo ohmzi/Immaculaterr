@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.5.0
+1.5.1
 ---
 
 - Per-viewer personalization for Movies + TV:
@@ -34,6 +34,11 @@ This file tracks notable changes by version.
   - Expanded user-aware reset/debug/reporting coverage.
   - Compose keeps host networking with visible mapped ports.
   - Removed GitHub token env dependency from update checks.
+- Cleanup After Adding New Content task now has independent action toggles:
+  - Delete duplicate media
+  - Unmonitor recently downloaded media in ARR
+  - Remove recently added media from Plex watchlist
+  - Any combination of toggles is supported; all OFF runs as a no-op with skipped actions in reports.
 
 1.0.0.600
 ---

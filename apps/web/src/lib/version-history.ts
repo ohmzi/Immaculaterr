@@ -18,13 +18,14 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.5.0',
+    version: '1.5.1',
     popupHighlights: [
-      'Recommendations now feel more personal for each Plex viewer.',
-      'Plex row placement is smarter for admin and shared users.',
-      'Library selection is easier to manage and safer during setup and later edits.',
-      'You can optionally route missing requests through Overseerr in one place.',
-      'Observatory is more stable and makes it easier to reject repeats.',
+      'Recommendations (Movies + TV): now personalized per Plex viewer.',
+      'Plex pinning: row placement is smarter for admin and shared users.',
+      'Plex library selection: safer setup and easier ongoing management.',
+      'Overseerr integration: optional centralized missing-request routing.',
+      'Observatory: improved stability and easier reject-list workflow.',
+      'Task Manager > Cleanup After Adding New Content: independent action toggles.',
     ],
     sections: [
       {
@@ -81,6 +82,14 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Expanded user-aware reset/debug controls and clearer user/media run reporting.',
           'Compose keeps host networking while still showing mapped ports.',
           'Removed GitHub token env dependency from update checks.',
+        ],
+      },
+      {
+        title: 'Cleanup After Adding New Content',
+        bullets: [
+          'Choose any combination of duplicate cleanup, ARR unmonitoring, and watchlist removal.',
+          'Turning off ARR unmonitoring now disables all ARR monitoring mutations for this task.',
+          'If all cleanup toggles are off, the task runs as a no-op and reports skipped actions.',
         ],
       },
     ],

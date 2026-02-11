@@ -15,6 +15,15 @@ export function WhatsNewModal(props: {
       ? entry.popupHighlights
       : (entry?.sections ?? []).map((section) => section.title).slice(0, 5);
 
+  const splitHighlight = (line: string): { feature: string; detail: string } | null => {
+    const idx = line.indexOf(':');
+    if (idx <= 0) return null;
+    const feature = line.slice(0, idx).trim();
+    const detail = line.slice(idx + 1).trim();
+    if (!feature || !detail) return null;
+    return { feature, detail };
+  };
+
   return (
     <AnimatePresence>
       {open && entry ? (
@@ -62,7 +71,20 @@ export function WhatsNewModal(props: {
                       aria-hidden="true"
                       className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#facc15]"
                     />
-                    <p className="text-sm leading-relaxed text-white/80">{line}</p>
+                    <p className="text-sm leading-relaxed text-white/80">
+                      {(() => {
+                        const parsed = splitHighlight(line);
+                        if (!parsed) return line;
+                        return (
+                          <>
+                            <span className="font-semibold text-[#facc15]">
+                              {parsed.feature}:
+                            </span>{' '}
+                            <span className="text-white/80">{parsed.detail}</span>
+                          </>
+                        );
+                      })()}
+                    </p>
                   </div>
                 ))}
               </div>
