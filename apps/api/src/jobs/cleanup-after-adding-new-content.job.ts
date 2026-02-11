@@ -152,6 +152,32 @@ function resolutionPriority(resolution: string | null): number {
   return 1;
 }
 
+type MediaAddedCleanupFeatures = {
+  deleteDuplicates: boolean;
+  unmonitorInArr: boolean;
+  removeFromWatchlist: boolean;
+};
+
+function readMediaAddedCleanupFeatures(
+  settings: Record<string, unknown>,
+): MediaAddedCleanupFeatures {
+  return {
+    deleteDuplicates:
+      pickBool(
+        settings,
+        'jobs.mediaAddedCleanup.features.deleteDuplicates',
+      ) ?? true,
+    unmonitorInArr:
+      pickBool(settings, 'jobs.mediaAddedCleanup.features.unmonitorInArr') ??
+      true,
+    removeFromWatchlist:
+      pickBool(
+        settings,
+        'jobs.mediaAddedCleanup.features.removeFromWatchlist',
+      ) ?? true,
+  };
+}
+
 @Injectable()
 export class CleanupAfterAddingNewContentJob {
   constructor(
@@ -190,6 +216,132 @@ export class CleanupAfterAddingNewContentJob {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
 
+    // Manual runs (Task Manager "Run now") should behave like a global cleanup sweep.
+    // Treat any provided input as optional/no-op in manual mode.
+    const input = ctx.trigger === 'manual' ? {} : (ctx.input ?? {});
+    const mediaType = (pickString(input, 'mediaType') ?? '').toLowerCase();
+    const title = pickString(input, 'title') ?? '';
+    const year = pickNumber(input, 'year') ?? null;
+    const ratingKey = pickString(input, 'ratingKey') ?? null;
+    const showTitle =
+      pickString(input, 'showTitle') ??
+      // Some Plex webhook payloads include this style.
+      pickString(input, 'grandparentTitle') ??
+      null;
+    const showRatingKey =
+      pickString(input, 'showRatingKey') ??
+      pickString(input, 'grandparentRatingKey') ??
+      null;
+    const seasonNumber = pickNumber(input, 'seasonNumber') ?? null;
+    const episodeNumber = pickNumber(input, 'episodeNumber') ?? null;
+    const tvdbIdInput = pickNumber(input, 'tvdbId');
+    const tmdbIdInput = pickNumber(input, 'tmdbId');
+    const plexEvent = pickString(input, 'plexEvent') ?? null;
+    const persistedPath = pickString(input, 'persistedPath') ?? null;
+
+    const features = readMediaAddedCleanupFeatures(settings);
+    const featuresSummary: JsonObject = {
+      deleteDuplicates: features.deleteDuplicates,
+      unmonitorInArr: features.unmonitorInArr,
+      removeFromWatchlist: features.removeFromWatchlist,
+    };
+
+    const radarrBaseUrlRaw =
+      pickString(settings, 'radarr.baseUrl') ??
+      pickString(settings, 'radarr.url') ??
+      null;
+    const radarrApiKey = pickString(secrets, 'radarr.apiKey') ?? null;
+    const radarrEnabledSetting = pickBool(settings, 'radarr.enabled');
+    const radarrIntegrationEnabled =
+      (radarrEnabledSetting ?? Boolean(radarrApiKey)) === true;
+    const radarrConfigured = Boolean(
+      radarrIntegrationEnabled && radarrBaseUrlRaw && radarrApiKey,
+    );
+
+    const sonarrBaseUrlRaw =
+      pickString(settings, 'sonarr.baseUrl') ??
+      pickString(settings, 'sonarr.url') ??
+      null;
+    const sonarrApiKey = pickString(secrets, 'sonarr.apiKey') ?? null;
+    const sonarrEnabledSetting = pickBool(settings, 'sonarr.enabled');
+    const sonarrIntegrationEnabled =
+      (sonarrEnabledSetting ?? Boolean(sonarrApiKey)) === true;
+    const sonarrConfigured = Boolean(
+      sonarrIntegrationEnabled && sonarrBaseUrlRaw && sonarrApiKey,
+    );
+
+    const summary: JsonObject = {
+      dryRun: ctx.dryRun,
+      plexEvent,
+      mediaType,
+      title,
+      year,
+      ratingKey,
+      showTitle,
+      showRatingKey,
+      seasonNumber,
+      episodeNumber,
+      features: featuresSummary,
+      skipReason: null as string | null,
+      radarr: {
+        configured: radarrConfigured,
+        connected: null as boolean | null,
+        moviesUnmonitored: 0,
+        moviesWouldUnmonitor: 0,
+        error: null as string | null,
+      },
+      sonarr: {
+        configured: sonarrConfigured,
+        connected: null as boolean | null,
+        episodesUnmonitored: 0,
+        episodesWouldUnmonitor: 0,
+        error: null as string | null,
+      },
+      watchlist: { removed: 0, attempted: 0, matchedBy: 'none' as const },
+      duplicates: null,
+      skipped: false,
+      warnings: [] as string[],
+    };
+
+    // Make this job show a live "what it's doing" card while running. The final jobReportV1
+    // produced by `toReport(...)` replaces this summary on completion.
+    await ctx.setSummary({
+      phase: 'running',
+      ...summary,
+      progress: {
+        step: 'starting',
+        message: 'Starting cleanup…',
+        current: 1,
+        total: PROGRESS_TOTAL_STEPS,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    const toReport = (rawSummary: JsonObject): JobRunResult => {
+      const report = buildMediaAddedCleanupReport({ ctx, raw: rawSummary });
+      return { summary: report as unknown as JsonObject };
+    };
+
+    if (
+      !features.deleteDuplicates &&
+      !features.unmonitorInArr &&
+      !features.removeFromWatchlist
+    ) {
+      summary.skipped = true;
+      summary.skipReason = 'no_features_enabled';
+      await ctx.info(
+        'mediaAddedCleanup: all features disabled; exiting as no-op',
+        {
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          features,
+          mediaType,
+          title,
+        },
+      );
+      return toReport(summary);
+    }
+
     const plexBaseUrlRaw =
       pickString(settings, 'plex.baseUrl') ??
       pickString(settings, 'plex.url') ??
@@ -224,54 +376,15 @@ export class CleanupAfterAddingNewContentJob {
       ...pickStringArray(settings, 'plex.preserve_quality'),
     ];
 
-    const radarrBaseUrlRaw =
-      pickString(settings, 'radarr.baseUrl') ??
-      pickString(settings, 'radarr.url') ??
-      null;
-    const radarrApiKey = pickString(secrets, 'radarr.apiKey') ?? null;
-    const radarrEnabledSetting = pickBool(settings, 'radarr.enabled');
-    const radarrIntegrationEnabled =
-      (radarrEnabledSetting ?? Boolean(radarrApiKey)) === true;
     const radarrBaseUrl =
       radarrIntegrationEnabled && radarrBaseUrlRaw && radarrApiKey
         ? normalizeHttpUrl(radarrBaseUrlRaw)
         : null;
 
-    const sonarrBaseUrlRaw =
-      pickString(settings, 'sonarr.baseUrl') ??
-      pickString(settings, 'sonarr.url') ??
-      null;
-    const sonarrApiKey = pickString(secrets, 'sonarr.apiKey') ?? null;
-    const sonarrEnabledSetting = pickBool(settings, 'sonarr.enabled');
-    const sonarrIntegrationEnabled =
-      (sonarrEnabledSetting ?? Boolean(sonarrApiKey)) === true;
     const sonarrBaseUrl =
       sonarrIntegrationEnabled && sonarrBaseUrlRaw && sonarrApiKey
         ? normalizeHttpUrl(sonarrBaseUrlRaw)
         : null;
-
-    // Manual runs (Task Manager "Run now") should behave like a global cleanup sweep.
-    // Treat any provided input as optional/no-op in manual mode.
-    const input = ctx.trigger === 'manual' ? {} : (ctx.input ?? {});
-    const mediaType = (pickString(input, 'mediaType') ?? '').toLowerCase();
-    const title = pickString(input, 'title') ?? '';
-    const year = pickNumber(input, 'year') ?? null;
-    const ratingKey = pickString(input, 'ratingKey') ?? null;
-    const showTitle =
-      pickString(input, 'showTitle') ??
-      // Some Plex webhook payloads include this style.
-      pickString(input, 'grandparentTitle') ??
-      null;
-    const showRatingKey =
-      pickString(input, 'showRatingKey') ??
-      pickString(input, 'grandparentRatingKey') ??
-      null;
-    const seasonNumber = pickNumber(input, 'seasonNumber') ?? null;
-    const episodeNumber = pickNumber(input, 'episodeNumber') ?? null;
-    const tvdbIdInput = pickNumber(input, 'tvdbId');
-    const tmdbIdInput = pickNumber(input, 'tmdbId');
-    const plexEvent = pickString(input, 'plexEvent') ?? null;
-    const persistedPath = pickString(input, 'persistedPath') ?? null;
 
     await ctx.info('mediaAddedCleanup: start', {
       dryRun: ctx.dryRun,
@@ -285,61 +398,12 @@ export class CleanupAfterAddingNewContentJob {
       seasonNumber,
       episodeNumber,
       persistedPath,
+      features,
       deletePreference,
       preserveQualityTerms,
       radarrConfigured: Boolean(radarrBaseUrl && radarrApiKey),
       sonarrConfigured: Boolean(sonarrBaseUrl && sonarrApiKey),
     });
-
-    const summary: JsonObject = {
-      dryRun: ctx.dryRun,
-      plexEvent,
-      mediaType,
-      title,
-      year,
-      ratingKey,
-      showTitle,
-      showRatingKey,
-      seasonNumber,
-      episodeNumber,
-      radarr: {
-        configured: Boolean(radarrBaseUrl && radarrApiKey),
-        connected: null as boolean | null,
-        moviesUnmonitored: 0,
-        moviesWouldUnmonitor: 0,
-        error: null as string | null,
-      },
-      sonarr: {
-        configured: Boolean(sonarrBaseUrl && sonarrApiKey),
-        connected: null as boolean | null,
-        episodesUnmonitored: 0,
-        episodesWouldUnmonitor: 0,
-        error: null as string | null,
-      },
-      watchlist: { removed: 0, attempted: 0, matchedBy: 'none' as const },
-      duplicates: null,
-      skipped: false,
-      warnings: [] as string[],
-    };
-
-    // Make this job show a live "what it's doing" card while running. The final jobReportV1
-    // produced by `toReport(...)` replaces this summary on completion.
-    await ctx.setSummary({
-      phase: 'running',
-      ...summary,
-      progress: {
-        step: 'starting',
-        message: 'Starting cleanup…',
-        current: 1,
-        total: PROGRESS_TOTAL_STEPS,
-        updatedAt: new Date().toISOString(),
-      },
-    });
-
-    const toReport = (rawSummary: JsonObject): JobRunResult => {
-      const report = buildMediaAddedCleanupReport({ ctx, raw: rawSummary });
-      return { summary: report as unknown as JsonObject };
-    };
 
     if (!mediaType) {
       await ctx.info(
@@ -365,17 +429,14 @@ export class CleanupAfterAddingNewContentJob {
         if (!s) return;
         list.push(s);
       };
-
-      await setProgress(2, 'scan_movies', 'Scanning Plex movies for duplicates…', {
-        libraries: plexMovieSections.map((s) => s.title),
-      });
+      let plexTvdbRatingKeysForSweep: Map<number, string[]> | null = null;
 
       // --- Load Radarr index once (best-effort)
       let radarrMovies: RadarrMovie[] = [];
       const radarrByTmdb = new Map<number, RadarrMovie>();
       const radarrByNormTitle = new Map<string, RadarrMovie>();
       let fullSweepRadarrConnected: boolean | null = null;
-      if (radarrBaseUrl && radarrApiKey) {
+      if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
         try {
           radarrMovies = await this.radarr.listMovies({
             baseUrl: radarrBaseUrl,
@@ -406,7 +467,11 @@ export class CleanupAfterAddingNewContentJob {
       const sonarrByNormTitle = new Map<string, SonarrSeries>();
       const sonarrEpisodesCache = new Map<number, Map<string, SonarrEpisode>>();
       let fullSweepSonarrConnected: boolean | null = null;
-      if (sonarrBaseUrl && sonarrApiKey) {
+      if (
+        sonarrBaseUrl &&
+        sonarrApiKey &&
+        (features.removeFromWatchlist || features.unmonitorInArr)
+      ) {
         try {
           sonarrSeriesList = await this.sonarr.listSeries({
             baseUrl: sonarrBaseUrl,
@@ -507,7 +572,6 @@ export class CleanupAfterAddingNewContentJob {
         return byTitle ?? null;
       };
 
-      // --- Movie duplicates sweep
       const movieStats = {
         scanned: 0,
         groups: 0,
@@ -525,6 +589,22 @@ export class CleanupAfterAddingNewContentJob {
         radarrUnmonitoredItems: [] as string[],
         itemsTruncated: false,
       };
+      const episodeStats = {
+        candidates: 0,
+        groupsWithDuplicates: 0,
+        metadataDeleted: 0,
+        metadataWouldDelete: 0,
+        partsDeleted: 0,
+        partsWouldDelete: 0,
+        failures: 0,
+        sonarrUnmonitored: 0,
+        sonarrWouldUnmonitor: 0,
+        sonarrNotFound: 0,
+        deletedMetadataItems: [] as string[],
+        deletedVersionItems: [] as string[],
+        sonarrUnmonitoredItems: [] as string[],
+        itemsTruncated: false,
+      };
 
       const deletedMovieRatingKeys = new Set<string>();
       const movies: Array<{
@@ -536,7 +616,16 @@ export class CleanupAfterAddingNewContentJob {
         libraryTitle: string;
       }> = [];
 
-      try {
+      if (features.deleteDuplicates) {
+        await setProgress(
+          2,
+          'scan_movies',
+          'Scanning Plex movies for duplicates…',
+          {
+            libraries: plexMovieSections.map((s) => s.title),
+          },
+        );
+        try {
         await ctx.info('plex: loading movies (tmdb index)', {
           libraries: plexMovieSections.map((s) => s.title),
         });
@@ -705,7 +794,7 @@ export class CleanupAfterAddingNewContentJob {
           });
 
           // Unmonitor in Radarr once per TMDB group (best-effort).
-          if (radarrBaseUrl && radarrApiKey) {
+          if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
             const candidate = pickRadarrMovie(tmdbId, keep.title);
             if (!candidate) {
               movieStats.radarrNotFound += 1;
@@ -934,7 +1023,7 @@ export class CleanupAfterAddingNewContentJob {
                     ? pickRadarrMovie(tmdbId, dup.title)
                     : null;
 
-                if (radarrBaseUrl && radarrApiKey) {
+                if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
                   if (!candidate) {
                     movieStats.radarrNotFound += 1;
                   await ctx.warn('radarr: movie not found for duplicate-only item', {
@@ -1028,30 +1117,13 @@ export class CleanupAfterAddingNewContentJob {
             error: msg,
           });
         }
-      } catch (err) {
+        } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
         sweepWarnings.push(`plex: movie scan failed: ${msg}`);
         await ctx.warn('plex: movie scan failed (continuing)', { error: msg });
       }
 
       // --- Episode duplicates sweep
-      const episodeStats = {
-        candidates: 0,
-        groupsWithDuplicates: 0,
-        metadataDeleted: 0,
-        metadataWouldDelete: 0,
-        partsDeleted: 0,
-        partsWouldDelete: 0,
-        failures: 0,
-        sonarrUnmonitored: 0,
-        sonarrWouldUnmonitor: 0,
-        sonarrNotFound: 0,
-        deletedMetadataItems: [] as string[],
-        deletedVersionItems: [] as string[],
-        sonarrUnmonitoredItems: [] as string[],
-        itemsTruncated: false,
-      };
-
       type EpisodeCandidate = {
         ratingKey: string;
         showTitle: string | null;
@@ -1235,6 +1307,7 @@ export class CleanupAfterAddingNewContentJob {
 
           // Unmonitor in Sonarr once per logical episode key (best-effort)
           if (
+            features.unmonitorInArr &&
             sonarrBaseUrl &&
             sonarrApiKey &&
             showTitle &&
@@ -1377,30 +1450,6 @@ export class CleanupAfterAddingNewContentJob {
               // ignore verification failures
             }
 
-                // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
-                try {
-                  const post = await this.plexServer.getMetadataDetails({
-                    baseUrl: plexBaseUrl,
-                    token: plexToken,
-                    ratingKey: keep.ratingKey,
-                  });
-                  const mediaCount = post?.media?.length ?? 0;
-                  if (mediaCount > 1) {
-                    sweepWarnings.push(
-                      `plex: episode still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
-                    );
-                    await ctx.warn(
-                      'plex: episode still has multiple media versions after cleanup',
-                      {
-                        ratingKey: keep.ratingKey,
-                        tvdbId: post?.tvdbIds?.[0] ?? null,
-                        mediaCount,
-                      },
-                    );
-                  }
-                } catch {
-                  // ignore verification failures
-                }
           } catch (err) {
             episodeStats.failures += 1;
             await ctx.warn(
@@ -1419,8 +1468,6 @@ export class CleanupAfterAddingNewContentJob {
           error: msg,
         });
       }
-
-      let plexTvdbRatingKeysForSweep: Map<number, string[]> | null = null;
 
       // --- Cross-library episode duplicates (same TVDB series present in multiple Plex libraries)
       try {
@@ -1540,7 +1587,7 @@ export class CleanupAfterAddingNewContentJob {
               const deleteKeys = rks.filter((rk) => rk !== keep.ratingKey);
 
               // Unmonitor in Sonarr (exact episode) if possible
-              if (epMap) {
+              if (features.unmonitorInArr && epMap) {
                 const sonarrEp = epMap.get(key) ?? null;
                 if (sonarrEp && sonarrEp.monitored) {
                   if (ctx.dryRun) {
@@ -1627,11 +1674,19 @@ export class CleanupAfterAddingNewContentJob {
           error: msg,
         });
       }
+      } else {
+        await ctx.info(
+          'mediaAddedCleanup: duplicate cleanup feature disabled; skipping duplicate sweeps',
+          { trigger: ctx.trigger, dryRun: ctx.dryRun },
+        );
+      }
 
       // --- Watchlist reconciliation (best-effort)
       const watchlistWarnings: string[] = [];
       const watchlistStats = {
-        mode: 'reconcile' as const,
+        mode: (features.removeFromWatchlist ? 'reconcile' : 'disabled') as
+          | 'reconcile'
+          | 'disabled',
         movies: {
           total: 0,
           inPlex: 0,
@@ -1663,26 +1718,64 @@ export class CleanupAfterAddingNewContentJob {
         warnings: watchlistWarnings,
       };
 
-      const plexMovieYearsByNormTitle = new Map<string, Set<number | null>>();
-      for (const m of movies) {
-        const t = m.title?.trim();
-        if (!t) continue;
-        const norm = normTitle(t);
-        if (!norm) continue;
-        const set =
-          plexMovieYearsByNormTitle.get(norm) ?? new Set<number | null>();
-        set.add(m.year ?? null);
-        plexMovieYearsByNormTitle.set(norm, set);
-      }
+      if (features.removeFromWatchlist) {
+        const plexMovieYearsByNormTitle = new Map<string, Set<number | null>>();
+        const addMovieToYearIndex = (
+          movieTitle: string | null | undefined,
+          movieYear: number | null | undefined,
+        ) => {
+          const t = movieTitle?.trim();
+          if (!t) return;
+          const norm = normTitle(t);
+          if (!norm) return;
+          const set =
+            plexMovieYearsByNormTitle.get(norm) ?? new Set<number | null>();
+          set.add(movieYear ?? null);
+          plexMovieYearsByNormTitle.set(norm, set);
+        };
 
-      await setProgress(
-        6,
-        'watchlist',
-        'Reconciling Plex watchlist (and unmonitoring in Radarr/Sonarr)…',
-      );
+        // Reuse movie index already gathered by duplicate sweep when available.
+        for (const m of movies) {
+          addMovieToYearIndex(m.title, m.year ?? null);
+        }
 
-      // Movies: remove from watchlist if now in Plex; unmonitor in Radarr (best-effort)
-      try {
+        // Watchlist-only runs still need a Plex movie index.
+        if (plexMovieYearsByNormTitle.size === 0) {
+          for (const sec of plexMovieSections) {
+            try {
+              const items = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
+                baseUrl: plexBaseUrl,
+                token: plexToken,
+                librarySectionKey: sec.key,
+                sectionTitle: sec.title,
+              });
+              for (const it of items) {
+                addMovieToYearIndex(it.title, it.year ?? null);
+              }
+            } catch (err) {
+              const msg = (err as Error)?.message ?? String(err);
+              watchlistWarnings.push(
+                `plex: failed indexing movies for watchlist reconciliation section=${sec.title} (continuing): ${msg}`,
+              );
+              await ctx.warn(
+                'plex: failed indexing movies for watchlist reconciliation (continuing)',
+                {
+                  section: sec.title,
+                  error: msg,
+                },
+              );
+            }
+          }
+        }
+
+        await setProgress(
+          6,
+          'watchlist',
+          'Reconciling Plex watchlist (and unmonitoring in Radarr/Sonarr)…',
+        );
+
+        // Movies: remove from watchlist if now in Plex; unmonitor in Radarr (best-effort)
+        try {
         const wlMovies = await this.plexWatchlist.listWatchlist({
           token: plexToken,
           kind: 'movie',
@@ -1725,7 +1818,7 @@ export class CleanupAfterAddingNewContentJob {
           }
 
           // Unmonitor in Radarr (best-effort)
-          if (radarrBaseUrl && radarrApiKey) {
+          if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
             const candidate =
               radarrByNormTitle.get(normTitle(it.title)) ?? null;
             if (!candidate) {
@@ -1755,7 +1848,7 @@ export class CleanupAfterAddingNewContentJob {
             }
           }
         }
-      } catch (err) {
+        } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
         watchlistWarnings.push(
           `plex: failed loading movie watchlist (continuing): ${msg}`,
@@ -1765,13 +1858,13 @@ export class CleanupAfterAddingNewContentJob {
         });
       }
 
-      // Shows: only remove from watchlist if Plex has ALL episodes (per Sonarr), then unmonitor in Sonarr.
-      if (!sonarrBaseUrl || !sonarrApiKey) {
+        // Shows: only remove from watchlist if Plex has ALL episodes (per Sonarr), then unmonitor in Sonarr.
+        if (!sonarrBaseUrl || !sonarrApiKey) {
         watchlistWarnings.push(
           'sonarr: not configured; skipping show watchlist reconciliation',
         );
-      } else {
-        try {
+        } else {
+          try {
           const wlShows = await this.plexWatchlist.listWatchlist({
             token: plexToken,
             kind: 'show',
@@ -1889,7 +1982,9 @@ export class CleanupAfterAddingNewContentJob {
             }
 
             // Unmonitor in Sonarr (best-effort)
-            if (!series.monitored) {
+            if (!features.unmonitorInArr) {
+              // ARR monitoring mutation disabled for this task.
+            } else if (!series.monitored) {
               // already unmonitored
             } else if (ctx.dryRun) {
               watchlistStats.shows.sonarrWouldUnmonitor += 1;
@@ -1915,7 +2010,7 @@ export class CleanupAfterAddingNewContentJob {
               }
             }
           }
-        } catch (err) {
+          } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
           watchlistWarnings.push(
             `plex: failed loading show watchlist (continuing): ${msg}`,
@@ -1923,7 +2018,13 @@ export class CleanupAfterAddingNewContentJob {
           await ctx.warn('plex: failed loading show watchlist (continuing)', {
             error: msg,
           });
+          }
         }
+      } else {
+        await ctx.info(
+          'mediaAddedCleanup: watchlist cleanup feature disabled; skipping watchlist reconciliation',
+          { trigger: ctx.trigger, dryRun: ctx.dryRun },
+        );
       }
 
       // Manual-run (Run now): if a monitored Sonarr show has a season that is fully present in Plex,
@@ -1934,7 +2035,12 @@ export class CleanupAfterAddingNewContentJob {
       let sonarrSeasonsUnmonitored = 0;
       let sonarrSeasonsWouldUnmonitor = 0;
       const seasonSyncWarnings: string[] = [];
-      if (ctx.trigger === 'manual' && sonarrBaseUrl && sonarrApiKey) {
+      if (
+        features.unmonitorInArr &&
+        ctx.trigger === 'manual' &&
+        sonarrBaseUrl &&
+        sonarrApiKey
+      ) {
         try {
           // Build (or reuse) Plex TVDB->ratingKeys map across all TV libraries
           const plexTvdbRatingKeys =
@@ -2101,12 +2207,17 @@ export class CleanupAfterAddingNewContentJob {
 
       summary.watchlist = watchlistStats as unknown as JsonObject;
 
-      summary.duplicates = {
-        mode: 'fullSweep',
-        movie: movieStats,
-        episode: episodeStats,
-        warnings: sweepWarnings,
-      } as unknown as JsonObject;
+      summary.duplicates = features.deleteDuplicates
+        ? ({
+            mode: 'fullSweep',
+            movie: movieStats,
+            episode: episodeStats,
+            warnings: sweepWarnings,
+          } as unknown as JsonObject)
+        : ({
+            mode: 'disabled',
+            reason: 'feature_disabled',
+          } as unknown as JsonObject);
 
       (summary.warnings as string[]).push(
         ...sweepWarnings,
@@ -2744,16 +2855,26 @@ export class CleanupAfterAddingNewContentJob {
 
       // Duplicate cleanup: scan the entire Plex movie library section where this item was added,
       // and clean up ALL duplicates in that library (not just the added title).
-      if (movieLibrarySectionKey) {
-        summary.duplicates = await runMovieLibraryDuplicateSweep({
-          librarySectionKey: movieLibrarySectionKey,
-          librarySectionTitle: movieLibrarySectionTitle,
-        });
+      if (features.deleteDuplicates) {
+        if (movieLibrarySectionKey) {
+          summary.duplicates = await runMovieLibraryDuplicateSweep({
+            librarySectionKey: movieLibrarySectionKey,
+            librarySectionTitle: movieLibrarySectionTitle,
+          });
+        } else {
+          (summary.warnings as string[]).push(
+            'plex: could not resolve movie library section; skipping duplicate sweep',
+          );
+          summary.duplicates = null;
+        }
       } else {
-        (summary.warnings as string[]).push(
-          'plex: could not resolve movie library section; skipping duplicate sweep',
+        summary.duplicates = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+        await ctx.info(
+          'mediaAddedCleanup(movie): duplicate cleanup feature disabled',
         );
-        summary.duplicates = null;
       }
       // Keep summary fields consistent for downstream steps (Radarr/watchlist)
       summary.title = resolvedTitle;
@@ -2772,7 +2893,10 @@ export class CleanupAfterAddingNewContentJob {
         moviesWouldUnmonitor: 0,
         error: null as string | null,
       };
-      if (radarrBaseUrl && radarrApiKey) {
+      if (!features.unmonitorInArr) {
+        radarrSummary.connected = null;
+        await ctx.info('radarr: unmonitor feature disabled (skipping)', {});
+      } else if (radarrBaseUrl && radarrApiKey) {
         try {
           const movieTitle = resolvedTitle || title;
           await ctx.info('radarr: attempting unmonitor for movie', {
@@ -2868,40 +2992,50 @@ export class CleanupAfterAddingNewContentJob {
 
       // 3) Remove from Plex watchlist (best-effort)
       {
-        const movieTitle = resolvedTitle || title;
-        const movieYear = resolvedYear ?? year;
-        if (!movieTitle) {
+        if (!features.removeFromWatchlist) {
+          summary.watchlist = {
+            mode: 'disabled',
+            reason: 'feature_disabled',
+          } as unknown as JsonObject;
           await ctx.info(
-            'plex: missing movie title (skipping watchlist removal)',
+            'plex: watchlist cleanup feature disabled (skipping)',
           );
         } else {
-          await ctx.info('plex: removing movie from watchlist (best-effort)', {
-            title: movieTitle,
-            year: movieYear,
-            dryRun: ctx.dryRun,
-          });
-          try {
-            const wl = await this.plexWatchlist.removeMovieFromWatchlistByTitle(
-              {
-                token: plexToken,
-                title: movieTitle,
-                year: movieYear,
-                dryRun: ctx.dryRun,
-              },
+          const movieTitle = resolvedTitle || title;
+          const movieYear = resolvedYear ?? year;
+          if (!movieTitle) {
+            await ctx.info(
+              'plex: missing movie title (skipping watchlist removal)',
             );
-            summary.watchlist = wl as unknown as JsonObject;
-          } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
-            (summary.warnings as string[]).push(
-              `plex: watchlist removal failed (non-critical): ${msg}`,
-            );
-            await ctx.warn('plex: watchlist removal failed (non-critical)', {
-              error: msg,
+          } else {
+            await ctx.info('plex: removing movie from watchlist (best-effort)', {
+              title: movieTitle,
+              year: movieYear,
+              dryRun: ctx.dryRun,
             });
-            summary.watchlist = {
-              ok: false,
-              error: msg,
-            } as unknown as JsonObject;
+            try {
+              const wl = await this.plexWatchlist.removeMovieFromWatchlistByTitle(
+                {
+                  token: plexToken,
+                  title: movieTitle,
+                  year: movieYear,
+                  dryRun: ctx.dryRun,
+                },
+              );
+              summary.watchlist = wl as unknown as JsonObject;
+            } catch (err) {
+              const msg = (err as Error)?.message ?? String(err);
+              (summary.warnings as string[]).push(
+                `plex: watchlist removal failed (non-critical): ${msg}`,
+              );
+              await ctx.warn('plex: watchlist removal failed (non-critical)', {
+                error: msg,
+              });
+              summary.watchlist = {
+                ok: false,
+                error: msg,
+              } as unknown as JsonObject;
+            }
           }
         }
       }
@@ -2946,7 +3080,7 @@ export class CleanupAfterAddingNewContentJob {
 
       // Duplicate cleanup: scan the entire Plex TV library section where this item was added,
       // and clean up ALL duplicate episodes in that library (not just the show title).
-      {
+      if (features.deleteDuplicates) {
         const sec = await resolvePlexLibrarySectionForRatingKey(
           ratingKey ?? showRatingKey ?? null,
         );
@@ -2961,6 +3095,14 @@ export class CleanupAfterAddingNewContentJob {
           );
           summary.duplicates = null;
         }
+      } else {
+        summary.duplicates = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+        await ctx.info(
+          'mediaAddedCleanup(show): duplicate cleanup feature disabled',
+        );
       }
 
       const sonarrSummary: JsonObject = {
@@ -2973,8 +3115,22 @@ export class CleanupAfterAddingNewContentJob {
         wouldUnmonitor: false,
         error: null as string | null,
       };
+      const showNeedsSonarr =
+        features.unmonitorInArr || features.removeFromWatchlist;
 
       // Only remove show from watchlist if Plex has ALL episodes (per Sonarr).
+      if (!showNeedsSonarr) {
+        summary.sonarr = sonarrSummary as unknown as JsonObject;
+        summary.watchlist = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+        await ctx.info(
+          'mediaAddedCleanup(show): unmonitor/watchlist features disabled; done',
+        );
+        return toReport(summary);
+      }
+
       if (!sonarrBaseUrl || !sonarrApiKey || !seriesTitle) {
         await ctx.info(
           'sonarr: not configured or missing title (skipping show flow)',
@@ -3101,54 +3257,60 @@ export class CleanupAfterAddingNewContentJob {
       let episodesMonitored = 0;
       let failures = 0;
 
-      // Unmonitor episodes that are present in Plex.
-      for (const r of toUnmonitor) {
-        if (ctx.dryRun) {
-          episodesUnmonitored += 1;
-          continue;
+      if (features.unmonitorInArr) {
+        // Unmonitor episodes that are present in Plex.
+        for (const r of toUnmonitor) {
+          if (ctx.dryRun) {
+            episodesUnmonitored += 1;
+            continue;
+          }
+          const ok = await this.sonarr
+            .setEpisodeMonitored({
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
+              episode: r.ep,
+              monitored: false,
+            })
+            .then(() => true)
+            .catch((err) => {
+              failures += 1;
+              const msg = (err as Error)?.message ?? String(err);
+              (summary.warnings as string[]).push(
+                `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
+              );
+              return false;
+            });
+          if (ok) episodesUnmonitored += 1;
         }
-        const ok = await this.sonarr
-          .setEpisodeMonitored({
-            baseUrl: sonarrBaseUrl,
-            apiKey: sonarrApiKey,
-            episode: r.ep,
-            monitored: false,
-          })
-          .then(() => true)
-          .catch((err) => {
-            failures += 1;
-            const msg = (err as Error)?.message ?? String(err);
-            (summary.warnings as string[]).push(
-              `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
-            );
-            return false;
-          });
-        if (ok) episodesUnmonitored += 1;
-      }
 
-      // Monitor episodes that are missing from Plex.
-      for (const r of toMonitor) {
-        if (ctx.dryRun) {
-          episodesMonitored += 1;
-          continue;
+        // Monitor episodes that are missing from Plex.
+        for (const r of toMonitor) {
+          if (ctx.dryRun) {
+            episodesMonitored += 1;
+            continue;
+          }
+          const ok = await this.sonarr
+            .setEpisodeMonitored({
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
+              episode: r.ep,
+              monitored: true,
+            })
+            .then(() => true)
+            .catch((err) => {
+              failures += 1;
+              const msg = (err as Error)?.message ?? String(err);
+              (summary.warnings as string[]).push(
+                `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
+              );
+              return false;
+            });
+          if (ok) episodesMonitored += 1;
         }
-        const ok = await this.sonarr
-          .setEpisodeMonitored({
-            baseUrl: sonarrBaseUrl,
-            apiKey: sonarrApiKey,
-            episode: r.ep,
-            monitored: true,
-          })
-          .then(() => true)
-          .catch((err) => {
-            failures += 1;
-            const msg = (err as Error)?.message ?? String(err);
-            (summary.warnings as string[]).push(
-              `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
-            );
-            return false;
-          });
-        if (ok) episodesMonitored += 1;
+      } else {
+        await ctx.info(
+          'sonarr: unmonitor feature disabled; skipping episode monitoring sync',
+        );
       }
 
       summary.sonarr = {
@@ -3170,7 +3332,12 @@ export class CleanupAfterAddingNewContentJob {
       // Watchlist behavior:
       // - If show is complete in Plex -> remove from watchlist (respect ctx.dryRun)
       // - Otherwise -> check-only (dry-run) so the UI can still show "found / not found"
-      if (seriesTitle) {
+      if (!features.removeFromWatchlist) {
+        summary.watchlist = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+      } else if (seriesTitle) {
         const watchlistDryRun = showCompleteInPlex ? ctx.dryRun : true;
         await ctx.info(
           showCompleteInPlex
@@ -3209,7 +3376,7 @@ export class CleanupAfterAddingNewContentJob {
 
       // Duplicate cleanup: scan the entire Plex TV library section where this item was added,
       // and clean up ALL duplicate episodes in that library.
-      {
+      if (features.deleteDuplicates) {
         const sec = await resolvePlexLibrarySectionForRatingKey(
           ratingKey ?? showRatingKey ?? null,
         );
@@ -3224,6 +3391,14 @@ export class CleanupAfterAddingNewContentJob {
           );
           summary.duplicates = null;
         }
+      } else {
+        summary.duplicates = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+        await ctx.info(
+          'mediaAddedCleanup(season): duplicate cleanup feature disabled',
+        );
       }
 
       if (!seriesTitle || !seasonNum) {
@@ -3236,6 +3411,23 @@ export class CleanupAfterAddingNewContentJob {
           },
         );
         summary.skipped = true;
+        return toReport(summary);
+      }
+
+      const seasonNeedsSonarr =
+        features.unmonitorInArr || features.removeFromWatchlist;
+      if (!seasonNeedsSonarr) {
+        summary.sonarr = {
+          configured: Boolean(sonarrBaseUrl && sonarrApiKey),
+          connected: null,
+        } as unknown as JsonObject;
+        summary.watchlist = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+        await ctx.info(
+          'mediaAddedCleanup(season): unmonitor/watchlist features disabled; done',
+        );
         return toReport(summary);
       }
 
@@ -3355,52 +3547,58 @@ export class CleanupAfterAddingNewContentJob {
         let episodesMonitored = 0;
         let failures = 0;
 
-        for (const r of toUnmonitor) {
-          if (ctx.dryRun) {
-            episodesUnmonitored += 1;
-            continue;
+        if (features.unmonitorInArr) {
+          for (const r of toUnmonitor) {
+            if (ctx.dryRun) {
+              episodesUnmonitored += 1;
+              continue;
+            }
+            const ok = await this.sonarr
+              .setEpisodeMonitored({
+                baseUrl: sonarrBaseUrl,
+                apiKey: sonarrApiKey,
+                episode: r.ep,
+                monitored: false,
+              })
+              .then(() => true)
+              .catch((err) => {
+                failures += 1;
+                const msg = (err as Error)?.message ?? String(err);
+                (summary.warnings as string[]).push(
+                  `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
+                );
+                return false;
+              });
+            if (ok) episodesUnmonitored += 1;
           }
-          const ok = await this.sonarr
-            .setEpisodeMonitored({
-              baseUrl: sonarrBaseUrl,
-              apiKey: sonarrApiKey,
-              episode: r.ep,
-              monitored: false,
-            })
-            .then(() => true)
-            .catch((err) => {
-              failures += 1;
-              const msg = (err as Error)?.message ?? String(err);
-              (summary.warnings as string[]).push(
-                `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
-              );
-              return false;
-            });
-          if (ok) episodesUnmonitored += 1;
-        }
 
-        for (const r of toMonitor) {
-          if (ctx.dryRun) {
-            episodesMonitored += 1;
-            continue;
+          for (const r of toMonitor) {
+            if (ctx.dryRun) {
+              episodesMonitored += 1;
+              continue;
+            }
+            const ok = await this.sonarr
+              .setEpisodeMonitored({
+                baseUrl: sonarrBaseUrl,
+                apiKey: sonarrApiKey,
+                episode: r.ep,
+                monitored: true,
+              })
+              .then(() => true)
+              .catch((err) => {
+                failures += 1;
+                const msg = (err as Error)?.message ?? String(err);
+                (summary.warnings as string[]).push(
+                  `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
+                );
+                return false;
+              });
+            if (ok) episodesMonitored += 1;
           }
-          const ok = await this.sonarr
-            .setEpisodeMonitored({
-              baseUrl: sonarrBaseUrl,
-              apiKey: sonarrApiKey,
-              episode: r.ep,
-              monitored: true,
-            })
-            .then(() => true)
-            .catch((err) => {
-              failures += 1;
-              const msg = (err as Error)?.message ?? String(err);
-              (summary.warnings as string[]).push(
-                `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
-              );
-              return false;
-            });
-          if (ok) episodesMonitored += 1;
+        } else {
+          await ctx.info(
+            'sonarr: unmonitor feature disabled; skipping season monitoring sync',
+          );
         }
 
         // Optional: if the season is fully present in Plex, unmonitor the season itself via series update.
@@ -3414,7 +3612,7 @@ export class CleanupAfterAddingNewContentJob {
         updatedSeries.seasons = seasons;
 
         const seasonChanged = seasonCompleteInPlex && seasonWasMonitored;
-        if (!ctx.dryRun && seasonChanged) {
+        if (features.unmonitorInArr && !ctx.dryRun && seasonChanged) {
           await this.sonarr.updateSeries({
             baseUrl: sonarrBaseUrl,
             apiKey: sonarrApiKey,
@@ -3441,41 +3639,48 @@ export class CleanupAfterAddingNewContentJob {
         } as unknown as JsonObject;
 
         // Remove show from watchlist ONLY if Plex has ALL episodes for the series.
-        const missingAll = Array.from(desiredAll).filter(
-          (k) => !plexEpisodes.has(k),
-        );
-        const seriesCompleteInPlex = missingAll.length === 0;
-        const watchlistDryRun = seriesCompleteInPlex ? ctx.dryRun : true;
-        await ctx.info(
-          seriesCompleteInPlex
-            ? 'plex: removing show from watchlist (series complete)'
-            : 'plex: checking show watchlist (series incomplete; keeping)',
-          {
-            title: seriesTitle,
-            missingCount: missingAll.length,
-            sampleMissing: missingAll.slice(0, 25),
-            dryRun: watchlistDryRun,
-          },
-        );
-        try {
-          const wl = await this.plexWatchlist.removeShowFromWatchlistByTitle({
-            token: plexToken,
-            title: seriesTitle,
-            dryRun: watchlistDryRun,
-          });
-          summary.watchlist = wl as unknown as JsonObject;
-        } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
-          (summary.warnings as string[]).push(
-            `plex: watchlist check/removal failed (non-critical): ${msg}`,
-          );
-          await ctx.warn('plex: watchlist check/removal failed (non-critical)', {
-            error: msg,
-          });
+        if (!features.removeFromWatchlist) {
           summary.watchlist = {
-            ok: false,
-            error: msg,
+            mode: 'disabled',
+            reason: 'feature_disabled',
           } as unknown as JsonObject;
+        } else {
+          const missingAll = Array.from(desiredAll).filter(
+            (k) => !plexEpisodes.has(k),
+          );
+          const seriesCompleteInPlex = missingAll.length === 0;
+          const watchlistDryRun = seriesCompleteInPlex ? ctx.dryRun : true;
+          await ctx.info(
+            seriesCompleteInPlex
+              ? 'plex: removing show from watchlist (series complete)'
+              : 'plex: checking show watchlist (series incomplete; keeping)',
+            {
+              title: seriesTitle,
+              missingCount: missingAll.length,
+              sampleMissing: missingAll.slice(0, 25),
+              dryRun: watchlistDryRun,
+            },
+          );
+          try {
+            const wl = await this.plexWatchlist.removeShowFromWatchlistByTitle({
+              token: plexToken,
+              title: seriesTitle,
+              dryRun: watchlistDryRun,
+            });
+            summary.watchlist = wl as unknown as JsonObject;
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            (summary.warnings as string[]).push(
+              `plex: watchlist check/removal failed (non-critical): ${msg}`,
+            );
+            await ctx.warn('plex: watchlist check/removal failed (non-critical)', {
+              error: msg,
+            });
+            summary.watchlist = {
+              ok: false,
+              error: msg,
+            } as unknown as JsonObject;
+          }
         }
 
         await ctx.info('mediaAddedCleanup(season): done', summary);
@@ -3501,7 +3706,7 @@ export class CleanupAfterAddingNewContentJob {
 
       // Duplicate cleanup: scan the entire Plex TV library section where this item was added,
       // and clean up ALL duplicate episodes in that library (not just this episode).
-      {
+      if (features.deleteDuplicates) {
         const sec = await resolvePlexLibrarySectionForRatingKey(
           ratingKey ?? showRatingKey ?? null,
         );
@@ -3516,6 +3721,14 @@ export class CleanupAfterAddingNewContentJob {
           );
           summary.duplicates = null;
         }
+      } else {
+        summary.duplicates = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+        await ctx.info(
+          'mediaAddedCleanup(episode): duplicate cleanup feature disabled',
+        );
       }
 
       if (!seriesTitle || !seasonNum || !epNum) {
@@ -3548,7 +3761,13 @@ export class CleanupAfterAddingNewContentJob {
         error: null as string | null,
       };
 
-      if (sonarrBaseUrl && sonarrApiKey) {
+      if (!features.unmonitorInArr) {
+        sonarrSummary.connected = null;
+        await ctx.info(
+          'sonarr: unmonitor feature disabled (skipping episode flow)',
+          {},
+        );
+      } else if (sonarrBaseUrl && sonarrApiKey) {
         try {
           const series = await findSonarrSeries({
             tvdbId: tvdbIdInput ?? null,
@@ -3683,6 +3902,23 @@ export function buildMediaAddedCleanupReport(params: {
   const showRatingKey = pickString(rawRec, 'showRatingKey') ?? null;
   const seasonNumber = pickNumber(rawRec, 'seasonNumber');
   const episodeNumber = pickNumber(rawRec, 'episodeNumber');
+  const featuresRaw = isPlainObject(rawRec.features)
+    ? (rawRec.features as Record<string, unknown>)
+    : null;
+  const features: MediaAddedCleanupFeatures = {
+    deleteDuplicates:
+      typeof featuresRaw?.deleteDuplicates === 'boolean'
+        ? featuresRaw.deleteDuplicates
+        : true,
+    unmonitorInArr:
+      typeof featuresRaw?.unmonitorInArr === 'boolean'
+        ? featuresRaw.unmonitorInArr
+        : true,
+    removeFromWatchlist:
+      typeof featuresRaw?.removeFromWatchlist === 'boolean'
+        ? featuresRaw.removeFromWatchlist
+        : true,
+  };
 
   const duplicates = isPlainObject(rawRec.duplicates)
     ? (rawRec.duplicates as Record<string, unknown>)
@@ -3911,10 +4147,11 @@ export function buildMediaAddedCleanupReport(params: {
   })();
 
   const duplicatesApplicable =
-    mediaType === 'movie' ||
-    mediaType === 'episode' ||
-    mediaType === 'season' ||
-    mediaType === 'show';
+    features.deleteDuplicates &&
+    (mediaType === 'movie' ||
+      mediaType === 'episode' ||
+      mediaType === 'season' ||
+      mediaType === 'show');
   const duplicatesFound =
     mediaType === 'movie'
       ? movieDuplicatesFound ?? movieDuplicatesDeleted > 0
@@ -3929,19 +4166,22 @@ export function buildMediaAddedCleanupReport(params: {
         : 0;
 
   const watchlistApplicable =
-    mediaType === 'movie' || mediaType === 'show' || mediaType === 'season';
+    features.removeFromWatchlist &&
+    (mediaType === 'movie' || mediaType === 'show' || mediaType === 'season');
 
   const isFullSweep =
     duplicates && typeof (duplicates as Record<string, unknown>).mode === 'string'
       ? String((duplicates as Record<string, unknown>).mode).trim() === 'fullSweep'
       : false;
 
-  const radarrApplicable = isFullSweep || mediaType === 'movie';
+  const radarrApplicable =
+    features.unmonitorInArr && (isFullSweep || mediaType === 'movie');
   const sonarrApplicable =
-    isFullSweep ||
-    mediaType === 'episode' ||
-    mediaType === 'show' ||
-    mediaType === 'season';
+    features.unmonitorInArr &&
+    (isFullSweep ||
+      mediaType === 'episode' ||
+      mediaType === 'show' ||
+      mediaType === 'season');
 
   const buildArrMonitoringTask = (
     service: 'radarr' | 'sonarr',
@@ -3960,7 +4200,9 @@ export function buildMediaAddedCleanupReport(params: {
         : ('success' as const);
 
     const result =
-      !applicable
+      !features.unmonitorInArr
+        ? 'Disabled in task settings.'
+        : !applicable
         ? 'Not applicable for this media type.'
         : configured === false
           ? 'Skipped: not configured.'
@@ -4006,11 +4248,12 @@ export function buildMediaAddedCleanupReport(params: {
         {
           id: 'duplicates',
           title: 'Full sweep: cleaned Plex duplicates',
-          status: 'success',
-          facts: [
-            { label: ctx.dryRun ? 'Would delete (movie)' : 'Deleted (movie)', value: movieDuplicatesDeleted },
-            { label: ctx.dryRun ? 'Would delete (episode)' : 'Deleted (episode)', value: episodeDuplicatesDeleted },
-            ...(duplicates && isPlainObject(duplicates.movie)
+          status: features.deleteDuplicates ? 'success' : 'skipped',
+          facts: features.deleteDuplicates
+            ? [
+                { label: ctx.dryRun ? 'Would delete (movie)' : 'Deleted (movie)', value: movieDuplicatesDeleted },
+                { label: ctx.dryRun ? 'Would delete (episode)' : 'Deleted (episode)', value: episodeDuplicatesDeleted },
+                ...(duplicates && isPlainObject(duplicates.movie)
               ? [
                   { label: 'Movie groups (dup)', value: num((duplicates.movie as Record<string, unknown>).groupsWithDuplicates) ?? 0 },
                   {
@@ -4064,7 +4307,7 @@ export function buildMediaAddedCleanupReport(params: {
                     : []),
                 ]
               : []),
-            ...(duplicates && isPlainObject(duplicates.episode)
+                ...(duplicates && isPlainObject(duplicates.episode)
               ? [
                   { label: 'Episode groups (dup)', value: num((duplicates.episode as Record<string, unknown>).groupsWithDuplicates) ?? 0 },
                   {
@@ -4120,17 +4363,23 @@ export function buildMediaAddedCleanupReport(params: {
                     : []),
                 ]
               : []),
-          ],
+              ]
+            : [{ label: 'Result', value: 'Disabled in task settings.' }],
           issues: [],
         },
         {
           id: 'watchlist',
           title: 'Full sweep: reconciled Plex watchlist',
-          status: watchlistChecked ? 'success' : 'failed',
-          facts: [
-            { label: ctx.dryRun ? 'Would remove (movies)' : 'Removed (movies)', value: watchlistMovieRemoved },
-            { label: ctx.dryRun ? 'Would remove (shows)' : 'Removed (shows)', value: watchlistShowRemoved },
-            ...(watchlist && isPlainObject(watchlist.movies)
+          status: features.removeFromWatchlist
+            ? watchlistChecked
+              ? 'success'
+              : 'failed'
+            : 'skipped',
+          facts: features.removeFromWatchlist
+            ? [
+                { label: ctx.dryRun ? 'Would remove (movies)' : 'Removed (movies)', value: watchlistMovieRemoved },
+                { label: ctx.dryRun ? 'Would remove (shows)' : 'Removed (shows)', value: watchlistShowRemoved },
+                ...(watchlist && isPlainObject(watchlist.movies)
               ? [
                   {
                     label: ctx.dryRun ? 'Radarr would unmonitor' : 'Radarr unmonitored',
@@ -4171,7 +4420,7 @@ export function buildMediaAddedCleanupReport(params: {
                     : []),
                 ]
               : []),
-            ...(watchlist && isPlainObject(watchlist.shows)
+                ...(watchlist && isPlainObject(watchlist.shows)
               ? [
                   {
                     label: ctx.dryRun ? 'Sonarr would unmonitor (series)' : 'Sonarr unmonitored (series)',
@@ -4212,8 +4461,12 @@ export function buildMediaAddedCleanupReport(params: {
                     : []),
                 ]
               : []),
-          ],
-          issues: watchlistChecked ? [] : [issue('error', 'Plex watchlist reconciliation was not executed.')],
+              ]
+            : [{ label: 'Result', value: 'Disabled in task settings.' }],
+          issues:
+            features.removeFromWatchlist && !watchlistChecked
+              ? [issue('error', 'Plex watchlist reconciliation was not executed.')]
+              : [],
         },
         buildArrMonitoringTask('radarr', true),
         buildArrMonitoringTask('sonarr', true),
@@ -4247,7 +4500,14 @@ export function buildMediaAddedCleanupReport(params: {
                   ? [{ label: 'Show ratingKey', value: duplicates.showRatingKey }]
                   : []),
               ]
-            : [{ label: 'Note', value: 'Not scanned for this media type.' }],
+            : [
+                {
+                  label: 'Note',
+                  value: features.deleteDuplicates
+                    ? 'Not scanned for this media type.'
+                    : 'Disabled in task settings.',
+                },
+              ],
           issues: [],
         },
         {
@@ -4261,7 +4521,14 @@ export function buildMediaAddedCleanupReport(params: {
                 ...(watchlistMatchedBy ? [{ label: 'Matched by', value: watchlistMatchedBy }] : []),
                 ...(watchlistError ? [{ label: 'Error', value: watchlistError }] : []),
               ]
-            : [{ label: 'Note', value: 'Not checked for episodes.' }],
+            : [
+                {
+                  label: 'Note',
+                  value: features.removeFromWatchlist
+                    ? 'Not checked for episodes.'
+                    : 'Disabled in task settings.',
+                },
+              ],
           issues:
             watchlistApplicable && !watchlistChecked
               ? [issue('error', 'Plex watchlist check was not executed.')]
@@ -4281,13 +4548,21 @@ export function buildMediaAddedCleanupReport(params: {
           label: 'Radarr (movie)',
           end: radarrMovieUnmonitored,
           unit: 'items',
-          note: ctx.dryRun ? 'dry-run (would unmonitor)' : null,
+          note: !features.unmonitorInArr
+            ? 'disabled in task settings'
+            : ctx.dryRun
+              ? 'dry-run (would unmonitor)'
+              : null,
         }),
         metricRow({
           label: 'Sonarr (episode)',
           end: sonarrEpisodeUnmonitored,
           unit: 'items',
-          note: ctx.dryRun ? 'dry-run (would unmonitor)' : null,
+          note: !features.unmonitorInArr
+            ? 'disabled in task settings'
+            : ctx.dryRun
+              ? 'dry-run (would unmonitor)'
+              : null,
         }),
         ...(sonarrSeasonUnmonitored !== null && sonarrSeasonUnmonitored > 0
           ? [
@@ -4295,7 +4570,11 @@ export function buildMediaAddedCleanupReport(params: {
                 label: 'Sonarr (season)',
                 end: sonarrSeasonUnmonitored,
                 unit: 'items',
-                note: ctx.dryRun ? 'dry-run (would unmonitor)' : null,
+                note: !features.unmonitorInArr
+                  ? 'disabled in task settings'
+                  : ctx.dryRun
+                    ? 'dry-run (would unmonitor)'
+                    : null,
               }),
             ]
           : []),
@@ -4309,13 +4588,21 @@ export function buildMediaAddedCleanupReport(params: {
           label: 'Movie deleted',
           end: movieDuplicatesDeleted,
           unit: 'copies',
-          note: ctx.dryRun ? 'dry-run (would delete)' : null,
+          note: !features.deleteDuplicates
+            ? 'disabled in task settings'
+            : ctx.dryRun
+              ? 'dry-run (would delete)'
+              : null,
         }),
         metricRow({
           label: 'Episode deleted',
           end: episodeDuplicatesDeleted,
           unit: 'copies',
-          note: ctx.dryRun ? 'dry-run (would delete)' : null,
+          note: !features.deleteDuplicates
+            ? 'disabled in task settings'
+            : ctx.dryRun
+              ? 'dry-run (would delete)'
+              : null,
         }),
       ],
     },
@@ -4327,13 +4614,21 @@ export function buildMediaAddedCleanupReport(params: {
           label: 'Movie removed',
           end: watchlistMovieRemoved,
           unit: 'items',
-          note: ctx.dryRun ? 'dry-run (would remove)' : null,
+          note: !features.removeFromWatchlist
+            ? 'disabled in task settings'
+            : ctx.dryRun
+              ? 'dry-run (would remove)'
+              : null,
         }),
         metricRow({
           label: 'Show removed',
           end: watchlistShowRemoved,
           unit: 'items',
-          note: ctx.dryRun ? 'dry-run (would remove)' : null,
+          note: !features.removeFromWatchlist
+            ? 'disabled in task settings'
+            : ctx.dryRun
+              ? 'dry-run (would remove)'
+              : null,
         }),
       ],
     },
