@@ -226,6 +226,34 @@ export class WebhooksService {
     else this.logger.log(msg);
   }
 
+  logPlexUserMonitoringSkipped(params: {
+    source: 'plexWebhook' | 'plexPolling';
+    plexEvent: string;
+    mediaType: string;
+    plexUserId: string;
+    plexUserTitle: string;
+    seedTitle?: string;
+  }) {
+    const source = params.source.trim();
+    const plexEvent = (params.plexEvent || '').trim() || '(unknown)';
+    const mediaType = (params.mediaType || '').trim() || '(unknown)';
+    const plexUserId = (params.plexUserId || '').trim() || '(unknown)';
+    const plexUserTitle = (params.plexUserTitle || '').trim() || 'Unknown';
+    const seedTitle = (params.seedTitle || '').trim();
+
+    const parts = [
+      `Plex automation (${source}):`,
+      `${plexEvent}`,
+      `type=${mediaType}`,
+      `noticed user=${JSON.stringify(truncate(plexUserTitle, 40))}`,
+      `(plexUserId=${plexUserId})`,
+      'is toggled off by admin, so no task was triggered.',
+      seedTitle ? `seed=${JSON.stringify(truncate(seedTitle, 80))}` : null,
+    ].filter(Boolean);
+
+    this.logger.log(parts.join(' '));
+  }
+
   private getDataDir(): string {
     // During dev, npm workspaces runs scripts with cwd = apps/server.
     // This resolves to the repo-root `data/` directory without relying on cwd.

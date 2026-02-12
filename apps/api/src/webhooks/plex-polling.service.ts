@@ -5,6 +5,7 @@ import { JobsService } from '../jobs/jobs.service';
 import type { JsonObject } from '../jobs/jobs.types';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
 import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
+import { isPlexUserExcludedFromMonitoring } from '../plex/plex-user-selection.utils';
 import {
   PlexNowPlayingSession,
   PlexRecentlyAddedItem,
@@ -468,6 +469,43 @@ export class PlexPollingService implements OnModuleInit {
         plexUserId: pending.plexUserId,
         plexUserTitle: pending.plexUserTitle,
         skipped: { [pending.jobId]: 'cooldown_pending_dropped_disabled' },
+      });
+      return;
+    }
+
+    const userMonitoringExcluded = isPlexUserExcludedFromMonitoring({
+      settings: params.settings,
+      plexUserId: pending.plexUserId,
+    });
+    if (userMonitoringExcluded) {
+      await this.jobsService.failQueuedJob({
+        runId: pending.runId,
+        errorMessage:
+          'Queued run dropped because Plex user monitoring is toggled off by admin.',
+      });
+      this.setSessionJobStatus(
+        pending.sessionAutomationId,
+        pending.jobId,
+        'success',
+        now,
+      );
+      this.webhooksService.logPlexUserMonitoringSkipped({
+        source: 'plexPolling',
+        plexEvent: 'media.scrobble',
+        mediaType: pending.mediaType,
+        plexUserId: pending.plexUserId,
+        plexUserTitle: pending.plexUserTitle,
+        seedTitle: pending.seedTitle,
+      });
+      this.webhooksService.logPlexWebhookAutomation({
+        plexEvent: 'plexPolling.cooldown',
+        mediaType: pending.mediaType,
+        seedTitle: pending.seedTitle,
+        plexUserId: pending.plexUserId,
+        plexUserTitle: pending.plexUserTitle,
+        skipped: {
+          [pending.jobId]: 'cooldown_pending_dropped_user_toggled_off_by_admin',
+        },
       });
       return;
     }
@@ -1218,6 +1256,64 @@ export class PlexPollingService implements OnModuleInit {
       this.canScheduleSessionJob(sessionAutomationId, 'immaculateTastePoints') &&
       (ratio >= this.immaculateScrobbleThreshold || forceBothAtNinetyPercent);
     if (!shouldConsiderWatched && !shouldConsiderImmaculate) return snap;
+
+    const userMonitoringExcluded = isPlexUserExcludedFromMonitoring({
+      settings,
+      plexUserId,
+    });
+    if (userMonitoringExcluded) {
+      const skipped: Record<string, string> = {};
+      let shouldLog = false;
+
+      if (shouldConsiderWatched) {
+        const status = this.getSessionJobStatus(
+          sessionAutomationId,
+          'watchedMovieRecommendations',
+        );
+        if (status === 'idle') shouldLog = true;
+        this.setSessionJobStatus(
+          sessionAutomationId,
+          'watchedMovieRecommendations',
+          'success',
+          now,
+        );
+        skipped.watchedMovieRecommendations = 'user_toggled_off_by_admin';
+      }
+      if (shouldConsiderImmaculate) {
+        const status = this.getSessionJobStatus(
+          sessionAutomationId,
+          'immaculateTastePoints',
+        );
+        if (status === 'idle') shouldLog = true;
+        this.setSessionJobStatus(
+          sessionAutomationId,
+          'immaculateTastePoints',
+          'success',
+          now,
+        );
+        skipped.immaculateTastePoints = 'user_toggled_off_by_admin';
+      }
+
+      if (shouldLog) {
+        this.webhooksService.logPlexUserMonitoringSkipped({
+          source: 'plexPolling',
+          plexEvent: 'media.scrobble',
+          mediaType: snap.type,
+          plexUserId,
+          plexUserTitle,
+          seedTitle,
+        });
+        this.webhooksService.logPlexWebhookAutomation({
+          plexEvent: 'media.scrobble',
+          mediaType: snap.type,
+          seedTitle,
+          plexUserId,
+          plexUserTitle,
+          skipped,
+        });
+      }
+      return snap;
+    }
 
     const seedLibrarySectionKey =
       typeof snap.librarySectionId === 'number' &&

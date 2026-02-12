@@ -1,6 +1,14 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { XMLParser } from 'fast-xml-parser';
 import { randomUUID } from 'node:crypto';
-import { PlexPin } from './plex.types';
+import { PlexPin, PlexSharedServerUser } from './plex.types';
+
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '',
+  parseAttributeValue: true,
+  allowBooleanAttributes: true,
+});
 
 function sanitizeUrlForLogs(raw: string): string {
   try {
@@ -22,6 +30,144 @@ function sanitizeUrlForLogs(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toStringSafe(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value))
+    return String(Math.trunc(value));
+  return '';
+}
+
+function toIntSafe(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number.parseInt(value.trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function hasUserLikeKey(obj: Record<string, unknown>): boolean {
+  return [
+    'username',
+    'userName',
+    'email',
+    'invitedEmail',
+    'userID',
+    'userId',
+    'invitedID',
+    'invitedId',
+    'accountId',
+    'accountID',
+  ].some((k) => k in obj);
+}
+
+function collectCandidateUserObjects(
+  value: unknown,
+  out: Record<string, unknown>[],
+  depth = 0,
+) {
+  if (depth > 8) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectCandidateUserObjects(item, out, depth + 1);
+    return;
+  }
+  if (!isPlainObject(value)) return;
+
+  if (hasUserLikeKey(value)) {
+    out.push(value);
+  }
+
+  for (const next of Object.values(value)) {
+    collectCandidateUserObjects(next, out, depth + 1);
+  }
+}
+
+function normalizeSharedServerUser(
+  raw: Record<string, unknown>,
+): PlexSharedServerUser | null {
+  const nestedUser = isPlainObject(raw['user']) ? raw['user'] : null;
+  const plexAccountId =
+    toIntSafe(raw['userID']) ??
+    toIntSafe(raw['userId']) ??
+    toIntSafe(raw['accountId']) ??
+    toIntSafe(raw['accountID']) ??
+    toIntSafe(raw['invitedID']) ??
+    toIntSafe(raw['invitedId']) ??
+    toIntSafe(raw['id']) ??
+    (nestedUser ? toIntSafe(nestedUser['id']) : null) ??
+    (nestedUser ? toIntSafe(nestedUser['accountId']) : null) ??
+    null;
+
+  const username =
+    toStringSafe(raw['username']) ||
+    toStringSafe(raw['userName']) ||
+    (nestedUser ? toStringSafe(nestedUser['username']) : '') ||
+    null;
+  const email =
+    toStringSafe(raw['email']) ||
+    toStringSafe(raw['invitedEmail']) ||
+    (nestedUser ? toStringSafe(nestedUser['email']) : '') ||
+    null;
+  const nestedUserTitle = nestedUser ? toStringSafe(nestedUser['title']) : '';
+  const nestedUserName = nestedUser ? toStringSafe(nestedUser['name']) : '';
+  const rawTitle = toStringSafe(raw['title']);
+  const plexAccountTitle =
+    rawTitle ||
+    username ||
+    nestedUserTitle ||
+    nestedUserName ||
+    email ||
+    null;
+
+  if (!plexAccountTitle && plexAccountId === null) return null;
+
+  return {
+    plexAccountId,
+    plexAccountTitle,
+    username,
+    email,
+  };
+}
+
+function dedupeSharedServerUsers(
+  users: PlexSharedServerUser[],
+): PlexSharedServerUser[] {
+  const out: PlexSharedServerUser[] = [];
+  const seen = new Set<string>();
+  for (const user of users) {
+    const titleKey = (user.plexAccountTitle ?? '').trim().toLowerCase();
+    const usernameKey = (user.username ?? '').trim().toLowerCase();
+    const emailKey = (user.email ?? '').trim().toLowerCase();
+    const key =
+      user.plexAccountId !== null
+        ? `id:${user.plexAccountId}`
+        : titleKey
+          ? `title:${titleKey}`
+          : usernameKey
+            ? `username:${usernameKey}`
+            : emailKey
+              ? `email:${emailKey}`
+              : '';
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(user);
+  }
+  return out;
+}
+
+function parseSharedUsersPayload(payload: unknown): PlexSharedServerUser[] {
+  const candidates: Record<string, unknown>[] = [];
+  collectCandidateUserObjects(payload, candidates, 0);
+  const normalized = candidates
+    .map((row) => normalizeSharedServerUser(row))
+    .filter((row): row is PlexSharedServerUser => Boolean(row));
+  return dedupeSharedServerUsers(normalized);
 }
 
 @Injectable()
@@ -147,6 +293,100 @@ export class PlexService {
       username: data['username'] ?? null,
       title: data['title'] ?? null,
     };
+  }
+
+  async listSharedUsersForServer(params: {
+    plexToken: string;
+    machineIdentifier: string;
+  }): Promise<PlexSharedServerUser[]> {
+    const plexToken = params.plexToken.trim();
+    const machineIdentifier = params.machineIdentifier.trim();
+    if (!plexToken || !machineIdentifier) return [];
+
+    const endpoints = [
+      `https://plex.tv/api/servers/${encodeURIComponent(machineIdentifier)}/shared_servers`,
+      `https://plex.tv/api/v2/servers/${encodeURIComponent(machineIdentifier)}/shared_servers`,
+    ];
+
+    const errors: string[] = [];
+    for (const url of endpoints) {
+      const safeUrl = sanitizeUrlForLogs(url);
+      const startedAt = Date.now();
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            ...this.getPlexHeaders(),
+            Accept: 'application/json, text/xml;q=0.9, application/xml;q=0.8',
+            'X-Plex-Token': plexToken,
+          },
+        });
+
+        const raw = await res.text().catch(() => '');
+        const ms = Date.now() - startedAt;
+
+        if (!res.ok) {
+          this.logger.warn(
+            `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${raw}`.trim(),
+          );
+          errors.push(`HTTP ${res.status}`);
+          continue;
+        }
+
+        this.logger.log(`Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
+
+        const body = raw.trim();
+        if (!body) return [];
+
+        const contentType = res.headers.get('content-type') ?? '';
+        let parsed: unknown = null;
+
+        const looksJson = body.startsWith('{') || body.startsWith('[');
+        const looksXml = body.startsWith('<');
+
+        if (contentType.includes('json') || looksJson) {
+          try {
+            parsed = JSON.parse(body) as unknown;
+          } catch {
+            parsed = null;
+          }
+        }
+        if ((contentType.includes('xml') || looksXml) && parsed === null) {
+          try {
+            parsed = xmlParser.parse(body) as unknown;
+          } catch {
+            parsed = null;
+          }
+        }
+        if (parsed === null) {
+          // Last chance: try both parsers in opposite order.
+          try {
+            parsed = xmlParser.parse(body) as unknown;
+          } catch {
+            try {
+              parsed = JSON.parse(body) as unknown;
+            } catch {
+              parsed = null;
+            }
+          }
+        }
+
+        if (parsed === null) {
+          errors.push('unparseable payload');
+          continue;
+        }
+
+        return parseSharedUsersPayload(parsed);
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        errors.push(msg);
+      }
+    }
+
+    const reason = errors.join(' | ') || 'unknown';
+    throw new BadGatewayException(
+      `Plex shared users lookup failed for machineIdentifier=${machineIdentifier}: ${reason}`,
+    );
   }
 
   private getPlexHeaders(): Record<string, string> {

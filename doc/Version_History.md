@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.5.1
+1.5.2
 ---
 
 - Per-viewer personalization for Movies + TV:
@@ -23,6 +23,9 @@ This file tracks notable changes by version.
 - Refresher scoping improvements:
   - Chained refreshes stay scoped to triggering viewer/library.
   - Standalone sweeps run users/libraries in deterministic order, admin last.
+- Plex user monitoring controls:
+  - Any Plex user can be toggled off from monitoring.
+  - Auto-triggered tasks skip users that are toggled off.
 - Overseerr integration improvements:
   - Optional centralized missing-item flow per task card.
   - Command Center reset control for Overseerr requests.

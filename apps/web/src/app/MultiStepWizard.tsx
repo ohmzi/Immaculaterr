@@ -19,7 +19,9 @@ import { toast } from 'sonner';
 
 import {
   getPlexLibraries,
+  getPlexMonitoringUsers,
   savePlexLibrarySelection,
+  savePlexMonitoringUsers,
   testSavedIntegration,
 } from '@/api/integrations';
 import { putSettings } from '@/api/settings';
@@ -33,6 +35,7 @@ type WizardStep =
   | 'welcome'
   | 'plex'
   | 'plexLibraries'
+  | 'plexUsers'
   | 'tmdb'
   | 'radarr'
   | 'sonarr'
@@ -45,6 +48,7 @@ const STEP_ORDER: WizardStep[] = [
   'welcome',
   'plex',
   'plexLibraries',
+  'plexUsers',
   'tmdb',
   'radarr',
   'sonarr',
@@ -59,6 +63,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const CORE_STEPS: WizardStep[] = [
     'plex',
     'plexLibraries',
+    'plexUsers',
     'tmdb',
     'radarr',
     'sonarr',
@@ -100,6 +105,9 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     }
   });
   const [wizardSelectedLibraryKeys, setWizardSelectedLibraryKeys] = useState<
+    string[]
+  >([]);
+  const [wizardSelectedPlexUserIds, setWizardSelectedPlexUserIds] = useState<
     string[]
   >([]);
   const [libraryMinDialogOpen, setLibraryMinDialogOpen] = useState(false);
@@ -148,6 +156,23 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     if (!plexLibrariesQuery.data) return;
     setWizardSelectedLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
   }, [currentStep, plexLibrariesQuery.data]);
+
+  const plexMonitoringUsersQuery = useQuery({
+    queryKey: ['integrations', 'plex', 'monitoring-users'],
+    queryFn: getPlexMonitoringUsers,
+    enabled: currentStep === 'plexUsers',
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (currentStep !== 'plexUsers') return;
+    if (!plexMonitoringUsersQuery.data) return;
+    setWizardSelectedPlexUserIds(
+      plexMonitoringUsersQuery.data.selectedPlexUserIds,
+    );
+  }, [currentStep, plexMonitoringUsersQuery.data]);
 
   // Poll for Plex OAuth token
   useEffect(() => {
@@ -337,6 +362,37 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     },
     onError: (error: Error) => {
       toast.error(error?.message ?? 'Couldn’t save Plex library selection.');
+    },
+  });
+
+  const toggleWizardPlexUserSelection = (plexUserId: string, checked: boolean) => {
+    setWizardSelectedPlexUserIds((prev) => {
+      const has = prev.includes(plexUserId);
+      if (checked) {
+        if (has) return prev;
+        return [...prev, plexUserId];
+      }
+      if (!has) return prev;
+      return prev.filter((id) => id !== plexUserId);
+    });
+  };
+
+  const savePlexMonitoringUsersStep = useMutation({
+    mutationFn: async () => {
+      return await savePlexMonitoringUsers({
+        selectedPlexUserIds: wizardSelectedPlexUserIds,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({
+        queryKey: ['integrations', 'plex', 'monitoring-users'],
+      });
+      toast.success('Saved Plex user monitoring selection.');
+      handleNext();
+    },
+    onError: (error: Error) => {
+      toast.error(error?.message ?? 'Couldn’t save Plex user monitoring selection.');
     },
   });
 
@@ -793,6 +849,121 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                       </label>
                     ))}
                   </div>
+                </div>
+              )}
+            </WizardSection>
+          </WizardShell>
+        );
+
+      case 'plexUsers':
+        return (
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Plex</span> User Monitoring
+              </>
+            }
+            subtitle="Choose which Plex users can trigger Immaculaterr automation. Users turned off here won’t trigger tasks from Plex activity."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  onClick={() => savePlexMonitoringUsersStep.mutate()}
+                  disabled={
+                    savePlexMonitoringUsersStep.isPending ||
+                    plexMonitoringUsersQuery.isLoading
+                  }
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {savePlexMonitoringUsersStep.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
+              {plexMonitoringUsersQuery.isLoading ? (
+                <div className="flex items-center gap-3 text-sm text-zinc-300">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading Plex users...
+                </div>
+              ) : plexMonitoringUsersQuery.isError ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-red-200">
+                    Couldn&apos;t load Plex users. Check Plex settings and try again.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="h-10 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                    onClick={() => {
+                      void plexMonitoringUsersQuery.refetch();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {plexMonitoringUsersQuery.data?.warning ? (
+                    <p className="text-xs text-yellow-300/90">
+                      {plexMonitoringUsersQuery.data.warning}
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-zinc-500">
+                    Enabled {wizardSelectedPlexUserIds.length} of{' '}
+                    {plexMonitoringUsersQuery.data?.users.length ?? 0}.
+                  </p>
+
+                  {!plexMonitoringUsersQuery.data?.users.length ? (
+                    <p className="text-sm text-zinc-300">
+                      No Plex users are currently available for monitoring.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {plexMonitoringUsersQuery.data.users.map((user) => (
+                        <label
+                          key={user.id}
+                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-200"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={wizardSelectedPlexUserIds.includes(user.id)}
+                            onChange={(e) =>
+                              toggleWizardPlexUserSelection(user.id, e.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
+                          />
+                          <span className="flex-1 truncate">
+                            {user.plexAccountTitle}
+                          </span>
+                          {user.isAdmin ? (
+                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                              Admin
+                            </span>
+                          ) : null}
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </WizardSection>

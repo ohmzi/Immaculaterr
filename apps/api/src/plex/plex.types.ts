@@ -5,3 +5,10 @@ export type PlexPin = {
   expiresIn?: number;
   authToken?: string | null;
 };
+
+export type PlexSharedServerUser = {
+  plexAccountId: number | null;
+  plexAccountTitle: string | null;
+  username: string | null;
+  email: string | null;
+};

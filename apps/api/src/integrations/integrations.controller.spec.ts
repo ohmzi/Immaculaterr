@@ -14,10 +14,18 @@ describe('IntegrationsController plex libraries', () => {
       getInternalSettings: jest.fn(),
       updateSettings: jest.fn(),
     };
+    const plex = {
+      listSharedUsersForServer: jest.fn(),
+    };
     const plexServer = {
       getSections: jest.fn(),
+      getMachineIdentifier: jest.fn(),
       listCollectionsForSectionKey: jest.fn(),
       deleteCollection: jest.fn(),
+    };
+    const plexUsers = {
+      ensureAdminPlexUser: jest.fn(),
+      getOrCreateByPlexAccount: jest.fn(),
     };
     const overseerr = {
       testConnection: jest.fn(),
@@ -25,7 +33,9 @@ describe('IntegrationsController plex libraries', () => {
     const controller = new IntegrationsController(
       prisma as never,
       settingsService as never,
+      plex as never,
       plexServer as never,
+      plexUsers as never,
       {} as never,
       {} as never,
       {} as never,
@@ -33,7 +43,15 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       overseerr as never,
     );
-    return { controller, prisma, settingsService, plexServer, overseerr };
+    return {
+      controller,
+      prisma,
+      settingsService,
+      plex,
+      plexServer,
+      plexUsers,
+      overseerr,
+    };
   };
 
   it('GET /plex/libraries returns selected state', async () => {
@@ -232,5 +250,146 @@ describe('IntegrationsController plex libraries', () => {
       apiKey: 'secret',
     });
     expect(res).toEqual({ ok: true, result: { ok: true } });
+  });
+
+  it('GET /plex/monitoring-users returns selected state', async () => {
+    const { controller, settingsService, plex, plexServer, plexUsers } =
+      makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl: 'http://plex:32400',
+          userMonitoring: {
+            excludedPlexUserIds: ['plex-user-2'],
+          },
+        },
+      },
+      secrets: {
+        plex: { token: 'token' },
+      },
+    });
+    plexServer.getMachineIdentifier.mockResolvedValue('machine-1');
+    plexUsers.ensureAdminPlexUser.mockResolvedValue({
+      id: 'plex-admin',
+      plexAccountId: 1,
+      plexAccountTitle: 'Admin',
+      isAdmin: true,
+    });
+    plex.listSharedUsersForServer.mockResolvedValue([
+      {
+        plexAccountId: 2,
+        plexAccountTitle: 'Alice',
+        username: 'Alice',
+        email: null,
+      },
+      {
+        plexAccountId: 3,
+        plexAccountTitle: 'Bob',
+        username: 'Bob',
+        email: null,
+      },
+    ]);
+    plexUsers.getOrCreateByPlexAccount
+      .mockResolvedValueOnce({
+        id: 'plex-user-2',
+        plexAccountId: 2,
+        plexAccountTitle: 'Alice',
+        isAdmin: false,
+      })
+      .mockResolvedValueOnce({
+        id: 'plex-user-3',
+        plexAccountId: 3,
+        plexAccountTitle: 'Bob',
+        isAdmin: false,
+      });
+
+    const res = await controller.plexMonitoringUsers({
+      user: { id: 'u1' },
+    } as never);
+
+    expect(res.ok).toBe(true);
+    expect(res.defaultEnabled).toBe(true);
+    expect(res.autoIncludeNewUsers).toBe(true);
+    expect(res.selectedPlexUserIds).toEqual(['plex-admin', 'plex-user-3']);
+    expect(res.excludedPlexUserIds).toEqual(['plex-user-2']);
+  });
+
+  it('PUT /plex/monitoring-users rejects unknown ids', async () => {
+    const { controller, settingsService, plex, plexServer, plexUsers } =
+      makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex:32400' },
+      },
+      secrets: { plex: { token: 'token' } },
+    });
+    plexServer.getMachineIdentifier.mockResolvedValue('machine-1');
+    plexUsers.ensureAdminPlexUser.mockResolvedValue({
+      id: 'plex-admin',
+      plexAccountId: 1,
+      plexAccountTitle: 'Admin',
+      isAdmin: true,
+    });
+    plex.listSharedUsersForServer.mockResolvedValue([]);
+
+    await expect(
+      controller.savePlexMonitoringUsers(
+        { user: { id: 'u1' } } as never,
+        { selectedPlexUserIds: ['missing'] },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('PUT /plex/monitoring-users persists excluded complement', async () => {
+    const { controller, settingsService, plex, plexServer, plexUsers } =
+      makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex:32400' },
+      },
+      secrets: { plex: { token: 'token' } },
+    });
+    plexServer.getMachineIdentifier.mockResolvedValue('machine-1');
+    plexUsers.ensureAdminPlexUser.mockResolvedValue({
+      id: 'plex-admin',
+      plexAccountId: 1,
+      plexAccountTitle: 'Admin',
+      isAdmin: true,
+    });
+    plex.listSharedUsersForServer.mockResolvedValue([
+      {
+        plexAccountId: 2,
+        plexAccountTitle: 'Alice',
+        username: 'Alice',
+        email: null,
+      },
+    ]);
+    plexUsers.getOrCreateByPlexAccount.mockResolvedValue({
+      id: 'plex-user-2',
+      plexAccountId: 2,
+      plexAccountTitle: 'Alice',
+      isAdmin: false,
+    });
+    settingsService.updateSettings.mockResolvedValue({
+      plex: {
+        baseUrl: 'http://plex:32400',
+        userMonitoring: { excludedPlexUserIds: ['plex-user-2'] },
+      },
+    });
+
+    const res = await controller.savePlexMonitoringUsers(
+      { user: { id: 'u1' } } as never,
+      { selectedPlexUserIds: ['plex-admin'] },
+    );
+
+    expect(settingsService.updateSettings).toHaveBeenCalledWith('u1', {
+      plex: {
+        userMonitoring: {
+          excludedPlexUserIds: ['plex-user-2'],
+        },
+      },
+    });
+    expect(res.selectedPlexUserIds).toEqual(['plex-admin']);
+    expect(res.excludedPlexUserIds).toEqual(['plex-user-2']);
   });
 });
