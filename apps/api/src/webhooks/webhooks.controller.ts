@@ -15,6 +15,7 @@ import { Public } from '../auth/public.decorator';
 import { JobsService } from '../jobs/jobs.service';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
 import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
+import { isPlexUserExcludedFromMonitoring } from '../plex/plex-user-selection.utils';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
@@ -231,13 +232,44 @@ export class WebhooksController {
             const errors: Record<string, string> = {};
             const skipped: Record<string, string> = {};
 
-            // Respect per-job webhook auto-run toggles (default: disabled)
             const { settings } = await this.settingsService
               .getInternalSettings(userId)
               .catch(() => ({
                 settings: {} as Record<string, unknown>,
                 secrets: {},
               }));
+            const userMonitoringExcluded = isPlexUserExcludedFromMonitoring({
+              settings,
+              plexUserId,
+            });
+            if (userMonitoringExcluded) {
+              skipped.watchedMovieRecommendations = 'user_toggled_off_by_admin';
+              skipped.immaculateTastePoints = 'user_toggled_off_by_admin';
+              this.webhooksService.logPlexUserMonitoringSkipped({
+                source: 'plexWebhook',
+                plexEvent,
+                mediaType,
+                plexUserId,
+                plexUserTitle,
+                seedTitle,
+              });
+              this.webhooksService.logPlexWebhookAutomation({
+                plexEvent,
+                mediaType,
+                seedTitle,
+                plexUserId,
+                plexUserTitle,
+                skipped,
+              });
+              return {
+                ok: true,
+                ...persisted,
+                triggered: false,
+                skipped,
+              };
+            }
+
+            // Respect per-job webhook auto-run toggles (default: disabled)
             const watchedEnabled =
               pickBool(
                 settings,

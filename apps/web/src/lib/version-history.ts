@@ -18,10 +18,11 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.5.1',
+    version: '1.5.2',
     popupHighlights: [
       'Recommendations (Movies + TV): now personalized per Plex viewer.',
       'Plex pinning: row placement is smarter for admin and shared users.',
+      'Plex user monitoring: toggle any user off so auto-triggered tasks skip them.',
       'Plex library selection: safer setup and easier ongoing management.',
       'Overseerr integration: optional centralized missing-request routing.',
       'Observatory: improved stability and easier reject-list workflow.',
@@ -80,6 +81,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         title: 'Operational visibility and reliability updates',
         bullets: [
           'Expanded user-aware reset/debug controls and clearer user/media run reporting.',
+          'Plex user monitoring can be toggled per user; auto-triggered jobs skip users who are turned off.',
           'Compose keeps host networking while still showing mapped ports.',
           'Removed GitHub token env dependency from update checks.',
         ],

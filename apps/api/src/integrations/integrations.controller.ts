@@ -21,8 +21,15 @@ import {
   resolvePlexLibrarySelection,
   sanitizeSectionKeys,
 } from '../plex/plex-library-selection.utils';
+import {
+  buildExcludedPlexUserIdsFromSelected,
+  resolvePlexUserMonitoringSelection,
+  sanitizePlexUserIds,
+} from '../plex/plex-user-selection.utils';
 import { resolveCuratedCollectionBaseName } from '../plex/plex-collections.utils';
+import { PlexService } from '../plex/plex.service';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexUsersService } from '../plex/plex-users.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
@@ -72,13 +79,19 @@ type UpdatePlexLibrariesBody = {
   selectedSectionKeys?: unknown;
 };
 
+type UpdatePlexMonitoringUsersBody = {
+  selectedPlexUserIds?: unknown;
+};
+
 @Controller('integrations')
 @ApiTags('integrations')
 export class IntegrationsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
+    private readonly plex: PlexService,
     private readonly plexServer: PlexServerService,
+    private readonly plexUsers: PlexUsersService,
     private readonly radarr: RadarrService,
     private readonly sonarr: SonarrService,
     private readonly tmdb: TmdbService,
@@ -196,6 +209,79 @@ export class IntegrationsController {
         collectionsDeleted,
         errors: plexErrors,
       },
+    };
+  }
+
+  private async resolvePlexMonitoringUsers(userId: string) {
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!baseUrlRaw || !token) {
+      throw new BadRequestException('Plex is not configured');
+    }
+
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+    const admin = await this.plexUsers.ensureAdminPlexUser({ userId });
+
+    let warning: string | null = null;
+    const usersById = new Map<
+      string,
+      {
+        id: string;
+        plexAccountId: number | null;
+        plexAccountTitle: string;
+        isAdmin: boolean;
+      }
+    >();
+    usersById.set(admin.id, {
+      id: admin.id,
+      plexAccountId: admin.plexAccountId,
+      plexAccountTitle: admin.plexAccountTitle,
+      isAdmin: admin.isAdmin,
+    });
+
+    try {
+      const machineIdentifier = await this.plexServer.getMachineIdentifier({
+        baseUrl,
+        token,
+      });
+      const sharedUsers = await this.plex.listSharedUsersForServer({
+        plexToken: token,
+        machineIdentifier,
+      });
+      for (const shared of sharedUsers) {
+        const plexUser = await this.plexUsers.getOrCreateByPlexAccount({
+          plexAccountId: shared.plexAccountId,
+          plexAccountTitle: shared.plexAccountTitle,
+        });
+        if (!plexUser) continue;
+        usersById.set(plexUser.id, {
+          id: plexUser.id,
+          plexAccountId: plexUser.plexAccountId,
+          plexAccountTitle: plexUser.plexAccountTitle,
+          isAdmin: plexUser.isAdmin,
+        });
+      }
+    } catch {
+      warning = 'Could not load Plex shared users right now. Showing admin only.';
+    }
+
+    const users = Array.from(usersById.values()).sort((a, b) => {
+      if (a.isAdmin && !b.isAdmin) return -1;
+      if (!a.isAdmin && b.isAdmin) return 1;
+      return (
+        a.plexAccountTitle.localeCompare(b.plexAccountTitle) ||
+        a.id.localeCompare(b.id)
+      );
+    });
+    const selection = resolvePlexUserMonitoringSelection({ settings, users });
+    return {
+      users,
+      selection,
+      warning,
     };
   }
 
@@ -401,6 +487,84 @@ export class IntegrationsController {
       minimumRequired: PLEX_LIBRARY_SELECTION_MIN_SELECTED,
       autoIncludeNewLibraries: true,
       ...(cleanup ? { cleanup } : {}),
+    };
+  }
+
+  @Get('plex/monitoring-users')
+  async plexMonitoringUsers(@Req() req: AuthenticatedRequest) {
+    const { users, selection, warning } = await this.resolvePlexMonitoringUsers(
+      req.user.id,
+    );
+    const selectedSet = new Set(selection.selectedPlexUserIds);
+    return {
+      ok: true,
+      users: users.map((user) => ({
+        id: user.id,
+        plexAccountId: user.plexAccountId,
+        plexAccountTitle: user.plexAccountTitle,
+        isAdmin: user.isAdmin,
+        selected: selectedSet.has(user.id),
+      })),
+      selectedPlexUserIds: selection.selectedPlexUserIds,
+      excludedPlexUserIds: selection.excludedPlexUserIds,
+      defaultEnabled: true,
+      autoIncludeNewUsers: true,
+      ...(warning ? { warning } : {}),
+    };
+  }
+
+  @Put('plex/monitoring-users')
+  async savePlexMonitoringUsers(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdatePlexMonitoringUsersBody,
+  ) {
+    const bodyObj = isPlainObject(body) ? body : {};
+    if (!Array.isArray(bodyObj['selectedPlexUserIds'])) {
+      throw new BadRequestException('selectedPlexUserIds must be an array');
+    }
+    const selectedPlexUserIds = sanitizePlexUserIds(
+      bodyObj['selectedPlexUserIds'],
+    );
+
+    const userId = req.user.id;
+    const { users, warning } = await this.resolvePlexMonitoringUsers(userId);
+    const knownIds = new Set(users.map((user) => user.id));
+    const unknownIds = selectedPlexUserIds.filter((id) => !knownIds.has(id));
+    if (unknownIds.length) {
+      throw new BadRequestException(`Unknown Plex user ids: ${unknownIds.join(', ')}`);
+    }
+
+    const excludedPlexUserIds = buildExcludedPlexUserIdsFromSelected({
+      users,
+      selectedPlexUserIds,
+    });
+    const nextSettings = await this.settingsService.updateSettings(userId, {
+      plex: {
+        userMonitoring: {
+          excludedPlexUserIds,
+        },
+      },
+    });
+    const nextSelection = resolvePlexUserMonitoringSelection({
+      settings: nextSettings,
+      users,
+    });
+    const selectedSet = new Set(nextSelection.selectedPlexUserIds);
+
+    return {
+      ok: true,
+      users: users.map((user) => ({
+        id: user.id,
+        plexAccountId: user.plexAccountId,
+        plexAccountTitle: user.plexAccountTitle,
+        isAdmin: user.isAdmin,
+        selected: selectedSet.has(user.id),
+      })),
+      selectedPlexUserIds: nextSelection.selectedPlexUserIds,
+      excludedPlexUserIds: nextSelection.excludedPlexUserIds,
+      defaultEnabled: true,
+      autoIncludeNewUsers: true,
+      ...(warning ? { warning } : {}),
     };
   }
 

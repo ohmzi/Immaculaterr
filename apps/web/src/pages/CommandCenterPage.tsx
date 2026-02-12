@@ -11,6 +11,7 @@ import {
   Settings2,
   Tv,
   Trash2,
+  Users,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -18,7 +19,9 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   getPlexLibraries,
+  getPlexMonitoringUsers,
   getRadarrOptions,
+  savePlexMonitoringUsers,
   getSonarrOptions,
   savePlexLibrarySelection,
 } from '@/api/integrations';
@@ -131,6 +134,9 @@ export function CommandCenterPage() {
     useState(false);
   const [draftSelectedPlexLibraryKeys, setDraftSelectedPlexLibraryKeys] =
     useState<string[]>([]);
+  const [draftSelectedPlexUserIds, setDraftSelectedPlexUserIds] = useState<
+    string[]
+  >([]);
   const plexLibrariesQuery = useQuery({
     queryKey: ['integrations', 'plex', 'libraries'],
     queryFn: getPlexLibraries,
@@ -142,6 +148,18 @@ export function CommandCenterPage() {
     if (!plexLibrariesQuery.data) return;
     setDraftSelectedPlexLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
   }, [plexLibrariesQuery.data]);
+
+  const plexMonitoringUsersQuery = useQuery({
+    queryKey: ['integrations', 'plex', 'monitoring-users'],
+    queryFn: getPlexMonitoringUsers,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  useEffect(() => {
+    if (!plexMonitoringUsersQuery.data) return;
+    setDraftSelectedPlexUserIds(plexMonitoringUsersQuery.data.selectedPlexUserIds);
+  }, [plexMonitoringUsersQuery.data]);
 
   const immaculateCollectionsQuery = useQuery({
     queryKey: ['immaculateTaste', 'collections'],
@@ -552,6 +570,43 @@ export function CommandCenterPage() {
     },
   });
 
+  const serverSelectedPlexUserIds =
+    plexMonitoringUsersQuery.data?.selectedPlexUserIds ?? [];
+  const plexUserSelectionDirty = useMemo(() => {
+    if (!plexMonitoringUsersQuery.data) return false;
+    if (draftSelectedPlexUserIds.length !== serverSelectedPlexUserIds.length) {
+      return true;
+    }
+    const serverSet = new Set(serverSelectedPlexUserIds);
+    return draftSelectedPlexUserIds.some((id) => !serverSet.has(id));
+  }, [
+    draftSelectedPlexUserIds,
+    plexMonitoringUsersQuery.data,
+    serverSelectedPlexUserIds,
+  ]);
+
+  const togglePlexUserSelectionDraft = (plexUserId: string, checked: boolean) => {
+    setDraftSelectedPlexUserIds((prev) => {
+      const has = prev.includes(plexUserId);
+      if (checked) {
+        if (has) return prev;
+        return [...prev, plexUserId];
+      }
+      if (!has) return prev;
+      return prev.filter((id) => id !== plexUserId);
+    });
+  };
+
+  const savePlexMonitoringUsersMutation = useMutation({
+    mutationFn: async (selectedPlexUserIds: string[]) =>
+      await savePlexMonitoringUsers({ selectedPlexUserIds }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['integrations', 'plex', 'monitoring-users'], data);
+      setDraftSelectedPlexUserIds(data.selectedPlexUserIds);
+      toast.success('Plex user monitoring updated.');
+    },
+  });
+
   const renderAdminCollectionList = () => (
     <div className="space-y-3">
       {(immaculateCollectionsQuery.data?.collections ?? []).map((c) => {
@@ -921,6 +976,150 @@ export function CommandCenterPage() {
                     className="inline-flex items-center gap-2 rounded-2xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
                   >
                     {savePlexLibrarySelectionMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      'Save selection'
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Plex User Monitoring */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-cyan-400/10 focus-within:border-white/15 focus-within:shadow-cyan-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-cyan-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-cyan-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <Users className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Plex User Monitoring
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {plexMonitoringUsersQuery.isLoading ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}>
+                    Checking…
+                  </span>
+                ) : plexMonitoringUsersQuery.isError ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
+                    Error
+                  </span>
+                ) : null}
+                <SavingPill
+                  active={savePlexMonitoringUsersMutation.isPending}
+                  className="static"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Choose which Plex users Immaculaterr should monitor for task
+              triggers. Users turned off here won&apos;t trigger Plex-based
+              automation.
+            </p>
+
+            {plexMonitoringUsersQuery.data?.warning ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-yellow-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{plexMonitoringUsersQuery.data.warning}</span>
+              </div>
+            ) : null}
+
+            {plexMonitoringUsersQuery.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{(plexMonitoringUsersQuery.error as Error).message}</span>
+              </div>
+            ) : null}
+
+            {!plexMonitoringUsersQuery.isLoading &&
+            !plexMonitoringUsersQuery.isError &&
+            !(plexMonitoringUsersQuery.data?.users.length ?? 0) ? (
+              <div className="mt-4 text-sm text-white/70">
+                No Plex users available right now.
+              </div>
+            ) : null}
+
+            {!plexMonitoringUsersQuery.isLoading &&
+            !plexMonitoringUsersQuery.isError &&
+            (plexMonitoringUsersQuery.data?.users.length ?? 0) > 0 ? (
+              <div className="mt-5 space-y-4">
+                <div className="text-xs text-white/55">
+                  Enabled {draftSelectedPlexUserIds.length} of{' '}
+                  {plexMonitoringUsersQuery.data?.users.length ?? 0}.
+                </div>
+
+                <div className="space-y-2">
+                  {(plexMonitoringUsersQuery.data?.users ?? []).map((user) => (
+                    <label
+                      key={user.id}
+                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/85"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draftSelectedPlexUserIds.includes(user.id)}
+                        onChange={(e) =>
+                          togglePlexUserSelectionDraft(user.id, e.target.checked)
+                        }
+                        className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
+                      />
+                      <span className="min-w-0 flex-1 truncate font-semibold">
+                        {user.plexAccountTitle}
+                      </span>
+                      {user.isAdmin ? (
+                        <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/60">
+                          Admin
+                        </span>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+
+                {savePlexMonitoringUsersMutation.isError ? (
+                  <div className="flex items-start gap-2 text-sm text-red-200/90">
+                    <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>
+                      {(savePlexMonitoringUsersMutation.error as Error).message}
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraftSelectedPlexUserIds(serverSelectedPlexUserIds)
+                    }
+                    disabled={
+                      savePlexMonitoringUsersMutation.isPending ||
+                      !plexUserSelectionDirty
+                    }
+                    className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      savePlexMonitoringUsersMutation.mutate(
+                        draftSelectedPlexUserIds,
+                      )
+                    }
+                    disabled={
+                      savePlexMonitoringUsersMutation.isPending ||
+                      !plexUserSelectionDirty
+                    }
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                  >
+                    {savePlexMonitoringUsersMutation.isPending ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Saving…

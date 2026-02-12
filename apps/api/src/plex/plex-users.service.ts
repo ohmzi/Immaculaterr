@@ -28,6 +28,31 @@ function normalizeTitle(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+function titleQuality(value: string | null): number {
+  if (!value) return 0;
+  const title = value.trim();
+  if (!title) return 0;
+
+  const lower = title.toLowerCase();
+  if (lower === 'unknown') return 0;
+
+  if (title.includes(' ')) return 4;
+  if (title.includes('@')) return 1;
+  if (/[A-Z]/.test(title)) return 3;
+  if (/^[a-z0-9._-]+$/.test(title)) return 2;
+  return 2.5;
+}
+
+function pickPreferredTitle(existing: string | null, incoming: string | null): string | null {
+  if (!incoming) return existing;
+  if (!existing) return incoming;
+
+  const incomingScore = titleQuality(incoming);
+  const existingScore = titleQuality(existing);
+  if (incomingScore > existingScore) return incoming;
+  return existing;
+}
+
 @Injectable()
 export class PlexUsersService {
   private readonly logger = new Logger(PlexUsersService.name);
@@ -99,11 +124,15 @@ export class PlexUsersService {
 
     const target = byAccount ?? byTitle;
     if (target) {
+      const preferredTitle = pickPreferredTitle(
+        normalizeTitle(target.plexAccountTitle),
+        title,
+      );
       return await this.prisma.plexUser.update({
         where: { id: target.id },
         data: {
           plexAccountId: accountId ?? target.plexAccountId,
-          plexAccountTitle: title ?? target.plexAccountTitle,
+          plexAccountTitle: preferredTitle ?? target.plexAccountTitle,
           lastSeenAt: new Date(),
         },
       });

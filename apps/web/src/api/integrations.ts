@@ -62,6 +62,24 @@ export type PlexLibrariesResponse = {
   autoIncludeNewLibraries: true;
 };
 
+export type PlexMonitoringUserItem = {
+  id: string;
+  plexAccountId: number | null;
+  plexAccountTitle: string;
+  isAdmin: boolean;
+  selected: boolean;
+};
+
+export type PlexMonitoringUsersResponse = {
+  ok: true;
+  users: PlexMonitoringUserItem[];
+  selectedPlexUserIds: string[];
+  excludedPlexUserIds: string[];
+  defaultEnabled: true;
+  autoIncludeNewUsers: true;
+  warning?: string;
+};
+
 export function getPlexLibraries() {
   return fetchJson<PlexLibrariesResponse>('/api/integrations/plex/libraries');
 }
@@ -72,4 +90,21 @@ export function savePlexLibrarySelection(body: { selectedSectionKeys: string[] }
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+export function getPlexMonitoringUsers() {
+  return fetchJson<PlexMonitoringUsersResponse>(
+    '/api/integrations/plex/monitoring-users',
+  );
+}
+
+export function savePlexMonitoringUsers(body: { selectedPlexUserIds: string[] }) {
+  return fetchJson<PlexMonitoringUsersResponse>(
+    '/api/integrations/plex/monitoring-users',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
 }
