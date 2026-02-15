@@ -510,13 +510,19 @@ export class PlexServerService {
       const userTitle = (() => {
         const user = it['User'];
         if (!user || typeof user !== 'object') return null;
-        const s = toStringSafe((user as Record<string, unknown>)['title']).trim();
+        const userObj = user as Record<string, unknown>;
+        const s = (
+          toStringSafe(userObj['title']) ||
+          toStringSafe(userObj['name']) ||
+          toStringSafe(userObj['username'])
+        ).trim();
         return s ? s : null;
       })();
       const userId = (() => {
         const user = it['User'];
         if (!user || typeof user !== 'object') return null;
-        const raw = (user as Record<string, unknown>)['id'];
+        const userObj = user as Record<string, unknown>;
+        const raw = userObj['id'] ?? userObj['accountID'] ?? userObj['userID'];
         if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
