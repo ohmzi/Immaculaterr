@@ -22,6 +22,8 @@ import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refre
 import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
+import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
+import { CollectionResyncUpgradeService } from './collection-resync-upgrade.service';
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
     BasedonLatestWatchedRefresherJob,
     ImmaculateTasteCollectionJob,
     ImmaculateTasteRefresherJob,
+    CollectionResyncUpgradeJob,
+    CollectionResyncUpgradeService,
   ],
   exports: [JobsService],
 })
