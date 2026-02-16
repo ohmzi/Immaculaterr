@@ -147,6 +147,8 @@ export class JobsService {
     'mediaAddedCleanup',
     'immaculateTastePoints',
     'watchedMovieRecommendations',
+    // One-time startup migration (no schedule support)
+    'collectionResyncUpgrade',
   ]);
 
   constructor(

@@ -1,12 +1,14 @@
 name: Publish containers (GHCR + Docker Hub)
 
 on:
-  push:
+  pull_request:
     branches:
       - master
+    types:
+      - closed
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 concurrency:
@@ -16,13 +18,21 @@ concurrency:
 
 jobs:
   build-and-push:
+    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop' }}
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.vars.outputs.version }}
+      ghcr_image: ${{ steps.vars.outputs.ghcr_image }}
+      dockerhub_image: ${{ steps.vars.outputs.dockerhub_image }}
+      build_time: ${{ steps.vars.outputs.build_time }}
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -88,11 +98,77 @@ jobs:
           labels: |
             org.opencontainers.image.title=Immaculaterr
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ github.event.pull_request.merge_commit_sha }}
             org.opencontainers.image.version=${{ steps.vars.outputs.version }}
             org.opencontainers.image.created=${{ steps.vars.outputs.build_time }}
           build-args: |
             APP_VERSION=${{ steps.vars.outputs.version }}
-            APP_BUILD_SHA=${{ github.sha }}
+            APP_BUILD_SHA=${{ github.event.pull_request.merge_commit_sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
+
+  create-release:
+    name: Create GitHub release
+    needs:
+      - build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare release notes (custom format)
+        shell: bash
+        env:
+          VERSION: ${{ needs.build-and-push.outputs.version }}
+          GHCR_IMAGE: ${{ needs.build-and-push.outputs.ghcr_image }}
+          DOCKERHUB_IMAGE: ${{ needs.build-and-push.outputs.dockerhub_image }}
+          BUILD_TIME: ${{ needs.build-and-push.outputs.build_time }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          cat > RELEASE_NOTES.md <<EOF
+          ## Release v${VERSION}
+
+          Docker images are published from \`master\` after merge from \`develop\`.
+
+          - GHCR: \`${GHCR_IMAGE}:v${VERSION}\`
+          - GHCR (rolling): \`${GHCR_IMAGE}:latest\`
+          - Docker Hub (rolling): \`${DOCKERHUB_IMAGE}:latest\`
+          - Published at (UTC): \`${BUILD_TIME}\`
+          - Commit: \`${MERGE_SHA}\`
+
+          ## Updating
+
+          ### Docker
+
+          \`\`\`bash
+          docker pull ohmzii/immaculaterr:latest
+
+          docker rm -f Immaculaterr 2>/dev/null || true
+
+          docker run -d \
+            --name Immaculaterr \
+            --network host \
+            -e HOST=0.0.0.0 \
+            -e PORT=5454 \
+            -e APP_DATA_DIR=/data \
+            -e DATABASE_URL=file:/data/tcp.sqlite \
+            -v immaculaterr-data:/data \
+            --restart unless-stopped \
+            ohmzii/immaculaterr:latest
+          \`\`\`
+
+          ### Portainer
+
+          1. In Portainer: **Containers** -> select **Immaculaterr**
+          2. Click **Recreate**
+          3. Enable **Re-pull image**
+          4. Click **Recreate**
+          EOF
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build-and-push.outputs.version }}
+          target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
+          name: Release v${{ needs.build-and-push.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: false
+          make_latest: true
 

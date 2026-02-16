@@ -189,7 +189,12 @@ export class WebhooksController {
         ? pickString(payloadObj, 'Metadata.librarySectionTitle')
         : '';
       const plexAccountId = payloadObj ? pickNumber(payloadObj, 'Account.id') : null;
-      const plexAccountTitle = payloadObj ? pickString(payloadObj, 'Account.title') : '';
+      const plexAccountTitle = payloadObj
+        ? pickString(payloadObj, 'Account.title') ||
+          pickString(payloadObj, 'Account.name') ||
+          pickString(payloadObj, 'user') ||
+          pickString(payloadObj, 'owner')
+        : '';
 
       if (seedTitle) {
         const userId = await this.authService.getFirstAdminUserId();
@@ -202,14 +207,16 @@ export class WebhooksController {
             });
             const plexUserId = plexUser.id;
             const plexUserTitle = plexUser.plexAccountTitle;
+            const resolvedPlexAccountId = plexUser.plexAccountId ?? plexAccountId ?? null;
+            const resolvedPlexAccountTitle = plexUserTitle || plexAccountTitle || null;
 
             const payloadInput = {
               source: 'plexWebhook',
               plexEvent,
               plexUserId,
               plexUserTitle,
-              plexAccountId,
-              plexAccountTitle: plexAccountTitle || null,
+              plexAccountId: resolvedPlexAccountId,
+              plexAccountTitle: resolvedPlexAccountTitle,
               mediaType: mediaTypeLower,
               seedTitle,
               seedYear: seedYear ?? null,

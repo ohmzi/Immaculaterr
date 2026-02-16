@@ -67,24 +67,48 @@ function hasUserLikeKey(obj: Record<string, unknown>): boolean {
   ].some((k) => k in obj);
 }
 
+function hasHomeUserLikeKey(obj: Record<string, unknown>): boolean {
+  const hasIdentity = [
+    'userID',
+    'userId',
+    'accountId',
+    'accountID',
+    'id',
+  ].some((k) => k in obj);
+  const hasDisplay = [
+    'friendlyName',
+    'title',
+    'name',
+    'username',
+    'userName',
+    'email',
+  ].some((k) => k in obj);
+  return hasIdentity && hasDisplay;
+}
+
+type UserCandidatePredicate = (obj: Record<string, unknown>) => boolean;
+
 function collectCandidateUserObjects(
   value: unknown,
   out: Record<string, unknown>[],
+  predicate: UserCandidatePredicate,
   depth = 0,
 ) {
   if (depth > 8) return;
   if (Array.isArray(value)) {
-    for (const item of value) collectCandidateUserObjects(item, out, depth + 1);
+    for (const item of value) {
+      collectCandidateUserObjects(item, out, predicate, depth + 1);
+    }
     return;
   }
   if (!isPlainObject(value)) return;
 
-  if (hasUserLikeKey(value)) {
+  if (predicate(value)) {
     out.push(value);
   }
 
   for (const next of Object.values(value)) {
-    collectCandidateUserObjects(next, out, depth + 1);
+    collectCandidateUserObjects(next, out, predicate, depth + 1);
   }
 }
 
@@ -102,6 +126,9 @@ function normalizeSharedServerUser(
     toIntSafe(raw['id']) ??
     (nestedUser ? toIntSafe(nestedUser['id']) : null) ??
     (nestedUser ? toIntSafe(nestedUser['accountId']) : null) ??
+    (nestedUser ? toIntSafe(nestedUser['accountID']) : null) ??
+    (nestedUser ? toIntSafe(nestedUser['userID']) : null) ??
+    (nestedUser ? toIntSafe(nestedUser['userId']) : null) ??
     null;
 
   const username =
@@ -115,11 +142,19 @@ function normalizeSharedServerUser(
     (nestedUser ? toStringSafe(nestedUser['email']) : '') ||
     null;
   const nestedUserTitle = nestedUser ? toStringSafe(nestedUser['title']) : '';
+  const nestedUserFriendlyName = nestedUser
+    ? toStringSafe(nestedUser['friendlyName'])
+    : '';
   const nestedUserName = nestedUser ? toStringSafe(nestedUser['name']) : '';
+  const rawFriendlyName = toStringSafe(raw['friendlyName']);
+  const rawName = toStringSafe(raw['name']);
   const rawTitle = toStringSafe(raw['title']);
   const plexAccountTitle =
+    rawFriendlyName ||
     rawTitle ||
+    rawName ||
     username ||
+    nestedUserFriendlyName ||
     nestedUserTitle ||
     nestedUserName ||
     email ||
@@ -163,7 +198,16 @@ function dedupeSharedServerUsers(
 
 function parseSharedUsersPayload(payload: unknown): PlexSharedServerUser[] {
   const candidates: Record<string, unknown>[] = [];
-  collectCandidateUserObjects(payload, candidates, 0);
+  collectCandidateUserObjects(payload, candidates, hasUserLikeKey, 0);
+  const normalized = candidates
+    .map((row) => normalizeSharedServerUser(row))
+    .filter((row): row is PlexSharedServerUser => Boolean(row));
+  return dedupeSharedServerUsers(normalized);
+}
+
+function parseHomeUsersPayload(payload: unknown): PlexSharedServerUser[] {
+  const candidates: Record<string, unknown>[] = [];
+  collectCandidateUserObjects(payload, candidates, hasHomeUserLikeKey, 0);
   const normalized = candidates
     .map((row) => normalizeSharedServerUser(row))
     .filter((row): row is PlexSharedServerUser => Boolean(row));
@@ -303,13 +347,43 @@ export class PlexService {
     const machineIdentifier = params.machineIdentifier.trim();
     if (!plexToken || !machineIdentifier) return [];
 
-    const endpoints = [
-      `https://plex.tv/api/servers/${encodeURIComponent(machineIdentifier)}/shared_servers`,
-      `https://plex.tv/api/v2/servers/${encodeURIComponent(machineIdentifier)}/shared_servers`,
-    ];
+    const sharedLookup = await this.fetchUsersFromEndpoints({
+      plexToken,
+      endpoints: [
+        `https://plex.tv/api/servers/${encodeURIComponent(machineIdentifier)}/shared_servers`,
+        `https://plex.tv/api/v2/servers/${encodeURIComponent(machineIdentifier)}/shared_servers`,
+      ],
+      parser: parseSharedUsersPayload,
+    });
+    const homeLookup = await this.fetchUsersFromEndpoints({
+      plexToken,
+      endpoints: [
+        'https://plex.tv/api/v2/home/users',
+        'https://plex.tv/api/home/users',
+      ],
+      parser: parseHomeUsersPayload,
+    });
 
+    const mergedUsers = dedupeSharedServerUsers([
+      ...sharedLookup.users,
+      ...homeLookup.users,
+    ]);
+    if (mergedUsers.length) return mergedUsers;
+    if (sharedLookup.ok || homeLookup.ok) return [];
+
+    const reason = [...sharedLookup.errors, ...homeLookup.errors].join(' | ') || 'unknown';
+    throw new BadGatewayException(
+      `Plex shared users lookup failed for machineIdentifier=${machineIdentifier}: ${reason}`,
+    );
+  }
+
+  private async fetchUsersFromEndpoints(params: {
+    plexToken: string;
+    endpoints: string[];
+    parser: (payload: unknown) => PlexSharedServerUser[];
+  }): Promise<{ ok: boolean; users: PlexSharedServerUser[]; errors: string[] }> {
     const errors: string[] = [];
-    for (const url of endpoints) {
+    for (const url of params.endpoints) {
       const safeUrl = sanitizeUrlForLogs(url);
       const startedAt = Date.now();
       try {
@@ -318,7 +392,7 @@ export class PlexService {
           headers: {
             ...this.getPlexHeaders(),
             Accept: 'application/json, text/xml;q=0.9, application/xml;q=0.8',
-            'X-Plex-Token': plexToken,
+            'X-Plex-Token': params.plexToken,
           },
         });
 
@@ -329,14 +403,14 @@ export class PlexService {
           this.logger.warn(
             `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${raw}`.trim(),
           );
-          errors.push(`HTTP ${res.status}`);
+          errors.push(`HTTP ${res.status} ${safeUrl}`);
           continue;
         }
 
         this.logger.log(`Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
 
         const body = raw.trim();
-        if (!body) return [];
+        if (!body) return { ok: true, users: [], errors };
 
         const contentType = res.headers.get('content-type') ?? '';
         let parsed: unknown = null;
@@ -372,21 +446,18 @@ export class PlexService {
         }
 
         if (parsed === null) {
-          errors.push('unparseable payload');
+          errors.push(`unparseable payload ${safeUrl}`);
           continue;
         }
 
-        return parseSharedUsersPayload(parsed);
+        return { ok: true, users: params.parser(parsed), errors };
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
-        errors.push(msg);
+        errors.push(`${safeUrl}: ${msg}`);
       }
     }
 
-    const reason = errors.join(' | ') || 'unknown';
-    throw new BadGatewayException(
-      `Plex shared users lookup failed for machineIdentifier=${machineIdentifier}: ${reason}`,
-    );
+    return { ok: false, users: [], errors };
   }
 
   private getPlexHeaders(): Record<string, string> {
