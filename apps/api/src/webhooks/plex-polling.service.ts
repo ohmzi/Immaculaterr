@@ -1224,6 +1224,8 @@ export class PlexPollingService implements OnModuleInit {
     });
     const plexUserId = resolvedPlexUser.id;
     const plexUserTitle = resolvedPlexUser.plexAccountTitle;
+    const resolvedPlexAccountId = resolvedPlexUser.plexAccountId ?? snap.userId ?? null;
+    const resolvedPlexAccountTitle = plexUserTitle || snap.userTitle || null;
     const now = Date.now();
     const sessionAutomationId = this.buildSessionAutomationId({
       sessionKey: snap.sessionKey,
@@ -1407,8 +1409,8 @@ export class PlexPollingService implements OnModuleInit {
       plexEvent: 'media.scrobble',
       plexUserId,
       plexUserTitle,
-      plexAccountId: snap.userId ?? null,
-      plexAccountTitle: snap.userTitle ?? null,
+      plexAccountId: resolvedPlexAccountId,
+      plexAccountTitle: resolvedPlexAccountTitle,
       mediaType: mediaTypeLower,
       seedTitle,
       seedYear: mediaTypeLower === 'movie' ? (snap.year ?? null) : null,

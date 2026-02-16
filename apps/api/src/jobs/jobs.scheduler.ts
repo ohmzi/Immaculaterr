@@ -16,6 +16,8 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup',
   'immaculateTastePoints',
   'watchedMovieRecommendations',
+  // One-time startup migration (no schedule support)
+  'collectionResyncUpgrade',
 ]);
 
 @Injectable()

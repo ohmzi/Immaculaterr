@@ -7,6 +7,7 @@ import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job'
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
 import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
+import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
 
 @Injectable()
 export class JobsHandlers {
@@ -18,6 +19,7 @@ export class JobsHandlers {
     private readonly immaculateTasteRefresherJob: ImmaculateTasteRefresherJob,
     private readonly basedonLatestWatchedRefresherJob: BasedonLatestWatchedRefresherJob,
     private readonly basedonLatestWatchedCollectionJob: BasedonLatestWatchedCollectionJob,
+    private readonly collectionResyncUpgradeJob: CollectionResyncUpgradeJob,
   ) {}
 
   async run(jobId: string, ctx: JobContext): Promise<JobRunResult> {
@@ -36,6 +38,8 @@ export class JobsHandlers {
         return await this.basedonLatestWatchedCollectionJob.run(ctx);
       case 'recentlyWatchedRefresher':
         return await this.basedonLatestWatchedRefresherJob.run(ctx);
+      case 'collectionResyncUpgrade':
+        return await this.collectionResyncUpgradeJob.run(ctx);
       default:
         throw new Error(`No handler registered for jobId=${jobId}`);
     }

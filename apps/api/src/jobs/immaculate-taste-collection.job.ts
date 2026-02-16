@@ -2054,12 +2054,7 @@ export class ImmaculateTasteCollectionJob {
       if (rowTitle && adminTitle && rowTitle === adminTitle) return true;
       return row.isAdmin === true;
     };
-    const titleMismatch =
-      Boolean(fromInput) &&
-      Boolean(plexAccountTitle) &&
-      normalize(fromInput?.plexAccountTitle) !== normalize(plexAccountTitle);
-
-    if (fromInput && !titleMismatch) {
+    if (fromInput) {
       return {
         plexUserId: fromInput.id,
         plexUserTitle: fromInput.plexAccountTitle,
