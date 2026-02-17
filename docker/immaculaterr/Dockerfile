@@ -68,8 +68,10 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/api/prisma apps/api/prisma
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Ensure Prisma client exists at runtime (the Nest app imports @prisma/client).
-RUN npm -w apps/api run db:generate
+# Reuse Prisma client generated in builder. A second generation here is flaky on
+# linux/arm64 under emulation (Prisma getDmmf JSON parse errors).
+COPY --from=builder /app/apps/api/node_modules/.prisma /app/apps/api/node_modules/.prisma
+COPY --from=builder /app/apps/api/node_modules/@prisma/client /app/apps/api/node_modules/@prisma/client
 
 # Copy built artifacts
 COPY --from=builder /app/apps/api/dist /app/apps/api/dist
