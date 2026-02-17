@@ -1,4 +1,5 @@
-ARG NODE_IMAGE=node:25-trixie-slim
+# Keep to an LTS line; Node 25 has shown flaky Prisma getDMMF failures on arm64 QEMU builds.
+ARG NODE_IMAGE=node:24-trixie-slim
 
 FROM ${NODE_IMAGE} AS builder
 
