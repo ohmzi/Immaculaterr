@@ -1920,21 +1920,50 @@ export class PlexServerService {
     take?: number;
   }): Promise<Array<{ ratingKey: string; title: string }>> {
     const { baseUrl, token, librarySectionKey } = params;
-    const take = Number.isFinite(params.take ?? NaN) ? (params.take as number) : 200;
+    const take = Number.isFinite(params.take ?? NaN)
+      ? Math.max(1, Math.trunc(params.take as number))
+      : 200;
 
     const fetchCollections = async (path: string) => {
-      const url = new URL(path, normalizeBaseUrl(baseUrl));
-      url.searchParams.set('X-Plex-Container-Start', '0');
-      url.searchParams.set('X-Plex-Container-Size', String(Math.max(1, Math.min(500, take))));
-      const xml = asPlexXml(await this.fetchXml(url.toString(), token, 20000));
-      const container = xml.MediaContainer;
-      const items = asPlexMetadataArray(container);
-      return items
-        .map((m) => ({
-          ratingKey: m.ratingKey ? String(m.ratingKey) : '',
-          title: typeof m.title === 'string' ? m.title : '',
-        }))
-        .filter((x) => x.ratingKey && x.title);
+      const pageSize = Math.max(1, Math.min(500, take));
+      const out = new Map<string, { ratingKey: string; title: string }>();
+      let start = 0;
+
+      while (start < take) {
+        const requestSize = Math.max(
+          1,
+          Math.min(pageSize, take - start),
+        );
+        const url = new URL(path, normalizeBaseUrl(baseUrl));
+        url.searchParams.set('X-Plex-Container-Start', String(start));
+        url.searchParams.set('X-Plex-Container-Size', String(requestSize));
+
+        const xml = asPlexXml(await this.fetchXml(url.toString(), token, 20000));
+        const container = xml.MediaContainer;
+        const items = asPlexMetadataArray(container)
+          .map((m) => ({
+            ratingKey: m.ratingKey ? String(m.ratingKey) : '',
+            title: typeof m.title === 'string' ? m.title : '',
+          }))
+          .filter((x) => x.ratingKey && x.title);
+
+        for (const item of items) {
+          if (!out.has(item.ratingKey)) {
+            out.set(item.ratingKey, item);
+          }
+        }
+
+        if (items.length < requestSize) break;
+
+        const totalSizeRaw = container
+          ? toStringSafe((container as Record<string, unknown>)['totalSize']).trim()
+          : '';
+        const totalSize = totalSizeRaw ? Number.parseInt(totalSizeRaw, 10) : NaN;
+        start += items.length;
+        if (Number.isFinite(totalSize) && start >= totalSize) break;
+      }
+
+      return Array.from(out.values()).slice(0, take);
     };
 
     const primary = await fetchCollections(
