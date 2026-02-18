@@ -1,6 +1,10 @@
 {
   "schemaVersion": 1,
   "label": "GHCR downloads",
+<<<<<<< dependabot/npm_and_yarn/fast-xml-parser-5.3.6
   "message": "765",
+=======
+  "message": "774",
+>>>>>>> develop
   "color": "blue"
 }
