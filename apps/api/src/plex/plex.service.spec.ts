@@ -74,6 +74,60 @@ describe('PlexService.listSharedUsersForServer', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('uses nested user identity instead of shared-server metadata labels', async () => {
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    fetchMock
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            users: [
+              {
+                id: 777,
+                title: 'Omar Plex Server',
+                username: 'guest_plexing',
+                user: {
+                  id: 22,
+                  friendlyName: 'guest_plexing',
+                },
+              },
+            ],
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            users: [{ id: 22, friendlyName: 'guest_plexing' }],
+          }),
+        }),
+      );
+
+    const service = new PlexService();
+    const users = await service.listSharedUsersForServer({
+      plexToken: 'token',
+      machineIdentifier: 'machine-id',
+    });
+
+    expect(users).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          plexAccountId: 22,
+          plexAccountTitle: 'guest_plexing',
+        }),
+      ]),
+    );
+    expect(users.map((user) => user.plexAccountTitle)).not.toContain(
+      'Omar Plex Server',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('returns home users when shared users endpoints fail', async () => {
     const fetchMock = jest.fn();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
