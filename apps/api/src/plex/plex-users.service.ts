@@ -35,6 +35,8 @@ function titleQuality(value: string | null): number {
 
   const lower = title.toLowerCase();
   if (lower === 'unknown') return 0;
+  if (lower.includes('plex server')) return 0.25;
+  if (/\bserver\b/.test(lower)) return 0.5;
 
   if (title.includes(' ')) return 4;
   if (title.includes('@')) return 1;

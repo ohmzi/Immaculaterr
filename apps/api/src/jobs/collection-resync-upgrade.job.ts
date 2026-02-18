@@ -7,6 +7,8 @@ import {
   buildUserCollectionName,
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  hasSameCuratedCollectionBase,
+  normalizeCollectionTitle,
 } from '../plex/plex-collections.utils';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
@@ -34,6 +36,8 @@ const IMMACULATE_BASE_COLLECTION = 'Inspired by your Immaculate Taste';
 const LOCK_TTL_MS = 10 * 60_000;
 const ITEM_RETRY_MAX = 3;
 const ITEM_PACING_MS = 250;
+const RESYNC_REPORT_ITEMS_LIMIT = 300;
+const RESYNC_MAX_COLLECTIONS_PER_LIBRARY = 50_000;
 
 type UpgradeMediaType = 'movie' | 'tv';
 type UpgradeSource = 'plex' | 'immaculaterr';
@@ -145,6 +149,21 @@ type RefreshTitlesResult = {
   plexUserLookup: Map<string, PlexUserRecord>;
   usersRefreshed: number;
   sharedUsersDiscovered: number;
+};
+
+type RecreateCollectionDetail = {
+  itemKey: string;
+  plexUserId: string;
+  mediaType: UpgradeMediaType;
+  librarySectionKey: string;
+  libraryTitle: string;
+  collectionBaseName: string;
+  collectionBefore: string | null;
+  collectionAfter: string;
+  desiredCount: number;
+  desiredItems: string[];
+  desiredItemsTruncated: boolean;
+  status: 'recreated' | 'skipped_empty';
 };
 
 type SuggestionCounts = {
@@ -763,7 +782,39 @@ export class CollectionResyncUpgradeJob {
           unit: 'collections',
         }),
       );
-      raw['recreateResult'] = recreateResult;
+      taskState.recreate_collections_sequentially.facts.push(
+        {
+          label: 'Recreated name mapping',
+          value: {
+            count: recreateResult.details.length,
+            unit: 'collections',
+            items: recreateResult.details.map((detail) => {
+              const before = detail.collectionBefore ?? '(not found in snapshot)';
+              return `[${detail.libraryTitle}] ${before} -> ${detail.collectionAfter}`;
+            }),
+          },
+        },
+        ...this.buildRecreateDetailFacts(recreateResult.details),
+      );
+      raw['recreateResult'] = {
+        done: recreateResult.done,
+        recreated: recreateResult.recreated,
+        emptyDesired: recreateResult.emptyDesired,
+        details: recreateResult.details.map((detail) => ({
+          itemKey: detail.itemKey,
+          plexUserId: detail.plexUserId,
+          mediaType: detail.mediaType,
+          librarySectionKey: detail.librarySectionKey,
+          libraryTitle: detail.libraryTitle,
+          collectionBaseName: detail.collectionBaseName,
+          collectionBefore: detail.collectionBefore,
+          collectionAfter: detail.collectionAfter,
+          desiredCount: detail.desiredCount,
+          desiredItemsSample: detail.desiredItems.slice(0, 10),
+          desiredItemsTruncated: detail.desiredItemsTruncated,
+          status: detail.status,
+        })),
+      };
 
       currentTask = 'verification_and_finalize';
       await patchProgress({
@@ -1267,7 +1318,7 @@ export class CollectionResyncUpgradeJob {
         baseUrl: params.plexBaseUrl,
         token: params.plexToken,
         librarySectionKey: section.key,
-        take: 500,
+        take: RESYNC_MAX_COLLECTIONS_PER_LIBRARY,
       });
       plexInventory.push({
         librarySectionKey: section.key,
@@ -1395,7 +1446,12 @@ export class CollectionResyncUpgradeJob {
     plexToken: string;
     machineIdentifier: string;
     watchedLimit: number;
-  }): Promise<{ done: number; recreated: number; emptyDesired: number }> {
+  }): Promise<{
+    done: number;
+    recreated: number;
+    emptyDesired: number;
+    details: RecreateCollectionDetail[];
+  }> {
     const movieIndexBySection = new Map<
       string,
       Map<number, { ratingKey: string; title: string }>
@@ -1404,6 +1460,10 @@ export class CollectionResyncUpgradeJob {
       string,
       Map<number, { ratingKey: string; title: string }>
     >();
+    const libraryTitleBySection = this.buildLibraryTitleBySection(
+      params.state.deleteQueue,
+    );
+    const details: RecreateCollectionDetail[] = [];
 
     let recreated = 0;
     let emptyDesired = 0;
@@ -1440,6 +1500,10 @@ export class CollectionResyncUpgradeJob {
         tvIndexBySection,
         plexBaseUrl: params.plexBaseUrl,
         plexToken: params.plexToken,
+      });
+      const collectionBefore = this.resolveCollectionNameBeforeDelete({
+        state: params.state,
+        item,
       });
 
       if (progress.phase === 'captured' || progress.phase === 'failed') {
@@ -1515,6 +1579,27 @@ export class CollectionResyncUpgradeJob {
         } else {
           emptyDesired += 1;
         }
+        const desiredItemsFull = desiredItems
+          .map((row) => String(row.title ?? '').trim() || row.ratingKey)
+          .filter(Boolean);
+        const desiredItemsTruncated =
+          desiredItemsFull.length > RESYNC_REPORT_ITEMS_LIMIT;
+        details.push({
+          itemKey: item.key,
+          plexUserId: item.plexUserId,
+          mediaType: item.mediaType,
+          librarySectionKey: item.librarySectionKey,
+          libraryTitle:
+            libraryTitleBySection.get(item.librarySectionKey) ??
+            item.librarySectionKey,
+          collectionBaseName: item.collectionBaseName,
+          collectionBefore,
+          collectionAfter: item.targetCollectionName,
+          desiredCount: desiredItemsFull.length,
+          desiredItems: desiredItemsFull.slice(0, RESYNC_REPORT_ITEMS_LIMIT),
+          desiredItemsTruncated,
+          status: desiredItems.length > 0 ? 'recreated' : 'skipped_empty',
+        });
         markProgressPhase(progress, 'recreated');
         await this.saveState(params.state);
       }
@@ -1570,7 +1655,93 @@ export class CollectionResyncUpgradeJob {
     const done = Object.values(params.state.itemProgress).filter(
       (progress) => progress.phase === 'done',
     ).length;
-    return { done, recreated, emptyDesired };
+    return { done, recreated, emptyDesired, details };
+  }
+
+  private buildLibraryTitleBySection(
+    deleteQueue: UpgradeDeleteQueueItem[],
+  ): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const item of deleteQueue) {
+      if (!item.librarySectionKey) continue;
+      if (!item.libraryTitle) continue;
+      if (!out.has(item.librarySectionKey)) {
+        out.set(item.librarySectionKey, item.libraryTitle);
+      }
+    }
+    return out;
+  }
+
+  private resolveCollectionNameBeforeDelete(params: {
+    state: UpgradeState;
+    item: CollectionResyncQueueItem;
+  }): string | null {
+    const sectionCollections = params.state.deleteQueue.filter(
+      (entry) => entry.librarySectionKey === params.item.librarySectionKey,
+    );
+    if (!sectionCollections.length) return null;
+
+    const previousPlexUserTitle =
+      params.state.preRefreshUserTitles[params.item.plexUserId] ?? null;
+    const previousExpectedName = previousPlexUserTitle
+      ? buildUserCollectionName(
+          params.item.collectionBaseName,
+          previousPlexUserTitle,
+        )
+      : null;
+    const previousExpectedNormalized = normalizeCollectionTitle(
+      previousExpectedName ?? '',
+    );
+    const targetNormalized = normalizeCollectionTitle(
+      params.item.targetCollectionName,
+    );
+
+    const findExact = (needleNormalized: string): string | null => {
+      if (!needleNormalized) return null;
+      const found = sectionCollections.find(
+        (entry) => normalizeCollectionTitle(entry.collectionTitle) === needleNormalized,
+      );
+      return found?.collectionTitle ?? null;
+    };
+
+    const previousMatch = findExact(previousExpectedNormalized);
+    if (previousMatch) return previousMatch;
+
+    const targetMatch = findExact(targetNormalized);
+    if (targetMatch) return targetMatch;
+
+    const baseMatch = sectionCollections.find((entry) =>
+      hasSameCuratedCollectionBase({
+        left: entry.collectionTitle,
+        right: params.item.collectionBaseName,
+        mediaType: params.item.mediaType,
+      }),
+    );
+    return baseMatch?.collectionTitle ?? null;
+  }
+
+  private buildRecreateDetailFacts(
+    details: RecreateCollectionDetail[],
+  ): Array<{ label: string; value: JsonValue }> {
+    return details.map((detail) => {
+      const beforeLabel = detail.collectionBefore ?? '(not found in snapshot)';
+      const items = detail.desiredItemsTruncated
+        ? [
+            ...detail.desiredItems,
+            `... ${Math.max(0, detail.desiredCount - detail.desiredItems.length)} more not shown`,
+          ]
+        : detail.desiredItems;
+      return {
+        label: `[${detail.libraryTitle}] ${beforeLabel} -> ${detail.collectionAfter}`,
+        value: {
+          count: detail.desiredCount,
+          unit: detail.mediaType === 'tv' ? 'shows' : 'movies',
+          order: 'plex',
+          items,
+          status: detail.status,
+        },
+      };
+    });
   }
 
   private async buildDesiredItemsForQueueItem(params: {

@@ -123,12 +123,12 @@ function normalizeSharedServerUser(
     toIntSafe(raw['accountID']) ??
     toIntSafe(raw['invitedID']) ??
     toIntSafe(raw['invitedId']) ??
-    toIntSafe(raw['id']) ??
     (nestedUser ? toIntSafe(nestedUser['id']) : null) ??
     (nestedUser ? toIntSafe(nestedUser['accountId']) : null) ??
     (nestedUser ? toIntSafe(nestedUser['accountID']) : null) ??
     (nestedUser ? toIntSafe(nestedUser['userID']) : null) ??
     (nestedUser ? toIntSafe(nestedUser['userId']) : null) ??
+    toIntSafe(raw['id']) ??
     null;
 
   const username =
@@ -150,13 +150,13 @@ function normalizeSharedServerUser(
   const rawName = toStringSafe(raw['name']);
   const rawTitle = toStringSafe(raw['title']);
   const plexAccountTitle =
-    rawFriendlyName ||
-    rawTitle ||
-    rawName ||
-    username ||
     nestedUserFriendlyName ||
     nestedUserTitle ||
     nestedUserName ||
+    username ||
+    rawFriendlyName ||
+    rawName ||
+    rawTitle ||
     email ||
     null;
 
