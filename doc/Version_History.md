@@ -3,6 +3,18 @@ Version History
 
 This file tracks notable changes by version.
 
+1.6.0
+---
+
+- Stronger key security:
+  - API keys are protected during save/test and unsafe key submissions are blocked by default.
+  - After setup, the app uses secure references instead of resending raw keys.
+  - Secret values stay hidden in Vault (`*******`) and are not returned in settings.
+- Access options:
+  - HTTP on `5454` for backward compatibility.
+  - HTTPS on `5464` for encrypted local/LAN access (optional domain HTTPS on `443`).
+- Added security tests for key handling and transport safety.
+
 1.5.2
 ---
 
