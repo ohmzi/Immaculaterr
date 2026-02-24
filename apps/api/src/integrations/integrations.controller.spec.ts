@@ -3,19 +3,18 @@ import { IntegrationsController } from './integrations.controller';
 
 describe('IntegrationsController plex libraries', () => {
   const makeController = () => {
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
     const readNestedString = (
       input: Record<string, unknown>,
       path: string,
     ): string => {
-      const parts = path.split('.');
-      let current: unknown = input;
-      for (const part of parts) {
-        if (!current || typeof current !== 'object' || Array.isArray(current)) {
-          return '';
-        }
-        current = (current as Record<string, unknown>)[part];
-      }
-      return typeof current === 'string' ? current : '';
+      const resolved = path.split('.').reduce<unknown>((current, segment) => {
+        if (!isRecord(current)) return undefined;
+        return current[segment];
+      }, input);
+      return typeof resolved === 'string' ? resolved : '';
     };
 
     const readServiceSecret = (

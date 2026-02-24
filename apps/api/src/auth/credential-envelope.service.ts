@@ -211,14 +211,24 @@ export class CredentialEnvelopeService {
     payload: Record<string, unknown>,
     expectedPurposeRaw: unknown,
   ): void {
-    const expectedPurpose =
-      typeof expectedPurposeRaw === 'string' ? expectedPurposeRaw.trim() : '';
+    const expectedPurpose = this.readExpectedPurpose(expectedPurposeRaw);
     if (!expectedPurpose) return;
-    const purpose =
-      typeof payload.purpose === 'string' ? payload.purpose.trim() : '';
-    if (!purpose || purpose !== expectedPurpose) {
+    if (this.readPayloadPurpose(payload) === expectedPurpose) return;
+    throw new BadRequestException('credentialEnvelope purpose is invalid');
+  }
+
+  private readExpectedPurpose(raw: unknown): string {
+    return typeof raw === 'string' ? raw.trim() : '';
+  }
+
+  private readPayloadPurpose(payload: Record<string, unknown>): string {
+    const purpose = payload.purpose;
+    if (typeof purpose !== 'string') return '';
+    const normalized = purpose.trim();
+    if (!normalized) {
       throw new BadRequestException('credentialEnvelope purpose is invalid');
     }
+    return normalized;
   }
 
   private resolveDecryptPolicy(options?: DecryptPayloadOptions): {

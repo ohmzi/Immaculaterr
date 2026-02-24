@@ -18,20 +18,30 @@ type TestConnectionBody = {
 };
 
 function normalizeHttpBaseUrl(raw: unknown): string {
+  const baseUrlRaw = requireBaseUrl(raw);
+  const baseUrl = withDefaultHttpScheme(baseUrlRaw);
+  assertHttpUrl(baseUrl);
+  return baseUrl;
+}
+
+function requireBaseUrl(raw: unknown): string {
   const baseUrlRaw = typeof raw === 'string' ? raw.trim() : '';
   if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
-  const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
-    ? baseUrlRaw
-    : `http://${baseUrlRaw}`;
+  return baseUrlRaw;
+}
+
+function withDefaultHttpScheme(baseUrlRaw: string): string {
+  return /^https?:\/\//i.test(baseUrlRaw) ? baseUrlRaw : `http://${baseUrlRaw}`;
+}
+
+function assertHttpUrl(baseUrl: string): void {
   try {
     const parsed = new URL(baseUrl);
-    if (!/^https?:$/i.test(parsed.protocol)) {
-      throw new Error('Unsupported protocol');
-    }
-    return baseUrl;
+    if (/^https?:$/i.test(parsed.protocol)) return;
   } catch {
-    throw new BadRequestException('baseUrl must be a valid http(s) URL');
+    // validated below
   }
+  throw new BadRequestException('baseUrl must be a valid http(s) URL');
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -45,28 +45,43 @@ function parseLegacyPbkdf2Hash(hash: string): {
   salt: Buffer;
   digest: Buffer;
 } | null {
-  // Format: pbkdf2$sha256$<iterations>$<saltB64>$<digestB64>
-  const parts = hash.split('$');
-  if (!isLegacyPbkdf2Header(parts)) return null;
-  const iterations = parseLegacyIterations(parts[2] ?? '');
+  const parts = splitLegacyPbkdf2Hash(hash);
+  if (!parts) return null;
+  const iterations = parseLegacyIterationsSafe(parts.iterationsRaw);
   if (!iterations) return null;
-  const decoded = decodeLegacyPbkdf2Parts(parts[3] ?? '', parts[4] ?? '');
+  const decoded = decodeLegacyPbkdf2Parts(parts.saltB64, parts.digestB64);
   if (!decoded) return null;
   return { iterations, salt: decoded.salt, digest: decoded.digest };
 }
 
-function isLegacyPbkdf2Header(parts: string[]): boolean {
-  return (
-    parts.length === 5 &&
-    parts[0] === 'pbkdf2' &&
-    parts[1] === PBKDF2_DIGEST
-  );
+function splitLegacyPbkdf2Hash(hash: string): {
+  iterationsRaw: string;
+  saltB64: string;
+  digestB64: string;
+} | null {
+  // Format: pbkdf2$sha256$<iterations>$<saltB64>$<digestB64>
+  const [kind, digestName, iterationsRaw, saltB64, digestB64, ...rest] =
+    hash.split('$');
+  if (rest.length > 0) return null;
+  if (kind !== 'pbkdf2' || digestName !== PBKDF2_DIGEST) return null;
+  if (!iterationsRaw || !saltB64 || !digestB64) return null;
+  return { iterationsRaw, saltB64, digestB64 };
 }
 
-function parseLegacyIterations(raw: string): number | null {
+function parseLegacyIterations(raw: string): number {
   const iterations = Number.parseInt(raw, 10);
-  if (!Number.isFinite(iterations) || iterations < 10_000) return null;
+  if (!Number.isFinite(iterations) || iterations < 10_000) {
+    throw new Error('legacy pbkdf2 iterations are invalid');
+  }
   return iterations;
+}
+
+function parseLegacyIterationsSafe(raw: string): number | null {
+  try {
+    return parseLegacyIterations(raw);
+  } catch {
+    return null;
+  }
 }
 
 function decodeLegacyPbkdf2Parts(

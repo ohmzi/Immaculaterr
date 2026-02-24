@@ -23,20 +23,30 @@ type TestPlexServerBody = {
 };
 
 function normalizeHttpBaseUrl(raw: unknown): string {
+  const baseUrlRaw = requireBaseUrl(raw);
+  const baseUrl = withDefaultHttpScheme(baseUrlRaw);
+  assertHttpUrl(baseUrl);
+  return baseUrl;
+}
+
+function requireBaseUrl(raw: unknown): string {
   const baseUrlRaw = typeof raw === 'string' ? raw.trim() : '';
   if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
-  const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
-    ? baseUrlRaw
-    : `http://${baseUrlRaw}`;
+  return baseUrlRaw;
+}
+
+function withDefaultHttpScheme(baseUrlRaw: string): string {
+  return /^https?:\/\//i.test(baseUrlRaw) ? baseUrlRaw : `http://${baseUrlRaw}`;
+}
+
+function assertHttpUrl(baseUrl: string): void {
   try {
     const parsed = new URL(baseUrl);
-    if (!/^https?:$/i.test(parsed.protocol)) {
-      throw new Error('Unsupported protocol');
-    }
-    return baseUrl;
+    if (/^https?:$/i.test(parsed.protocol)) return;
   } catch {
-    throw new BadRequestException('baseUrl must be a valid http(s) URL');
+    // validated below
   }
+  throw new BadRequestException('baseUrl must be a valid http(s) URL');
 }
 
 function parseBaseUrlHost(baseUrl: string): string {
@@ -133,26 +143,45 @@ export class PlexController {
     token: string;
     dockerLocalhostHint: string;
   }): Promise<void> {
+    const sections = await this.loadPlexSections(params);
+    if (sections.length > 0) return;
+    throw new BadGatewayException(
+      `Plex responded but returned no library sections.${params.dockerLocalhostHint}`.trim(),
+    );
+  }
+
+  private async loadPlexSections(params: {
+    baseUrl: string;
+    token: string;
+    dockerLocalhostHint: string;
+  }) {
     try {
-      const sections = await this.plexServerService.getSections({
+      return await this.plexServerService.getSections({
         baseUrl: params.baseUrl,
         token: params.token,
       });
-      if (sections.length > 0) return;
-      throw new BadGatewayException(
-        `Plex responded but returned no library sections.${params.dockerLocalhostHint}`.trim(),
-      );
     } catch (err) {
-      const msg = (err as Error)?.message ?? String(err);
-      // Plex returns 401 when token is invalid or doesn't grant access.
-      if (/HTTP\\s+401\\b/.test(msg) || msg.includes('401 Unauthorized')) {
-        throw new BadRequestException(
-          `Plex token was rejected by the server (401 Unauthorized).${params.dockerLocalhostHint}`.trim(),
-        );
-      }
-      throw new BadGatewayException(
-        `Could not connect to Plex at ${params.baseUrl}.${params.dockerLocalhostHint}`.trim(),
+      throw this.mapPlexConnectionError(err, params);
+    }
+  }
+
+  private mapPlexConnectionError(
+    err: unknown,
+    params: { baseUrl: string; dockerLocalhostHint: string },
+  ): BadRequestException | BadGatewayException {
+    const msg = (err as Error)?.message ?? String(err);
+    // Plex returns 401 when token is invalid or doesn't grant access.
+    if (this.isUnauthorizedPlexError(msg)) {
+      return new BadRequestException(
+        `Plex token was rejected by the server (401 Unauthorized).${params.dockerLocalhostHint}`.trim(),
       );
     }
+    return new BadGatewayException(
+      `Could not connect to Plex at ${params.baseUrl}.${params.dockerLocalhostHint}`.trim(),
+    );
+  }
+
+  private isUnauthorizedPlexError(message: string): boolean {
+    return /HTTP\\s+401\\b/.test(message) || message.includes('401 Unauthorized');
   }
 }
