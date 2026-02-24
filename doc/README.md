@@ -68,24 +68,27 @@ Screenshots
 Getting Started (Docker)
 ---
 
-Immaculaterr is designed to run as a single container.
+Use the production Docker stack (app + Caddy) so both HTTP and HTTPS are available:
 
 ```bash
-docker pull ohmzii/immaculaterr:latest
+mkdir -p /opt/immaculaterr
+cd /opt/immaculaterr
 
-docker run -d \
-  --name Immaculaterr \
-  --network host \
-  -e HOST=0.0.0.0 \
-  -e PORT=5454 \
-  -e APP_DATA_DIR=/data \
-  -e DATABASE_URL=file:/data/tcp.sqlite \
-  -v immaculaterr-data:/data \
-  --restart unless-stopped \
-  ohmzii/immaculaterr:latest
+curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/docker-compose.dockerhub.yml
+curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
+chmod +x caddy-entrypoint.sh
+
+docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
+
+IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
 ```
 
-Then open `http://<server-ip>:5454/` (**production Docker port is `5454`**) and configure integrations in the UI (Plex/Radarr/Sonarr/Overseerr/TMDB/OpenAI/Google as desired).
+Then open either:
+
+- `http://<server-ip>:5454/`
+- `https://<server-ip>:5464/`
+
+For full setup and update options (including certificate trust), use [`doc/setupguide.md`](setupguide.md).
 
 Development
 ---

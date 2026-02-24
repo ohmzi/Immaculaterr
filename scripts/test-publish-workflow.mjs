@@ -40,6 +40,10 @@ const requiredSnippets = [
     snippet: '          push: false',
   },
   {
+    name: 'publish workflow validates dockerhub compose stack',
+    snippet: 'docker-compose.dockerhub.yml config >/dev/null',
+  },
+  {
     name: 'merge publish job exists',
     snippet: '  build-and-push:',
   },
@@ -62,6 +66,30 @@ const requiredSnippets = [
   {
     name: 'release job depends on build-and-push',
     snippet: '      - build-and-push',
+  },
+  {
+    name: 'release notes include docker option A heading',
+    snippet: '### Docker Option A: HTTP-only (legacy single container)',
+  },
+  {
+    name: 'release notes include docker option A single-container run',
+    snippet: '--name Immaculaterr \\',
+  },
+  {
+    name: 'release notes include docker option B heading',
+    snippet: '### Docker Option B: HTTP + HTTPS (recommended, Caddy + app)',
+  },
+  {
+    name: 'release notes include dockerhub compose stack update command',
+    snippet: 'docker-compose.dockerhub.yml',
+  },
+  {
+    name: 'release notes recreate both app and caddy containers',
+    snippet: 'docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true',
+  },
+  {
+    name: 'release notes fetch caddy entrypoint for stack boot',
+    snippet: 'caddy-entrypoint.sh',
   },
 ];
 
