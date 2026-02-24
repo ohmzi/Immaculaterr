@@ -1587,6 +1587,7 @@ export function SettingsPage({
         }, delay);
       }
 
+      // skipcq: JS-R1005 - TMDB fallback policy requires explicit cooldown and retry branches.
       async function runTmdbLandingCheck(): Promise<void> {
         if (!secretsPresent.tmdb) return;
         const now = Date.now();
