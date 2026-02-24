@@ -10,7 +10,7 @@ import {
   constants as cryptoConstants,
 } from 'node:crypto';
 
-type CredentialEnvelope = {
+export type CredentialEnvelope = {
   algorithm?: unknown;
   keyId?: unknown;
   encryptedKey?: unknown;
@@ -25,10 +25,19 @@ type DecryptedCredentials = {
 };
 
 type EnvelopePayload = {
+  purpose?: unknown;
+  service?: unknown;
   username?: unknown;
   password?: unknown;
   timestampMs?: unknown;
   nonce?: unknown;
+};
+
+type DecryptPayloadOptions = {
+  expectedPurpose?: string;
+  requireTimestamp?: boolean;
+  requireNonce?: boolean;
+  maxSkewMs?: number;
 };
 
 function parseEnvPrivateKey(raw: string): KeyObject {
@@ -123,7 +132,75 @@ export class CredentialEnvelopeService {
     } as const;
   }
 
+  getEnvelopeKey() {
+    return this.getLoginKey();
+  }
+
+  decryptPayload(
+    envelope: CredentialEnvelope,
+    options?: DecryptPayloadOptions,
+  ): Record<string, unknown> {
+    const payload = this.decryptPayloadInternal(envelope);
+
+    const expectedPurpose =
+      typeof options?.expectedPurpose === 'string'
+        ? options.expectedPurpose.trim()
+        : '';
+    if (expectedPurpose) {
+      const purpose =
+        typeof payload.purpose === 'string' ? payload.purpose.trim() : '';
+      if (!purpose || purpose !== expectedPurpose) {
+        throw new BadRequestException('credentialEnvelope purpose is invalid');
+      }
+    }
+
+    const maxSkewMs =
+      typeof options?.maxSkewMs === 'number' && Number.isFinite(options.maxSkewMs)
+        ? Math.max(1, Math.trunc(options.maxSkewMs))
+        : this.maxSkewMs;
+    const requireTimestamp = options?.requireTimestamp === true;
+    const requireNonce = options?.requireNonce === true;
+
+    if (payload.timestampMs !== undefined || requireTimestamp) {
+      const timestampMs = this.parseTimestamp(payload.timestampMs);
+      const skewMs = Math.abs(Date.now() - timestampMs);
+      if (skewMs > maxSkewMs) {
+        throw new BadRequestException(
+          'credentialEnvelope is too old or from the future',
+        );
+      }
+    }
+
+    if (payload.nonce !== undefined || requireNonce) {
+      const nonce =
+        typeof payload.nonce === 'string' ? payload.nonce.trim() : '';
+      if (!nonce) {
+        throw new BadRequestException('credentialEnvelope nonce is invalid');
+      }
+    }
+
+    return payload;
+  }
+
   decryptEnvelope(envelope: CredentialEnvelope): DecryptedCredentials {
+    const payload = this.decryptPayload(envelope);
+
+    const username =
+      typeof payload.username === 'string' ? payload.username : '';
+    const password =
+      typeof payload.password === 'string' ? payload.password : '';
+    if (!username.trim() || !password) {
+      throw new BadRequestException(
+        'credentialEnvelope payload must include username and password',
+      );
+    }
+
+    return { username, password };
+  }
+
+  private decryptPayloadInternal(
+    envelope: CredentialEnvelope,
+  ): Record<string, unknown> {
     const algorithm =
       typeof envelope.algorithm === 'string' ? envelope.algorithm.trim() : '';
     if (algorithm && algorithm !== 'RSA-OAEP-256+A256GCM') {
@@ -198,44 +275,24 @@ export class CredentialEnvelopeService {
       );
     }
 
-    const username =
-      typeof payload.username === 'string' ? payload.username : '';
-    const password =
-      typeof payload.password === 'string' ? payload.password : '';
-    if (!username.trim() || !password) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       throw new BadRequestException(
-        'credentialEnvelope payload must include username and password',
+        'credentialEnvelope payload must be an object',
       );
     }
+    return payload as Record<string, unknown>;
+  }
 
-    if (payload.timestampMs !== undefined) {
-      const timestampMs =
-        typeof payload.timestampMs === 'number'
-          ? payload.timestampMs
-          : typeof payload.timestampMs === 'string'
-            ? Number.parseInt(payload.timestampMs, 10)
-            : NaN;
-      if (!Number.isFinite(timestampMs)) {
-        throw new BadRequestException(
-          'credentialEnvelope timestamp is invalid',
-        );
-      }
-      const skewMs = Math.abs(Date.now() - timestampMs);
-      if (skewMs > this.maxSkewMs) {
-        throw new BadRequestException(
-          'credentialEnvelope is too old or from the future',
-        );
-      }
+  private parseTimestamp(raw: unknown): number {
+    const timestampMs =
+      typeof raw === 'number'
+        ? raw
+        : typeof raw === 'string'
+          ? Number.parseInt(raw, 10)
+          : NaN;
+    if (!Number.isFinite(timestampMs)) {
+      throw new BadRequestException('credentialEnvelope timestamp is invalid');
     }
-
-    if (payload.nonce !== undefined) {
-      const nonce =
-        typeof payload.nonce === 'string' ? payload.nonce.trim() : '';
-      if (!nonce) {
-        throw new BadRequestException('credentialEnvelope nonce is invalid');
-      }
-    }
-
-    return { username, password };
+    return timestampMs;
   }
 }

@@ -9,7 +9,11 @@ import {
   Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getPublicSettings, putSettings } from '@/api/settings';
+import {
+  getPublicSettings,
+  getSecretsEnvelopeKey,
+  putSettings,
+} from '@/api/settings';
 import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -27,8 +31,9 @@ import {
   SonarrLogo,
   TmdbLogo,
 } from '@/components/ArrLogos';
+import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 
-const MASKED_SECRET = '••••••••••••';
+const MASKED_SECRET = '*******';
 
 function readString(obj: unknown, path: string): string {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
@@ -50,6 +55,111 @@ function readBool(obj: unknown, path: string): boolean | null {
     cur = (cur as Record<string, unknown>)[p];
   }
   return typeof cur === 'boolean' ? cur : null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readErrorMessage(data: unknown, fallback: string): string {
+  if (isPlainObject(data)) {
+    const message = data.message;
+    if (typeof message === 'string' && message.trim()) return message.trim();
+    if (Array.isArray(message)) {
+      const parts = message.filter(
+        (value): value is string =>
+          typeof value === 'string' && value.trim().length > 0,
+      );
+      if (parts.length) return parts.join(', ');
+    }
+  }
+  return fallback;
+}
+
+function normalizeAsteriskInput(
+  previous: string,
+  key: 'Backspace' | 'Delete',
+  selectionStart: number | null,
+  selectionEnd: number | null,
+): string {
+  if (!previous) return '';
+  const start = selectionStart ?? previous.length;
+  const end = selectionEnd ?? start;
+  const safeStart = Math.max(0, Math.min(start, previous.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, previous.length));
+  if (safeEnd > safeStart) {
+    return `${previous.slice(0, safeStart)}${previous.slice(safeEnd)}`;
+  }
+  if (key === 'Backspace') {
+    if (safeStart <= 0) return previous;
+    return `${previous.slice(0, safeStart - 1)}${previous.slice(safeStart)}`;
+  }
+  if (safeStart >= previous.length) return previous;
+  return `${previous.slice(0, safeStart)}${previous.slice(safeStart + 1)}`;
+}
+
+function MaskedSecretInput(props: {
+  value: string;
+  setValue: React.Dispatch<React.SetStateAction<string>>;
+  hasSavedValue: boolean;
+  placeholder: string;
+  className: string;
+  onEditStart: () => void;
+  onBlur?: () => void;
+}) {
+  const displayValue = props.value
+    ? '*'.repeat(props.value.length)
+    : props.hasSavedValue
+      ? MASKED_SECRET
+      : '';
+
+  return (
+    <input
+      type="text"
+      value={displayValue}
+      onChange={() => undefined}
+      onBeforeInput={(event) => {
+        const native = event.nativeEvent as InputEvent;
+        const data = typeof native.data === 'string' ? native.data : '';
+        if (!data) return;
+        event.preventDefault();
+        props.onEditStart();
+        props.setValue((previous) => `${previous}${data}`);
+      }}
+      onPaste={(event) => {
+        event.preventDefault();
+        const pasted = event.clipboardData.getData('text');
+        if (!pasted) return;
+        props.onEditStart();
+        props.setValue((previous) => `${previous}${pasted}`);
+      }}
+      onKeyDown={(event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+          return;
+        }
+        const key = event.key;
+        if (key !== 'Backspace' && key !== 'Delete') return;
+        event.preventDefault();
+        props.onEditStart();
+        props.setValue((previous) =>
+          normalizeAsteriskInput(
+            previous,
+            key,
+            event.currentTarget.selectionStart,
+            event.currentTarget.selectionEnd,
+          ),
+        );
+      }}
+      onBlur={props.onBlur}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+      inputMode="text"
+      placeholder={props.placeholder}
+      className={props.className}
+    />
+  );
 }
 
 export function SettingsPage({
@@ -92,6 +202,10 @@ export function SettingsPage({
 
   const secretsPresent = useMemo(
     () => settingsQuery.data?.secretsPresent ?? {},
+    [settingsQuery.data],
+  );
+  const secretRefs = useMemo(
+    () => settingsQuery.data?.secretRefs ?? {},
     [settingsQuery.data],
   );
 
@@ -216,30 +330,85 @@ export function SettingsPage({
 
   const [openAiApiKey, setOpenAiApiKey] = useState('');
 
-  // Show asterisks for saved credentials
-  useEffect(() => {
-    if (secretsPresent.plex && !plexToken) {
-      setPlexToken(MASKED_SECRET);
+  const secretsKeyPromiseRef = useRef<Promise<
+    Awaited<ReturnType<typeof getSecretsEnvelopeKey>>
+  > | null>(null);
+
+  const loadSecretsEnvelopeKey = async () => {
+    if (!secretsKeyPromiseRef.current) {
+      secretsKeyPromiseRef.current = getSecretsEnvelopeKey();
     }
-    if (secretsPresent.radarr && !radarrApiKey) {
-      setRadarrApiKey(MASKED_SECRET);
+    return await secretsKeyPromiseRef.current;
+  };
+
+  const buildSecretEnvelope = async (params: {
+    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'overseerr' | 'google' | 'openai';
+    secretField: 'token' | 'apiKey';
+    value: string;
+  }) => {
+    const key = await loadSecretsEnvelopeKey();
+    return await createPayloadEnvelope({
+      key,
+      purpose: `integration.${params.service}.test`,
+      service: params.service,
+      payload: {
+        [params.secretField]: params.value,
+      },
+    });
+  };
+
+  const buildSettingsSecretsEnvelope = async (
+    secretsPatch: Record<string, unknown>,
+  ) => {
+    const key = await loadSecretsEnvelopeKey();
+    return await createPayloadEnvelope({
+      key,
+      purpose: 'settings.secrets',
+      payload: {
+        secrets: secretsPatch,
+      },
+    });
+  };
+
+  const callIntegrationTest = async (
+    integrationId: string,
+    body?: Record<string, unknown>,
+  ) => {
+    const response = await fetch(`/api/integrations/test/${integrationId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    });
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ message: response.statusText }));
+      throw new Error(readErrorMessage(error, `${integrationId} test failed`));
     }
-    if (secretsPresent.sonarr && !sonarrApiKey) {
-      setSonarrApiKey(MASKED_SECRET);
+    return await response.json();
+  };
+
+  const buildIntegrationSecretPayload = async (params: {
+    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'overseerr' | 'google' | 'openai';
+    secretField: 'token' | 'apiKey';
+    rawSecret: string;
+    secretRef: string;
+  }) => {
+    const trimmedSecret = params.rawSecret.trim();
+    if (trimmedSecret) {
+      return {
+        [`${params.secretField}Envelope`]: await buildSecretEnvelope({
+          service: params.service,
+          secretField: params.secretField,
+          value: trimmedSecret,
+        }),
+      };
     }
-    if (secretsPresent.overseerr && !overseerrApiKey) {
-      setOverseerrApiKey(MASKED_SECRET);
+    if (params.secretRef) {
+      return { secretRef: params.secretRef };
     }
-    if (secretsPresent.tmdb && !tmdbApiKey) {
-      setTmdbApiKey(MASKED_SECRET);
-    }
-    if (secretsPresent.google && !googleApiKey) {
-      setGoogleApiKey(MASKED_SECRET);
-    }
-    if (secretsPresent.openai && !openAiApiKey) {
-      setOpenAiApiKey(MASKED_SECRET);
-    }
-  }, [secretsPresent]);
+    return {};
+  };
 
   // Service toggle states
   const [radarrEnabled, setRadarrEnabled] = useState(false);
@@ -385,9 +554,8 @@ export function SettingsPage({
               toast.success('Connected to Plex.', { id: toastId });
             }
           }
-        } catch (error) {
-          // Continue polling on error
-          console.error('Poll error:', error);
+        } catch {
+          // Continue polling on transient errors.
         }
       }, 2000); // Poll every 2 seconds
 
@@ -419,7 +587,7 @@ export function SettingsPage({
       if (Object.keys(plexSettings).length) settingsPatch.plex = plexSettings;
 
       const plexTokenTrimmed = plexToken.trim();
-      const plexTokenChanged = Boolean(plexTokenTrimmed) && plexTokenTrimmed !== MASKED_SECRET;
+      const plexTokenChanged = Boolean(plexTokenTrimmed);
 
       // Optional services (diff-based patches; only when toggled on)
       const curRadarrBaseUrl = readString(currentSettings, 'radarr.baseUrl');
@@ -491,44 +659,38 @@ export function SettingsPage({
       }
 
       const tmdbKeyTrimmed = tmdbApiKey.trim();
-      const tmdbKeyChanged = Boolean(tmdbKeyTrimmed) && tmdbKeyTrimmed !== MASKED_SECRET;
+      const tmdbKeyChanged = Boolean(tmdbKeyTrimmed);
       if (tmdbKeyChanged) {
         secretsPatch.tmdb = { apiKey: tmdbKeyTrimmed };
       }
 
       const radarrKeyTrimmed = radarrApiKey.trim();
-      const radarrKeyChanged =
-        radarrEnabled && Boolean(radarrKeyTrimmed) && radarrKeyTrimmed !== MASKED_SECRET;
+      const radarrKeyChanged = radarrEnabled && Boolean(radarrKeyTrimmed);
       if (radarrKeyChanged) {
         secretsPatch.radarr = { apiKey: radarrKeyTrimmed };
       }
 
       const sonarrKeyTrimmed = sonarrApiKey.trim();
-      const sonarrKeyChanged =
-        sonarrEnabled && Boolean(sonarrKeyTrimmed) && sonarrKeyTrimmed !== MASKED_SECRET;
+      const sonarrKeyChanged = sonarrEnabled && Boolean(sonarrKeyTrimmed);
       if (sonarrKeyChanged) {
         secretsPatch.sonarr = { apiKey: sonarrKeyTrimmed };
       }
 
       const overseerrKeyTrimmed = overseerrApiKey.trim();
       const overseerrKeyChanged =
-        overseerrEnabled &&
-        Boolean(overseerrKeyTrimmed) &&
-        overseerrKeyTrimmed !== MASKED_SECRET;
+        overseerrEnabled && Boolean(overseerrKeyTrimmed);
       if (overseerrKeyChanged) {
         secretsPatch.overseerr = { apiKey: overseerrKeyTrimmed };
       }
 
       const googleKeyTrimmed = googleApiKey.trim();
-      const googleKeyChanged =
-        googleEnabled && Boolean(googleKeyTrimmed) && googleKeyTrimmed !== MASKED_SECRET;
+      const googleKeyChanged = googleEnabled && Boolean(googleKeyTrimmed);
       if (googleKeyChanged) {
         secretsPatch.google = { apiKey: googleKeyTrimmed };
       }
 
       const openAiKeyTrimmed = openAiApiKey.trim();
-      const openAiKeyChanged =
-        openAiEnabled && Boolean(openAiKeyTrimmed) && openAiKeyTrimmed !== MASKED_SECRET;
+      const openAiKeyChanged = openAiEnabled && Boolean(openAiKeyTrimmed);
       if (openAiKeyChanged) {
         secretsPatch.openai = { apiKey: openAiKeyTrimmed };
       }
@@ -540,36 +702,17 @@ export function SettingsPage({
         const payload = {
           baseUrl: nextPlexBaseUrl || curPlexBaseUrl,
         };
-
-        const res = plexTokenChanged
-          ? await fetch('/api/plex/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...payload, token: plexTokenTrimmed }),
-            })
-          : await fetch('/api/integrations/test/plex', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-
-        if (!res.ok) {
-          let msg = 'Plex connection test failed.';
-          try {
-            const data = (await res.json()) as { message?: unknown };
-            if (typeof data?.message === 'string' && data.message.trim()) {
-              msg = data.message.trim();
-            } else if (Array.isArray(data?.message)) {
-              const parts = (data.message as unknown[]).filter(
-                (v): v is string => typeof v === 'string' && v.trim().length > 0,
-              );
-              if (parts.length) msg = parts.join(', ');
-            }
-          } catch {
-            // ignore
-          }
-          throw new Error(msg);
+        if (!payload.baseUrl) throw new Error('Please enter Plex Base URL');
+        if (!plexTokenChanged && !secretsPresent.plex) {
+          throw new Error('Please enter Plex Token');
         }
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'plex',
+          secretField: 'token',
+          rawSecret: plexTokenTrimmed,
+          secretRef: secretRefs.plex ?? '',
+        });
+        await callIntegrationTest('plex', { ...payload, ...secretPayload });
       }
 
       // Radarr: validate if baseUrl/apiKey changed (and enabled)
@@ -578,19 +721,18 @@ export function SettingsPage({
         if (!nextRadarrBaseUrl) throw new Error('Please enter Radarr Base URL');
         if (!radarrKeyChanged && !secretsPresent.radarr)
           throw new Error('Please enter Radarr API Key');
-
-        const res = radarrKeyChanged
-          ? await fetch('/api/radarr/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl: nextRadarrBaseUrl, apiKey: radarrKeyTrimmed }),
-            })
-          : await fetch('/api/integrations/test/radarr', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl: nextRadarrBaseUrl }),
-            });
-        if (!res.ok) throw new Error('Radarr credentials are incorrect.');
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'radarr',
+          secretField: 'apiKey',
+          rawSecret: radarrKeyTrimmed,
+          secretRef: secretRefs.radarr ?? '',
+        });
+        await callIntegrationTest('radarr', {
+          baseUrl: nextRadarrBaseUrl,
+          ...secretPayload,
+        }).catch(() => {
+          throw new Error('Radarr credentials are incorrect.');
+        });
       }
 
       // Sonarr: validate if baseUrl/apiKey changed (and enabled)
@@ -599,19 +741,18 @@ export function SettingsPage({
         if (!nextSonarrBaseUrl) throw new Error('Please enter Sonarr Base URL');
         if (!sonarrKeyChanged && !secretsPresent.sonarr)
           throw new Error('Please enter Sonarr API Key');
-
-        const res = sonarrKeyChanged
-          ? await fetch('/api/sonarr/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl: nextSonarrBaseUrl, apiKey: sonarrKeyTrimmed }),
-            })
-          : await fetch('/api/integrations/test/sonarr', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl: nextSonarrBaseUrl }),
-            });
-        if (!res.ok) throw new Error('Sonarr credentials are incorrect.');
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'sonarr',
+          secretField: 'apiKey',
+          rawSecret: sonarrKeyTrimmed,
+          secretRef: secretRefs.sonarr ?? '',
+        });
+        await callIntegrationTest('sonarr', {
+          baseUrl: nextSonarrBaseUrl,
+          ...secretPayload,
+        }).catch(() => {
+          throw new Error('Sonarr credentials are incorrect.');
+        });
       }
 
       // Overseerr: validate if baseUrl/apiKey changed (and enabled)
@@ -624,22 +765,18 @@ export function SettingsPage({
         if (!overseerrKeyChanged && !secretsPresent.overseerr) {
           throw new Error('Please enter Overseerr API Key');
         }
-
-        const res = overseerrKeyChanged
-          ? await fetch('/api/overseerr/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                baseUrl: nextOverseerrBaseUrl,
-                apiKey: overseerrKeyTrimmed,
-              }),
-            })
-          : await fetch('/api/integrations/test/overseerr', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl: nextOverseerrBaseUrl }),
-            });
-        if (!res.ok) throw new Error('Overseerr credentials are incorrect.');
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'overseerr',
+          secretField: 'apiKey',
+          rawSecret: overseerrKeyTrimmed,
+          secretRef: secretRefs.overseerr ?? '',
+        });
+        await callIntegrationTest('overseerr', {
+          baseUrl: nextOverseerrBaseUrl,
+          ...secretPayload,
+        }).catch(() => {
+          throw new Error('Overseerr credentials are incorrect.');
+        });
       }
 
       // Google: validate if searchEngineId/apiKey changed (and enabled)
@@ -647,54 +784,59 @@ export function SettingsPage({
       if (googleEnabled && (googleBecameEnabled || googleIdChanged || googleKeyChanged)) {
         if (!nextGoogleSearchEngineId) throw new Error('Please enter Google Search Engine ID');
         if (!googleKeyChanged && !secretsPresent.google) throw new Error('Please enter Google API Key');
-
-        const res = googleKeyChanged
-          ? await fetch('/api/google/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                apiKey: googleKeyTrimmed,
-                cseId: nextGoogleSearchEngineId,
-                query: 'tautulli curated plex',
-                numResults: 3,
-              }),
-            })
-          : await fetch('/api/integrations/test/google', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ searchEngineId: nextGoogleSearchEngineId }),
-            });
-        if (!res.ok) throw new Error('Google credentials are incorrect.');
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'google',
+          secretField: 'apiKey',
+          rawSecret: googleKeyTrimmed,
+          secretRef: secretRefs.google ?? '',
+        });
+        await callIntegrationTest('google', {
+          cseId: nextGoogleSearchEngineId,
+          ...secretPayload,
+        }).catch(() => {
+          throw new Error('Google credentials are incorrect.');
+        });
       }
 
       // OpenAI: validate if apiKey changed (and enabled)
       const openAiBecameEnabled = openAiEnabled && !curOpenAiEnabled;
       if (openAiEnabled && (openAiBecameEnabled || openAiKeyChanged)) {
         if (!openAiKeyChanged && !secretsPresent.openai) throw new Error('Please enter OpenAI API Key');
-
-        const res = openAiKeyChanged
-          ? await fetch('/api/openai/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiKey: openAiKeyTrimmed }),
-            })
-          : await fetch('/api/integrations/test/openai', { method: 'POST' });
-        if (!res.ok) throw new Error('OpenAI API key is invalid.');
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'openai',
+          secretField: 'apiKey',
+          rawSecret: openAiKeyTrimmed,
+          secretRef: secretRefs.openai ?? '',
+        });
+        await callIntegrationTest('openai', {
+          ...secretPayload,
+        }).catch(() => {
+          throw new Error('OpenAI API key is invalid.');
+        });
       }
 
       // TMDB: validate if apiKey changed
       if (tmdbKeyChanged) {
-        const res = await fetch('/api/tmdb/test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: tmdbKeyTrimmed }),
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'tmdb',
+          secretField: 'apiKey',
+          rawSecret: tmdbKeyTrimmed,
+          secretRef: secretRefs.tmdb ?? '',
         });
-        if (!res.ok) throw new Error('TMDB API key is invalid.');
+        await callIntegrationTest('tmdb', {
+          ...secretPayload,
+        }).catch(() => {
+          throw new Error('TMDB API key is invalid.');
+        });
       }
+
+      const secretsEnvelope = Object.keys(secretsPatch).length
+        ? await buildSettingsSecretsEnvelope(secretsPatch)
+        : undefined;
 
       return await putSettings({
         settings: Object.keys(settingsPatch).length ? settingsPatch : undefined,
-        secrets: Object.keys(secretsPatch).length ? secretsPatch : undefined,
+        secretsEnvelope,
       });
     },
     onSuccess: async () => {
@@ -774,26 +916,15 @@ export function SettingsPage({
         return null;
       }
 
-      const response =
-        secretsPresent.plex && (!token || token === MASKED_SECRET)
-          ? await fetch('/api/integrations/test/plex', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl }),
-            })
-          : await fetch('/api/plex/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl, token }),
-            });
-
-      if (response.ok) {
-        showSuccess('Connected to Plex.');
-        return true;
-      }
-
-      showError('Plex credentials are incorrect.');
-      return false;
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'plex',
+        secretField: 'token',
+        rawSecret: token,
+        secretRef: secretRefs.plex ?? '',
+      });
+      await callIntegrationTest('plex', { baseUrl, ...secretPayload });
+      showSuccess('Connected to Plex.');
+      return true;
     } catch {
       showError('Plex credentials are incorrect.');
       return false;
@@ -838,28 +969,23 @@ export function SettingsPage({
         return null;
       }
 
-      const response =
-        secretsPresent.radarr && (!apiKey || apiKey === MASKED_SECRET)
-          ? await fetch('/api/integrations/test/radarr', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl }),
-            })
-          : await fetch('/api/radarr/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl, apiKey }),
-            });
-
-      if (response.ok) {
-        if (mode === 'manual') showSuccess('Connected to Radarr.');
-        return true;
-      }
-
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      const msg = error.message || response.statusText;
-      const lower = String(msg).toLowerCase();
-      if (lower.includes('http 401') || lower.includes('http 403') || lower.includes('unauthorized')) {
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'radarr',
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: secretRefs.radarr ?? '',
+      });
+      await callIntegrationTest('radarr', { baseUrl, ...secretPayload });
+      if (mode === 'manual') showSuccess('Connected to Radarr.');
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes('http 401') ||
+        lower.includes('http 403') ||
+        lower.includes('unauthorized')
+      ) {
         showError('Radarr API key is incorrect.');
       } else if (
         lower.includes('timeout') ||
@@ -871,9 +997,6 @@ export function SettingsPage({
       } else {
         showError('Couldn’t connect to Radarr. Check the URL and API key.');
       }
-      return false;
-    } catch {
-      showError('Couldn’t connect to Radarr. Check the URL and API key.');
       return false;
     }
   };
@@ -916,28 +1039,23 @@ export function SettingsPage({
         return null;
       }
 
-      const response =
-        secretsPresent.sonarr && (!apiKey || apiKey === MASKED_SECRET)
-          ? await fetch('/api/integrations/test/sonarr', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl }),
-            })
-          : await fetch('/api/sonarr/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl, apiKey }),
-            });
-
-      if (response.ok) {
-        if (mode === 'manual') showSuccess('Connected to Sonarr.');
-        return true;
-      }
-
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      const msg = error.message || response.statusText;
-      const lower = String(msg).toLowerCase();
-      if (lower.includes('http 401') || lower.includes('http 403') || lower.includes('unauthorized')) {
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'sonarr',
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: secretRefs.sonarr ?? '',
+      });
+      await callIntegrationTest('sonarr', { baseUrl, ...secretPayload });
+      if (mode === 'manual') showSuccess('Connected to Sonarr.');
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes('http 401') ||
+        lower.includes('http 403') ||
+        lower.includes('unauthorized')
+      ) {
         showError('Sonarr API key is incorrect.');
       } else if (
         lower.includes('timeout') ||
@@ -949,9 +1067,6 @@ export function SettingsPage({
       } else {
         showError('Couldn’t connect to Sonarr. Check the URL and API key.');
       }
-      return false;
-    } catch {
-      showError('Couldn’t connect to Sonarr. Check the URL and API key.');
       return false;
     }
   };
@@ -997,29 +1112,18 @@ export function SettingsPage({
         return null;
       }
 
-      const response =
-        secretsPresent.overseerr && (!apiKey || apiKey === MASKED_SECRET)
-          ? await fetch('/api/integrations/test/overseerr', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl }),
-            })
-          : await fetch('/api/overseerr/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ baseUrl, apiKey }),
-            });
-
-      if (response.ok) {
-        if (mode === 'manual') showSuccess('Connected to Overseerr.');
-        return true;
-      }
-
-      const error = await response
-        .json()
-        .catch(() => ({ message: response.statusText }));
-      const msg = error.message || response.statusText;
-      const lower = String(msg).toLowerCase();
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'overseerr',
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: secretRefs.overseerr ?? '',
+      });
+      await callIntegrationTest('overseerr', { baseUrl, ...secretPayload });
+      if (mode === 'manual') showSuccess('Connected to Overseerr.');
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const lower = msg.toLowerCase();
       if (
         lower.includes('http 401') ||
         lower.includes('http 403') ||
@@ -1036,9 +1140,6 @@ export function SettingsPage({
       } else {
         showError('Couldn’t connect to Overseerr. Check the URL and API key.');
       }
-      return false;
-    } catch {
-      showError('Couldn’t connect to Overseerr. Check the URL and API key.');
       return false;
     }
   };
@@ -1075,34 +1176,23 @@ export function SettingsPage({
         return null;
       }
 
-      const response =
-        secretsPresent.tmdb && (!apiKey || apiKey === MASKED_SECRET)
-          ? await fetch('/api/integrations/test/tmdb', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-            })
-          : await fetch('/api/tmdb/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiKey }),
-            });
-
-      if (response.ok) {
-        showSuccess('Connected to TMDB.');
-        return true;
-      }
-
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      const msg = error.message || response.statusText;
-      const lower = String(msg).toLowerCase();
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'tmdb',
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: secretRefs.tmdb ?? '',
+      });
+      await callIntegrationTest('tmdb', secretPayload);
+      showSuccess('Connected to TMDB.');
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const lower = msg.toLowerCase();
       if (lower.includes('http 401') || lower.includes('invalid api key') || lower.includes('unauthorized')) {
         showError('TMDB API key is invalid.');
       } else {
         showError('Couldn’t connect to TMDB.');
       }
-      return false;
-    } catch {
-      showError('Couldn’t connect to TMDB.');
       return false;
     }
   };
@@ -1145,40 +1235,23 @@ export function SettingsPage({
         return null;
       }
 
-      const response =
-        secretsPresent.google && (!apiKey || apiKey === MASKED_SECRET)
-          ? await fetch('/api/integrations/test/google', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ searchEngineId: cseId }),
-            })
-          : await fetch('/api/google/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                apiKey,
-                cseId,
-                query: 'tautulli curated plex',
-                numResults: 3,
-              }),
-            });
-
-      if (response.ok) {
-        if (mode === 'manual') showSuccess('Connected to Google Search.');
-        return true;
-      }
-
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      const msg = error.message || response.statusText;
-      const lower = String(msg).toLowerCase();
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'google',
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: secretRefs.google ?? '',
+      });
+      await callIntegrationTest('google', { cseId, ...secretPayload });
+      if (mode === 'manual') showSuccess('Connected to Google Search.');
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const lower = msg.toLowerCase();
       if (lower.includes('http 401') || lower.includes('http 403') || lower.includes('unauthorized')) {
         showError('Google Search credentials are incorrect.');
       } else {
         showError('Couldn’t connect to Google Search. Check your API key and Search Engine ID.');
       }
-      return false;
-    } catch {
-      showError('Couldn’t connect to Google Search. Check your API key and Search Engine ID.');
       return false;
     }
   };
@@ -1215,23 +1288,18 @@ export function SettingsPage({
         return null;
       }
 
-      const response =
-        secretsPresent.openai && (!apiKey || apiKey === MASKED_SECRET)
-          ? await fetch('/api/integrations/test/openai', { method: 'POST' })
-          : await fetch('/api/openai/test', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiKey }),
-            });
-
-      if (response.ok) {
-        if (mode === 'manual') showSuccess('Connected to OpenAI.');
-        return true;
-      }
-
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      const msg = error.message || response.statusText;
-      const lower = String(msg).toLowerCase();
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'openai',
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: secretRefs.openai ?? '',
+      });
+      await callIntegrationTest('openai', secretPayload);
+      if (mode === 'manual') showSuccess('Connected to OpenAI.');
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const lower = msg.toLowerCase();
       if (lower.includes('http 401') || lower.includes('incorrect api key') || lower.includes('unauthorized')) {
         showError('OpenAI API key is invalid.');
       } else if (lower.includes('http 429') || lower.includes('rate')) {
@@ -1239,9 +1307,6 @@ export function SettingsPage({
       } else {
         showError('Couldn’t connect to OpenAI.');
       }
-      return false;
-    } catch {
-      showError('Couldn’t connect to OpenAI.');
       return false;
     }
   };
@@ -1671,20 +1736,19 @@ export function SettingsPage({
   };
 
   const plexNeedsTest =
-    plexTouched || (Boolean(plexToken.trim()) && plexToken.trim() !== MASKED_SECRET);
+    plexTouched || Boolean(plexToken.trim());
   const tmdbNeedsTest =
-    tmdbTouched || (Boolean(tmdbApiKey.trim()) && tmdbApiKey.trim() !== MASKED_SECRET);
+    tmdbTouched || Boolean(tmdbApiKey.trim());
   const radarrNeedsTest =
-    radarrTouched || (Boolean(radarrApiKey.trim()) && radarrApiKey.trim() !== MASKED_SECRET);
+    radarrTouched || Boolean(radarrApiKey.trim());
   const sonarrNeedsTest =
-    sonarrTouched || (Boolean(sonarrApiKey.trim()) && sonarrApiKey.trim() !== MASKED_SECRET);
+    sonarrTouched || Boolean(sonarrApiKey.trim());
   const overseerrNeedsTest =
-    overseerrTouched ||
-    (Boolean(overseerrApiKey.trim()) && overseerrApiKey.trim() !== MASKED_SECRET);
+    overseerrTouched || Boolean(overseerrApiKey.trim());
   const googleNeedsTest =
-    googleTouched || (Boolean(googleApiKey.trim()) && googleApiKey.trim() !== MASKED_SECRET);
+    googleTouched || Boolean(googleApiKey.trim());
   const openAiNeedsTest =
-    openAiTouched || (Boolean(openAiApiKey.trim()) && openAiApiKey.trim() !== MASKED_SECRET);
+    openAiTouched || Boolean(openAiApiKey.trim());
 
   const plexStatus: StatusPillVariant = plexIsTesting
     ? 'testing'
@@ -1904,13 +1968,13 @@ export function SettingsPage({
                   <div>
                     <label className={labelClass}>Token</label>
                     <div className="flex min-w-0 gap-2">
-                      <input
-                        type="password"
+                      <MaskedSecretInput
                         value={plexToken}
-                        onChange={(e) => {
+                        setValue={setPlexToken}
+                        hasSavedValue={Boolean(secretsPresent.plex)}
+                        onEditStart={() => {
                           setPlexTouched(true);
                           setPlexTestOk(null);
-                          setPlexToken(e.target.value);
                         }}
                         placeholder={secretsPresent.plex ? "Saved (enter new to replace)" : "Enter Plex token"}
                         className={inputFlexClass}
@@ -1987,13 +2051,13 @@ export function SettingsPage({
                 <div className="grid grid-cols-1 gap-6">
                   <div>
                     <label className={labelClass}>API Key</label>
-                    <input
-                      type="password"
+                    <MaskedSecretInput
                       value={tmdbApiKey}
-                      onChange={(e) => {
+                      setValue={setTmdbApiKey}
+                      hasSavedValue={Boolean(secretsPresent.tmdb)}
+                      onEditStart={() => {
                         setTmdbTouched(true);
                         setTmdbTestOk(null);
-                        setTmdbApiKey(e.target.value);
                       }}
                       placeholder={secretsPresent.tmdb ? "Saved (enter new to replace)" : "Enter TMDB API key"}
                       className={inputClass}
@@ -2112,8 +2176,7 @@ export function SettingsPage({
 
                         if (!next) return;
                         const apiKey = radarrApiKey.trim();
-                        const usesSavedCreds =
-                          secretsPresent.radarr && (!apiKey || apiKey === MASKED_SECRET);
+                        const usesSavedCreds = secretsPresent.radarr && !apiKey;
                         if (usesSavedCreds && !radarrTouched) {
                           void runRadarrTest('auto');
                         }
@@ -2161,13 +2224,13 @@ export function SettingsPage({
                         </div>
                         <div>
                           <label className={labelClass}>API Key</label>
-                          <input
-                            type="password"
+                          <MaskedSecretInput
                             value={radarrApiKey}
-                            onChange={(e) => {
+                            setValue={setRadarrApiKey}
+                            hasSavedValue={Boolean(secretsPresent.radarr)}
+                            onEditStart={() => {
                               setRadarrTouched(true);
                               setRadarrTestOk(null);
-                              setRadarrApiKey(e.target.value);
                             }}
                             placeholder={
                               secretsPresent.radarr ? 'Saved (enter new to replace)' : 'Enter Radarr API key'
@@ -2292,8 +2355,7 @@ export function SettingsPage({
 
                         if (!next) return;
                         const apiKey = sonarrApiKey.trim();
-                        const usesSavedCreds =
-                          secretsPresent.sonarr && (!apiKey || apiKey === MASKED_SECRET);
+                        const usesSavedCreds = secretsPresent.sonarr && !apiKey;
                         if (usesSavedCreds && !sonarrTouched) {
                           void runSonarrTest('auto');
                         }
@@ -2341,13 +2403,13 @@ export function SettingsPage({
                         </div>
                         <div>
                           <label className={labelClass}>API Key</label>
-                          <input
-                            type="password"
+                          <MaskedSecretInput
                             value={sonarrApiKey}
-                            onChange={(e) => {
+                            setValue={setSonarrApiKey}
+                            hasSavedValue={Boolean(secretsPresent.sonarr)}
+                            onEditStart={() => {
                               setSonarrTouched(true);
                               setSonarrTestOk(null);
-                              setSonarrApiKey(e.target.value);
                             }}
                             placeholder={
                               secretsPresent.sonarr ? 'Saved (enter new to replace)' : 'Enter Sonarr API key'
@@ -2475,8 +2537,7 @@ export function SettingsPage({
                           if (!next) return;
                           const apiKey = overseerrApiKey.trim();
                           const usesSavedCreds =
-                            secretsPresent.overseerr &&
-                            (!apiKey || apiKey === MASKED_SECRET);
+                            secretsPresent.overseerr && !apiKey;
                           if (usesSavedCreds && !overseerrTouched) {
                             void runOverseerrTest('auto');
                           }
@@ -2523,18 +2584,18 @@ export function SettingsPage({
                           </div>
                           <div>
                             <label className={labelClass}>API Key</label>
-                            <input
-                              type="password"
+                            <MaskedSecretInput
                               value={overseerrApiKey}
-                              onChange={(e) => {
+                              setValue={setOverseerrApiKey}
+                              hasSavedValue={Boolean(secretsPresent.overseerr)}
+                              onEditStart={() => {
                                 setOverseerrTouched(true);
                                 setOverseerrTestOk(null);
-                                setOverseerrApiKey(e.target.value);
                               }}
                               onBlur={() => {
                                 const apiKey = overseerrApiKey.trim();
                                 if (!overseerrEnabled) return;
-                                if (!apiKey || apiKey === MASKED_SECRET) return;
+                                if (!apiKey) return;
                                 void runOverseerrTest('auto');
                               }}
                               placeholder={
@@ -2639,8 +2700,7 @@ export function SettingsPage({
                         if (!next) return;
                         const apiKey = googleApiKey.trim();
                         const cseId = googleSearchEngineId.trim();
-                        const usesSavedCreds =
-                          secretsPresent.google && (!apiKey || apiKey === MASKED_SECRET);
+                        const usesSavedCreds = secretsPresent.google && !apiKey;
                         if (usesSavedCreds && !googleTouched && Boolean(cseId)) {
                           void runGoogleTest('auto');
                         }
@@ -2688,13 +2748,13 @@ export function SettingsPage({
                         </div>
                         <div>
                           <label className={labelClass}>API Key</label>
-                          <input
-                            type="password"
+                          <MaskedSecretInput
                             value={googleApiKey}
-                            onChange={(e) => {
+                            setValue={setGoogleApiKey}
+                            hasSavedValue={Boolean(secretsPresent.google)}
+                            onEditStart={() => {
                               setGoogleTouched(true);
                               setGoogleTestOk(null);
-                              setGoogleApiKey(e.target.value);
                             }}
                             placeholder={
                               secretsPresent.google ? 'Saved (enter new to replace)' : 'Enter Google API key'
@@ -2794,8 +2854,7 @@ export function SettingsPage({
 
                         if (!next) return;
                         const apiKey = openAiApiKey.trim();
-                        const usesSavedCreds =
-                          secretsPresent.openai && (!apiKey || apiKey === MASKED_SECRET);
+                        const usesSavedCreds = secretsPresent.openai && !apiKey;
                         if (usesSavedCreds && !openAiTouched) {
                           void runOpenAiTest('auto');
                         }
@@ -2829,13 +2888,13 @@ export function SettingsPage({
                       <div className="grid grid-cols-1 gap-6">
                         <div>
                           <label className={labelClass}>API Key</label>
-                          <input
-                            type="password"
+                          <MaskedSecretInput
                             value={openAiApiKey}
-                            onChange={(e) => {
+                            setValue={setOpenAiApiKey}
+                            hasSavedValue={Boolean(secretsPresent.openai)}
+                            onEditStart={() => {
                               setOpenAiTouched(true);
                               setOpenAiTestOk(null);
-                              setOpenAiApiKey(e.target.value);
                             }}
                             placeholder={
                               secretsPresent.openai ? 'Saved (enter new to replace)' : 'Enter OpenAI API key'

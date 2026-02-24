@@ -15,6 +15,7 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 type UpdateSettingsBody = {
   settings?: unknown;
   secrets?: unknown;
+  secretsEnvelope?: unknown;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -29,6 +30,11 @@ export class SettingsController {
   @Get()
   get(@Req() req: AuthenticatedRequest) {
     return this.settingsService.getPublicSettings(req.user.id);
+  }
+
+  @Get('secrets-key')
+  secretsKey() {
+    return this.settingsService.getSecretsEnvelopeKey();
   }
 
   @Get('backup-info')
@@ -84,6 +90,7 @@ export class SettingsController {
     const userId = req.user.id;
     const settingsPatch = body?.settings;
     const secretsPatch = body?.secrets;
+    const secretsEnvelope = body?.secretsEnvelope;
 
     if (settingsPatch !== undefined && !isPlainObject(settingsPatch)) {
       throw new BadRequestException('settings must be an object');
@@ -91,11 +98,18 @@ export class SettingsController {
     if (secretsPatch !== undefined && !isPlainObject(secretsPatch)) {
       throw new BadRequestException('secrets must be an object');
     }
+    if (secretsEnvelope !== undefined && !isPlainObject(secretsEnvelope)) {
+      throw new BadRequestException('secretsEnvelope must be an object');
+    }
 
     if (settingsPatch) {
       await this.settingsService.updateSettings(userId, settingsPatch);
     }
+    if (secretsEnvelope) {
+      await this.settingsService.updateSecretsFromEnvelope(userId, secretsEnvelope);
+    }
     if (secretsPatch) {
+      this.settingsService.assertPlaintextSecretTransportAllowed();
       await this.settingsService.updateSecrets(userId, secretsPatch);
     }
 

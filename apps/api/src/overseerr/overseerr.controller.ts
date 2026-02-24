@@ -13,6 +13,8 @@ import { OverseerrService } from './overseerr.service';
 type TestConnectionBody = {
   baseUrl?: unknown;
   apiKey?: unknown;
+  apiKeyEnvelope?: unknown;
+  secretRef?: unknown;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -42,10 +44,22 @@ export class OverseerrController {
   ) {}
 
   @Post('test')
-  test(@Body() body: TestConnectionBody) {
+  async test(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TestConnectionBody,
+  ) {
     const baseUrlRaw =
       typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
-    const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+    const resolved = await this.settingsService.resolveServiceSecretInput({
+      userId: req.user.id,
+      service: 'overseerr',
+      secretField: 'apiKey',
+      expectedPurpose: 'integration.overseerr.test',
+      envelope: body.apiKeyEnvelope,
+      secretRef: body.secretRef,
+      plaintext: body.apiKey,
+    });
+    const apiKey = resolved.value;
 
     if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
     if (!apiKey) throw new BadRequestException('apiKey is required');

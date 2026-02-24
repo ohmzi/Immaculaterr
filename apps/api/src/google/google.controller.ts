@@ -1,8 +1,18 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  Req,
+} from '@nestjs/common';
+import type { AuthenticatedRequest } from '../auth/auth.types';
+import { SettingsService } from '../settings/settings.service';
 import { GoogleService } from './google.service';
 
 type TestGoogleBody = {
   apiKey?: unknown;
+  apiKeyEnvelope?: unknown;
+  secretRef?: unknown;
   cseId?: unknown;
   numResults?: unknown;
   query?: unknown;
@@ -10,11 +20,26 @@ type TestGoogleBody = {
 
 @Controller('google')
 export class GoogleController {
-  constructor(private readonly googleService: GoogleService) {}
+  constructor(
+    private readonly googleService: GoogleService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   @Post('test')
-  test(@Body() body: TestGoogleBody) {
-    const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+  async test(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TestGoogleBody,
+  ) {
+    const resolved = await this.settingsService.resolveServiceSecretInput({
+      userId: req.user.id,
+      service: 'google',
+      secretField: 'apiKey',
+      expectedPurpose: 'integration.google.test',
+      envelope: body.apiKeyEnvelope,
+      secretRef: body.secretRef,
+      plaintext: body.apiKey,
+    });
+    const apiKey = resolved.value;
     const cseId = typeof body.cseId === 'string' ? body.cseId.trim() : '';
     const query =
       typeof body.query === 'string' ? body.query.trim() : 'imdb the matrix';

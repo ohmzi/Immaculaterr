@@ -13,10 +13,13 @@ import { PlexService } from './plex.service';
 import { PlexServerService } from './plex-server.service';
 import { PlexAnalyticsService } from './plex-analytics.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import { SettingsService } from '../settings/settings.service';
 
 type TestPlexServerBody = {
   baseUrl?: unknown;
   token?: unknown;
+  tokenEnvelope?: unknown;
+  secretRef?: unknown;
 };
 
 @Controller('plex')
@@ -25,6 +28,7 @@ export class PlexController {
     private readonly plexService: PlexService,
     private readonly plexServerService: PlexServerService,
     private readonly plexAnalytics: PlexAnalyticsService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   @Post('pin')
@@ -50,10 +54,22 @@ export class PlexController {
   }
 
   @Post('test')
-  async test(@Body() body: TestPlexServerBody) {
+  async test(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TestPlexServerBody,
+  ) {
     const baseUrlRaw =
       typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
-    const token = typeof body.token === 'string' ? body.token.trim() : '';
+    const resolved = await this.settingsService.resolveServiceSecretInput({
+      userId: req.user.id,
+      service: 'plex',
+      secretField: 'token',
+      expectedPurpose: 'integration.plex.test',
+      envelope: body.tokenEnvelope,
+      secretRef: body.secretRef,
+      plaintext: body.token,
+    });
+    const token = resolved.value;
 
     if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
     if (!token) throw new BadRequestException('token is required');

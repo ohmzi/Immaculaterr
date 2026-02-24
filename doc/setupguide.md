@@ -94,8 +94,13 @@ This stack uses Caddy as a TLS reverse proxy in front of Immaculaterr while keep
 
 It auto-configures these HTTPS endpoints by default:
 
-- `https://localhost:5454/`
-- `https://<detected-lan-ip>:5454/` (for example `https://192.168.1.106:5454/`)
+- `https://localhost:5464/`
+- `https://<detected-lan-ip>:5464/` (for example `https://192.168.1.106:5464/`)
+
+It also keeps HTTP available locally/LAN:
+
+- `http://localhost:5454/`
+- `http://<detected-lan-ip>:5454/`
 
 ```bash
 cd docker/immaculaterr
@@ -110,7 +115,9 @@ Optional public domain support:
 
 Notes:
 
-- The app itself runs on internal host port `5455` (`APP_INTERNAL_PORT`), and Caddy terminates TLS on `5454` (`IMM_HTTPS_PORT`).
+- The app itself runs on internal host port `5455` (`APP_INTERNAL_PORT`).
+- Caddy serves local/LAN HTTP on `5454` (`IMM_HTTP_PORT`) and HTTPS on `5464` (`IMM_HTTPS_PORT`).
+- Public domain HTTPS remains on `443`.
 - Local endpoints (`localhost` + LAN IP) use Caddy's internal CA (`tls internal`). Some browsers/OSes may require trusting that local CA to remove warnings.
 - To remove local trust warnings (including Firefox), run once on each host:
 ```bash

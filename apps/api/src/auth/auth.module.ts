@@ -19,6 +19,6 @@ import { PasswordProofService } from './password-proof.service';
     CredentialEnvelopeService,
     PasswordProofService,
   ],
-  exports: [AuthService, AuthGuard],
+  exports: [AuthService, AuthGuard, CredentialEnvelopeService],
 })
 export class AuthModule {}

@@ -3,6 +3,62 @@ import { IntegrationsController } from './integrations.controller';
 
 describe('IntegrationsController plex libraries', () => {
   const makeController = () => {
+    const readServiceSecret = (
+      service: string,
+      secrets: Record<string, unknown>,
+    ): string => {
+      if (service === 'plex') {
+        return (
+          (secrets.plex as Record<string, unknown> | undefined)?.token as
+            | string
+            | undefined
+        ) ?? (secrets.plexToken as string | undefined) ?? '';
+      }
+      if (service === 'radarr') {
+        return (
+          (secrets.radarr as Record<string, unknown> | undefined)?.apiKey as
+            | string
+            | undefined
+        ) ?? '';
+      }
+      if (service === 'sonarr') {
+        return (
+          (secrets.sonarr as Record<string, unknown> | undefined)?.apiKey as
+            | string
+            | undefined
+        ) ?? '';
+      }
+      if (service === 'tmdb') {
+        return (
+          (secrets.tmdb as Record<string, unknown> | undefined)?.apiKey as
+            | string
+            | undefined
+        ) ?? '';
+      }
+      if (service === 'overseerr') {
+        return (
+          (secrets.overseerr as Record<string, unknown> | undefined)?.apiKey as
+            | string
+            | undefined
+        ) ?? '';
+      }
+      if (service === 'google') {
+        return (
+          (secrets.google as Record<string, unknown> | undefined)?.apiKey as
+            | string
+            | undefined
+        ) ?? '';
+      }
+      if (service === 'openai') {
+        return (
+          (secrets.openai as Record<string, unknown> | undefined)?.apiKey as
+            | string
+            | undefined
+        ) ?? '';
+      }
+      return '';
+    };
+
     const prisma = {
       $transaction: jest.fn(),
       immaculateTasteMovieLibrary: { deleteMany: jest.fn() },
@@ -13,6 +69,10 @@ describe('IntegrationsController plex libraries', () => {
     const settingsService = {
       getInternalSettings: jest.fn(),
       updateSettings: jest.fn(),
+      resolveServiceSecretInput: jest
+        .fn()
+        .mockResolvedValue({ value: '', source: 'none' }),
+      readServiceSecret: jest.fn(readServiceSecret),
     };
     const plex = {
       listSharedUsersForServer: jest.fn(),

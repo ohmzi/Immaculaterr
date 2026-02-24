@@ -2,7 +2,10 @@
 set -eu
 
 APP_INTERNAL_PORT="${APP_INTERNAL_PORT:-5455}"
-IMM_HTTPS_PORT="${IMM_HTTPS_PORT:-5454}"
+IMM_ENABLE_HTTP="${IMM_ENABLE_HTTP:-true}"
+IMM_HTTP_PORT="${IMM_HTTP_PORT:-5454}"
+IMM_ENABLE_HTTPS="${IMM_ENABLE_HTTPS:-true}"
+IMM_HTTPS_PORT="${IMM_HTTPS_PORT:-5464}"
 IMM_INCLUDE_LOCALHOST="${IMM_INCLUDE_LOCALHOST:-true}"
 IMM_ENABLE_LAN_IP="${IMM_ENABLE_LAN_IP:-true}"
 IMM_HTTPS_LAN_IP="${IMM_HTTPS_LAN_IP:-}"
@@ -86,14 +89,25 @@ fi
 
 sort -u "$TMP_HOSTS" > "$TMP_HOSTS_SORTED" || true
 
-local_site_addrs=''
+local_http_site_addrs=''
+local_https_site_addrs=''
 while IFS= read -r host; do
   [ -z "$host" ] && continue
-  addr="https://${host}:${IMM_HTTPS_PORT}"
-  if [ -z "$local_site_addrs" ]; then
-    local_site_addrs="$addr"
-  else
-    local_site_addrs="$local_site_addrs, $addr"
+  if is_true "$IMM_ENABLE_HTTP"; then
+    http_addr="http://${host}:${IMM_HTTP_PORT}"
+    if [ -z "$local_http_site_addrs" ]; then
+      local_http_site_addrs="$http_addr"
+    else
+      local_http_site_addrs="$local_http_site_addrs, $http_addr"
+    fi
+  fi
+  if is_true "$IMM_ENABLE_HTTPS"; then
+    https_addr="https://${host}:${IMM_HTTPS_PORT}"
+    if [ -z "$local_https_site_addrs" ]; then
+      local_https_site_addrs="$https_addr"
+    else
+      local_https_site_addrs="$local_https_site_addrs, $https_addr"
+    fi
   fi
 done < "$TMP_HOSTS_SORTED"
 
@@ -106,17 +120,26 @@ cat > "$CONFIG_FILE" <<EOF
 (common_proxy) {
   encode zstd gzip
   reverse_proxy 127.0.0.1:${APP_INTERNAL_PORT} {
-    header_up X-Forwarded-Proto https
     header_up X-Forwarded-Port {server_port}
   }
 }
 EOF
 
 has_site='false'
-if [ -n "$local_site_addrs" ]; then
+if [ -n "$local_http_site_addrs" ]; then
   cat >> "$CONFIG_FILE" <<EOF
 
-${local_site_addrs} {
+${local_http_site_addrs} {
+  import common_proxy
+}
+EOF
+  has_site='true'
+fi
+
+if [ -n "$local_https_site_addrs" ]; then
+  cat >> "$CONFIG_FILE" <<EOF
+
+${local_https_site_addrs} {
   tls internal
   import common_proxy
 }
@@ -167,7 +190,7 @@ EOF
 fi
 
 if [ "$has_site" != 'true' ]; then
-  echo "ERROR: No HTTPS sites configured. Enable localhost/LAN or set IMM_PUBLIC_DOMAIN." >&2
+  echo "ERROR: No HTTP/HTTPS sites configured. Enable localhost/LAN or set IMM_PUBLIC_DOMAIN." >&2
   exit 1
 fi
 

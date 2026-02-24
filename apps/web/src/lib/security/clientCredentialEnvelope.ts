@@ -5,6 +5,8 @@ export type LoginKeyResponse = {
   ephemeral: boolean;
 };
 
+export type EnvelopeKeyResponse = LoginKeyResponse;
+
 export type CredentialEnvelope = {
   algorithm: 'RSA-OAEP-256+A256GCM';
   keyId: string;
@@ -44,10 +46,13 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
-export async function createCredentialEnvelope(params: {
-  username: string;
-  password: string;
-  key: LoginKeyResponse;
+export function createClientNonce(bytes = 16): string {
+  return toBase64Url(randomNonceBytes(bytes));
+}
+
+async function encryptJsonEnvelope(params: {
+  key: EnvelopeKeyResponse;
+  payload: Record<string, unknown>;
 }): Promise<CredentialEnvelope> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) throw new Error('WebCrypto is not available in this browser');
@@ -69,12 +74,7 @@ export async function createCredentialEnvelope(params: {
   const iv = randomNonceBytes(12);
 
   const payload = new TextEncoder().encode(
-    JSON.stringify({
-      username: params.username,
-      password: params.password,
-      timestampMs: Date.now(),
-      nonce: toBase64Url(randomNonceBytes(16)),
-    }),
+    JSON.stringify(params.payload),
   );
 
   const encryptedPayload = new Uint8Array(
@@ -107,4 +107,40 @@ export async function createCredentialEnvelope(params: {
     ciphertext: toBase64Url(ciphertext),
     tag: toBase64Url(tag),
   };
+}
+
+export async function createPayloadEnvelope(params: {
+  key: EnvelopeKeyResponse;
+  purpose: string;
+  service?: string;
+  payload?: Record<string, unknown>;
+}): Promise<CredentialEnvelope> {
+  const purpose = params.purpose.trim();
+  if (!purpose) throw new Error('Envelope purpose is required');
+
+  return await encryptJsonEnvelope({
+    key: params.key,
+    payload: {
+      ...(params.payload ?? {}),
+      purpose,
+      ...(params.service ? { service: params.service } : {}),
+      timestampMs: Date.now(),
+      nonce: createClientNonce(),
+    },
+  });
+}
+
+export async function createCredentialEnvelope(params: {
+  username: string;
+  password: string;
+  key: LoginKeyResponse;
+}): Promise<CredentialEnvelope> {
+  return await createPayloadEnvelope({
+    key: params.key,
+    purpose: 'auth.login',
+    payload: {
+      username: params.username,
+      password: params.password,
+    },
+  });
 }

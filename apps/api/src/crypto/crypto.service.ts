@@ -1,5 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 import { chmod, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -73,6 +79,22 @@ export class CryptoService implements OnModuleInit {
 
   isEncrypted(value: string): boolean {
     return value.startsWith(ENCRYPTED_PREFIX);
+  }
+
+  signDetached(payload: string): string {
+    return createHmac('sha256', this.masterKey)
+      .update(payload, 'utf8')
+      .digest('base64url');
+  }
+
+  verifyDetached(payload: string, signature: string): boolean {
+    const normalized = signature.trim();
+    if (!normalized) return false;
+    const expected = this.signDetached(payload);
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const actualBuf = Buffer.from(normalized, 'utf8');
+    if (expectedBuf.length !== actualBuf.length) return false;
+    return timingSafeEqual(expectedBuf, actualBuf);
   }
 
   private async loadOrCreateMasterKey(): Promise<Buffer> {

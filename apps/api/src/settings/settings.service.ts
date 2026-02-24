@@ -1,9 +1,72 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import {
+  CredentialEnvelopeService,
+  type CredentialEnvelope,
+} from '../auth/credential-envelope.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../db/prisma.service';
 
+const SECRET_REF_PREFIX = 'sr1';
+
+function defaultSettingsDoc(): Record<string, unknown> {
+  return { onboarding: { completed: false } };
+}
+
+export const SERVICE_SECRET_IDS = [
+  'plex',
+  'radarr',
+  'sonarr',
+  'tmdb',
+  'overseerr',
+  'google',
+  'openai',
+] as const;
+
+export type ServiceSecretId = (typeof SERVICE_SECRET_IDS)[number];
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function pick(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickString(obj: Record<string, unknown>, path: string): string {
+  return asString(pick(obj, path));
+}
+
+function parseBoolEnv(raw: string | undefined, fallback: boolean): boolean {
+  const normalized = raw?.trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (
+    normalized === '1' ||
+    normalized === 'true' ||
+    normalized === 'yes' ||
+    normalized === 'on'
+  ) {
+    return true;
+  }
+  if (
+    normalized === '0' ||
+    normalized === 'false' ||
+    normalized === 'no' ||
+    normalized === 'off'
+  ) {
+    return false;
+  }
+  return fallback;
 }
 
 function deepMerge(
@@ -32,22 +95,47 @@ function deepMerge(
 @Injectable()
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
+  private readonly allowPlaintextSecretsTransport = parseBoolEnv(
+    process.env.SECRETS_TRANSPORT_ALLOW_PLAINTEXT,
+    false,
+  );
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly credentialEnvelope: CredentialEnvelopeService,
   ) {}
+
+  isPlaintextSecretTransportAllowed() {
+    return this.allowPlaintextSecretsTransport;
+  }
+
+  assertPlaintextSecretTransportAllowed() {
+    if (this.allowPlaintextSecretsTransport) return;
+    throw new BadRequestException(
+      'Plaintext secret transport is disabled; use encrypted envelope payloads.',
+    );
+  }
+
+  getSecretsEnvelopeKey() {
+    return this.credentialEnvelope.getEnvelopeKey();
+  }
 
   async getPublicSettings(userId: string) {
     const settings = await this.getSettingsDoc(userId);
     const secrets = await this.getSecretsDoc(userId);
     const secretsPresent = Object.fromEntries(
-      Object.entries(secrets).map(([k, v]) => [k, Boolean(v)]),
+      SERVICE_SECRET_IDS.map((service) => [
+        service,
+        Boolean(this.readServiceSecret(service, secrets)),
+      ]),
     );
+    const secretRefs = this.createSecretRefs(userId, secrets);
 
     return {
       settings,
       secretsPresent,
+      secretRefs,
       meta: {
         dataDir: process.env.APP_DATA_DIR ?? null,
       },
@@ -96,6 +184,183 @@ export class SettingsService {
     });
     this.logger.log(`Updated secrets userId=${userId}`);
     return Object.fromEntries(Object.entries(merged).map(([k]) => [k, true]));
+  }
+
+  async updateSecretsFromEnvelope(userId: string, envelope: unknown) {
+    const payload = this.credentialEnvelope.decryptPayload(
+      this.assertEnvelopeObject(envelope),
+      {
+        expectedPurpose: 'settings.secrets',
+        requireTimestamp: true,
+        requireNonce: true,
+      },
+    );
+    const secretsPatch = payload['secrets'];
+    if (!isPlainObject(secretsPatch)) {
+      throw new BadRequestException(
+        'credentialEnvelope payload must include a secrets object',
+      );
+    }
+    return await this.updateSecrets(userId, secretsPatch);
+  }
+
+  async resolveServiceSecretInput(params: {
+    userId: string;
+    service: ServiceSecretId;
+    secretField: 'apiKey' | 'token';
+    expectedPurpose: string;
+    envelope?: unknown;
+    secretRef?: unknown;
+    plaintext?: unknown;
+    currentSecrets?: Record<string, unknown>;
+  }): Promise<{ value: string; source: 'none' | 'envelope' | 'secretRef' | 'plaintext' }> {
+    const envelopeProvided =
+      params.envelope !== undefined && params.envelope !== null;
+    const secretRef = asString(params.secretRef);
+    const plaintext = asString(params.plaintext);
+    const modes = [envelopeProvided, Boolean(secretRef), Boolean(plaintext)]
+      .map((v) => (v ? 1 : 0))
+      .reduce((sum, n) => sum + n, 0);
+    if (modes > 1) {
+      throw new BadRequestException(
+        'Provide only one secret source: envelope, secretRef, or plaintext.',
+      );
+    }
+
+    if (envelopeProvided) {
+      return {
+        value: this.decryptServiceSecretEnvelope({
+          envelope: params.envelope,
+          service: params.service,
+          secretField: params.secretField,
+          expectedPurpose: params.expectedPurpose,
+        }),
+        source: 'envelope',
+      };
+    }
+
+    if (secretRef) {
+      return {
+        value: await this.resolveServiceSecretRef({
+          userId: params.userId,
+          service: params.service,
+          secretRef,
+          currentSecrets: params.currentSecrets,
+        }),
+        source: 'secretRef',
+      };
+    }
+
+    if (plaintext) {
+      this.assertPlaintextSecretTransportAllowed();
+      return { value: plaintext, source: 'plaintext' };
+    }
+
+    return { value: '', source: 'none' };
+  }
+
+  decryptServiceSecretEnvelope(params: {
+    envelope: unknown;
+    service: ServiceSecretId;
+    secretField: 'apiKey' | 'token';
+    expectedPurpose: string;
+  }): string {
+    const payload = this.credentialEnvelope.decryptPayload(
+      this.assertEnvelopeObject(params.envelope),
+      {
+        expectedPurpose: params.expectedPurpose,
+        requireTimestamp: true,
+        requireNonce: true,
+      },
+    );
+
+    const payloadService = asString(payload['service']).toLowerCase();
+    if (payloadService && payloadService !== params.service) {
+      throw new BadRequestException('credentialEnvelope service is invalid');
+    }
+
+    let secret = asString(payload[params.secretField]);
+    if (!secret && isPlainObject(payload['secret'])) {
+      secret = asString(payload['secret'][params.secretField]);
+    }
+    if (!secret) {
+      throw new BadRequestException(
+        `credentialEnvelope payload must include ${params.secretField}`,
+      );
+    }
+    return secret;
+  }
+
+  async resolveServiceSecretRef(params: {
+    userId: string;
+    service: ServiceSecretId;
+    secretRef: string;
+    currentSecrets?: Record<string, unknown>;
+  }): Promise<string> {
+    const parsed = this.parseSecretRef(params.secretRef);
+    if (parsed.service !== params.service) {
+      throw new BadRequestException('secretRef service mismatch');
+    }
+
+    const signingInput = `${params.userId}.${parsed.service}.${parsed.fingerprint}`;
+    if (!this.crypto.verifyDetached(signingInput, parsed.signature)) {
+      throw new BadRequestException('secretRef signature is invalid');
+    }
+
+    const secrets = params.currentSecrets ?? (await this.getSecretsDoc(params.userId));
+    const currentSecret = this.readServiceSecret(parsed.service, secrets);
+    if (!currentSecret) {
+      throw new BadRequestException('secretRef could not be resolved');
+    }
+    const fingerprint = this.secretFingerprint(currentSecret);
+    if (fingerprint !== parsed.fingerprint) {
+      throw new BadRequestException('secretRef is stale');
+    }
+
+    return currentSecret;
+  }
+
+  readServiceSecret(
+    service: ServiceSecretId,
+    secrets: Record<string, unknown>,
+  ): string {
+    if (service === 'plex') {
+      return pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    }
+    if (service === 'radarr') {
+      return (
+        pickString(secrets, 'radarr.apiKey') || pickString(secrets, 'radarrApiKey')
+      );
+    }
+    if (service === 'sonarr') {
+      return (
+        pickString(secrets, 'sonarr.apiKey') || pickString(secrets, 'sonarrApiKey')
+      );
+    }
+    if (service === 'tmdb') {
+      return (
+        pickString(secrets, 'tmdb.apiKey') ||
+        pickString(secrets, 'tmdbApiKey') ||
+        pickString(secrets, 'tmdb.api_key')
+      );
+    }
+    if (service === 'overseerr') {
+      return (
+        pickString(secrets, 'overseerr.apiKey') ||
+        pickString(secrets, 'overseerrApiKey')
+      );
+    }
+    if (service === 'google') {
+      return (
+        pickString(secrets, 'google.apiKey') || pickString(secrets, 'googleApiKey')
+      );
+    }
+    if (service === 'openai') {
+      return (
+        pickString(secrets, 'openai.apiKey') || pickString(secrets, 'openAiApiKey')
+      );
+    }
+    return '';
   }
 
   /**
@@ -154,14 +419,12 @@ export class SettingsService {
     const row = await this.prisma.userSettings.findUnique({
       where: { userId },
     });
-    if (!row?.value) return { onboarding: { completed: false } };
+    if (!row?.value) return defaultSettingsDoc();
     try {
       const parsed = JSON.parse(row.value) as unknown;
-      return isPlainObject(parsed)
-        ? parsed
-        : { onboarding: { completed: false } };
+      return isPlainObject(parsed) ? parsed : defaultSettingsDoc();
     } catch {
-      return { onboarding: { completed: false } };
+      return defaultSettingsDoc();
     }
   }
 
@@ -181,5 +444,79 @@ export class SettingsService {
     } catch {
       return {};
     }
+  }
+
+  private assertEnvelopeObject(value: unknown): CredentialEnvelope {
+    if (!isPlainObject(value)) {
+      throw new BadRequestException('credentialEnvelope must be an object');
+    }
+    return value as CredentialEnvelope;
+  }
+
+  private createSecretRefs(
+    userId: string,
+    secrets: Record<string, unknown>,
+  ): Record<string, string> {
+    const refs: Record<string, string> = {};
+    for (const service of SERVICE_SECRET_IDS) {
+      const secret = this.readServiceSecret(service, secrets);
+      if (!secret) continue;
+      refs[service] = this.buildSecretRef(userId, service, secret);
+    }
+    return refs;
+  }
+
+  private buildSecretRef(
+    userId: string,
+    service: ServiceSecretId,
+    secret: string,
+  ): string {
+    const fingerprint = this.secretFingerprint(secret);
+    const payload = `${userId}.${service}.${fingerprint}`;
+    const signature = this.crypto.signDetached(payload);
+    const encodedService = Buffer.from(service, 'utf8').toString('base64url');
+    return `${SECRET_REF_PREFIX}.${encodedService}.${fingerprint}.${signature}`;
+  }
+
+  private parseSecretRef(secretRef: string): {
+    service: ServiceSecretId;
+    fingerprint: string;
+    signature: string;
+  } {
+    const normalized = secretRef.trim();
+    const parts = normalized.split('.');
+    if (parts.length !== 4 || parts[0] !== SECRET_REF_PREFIX) {
+      throw new BadRequestException('secretRef is invalid');
+    }
+    const serviceRaw = parts[1];
+    const fingerprint = parts[2];
+    const signature = parts[3];
+    if (!serviceRaw || !fingerprint || !signature) {
+      throw new BadRequestException('secretRef is invalid');
+    }
+
+    let decodedService = '';
+    try {
+      decodedService = Buffer.from(serviceRaw, 'base64url')
+        .toString('utf8')
+        .trim()
+        .toLowerCase();
+    } catch {
+      throw new BadRequestException('secretRef is invalid');
+    }
+
+    if (!SERVICE_SECRET_IDS.includes(decodedService as ServiceSecretId)) {
+      throw new BadRequestException('secretRef service is invalid');
+    }
+
+    return {
+      service: decodedService as ServiceSecretId,
+      fingerprint,
+      signature,
+    };
+  }
+
+  private secretFingerprint(secret: string): string {
+    return createHash('sha256').update(secret, 'utf8').digest('base64url');
   }
 }
