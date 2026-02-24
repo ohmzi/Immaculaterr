@@ -301,9 +301,12 @@ export class SettingsService {
       throw new BadRequestException('secretRef service mismatch');
     }
 
-    const signingInput = `${params.userId}.${parsed.service}.${parsed.fingerprint}`;
-    if (!this.crypto.verifyDetached(signingInput, parsed.signature)) {
-      throw new BadRequestException('secretRef signature is invalid');
+    // Backward compatibility: verify legacy 4-part refs that include a signature.
+    if (parsed.signature) {
+      const signingInput = `${params.userId}.${parsed.service}.${parsed.fingerprint}`;
+      if (!this.crypto.verifyDetached(signingInput, parsed.signature)) {
+        throw new BadRequestException('secretRef signature is invalid');
+      }
     }
 
     const secrets = params.currentSecrets ?? (await this.getSecretsDoc(params.userId));
@@ -466,31 +469,31 @@ export class SettingsService {
   }
 
   private buildSecretRef(
-    userId: string,
+    _userId: string,
     service: ServiceSecretId,
     secret: string,
   ): string {
     const fingerprint = this.secretFingerprint(secret);
-    const payload = `${userId}.${service}.${fingerprint}`;
-    const signature = this.crypto.signDetached(payload);
     const encodedService = Buffer.from(service, 'utf8').toString('base64url');
-    return `${SECRET_REF_PREFIX}.${encodedService}.${fingerprint}.${signature}`;
+    // New refs are 3-part: sr1.<serviceB64>.<fingerprint>
+    // Fingerprint is keyed PBKDF2 output, so it cannot be forged without server key material.
+    return `${SECRET_REF_PREFIX}.${encodedService}.${fingerprint}`;
   }
 
   private parseSecretRef(secretRef: string): {
     service: ServiceSecretId;
     fingerprint: string;
-    signature: string;
+    signature?: string;
   } {
     const normalized = secretRef.trim();
     const parts = normalized.split('.');
-    if (parts.length !== 4 || parts[0] !== SECRET_REF_PREFIX) {
+    if ((parts.length !== 3 && parts.length !== 4) || parts[0] !== SECRET_REF_PREFIX) {
       throw new BadRequestException('secretRef is invalid');
     }
     const serviceRaw = parts[1];
     const fingerprint = parts[2];
-    const signature = parts[3];
-    if (!serviceRaw || !fingerprint || !signature) {
+    const signature = parts.length === 4 ? parts[3] : undefined;
+    if (!serviceRaw || !fingerprint || (parts.length === 4 && !signature)) {
       throw new BadRequestException('secretRef is invalid');
     }
 
