@@ -101,8 +101,8 @@ if [ "$DB_PRE_MIGRATE_BACKUP" = "true" ]; then
   fi
 fi
 
-# Run migrations + start the server as the non-root user.
-run_cmd='npm -w apps/api run db:migrate && node apps/api/dist/main.js'
+# Run migrations (with compatibility repair for legacy auth/session data) + start server.
+run_cmd='node apps/api/dist/scripts/migrate-with-repair.js && node apps/api/dist/main.js'
 
 if [ "$(id -u)" = "0" ]; then
   if command -v setpriv >/dev/null 2>&1; then

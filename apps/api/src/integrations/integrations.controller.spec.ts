@@ -3,6 +3,40 @@ import { IntegrationsController } from './integrations.controller';
 
 describe('IntegrationsController plex libraries', () => {
   const makeController = () => {
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+    const readNestedString = (
+      input: Record<string, unknown>,
+      path: string,
+    ): string => {
+      const resolved = path.split('.').reduce<unknown>((current, segment) => {
+        if (!isRecord(current)) return undefined;
+        return current[segment];
+      }, input);
+      return typeof resolved === 'string' ? resolved : '';
+    };
+
+    const readServiceSecret = (
+      service: string,
+      secrets: Record<string, unknown>,
+    ): string => {
+      const secretPathByService: Record<string, string> = {
+        plex: 'plex.token',
+        radarr: 'radarr.apiKey',
+        sonarr: 'sonarr.apiKey',
+        tmdb: 'tmdb.apiKey',
+        overseerr: 'overseerr.apiKey',
+        google: 'google.apiKey',
+        openai: 'openai.apiKey',
+      };
+      const path = secretPathByService[service];
+      if (!path) return '';
+      const nestedValue = readNestedString(secrets, path);
+      if (nestedValue) return nestedValue;
+      return service === 'plex' ? readNestedString(secrets, 'plexToken') : '';
+    };
+
     const prisma = {
       $transaction: jest.fn(),
       immaculateTasteMovieLibrary: { deleteMany: jest.fn() },
@@ -13,6 +47,10 @@ describe('IntegrationsController plex libraries', () => {
     const settingsService = {
       getInternalSettings: jest.fn(),
       updateSettings: jest.fn(),
+      resolveServiceSecretInput: jest
+        .fn()
+        .mockResolvedValue({ value: '', source: 'none' }),
+      readServiceSecret: jest.fn(readServiceSecret),
     };
     const plex = {
       listSharedUsersForServer: jest.fn(),

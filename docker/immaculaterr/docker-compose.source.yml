@@ -23,9 +23,12 @@ services:
       - APP_UMASK=${APP_UMASK:-}
     volumes:
       - immaculaterr-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
     restart: unless-stopped
 
 volumes:
   immaculaterr-data:
     name: immaculaterr-data
-

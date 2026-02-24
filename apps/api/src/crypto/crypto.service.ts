@@ -1,9 +1,19 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  pbkdf2Sync,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 import { chmod, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const ENCRYPTED_PREFIX = 'enc:v1:';
+const SECRET_FINGERPRINT_PREFIX = 'secret-fp.v1:';
+const SECRET_FINGERPRINT_ITERATIONS = 120_000;
+const SECRET_FINGERPRINT_BYTES = 32;
 
 function decodeMasterKey(input: string): Buffer {
   const raw = input.trim();
@@ -27,9 +37,14 @@ function decodeMasterKey(input: string): Buffer {
 @Injectable()
 export class CryptoService implements OnModuleInit {
   private masterKey!: Buffer;
+  private secretFingerprintSalt!: Buffer;
 
   async onModuleInit() {
     this.masterKey = await this.loadOrCreateMasterKey();
+    this.secretFingerprintSalt = Buffer.concat([
+      Buffer.from(SECRET_FINGERPRINT_PREFIX, 'utf8'),
+      this.masterKey,
+    ]);
   }
 
   encryptString(plaintext: string): string {
@@ -73,6 +88,32 @@ export class CryptoService implements OnModuleInit {
 
   isEncrypted(value: string): boolean {
     return value.startsWith(ENCRYPTED_PREFIX);
+  }
+
+  signDetached(payload: string): string {
+    return createHmac('sha256', this.masterKey)
+      .update(payload, 'utf8')
+      .digest('base64url');
+  }
+
+  verifyDetached(payload: string, signature: string): boolean {
+    const normalized = signature.trim();
+    if (!normalized) return false;
+    const expected = this.signDetached(payload);
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const actualBuf = Buffer.from(normalized, 'utf8');
+    if (expectedBuf.length !== actualBuf.length) return false;
+    return timingSafeEqual(expectedBuf, actualBuf);
+  }
+
+  deriveSecretFingerprint(secret: string): string {
+    return pbkdf2Sync(
+      secret,
+      this.secretFingerprintSalt,
+      SECRET_FINGERPRINT_ITERATIONS,
+      SECRET_FINGERPRINT_BYTES,
+      'sha256',
+    ).toString('base64url');
   }
 
   private async loadOrCreateMasterKey(): Promise<Buffer> {

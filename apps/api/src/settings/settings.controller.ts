@@ -15,10 +15,36 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 type UpdateSettingsBody = {
   settings?: unknown;
   secrets?: unknown;
+  secretsEnvelope?: unknown;
+};
+
+type ParsedUpdateSettingsBody = {
+  settingsPatch?: Record<string, unknown>;
+  secretsPatch?: Record<string, unknown>;
+  secretsEnvelope?: Record<string, unknown>;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseObjectPatch(
+  value: unknown,
+  fieldName: 'settings' | 'secrets' | 'secretsEnvelope',
+): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainObject(value)) {
+    throw new BadRequestException(`${fieldName} must be an object`);
+  }
+  return value;
+}
+
+function parseUpdateSettingsBody(body: UpdateSettingsBody): ParsedUpdateSettingsBody {
+  return {
+    settingsPatch: parseObjectPatch(body?.settings, 'settings'),
+    secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
+    secretsEnvelope: parseObjectPatch(body?.secretsEnvelope, 'secretsEnvelope'),
+  };
 }
 
 @Controller('settings')
@@ -29,6 +55,11 @@ export class SettingsController {
   @Get()
   get(@Req() req: AuthenticatedRequest) {
     return this.settingsService.getPublicSettings(req.user.id);
+  }
+
+  @Get('secrets-key')
+  secretsKey() {
+    return this.settingsService.getSecretsEnvelopeKey();
   }
 
   @Get('backup-info')
@@ -82,26 +113,31 @@ export class SettingsController {
     @Body() body: UpdateSettingsBody,
   ) {
     const userId = req.user.id;
-    const settingsPatch = body?.settings;
-    const secretsPatch = body?.secrets;
-
-    if (settingsPatch !== undefined && !isPlainObject(settingsPatch)) {
-      throw new BadRequestException('settings must be an object');
-    }
-    if (secretsPatch !== undefined && !isPlainObject(secretsPatch)) {
-      throw new BadRequestException('secrets must be an object');
-    }
-
-    if (settingsPatch) {
-      await this.settingsService.updateSettings(userId, settingsPatch);
-    }
-    if (secretsPatch) {
-      await this.settingsService.updateSecrets(userId, secretsPatch);
-    }
+    const updates = parseUpdateSettingsBody(body);
+    await this.applyUpdatePatches(userId, updates);
 
     // Enforce automation constraints (e.g. disable ARR-dependent schedules when ARR is disabled).
     await this.settingsService.enforceAutomationConstraints(userId);
 
     return await this.settingsService.getPublicSettings(userId);
+  }
+
+  private async applyUpdatePatches(
+    userId: string,
+    updates: ParsedUpdateSettingsBody,
+  ): Promise<void> {
+    if (updates.settingsPatch) {
+      await this.settingsService.updateSettings(userId, updates.settingsPatch);
+    }
+    if (updates.secretsEnvelope) {
+      await this.settingsService.updateSecretsFromEnvelope(
+        userId,
+        updates.secretsEnvelope,
+      );
+    }
+    if (updates.secretsPatch) {
+      this.settingsService.assertPlaintextSecretTransportAllowed();
+      await this.settingsService.updateSecrets(userId, updates.secretsPatch);
+    }
   }
 }

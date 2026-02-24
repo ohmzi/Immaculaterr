@@ -96,34 +96,13 @@
 
 ## Getting started (Docker)
 
-### Install from the package
+Immaculaterr supports both local access modes:
 
-**Option A**
+- HTTP on `5454` for backward-compatible access.
+- HTTPS on `5464` for encrypted local/LAN browser traffic.
 
-```bash
-docker pull ohmzii/immaculaterr:latest
-
-docker run -d \
-  --name Immaculaterr \
-  --network host \
-  -e HOST=0.0.0.0 \
-  -e PORT=5454 \
-  -e APP_DATA_DIR=/data \
-  -e DATABASE_URL=file:/data/tcp.sqlite \
-  -v immaculaterr-data:/data \
-  --restart unless-stopped \
-  ohmzii/immaculaterr:latest
-```
-
-**Option B (GHCR):**
-
-```bash
-docker pull ghcr.io/ohmzi/immaculaterr:latest
-```
-
-See the setup guide for extended instructions: [`doc/setupguide.md`](doc/setupguide.md)
-
-Then open `http://<server-ip>:5454/` and configure integrations in the UI (Plex/Radarr/Sonarr/Overseerr/TMDB/OpenAI/Google as desired).
+For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/setupguide.md).
+For local HTTPS, either trust the local certificate once (recommended) or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 
 Tips:
 
@@ -143,13 +122,6 @@ Full project README: [`doc/README.md`](doc/README.md)
 
 - Report Bug: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
 - Send Suggestion: [Immaculaterr Feedback Form](https://forms.gle/wMpsDu9jPEY14dua6)
-
-## ❤️ Support
-
-This project is free and always will be.
-
-If it saves you time or runs 24/7 in your homelab, consider supporting development via GitHub Sponsors:
-[https://github.com/sponsors/ohmzi](https://github.com/sponsors/ohmzi)
 
 ## License
 

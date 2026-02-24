@@ -8,6 +8,7 @@ const xmlParser = new XMLParser({
   attributeNamePrefix: '',
   parseAttributeValue: true,
   allowBooleanAttributes: true,
+  processEntities: false,
 });
 
 function sanitizeUrlForLogs(raw: string): string {

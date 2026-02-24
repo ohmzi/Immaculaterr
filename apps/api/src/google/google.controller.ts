@@ -1,47 +1,104 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  Req,
+} from '@nestjs/common';
+import type { AuthenticatedRequest } from '../auth/auth.types';
+import { SettingsService } from '../settings/settings.service';
 import { GoogleService } from './google.service';
 
 type TestGoogleBody = {
   apiKey?: unknown;
+  apiKeyEnvelope?: unknown;
+  secretRef?: unknown;
   cseId?: unknown;
   numResults?: unknown;
   query?: unknown;
 };
 
+function parseString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseIntegerLike(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Math.trunc(value) : null;
+  }
+  if (typeof value !== 'string') return null;
+  return parseIntegerString(value);
+}
+
+function parseIntegerString(value: string): number | null {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
 @Controller('google')
 export class GoogleController {
-  constructor(private readonly googleService: GoogleService) {}
+  constructor(
+    private readonly googleService: GoogleService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   @Post('test')
-  test(@Body() body: TestGoogleBody) {
-    const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-    const cseId = typeof body.cseId === 'string' ? body.cseId.trim() : '';
-    const query =
-      typeof body.query === 'string' ? body.query.trim() : 'imdb the matrix';
+  async test(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TestGoogleBody,
+  ) {
+    const input = await this.resolveTestInput(req.user.id, body);
+    this.assertRequiredTestInput(input);
+    return this.googleService.testConnection(input);
+  }
 
-    let numResults = 15;
-    if (
-      typeof body.numResults === 'number' &&
-      Number.isFinite(body.numResults)
-    ) {
-      numResults = Math.trunc(body.numResults);
-    } else if (typeof body.numResults === 'string' && body.numResults.trim()) {
-      const parsed = Number.parseInt(body.numResults.trim(), 10);
-      if (Number.isFinite(parsed)) numResults = parsed;
+  private async resolveTestInput(
+    userId: string,
+    body: TestGoogleBody,
+  ): Promise<{
+    apiKey: string;
+    cseId: string;
+    query: string;
+    numResults: number;
+  }> {
+    const resolved = await this.settingsService.resolveServiceSecretInput({
+      userId,
+      service: 'google',
+      secretField: 'apiKey',
+      expectedPurpose: 'integration.google.test',
+      envelope: body.apiKeyEnvelope,
+      secretRef: body.secretRef,
+      plaintext: body.apiKey,
+    });
+    return {
+      apiKey: resolved.value,
+      cseId: parseString(body.cseId),
+      query: this.resolveQuery(body.query),
+      numResults: parseIntegerLike(body.numResults) ?? 15,
+    };
+  }
+
+  private resolveQuery(raw: unknown): string {
+    const query = parseString(raw);
+    return query || 'imdb the matrix';
+  }
+
+  private assertRequiredTestInput(params: {
+    apiKey: string;
+    cseId: string;
+    query: string;
+  }): void {
+    if (!params.apiKey) {
+      throw new BadRequestException('GOOGLE_API_KEY is required');
     }
-
-    if (!apiKey) throw new BadRequestException('GOOGLE_API_KEY is required');
-    if (!cseId)
+    if (!params.cseId) {
       throw new BadRequestException(
         'GOOGLE_CSE_ID (cx) is required for Google Programmable Search',
       );
-    if (!query) throw new BadRequestException('query is required');
-
-    return this.googleService.testConnection({
-      apiKey,
-      cseId,
-      query,
-      numResults,
-    });
+    }
+    if (!params.query) throw new BadRequestException('query is required');
   }
 }

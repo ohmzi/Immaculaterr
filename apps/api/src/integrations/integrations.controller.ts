@@ -31,7 +31,10 @@ import { PlexService } from '../plex/plex.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { RadarrService } from '../radarr/radarr.service';
-import { SettingsService } from '../settings/settings.service';
+import {
+  type ServiceSecretId,
+  SettingsService,
+} from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 
@@ -83,6 +86,29 @@ type UpdatePlexMonitoringUsersBody = {
   selectedPlexUserIds?: unknown;
 };
 
+const SERVICE_SECRET_ID_BY_INTEGRATION: Record<string, ServiceSecretId> = {
+  plex: 'plex',
+  radarr: 'radarr',
+  sonarr: 'sonarr',
+  tmdb: 'tmdb',
+  overseerr: 'overseerr',
+  google: 'google',
+  openai: 'openai',
+};
+
+type SavedIntegrationTestContext = {
+  userId: string;
+  bodyObj: Record<string, unknown>;
+  settings: Record<string, unknown>;
+  secrets: Record<string, unknown>;
+};
+
+type SavedIntegrationTestResult = {
+  ok: true;
+  result?: unknown;
+  summary?: Record<string, unknown>;
+};
+
 @Controller('integrations')
 @ApiTags('integrations')
 export class IntegrationsController {
@@ -99,6 +125,68 @@ export class IntegrationsController {
     private readonly openai: OpenAiService,
     private readonly overseerr: OverseerrService,
   ) {}
+
+  private asServiceSecretId(integrationId: string): ServiceSecretId | null {
+    return SERVICE_SECRET_ID_BY_INTEGRATION[integrationId] ?? null;
+  }
+
+  private async resolveIntegrationSecret(params: {
+    userId: string;
+    integrationId: string;
+    bodyObj: Record<string, unknown>;
+    currentSecrets: Record<string, unknown>;
+  }): Promise<string> {
+    const service = this.asServiceSecretId(params.integrationId);
+    if (!service) {
+      throw new BadRequestException(
+        `Unknown integrationId: ${params.integrationId}`,
+      );
+    }
+    const secretField = this.secretFieldForService(service);
+    const envelopeField = this.envelopeFieldForSecretField(secretField);
+
+    const resolved = await this.settingsService.resolveServiceSecretInput({
+      userId: params.userId,
+      service,
+      secretField,
+      expectedPurpose: `integration.${service}.test`,
+      envelope: params.bodyObj[envelopeField] ?? params.bodyObj['secretEnvelope'],
+      secretRef: params.bodyObj['secretRef'],
+      plaintext: params.bodyObj[secretField],
+      currentSecrets: params.currentSecrets,
+    });
+
+    if (resolved.value) return resolved.value;
+
+    const savedSecret = this.settingsService.readServiceSecret(
+      service,
+      params.currentSecrets,
+    );
+    if (!savedSecret) {
+      throw new BadRequestException(
+        this.missingSecretMessage(service, secretField),
+      );
+    }
+    return savedSecret;
+  }
+
+  private secretFieldForService(service: ServiceSecretId): 'apiKey' | 'token' {
+    return service === 'plex' ? 'token' : 'apiKey';
+  }
+
+  private envelopeFieldForSecretField(
+    secretField: 'apiKey' | 'token',
+  ): 'apiKeyEnvelope' | 'tokenEnvelope' {
+    return secretField === 'token' ? 'tokenEnvelope' : 'apiKeyEnvelope';
+  }
+
+  private missingSecretMessage(
+    service: ServiceSecretId,
+    secretField: 'apiKey' | 'token',
+  ): string {
+    const label = secretField === 'token' ? 'token' : 'apiKey';
+    return `${service} ${label} is not set`;
+  }
 
   private async cleanupDeselectedPlexLibraries(params: {
     baseUrl: string;
@@ -575,103 +663,139 @@ export class IntegrationsController {
     @Body() body: unknown,
   ) {
     const userId = req.user.id;
-    const { settings, secrets } =
-      await this.settingsService.getInternalSettings(userId);
+    const { settings, secrets } = await this.settingsService.getInternalSettings(userId);
+    const integrationKey = integrationId.toLowerCase();
+    const context: SavedIntegrationTestContext = {
+      userId,
+      bodyObj: isPlainObject(body) ? body : {},
+      settings,
+      secrets,
+    };
+    return await this.runSavedIntegrationTest(integrationKey, context);
+  }
 
-    const bodyObj = isPlainObject(body) ? body : {};
-    const id = integrationId.toLowerCase();
-
-    if (id === 'plex') {
-      const baseUrlRaw =
-        pickString(bodyObj, 'baseUrl') || pickString(settings, 'plex.baseUrl');
-      const token = pickString(secrets, 'plex.token');
-      if (!baseUrlRaw) throw new BadRequestException('Plex baseUrl is not set');
-      if (!token) throw new BadRequestException('Plex token is not set');
-      const baseUrl = normalizeHttpUrl(baseUrlRaw);
-      const machineIdentifier = await this.plexServer.getMachineIdentifier({
-        baseUrl,
-        token,
-      });
-
-      return {
-        ok: true,
-        summary: {
-          machineIdentifier,
-        },
-      };
+  // skipcq: JS-R1005 - explicit switch keeps integration routing type-safe and auditable.
+  private async runSavedIntegrationTest(
+    integrationKey: string,
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    switch (integrationKey) {
+      case 'plex':
+        return await this.testSavedPlex(context);
+      case 'radarr':
+        return await this.testSavedRadarr(context);
+      case 'sonarr':
+        return await this.testSavedSonarr(context);
+      case 'tmdb':
+        return await this.testSavedTmdb(context);
+      case 'overseerr':
+        return await this.testSavedOverseerr(context);
+      case 'google':
+        return await this.testSavedGoogle(context);
+      case 'openai':
+        return await this.testSavedOpenAi(context);
+      default:
+        throw new BadRequestException(`Unknown integrationId: ${integrationKey}`);
     }
+  }
 
-    if (id === 'radarr') {
-      const baseUrlRaw =
-        pickString(bodyObj, 'baseUrl') ||
-        pickString(settings, 'radarr.baseUrl');
-      const apiKey = pickString(secrets, 'radarr.apiKey');
-      if (!baseUrlRaw)
-        throw new BadRequestException('Radarr baseUrl is not set');
-      if (!apiKey) throw new BadRequestException('Radarr apiKey is not set');
-      const baseUrl = normalizeHttpUrl(baseUrlRaw);
-      const result = await this.radarr.testConnection({ baseUrl, apiKey });
-      return { ok: true, result };
+  private async resolveSavedIntegrationSecret(
+    context: SavedIntegrationTestContext,
+    integrationId: string,
+  ): Promise<string> {
+    return await this.resolveIntegrationSecret({
+      userId: context.userId,
+      integrationId,
+      bodyObj: context.bodyObj,
+      currentSecrets: context.secrets,
+    });
+  }
+
+  private requireSavedBaseUrl(
+    context: SavedIntegrationTestContext,
+    settingPath: string,
+    integrationLabel: string,
+  ): string {
+    const baseUrlRaw =
+      pickString(context.bodyObj, 'baseUrl') || pickString(context.settings, settingPath);
+    if (!baseUrlRaw) {
+      throw new BadRequestException(`${integrationLabel} baseUrl is not set`);
     }
+    return normalizeHttpUrl(baseUrlRaw);
+  }
 
-    if (id === 'sonarr') {
-      const baseUrlRaw =
-        pickString(bodyObj, 'baseUrl') ||
-        pickString(settings, 'sonarr.baseUrl');
-      const apiKey = pickString(secrets, 'sonarr.apiKey');
-      if (!baseUrlRaw)
-        throw new BadRequestException('Sonarr baseUrl is not set');
-      if (!apiKey) throw new BadRequestException('Sonarr apiKey is not set');
-      const baseUrl = normalizeHttpUrl(baseUrlRaw);
-      const result = await this.sonarr.testConnection({ baseUrl, apiKey });
-      return { ok: true, result };
+  private async testSavedPlex(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const baseUrl = this.requireSavedBaseUrl(context, 'plex.baseUrl', 'Plex');
+    const token = await this.resolveSavedIntegrationSecret(context, 'plex');
+    const machineIdentifier = await this.plexServer.getMachineIdentifier({
+      baseUrl,
+      token,
+    });
+    return { ok: true, summary: { machineIdentifier } };
+  }
+
+  private async testSavedRadarr(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const baseUrl = this.requireSavedBaseUrl(context, 'radarr.baseUrl', 'Radarr');
+    const apiKey = await this.resolveSavedIntegrationSecret(context, 'radarr');
+    const result = await this.radarr.testConnection({ baseUrl, apiKey });
+    return { ok: true, result };
+  }
+
+  private async testSavedSonarr(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const baseUrl = this.requireSavedBaseUrl(context, 'sonarr.baseUrl', 'Sonarr');
+    const apiKey = await this.resolveSavedIntegrationSecret(context, 'sonarr');
+    const result = await this.sonarr.testConnection({ baseUrl, apiKey });
+    return { ok: true, result };
+  }
+
+  private async testSavedTmdb(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const apiKey = await this.resolveSavedIntegrationSecret(context, 'tmdb');
+    const result = await this.tmdb.testConnection({ apiKey });
+    return { ok: true, result };
+  }
+
+  private async testSavedOverseerr(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const baseUrl = this.requireSavedBaseUrl(context, 'overseerr.baseUrl', 'Overseerr');
+    const apiKey = await this.resolveSavedIntegrationSecret(context, 'overseerr');
+    const result = await this.overseerr.testConnection({ baseUrl, apiKey });
+    return { ok: true, result };
+  }
+
+  private async testSavedGoogle(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const cseId =
+      pickString(context.bodyObj, 'cseId') ||
+      pickString(context.bodyObj, 'searchEngineId') ||
+      pickString(context.settings, 'google.searchEngineId');
+    if (!cseId) {
+      throw new BadRequestException('Google searchEngineId is not set');
     }
+    const apiKey = await this.resolveSavedIntegrationSecret(context, 'google');
+    const result = await this.google.testConnection({
+      apiKey,
+      cseId,
+      query: 'tautulli curated plex',
+      numResults: 3,
+    });
+    return { ok: true, result };
+  }
 
-    if (id === 'tmdb') {
-      const apiKey = pickString(secrets, 'tmdb.apiKey');
-      if (!apiKey) throw new BadRequestException('TMDB apiKey is not set');
-      const result = await this.tmdb.testConnection({ apiKey });
-      return { ok: true, result };
-    }
-
-    if (id === 'overseerr') {
-      const baseUrlRaw =
-        pickString(bodyObj, 'baseUrl') ||
-        pickString(settings, 'overseerr.baseUrl');
-      const apiKey = pickString(secrets, 'overseerr.apiKey');
-      if (!baseUrlRaw)
-        throw new BadRequestException('Overseerr baseUrl is not set');
-      if (!apiKey) throw new BadRequestException('Overseerr apiKey is not set');
-      const baseUrl = normalizeHttpUrl(baseUrlRaw);
-      const result = await this.overseerr.testConnection({ baseUrl, apiKey });
-      return { ok: true, result };
-    }
-
-    if (id === 'google') {
-      const apiKey = pickString(secrets, 'google.apiKey');
-      const cseId =
-        pickString(bodyObj, 'cseId') ||
-        pickString(bodyObj, 'searchEngineId') ||
-        pickString(settings, 'google.searchEngineId');
-      if (!apiKey) throw new BadRequestException('Google apiKey is not set');
-      if (!cseId)
-        throw new BadRequestException('Google searchEngineId is not set');
-      const result = await this.google.testConnection({
-        apiKey,
-        cseId,
-        query: 'tautulli curated plex',
-        numResults: 3,
-      });
-      return { ok: true, result };
-    }
-
-    if (id === 'openai') {
-      const apiKey = pickString(secrets, 'openai.apiKey');
-      if (!apiKey) throw new BadRequestException('OpenAI apiKey is not set');
-      const result = await this.openai.testConnection({ apiKey });
-      return { ok: true, result };
-    }
-
-    throw new BadRequestException(`Unknown integrationId: ${integrationId}`);
+  private async testSavedOpenAi(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const apiKey = await this.resolveSavedIntegrationSecret(context, 'openai');
+    const result = await this.openai.testConnection({ apiKey });
+    return { ok: true, result };
   }
 }

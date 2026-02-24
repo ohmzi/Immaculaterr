@@ -19,6 +19,10 @@ model User {
   id           String   @id @default(cuid())
   username     String   @unique
   passwordHash String
+  tokenVersion Int      @default(0)
+  passwordProofSalt       String?
+  passwordProofIterations Int?
+  passwordProofKeyEnc     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -31,12 +35,15 @@ model User {
 model Session {
   id         String   @id
   userId     String
+  tokenVersion Int
   createdAt  DateTime @default(now())
   lastSeenAt DateTime @updatedAt
+  expiresAt  DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, expiresAt])
 }
 
 model UserSettings {

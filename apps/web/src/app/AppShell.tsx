@@ -11,6 +11,7 @@ import { getPublicSettings, putSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
 import { WhatsNewModal } from '@/app/WhatsNewModal';
 import { getVersionHistoryEntry, normalizeVersion } from '@/lib/version-history';
+import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
 function readOnboardingCompleted(settings: unknown): boolean {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
@@ -164,8 +165,9 @@ export function AppShell() {
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      queryClient.removeQueries({ queryKey: ['settings'] });
+      queryClient.clear();
+      await clearClientUserData();
+      window.location.href = '/';
     },
   });
 

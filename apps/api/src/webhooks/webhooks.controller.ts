@@ -4,10 +4,12 @@ import {
   Controller,
   Post,
   Req,
+  UnauthorizedException,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
+import { timingSafeEqual } from 'node:crypto';
 import type { Express } from 'express';
 import type { Request } from 'express';
 import { AuthService } from '../auth/auth.service';
@@ -55,6 +57,48 @@ function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
+function readSingleHeader(value: string | string[] | undefined): string | null {
+  if (typeof value === 'string') return readTrimmedSecret(value);
+  if (Array.isArray(value) && value.length > 0) {
+    return typeof value[0] === 'string' ? readTrimmedSecret(value[0]) : null;
+  }
+  return null;
+}
+
+function readTrimmedSecret(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function safeEquals(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+function readConfiguredWebhookSecret(): string {
+  return process.env.PLEX_WEBHOOK_SECRET?.trim() || '';
+}
+
+function readQueryWebhookSecret(req: Request): string | null {
+  const queryToken = req.query?.['token'];
+  return typeof queryToken === 'string' ? readTrimmedSecret(queryToken) : null;
+}
+
+function readWebhookSecretCandidate(req: Request): string | null {
+  const headerSecret = readSingleHeader(req.headers['x-immaculaterr-webhook-secret']);
+  return headerSecret ?? readQueryWebhookSecret(req);
+}
+
+function verifyWebhookSecret(req: Request): void {
+  const configuredSecret = readConfiguredWebhookSecret();
+  if (!configuredSecret) return;
+  const candidateSecret = readWebhookSecretCandidate(req);
+  if (candidateSecret && safeEquals(configuredSecret, candidateSecret)) return;
+  throw new UnauthorizedException('Invalid webhook secret');
+}
+
 @Controller('webhooks')
 export class WebhooksController {
   constructor(
@@ -80,6 +124,8 @@ export class WebhooksController {
     @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Array<Express.Multer.File>,
   ) {
+    verifyWebhookSecret(req);
+
     const payloadRaw = body.payload;
     if (typeof payloadRaw !== 'string') {
       throw new BadRequestException('Expected multipart field "payload"');
@@ -162,9 +208,15 @@ export class WebhooksController {
 
       // For TV, we use the SHOW title as the seed (not the episode title).
       const seedTitle =
-        mediaTypeLower === 'episode' ? showTitle : payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
+        mediaTypeLower === 'episode'
+          ? showTitle
+          : payloadObj
+            ? pickString(payloadObj, 'Metadata.title')
+            : '';
 
-      const seedRatingKey = payloadObj ? pickString(payloadObj, 'Metadata.ratingKey') : '';
+      const seedRatingKey = payloadObj
+        ? pickString(payloadObj, 'Metadata.ratingKey')
+        : '';
       const showRatingKey =
         mediaTypeLower === 'episode' && payloadObj
           ? pickString(payloadObj, 'Metadata.grandparentRatingKey')
@@ -188,7 +240,9 @@ export class WebhooksController {
       const seedLibrarySectionTitle = payloadObj
         ? pickString(payloadObj, 'Metadata.librarySectionTitle')
         : '';
-      const plexAccountId = payloadObj ? pickNumber(payloadObj, 'Account.id') : null;
+      const plexAccountId = payloadObj
+        ? pickNumber(payloadObj, 'Account.id')
+        : null;
       const plexAccountTitle = payloadObj
         ? pickString(payloadObj, 'Account.title') ||
           pickString(payloadObj, 'Account.name') ||
@@ -207,8 +261,10 @@ export class WebhooksController {
             });
             const plexUserId = plexUser.id;
             const plexUserTitle = plexUser.plexAccountTitle;
-            const resolvedPlexAccountId = plexUser.plexAccountId ?? plexAccountId ?? null;
-            const resolvedPlexAccountTitle = plexUserTitle || plexAccountTitle || null;
+            const resolvedPlexAccountId =
+              plexUser.plexAccountId ?? plexAccountId ?? null;
+            const resolvedPlexAccountTitle =
+              plexUserTitle || plexAccountTitle || null;
 
             const payloadInput = {
               source: 'plexWebhook',

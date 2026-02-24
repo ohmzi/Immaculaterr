@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { CredentialEnvelopeService } from '../auth/credential-envelope.service';
 import { ensureBootstrapEnv } from '../bootstrap-env';
 import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../db/prisma.service';
@@ -97,7 +98,12 @@ async function main() {
   const crypto = new CryptoService();
   await crypto.onModuleInit();
 
-  const settingsService = new SettingsService(prisma, crypto);
+  const credentialEnvelope = new CredentialEnvelopeService();
+  const settingsService = new SettingsService(
+    prisma,
+    crypto,
+    credentialEnvelope,
+  );
 
   const user = await prisma.user.findFirst({
     orderBy: { createdAt: 'asc' },
@@ -293,7 +299,6 @@ void main().catch((err) => {
   console.error(err instanceof Error ? err.stack ?? err.message : String(err));
   process.exitCode = 1;
 });
-
 
 
 

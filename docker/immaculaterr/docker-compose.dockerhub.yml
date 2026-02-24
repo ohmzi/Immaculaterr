@@ -19,9 +19,12 @@ services:
       - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
     volumes:
       - immaculaterr-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
     restart: unless-stopped
 
 volumes:
   immaculaterr-data:
     name: immaculaterr-data
-

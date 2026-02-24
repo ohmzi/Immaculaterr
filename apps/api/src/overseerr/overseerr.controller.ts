@@ -13,7 +13,36 @@ import { OverseerrService } from './overseerr.service';
 type TestConnectionBody = {
   baseUrl?: unknown;
   apiKey?: unknown;
+  apiKeyEnvelope?: unknown;
+  secretRef?: unknown;
 };
+
+function normalizeHttpBaseUrl(raw: unknown): string {
+  const baseUrlRaw = requireBaseUrl(raw);
+  const baseUrl = withDefaultHttpScheme(baseUrlRaw);
+  assertHttpUrl(baseUrl);
+  return baseUrl;
+}
+
+function requireBaseUrl(raw: unknown): string {
+  const baseUrlRaw = typeof raw === 'string' ? raw.trim() : '';
+  if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
+  return baseUrlRaw;
+}
+
+function withDefaultHttpScheme(baseUrlRaw: string): string {
+  return /^https?:\/\//i.test(baseUrlRaw) ? baseUrlRaw : `http://${baseUrlRaw}`;
+}
+
+function assertHttpUrl(baseUrl: string): void {
+  try {
+    const parsed = new URL(baseUrl);
+    if (/^https?:$/i.test(parsed.protocol)) return;
+  } catch {
+    // validated below
+  }
+  throw new BadRequestException('baseUrl must be a valid http(s) URL');
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -42,26 +71,23 @@ export class OverseerrController {
   ) {}
 
   @Post('test')
-  test(@Body() body: TestConnectionBody) {
-    const baseUrlRaw =
-      typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
-    const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+  async test(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TestConnectionBody,
+  ) {
+    const baseUrl = normalizeHttpBaseUrl(body.baseUrl);
+    const resolved = await this.settingsService.resolveServiceSecretInput({
+      userId: req.user.id,
+      service: 'overseerr',
+      secretField: 'apiKey',
+      expectedPurpose: 'integration.overseerr.test',
+      envelope: body.apiKeyEnvelope,
+      secretRef: body.secretRef,
+      plaintext: body.apiKey,
+    });
+    const apiKey = resolved.value;
 
-    if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
     if (!apiKey) throw new BadRequestException('apiKey is required');
-
-    const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
-      ? baseUrlRaw
-      : `http://${baseUrlRaw}`;
-
-    try {
-      const parsed = new URL(baseUrl);
-      if (!/^https?:$/i.test(parsed.protocol)) {
-        throw new Error('Unsupported protocol');
-      }
-    } catch {
-      throw new BadRequestException('baseUrl must be a valid http(s) URL');
-    }
 
     return this.overseerrService.testConnection({ baseUrl, apiKey });
   }

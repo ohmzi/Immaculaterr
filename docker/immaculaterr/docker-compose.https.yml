@@ -1,0 +1,68 @@
+name: immaculaterr
+
+services:
+  immaculaterr:
+    container_name: Immaculaterr
+    image: ${IMM_IMAGE:-ghcr.io/ohmzi/immaculaterr}:${IMM_TAG:-latest}
+    network_mode: host
+    # Port mapping is ignored by Docker in host mode, but kept for UI visibility.
+    ports:
+      - "${APP_INTERNAL_PORT:-5455}:${APP_INTERNAL_PORT:-5455}"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=${APP_INTERNAL_PORT:-5455}
+      - APP_DATA_DIR=/data
+      - DATABASE_URL=file:/data/tcp.sqlite
+      - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
+      - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
+      - APP_MASTER_KEY=${APP_MASTER_KEY:-}
+      - APP_MASTER_KEY_FILE=${APP_MASTER_KEY_FILE:-}
+      - APP_UMASK=${APP_UMASK:-}
+      - TRUST_PROXY=${TRUST_PROXY:-1}
+      - COOKIE_SECURE=${COOKIE_SECURE:-}
+    volumes:
+      - immaculaterr-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    restart: unless-stopped
+
+  immaculaterr-https:
+    container_name: ImmaculaterrHttps
+    image: caddy:2.8.4-alpine
+    depends_on:
+      - immaculaterr
+    network_mode: host
+    environment:
+      - IMM_ENABLE_HTTP=${IMM_ENABLE_HTTP:-true}
+      - IMM_HTTP_PORT=${IMM_HTTP_PORT:-5454}
+      - IMM_ENABLE_HTTPS=${IMM_ENABLE_HTTPS:-true}
+      - IMM_INCLUDE_LOCALHOST=${IMM_INCLUDE_LOCALHOST:-true}
+      - IMM_ENABLE_LAN_IP=${IMM_ENABLE_LAN_IP:-true}
+      - IMM_HTTPS_LAN_IP=${IMM_HTTPS_LAN_IP:-}
+      - IMM_HTTPS_EXTRA_HOSTS=${IMM_HTTPS_EXTRA_HOSTS:-}
+      - IMM_HTTPS_PORT=${IMM_HTTPS_PORT:-5464}
+      - APP_INTERNAL_PORT=${APP_INTERNAL_PORT:-5455}
+      - IMM_PUBLIC_DOMAIN=${IMM_PUBLIC_DOMAIN:-}
+      - IMM_PUBLIC_DOMAIN_PORT=${IMM_PUBLIC_DOMAIN_PORT:-443}
+      - IMM_PUBLIC_DOMAIN_TLS_MODE=${IMM_PUBLIC_DOMAIN_TLS_MODE:-public}
+      - IMM_TLS_ACME_EMAIL=${IMM_TLS_ACME_EMAIL:-}
+    volumes:
+      - ./caddy-entrypoint.sh:/etc/caddy/caddy-entrypoint.sh:ro
+      - immaculaterr-caddy-data:/data
+      - immaculaterr-caddy-config:/config
+    command: ["/bin/sh", "/etc/caddy/caddy-entrypoint.sh"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    restart: unless-stopped
+
+volumes:
+  immaculaterr-data:
+    name: immaculaterr-data
+  immaculaterr-caddy-data:
+    name: immaculaterr-caddy-data
+  immaculaterr-caddy-config:
+    name: immaculaterr-caddy-config

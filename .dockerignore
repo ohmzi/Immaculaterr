@@ -1,6 +1,10 @@
 .git
 .github
 
+.env
+.env.*
+!.env.example
+
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -16,3 +20,4 @@ apps/*/.vite/
 
 coverage/
 
+docker/immaculaterr/secrets/
