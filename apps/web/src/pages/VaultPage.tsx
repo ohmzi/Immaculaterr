@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useState,
   useEffect,
   useMemo,
@@ -123,42 +124,51 @@ function MaskedSecretInput(props: {
       ? MASKED_SECRET
       : '';
 
-  const handleDisplayValueChange = () => undefined;
+  const handleDisplayValueChange = useCallback(() => undefined, []);
 
-  const handleBeforeInput = (event: FormEvent<HTMLInputElement>) => {
-    const native = event.nativeEvent as InputEvent;
-    const data = typeof native.data === 'string' ? native.data : '';
-    if (!data) return;
-    event.preventDefault();
-    props.onEditStart();
-    props.setValue((previous) => `${previous}${data}`);
-  };
+  const handleBeforeInput = useCallback(
+    (event: FormEvent<HTMLInputElement>) => {
+      const native = event.nativeEvent as InputEvent;
+      const data = typeof native.data === 'string' ? native.data : '';
+      if (!data) return;
+      event.preventDefault();
+      props.onEditStart();
+      props.setValue((previous) => `${previous}${data}`);
+    },
+    [props.onEditStart, props.setValue],
+  );
 
-  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
-    event.preventDefault();
-    const pasted = event.clipboardData.getData('text');
-    if (!pasted) return;
-    props.onEditStart();
-    props.setValue((previous) => `${previous}${pasted}`);
-  };
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLInputElement>) => {
+      event.preventDefault();
+      const pasted = event.clipboardData.getData('text');
+      if (!pasted) return;
+      props.onEditStart();
+      props.setValue((previous) => `${previous}${pasted}`);
+    },
+    [props.onEditStart, props.setValue],
+  );
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
-      return;
-    }
-    const key = event.key;
-    if (key !== 'Backspace' && key !== 'Delete') return;
-    event.preventDefault();
-    props.onEditStart();
-    props.setValue((previous) =>
-      normalizeAsteriskInput(
-        previous,
-        key,
-        event.currentTarget.selectionStart,
-        event.currentTarget.selectionEnd,
-      ),
-    );
-  };
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+        return;
+      }
+      const key = event.key;
+      if (key !== 'Backspace' && key !== 'Delete') return;
+      event.preventDefault();
+      props.onEditStart();
+      props.setValue((previous) =>
+        normalizeAsteriskInput(
+          previous,
+          key,
+          event.currentTarget.selectionStart,
+          event.currentTarget.selectionEnd,
+        ),
+      );
+    },
+    [props.onEditStart, props.setValue],
+  );
 
   return (
     <input
@@ -477,7 +487,7 @@ export function SettingsPage({
   // Plex OAuth state
   const [isPlexOAuthLoading, setIsPlexOAuthLoading] = useState(false);
 
-  const handlePlexOAuth = async () => {
+  const handlePlexOAuth = useCallback(async () => {
     // Mobile Safari (and some browsers) will block popups if window.open is called
     // after an async boundary. Open a placeholder window synchronously, then
     // navigate it once we have the Plex authUrl.
@@ -586,7 +596,7 @@ export function SettingsPage({
       setIsPlexOAuthLoading(false);
       toast.error('Couldn’t start Plex login. Please try again.', { id: toastId });
     }
-  };
+  }, []);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -892,9 +902,9 @@ export function SettingsPage({
     },
   });
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     saveMutation.mutate();
-  };
+  }, [saveMutation]);
 
   const testPlexConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Plex connection...') : undefined;
@@ -1842,7 +1852,7 @@ export function SettingsPage({
             ? 'test'
             : 'inactive';
 
-  const handleTitleIconClick = () => {
+  const handleTitleIconClick = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
     void titleIconControls.start({
@@ -1853,99 +1863,112 @@ export function SettingsPage({
       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
       transition: { duration: 1.4, ease: 'easeInOut' },
     });
-  };
+  }, [titleIconControls, titleIconGlowControls]);
 
-  const markPlexEdited = () => {
+  const markPlexEdited = useCallback(() => {
     setPlexTouched(true);
     setPlexTestOk(null);
-  };
+  }, []);
 
-  const markTmdbEdited = () => {
+  const markTmdbEdited = useCallback(() => {
     setTmdbTouched(true);
     setTmdbTestOk(null);
-  };
+  }, []);
 
-  const markRadarrEdited = () => {
+  const markRadarrEdited = useCallback(() => {
     setRadarrTouched(true);
     setRadarrTestOk(null);
-  };
+  }, []);
 
-  const markSonarrEdited = () => {
+  const markSonarrEdited = useCallback(() => {
     setSonarrTouched(true);
     setSonarrTestOk(null);
-  };
+  }, []);
 
-  const markOverseerrEdited = () => {
+  const markOverseerrEdited = useCallback(() => {
     setOverseerrTouched(true);
     setOverseerrTestOk(null);
-  };
+  }, []);
 
-  const markGoogleEdited = () => {
+  const markGoogleEdited = useCallback(() => {
     setGoogleTouched(true);
     setGoogleTestOk(null);
-  };
+  }, []);
 
-  const markOpenAiEdited = () => {
+  const markOpenAiEdited = useCallback(() => {
     setOpenAiTouched(true);
     setOpenAiTestOk(null);
-  };
+  }, []);
 
-  const handlePlexBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
-    markPlexEdited();
-    setPlexBaseUrl(event.target.value);
-  };
+  const handlePlexBaseUrlChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      markPlexEdited();
+      setPlexBaseUrl(event.target.value);
+    },
+    [markPlexEdited],
+  );
 
-  const handleRadarrBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
-    markRadarrEdited();
-    setRadarrBaseUrl(event.target.value);
-  };
+  const handleRadarrBaseUrlChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      markRadarrEdited();
+      setRadarrBaseUrl(event.target.value);
+    },
+    [markRadarrEdited],
+  );
 
-  const handleSonarrBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
-    markSonarrEdited();
-    setSonarrBaseUrl(event.target.value);
-  };
+  const handleSonarrBaseUrlChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      markSonarrEdited();
+      setSonarrBaseUrl(event.target.value);
+    },
+    [markSonarrEdited],
+  );
 
-  const handleOverseerrBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
-    markOverseerrEdited();
-    setOverseerrBaseUrl(event.target.value);
-  };
+  const handleOverseerrBaseUrlChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      markOverseerrEdited();
+      setOverseerrBaseUrl(event.target.value);
+    },
+    [markOverseerrEdited],
+  );
 
-  const handleGoogleSearchEngineIdChange = (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => {
-    markGoogleEdited();
-    setGoogleSearchEngineId(event.target.value);
-  };
+  const handleGoogleSearchEngineIdChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      markGoogleEdited();
+      setGoogleSearchEngineId(event.target.value);
+    },
+    [markGoogleEdited],
+  );
 
-  const handlePlexManualTest = () => {
+  const handlePlexManualTest = useCallback(() => {
     void runPlexTest('manual');
-  };
+  }, [runPlexTest]);
 
-  const handleTmdbManualTest = () => {
+  const handleTmdbManualTest = useCallback(() => {
     void runTmdbTest('manual');
-  };
+  }, [runTmdbTest]);
 
-  const handleRadarrManualTest = () => {
+  const handleRadarrManualTest = useCallback(() => {
     void runRadarrTest('manual');
-  };
+  }, [runRadarrTest]);
 
-  const handleSonarrManualTest = () => {
+  const handleSonarrManualTest = useCallback(() => {
     void runSonarrTest('manual');
-  };
+  }, [runSonarrTest]);
 
-  const handleOverseerrManualTest = () => {
+  const handleOverseerrManualTest = useCallback(() => {
     void runOverseerrTest('manual');
-  };
+  }, [runOverseerrTest]);
 
-  const handleGoogleManualTest = () => {
+  const handleGoogleManualTest = useCallback(() => {
     void runGoogleTest('manual');
-  };
+  }, [runGoogleTest]);
 
-  const handleOpenAiManualTest = () => {
+  const handleOpenAiManualTest = useCallback(() => {
     void runOpenAiTest('manual');
-  };
+  }, [runOpenAiTest]);
 
-  const persistIntegrationEnabledState = (params: {
+  const persistIntegrationEnabledState = useCallback((params: {
     integration: 'radarr' | 'sonarr' | 'overseerr' | 'google' | 'openai';
     enabled: boolean;
     restoreEnabledState: () => void;
@@ -1963,9 +1986,9 @@ export function SettingsPage({
         },
       },
     );
-  };
+  }, [integrationEnabledMutation]);
 
-  const handleRadarrToggle = () => {
+  const handleRadarrToggle = useCallback(() => {
     const previousEnabled = radarrEnabled;
     const nextEnabled = !radarrEnabled;
     setRadarrEnabled(nextEnabled);
@@ -1986,9 +2009,16 @@ export function SettingsPage({
     if (nextEnabled && usesSavedCreds && !radarrTouched) {
       void runRadarrTest('auto');
     }
-  };
+  }, [
+    persistIntegrationEnabledState,
+    radarrApiKey,
+    radarrEnabled,
+    radarrTouched,
+    runRadarrTest,
+    secretsPresent.radarr,
+  ]);
 
-  const handleSonarrToggle = () => {
+  const handleSonarrToggle = useCallback(() => {
     const previousEnabled = sonarrEnabled;
     const nextEnabled = !sonarrEnabled;
     setSonarrEnabled(nextEnabled);
@@ -2009,9 +2039,16 @@ export function SettingsPage({
     if (nextEnabled && usesSavedCreds && !sonarrTouched) {
       void runSonarrTest('auto');
     }
-  };
+  }, [
+    persistIntegrationEnabledState,
+    secretsPresent.sonarr,
+    sonarrApiKey,
+    sonarrEnabled,
+    sonarrTouched,
+    runSonarrTest,
+  ]);
 
-  const handleOverseerrToggle = () => {
+  const handleOverseerrToggle = useCallback(() => {
     const previousEnabled = overseerrEnabled;
     const nextEnabled = !overseerrEnabled;
     setOverseerrEnabled(nextEnabled);
@@ -2033,15 +2070,22 @@ export function SettingsPage({
     if (nextEnabled && usesSavedCreds && !overseerrTouched) {
       void runOverseerrTest('auto');
     }
-  };
+  }, [
+    overseerrApiKey,
+    overseerrEnabled,
+    overseerrTouched,
+    persistIntegrationEnabledState,
+    runOverseerrTest,
+    secretsPresent.overseerr,
+  ]);
 
-  const shouldAutoTestGoogle = () => {
+  const shouldAutoTestGoogle = useCallback(() => {
     const usesSavedCreds = Boolean(secretsPresent.google) && !googleApiKey.trim();
     if (!usesSavedCreds || googleTouched) return false;
     return Boolean(googleSearchEngineId.trim());
-  };
+  }, [googleApiKey, googleSearchEngineId, googleTouched, secretsPresent.google]);
 
-  const handleGoogleToggle = () => {
+  const handleGoogleToggle = useCallback(() => {
     const previousEnabled = googleEnabled;
     const nextEnabled = !googleEnabled;
     setGoogleEnabled(nextEnabled);
@@ -2061,9 +2105,14 @@ export function SettingsPage({
     if (nextEnabled && shouldAutoTestGoogle()) {
       void runGoogleTest('auto');
     }
-  };
+  }, [
+    googleEnabled,
+    persistIntegrationEnabledState,
+    runGoogleTest,
+    shouldAutoTestGoogle,
+  ]);
 
-  const handleOpenAiToggle = () => {
+  const handleOpenAiToggle = useCallback(() => {
     const previousEnabled = openAiEnabled;
     const nextEnabled = !openAiEnabled;
     setOpenAiEnabled(nextEnabled);
@@ -2084,13 +2133,20 @@ export function SettingsPage({
     if (nextEnabled && usesSavedCreds && !openAiTouched) {
       void runOpenAiTest('auto');
     }
-  };
+  }, [
+    openAiApiKey,
+    openAiEnabled,
+    openAiTouched,
+    persistIntegrationEnabledState,
+    runOpenAiTest,
+    secretsPresent.openai,
+  ]);
 
-  const handleOverseerrApiKeyBlur = () => {
+  const handleOverseerrApiKeyBlur = useCallback(() => {
     const apiKey = overseerrApiKey.trim();
     if (!overseerrEnabled || !apiKey) return;
     void runOverseerrTest('auto');
-  };
+  }, [overseerrApiKey, overseerrEnabled, runOverseerrTest]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
