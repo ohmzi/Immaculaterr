@@ -22,9 +22,9 @@ type TestPlexServerBody = {
   secretRef?: unknown;
 };
 
-const HTTP_BASE_URL_PREFIX = new RegExp('^https?://', 'i');
-const HTTP_PROTOCOL = new RegExp('^https?:$', 'i');
-const PLEX_UNAUTHORIZED_ERROR = new RegExp('HTTP\\s+401\\b');
+const HTTP_BASE_URL_PREFIX = /^https?:\/\//i;
+const HTTP_PROTOCOL = /^https?:$/i;
+const PLEX_UNAUTHORIZED_ERROR = /HTTP\s+401\b/;
 
 function normalizeHttpBaseUrl(raw: unknown): string {
   const baseUrlRaw = requireBaseUrl(raw);

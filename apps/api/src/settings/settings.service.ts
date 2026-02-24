@@ -82,6 +82,132 @@ function assertEnvelopeObject(value: unknown): CredentialEnvelope {
   return value as CredentialEnvelope;
 }
 
+type SecretField = 'apiKey' | 'token';
+
+type ResolvedSecretSource = 'none' | 'envelope' | 'secretRef' | 'plaintext';
+
+type SelectedSecretSource =
+  | { source: 'none' }
+  | { source: 'envelope' }
+  | { source: 'secretRef'; secretRef: string }
+  | { source: 'plaintext'; plaintext: string };
+
+type ParsedSecretRef = {
+  service: ServiceSecretId;
+  fingerprint: string;
+  signature?: string;
+};
+
+function selectSecretSource(params: {
+  envelope: unknown;
+  secretRef: unknown;
+  plaintext: unknown;
+}): SelectedSecretSource {
+  const envelopeProvided = params.envelope !== undefined && params.envelope !== null;
+  const secretRef = asString(params.secretRef);
+  const plaintext = asString(params.plaintext);
+  const providedModeCount = countProvidedSecretModes([
+    envelopeProvided,
+    secretRef.length > 0,
+    plaintext.length > 0,
+  ]);
+  if (providedModeCount > 1) {
+    throw new BadRequestException(
+      'Provide only one secret source: envelope, secretRef, or plaintext.',
+    );
+  }
+  if (envelopeProvided) return { source: 'envelope' };
+  if (secretRef) return { source: 'secretRef', secretRef };
+  if (plaintext) return { source: 'plaintext', plaintext };
+  return { source: 'none' };
+}
+
+function assertEnvelopeService(
+  payload: Record<string, unknown>,
+  expectedService: ServiceSecretId,
+): void {
+  const payloadService = asString(payload['service']).toLowerCase();
+  if (payloadService && payloadService !== expectedService) {
+    throw new BadRequestException('credentialEnvelope service is invalid');
+  }
+}
+
+function readSecretFromEnvelopePayload(
+  payload: Record<string, unknown>,
+  secretField: SecretField,
+): string {
+  let secret = asString(payload[secretField]);
+  if (!secret && isPlainObject(payload['secret'])) {
+    secret = asString(payload['secret'][secretField]);
+  }
+  if (secret) return secret;
+
+  throw new BadRequestException(
+    `credentialEnvelope payload must include ${secretField}`,
+  );
+}
+
+function assertSecretRefServiceMatch(
+  actualService: ServiceSecretId,
+  expectedService: ServiceSecretId,
+): void {
+  if (actualService !== expectedService) {
+    throw new BadRequestException('secretRef service mismatch');
+  }
+}
+
+function assertSecretRefResolved(secret: string): void {
+  if (secret) return;
+  throw new BadRequestException('secretRef could not be resolved');
+}
+
+function parseSecretRef(secretRef: string): ParsedSecretRef {
+  const { serviceRaw, fingerprint, signature } = parseSecretRefParts(secretRef);
+  return {
+    service: decodeSecretRefService(serviceRaw),
+    fingerprint,
+    signature,
+  };
+}
+
+function parseSecretRefParts(secretRef: string): {
+  serviceRaw: string;
+  fingerprint: string;
+  signature?: string;
+} {
+  const parts = secretRef.trim().split('.');
+  const hasValidPartCount = parts.length === 3 || parts.length === 4;
+  if (!hasValidPartCount || parts[0] !== SECRET_REF_PREFIX) {
+    throw new BadRequestException('secretRef is invalid');
+  }
+
+  const serviceRaw = parts[1];
+  const fingerprint = parts[2];
+  const signature = parts.length === 4 ? parts[3] : undefined;
+  if (!serviceRaw || !fingerprint || (parts.length === 4 && !signature)) {
+    throw new BadRequestException('secretRef is invalid');
+  }
+
+  return { serviceRaw, fingerprint, signature };
+}
+
+function decodeSecretRefService(serviceRaw: string): ServiceSecretId {
+  let decodedService = '';
+  try {
+    decodedService = Buffer.from(serviceRaw, 'base64url')
+      .toString('utf8')
+      .trim()
+      .toLowerCase();
+  } catch {
+    throw new BadRequestException('secretRef is invalid');
+  }
+
+  if (SERVICE_SECRET_IDS.includes(decodedService as ServiceSecretId)) {
+    return decodedService as ServiceSecretId;
+  }
+  throw new BadRequestException('secretRef service is invalid');
+}
+
 function deepMerge(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
@@ -144,7 +270,7 @@ export class SettingsService {
         Boolean(this.readServiceSecret(service, secrets)),
       ]),
     );
-    const secretRefs = this.createSecretRefs(userId, secrets);
+    const secretRefs = this.createSecretRefs(secrets);
 
     return {
       settings,
@@ -182,22 +308,18 @@ export class SettingsService {
   async updateSecrets(userId: string, patch: Record<string, unknown>) {
     const current = await this.getSecretsDoc(userId);
     const merged = deepMerge({ ...current }, patch);
+    const normalized = Object.fromEntries(
+      Object.entries(merged).filter((entry) => entry[1] !== null),
+    );
 
-    // Interpret nulls as deletes for secrets
-    for (const [key, value] of Object.entries(merged)) {
-      if (value === null) {
-        delete merged[key];
-      }
-    }
-
-    const encrypted = this.crypto.encryptString(JSON.stringify(merged));
+    const encrypted = this.crypto.encryptString(JSON.stringify(normalized));
     await this.prisma.userSecrets.upsert({
       where: { userId },
       update: { value: encrypted },
       create: { userId, value: encrypted },
     });
     this.logger.log(`Updated secrets userId=${userId}`);
-    return Object.fromEntries(Object.entries(merged).map(([k]) => [k, true]));
+    return Object.fromEntries(Object.keys(normalized).map((key) => [key, true]));
   }
 
   async updateSecretsFromEnvelope(userId: string, envelope: unknown) {
@@ -221,57 +343,45 @@ export class SettingsService {
   async resolveServiceSecretInput(params: {
     userId: string;
     service: ServiceSecretId;
-    secretField: 'apiKey' | 'token';
+    secretField: SecretField;
     expectedPurpose: string;
     envelope?: unknown;
     secretRef?: unknown;
     plaintext?: unknown;
     currentSecrets?: Record<string, unknown>;
-  }): Promise<{ value: string; source: 'none' | 'envelope' | 'secretRef' | 'plaintext' }> {
-    const envelopeProvided =
-      params.envelope !== undefined && params.envelope !== null;
-    const secretRef = asString(params.secretRef);
-    const plaintext = asString(params.plaintext);
-    const providedModeCount = countProvidedSecretModes([
-      envelopeProvided,
-      secretRef.length > 0,
-      plaintext.length > 0,
-    ]);
-    if (providedModeCount > 1) {
-      throw new BadRequestException(
-        'Provide only one secret source: envelope, secretRef, or plaintext.',
-      );
-    }
+  }): Promise<{ value: string; source: ResolvedSecretSource }> {
+    const selectedSource = selectSecretSource({
+      envelope: params.envelope,
+      secretRef: params.secretRef,
+      plaintext: params.plaintext,
+    });
 
-    if (envelopeProvided) {
-      return this.resolveEnvelopeSecretInput({
-        envelope: params.envelope,
-        service: params.service,
-        secretField: params.secretField,
-        expectedPurpose: params.expectedPurpose,
-      });
+    switch (selectedSource.source) {
+      case 'envelope':
+        return this.resolveEnvelopeSecretInput({
+          envelope: params.envelope,
+          service: params.service,
+          secretField: params.secretField,
+          expectedPurpose: params.expectedPurpose,
+        });
+      case 'secretRef':
+        return await this.resolveSecretRefInput({
+          userId: params.userId,
+          service: params.service,
+          secretRef: selectedSource.secretRef,
+          currentSecrets: params.currentSecrets,
+        });
+      case 'plaintext':
+        return this.resolvePlaintextSecretInput(selectedSource.plaintext);
+      default:
+        return { value: '', source: 'none' };
     }
-
-    if (secretRef) {
-      return await this.resolveSecretRefInput({
-        userId: params.userId,
-        service: params.service,
-        secretRef,
-        currentSecrets: params.currentSecrets,
-      });
-    }
-
-    if (plaintext) {
-      return this.resolvePlaintextSecretInput(plaintext);
-    }
-
-    return { value: '', source: 'none' };
   }
 
   private resolveEnvelopeSecretInput(params: {
     envelope: unknown;
     service: ServiceSecretId;
-    secretField: 'apiKey' | 'token';
+    secretField: SecretField;
     expectedPurpose: string;
   }): { value: string; source: 'envelope' } {
     return {
@@ -302,7 +412,7 @@ export class SettingsService {
   decryptServiceSecretEnvelope(params: {
     envelope: unknown;
     service: ServiceSecretId;
-    secretField: 'apiKey' | 'token';
+    secretField: SecretField;
     expectedPurpose: string;
   }): string {
     const payload = this.credentialEnvelope.decryptPayload(
@@ -313,34 +423,8 @@ export class SettingsService {
         requireNonce: true,
       },
     );
-    this.assertEnvelopeService(payload, params.service);
-    return this.readSecretFromEnvelopePayload(payload, params.secretField);
-  }
-
-  private assertEnvelopeService(
-    payload: Record<string, unknown>,
-    expectedService: ServiceSecretId,
-  ): void {
-    const payloadService = asString(payload['service']).toLowerCase();
-    if (payloadService && payloadService !== expectedService) {
-      throw new BadRequestException('credentialEnvelope service is invalid');
-    }
-  }
-
-  private readSecretFromEnvelopePayload(
-    payload: Record<string, unknown>,
-    secretField: 'apiKey' | 'token',
-  ): string {
-    let secret = asString(payload[secretField]);
-    if (!secret && isPlainObject(payload['secret'])) {
-      secret = asString(payload['secret'][secretField]);
-    }
-    if (!secret) {
-      throw new BadRequestException(
-        `credentialEnvelope payload must include ${secretField}`,
-      );
-    }
-    return secret;
+    assertEnvelopeService(payload, params.service);
+    return readSecretFromEnvelopePayload(payload, params.secretField);
   }
 
   async resolveServiceSecretRef(params: {
@@ -349,28 +433,19 @@ export class SettingsService {
     secretRef: string;
     currentSecrets?: Record<string, unknown>;
   }): Promise<string> {
-    const parsed = this.parseSecretRef(params.secretRef);
-    this.assertSecretRefServiceMatch(parsed.service, params.service);
+    const parsed = parseSecretRef(params.secretRef);
+    assertSecretRefServiceMatch(parsed.service, params.service);
     this.assertSecretRefSignature(params.userId, parsed);
     const secrets = params.currentSecrets ?? (await this.getSecretsDoc(params.userId));
     const currentSecret = this.readServiceSecret(parsed.service, secrets);
-    this.assertSecretRefResolved(currentSecret);
+    assertSecretRefResolved(currentSecret);
     this.assertSecretRefFresh(currentSecret, parsed.fingerprint);
     return currentSecret;
   }
 
-  private assertSecretRefServiceMatch(
-    actualService: ServiceSecretId,
-    expectedService: ServiceSecretId,
-  ): void {
-    if (actualService !== expectedService) {
-      throw new BadRequestException('secretRef service mismatch');
-    }
-  }
-
   private assertSecretRefSignature(
     userId: string,
-    parsed: { service: ServiceSecretId; fingerprint: string; signature?: string },
+    parsed: ParsedSecretRef,
   ): void {
     if (!parsed.signature) return;
 
@@ -379,11 +454,6 @@ export class SettingsService {
     if (!this.crypto.verifyDetached(signingInput, parsed.signature)) {
       throw new BadRequestException('secretRef signature is invalid');
     }
-  }
-
-  private assertSecretRefResolved(secret: string): void {
-    if (secret) return;
-    throw new BadRequestException('secretRef could not be resolved');
   }
 
   private assertSecretRefFresh(secret: string, expectedFingerprint: string): void {
@@ -486,67 +556,22 @@ export class SettingsService {
     }
   }
 
-  private createSecretRefs(
-    userId: string,
-    secrets: Record<string, unknown>,
-  ): Record<string, string> {
+  private createSecretRefs(secrets: Record<string, unknown>): Record<string, string> {
     const refs: Record<string, string> = {};
     for (const service of SERVICE_SECRET_IDS) {
       const secret = this.readServiceSecret(service, secrets);
       if (!secret) continue;
-      refs[service] = this.buildSecretRef(userId, service, secret);
+      refs[service] = this.buildSecretRef(service, secret);
     }
     return refs;
   }
 
-  private buildSecretRef(
-    _userId: string,
-    service: ServiceSecretId,
-    secret: string,
-  ): string {
+  private buildSecretRef(service: ServiceSecretId, secret: string): string {
     const fingerprint = this.secretFingerprint(secret);
     const encodedService = Buffer.from(service, 'utf8').toString('base64url');
     // New refs are 3-part: sr1.<serviceB64>.<fingerprint>
     // Fingerprint is keyed PBKDF2 output, so it cannot be forged without server key material.
     return `${SECRET_REF_PREFIX}.${encodedService}.${fingerprint}`;
-  }
-
-  private parseSecretRef(secretRef: string): {
-    service: ServiceSecretId;
-    fingerprint: string;
-    signature?: string;
-  } {
-    const normalized = secretRef.trim();
-    const parts = normalized.split('.');
-    if ((parts.length !== 3 && parts.length !== 4) || parts[0] !== SECRET_REF_PREFIX) {
-      throw new BadRequestException('secretRef is invalid');
-    }
-    const serviceRaw = parts[1];
-    const fingerprint = parts[2];
-    const signature = parts.length === 4 ? parts[3] : undefined;
-    if (!serviceRaw || !fingerprint || (parts.length === 4 && !signature)) {
-      throw new BadRequestException('secretRef is invalid');
-    }
-
-    let decodedService = '';
-    try {
-      decodedService = Buffer.from(serviceRaw, 'base64url')
-        .toString('utf8')
-        .trim()
-        .toLowerCase();
-    } catch {
-      throw new BadRequestException('secretRef is invalid');
-    }
-
-    if (!SERVICE_SECRET_IDS.includes(decodedService as ServiceSecretId)) {
-      throw new BadRequestException('secretRef service is invalid');
-    }
-
-    return {
-      service: decodedService as ServiceSecretId,
-      fingerprint,
-      signature,
-    };
   }
 
   private secretFingerprint(secret: string): string {

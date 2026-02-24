@@ -126,18 +126,18 @@ export class IntegrationsController {
     private readonly overseerr: OverseerrService,
   ) {}
 
-  private readonly savedIntegrationHandlers: Record<
+  private readonly savedIntegrationHandlers = new Map<
     string,
     (context: SavedIntegrationTestContext) => Promise<SavedIntegrationTestResult>
-  > = {
-    plex: (context) => this.testSavedPlex(context),
-    radarr: (context) => this.testSavedRadarr(context),
-    sonarr: (context) => this.testSavedSonarr(context),
-    tmdb: (context) => this.testSavedTmdb(context),
-    overseerr: (context) => this.testSavedOverseerr(context),
-    google: (context) => this.testSavedGoogle(context),
-    openai: (context) => this.testSavedOpenAi(context),
-  };
+  >([
+    ['plex', (context) => this.testSavedPlex(context)],
+    ['radarr', (context) => this.testSavedRadarr(context)],
+    ['sonarr', (context) => this.testSavedSonarr(context)],
+    ['tmdb', (context) => this.testSavedTmdb(context)],
+    ['overseerr', (context) => this.testSavedOverseerr(context)],
+    ['google', (context) => this.testSavedGoogle(context)],
+    ['openai', (context) => this.testSavedOpenAi(context)],
+  ]);
 
   private asServiceSecretId(integrationId: string): ServiceSecretId | null {
     return SERVICE_SECRET_ID_BY_INTEGRATION[integrationId] ?? null;
@@ -678,7 +678,7 @@ export class IntegrationsController {
     const userId = req.user.id;
     const { settings, secrets } = await this.settingsService.getInternalSettings(userId);
     const integrationKey = integrationId.toLowerCase();
-    const handler = this.savedIntegrationHandlers[integrationKey];
+    const handler = this.savedIntegrationHandlers.get(integrationKey);
     if (!handler) {
       throw new BadRequestException(`Unknown integrationId: ${integrationId}`);
     }

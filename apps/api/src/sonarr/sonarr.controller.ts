@@ -16,6 +16,28 @@ type TestConnectionBody = {
   secretRef?: unknown;
 };
 
+const HTTP_BASE_URL_PREFIX = /^https?:\/\//i;
+const HTTP_PROTOCOL = /^https?:$/i;
+
+function requireBaseUrl(raw: unknown): string {
+  const baseUrlRaw = typeof raw === 'string' ? raw.trim() : '';
+  if (baseUrlRaw) return baseUrlRaw;
+  throw new BadRequestException('baseUrl is required');
+}
+
+function normalizeHttpBaseUrl(baseUrlRaw: string): string {
+  const baseUrl = HTTP_BASE_URL_PREFIX.test(baseUrlRaw)
+    ? baseUrlRaw
+    : `http://${baseUrlRaw}`;
+  try {
+    const parsed = new URL(baseUrl);
+    if (HTTP_PROTOCOL.test(parsed.protocol)) return baseUrl;
+  } catch {
+    // validated below
+  }
+  throw new BadRequestException('baseUrl must be a valid http(s) URL');
+}
+
 @Controller('sonarr')
 export class SonarrController {
   constructor(
@@ -25,8 +47,7 @@ export class SonarrController {
 
   @Post('test')
   async test(@Req() req: AuthenticatedRequest, @Body() body: TestConnectionBody) {
-    const baseUrlRaw =
-      typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
+    const baseUrlRaw = requireBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: req.user.id,
       service: 'sonarr',
@@ -37,22 +58,8 @@ export class SonarrController {
       plaintext: body.apiKey,
     });
     const apiKey = resolved.value;
-
-    if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
     if (!apiKey) throw new BadRequestException('apiKey is required');
-
-    // Allow inputs like "localhost:8989" by defaulting to http://
-    const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
-      ? baseUrlRaw
-      : `http://${baseUrlRaw}`;
-    try {
-      const parsed = new URL(baseUrl);
-      if (!/^https?:$/i.test(parsed.protocol)) {
-        throw new Error('Unsupported protocol');
-      }
-    } catch {
-      throw new BadRequestException('baseUrl must be a valid http(s) URL');
-    }
+    const baseUrl = normalizeHttpBaseUrl(baseUrlRaw);
 
     return this.sonarrService.testConnection({ baseUrl, apiKey });
   }

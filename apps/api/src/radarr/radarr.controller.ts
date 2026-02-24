@@ -16,7 +16,7 @@ type TestConnectionBody = {
   secretRef?: unknown;
 };
 
-const HTTP_BASE_URL_PREFIX = new RegExp('^https?://', 'i');
+const HTTP_BASE_URL_PREFIX = /^https?:\/\//i;
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 
 function ensureHttpBaseUrlPrefix(baseUrlRaw: string): string {

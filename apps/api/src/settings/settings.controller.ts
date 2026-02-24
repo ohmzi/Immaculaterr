@@ -39,6 +39,14 @@ function parseObjectPatch(
   return value;
 }
 
+function parseUpdateSettingsBody(body: UpdateSettingsBody): ParsedUpdateSettingsBody {
+  return {
+    settingsPatch: parseObjectPatch(body?.settings, 'settings'),
+    secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
+    secretsEnvelope: parseObjectPatch(body?.secretsEnvelope, 'secretsEnvelope'),
+  };
+}
+
 @Controller('settings')
 @ApiTags('settings')
 export class SettingsController {
@@ -105,21 +113,13 @@ export class SettingsController {
     @Body() body: UpdateSettingsBody,
   ) {
     const userId = req.user.id;
-    const updates = this.parseUpdateSettingsBody(body);
+    const updates = parseUpdateSettingsBody(body);
     await this.applyUpdatePatches(userId, updates);
 
     // Enforce automation constraints (e.g. disable ARR-dependent schedules when ARR is disabled).
     await this.settingsService.enforceAutomationConstraints(userId);
 
     return await this.settingsService.getPublicSettings(userId);
-  }
-
-  private parseUpdateSettingsBody(body: UpdateSettingsBody): ParsedUpdateSettingsBody {
-    return {
-      settingsPatch: parseObjectPatch(body?.settings, 'settings'),
-      secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
-      secretsEnvelope: parseObjectPatch(body?.secretsEnvelope, 'secretsEnvelope'),
-    };
   }
 
   private async applyUpdatePatches(
