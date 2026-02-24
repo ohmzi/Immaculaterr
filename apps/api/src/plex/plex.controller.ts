@@ -63,6 +63,10 @@ function buildDockerLocalhostHint(baseUrlHost: string): string {
     : '';
 }
 
+function isUnauthorizedPlexError(message: string): boolean {
+  return /HTTP\\s+401\\b/.test(message) || message.includes('401 Unauthorized');
+}
+
 @Controller('plex')
 export class PlexController {
   constructor(
@@ -171,7 +175,7 @@ export class PlexController {
   ): BadRequestException | BadGatewayException {
     const msg = (err as Error)?.message ?? String(err);
     // Plex returns 401 when token is invalid or doesn't grant access.
-    if (this.isUnauthorizedPlexError(msg)) {
+    if (isUnauthorizedPlexError(msg)) {
       return new BadRequestException(
         `Plex token was rejected by the server (401 Unauthorized).${params.dockerLocalhostHint}`.trim(),
       );
@@ -179,9 +183,5 @@ export class PlexController {
     return new BadGatewayException(
       `Could not connect to Plex at ${params.baseUrl}.${params.dockerLocalhostHint}`.trim(),
     );
-  }
-
-  private isUnauthorizedPlexError(message: string): boolean {
-    return /HTTP\\s+401\\b/.test(message) || message.includes('401 Unauthorized');
   }
 }

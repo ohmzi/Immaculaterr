@@ -60,10 +60,37 @@ function splitLegacyPbkdf2Hash(hash: string): {
   digestB64: string;
 } | null {
   // Format: pbkdf2$sha256$<iterations>$<saltB64>$<digestB64>
-  const [kind, digestName, iterationsRaw, saltB64, digestB64, ...rest] =
-    hash.split('$');
-  if (rest.length > 0) return null;
-  if (kind !== 'pbkdf2' || digestName !== PBKDF2_DIGEST) return null;
+  const parts = hash.split('$');
+  return parseLegacyHashParts(parts);
+}
+
+function parseLegacyHashParts(parts: string[]): {
+  iterationsRaw: string;
+  saltB64: string;
+  digestB64: string;
+} | null {
+  if (parts.length !== 5) return null;
+  if (!isLegacyHashKind(parts[0])) return null;
+  if (!isLegacyHashDigest(parts[1])) return null;
+  return buildLegacyHashBody(parts);
+}
+
+function isLegacyHashKind(value: string | undefined): boolean {
+  return value === 'pbkdf2';
+}
+
+function isLegacyHashDigest(value: string | undefined): boolean {
+  return value === PBKDF2_DIGEST;
+}
+
+function buildLegacyHashBody(parts: string[]): {
+  iterationsRaw: string;
+  saltB64: string;
+  digestB64: string;
+} | null {
+  const iterationsRaw = parts[2] ?? '';
+  const saltB64 = parts[3] ?? '';
+  const digestB64 = parts[4] ?? '';
   if (!iterationsRaw || !saltB64 || !digestB64) return null;
   return { iterationsRaw, saltB64, digestB64 };
 }
