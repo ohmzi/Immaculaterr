@@ -4,11 +4,11 @@ import type { ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '../../auth/auth.guard';
 
 class TestController {
-  static readonly marker = 'authz-test';
+  readonly marker = 'authz-test';
 }
 
 function testHandler() {
-  return undefined;
+  return true;
 }
 
 function makeContext(req: Record<string, unknown>): ExecutionContext {

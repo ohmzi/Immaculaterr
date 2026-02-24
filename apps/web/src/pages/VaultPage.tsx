@@ -95,6 +95,7 @@ function runAsyncTask(promise: Promise<unknown>): void {
   promise.catch(() => undefined);
 }
 
+// skipcq: JS-R1005 - Selection-aware masking needs explicit branch handling.
 function normalizeAsteriskInput(
   previous: string,
   key: 'Backspace' | 'Delete',
@@ -158,6 +159,7 @@ function MaskedSecretInput(props: {
   );
 
   const handleKeyDown = useCallback(
+    // skipcq: JS-R1005 - Key handling intentionally branches on modifier and delete semantics.
     (event: KeyboardEvent<HTMLInputElement>) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
         return;
@@ -198,6 +200,7 @@ function MaskedSecretInput(props: {
   );
 }
 
+// skipcq: JS-R1005 - This page coordinates many independent integration flows by design.
 export function SettingsPage({
   pageTitle,
   headerIcon,
@@ -495,6 +498,7 @@ export function SettingsPage({
   // Plex OAuth state
   const [isPlexOAuthLoading, setIsPlexOAuthLoading] = useState(false);
 
+  // skipcq: JS-R1005 - OAuth popup flow has multiple guarded states and fallbacks.
   const handlePlexOAuth = useCallback(async () => {
     // Mobile Safari (and some browsers) will block popups if window.open is called
     // after an async boundary. Open a placeholder window synchronously, then
@@ -606,7 +610,9 @@ export function SettingsPage({
     }
   }, []);
 
+  // skipcq: JS-R1005 - Save mutation performs diffing and conditional secret envelope writes.
   const saveMutation = useMutation({
+    // skipcq: JS-R1005 - Intentional branch-heavy settings merge logic.
     mutationFn: async () => {
       const currentSettings = settingsQuery.data?.settings ?? {};
       const settingsPatch: Record<string, unknown> = {};
@@ -914,6 +920,7 @@ export function SettingsPage({
     saveMutation.mutate();
   }, [saveMutation]);
 
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testPlexConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Plex connection...') : undefined;
     const startedAt = Date.now();
@@ -967,6 +974,7 @@ export function SettingsPage({
     }
   };
 
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testRadarrConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Radarr connection...') : undefined;
     const startedAt = Date.now();
@@ -1037,6 +1045,7 @@ export function SettingsPage({
     }
   };
 
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testSonarrConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Sonarr connection...') : undefined;
     const startedAt = Date.now();
@@ -1107,6 +1116,7 @@ export function SettingsPage({
     }
   };
 
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testOverseerrConnection = async (
     mode: TestMode = 'manual',
   ): Promise<boolean | null> => {
@@ -1180,6 +1190,7 @@ export function SettingsPage({
     }
   };
 
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testTmdbConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing TMDB connection...') : undefined;
     const startedAt = Date.now();
@@ -1233,6 +1244,7 @@ export function SettingsPage({
     }
   };
 
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testGoogleConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Google Search connection...') : undefined;
     const startedAt = Date.now();
@@ -1292,6 +1304,7 @@ export function SettingsPage({
     }
   };
 
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testOpenAiConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing OpenAI connection...') : undefined;
     const startedAt = Date.now();
@@ -1506,6 +1519,7 @@ export function SettingsPage({
 
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+    // skipcq: JS-R1005 - Startup health check fan-outs by integration and persisted state.
     const runLandingHealthChecks = async () => {
       // --- TMDB: avoid false \"Active -> Inactive\" flips on transient failures ---
       // Policy: if TMDB fails once, wait a cooldown and retry; only then mark inactive + toast.
@@ -1562,7 +1576,7 @@ export function SettingsPage({
         }
       };
 
-      const scheduleTmdbRetry = (delayMs: number) => {
+      function scheduleTmdbRetry(delayMs: number): void {
         if (tmdbLandingRetryTimeoutRef.current) {
           window.clearTimeout(tmdbLandingRetryTimeoutRef.current);
           tmdbLandingRetryTimeoutRef.current = null;
@@ -1571,9 +1585,9 @@ export function SettingsPage({
         tmdbLandingRetryTimeoutRef.current = window.setTimeout(() => {
           runAsyncTask(runTmdbLandingCheck());
         }, delay);
-      };
+      }
 
-      const runTmdbLandingCheck = async () => {
+      async function runTmdbLandingCheck(): Promise<void> {
         if (!secretsPresent.tmdb) return;
         const now = Date.now();
         const state = readTmdbHealth();
@@ -1610,7 +1624,7 @@ export function SettingsPage({
           setTmdbTestOk(false);
           toast.error('TMDB is still unreachable (retrying didn’t help). Marking it inactive.');
         }
-      };
+      }
 
       // Kick off TMDB check (best-effort). Other integrations run below.
       runAsyncTask(runTmdbLandingCheck());

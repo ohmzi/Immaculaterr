@@ -9,10 +9,8 @@ const workflowPath = resolve(
 );
 
 const workflow = readFileSync(workflowPath, 'utf8');
-const workflowExprPrefix = '${{ ';
-const workflowExprSuffix = ' }}';
 const withWorkflowExpression = (expression) =>
-  '    if: ' + workflowExprPrefix + expression + workflowExprSuffix;
+  `    if: \${{ ${expression} }}`;
 
 const requiredSnippets = [
   {

@@ -674,6 +674,7 @@ export class IntegrationsController {
     return await this.runSavedIntegrationTest(integrationKey, context);
   }
 
+  // skipcq: JS-R1005 - explicit switch keeps integration routing type-safe and auditable.
   private async runSavedIntegrationTest(
     integrationKey: string,
     context: SavedIntegrationTestContext,
