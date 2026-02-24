@@ -8,6 +8,7 @@ import { ensureBootstrapEnv } from './bootstrap-env';
 import { BufferedLogger } from './logs/buffered-logger';
 import { createOriginCheckMiddleware } from './security/origin-check.middleware';
 import { createIpRateLimitMiddleware } from './security/ip-rate-limit.middleware';
+import { privateCacheMiddleware } from './security/private-cache.middleware';
 import { securityHeadersMiddleware } from './security/security-headers.middleware';
 import { readAppMeta } from './app.meta';
 import { PlexUsersService } from './plex/plex-users.service';
@@ -88,6 +89,7 @@ async function bootstrap() {
   }
 
   app.use(securityHeadersMiddleware);
+  app.use(privateCacheMiddleware);
   app.use(cookieParser());
 
   // Compatibility: people (and some guides) often paste Plex webhook URLs without the `/api` prefix.
@@ -167,6 +169,24 @@ async function bootstrap() {
       windowMs: authRateLimitWindowMs,
       max: authRegisterMax,
       keyPrefix: 'auth_register',
+      methods: ['POST'],
+    }),
+  );
+  app.use(
+    '/api/auth/login-challenge',
+    createIpRateLimitMiddleware({
+      windowMs: authRateLimitWindowMs,
+      max: authLoginMax,
+      keyPrefix: 'auth_login_challenge',
+      methods: ['POST'],
+    }),
+  );
+  app.use(
+    '/api/auth/login-proof',
+    createIpRateLimitMiddleware({
+      windowMs: authRateLimitWindowMs,
+      max: authLoginMax,
+      keyPrefix: 'auth_login_proof',
       methods: ['POST'],
     }),
   );

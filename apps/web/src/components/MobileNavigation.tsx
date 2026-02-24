@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 import { useSafeNavigate } from '@/lib/navigation';
 import { createDebuggerUrl } from '@/lib/debugger';
+import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
 interface MobileNavigationProps {
   onLogout: () => void;
@@ -125,17 +126,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     setResetting(true);
     try {
       await resetDev();
-
-      try {
-        localStorage.clear();
-      } catch {
-        // ignore
-      }
-      try {
-        sessionStorage.clear();
-      } catch {
-        // ignore
-      }
+      await clearClientUserData();
       window.location.href = '/';
     } catch {
       setResetError('Network error while resetting account.');
@@ -485,4 +476,3 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     </>
   );
 }
-

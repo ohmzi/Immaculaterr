@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 import { useSafeNavigate } from '@/lib/navigation';
 import { createDebuggerUrl } from '@/lib/debugger';
+import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
 interface NavItem {
   label: string;
@@ -203,20 +204,7 @@ export function Navigation() {
 
       // Clear ALL React Query cache for safety
       queryClient.clear();
-
-      // Clear all localStorage
-      try {
-        localStorage.clear();
-      } catch (e) {
-        console.error('Failed to clear localStorage:', e);
-      }
-
-      // Clear all sessionStorage
-      try {
-        sessionStorage.clear();
-      } catch (e) {
-        console.error('Failed to clear sessionStorage:', e);
-      }
+      await clearClientUserData();
 
       // Navigate to home and reload to force user to log back in
       // This ensures all in-memory state is cleared
@@ -240,19 +228,10 @@ export function Navigation() {
     mutationFn: async () => {
       await resetDev();
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       // Clear everything like logout
       queryClient.clear();
-      try {
-        localStorage.clear();
-      } catch (e) {
-        void e;
-      }
-      try {
-        sessionStorage.clear();
-      } catch (e) {
-        void e;
-      }
+      await clearClientUserData();
       window.location.href = '/';
     },
     onError: (err) => {

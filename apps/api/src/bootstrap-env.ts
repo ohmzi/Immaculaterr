@@ -1,5 +1,6 @@
 import { chmod, mkdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { applyFileBackedEnv } from './security/secret-source';
 
 export type BootstrapEnv = {
   repoRoot: string;
@@ -39,6 +40,9 @@ async function tightenFileTo600(path: string) {
 }
 
 export async function ensureBootstrapEnv(): Promise<BootstrapEnv> {
+  // Support Docker/Kubernetes-style env var indirection (e.g. APP_MASTER_KEY_FILE).
+  applyFileBackedEnv(process.env);
+
   const repoRoot = join(__dirname, '..', '..', '..');
 
   // Harden default permissions for newly created files (SQLite DB, master key, etc.).

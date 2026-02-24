@@ -4,10 +4,12 @@ import {
   Controller,
   Post,
   Req,
+  UnauthorizedException,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
+import { timingSafeEqual } from 'node:crypto';
 import type { Express } from 'express';
 import type { Request } from 'express';
 import { AuthService } from '../auth/auth.service';
@@ -55,6 +57,27 @@ function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
+function readSingleHeader(value: string | string[] | undefined): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (Array.isArray(value)) {
+    const v = value[0];
+    if (typeof v !== 'string') return null;
+    const trimmed = v.trim();
+    return trimmed ? trimmed : null;
+  }
+  return null;
+}
+
+function safeEquals(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
+
 @Controller('webhooks')
 export class WebhooksController {
   constructor(
@@ -80,6 +103,8 @@ export class WebhooksController {
     @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Array<Express.Multer.File>,
   ) {
+    this.verifyWebhookSecret(req);
+
     const payloadRaw = body.payload;
     if (typeof payloadRaw !== 'string') {
       throw new BadRequestException('Expected multipart field "payload"');
@@ -162,9 +187,15 @@ export class WebhooksController {
 
       // For TV, we use the SHOW title as the seed (not the episode title).
       const seedTitle =
-        mediaTypeLower === 'episode' ? showTitle : payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
+        mediaTypeLower === 'episode'
+          ? showTitle
+          : payloadObj
+            ? pickString(payloadObj, 'Metadata.title')
+            : '';
 
-      const seedRatingKey = payloadObj ? pickString(payloadObj, 'Metadata.ratingKey') : '';
+      const seedRatingKey = payloadObj
+        ? pickString(payloadObj, 'Metadata.ratingKey')
+        : '';
       const showRatingKey =
         mediaTypeLower === 'episode' && payloadObj
           ? pickString(payloadObj, 'Metadata.grandparentRatingKey')
@@ -188,7 +219,9 @@ export class WebhooksController {
       const seedLibrarySectionTitle = payloadObj
         ? pickString(payloadObj, 'Metadata.librarySectionTitle')
         : '';
-      const plexAccountId = payloadObj ? pickNumber(payloadObj, 'Account.id') : null;
+      const plexAccountId = payloadObj
+        ? pickNumber(payloadObj, 'Account.id')
+        : null;
       const plexAccountTitle = payloadObj
         ? pickString(payloadObj, 'Account.title') ||
           pickString(payloadObj, 'Account.name') ||
@@ -207,8 +240,10 @@ export class WebhooksController {
             });
             const plexUserId = plexUser.id;
             const plexUserTitle = plexUser.plexAccountTitle;
-            const resolvedPlexAccountId = plexUser.plexAccountId ?? plexAccountId ?? null;
-            const resolvedPlexAccountTitle = plexUserTitle || plexAccountTitle || null;
+            const resolvedPlexAccountId =
+              plexUser.plexAccountId ?? plexAccountId ?? null;
+            const resolvedPlexAccountTitle =
+              plexUserTitle || plexAccountTitle || null;
 
             const payloadInput = {
               source: 'plexWebhook',
@@ -459,5 +494,23 @@ export class WebhooksController {
     }
 
     return { ok: true, ...persisted, triggered: false };
+  }
+
+  private verifyWebhookSecret(req: Request): void {
+    const configured = process.env.PLEX_WEBHOOK_SECRET?.trim() || '';
+    if (!configured) return;
+
+    const headerSecret = readSingleHeader(
+      req.headers['x-immaculaterr-webhook-secret'],
+    );
+    const querySecret =
+      typeof req.query?.['token'] === 'string'
+        ? req.query['token'].trim()
+        : null;
+
+    const candidate = headerSecret || querySecret;
+    if (!candidate || !safeEquals(configured, candidate)) {
+      throw new UnauthorizedException('Invalid webhook secret');
+    }
   }
 }

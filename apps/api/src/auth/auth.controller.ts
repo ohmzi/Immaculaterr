@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Logger, Post, Req, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Logger,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -10,14 +19,27 @@ type BootstrapResponse = {
   onboardingComplete: boolean;
 };
 
-type RegisterBody = {
-  username?: unknown;
-  password?: unknown;
-};
-
 type LoginBody = {
   username?: unknown;
   password?: unknown;
+  credentialEnvelope?: unknown;
+  captchaToken?: unknown;
+};
+
+type LoginChallengeBody = {
+  username?: unknown;
+};
+
+type LoginProofBody = {
+  challengeId?: unknown;
+  proof?: unknown;
+  captchaToken?: unknown;
+};
+
+type ChangePasswordBody = {
+  currentPassword?: unknown;
+  newPassword?: unknown;
+  captchaToken?: unknown;
 };
 
 @Controller('auth')
@@ -40,14 +62,69 @@ export class AuthController {
   }
 
   @Public()
-  @Post('register')
-  async register(
-    @Body() body: RegisterBody,
+  @Get('login-key')
+  getLoginKey() {
+    return this.authService.getLoginKey();
+  }
+
+  @Public()
+  @Post('login-challenge')
+  async loginChallenge(@Body() body: LoginChallengeBody, @Req() req: Request) {
+    const username = typeof body?.username === 'string' ? body.username : '';
+    const ip = req.ip ?? null;
+    const ua =
+      typeof req.headers['user-agent'] === 'string'
+        ? req.headers['user-agent']
+        : null;
+
+    return await this.authService.createLoginChallenge({
+      username,
+      ip,
+      userAgent: ua,
+    });
+  }
+
+  @Public()
+  @Post('login-proof')
+  async loginProof(
+    @Body() body: LoginProofBody,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const username = typeof body?.username === 'string' ? body.username : '';
-    const password = typeof body?.password === 'string' ? body.password : '';
+    const challengeId =
+      typeof body?.challengeId === 'string' ? body.challengeId : '';
+    const proof = typeof body?.proof === 'string' ? body.proof : '';
+    const captchaToken =
+      typeof body?.captchaToken === 'string' ? body.captchaToken : null;
+    const ip = req.ip ?? null;
+    const ua =
+      typeof req.headers['user-agent'] === 'string'
+        ? req.headers['user-agent']
+        : null;
+
+    const result = await this.authService.loginWithPasswordProof({
+      challengeId,
+      proof,
+      ip,
+      userAgent: ua,
+      captchaToken,
+    });
+    this.setSessionCookie(req, res, result.sessionId);
+    this.logger.log(
+      `auth: login proof success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(ip)}`,
+    );
+    return { ok: true, user: result.user };
+  }
+
+  @Public()
+  @Post('register')
+  async register(
+    @Body() body: LoginBody,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { username, password, captchaToken } =
+      this.resolveCredentialBody(body);
     const ip = req.ip ?? null;
     const ua =
       typeof req.headers['user-agent'] === 'string'
@@ -57,10 +134,21 @@ export class AuthController {
     this.logger.log(
       `auth: register attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(ip)} ua=${JSON.stringify(ua)}`,
     );
-    await this.authService.registerAdmin({ username, password });
+    await this.authService.registerAdmin({
+      username,
+      password,
+      ip,
+      userAgent: ua,
+      captchaToken,
+    });
 
-    // Auto-login after registration
-    const login = await this.authService.login({ username, password });
+    const login = await this.authService.login({
+      username,
+      password,
+      ip,
+      userAgent: ua,
+      captchaToken,
+    });
     this.setSessionCookie(req, res, login.sessionId);
     this.logger.log(
       `auth: register success userId=${login.user.id} username=${JSON.stringify(login.user.username)} ip=${JSON.stringify(ip)}`,
@@ -75,8 +163,8 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const username = typeof body?.username === 'string' ? body.username : '';
-    const password = typeof body?.password === 'string' ? body.password : '';
+    const { username, password, captchaToken } =
+      this.resolveCredentialBody(body);
     const ip = req.ip ?? null;
     const ua =
       typeof req.headers['user-agent'] === 'string'
@@ -87,7 +175,13 @@ export class AuthController {
       `auth: login attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(ip)} ua=${JSON.stringify(ua)}`,
     );
     try {
-      const result = await this.authService.login({ username, password });
+      const result = await this.authService.login({
+        username,
+        password,
+        ip,
+        userAgent: ua,
+        captchaToken,
+      });
       this.setSessionCookie(req, res, result.sessionId);
       this.logger.log(
         `auth: login success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(ip)}`,
@@ -108,8 +202,55 @@ export class AuthController {
     if (sid) await this.authService.logout(sid);
     this.clearSessionCookie(req, res);
     const ip = req.ip ?? null;
-    this.logger.log(`auth: logout ip=${JSON.stringify(ip)} hadSession=${Boolean(sid)}`);
+    this.logger.log(
+      `auth: logout ip=${JSON.stringify(ip)} hadSession=${Boolean(sid)}`,
+    );
     return { ok: true };
+  }
+
+  @Post('logout-all')
+  async logoutAll(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.logoutAll(req.user.id);
+    this.clearSessionCookie(req, res);
+    const ip = req.ip ?? null;
+    this.logger.log(
+      `auth: logout all userId=${req.user.id} ip=${JSON.stringify(ip)}`,
+    );
+    return { ok: true };
+  }
+
+  @Post('change-password')
+  async changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: ChangePasswordBody,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const currentPassword =
+      typeof body?.currentPassword === 'string' ? body.currentPassword : '';
+    const newPassword =
+      typeof body?.newPassword === 'string' ? body.newPassword : '';
+    const captchaToken =
+      typeof body?.captchaToken === 'string' ? body.captchaToken : null;
+    const ip = req.ip ?? null;
+    const ua =
+      typeof req.headers['user-agent'] === 'string'
+        ? req.headers['user-agent']
+        : null;
+
+    await this.authService.changePassword({
+      userId: req.user.id,
+      currentPassword,
+      newPassword,
+      ip,
+      userAgent: ua,
+      captchaToken,
+    });
+
+    this.clearSessionCookie(req, res);
+    return { ok: true, requireReauth: true };
   }
 
   @Get('me')
@@ -122,7 +263,6 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    // Require auth (guarded). This wipes everything.
     await this.authService.resetAllData();
     const sid = this.authService.readSessionIdFromRequest(req);
     if (sid) await this.authService.logout(sid).catch(() => undefined);
@@ -130,10 +270,41 @@ export class AuthController {
     return { ok: true };
   }
 
+  private resolveCredentialBody(body: LoginBody): {
+    username: string;
+    password: string;
+    captchaToken: string | null;
+  } {
+    const captchaToken =
+      typeof body?.captchaToken === 'string' ? body.captchaToken : null;
+
+    if (body?.credentialEnvelope !== undefined) {
+      const creds = this.authService.decryptCredentialEnvelope(
+        body.credentialEnvelope,
+      );
+      return {
+        username: creds.username,
+        password: creds.password,
+        captchaToken,
+      };
+    }
+
+    const username = typeof body?.username === 'string' ? body.username : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
+
+    if (!username.trim() || !password) {
+      throw new BadRequestException(
+        'username/password or credentialEnvelope is required',
+      );
+    }
+
+    return { username, password, captchaToken };
+  }
+
   private setSessionCookie(req: Request, res: Response, sessionId: string) {
     res.cookie(this.authService.getSessionCookieName(), sessionId, {
       ...this.getSessionCookieOptions(req),
-      // session cookie (no maxAge) => cleared when browser closes
+      maxAge: this.authService.getSessionMaxAgeMs(),
     });
   }
 
@@ -144,17 +315,9 @@ export class AuthController {
   }
 
   private getSessionCookieOptions(req: Request) {
-    // Secure cookies:
-    // - If COOKIE_SECURE is set, it ALWAYS wins.
-    // - Otherwise, follow req.secure (trust proxy handles X-Forwarded-Proto).
-    // This makes local HTTP work out of the box while keeping HTTPS deployments secure.
     const raw = process.env.COOKIE_SECURE?.trim().toLowerCase();
     const secure =
-      raw === 'true'
-        ? true
-        : raw === 'false'
-          ? false
-          : Boolean(req.secure);
+      raw === 'true' ? true : raw === 'false' ? false : Boolean(req.secure);
 
     return {
       httpOnly: true,
