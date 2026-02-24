@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'node:crypto';
 import {
   CredentialEnvelopeService,
   type CredentialEnvelope,
@@ -517,6 +516,8 @@ export class SettingsService {
   }
 
   private secretFingerprint(secret: string): string {
-    return createHash('sha256').update(secret, 'utf8').digest('base64url');
+    // Use keyed HMAC (via CryptoService) instead of raw hash to avoid
+    // exposing deterministic unhashed-secret digests.
+    return this.crypto.signDetached(`secret-fp.v1:${secret}`);
   }
 }
