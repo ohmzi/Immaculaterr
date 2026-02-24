@@ -27,6 +27,7 @@ const parser = new XMLParser({
   attributeNamePrefix: '',
   parseAttributeValue: true,
   allowBooleanAttributes: true,
+  processEntities: false,
 });
 
 function asArray<T>(value: T | T[] | undefined | null): T[] {
