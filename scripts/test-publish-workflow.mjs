@@ -9,6 +9,10 @@ const workflowPath = resolve(
 );
 
 const workflow = readFileSync(workflowPath, 'utf8');
+const workflowExprPrefix = '$' + '{{ ';
+const workflowExprSuffix = ' }}';
+const withWorkflowExpression = (expression) =>
+  '    if: ' + workflowExprPrefix + expression + workflowExprSuffix;
 
 const requiredSnippets = [
   {
@@ -29,8 +33,9 @@ const requiredSnippets = [
   },
   {
     name: 'PR build-check runs only before close',
-    snippet:
-      "    if: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}",
+    snippet: withWorkflowExpression(
+      "github.event_name == 'pull_request' && github.event.action != 'closed'",
+    ),
   },
   {
     name: 'PR build-check does not publish',
@@ -42,8 +47,9 @@ const requiredSnippets = [
   },
   {
     name: 'merge publish gated to merged develop->master PR',
-    snippet:
-      "    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop' && github.event.pull_request.base.ref == 'master' }}",
+    snippet: withWorkflowExpression(
+      "github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop' && github.event.pull_request.base.ref == 'master'",
+    ),
   },
   {
     name: 'merge publish performs image push',
@@ -52,7 +58,10 @@ const requiredSnippets = [
   {
     name: 'docker hub login requires both username and token',
     snippet:
-      "        if: ${{ env.DOCKERHUB_TOKEN != '' && env.DOCKERHUB_USERNAME != '' }}",
+      '        if: ' +
+      workflowExprPrefix +
+      "env.DOCKERHUB_TOKEN != '' && env.DOCKERHUB_USERNAME != ''" +
+      workflowExprSuffix,
   },
   {
     name: 'release job depends on build-and-push',
@@ -69,4 +78,4 @@ if (missing.length > 0) {
   );
 }
 
-console.log('publish-containers workflow contract passed');
+process.stdout.write('publish-containers workflow contract passed\n');

@@ -1,4 +1,14 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { AnimatePresence, motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -113,43 +123,51 @@ function MaskedSecretInput(props: {
       ? MASKED_SECRET
       : '';
 
+  const handleDisplayValueChange = () => undefined;
+
+  const handleBeforeInput = (event: FormEvent<HTMLInputElement>) => {
+    const native = event.nativeEvent as InputEvent;
+    const data = typeof native.data === 'string' ? native.data : '';
+    if (!data) return;
+    event.preventDefault();
+    props.onEditStart();
+    props.setValue((previous) => `${previous}${data}`);
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const pasted = event.clipboardData.getData('text');
+    if (!pasted) return;
+    props.onEditStart();
+    props.setValue((previous) => `${previous}${pasted}`);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+      return;
+    }
+    const key = event.key;
+    if (key !== 'Backspace' && key !== 'Delete') return;
+    event.preventDefault();
+    props.onEditStart();
+    props.setValue((previous) =>
+      normalizeAsteriskInput(
+        previous,
+        key,
+        event.currentTarget.selectionStart,
+        event.currentTarget.selectionEnd,
+      ),
+    );
+  };
+
   return (
     <input
       type="text"
       value={displayValue}
-      onChange={() => undefined}
-      onBeforeInput={(event) => {
-        const native = event.nativeEvent as InputEvent;
-        const data = typeof native.data === 'string' ? native.data : '';
-        if (!data) return;
-        event.preventDefault();
-        props.onEditStart();
-        props.setValue((previous) => `${previous}${data}`);
-      }}
-      onPaste={(event) => {
-        event.preventDefault();
-        const pasted = event.clipboardData.getData('text');
-        if (!pasted) return;
-        props.onEditStart();
-        props.setValue((previous) => `${previous}${pasted}`);
-      }}
-      onKeyDown={(event) => {
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
-          return;
-        }
-        const key = event.key;
-        if (key !== 'Backspace' && key !== 'Delete') return;
-        event.preventDefault();
-        props.onEditStart();
-        props.setValue((previous) =>
-          normalizeAsteriskInput(
-            previous,
-            key,
-            event.currentTarget.selectionStart,
-            event.currentTarget.selectionEnd,
-          ),
-        );
-      }}
+      onChange={handleDisplayValueChange}
+      onBeforeInput={handleBeforeInput}
+      onPaste={handlePaste}
+      onKeyDown={handleKeyDown}
       onBlur={props.onBlur}
       autoComplete="off"
       autoCorrect="off"
@@ -262,8 +280,8 @@ export function SettingsPage({
       setGoogleTouched(false);
       setOpenAiTouched(false);
 
-      setPlexTestOk(Boolean(secrets.plex) ? true : null);
-      setTmdbTestOk(Boolean(secrets.tmdb) ? true : null);
+      setPlexTestOk(secrets.plex ? true : null);
+      setTmdbTestOk(secrets.tmdb ? true : null);
       setRadarrTestOk(nextRadarrEnabled && Boolean(secrets.radarr) ? true : null);
       setSonarrTestOk(nextSonarrEnabled && Boolean(secrets.sonarr) ? true : null);
       setOverseerrTestOk(
@@ -1824,6 +1842,256 @@ export function SettingsPage({
             ? 'test'
             : 'inactive';
 
+  const handleTitleIconClick = () => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  };
+
+  const markPlexEdited = () => {
+    setPlexTouched(true);
+    setPlexTestOk(null);
+  };
+
+  const markTmdbEdited = () => {
+    setTmdbTouched(true);
+    setTmdbTestOk(null);
+  };
+
+  const markRadarrEdited = () => {
+    setRadarrTouched(true);
+    setRadarrTestOk(null);
+  };
+
+  const markSonarrEdited = () => {
+    setSonarrTouched(true);
+    setSonarrTestOk(null);
+  };
+
+  const markOverseerrEdited = () => {
+    setOverseerrTouched(true);
+    setOverseerrTestOk(null);
+  };
+
+  const markGoogleEdited = () => {
+    setGoogleTouched(true);
+    setGoogleTestOk(null);
+  };
+
+  const markOpenAiEdited = () => {
+    setOpenAiTouched(true);
+    setOpenAiTestOk(null);
+  };
+
+  const handlePlexBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
+    markPlexEdited();
+    setPlexBaseUrl(event.target.value);
+  };
+
+  const handleRadarrBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
+    markRadarrEdited();
+    setRadarrBaseUrl(event.target.value);
+  };
+
+  const handleSonarrBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
+    markSonarrEdited();
+    setSonarrBaseUrl(event.target.value);
+  };
+
+  const handleOverseerrBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
+    markOverseerrEdited();
+    setOverseerrBaseUrl(event.target.value);
+  };
+
+  const handleGoogleSearchEngineIdChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    markGoogleEdited();
+    setGoogleSearchEngineId(event.target.value);
+  };
+
+  const handlePlexManualTest = () => {
+    void runPlexTest('manual');
+  };
+
+  const handleTmdbManualTest = () => {
+    void runTmdbTest('manual');
+  };
+
+  const handleRadarrManualTest = () => {
+    void runRadarrTest('manual');
+  };
+
+  const handleSonarrManualTest = () => {
+    void runSonarrTest('manual');
+  };
+
+  const handleOverseerrManualTest = () => {
+    void runOverseerrTest('manual');
+  };
+
+  const handleGoogleManualTest = () => {
+    void runGoogleTest('manual');
+  };
+
+  const handleOpenAiManualTest = () => {
+    void runOpenAiTest('manual');
+  };
+
+  const persistIntegrationEnabledState = (params: {
+    integration: 'radarr' | 'sonarr' | 'overseerr' | 'google' | 'openai';
+    enabled: boolean;
+    restoreEnabledState: () => void;
+    serviceName: string;
+  }) => {
+    integrationEnabledMutation.mutate(
+      { integration: params.integration, enabled: params.enabled },
+      {
+        onError: (error) => {
+          params.restoreEnabledState();
+          toast.error(
+            (error as Error)?.message ??
+              `Failed to save ${params.serviceName} enabled state`,
+          );
+        },
+      },
+    );
+  };
+
+  const handleRadarrToggle = () => {
+    const previousEnabled = radarrEnabled;
+    const nextEnabled = !radarrEnabled;
+    setRadarrEnabled(nextEnabled);
+    setRadarrTestOk(null);
+    radarrTestRunId.current += 1;
+    setRadarrIsTesting(false);
+
+    persistIntegrationEnabledState({
+      integration: 'radarr',
+      enabled: nextEnabled,
+      restoreEnabledState: () => {
+        setRadarrEnabled(previousEnabled);
+      },
+      serviceName: 'Radarr',
+    });
+
+    const usesSavedCreds = Boolean(secretsPresent.radarr) && !radarrApiKey.trim();
+    if (nextEnabled && usesSavedCreds && !radarrTouched) {
+      void runRadarrTest('auto');
+    }
+  };
+
+  const handleSonarrToggle = () => {
+    const previousEnabled = sonarrEnabled;
+    const nextEnabled = !sonarrEnabled;
+    setSonarrEnabled(nextEnabled);
+    setSonarrTestOk(null);
+    sonarrTestRunId.current += 1;
+    setSonarrIsTesting(false);
+
+    persistIntegrationEnabledState({
+      integration: 'sonarr',
+      enabled: nextEnabled,
+      restoreEnabledState: () => {
+        setSonarrEnabled(previousEnabled);
+      },
+      serviceName: 'Sonarr',
+    });
+
+    const usesSavedCreds = Boolean(secretsPresent.sonarr) && !sonarrApiKey.trim();
+    if (nextEnabled && usesSavedCreds && !sonarrTouched) {
+      void runSonarrTest('auto');
+    }
+  };
+
+  const handleOverseerrToggle = () => {
+    const previousEnabled = overseerrEnabled;
+    const nextEnabled = !overseerrEnabled;
+    setOverseerrEnabled(nextEnabled);
+    setOverseerrTestOk(null);
+    overseerrTestRunId.current += 1;
+    setOverseerrIsTesting(false);
+
+    persistIntegrationEnabledState({
+      integration: 'overseerr',
+      enabled: nextEnabled,
+      restoreEnabledState: () => {
+        setOverseerrEnabled(previousEnabled);
+      },
+      serviceName: 'Overseerr',
+    });
+
+    const usesSavedCreds =
+      Boolean(secretsPresent.overseerr) && !overseerrApiKey.trim();
+    if (nextEnabled && usesSavedCreds && !overseerrTouched) {
+      void runOverseerrTest('auto');
+    }
+  };
+
+  const shouldAutoTestGoogle = () => {
+    const usesSavedCreds = Boolean(secretsPresent.google) && !googleApiKey.trim();
+    if (!usesSavedCreds || googleTouched) return false;
+    return Boolean(googleSearchEngineId.trim());
+  };
+
+  const handleGoogleToggle = () => {
+    const previousEnabled = googleEnabled;
+    const nextEnabled = !googleEnabled;
+    setGoogleEnabled(nextEnabled);
+    setGoogleTestOk(null);
+    googleTestRunId.current += 1;
+    setGoogleIsTesting(false);
+
+    persistIntegrationEnabledState({
+      integration: 'google',
+      enabled: nextEnabled,
+      restoreEnabledState: () => {
+        setGoogleEnabled(previousEnabled);
+      },
+      serviceName: 'Google',
+    });
+
+    if (nextEnabled && shouldAutoTestGoogle()) {
+      void runGoogleTest('auto');
+    }
+  };
+
+  const handleOpenAiToggle = () => {
+    const previousEnabled = openAiEnabled;
+    const nextEnabled = !openAiEnabled;
+    setOpenAiEnabled(nextEnabled);
+    setOpenAiTestOk(null);
+    openAiTestRunId.current += 1;
+    setOpenAiIsTesting(false);
+
+    persistIntegrationEnabledState({
+      integration: 'openai',
+      enabled: nextEnabled,
+      restoreEnabledState: () => {
+        setOpenAiEnabled(previousEnabled);
+      },
+      serviceName: 'OpenAI',
+    });
+
+    const usesSavedCreds = Boolean(secretsPresent.openai) && !openAiApiKey.trim();
+    if (nextEnabled && usesSavedCreds && !openAiTouched) {
+      void runOpenAiTest('auto');
+    }
+  };
+
+  const handleOverseerrApiKeyBlur = () => {
+    const apiKey = overseerrApiKey.trim();
+    if (!overseerrEnabled || !apiKey) return;
+    void runOverseerrTest('auto');
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, blue-tinted) */}
@@ -1851,18 +2119,7 @@ export function SettingsPage({
               <div className="flex items-center gap-5">
                 <motion.button
                   type="button"
-                  onClick={() => {
-                    titleIconControls.stop();
-                    titleIconGlowControls.stop();
-                    void titleIconControls.start({
-                      scale: [1, 1.06, 1],
-                      transition: { duration: 0.55, ease: 'easeOut' },
-                    });
-                    void titleIconGlowControls.start({
-                      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                      transition: { duration: 1.4, ease: 'easeInOut' },
-                    });
-                  }}
+                  onClick={handleTitleIconClick}
                   animate={titleIconControls}
                   className="relative group focus:outline-none touch-manipulation"
                   aria-label={`Animate ${pageTitle} icon`}
@@ -1934,7 +2191,7 @@ export function SettingsPage({
                   <button
                     type="button"
                     disabled={plexStatus === 'testing' || (plexStatus === 'inactive' && plexTestOk !== false)}
-                    onClick={() => void runPlexTest('manual')}
+                    onClick={handlePlexManualTest}
                     className={statusPillClass(plexStatus)}
                     aria-label={`Plex status: ${statusLabel(plexStatus)}`}
                   >
@@ -1952,11 +2209,7 @@ export function SettingsPage({
                     <input
                       type="text"
                       value={plexBaseUrl}
-                      onChange={(e) => {
-                        setPlexTouched(true);
-                        setPlexTestOk(null);
-                        setPlexBaseUrl(e.target.value);
-                      }}
+                      onChange={handlePlexBaseUrlChange}
                       placeholder="http://localhost:32400"
                       className={inputClass}
                     />
@@ -1972,10 +2225,7 @@ export function SettingsPage({
                         value={plexToken}
                         setValue={setPlexToken}
                         hasSavedValue={Boolean(secretsPresent.plex)}
-                        onEditStart={() => {
-                          setPlexTouched(true);
-                          setPlexTestOk(null);
-                        }}
+                        onEditStart={markPlexEdited}
                         placeholder={secretsPresent.plex ? "Saved (enter new to replace)" : "Enter Plex token"}
                         className={inputFlexClass}
                       />
@@ -2036,7 +2286,7 @@ export function SettingsPage({
                   <button
                     type="button"
                     disabled={tmdbStatus === 'testing' || (tmdbStatus === 'inactive' && tmdbTestOk !== false)}
-                    onClick={() => void runTmdbTest('manual')}
+                    onClick={handleTmdbManualTest}
                     className={statusPillClass(tmdbStatus)}
                     aria-label={`TMDB status: ${statusLabel(tmdbStatus)}`}
                   >
@@ -2055,10 +2305,7 @@ export function SettingsPage({
                       value={tmdbApiKey}
                       setValue={setTmdbApiKey}
                       hasSavedValue={Boolean(secretsPresent.tmdb)}
-                      onEditStart={() => {
-                        setTmdbTouched(true);
-                        setTmdbTestOk(null);
-                      }}
+                      onEditStart={markTmdbEdited}
                       placeholder={secretsPresent.tmdb ? "Saved (enter new to replace)" : "Enter TMDB API key"}
                       className={inputClass}
                     />
@@ -2138,7 +2385,7 @@ export function SettingsPage({
                         radarrStatus === 'testing' ||
                         (radarrStatus === 'inactive' && radarrTestOk !== false)
                       }
-                      onClick={() => void runRadarrTest('manual')}
+                      onClick={handleRadarrManualTest}
                       className={statusPillClass(radarrStatus)}
                       aria-label={`Radarr status: ${statusLabel(radarrStatus)}`}
                     >
@@ -2153,34 +2400,7 @@ export function SettingsPage({
                       type="button"
                       role="switch"
                       aria-checked={radarrEnabled}
-                      onClick={() => {
-                        const prev = radarrEnabled;
-                        const next = !radarrEnabled;
-                        setRadarrEnabled(next);
-                        setRadarrTestOk(null);
-                        radarrTestRunId.current += 1;
-                        setRadarrIsTesting(false);
-
-                        integrationEnabledMutation.mutate(
-                          { integration: 'radarr', enabled: next },
-                          {
-                            onError: (err) => {
-                              setRadarrEnabled(prev);
-                              toast.error(
-                                (err as Error)?.message ??
-                                  'Failed to save Radarr enabled state',
-                              );
-                            },
-                          },
-                        );
-
-                        if (!next) return;
-                        const apiKey = radarrApiKey.trim();
-                        const usesSavedCreds = secretsPresent.radarr && !apiKey;
-                        if (usesSavedCreds && !radarrTouched) {
-                          void runRadarrTest('auto');
-                        }
-                      }}
+                      onClick={handleRadarrToggle}
                       disabled={
                         integrationEnabledMutation.isPending &&
                         integrationEnabledMutation.variables?.integration === 'radarr'
@@ -2213,11 +2433,7 @@ export function SettingsPage({
                           <input
                             type="text"
                             value={radarrBaseUrl}
-                            onChange={(e) => {
-                              setRadarrTouched(true);
-                              setRadarrTestOk(null);
-                              setRadarrBaseUrl(e.target.value);
-                            }}
+                            onChange={handleRadarrBaseUrlChange}
                             placeholder="http://localhost:7878"
                             className={inputClass}
                           />
@@ -2228,10 +2444,7 @@ export function SettingsPage({
                             value={radarrApiKey}
                             setValue={setRadarrApiKey}
                             hasSavedValue={Boolean(secretsPresent.radarr)}
-                            onEditStart={() => {
-                              setRadarrTouched(true);
-                              setRadarrTestOk(null);
-                            }}
+                            onEditStart={markRadarrEdited}
                             placeholder={
                               secretsPresent.radarr ? 'Saved (enter new to replace)' : 'Enter Radarr API key'
                             }
@@ -2317,7 +2530,7 @@ export function SettingsPage({
                         sonarrStatus === 'testing' ||
                         (sonarrStatus === 'inactive' && sonarrTestOk !== false)
                       }
-                      onClick={() => void runSonarrTest('manual')}
+                      onClick={handleSonarrManualTest}
                       className={statusPillClass(sonarrStatus)}
                       aria-label={`Sonarr status: ${statusLabel(sonarrStatus)}`}
                     >
@@ -2332,34 +2545,7 @@ export function SettingsPage({
                       type="button"
                       role="switch"
                       aria-checked={sonarrEnabled}
-                      onClick={() => {
-                        const prev = sonarrEnabled;
-                        const next = !sonarrEnabled;
-                        setSonarrEnabled(next);
-                        setSonarrTestOk(null);
-                        sonarrTestRunId.current += 1;
-                        setSonarrIsTesting(false);
-
-                        integrationEnabledMutation.mutate(
-                          { integration: 'sonarr', enabled: next },
-                          {
-                            onError: (err) => {
-                              setSonarrEnabled(prev);
-                              toast.error(
-                                (err as Error)?.message ??
-                                  'Failed to save Sonarr enabled state',
-                              );
-                            },
-                          },
-                        );
-
-                        if (!next) return;
-                        const apiKey = sonarrApiKey.trim();
-                        const usesSavedCreds = secretsPresent.sonarr && !apiKey;
-                        if (usesSavedCreds && !sonarrTouched) {
-                          void runSonarrTest('auto');
-                        }
-                      }}
+                      onClick={handleSonarrToggle}
                       disabled={
                         integrationEnabledMutation.isPending &&
                         integrationEnabledMutation.variables?.integration === 'sonarr'
@@ -2392,11 +2578,7 @@ export function SettingsPage({
                           <input
                             type="text"
                             value={sonarrBaseUrl}
-                            onChange={(e) => {
-                              setSonarrTouched(true);
-                              setSonarrTestOk(null);
-                              setSonarrBaseUrl(e.target.value);
-                            }}
+                            onChange={handleSonarrBaseUrlChange}
                             placeholder="http://localhost:8989"
                             className={inputClass}
                           />
@@ -2407,10 +2589,7 @@ export function SettingsPage({
                             value={sonarrApiKey}
                             setValue={setSonarrApiKey}
                             hasSavedValue={Boolean(secretsPresent.sonarr)}
-                            onEditStart={() => {
-                              setSonarrTouched(true);
-                              setSonarrTestOk(null);
-                            }}
+                            onEditStart={markSonarrEdited}
                             placeholder={
                               secretsPresent.sonarr ? 'Saved (enter new to replace)' : 'Enter Sonarr API key'
                             }
@@ -2496,7 +2675,7 @@ export function SettingsPage({
                           overseerrStatus === 'testing' ||
                           (overseerrStatus === 'inactive' && overseerrTestOk !== false)
                         }
-                        onClick={() => void runOverseerrTest('manual')}
+                        onClick={handleOverseerrManualTest}
                         className={statusPillClass(overseerrStatus)}
                         aria-label={`Overseerr status: ${statusLabel(overseerrStatus)}`}
                       >
@@ -2513,35 +2692,7 @@ export function SettingsPage({
                         type="button"
                         role="switch"
                         aria-checked={overseerrEnabled}
-                        onClick={() => {
-                          const prev = overseerrEnabled;
-                          const next = !overseerrEnabled;
-                          setOverseerrEnabled(next);
-                          setOverseerrTestOk(null);
-                          overseerrTestRunId.current += 1;
-                          setOverseerrIsTesting(false);
-
-                          integrationEnabledMutation.mutate(
-                            { integration: 'overseerr', enabled: next },
-                            {
-                              onError: (err) => {
-                                setOverseerrEnabled(prev);
-                                toast.error(
-                                  (err as Error)?.message ??
-                                    'Failed to save Overseerr enabled state',
-                                );
-                              },
-                            },
-                          );
-
-                          if (!next) return;
-                          const apiKey = overseerrApiKey.trim();
-                          const usesSavedCreds =
-                            secretsPresent.overseerr && !apiKey;
-                          if (usesSavedCreds && !overseerrTouched) {
-                            void runOverseerrTest('auto');
-                          }
-                        }}
+                        onClick={handleOverseerrToggle}
                         disabled={
                           integrationEnabledMutation.isPending &&
                           integrationEnabledMutation.variables?.integration ===
@@ -2573,11 +2724,7 @@ export function SettingsPage({
                             <input
                               type="text"
                               value={overseerrBaseUrl}
-                              onChange={(e) => {
-                                setOverseerrTouched(true);
-                                setOverseerrTestOk(null);
-                                setOverseerrBaseUrl(e.target.value);
-                              }}
+                              onChange={handleOverseerrBaseUrlChange}
                               placeholder="http://localhost:5055"
                               className={inputClass}
                             />
@@ -2588,16 +2735,8 @@ export function SettingsPage({
                               value={overseerrApiKey}
                               setValue={setOverseerrApiKey}
                               hasSavedValue={Boolean(secretsPresent.overseerr)}
-                              onEditStart={() => {
-                                setOverseerrTouched(true);
-                                setOverseerrTestOk(null);
-                              }}
-                              onBlur={() => {
-                                const apiKey = overseerrApiKey.trim();
-                                if (!overseerrEnabled) return;
-                                if (!apiKey) return;
-                                void runOverseerrTest('auto');
-                              }}
+                              onEditStart={markOverseerrEdited}
+                              onBlur={handleOverseerrApiKeyBlur}
                               placeholder={
                                 secretsPresent.overseerr
                                   ? 'Saved (enter new to replace)'
@@ -2661,7 +2800,7 @@ export function SettingsPage({
                         googleStatus === 'testing' ||
                         (googleStatus === 'inactive' && googleTestOk !== false)
                       }
-                      onClick={() => void runGoogleTest('manual')}
+                      onClick={handleGoogleManualTest}
                       className={statusPillClass(googleStatus)}
                       aria-label={`Google Search status: ${statusLabel(googleStatus)}`}
                     >
@@ -2676,35 +2815,7 @@ export function SettingsPage({
                       type="button"
                       role="switch"
                       aria-checked={googleEnabled}
-                      onClick={() => {
-                        const prev = googleEnabled;
-                        const next = !googleEnabled;
-                        setGoogleEnabled(next);
-                        setGoogleTestOk(null);
-                        googleTestRunId.current += 1;
-                        setGoogleIsTesting(false);
-
-                        integrationEnabledMutation.mutate(
-                          { integration: 'google', enabled: next },
-                          {
-                            onError: (err) => {
-                              setGoogleEnabled(prev);
-                              toast.error(
-                                (err as Error)?.message ??
-                                  'Failed to save Google enabled state',
-                              );
-                            },
-                          },
-                        );
-
-                        if (!next) return;
-                        const apiKey = googleApiKey.trim();
-                        const cseId = googleSearchEngineId.trim();
-                        const usesSavedCreds = secretsPresent.google && !apiKey;
-                        if (usesSavedCreds && !googleTouched && Boolean(cseId)) {
-                          void runGoogleTest('auto');
-                        }
-                      }}
+                      onClick={handleGoogleToggle}
                       disabled={
                         integrationEnabledMutation.isPending &&
                         integrationEnabledMutation.variables?.integration === 'google'
@@ -2737,11 +2848,7 @@ export function SettingsPage({
                           <input
                             type="text"
                             value={googleSearchEngineId}
-                            onChange={(e) => {
-                              setGoogleTouched(true);
-                              setGoogleTestOk(null);
-                              setGoogleSearchEngineId(e.target.value);
-                            }}
+                            onChange={handleGoogleSearchEngineIdChange}
                             placeholder="Enter Google Search Engine ID"
                             className={inputClass}
                           />
@@ -2752,10 +2859,7 @@ export function SettingsPage({
                             value={googleApiKey}
                             setValue={setGoogleApiKey}
                             hasSavedValue={Boolean(secretsPresent.google)}
-                            onEditStart={() => {
-                              setGoogleTouched(true);
-                              setGoogleTestOk(null);
-                            }}
+                            onEditStart={markGoogleEdited}
                             placeholder={
                               secretsPresent.google ? 'Saved (enter new to replace)' : 'Enter Google API key'
                             }
@@ -2816,7 +2920,7 @@ export function SettingsPage({
                         openAiStatus === 'testing' ||
                         (openAiStatus === 'inactive' && openAiTestOk !== false)
                       }
-                      onClick={() => void runOpenAiTest('manual')}
+                      onClick={handleOpenAiManualTest}
                       className={statusPillClass(openAiStatus)}
                       aria-label={`OpenAI status: ${statusLabel(openAiStatus)}`}
                     >
@@ -2831,34 +2935,7 @@ export function SettingsPage({
                       type="button"
                       role="switch"
                       aria-checked={openAiEnabled}
-                      onClick={() => {
-                        const prev = openAiEnabled;
-                        const next = !openAiEnabled;
-                        setOpenAiEnabled(next);
-                        setOpenAiTestOk(null);
-                        openAiTestRunId.current += 1;
-                        setOpenAiIsTesting(false);
-
-                        integrationEnabledMutation.mutate(
-                          { integration: 'openai', enabled: next },
-                          {
-                            onError: (err) => {
-                              setOpenAiEnabled(prev);
-                              toast.error(
-                                (err as Error)?.message ??
-                                  'Failed to save OpenAI enabled state',
-                              );
-                            },
-                          },
-                        );
-
-                        if (!next) return;
-                        const apiKey = openAiApiKey.trim();
-                        const usesSavedCreds = secretsPresent.openai && !apiKey;
-                        if (usesSavedCreds && !openAiTouched) {
-                          void runOpenAiTest('auto');
-                        }
-                      }}
+                      onClick={handleOpenAiToggle}
                       disabled={
                         integrationEnabledMutation.isPending &&
                         integrationEnabledMutation.variables?.integration === 'openai'
@@ -2892,10 +2969,7 @@ export function SettingsPage({
                             value={openAiApiKey}
                             setValue={setOpenAiApiKey}
                             hasSavedValue={Boolean(secretsPresent.openai)}
-                            onEditStart={() => {
-                              setOpenAiTouched(true);
-                              setOpenAiTestOk(null);
-                            }}
+                            onEditStart={markOpenAiEdited}
                             placeholder={
                               secretsPresent.openai ? 'Saved (enter new to replace)' : 'Enter OpenAI API key'
                             }
