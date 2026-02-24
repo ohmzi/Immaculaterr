@@ -17,6 +17,7 @@
     "gen:openapi": "npm -w apps/api run openapi:generate && npm -w apps/web run openapi:types",
     "docker:up": "docker compose -f docker/immaculaterr/docker-compose.yml up --build",
     "docker:down": "docker compose -f docker/immaculaterr/docker-compose.yml down",
+    "test:workflow:publish": "node scripts/test-publish-workflow.mjs",
     "build": "npm --workspaces --if-present run build",
     "lint": "npm --workspaces --if-present run lint",
     "test": "npm --workspaces --if-present run test"
