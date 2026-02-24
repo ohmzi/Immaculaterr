@@ -7,25 +7,42 @@ function normalizeFileSecret(raw: string): string {
   return raw.replace(/\r\n/g, '\n').replace(/\n$/, '');
 }
 
+function resolveTargetKey(fileBackedKey: string): string | null {
+  if (!fileBackedKey.endsWith('_FILE')) return null;
+  const targetKey = fileBackedKey.slice(0, -'_FILE'.length);
+  return targetKey || null;
+}
+
+function hasConfiguredValue(env: EnvLike, key: string): boolean {
+  const existingValue = env[key];
+  return typeof existingValue === 'string' && existingValue.trim() !== '';
+}
+
+function resolveFilePath(raw: string | undefined): string | null {
+  const filePath = typeof raw === 'string' ? raw.trim() : '';
+  return filePath || null;
+}
+
+function applyFileBackedEnvEntry(
+  env: EnvLike,
+  fileBackedKey: string,
+  value: string | undefined,
+): void {
+  const targetKey = resolveTargetKey(fileBackedKey);
+  if (!targetKey || hasConfiguredValue(env, targetKey)) return;
+  const filePath = resolveFilePath(value);
+  if (!filePath) return;
+
+  try {
+    const raw = readFileSync(filePath, 'utf8');
+    env[targetKey] = normalizeFileSecret(raw);
+  } catch {
+    // Best-effort only. Individual consumers should validate required secrets.
+  }
+}
+
 export function applyFileBackedEnv(env: EnvLike = process.env): void {
   for (const [key, value] of Object.entries(env)) {
-    if (!key.endsWith('_FILE')) continue;
-    const targetKey = key.slice(0, -'_FILE'.length);
-    if (!targetKey) continue;
-
-    const targetExisting = env[targetKey];
-    if (typeof targetExisting === 'string' && targetExisting.trim() !== '') {
-      continue;
-    }
-
-    const filePath = typeof value === 'string' ? value.trim() : '';
-    if (!filePath) continue;
-
-    try {
-      const raw = readFileSync(filePath, 'utf8');
-      env[targetKey] = normalizeFileSecret(raw);
-    } catch {
-      // Best-effort only. Individual consumers should validate required secrets.
-    }
+    applyFileBackedEnvEntry(env, key, value);
   }
 }

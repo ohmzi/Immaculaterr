@@ -86,6 +86,16 @@ type UpdatePlexMonitoringUsersBody = {
   selectedPlexUserIds?: unknown;
 };
 
+const SERVICE_SECRET_ID_BY_INTEGRATION: Record<string, ServiceSecretId> = {
+  plex: 'plex',
+  radarr: 'radarr',
+  sonarr: 'sonarr',
+  tmdb: 'tmdb',
+  overseerr: 'overseerr',
+  google: 'google',
+  openai: 'openai',
+};
+
 @Controller('integrations')
 @ApiTags('integrations')
 export class IntegrationsController {
@@ -104,18 +114,7 @@ export class IntegrationsController {
   ) {}
 
   private asServiceSecretId(integrationId: string): ServiceSecretId | null {
-    if (
-      integrationId === 'plex' ||
-      integrationId === 'radarr' ||
-      integrationId === 'sonarr' ||
-      integrationId === 'tmdb' ||
-      integrationId === 'overseerr' ||
-      integrationId === 'google' ||
-      integrationId === 'openai'
-    ) {
-      return integrationId;
-    }
-    return null;
+    return SERVICE_SECRET_ID_BY_INTEGRATION[integrationId] ?? null;
   }
 
   private async resolveIntegrationSecret(params: {
@@ -130,10 +129,8 @@ export class IntegrationsController {
         `Unknown integrationId: ${params.integrationId}`,
       );
     }
-    const secretField: 'apiKey' | 'token' =
-      service === 'plex' ? 'token' : 'apiKey';
-    const envelopeField =
-      secretField === 'token' ? 'tokenEnvelope' : 'apiKeyEnvelope';
+    const secretField = this.secretFieldForService(service);
+    const envelopeField = this.envelopeFieldForSecretField(secretField);
 
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: params.userId,
@@ -153,10 +150,29 @@ export class IntegrationsController {
       params.currentSecrets,
     );
     if (!savedSecret) {
-      const label = secretField === 'token' ? 'token' : 'apiKey';
-      throw new BadRequestException(`${service} ${label} is not set`);
+      throw new BadRequestException(
+        this.missingSecretMessage(service, secretField),
+      );
     }
     return savedSecret;
+  }
+
+  private secretFieldForService(service: ServiceSecretId): 'apiKey' | 'token' {
+    return service === 'plex' ? 'token' : 'apiKey';
+  }
+
+  private envelopeFieldForSecretField(
+    secretField: 'apiKey' | 'token',
+  ): 'apiKeyEnvelope' | 'tokenEnvelope' {
+    return secretField === 'token' ? 'tokenEnvelope' : 'apiKeyEnvelope';
+  }
+
+  private missingSecretMessage(
+    service: ServiceSecretId,
+    secretField: 'apiKey' | 'token',
+  ): string {
+    const label = secretField === 'token' ? 'token' : 'apiKey';
+    return `${service} ${label} is not set`;
   }
 
   private async cleanupDeselectedPlexLibraries(params: {

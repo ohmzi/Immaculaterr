@@ -42,6 +42,19 @@ type ChangePasswordBody = {
   captchaToken?: unknown;
 };
 
+type RequestMeta = {
+  ip: string | null;
+  userAgent: string | null;
+};
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
 @Controller('auth')
 @ApiTags('auth')
 export class AuthController {
@@ -70,17 +83,13 @@ export class AuthController {
   @Public()
   @Post('login-challenge')
   async loginChallenge(@Body() body: LoginChallengeBody, @Req() req: Request) {
-    const username = typeof body?.username === 'string' ? body.username : '';
-    const ip = req.ip ?? null;
-    const ua =
-      typeof req.headers['user-agent'] === 'string'
-        ? req.headers['user-agent']
-        : null;
+    const username = readString(body?.username);
+    const meta = this.getRequestMeta(req);
 
     return await this.authService.createLoginChallenge({
       username,
-      ip,
-      userAgent: ua,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
     });
   }
 
@@ -91,27 +100,21 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const challengeId =
-      typeof body?.challengeId === 'string' ? body.challengeId : '';
-    const proof = typeof body?.proof === 'string' ? body.proof : '';
-    const captchaToken =
-      typeof body?.captchaToken === 'string' ? body.captchaToken : null;
-    const ip = req.ip ?? null;
-    const ua =
-      typeof req.headers['user-agent'] === 'string'
-        ? req.headers['user-agent']
-        : null;
+    const challengeId = readString(body?.challengeId);
+    const proof = readString(body?.proof);
+    const captchaToken = readOptionalString(body?.captchaToken);
+    const meta = this.getRequestMeta(req);
 
     const result = await this.authService.loginWithChallengeProof({
       challengeId,
       proof,
-      ip,
-      userAgent: ua,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
       captchaToken,
     });
     this.setSessionCookie(req, res, result.sessionId);
     this.logger.log(
-      `auth: login proof success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(ip)}`,
+      `auth: login proof success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(meta.ip)}`,
     );
     return { ok: true, user: result.user };
   }
@@ -125,33 +128,29 @@ export class AuthController {
   ) {
     const { username, password, captchaToken } =
       this.resolveCredentialBody(body);
-    const ip = req.ip ?? null;
-    const ua =
-      typeof req.headers['user-agent'] === 'string'
-        ? req.headers['user-agent']
-        : null;
+    const meta = this.getRequestMeta(req);
 
     this.logger.log(
-      `auth: register attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(ip)} ua=${JSON.stringify(ua)}`,
+      `auth: register attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} ua=${JSON.stringify(meta.userAgent)}`,
     );
     await this.authService.registerAdmin({
       username,
       password,
-      ip,
-      userAgent: ua,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
       captchaToken,
     });
 
     const login = await this.authService.login({
       username,
       password,
-      ip,
-      userAgent: ua,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
       captchaToken,
     });
     this.setSessionCookie(req, res, login.sessionId);
     this.logger.log(
-      `auth: register success userId=${login.user.id} username=${JSON.stringify(login.user.username)} ip=${JSON.stringify(ip)}`,
+      `auth: register success userId=${login.user.id} username=${JSON.stringify(login.user.username)} ip=${JSON.stringify(meta.ip)}`,
     );
     return { ok: true, user: login.user };
   }
@@ -165,32 +164,28 @@ export class AuthController {
   ) {
     const { username, password, captchaToken } =
       this.resolveCredentialBody(body);
-    const ip = req.ip ?? null;
-    const ua =
-      typeof req.headers['user-agent'] === 'string'
-        ? req.headers['user-agent']
-        : null;
+    const meta = this.getRequestMeta(req);
 
     this.logger.log(
-      `auth: login attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(ip)} ua=${JSON.stringify(ua)}`,
+      `auth: login attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} ua=${JSON.stringify(meta.userAgent)}`,
     );
     try {
       const result = await this.authService.login({
         username,
         password,
-        ip,
-        userAgent: ua,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
         captchaToken,
       });
       this.setSessionCookie(req, res, result.sessionId);
       this.logger.log(
-        `auth: login success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(ip)}`,
+        `auth: login success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(meta.ip)}`,
       );
       return { ok: true, user: result.user };
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
       this.logger.warn(
-        `auth: login failed username=${JSON.stringify(username.trim())} ip=${JSON.stringify(ip)} error=${JSON.stringify(msg)}`,
+        `auth: login failed username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} error=${JSON.stringify(msg)}`,
       );
       throw err;
     }
@@ -228,24 +223,17 @@ export class AuthController {
     @Body() body: ChangePasswordBody,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const currentPassword =
-      typeof body?.currentPassword === 'string' ? body.currentPassword : '';
-    const newPassword =
-      typeof body?.newPassword === 'string' ? body.newPassword : '';
-    const captchaToken =
-      typeof body?.captchaToken === 'string' ? body.captchaToken : null;
-    const ip = req.ip ?? null;
-    const ua =
-      typeof req.headers['user-agent'] === 'string'
-        ? req.headers['user-agent']
-        : null;
+    const currentPassword = readString(body?.currentPassword);
+    const newPassword = readString(body?.newPassword);
+    const captchaToken = readOptionalString(body?.captchaToken);
+    const meta = this.getRequestMeta(req);
 
     await this.authService.changePassword({
       userId: req.user.id,
       currentPassword,
       newPassword,
-      ip,
-      userAgent: ua,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
       captchaToken,
     });
 
@@ -275,30 +263,14 @@ export class AuthController {
     password: string;
     captchaToken: string | null;
   } {
-    const captchaToken =
-      typeof body?.captchaToken === 'string' ? body.captchaToken : null;
-
-    if (body?.credentialEnvelope !== undefined) {
-      const creds = this.authService.decryptCredentialEnvelope(
-        body.credentialEnvelope,
-      );
-      return {
-        username: creds.username,
-        password: creds.password,
-        captchaToken,
-      };
+    const captchaToken = readOptionalString(body?.captchaToken);
+    const envelopeCredentials = this.resolveEnvelopeCredentials(body);
+    if (envelopeCredentials) {
+      return { ...envelopeCredentials, captchaToken };
     }
 
-    const username = typeof body?.username === 'string' ? body.username : '';
-    const password = typeof body?.password === 'string' ? body.password : '';
-
-    if (!username.trim() || !password) {
-      throw new BadRequestException(
-        'username/password or credentialEnvelope is required',
-      );
-    }
-
-    return { username, password, captchaToken };
+    const plainCredentials = this.resolvePlainCredentials(body);
+    return { ...plainCredentials, captchaToken };
   }
 
   private setSessionCookie(req: Request, res: Response, sessionId: string) {
@@ -326,5 +298,34 @@ export class AuthController {
       secure,
       path: '/',
     };
+  }
+
+  private getRequestMeta(req: Request): RequestMeta {
+    return {
+      ip: req.ip ?? null,
+      userAgent: readOptionalString(req.headers['user-agent']),
+    };
+  }
+
+  private resolveEnvelopeCredentials(body: LoginBody): {
+    username: string;
+    password: string;
+  } | null {
+    if (body?.credentialEnvelope === undefined) return null;
+    return this.authService.decryptCredentialEnvelope(body.credentialEnvelope);
+  }
+
+  private resolvePlainCredentials(body: LoginBody): {
+    username: string;
+    password: string;
+  } {
+    const username = readString(body?.username);
+    const password = readString(body?.password);
+    if (!username.trim() || !password) {
+      throw new BadRequestException(
+        'username/password or credentialEnvelope is required',
+      );
+    }
+    return { username, password };
   }
 }

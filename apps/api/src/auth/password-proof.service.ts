@@ -15,11 +15,16 @@ export type LoginChallengeRecord = {
 type StoredChallengeRecord = LoginChallengeRecord & { consumed: boolean };
 
 function toBase64Url(buf: Buffer): string {
-  return buf
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
+  const base64 = buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+  return trimBase64Padding(base64);
+}
+
+function trimBase64Padding(input: string): string {
+  let end = input.length;
+  while (end > 0 && input[end - 1] === '=') {
+    end -= 1;
+  }
+  return input.slice(0, end);
 }
 
 @Injectable()

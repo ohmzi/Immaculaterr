@@ -18,6 +18,21 @@ type TestGoogleBody = {
   query?: unknown;
 };
 
+function parseString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseIntegerLike(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 @Controller('google')
 export class GoogleController {
   constructor(
@@ -40,20 +55,9 @@ export class GoogleController {
       plaintext: body.apiKey,
     });
     const apiKey = resolved.value;
-    const cseId = typeof body.cseId === 'string' ? body.cseId.trim() : '';
-    const query =
-      typeof body.query === 'string' ? body.query.trim() : 'imdb the matrix';
-
-    let numResults = 15;
-    if (
-      typeof body.numResults === 'number' &&
-      Number.isFinite(body.numResults)
-    ) {
-      numResults = Math.trunc(body.numResults);
-    } else if (typeof body.numResults === 'string' && body.numResults.trim()) {
-      const parsed = Number.parseInt(body.numResults.trim(), 10);
-      if (Number.isFinite(parsed)) numResults = parsed;
-    }
+    const cseId = parseString(body.cseId);
+    const query = parseString(body.query) || 'imdb the matrix';
+    const numResults = parseIntegerLike(body.numResults) ?? 15;
 
     if (!apiKey) throw new BadRequestException('GOOGLE_API_KEY is required');
     if (!cseId)

@@ -3,60 +3,39 @@ import { IntegrationsController } from './integrations.controller';
 
 describe('IntegrationsController plex libraries', () => {
   const makeController = () => {
+    const readNestedString = (
+      input: Record<string, unknown>,
+      path: string,
+    ): string => {
+      const parts = path.split('.');
+      let current: unknown = input;
+      for (const part of parts) {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) {
+          return '';
+        }
+        current = (current as Record<string, unknown>)[part];
+      }
+      return typeof current === 'string' ? current : '';
+    };
+
     const readServiceSecret = (
       service: string,
       secrets: Record<string, unknown>,
     ): string => {
-      if (service === 'plex') {
-        return (
-          (secrets.plex as Record<string, unknown> | undefined)?.token as
-            | string
-            | undefined
-        ) ?? (secrets.plexToken as string | undefined) ?? '';
-      }
-      if (service === 'radarr') {
-        return (
-          (secrets.radarr as Record<string, unknown> | undefined)?.apiKey as
-            | string
-            | undefined
-        ) ?? '';
-      }
-      if (service === 'sonarr') {
-        return (
-          (secrets.sonarr as Record<string, unknown> | undefined)?.apiKey as
-            | string
-            | undefined
-        ) ?? '';
-      }
-      if (service === 'tmdb') {
-        return (
-          (secrets.tmdb as Record<string, unknown> | undefined)?.apiKey as
-            | string
-            | undefined
-        ) ?? '';
-      }
-      if (service === 'overseerr') {
-        return (
-          (secrets.overseerr as Record<string, unknown> | undefined)?.apiKey as
-            | string
-            | undefined
-        ) ?? '';
-      }
-      if (service === 'google') {
-        return (
-          (secrets.google as Record<string, unknown> | undefined)?.apiKey as
-            | string
-            | undefined
-        ) ?? '';
-      }
-      if (service === 'openai') {
-        return (
-          (secrets.openai as Record<string, unknown> | undefined)?.apiKey as
-            | string
-            | undefined
-        ) ?? '';
-      }
-      return '';
+      const secretPathByService: Record<string, string> = {
+        plex: 'plex.token',
+        radarr: 'radarr.apiKey',
+        sonarr: 'sonarr.apiKey',
+        tmdb: 'tmdb.apiKey',
+        overseerr: 'overseerr.apiKey',
+        google: 'google.apiKey',
+        openai: 'openai.apiKey',
+      };
+      const path = secretPathByService[service];
+      if (!path) return '';
+      const nestedValue = readNestedString(secrets, path);
+      if (nestedValue) return nestedValue;
+      return service === 'plex' ? readNestedString(secrets, 'plexToken') : '';
     };
 
     const prisma = {

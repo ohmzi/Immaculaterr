@@ -16,6 +16,23 @@ type TestConnectionBody = {
   secretRef?: unknown;
 };
 
+function normalizeHttpBaseUrl(raw: unknown): string {
+  const baseUrlRaw = typeof raw === 'string' ? raw.trim() : '';
+  if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
+  const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
+    ? baseUrlRaw
+    : `http://${baseUrlRaw}`;
+  try {
+    const parsed = new URL(baseUrl);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      throw new Error('Unsupported protocol');
+    }
+    return baseUrl;
+  } catch {
+    throw new BadRequestException('baseUrl must be a valid http(s) URL');
+  }
+}
+
 @Controller('radarr')
 export class RadarrController {
   constructor(
@@ -25,8 +42,7 @@ export class RadarrController {
 
   @Post('test')
   async test(@Req() req: AuthenticatedRequest, @Body() body: TestConnectionBody) {
-    const baseUrlRaw =
-      typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
+    const baseUrl = normalizeHttpBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: req.user.id,
       service: 'radarr',
@@ -38,21 +54,7 @@ export class RadarrController {
     });
     const apiKey = resolved.value;
 
-    if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
     if (!apiKey) throw new BadRequestException('apiKey is required');
-
-    // Allow inputs like "localhost:7878" by defaulting to http://
-    const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
-      ? baseUrlRaw
-      : `http://${baseUrlRaw}`;
-    try {
-      const parsed = new URL(baseUrl);
-      if (!/^https?:$/i.test(parsed.protocol)) {
-        throw new Error('Unsupported protocol');
-      }
-    } catch {
-      throw new BadRequestException('baseUrl must be a valid http(s) URL');
-    }
 
     return this.radarrService.testConnection({ baseUrl, apiKey });
   }

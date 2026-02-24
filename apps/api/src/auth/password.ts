@@ -47,17 +47,37 @@ function parseLegacyPbkdf2Hash(hash: string): {
 } | null {
   // Format: pbkdf2$sha256$<iterations>$<saltB64>$<digestB64>
   const parts = hash.split('$');
-  if (parts.length !== 5) return null;
-  if (parts[0] !== 'pbkdf2' || parts[1] !== PBKDF2_DIGEST) return null;
+  if (!isLegacyPbkdf2Header(parts)) return null;
+  const iterations = parseLegacyIterations(parts[2] ?? '');
+  if (!iterations) return null;
+  const decoded = decodeLegacyPbkdf2Parts(parts[3] ?? '', parts[4] ?? '');
+  if (!decoded) return null;
+  return { iterations, salt: decoded.salt, digest: decoded.digest };
+}
 
-  const iterations = Number.parseInt(parts[2] ?? '', 10);
+function isLegacyPbkdf2Header(parts: string[]): boolean {
+  return (
+    parts.length === 5 &&
+    parts[0] === 'pbkdf2' &&
+    parts[1] === PBKDF2_DIGEST
+  );
+}
+
+function parseLegacyIterations(raw: string): number | null {
+  const iterations = Number.parseInt(raw, 10);
   if (!Number.isFinite(iterations) || iterations < 10_000) return null;
+  return iterations;
+}
 
+function decodeLegacyPbkdf2Parts(
+  saltB64: string,
+  digestB64: string,
+): { salt: Buffer; digest: Buffer } | null {
   try {
-    const salt = Buffer.from(parts[3] ?? '', 'base64');
-    const digest = Buffer.from(parts[4] ?? '', 'base64');
+    const salt = Buffer.from(saltB64, 'base64');
+    const digest = Buffer.from(digestB64, 'base64');
     if (salt.length < 16 || digest.length !== PBKDF2_KEY_LEN) return null;
-    return { iterations, salt, digest };
+    return { salt, digest };
   } catch {
     return null;
   }

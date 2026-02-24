@@ -9,6 +9,12 @@ type AttemptState = {
   lockUntilMs: number;
 };
 
+type FailureComputation = {
+  failures: number;
+  firstFailureAtMs: number;
+  lockUntilMs: number;
+};
+
 export type ThrottleAssessment = {
   allowed: boolean;
   retryAfterSeconds: number | null;
@@ -96,25 +102,9 @@ export class AuthThrottleService {
     this.cleanup(now);
     const key = this.buildKey(params.username, params.ip);
     const prev = this.store.get(key);
-
-    const withinWindow = prev
-      ? now - prev.firstFailureAtMs <= this.windowMs
-      : false;
-    const failures = withinWindow ? prev!.failures + 1 : 1;
-    const firstFailureAtMs = withinWindow ? prev!.firstFailureAtMs : now;
+    const { failures, firstFailureAtMs, lockUntilMs } =
+      this.computeFailureState(prev, now);
     const lastFailureAtMs = now;
-
-    let lockUntilMs = prev?.lockUntilMs ?? 0;
-    if (failures >= this.threshold) {
-      const prevLockDuration = Math.max(0, (prev?.lockUntilMs ?? 0) - now);
-      const nextLock =
-        prevLockDuration > 0
-          ? Math.min(prevLockDuration * 2, this.lockMaxMs)
-          : this.lockMs;
-      lockUntilMs = now + nextLock;
-    } else {
-      lockUntilMs = 0;
-    }
 
     this.store.set(key, {
       failures,
@@ -122,25 +112,13 @@ export class AuthThrottleService {
       lastFailureAtMs,
       lockUntilMs,
     });
-
-    const retryAfterSeconds =
-      lockUntilMs > now
-        ? Math.max(1, Math.ceil((lockUntilMs - now) / 1000))
-        : null;
-    const retryAt = lockUntilMs > now ? isoFromMs(lockUntilMs) : null;
-    const captchaRequired =
-      this.captchaEnabled && failures >= this.captchaThreshold;
+    const assessment = this.toAssessment({ lockUntilMs, now, failures });
 
     this.logger.warn(
-      `auth throttle failure username=${JSON.stringify(params.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)} reason=${JSON.stringify(params.reason)} failures=${failures} lockUntil=${JSON.stringify(retryAt)}`,
+      `auth throttle failure username=${JSON.stringify(params.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)} reason=${JSON.stringify(params.reason)} failures=${failures} lockUntil=${JSON.stringify(assessment.retryAt)}`,
     );
 
-    return {
-      allowed: lockUntilMs <= now,
-      retryAfterSeconds,
-      retryAt,
-      captchaRequired,
-    };
+    return assessment;
   }
 
   recordSuccess(params: { username: string; ip: string | null }): void {
@@ -158,5 +136,55 @@ export class AuthThrottleService {
       const windowExpired = now - state.lastFailureAtMs > this.windowMs;
       if (lockExpired && windowExpired) this.store.delete(key);
     }
+  }
+
+  private computeFailureState(
+    prev: AttemptState | undefined,
+    now: number,
+  ): FailureComputation {
+    const withinWindow = this.isWithinWindow(prev, now);
+    const failures = withinWindow && prev ? prev.failures + 1 : 1;
+    const firstFailureAtMs = withinWindow && prev ? prev.firstFailureAtMs : now;
+    const lockUntilMs = this.computeNextLockUntilMs({ prev, now, failures });
+    return { failures, firstFailureAtMs, lockUntilMs };
+  }
+
+  private isWithinWindow(prev: AttemptState | undefined, now: number): boolean {
+    if (!prev) return false;
+    return now - prev.firstFailureAtMs <= this.windowMs;
+  }
+
+  private computeNextLockUntilMs(params: {
+    prev: AttemptState | undefined;
+    now: number;
+    failures: number;
+  }): number {
+    if (params.failures < this.threshold) return 0;
+    const prevLockDuration = Math.max(
+      0,
+      (params.prev?.lockUntilMs ?? 0) - params.now,
+    );
+    const nextLock =
+      prevLockDuration > 0
+        ? Math.min(prevLockDuration * 2, this.lockMaxMs)
+        : this.lockMs;
+    return params.now + nextLock;
+  }
+
+  private toAssessment(params: {
+    lockUntilMs: number;
+    now: number;
+    failures: number;
+  }): ThrottleAssessment {
+    const locked = params.lockUntilMs > params.now;
+    return {
+      allowed: !locked,
+      retryAfterSeconds: locked
+        ? Math.max(1, Math.ceil((params.lockUntilMs - params.now) / 1000))
+        : null,
+      retryAt: locked ? isoFromMs(params.lockUntilMs) : null,
+      captchaRequired:
+        this.captchaEnabled && params.failures >= this.captchaThreshold,
+    };
   }
 }

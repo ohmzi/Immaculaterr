@@ -20,6 +20,7 @@ import {
   createPasswordProofMaterial,
   derivePasswordProofKey,
   hashPassword,
+  type PasswordVerificationResult,
   verifyPassword,
 } from './password';
 
@@ -46,6 +47,16 @@ export type LoginContext = {
   ip: string | null;
   userAgent: string | null;
   captchaToken?: string | null;
+};
+
+type AuthLookupUser = {
+  id: string;
+  username: string;
+  passwordHash: string;
+  tokenVersion: number;
+  passwordProofSalt: string | null;
+  passwordProofIterations: number | null;
+  passwordProofKeyEnc: string | null;
 };
 
 @Injectable()
@@ -120,70 +131,22 @@ export class AuthService {
     captchaToken?: string | null;
   }) {
     const { username, password } = params;
-    const normalized = username.trim();
-    if (!normalized) throw new BadRequestException('username is required');
-    if (normalized.length < 3)
-      throw new BadRequestException('username must be at least 3 chars');
-    if (!password || password.length < 10) {
-      throw new BadRequestException('password must be at least 10 chars');
-    }
-
-    const assessment = this.authThrottle.assess({
+    const normalized = this.normalizeUsername(username);
+    this.assertValidRegistrationInputs(normalized, password);
+    await this.assertRegisterThrottleAndCaptcha({
       username: normalized,
       ip: params.ip,
-    });
-    await this.assertCaptchaIfRequired({
-      assessment,
-      captchaToken: params.captchaToken,
-      ip: params.ip,
-      username: normalized,
       userAgent: params.userAgent,
+      captchaToken: params.captchaToken,
     });
+    await this.assertUsernameAvailable(normalized);
+    await this.assertNoExistingAdmin();
 
-    const existing = await this.prisma.user.findUnique({
-      where: { username: normalized },
+    const user = await this.createAdminUser({
+      username: normalized,
+      password,
     });
-    if (existing) throw new BadRequestException('username already exists');
-
-    const any = await this.hasAnyUser();
-    if (any) {
-      throw new BadRequestException('admin already exists');
-    }
-
-    const passwordHash = await hashPassword(password);
-    const proof = createPasswordProofMaterial(password);
-
-    const user = await this.prisma.user.create({
-      data: {
-        username: normalized,
-        passwordHash,
-        tokenVersion: 0,
-        passwordProofSalt: proof.saltB64,
-        passwordProofIterations: proof.iterations,
-        passwordProofKeyEnc: this.crypto.encryptString(proof.keyB64),
-      },
-      select: { id: true, username: true, tokenVersion: true },
-    });
-
-    const defaultUserSettings = {
-      onboarding: { completed: false },
-      jobs: {
-        webhookEnabled: {
-          watchedMovieRecommendations: false,
-          immaculateTastePoints: false,
-          mediaAddedCleanup: false,
-        },
-      },
-    };
-    await this.prisma.userSettings.create({
-      data: {
-        userId: user.id,
-        value: JSON.stringify(defaultUserSettings),
-      },
-    });
-    await this.prisma.userSecrets.create({
-      data: { userId: user.id, value: '' },
-    });
+    await this.initializeAdminData(user.id);
 
     await this.prisma.jobSchedule.updateMany({ data: { enabled: false } });
 
@@ -204,65 +167,28 @@ export class AuthService {
     captchaToken?: string | null;
   }): Promise<AuthLoginResult> {
     const { username, password } = params;
-    const normalized = username.trim();
-    if (!normalized || !password) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const assessment = this.authThrottle.assess({
+    const normalized = this.assertValidLoginInput(username, password);
+    await this.assertLoginAllowed({
       username: normalized,
       ip: params.ip,
-    });
-    this.assertNotLocked(assessment);
-    await this.assertCaptchaIfRequired({
-      assessment,
+      userAgent: params.userAgent,
       captchaToken: params.captchaToken,
-      ip: params.ip,
+    });
+
+    const user = await this.findAuthUserOrThrow({
       username: normalized,
+      ip: params.ip,
       userAgent: params.userAgent,
     });
-
-    const user = await this.findUserForAuth(normalized);
-    if (!user) {
-      throw this.invalidCredentialsFailure({
-        username: normalized,
-        ip: params.ip,
-        userAgent: params.userAgent,
-      });
-    }
-
-    const verified = await verifyPassword(user.passwordHash, password);
-    if (!verified.ok) {
-      throw this.invalidCredentialsFailure({
-        username: normalized,
-        ip: params.ip,
-        userAgent: params.userAgent,
-      });
-    }
-
-    if (verified.needsRehash) {
-      const nextHash = await hashPassword(password);
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { passwordHash: nextHash },
-      });
-    }
-
-    if (
-      !user.passwordProofSalt ||
-      !user.passwordProofIterations ||
-      !user.passwordProofKeyEnc
-    ) {
-      const proof = createPasswordProofMaterial(password);
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          passwordProofSalt: proof.saltB64,
-          passwordProofIterations: proof.iterations,
-          passwordProofKeyEnc: this.crypto.encryptString(proof.keyB64),
-        },
-      });
-    }
+    const verification = await this.verifyPasswordOrThrow({
+      user,
+      password,
+      username: normalized,
+      ip: params.ip,
+      userAgent: params.userAgent,
+    });
+    await this.rehashPasswordIfNeeded(user.id, password, verification);
+    await this.ensurePasswordProofMaterial(user, password);
 
     this.authThrottle.recordSuccess({ username: normalized, ip: params.ip });
 
@@ -278,11 +204,7 @@ export class AuthService {
     ip: string | null;
     userAgent: string | null;
   }) {
-    const normalized = params.username.trim();
-    if (!normalized) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
+    const normalized = this.assertChallengeUsername(params.username);
     const assessment = this.authThrottle.assess({
       username: normalized,
       ip: params.ip,
@@ -290,25 +212,15 @@ export class AuthService {
     this.assertNotLocked(assessment);
 
     const user = await this.findUserForAuth(normalized);
-    const fallbackSalt = randomBytes(16).toString('base64');
-    const saltB64 = user?.passwordProofSalt?.trim() || fallbackSalt;
-    const iterations =
-      user?.passwordProofIterations && user.passwordProofIterations > 0
-        ? user.passwordProofIterations
-        : parsePositiveInt(
-            process.env.AUTH_PASSWORD_PROOF_ITERATIONS,
-            DEFAULT_PASSWORD_PROOF_ITERATIONS,
-          );
+    const saltB64 = this.resolveChallengeSalt(user);
+    const iterations = this.resolveChallengeIterations(user);
+
+    const challengeUserId =
+      user && this.hasPasswordProofMaterial(user) ? user.id : null;
 
     const challenge = this.passwordProof.createChallenge({
       username: normalized,
-      userId:
-        user &&
-        user.passwordProofSalt &&
-        user.passwordProofIterations &&
-        user.passwordProofKeyEnc
-          ? user.id
-          : null,
+      userId: challengeUserId,
       saltB64,
       iterations,
     });
@@ -330,16 +242,9 @@ export class AuthService {
     userAgent: string | null;
     captchaToken?: string | null;
   }): Promise<AuthLoginResult> {
-    const challengeId = params.challengeId.trim();
-    const proof = params.proof.trim();
-    if (!challengeId || !proof) {
-      throw new UnauthorizedException('Invalid proof challenge');
-    }
-
-    const challenge = this.passwordProof.consumeChallenge(challengeId);
-    if (!challenge) {
-      throw new UnauthorizedException('Proof challenge expired');
-    }
+    const challengeId = this.assertChallengeId(params.challengeId);
+    const proof = this.assertProofValue(params.proof);
+    const challenge = this.consumeChallengeOrThrow(challengeId);
 
     const assessment = this.authThrottle.assess({
       username: challenge.username,
@@ -362,31 +267,19 @@ export class AuthService {
       });
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: challenge.userId },
-      select: {
-        id: true,
-        username: true,
-        tokenVersion: true,
-        passwordProofKeyEnc: true,
-      },
+    const user = await this.findProofUserOrThrow({
+      userId: challenge.userId,
+      username: challenge.username,
+      ip: params.ip,
+      userAgent: params.userAgent,
     });
-    if (!user?.passwordProofKeyEnc) {
-      throw this.invalidCredentialsFailure({
-        username: challenge.username,
-        ip: params.ip,
-        userAgent: params.userAgent,
-      });
-    }
-
-    const keyB64 = this.crypto.decryptString(user.passwordProofKeyEnc);
-    const expected = this.passwordProof.buildExpectedProof({
-      keyB64,
+    const matched = this.matchesChallengeProof({
+      encryptedKey: user.passwordProofKeyEnc,
       challengeId,
       nonce: challenge.nonce,
+      proof,
     });
-
-    if (!this.passwordProof.matches(expected, proof)) {
+    if (!matched) {
       throw this.invalidCredentialsFailure({
         username: challenge.username,
         ip: params.ip,
@@ -464,45 +357,10 @@ export class AuthService {
   }) {
     const currentPassword = params.currentPassword;
     const newPassword = params.newPassword;
-    if (!currentPassword || !newPassword) {
-      throw new BadRequestException(
-        'currentPassword and newPassword are required',
-      );
-    }
-    if (newPassword.length < 10) {
-      throw new BadRequestException('newPassword must be at least 10 chars');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: params.userId },
-      select: {
-        id: true,
-        username: true,
-        passwordHash: true,
-      },
-    });
-    if (!user) throw new UnauthorizedException('Invalid session');
-
-    const verified = await verifyPassword(user.passwordHash, currentPassword);
-    if (!verified.ok)
-      throw new UnauthorizedException('Current password is invalid');
-
-    const newHash = await hashPassword(newPassword);
-    const proof = createPasswordProofMaterial(newPassword);
-
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          passwordHash: newHash,
-          passwordProofSalt: proof.saltB64,
-          passwordProofIterations: proof.iterations,
-          passwordProofKeyEnc: this.crypto.encryptString(proof.keyB64),
-          tokenVersion: { increment: 1 },
-        },
-      }),
-      this.prisma.session.deleteMany({ where: { userId: user.id } }),
-    ]);
+    this.assertValidPasswordChangeInputs(currentPassword, newPassword);
+    const user = await this.findPasswordChangeUserOrThrow(params.userId);
+    await this.assertCurrentPasswordValid(user.passwordHash, currentPassword);
+    await this.updatePasswordAndRevokeSessions(user.id, newPassword);
 
     this.logger.log(
       `auth: password changed userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
@@ -559,6 +417,353 @@ export class AuthService {
     await this.prisma.setting.deleteMany();
   }
 
+  private normalizeUsername(username: string): string {
+    return username.trim();
+  }
+
+  private assertValidRegistrationInputs(
+    normalizedUsername: string,
+    password: string,
+  ): void {
+    if (!normalizedUsername) {
+      throw new BadRequestException('username is required');
+    }
+    if (normalizedUsername.length < 3) {
+      throw new BadRequestException('username must be at least 3 chars');
+    }
+    if (!password || password.length < 10) {
+      throw new BadRequestException('password must be at least 10 chars');
+    }
+  }
+
+  private async assertRegisterThrottleAndCaptcha(params: {
+    username: string;
+    ip: string | null;
+    userAgent: string | null;
+    captchaToken?: string | null;
+  }): Promise<void> {
+    const assessment = this.authThrottle.assess({
+      username: params.username,
+      ip: params.ip,
+    });
+    await this.assertCaptchaIfRequired({
+      assessment,
+      captchaToken: params.captchaToken,
+      ip: params.ip,
+      username: params.username,
+      userAgent: params.userAgent,
+    });
+  }
+
+  private async assertUsernameAvailable(username: string): Promise<void> {
+    const existing = await this.prisma.user.findUnique({
+      where: { username },
+      select: { id: true },
+    });
+    if (existing) throw new BadRequestException('username already exists');
+  }
+
+  private async assertNoExistingAdmin(): Promise<void> {
+    if (await this.hasAnyUser()) {
+      throw new BadRequestException('admin already exists');
+    }
+  }
+
+  private async createAdminUser(params: {
+    username: string;
+    password: string;
+  }): Promise<{ id: string; username: string; tokenVersion: number }> {
+    const passwordHash = await hashPassword(params.password);
+    const proof = createPasswordProofMaterial(params.password);
+    return await this.prisma.user.create({
+      data: {
+        username: params.username,
+        passwordHash,
+        tokenVersion: 0,
+        passwordProofSalt: proof.saltB64,
+        passwordProofIterations: proof.iterations,
+        passwordProofKeyEnc: this.crypto.encryptString(proof.keyB64),
+      },
+      select: { id: true, username: true, tokenVersion: true },
+    });
+  }
+
+  private async initializeAdminData(userId: string): Promise<void> {
+    const defaultUserSettings = {
+      onboarding: { completed: false },
+      jobs: {
+        webhookEnabled: {
+          watchedMovieRecommendations: false,
+          immaculateTastePoints: false,
+          mediaAddedCleanup: false,
+        },
+      },
+    };
+    await this.prisma.userSettings.create({
+      data: {
+        userId,
+        value: JSON.stringify(defaultUserSettings),
+      },
+    });
+    await this.prisma.userSecrets.create({
+      data: { userId, value: '' },
+    });
+  }
+
+  private assertValidLoginInput(username: string, password: string): string {
+    const normalized = this.normalizeUsername(username);
+    if (!normalized || !password) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    return normalized;
+  }
+
+  private async assertLoginAllowed(params: {
+    username: string;
+    ip: string | null;
+    userAgent: string | null;
+    captchaToken?: string | null;
+  }): Promise<void> {
+    const assessment = this.authThrottle.assess({
+      username: params.username,
+      ip: params.ip,
+    });
+    this.assertNotLocked(assessment);
+    await this.assertCaptchaIfRequired({
+      assessment,
+      captchaToken: params.captchaToken,
+      ip: params.ip,
+      username: params.username,
+      userAgent: params.userAgent,
+    });
+  }
+
+  private async findAuthUserOrThrow(params: {
+    username: string;
+    ip: string | null;
+    userAgent: string | null;
+  }): Promise<AuthLookupUser> {
+    const user = await this.findUserForAuth(params.username);
+    if (user) return user;
+    throw this.invalidCredentialsFailure({
+      username: params.username,
+      ip: params.ip,
+      userAgent: params.userAgent,
+    });
+  }
+
+  private async verifyPasswordOrThrow(params: {
+    user: AuthLookupUser;
+    password: string;
+    username: string;
+    ip: string | null;
+    userAgent: string | null;
+  }): Promise<PasswordVerificationResult> {
+    const verification = await verifyPassword(
+      params.user.passwordHash,
+      params.password,
+    );
+    if (verification.ok) return verification;
+    throw this.invalidCredentialsFailure({
+      username: params.username,
+      ip: params.ip,
+      userAgent: params.userAgent,
+    });
+  }
+
+  private async rehashPasswordIfNeeded(
+    userId: string,
+    password: string,
+    verification: PasswordVerificationResult,
+  ): Promise<void> {
+    if (!verification.needsRehash) return;
+    const nextHash = await hashPassword(password);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: nextHash },
+    });
+  }
+
+  private hasPasswordProofMaterial(user: AuthLookupUser | null): boolean {
+    return Boolean(
+      user?.passwordProofSalt &&
+        user.passwordProofIterations &&
+        user.passwordProofKeyEnc,
+    );
+  }
+
+  private async ensurePasswordProofMaterial(
+    user: AuthLookupUser,
+    password: string,
+  ): Promise<void> {
+    if (this.hasPasswordProofMaterial(user)) return;
+    const proof = createPasswordProofMaterial(password);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordProofSalt: proof.saltB64,
+        passwordProofIterations: proof.iterations,
+        passwordProofKeyEnc: this.crypto.encryptString(proof.keyB64),
+      },
+    });
+  }
+
+  private assertChallengeUsername(username: string): string {
+    const normalized = username.trim();
+    if (!normalized) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    return normalized;
+  }
+
+  private resolveChallengeSalt(user: AuthLookupUser | null): string {
+    return user?.passwordProofSalt?.trim() || randomBytes(16).toString('base64');
+  }
+
+  private resolveChallengeIterations(user: AuthLookupUser | null): number {
+    if (user?.passwordProofIterations && user.passwordProofIterations > 0) {
+      return user.passwordProofIterations;
+    }
+    return parsePositiveInt(
+      process.env.AUTH_PASSWORD_PROOF_ITERATIONS,
+      DEFAULT_PASSWORD_PROOF_ITERATIONS,
+    );
+  }
+
+  private assertChallengeId(challengeId: string): string {
+    const normalized = challengeId.trim();
+    if (!normalized) {
+      throw new UnauthorizedException('Invalid proof challenge');
+    }
+    return normalized;
+  }
+
+  private assertProofValue(proof: string): string {
+    const normalized = proof.trim();
+    if (!normalized) {
+      throw new UnauthorizedException('Invalid proof challenge');
+    }
+    return normalized;
+  }
+
+  private consumeChallengeOrThrow(challengeId: string) {
+    const challenge = this.passwordProof.consumeChallenge(challengeId);
+    if (challenge) return challenge;
+    throw new UnauthorizedException('Proof challenge expired');
+  }
+
+  private async findProofUserOrThrow(params: {
+    userId: string;
+    username: string;
+    ip: string | null;
+    userAgent: string | null;
+  }): Promise<{
+    id: string;
+    username: string;
+    tokenVersion: number;
+    passwordProofKeyEnc: string;
+  }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: params.userId },
+      select: {
+        id: true,
+        username: true,
+        tokenVersion: true,
+        passwordProofKeyEnc: true,
+      },
+    });
+    if (user?.passwordProofKeyEnc) {
+      return {
+        id: user.id,
+        username: user.username,
+        tokenVersion: user.tokenVersion,
+        passwordProofKeyEnc: user.passwordProofKeyEnc,
+      };
+    }
+    throw this.invalidCredentialsFailure({
+      username: params.username,
+      ip: params.ip,
+      userAgent: params.userAgent,
+    });
+  }
+
+  private matchesChallengeProof(params: {
+    encryptedKey: string;
+    challengeId: string;
+    nonce: string;
+    proof: string;
+  }): boolean {
+    const keyB64 = this.crypto.decryptString(params.encryptedKey);
+    const expected = this.passwordProof.buildExpectedProof({
+      keyB64,
+      challengeId: params.challengeId,
+      nonce: params.nonce,
+    });
+    return this.passwordProof.matches(expected, params.proof);
+  }
+
+  private assertValidPasswordChangeInputs(
+    currentPassword: string,
+    newPassword: string,
+  ): void {
+    if (!currentPassword || !newPassword) {
+      throw new BadRequestException(
+        'currentPassword and newPassword are required',
+      );
+    }
+    if (newPassword.length < 10) {
+      throw new BadRequestException('newPassword must be at least 10 chars');
+    }
+  }
+
+  private async findPasswordChangeUserOrThrow(userId: string): Promise<{
+    id: string;
+    username: string;
+    passwordHash: string;
+  }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        passwordHash: true,
+      },
+    });
+    if (user) return user;
+    throw new UnauthorizedException('Invalid session');
+  }
+
+  private async assertCurrentPasswordValid(
+    passwordHash: string,
+    currentPassword: string,
+  ): Promise<void> {
+    const verified = await verifyPassword(passwordHash, currentPassword);
+    if (!verified.ok) {
+      throw new UnauthorizedException('Current password is invalid');
+    }
+  }
+
+  private async updatePasswordAndRevokeSessions(
+    userId: string,
+    newPassword: string,
+  ): Promise<void> {
+    const newHash = await hashPassword(newPassword);
+    const proof = createPasswordProofMaterial(newPassword);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: newHash,
+          passwordProofSalt: proof.saltB64,
+          passwordProofIterations: proof.iterations,
+          passwordProofKeyEnc: this.crypto.encryptString(proof.keyB64),
+          tokenVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.session.deleteMany({ where: { userId } }),
+    ]);
+  }
+
   private async createSessionForUser(params: {
     userId: string;
     username: string;
@@ -583,15 +788,7 @@ export class AuthService {
     };
   }
 
-  private async findUserForAuth(username: string): Promise<{
-    id: string;
-    username: string;
-    passwordHash: string;
-    tokenVersion: number;
-    passwordProofSalt: string | null;
-    passwordProofIterations: number | null;
-    passwordProofKeyEnc: string | null;
-  } | null> {
+  private async findUserForAuth(username: string): Promise<AuthLookupUser | null> {
     const exact = await this.prisma.user.findUnique({
       where: { username },
       select: {
@@ -606,17 +803,7 @@ export class AuthService {
     });
     if (exact) return exact;
 
-    const fallback = await this.prisma.$queryRaw<
-      Array<{
-        id: string;
-        username: string;
-        passwordHash: string;
-        tokenVersion: number;
-        passwordProofSalt: string | null;
-        passwordProofIterations: number | null;
-        passwordProofKeyEnc: string | null;
-      }>
-    >`SELECT "id", "username", "passwordHash", "tokenVersion", "passwordProofSalt", "passwordProofIterations", "passwordProofKeyEnc" FROM "User" WHERE "username" = ${username} COLLATE NOCASE LIMIT 1`;
+    const fallback = await this.prisma.$queryRaw<Array<AuthLookupUser>>`SELECT "id", "username", "passwordHash", "tokenVersion", "passwordProofSalt", "passwordProofIterations", "passwordProofKeyEnc" FROM "User" WHERE "username" = ${username} COLLATE NOCASE LIMIT 1`;
 
     return fallback[0] ?? null;
   }
@@ -700,13 +887,20 @@ export class AuthService {
     if (!this.crypto.isEncrypted(value)) {
       return value;
     }
+    return this.decodeEncryptedSessionCookie(value);
+  }
 
+  private decodeEncryptedSessionCookie(
+    encryptedCookieValue: string,
+  ): string | null {
     try {
-      const decoded = this.crypto.decryptString(value);
+      const decoded = this.crypto.decryptString(encryptedCookieValue);
       if (!decoded.startsWith(SESSION_COOKIE_PAYLOAD_PREFIX)) {
         return null;
       }
-      const sessionId = decoded.slice(SESSION_COOKIE_PAYLOAD_PREFIX.length).trim();
+      const sessionId = decoded
+        .slice(SESSION_COOKIE_PAYLOAD_PREFIX.length)
+        .trim();
       return sessionId || null;
     } catch {
       return null;
