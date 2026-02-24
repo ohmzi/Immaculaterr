@@ -3,6 +3,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHmac,
+  pbkdf2Sync,
   randomBytes,
   timingSafeEqual,
 } from 'node:crypto';
@@ -10,6 +11,9 @@ import { chmod, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const ENCRYPTED_PREFIX = 'enc:v1:';
+const SECRET_FINGERPRINT_PREFIX = 'secret-fp.v1:';
+const SECRET_FINGERPRINT_ITERATIONS = 120_000;
+const SECRET_FINGERPRINT_BYTES = 32;
 
 function decodeMasterKey(input: string): Buffer {
   const raw = input.trim();
@@ -33,9 +37,14 @@ function decodeMasterKey(input: string): Buffer {
 @Injectable()
 export class CryptoService implements OnModuleInit {
   private masterKey!: Buffer;
+  private secretFingerprintSalt!: Buffer;
 
   async onModuleInit() {
     this.masterKey = await this.loadOrCreateMasterKey();
+    this.secretFingerprintSalt = Buffer.concat([
+      Buffer.from(SECRET_FINGERPRINT_PREFIX, 'utf8'),
+      this.masterKey,
+    ]);
   }
 
   encryptString(plaintext: string): string {
@@ -95,6 +104,16 @@ export class CryptoService implements OnModuleInit {
     const actualBuf = Buffer.from(normalized, 'utf8');
     if (expectedBuf.length !== actualBuf.length) return false;
     return timingSafeEqual(expectedBuf, actualBuf);
+  }
+
+  deriveSecretFingerprint(secret: string): string {
+    return pbkdf2Sync(
+      secret,
+      this.secretFingerprintSalt,
+      SECRET_FINGERPRINT_ITERATIONS,
+      SECRET_FINGERPRINT_BYTES,
+      'sha256',
+    ).toString('base64url');
   }
 
   private async loadOrCreateMasterKey(): Promise<Buffer> {

@@ -516,8 +516,6 @@ export class SettingsService {
   }
 
   private secretFingerprint(secret: string): string {
-    // Use keyed HMAC (via CryptoService) instead of raw hash to avoid
-    // exposing deterministic unhashed-secret digests.
-    return this.crypto.signDetached(`secret-fp.v1:${secret}`);
+    return this.crypto.deriveSecretFingerprint(secret);
   }
 }

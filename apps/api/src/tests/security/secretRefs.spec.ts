@@ -26,6 +26,9 @@ describe('security/secretRef contracts', () => {
       encryptString: jest.fn(),
       decryptString: jest.fn((raw: string) => raw),
       isEncrypted: jest.fn().mockReturnValue(false),
+      deriveSecretFingerprint: jest.fn((secret: string) =>
+        Buffer.from(secret, 'utf8').toString('base64url'),
+      ),
       signDetached: jest.fn((payload: string) =>
         Buffer.from(payload, 'utf8').toString('base64url'),
       ),
