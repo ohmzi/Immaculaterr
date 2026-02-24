@@ -123,13 +123,6 @@ Full project README: [`doc/README.md`](doc/README.md)
 - Report Bug: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
 - Send Suggestion: [Immaculaterr Feedback Form](https://forms.gle/wMpsDu9jPEY14dua6)
 
-## ❤️ Support
-
-This project is free and always will be.
-
-If it saves you time or runs 24/7 in your homelab, consider supporting development via GitHub Sponsors:
-[https://github.com/sponsors/ohmzi](https://github.com/sponsors/ohmzi)
-
 ## License
 
 Immaculaterr is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
