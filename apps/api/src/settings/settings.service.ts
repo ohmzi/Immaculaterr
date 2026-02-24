@@ -75,6 +75,13 @@ function countProvidedSecretModes(flags: readonly boolean[]): number {
   return count;
 }
 
+function assertSingleSecretSource(flags: readonly boolean[]): void {
+  if (countProvidedSecretModes(flags) <= 1) return;
+  throw new BadRequestException(
+    'Provide only one secret source: envelope, secretRef, or plaintext.',
+  );
+}
+
 function assertEnvelopeObject(value: unknown): CredentialEnvelope {
   if (!isPlainObject(value)) {
     throw new BadRequestException('credentialEnvelope must be an object');
@@ -106,16 +113,11 @@ function selectSecretSource(params: {
   const envelopeProvided = params.envelope !== undefined && params.envelope !== null;
   const secretRef = asString(params.secretRef);
   const plaintext = asString(params.plaintext);
-  const providedModeCount = countProvidedSecretModes([
+  assertSingleSecretSource([
     envelopeProvided,
     secretRef.length > 0,
     plaintext.length > 0,
   ]);
-  if (providedModeCount > 1) {
-    throw new BadRequestException(
-      'Provide only one secret source: envelope, secretRef, or plaintext.',
-    );
-  }
   if (envelopeProvided) return { source: 'envelope' };
   if (secretRef) return { source: 'secretRef', secretRef };
   if (plaintext) return { source: 'plaintext', plaintext };
@@ -175,20 +177,34 @@ function parseSecretRefParts(secretRef: string): {
   fingerprint: string;
   signature?: string;
 } {
-  const parts = secretRef.trim().split('.');
-  const hasValidPartCount = parts.length === 3 || parts.length === 4;
-  if (!hasValidPartCount || parts[0] !== SECRET_REF_PREFIX) {
-    throw new BadRequestException('secretRef is invalid');
-  }
-
-  const serviceRaw = parts[1];
-  const fingerprint = parts[2];
-  const signature = parts.length === 4 ? parts[3] : undefined;
-  if (!serviceRaw || !fingerprint || (parts.length === 4 && !signature)) {
+  const parts = parseSecretRefSegments(secretRef);
+  const signatureIncluded = parts.length === 4;
+  const serviceRaw = parts[1] ?? '';
+  const fingerprint = parts[2] ?? '';
+  const signature = signatureIncluded ? parts[3] : undefined;
+  if (!isValidSecretRefData(serviceRaw, fingerprint, signatureIncluded, signature)) {
     throw new BadRequestException('secretRef is invalid');
   }
 
   return { serviceRaw, fingerprint, signature };
+}
+
+function parseSecretRefSegments(secretRef: string): string[] {
+  const parts = secretRef.trim().split('.');
+  const hasValidPartCount = parts.length === 3 || parts.length === 4;
+  if (hasValidPartCount && parts[0] === SECRET_REF_PREFIX) return parts;
+  throw new BadRequestException('secretRef is invalid');
+}
+
+function isValidSecretRefData(
+  serviceRaw: string,
+  fingerprint: string,
+  signatureIncluded: boolean,
+  signature: string | undefined,
+): boolean {
+  if (!serviceRaw || !fingerprint) return false;
+  if (!signatureIncluded) return true;
+  return Boolean(signature);
 }
 
 function decodeSecretRefService(serviceRaw: string): ServiceSecretId {

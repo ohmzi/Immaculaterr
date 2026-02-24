@@ -72,19 +72,27 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function readNonEmptyStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is string =>
+      typeof entry === 'string' && entry.trim().length > 0,
+  );
+}
+
 function readErrorMessage(data: unknown, fallback: string): string {
-  if (isPlainObject(data)) {
-    const message = data.message;
-    if (typeof message === 'string' && message.trim()) return message.trim();
-    if (Array.isArray(message)) {
-      const parts = message.filter(
-        (value): value is string =>
-          typeof value === 'string' && value.trim().length > 0,
-      );
-      if (parts.length) return parts.join(', ');
-    }
+  if (!isPlainObject(data)) return fallback;
+  const message = data.message;
+  if (typeof message === 'string') {
+    const trimmed = message.trim();
+    return trimmed || fallback;
   }
-  return fallback;
+  const parts = readNonEmptyStrings(message);
+  return parts.length ? parts.join(', ') : fallback;
+}
+
+function runAsyncTask(promise: Promise<unknown>): void {
+  promise.catch(() => undefined);
 }
 
 function normalizeAsteriskInput(
@@ -1498,7 +1506,7 @@ export function SettingsPage({
 
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-    void (async () => {
+    const runLandingHealthChecks = async () => {
       // --- TMDB: avoid false \"Active -> Inactive\" flips on transient failures ---
       // Policy: if TMDB fails once, wait a cooldown and retry; only then mark inactive + toast.
       const TMDB_HEALTH_KEY = 'tcp_health_tmdb';
@@ -1561,7 +1569,7 @@ export function SettingsPage({
         }
         const delay = Math.max(5000, Math.min(delayMs, TMDB_COOLDOWN_MS));
         tmdbLandingRetryTimeoutRef.current = window.setTimeout(() => {
-          void runTmdbLandingCheck();
+          runAsyncTask(runTmdbLandingCheck());
         }, delay);
       };
 
@@ -1605,7 +1613,7 @@ export function SettingsPage({
       };
 
       // Kick off TMDB check (best-effort). Other integrations run below.
-      void runTmdbLandingCheck();
+      runAsyncTask(runTmdbLandingCheck());
 
       const tasks: Array<{
         key:
@@ -1683,7 +1691,8 @@ export function SettingsPage({
           toast.error(`Failed to update settings after health check: ${msg}`);
         }
       }
-    })();
+    };
+    runAsyncTask(runLandingHealthChecks());
     return () => {
       if (tmdbLandingRetryTimeoutRef.current) {
         window.clearTimeout(tmdbLandingRetryTimeoutRef.current);
@@ -1855,14 +1864,14 @@ export function SettingsPage({
   const handleTitleIconClick = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
-    void titleIconControls.start({
+    runAsyncTask(titleIconControls.start({
       scale: [1, 1.06, 1],
       transition: { duration: 0.55, ease: 'easeOut' },
-    });
-    void titleIconGlowControls.start({
+    }));
+    runAsyncTask(titleIconGlowControls.start({
       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
       transition: { duration: 1.4, ease: 'easeInOut' },
-    });
+    }));
   }, [titleIconControls, titleIconGlowControls]);
 
   const markPlexEdited = useCallback(() => {
@@ -1941,31 +1950,31 @@ export function SettingsPage({
   );
 
   const handlePlexManualTest = useCallback(() => {
-    void runPlexTest('manual');
+    runAsyncTask(runPlexTest('manual'));
   }, [runPlexTest]);
 
   const handleTmdbManualTest = useCallback(() => {
-    void runTmdbTest('manual');
+    runAsyncTask(runTmdbTest('manual'));
   }, [runTmdbTest]);
 
   const handleRadarrManualTest = useCallback(() => {
-    void runRadarrTest('manual');
+    runAsyncTask(runRadarrTest('manual'));
   }, [runRadarrTest]);
 
   const handleSonarrManualTest = useCallback(() => {
-    void runSonarrTest('manual');
+    runAsyncTask(runSonarrTest('manual'));
   }, [runSonarrTest]);
 
   const handleOverseerrManualTest = useCallback(() => {
-    void runOverseerrTest('manual');
+    runAsyncTask(runOverseerrTest('manual'));
   }, [runOverseerrTest]);
 
   const handleGoogleManualTest = useCallback(() => {
-    void runGoogleTest('manual');
+    runAsyncTask(runGoogleTest('manual'));
   }, [runGoogleTest]);
 
   const handleOpenAiManualTest = useCallback(() => {
-    void runOpenAiTest('manual');
+    runAsyncTask(runOpenAiTest('manual'));
   }, [runOpenAiTest]);
 
   const persistIntegrationEnabledState = useCallback((params: {
@@ -2007,7 +2016,7 @@ export function SettingsPage({
 
     const usesSavedCreds = Boolean(secretsPresent.radarr) && !radarrApiKey.trim();
     if (nextEnabled && usesSavedCreds && !radarrTouched) {
-      void runRadarrTest('auto');
+      runAsyncTask(runRadarrTest('auto'));
     }
   }, [
     persistIntegrationEnabledState,
@@ -2037,7 +2046,7 @@ export function SettingsPage({
 
     const usesSavedCreds = Boolean(secretsPresent.sonarr) && !sonarrApiKey.trim();
     if (nextEnabled && usesSavedCreds && !sonarrTouched) {
-      void runSonarrTest('auto');
+      runAsyncTask(runSonarrTest('auto'));
     }
   }, [
     persistIntegrationEnabledState,
@@ -2068,7 +2077,7 @@ export function SettingsPage({
     const usesSavedCreds =
       Boolean(secretsPresent.overseerr) && !overseerrApiKey.trim();
     if (nextEnabled && usesSavedCreds && !overseerrTouched) {
-      void runOverseerrTest('auto');
+      runAsyncTask(runOverseerrTest('auto'));
     }
   }, [
     overseerrApiKey,
@@ -2103,7 +2112,7 @@ export function SettingsPage({
     });
 
     if (nextEnabled && shouldAutoTestGoogle()) {
-      void runGoogleTest('auto');
+      runAsyncTask(runGoogleTest('auto'));
     }
   }, [
     googleEnabled,
@@ -2131,7 +2140,7 @@ export function SettingsPage({
 
     const usesSavedCreds = Boolean(secretsPresent.openai) && !openAiApiKey.trim();
     if (nextEnabled && usesSavedCreds && !openAiTouched) {
-      void runOpenAiTest('auto');
+      runAsyncTask(runOpenAiTest('auto'));
     }
   }, [
     openAiApiKey,
@@ -2145,7 +2154,7 @@ export function SettingsPage({
   const handleOverseerrApiKeyBlur = useCallback(() => {
     const apiKey = overseerrApiKey.trim();
     if (!overseerrEnabled || !apiKey) return;
-    void runOverseerrTest('auto');
+    runAsyncTask(runOverseerrTest('auto'));
   }, [overseerrApiKey, overseerrEnabled, runOverseerrTest]);
 
   return (

@@ -1,5 +1,19 @@
 import { PlexPollingService } from './plex-polling.service';
 
+type InternalPlexPollingService = {
+  maybeTriggerWatchedAutomation(args: {
+    userId: string;
+    snap: Record<string, unknown>;
+    settings: Record<string, unknown>;
+    reason: string;
+  }): Promise<void>;
+  flushPendingCollectionRuns(args: {
+    plexUserId: string;
+    settings: Record<string, unknown>;
+  }): Promise<void>;
+  pendingCollectionRunsByPlexUser: Map<string, Array<Record<string, unknown>>>;
+};
+
 describe('PlexPollingService user monitoring exclusion', () => {
   function makeService() {
     const authService = {
@@ -52,6 +66,7 @@ describe('PlexPollingService user monitoring exclusion', () => {
 
   it('logs skip only once per session when user is excluded', async () => {
     const { service, jobsService, plexUsers, webhooksService } = makeService();
+    const internalService = service as unknown as InternalPlexPollingService;
     plexUsers.resolvePlexUser.mockResolvedValue({
       id: 'plex-user-2',
       plexAccountTitle: 'Alice',
@@ -98,13 +113,13 @@ describe('PlexPollingService user monitoring exclusion', () => {
       },
     };
 
-    await (service as any).maybeTriggerWatchedAutomation({
+    await internalService.maybeTriggerWatchedAutomation({
       userId: 'admin',
       snap,
       settings,
       reason: 'progress',
     });
-    await (service as any).maybeTriggerWatchedAutomation({
+    await internalService.maybeTriggerWatchedAutomation({
       userId: 'admin',
       snap,
       settings,
@@ -120,10 +135,11 @@ describe('PlexPollingService user monitoring exclusion', () => {
 
   it('drops queued cooldown run when user is toggled off by admin', async () => {
     const { service, jobsService, webhooksService } = makeService();
+    const internalService = service as unknown as InternalPlexPollingService;
     jobsService.failQueuedJob.mockResolvedValue(undefined);
 
     const now = Date.now();
-    (service as any).pendingCollectionRunsByPlexUser.set('plex-user-2', [
+    internalService.pendingCollectionRunsByPlexUser.set('plex-user-2', [
       {
         runId: 'run-1',
         jobId: 'immaculateTastePoints',
@@ -139,7 +155,7 @@ describe('PlexPollingService user monitoring exclusion', () => {
       },
     ]);
 
-    await (service as any).flushPendingCollectionRuns({
+    await internalService.flushPendingCollectionRuns({
       plexUserId: 'plex-user-2',
       settings: {
         jobs: {

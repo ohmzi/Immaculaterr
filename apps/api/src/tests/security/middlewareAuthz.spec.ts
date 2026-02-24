@@ -3,10 +3,18 @@ import { Reflector } from '@nestjs/core';
 import type { ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '../../auth/auth.guard';
 
+class TestController {
+  static readonly marker = 'authz-test';
+}
+
+function testHandler() {
+  return undefined;
+}
+
 function makeContext(req: Record<string, unknown>): ExecutionContext {
   return {
-    getClass: () => class TestClass {},
-    getHandler: () => function testHandler() {},
+    getClass: () => TestController,
+    getHandler: () => testHandler,
     switchToHttp: () => ({
       getRequest: () => req,
       getResponse: () => ({}),

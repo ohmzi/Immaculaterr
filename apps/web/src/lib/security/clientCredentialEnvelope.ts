@@ -19,7 +19,7 @@ export type CredentialEnvelope = {
 function toBase64Url(bytes: Uint8Array): string {
   let str = '';
   for (const b of bytes) str += String.fromCharCode(b);
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/(=+)$/g, '');
 }
 
 function pemToSpkiBytes(pem: string): Uint8Array {

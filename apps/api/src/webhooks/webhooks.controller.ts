@@ -58,17 +58,16 @@ function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
 }
 
 function readSingleHeader(value: string | string[] | undefined): string | null {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : null;
-  }
-  if (Array.isArray(value)) {
-    const v = value[0];
-    if (typeof v !== 'string') return null;
-    const trimmed = v.trim();
-    return trimmed ? trimmed : null;
+  if (typeof value === 'string') return readTrimmedSecret(value);
+  if (Array.isArray(value) && value.length > 0) {
+    return typeof value[0] === 'string' ? readTrimmedSecret(value[0]) : null;
   }
   return null;
+}
+
+function readTrimmedSecret(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 function safeEquals(a: string, b: string): boolean {
@@ -76,6 +75,28 @@ function safeEquals(a: string, b: string): boolean {
   const bBuf = Buffer.from(b);
   if (aBuf.length !== bBuf.length) return false;
   return timingSafeEqual(aBuf, bBuf);
+}
+
+function readConfiguredWebhookSecret(): string {
+  return process.env.PLEX_WEBHOOK_SECRET?.trim() || '';
+}
+
+function readQueryWebhookSecret(req: Request): string | null {
+  const queryToken = req.query?.['token'];
+  return typeof queryToken === 'string' ? readTrimmedSecret(queryToken) : null;
+}
+
+function readWebhookSecretCandidate(req: Request): string | null {
+  const headerSecret = readSingleHeader(req.headers['x-immaculaterr-webhook-secret']);
+  return headerSecret ?? readQueryWebhookSecret(req);
+}
+
+function verifyWebhookSecret(req: Request): void {
+  const configuredSecret = readConfiguredWebhookSecret();
+  if (!configuredSecret) return;
+  const candidateSecret = readWebhookSecretCandidate(req);
+  if (candidateSecret && safeEquals(configuredSecret, candidateSecret)) return;
+  throw new UnauthorizedException('Invalid webhook secret');
 }
 
 @Controller('webhooks')
@@ -103,7 +124,7 @@ export class WebhooksController {
     @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Array<Express.Multer.File>,
   ) {
-    this.verifyWebhookSecret(req);
+    verifyWebhookSecret(req);
 
     const payloadRaw = body.payload;
     if (typeof payloadRaw !== 'string') {
@@ -494,23 +515,5 @@ export class WebhooksController {
     }
 
     return { ok: true, ...persisted, triggered: false };
-  }
-
-  private verifyWebhookSecret(req: Request): void {
-    const configured = process.env.PLEX_WEBHOOK_SECRET?.trim() || '';
-    if (!configured) return;
-
-    const headerSecret = readSingleHeader(
-      req.headers['x-immaculaterr-webhook-secret'],
-    );
-    const querySecret =
-      typeof req.query?.['token'] === 'string'
-        ? req.query['token'].trim()
-        : null;
-
-    const candidate = headerSecret || querySecret;
-    if (!candidate || !safeEquals(configured, candidate)) {
-      throw new UnauthorizedException('Invalid webhook secret');
-    }
   }
 }
