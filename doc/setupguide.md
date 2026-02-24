@@ -87,10 +87,14 @@ docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d
 ```
 
-Run with HTTPS (Docker Compose)
+Run with HTTP + HTTPS (Docker Compose)
 ---
 
 This stack uses Caddy as a TLS reverse proxy in front of Immaculaterr while keeping host networking for local integrations.
+It keeps both access paths available:
+
+- HTTP on `5454` (backward compatibility and quick local access)
+- HTTPS on `5464` (encrypted local/LAN browser traffic)
 
 It auto-configures these HTTPS endpoints by default:
 
@@ -118,19 +122,20 @@ Notes:
 - The app itself runs on internal host port `5455` (`APP_INTERNAL_PORT`).
 - Caddy serves local/LAN HTTP on `5454` (`IMM_HTTP_PORT`) and HTTPS on `5464` (`IMM_HTTPS_PORT`).
 - Public domain HTTPS remains on `443`.
-- Local endpoints (`localhost` + LAN IP) use Caddy's internal CA (`tls internal`). Some browsers/OSes may require trusting that local CA to remove warnings.
-- To remove local trust warnings (including Firefox), run once on each host:
+- Local endpoints (`localhost` + LAN IP) use Caddy's internal CA (`tls internal`).
+- Recommended: install and trust the local CA once on each host to remove browser warnings:
 ```bash
 cd docker/immaculaterr
 ./install-local-ca.sh
 ```
+- If you do not install the local CA, you can still open HTTPS by accepting the browser risk warning page. Some browsers may require accepting this again in future sessions.
 - If Firefox import is skipped, install `certutil` and rerun:
 ```bash
 sudo apt-get install -y libnss3-tools
 cd docker/immaculaterr
 ./install-local-ca.sh
 ```
-- In this mode, `TRUST_PROXY=1` and `COOKIE_SECURE=true` are enabled by default.
+- In this mode, `TRUST_PROXY=1` is enabled and cookie security is applied by request scheme (`https` requests are marked secure while `http` remains usable for compatibility).
 
 Updating (Portainer)
 ---

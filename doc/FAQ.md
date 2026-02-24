@@ -9,6 +9,7 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand)
   - [How do I do first-time setup?](#how-do-i-do-first-time-setup)
   - [What port does Immaculaterr use and how do I access it?](#what-port-does-immaculaterr-use-and-how-do-i-access-it)
+  - [Why keep both HTTP and HTTPS enabled?](#why-keep-both-http-and-https-enabled)
 - [Automation & triggers](#automation--triggers)
   - [What does Plex-Triggered Auto-Run mean?](#what-does-plex-triggered-auto-run-mean)
   - [When does Collection task trigger?](#when-does-collection-task-trigger)
@@ -96,9 +97,21 @@ It does not download media by itself—it can optionally send missing titles to 
 
 ### What port does Immaculaterr use and how do I access it?
 
-By default, it serves the Web UI and API on port `5454`.
+If you run the HTTPS Docker Compose profile, both are available:
 
-Open: `http://<server-ip>:5454/`
+- HTTP: `http://<server-ip>:5454/`
+- HTTPS (local/LAN): `https://<server-ip>:5464/`
+- HTTPS (public domain): `https://<your-domain>/` on `443` when configured.
+
+For local HTTPS, install the local certificate authority to remove warnings, or accept the browser risk page when prompted (some browsers may ask again in later sessions).
+
+### Why keep both HTTP and HTTPS enabled?
+
+Both are kept on purpose:
+
+- HTTP keeps existing setups working without breaking users who started on `5454`.
+- HTTPS gives encrypted browser-to-app traffic for users who want stronger transport security.
+- Some users prefer not to install a local certificate; HTTP remains available for those local-only environments while HTTPS is still there when needed.
 
 ## Automation & triggers
 

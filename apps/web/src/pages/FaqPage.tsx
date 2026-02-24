@@ -103,12 +103,48 @@ export function FaqPage() {
           answer: (
             <>
               <p>
-                By default, it serves the Web UI and API on port <code className="font-mono">5454</code>.
+                If you run the HTTPS Docker Compose profile, both are available:
               </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  HTTP: <code className="font-mono">http://&lt;server-ip&gt;:5454/</code>
+                </li>
+                <li>
+                  HTTPS (local/LAN):{' '}
+                  <code className="font-mono">https://&lt;server-ip&gt;:5464/</code>
+                </li>
+                <li>
+                  HTTPS (public domain):{' '}
+                  <code className="font-mono">https://&lt;your-domain&gt;/</code> on{' '}
+                  <code className="font-mono">443</code> when configured.
+                </li>
+              </ul>
               <p>
-                Open: <code className="font-mono">http://&lt;server-ip&gt;:5454/</code>
+                For local HTTPS, install the local certificate authority to remove warnings, or
+                accept the browser risk page when prompted (some browsers may ask again in later
+                sessions).
               </p>
             </>
+          ),
+        },
+        {
+          id: 'getting-started-http-and-https',
+          question: 'Why keep both HTTP and HTTPS enabled?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                HTTP keeps existing setups working without breaking users who started on{' '}
+                <code className="font-mono">5454</code>.
+              </li>
+              <li>
+                HTTPS provides encrypted browser-to-app traffic for users who want stronger
+                transport security.
+              </li>
+              <li>
+                Some users prefer not to install a local certificate; HTTP stays available for
+                those local-only environments while HTTPS remains available when needed.
+              </li>
+            </ul>
           ),
         },
       ],
