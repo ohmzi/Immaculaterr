@@ -88,10 +88,11 @@ function buildLegacyHashBody(parts: string[]): {
   saltB64: string;
   digestB64: string;
 } | null {
-  const iterationsRaw = parts[2] ?? '';
-  const saltB64 = parts[3] ?? '';
-  const digestB64 = parts[4] ?? '';
-  if (!iterationsRaw || !saltB64 || !digestB64) return null;
+  const [, , iterationsRaw = '', saltB64 = '', digestB64 = ''] = parts;
+  const hasMissingPart = [iterationsRaw, saltB64, digestB64].some(
+    (part) => part.length === 0,
+  );
+  if (hasMissingPart) return null;
   return { iterationsRaw, saltB64, digestB64 };
 }
 

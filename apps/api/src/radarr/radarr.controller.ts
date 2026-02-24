@@ -16,21 +16,31 @@ type TestConnectionBody = {
   secretRef?: unknown;
 };
 
-function normalizeHttpBaseUrl(raw: unknown): string {
-  const baseUrlRaw = typeof raw === 'string' ? raw.trim() : '';
-  if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
-  const baseUrl = /^https?:\/\//i.test(baseUrlRaw)
-    ? baseUrlRaw
-    : `http://${baseUrlRaw}`;
+const HTTP_BASE_URL_PREFIX = new RegExp('^https?://', 'i');
+const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
+
+function ensureHttpBaseUrlPrefix(baseUrlRaw: string): string {
+  if (HTTP_BASE_URL_PREFIX.test(baseUrlRaw)) return baseUrlRaw;
+  return `http://${baseUrlRaw}`;
+}
+
+function assertValidHttpBaseUrl(baseUrl: string): void {
   try {
     const parsed = new URL(baseUrl);
-    if (!/^https?:$/i.test(parsed.protocol)) {
+    if (!HTTP_PROTOCOLS.has(parsed.protocol.toLowerCase())) {
       throw new Error('Unsupported protocol');
     }
-    return baseUrl;
   } catch {
     throw new BadRequestException('baseUrl must be a valid http(s) URL');
   }
+}
+
+function normalizeHttpBaseUrl(raw: unknown): string {
+  const baseUrlRaw = typeof raw === 'string' ? raw.trim() : '';
+  if (!baseUrlRaw) throw new BadRequestException('baseUrl is required');
+  const baseUrl = ensureHttpBaseUrlPrefix(baseUrlRaw);
+  assertValidHttpBaseUrl(baseUrl);
+  return baseUrl;
 }
 
 @Controller('radarr')

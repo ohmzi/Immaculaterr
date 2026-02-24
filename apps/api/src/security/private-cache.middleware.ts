@@ -16,14 +16,23 @@ function setNoStoreHeaders(res: Response): void {
   res.setHeader('Expires', '0');
 }
 
+function getRequestPath(req: Request): string {
+  if (req.originalUrl) return req.originalUrl.split('?')[0] || '';
+  if (req.url) return req.url.split('?')[0] || '';
+  return '';
+}
+
+function shouldDisablePrivateCache(req: Request): boolean {
+  const path = getRequestPath(req);
+  return path.startsWith('/api') || isHtmlDocumentRequest(req);
+}
+
 export function privateCacheMiddleware(
   req: Request,
   res: Response,
   next: NextFunction,
 ) {
-  const path = (req.originalUrl || req.url || '').split('?')[0] || '';
-  const shouldDisableCache = path.startsWith('/api') || isHtmlDocumentRequest(req);
-  if (shouldDisableCache) {
+  if (shouldDisablePrivateCache(req)) {
     setNoStoreHeaders(res);
   }
   return next();

@@ -22,6 +22,10 @@ type TestPlexServerBody = {
   secretRef?: unknown;
 };
 
+const HTTP_BASE_URL_PREFIX = new RegExp('^https?://', 'i');
+const HTTP_PROTOCOL = new RegExp('^https?:$', 'i');
+const PLEX_UNAUTHORIZED_ERROR = new RegExp('HTTP\\s+401\\b');
+
 function normalizeHttpBaseUrl(raw: unknown): string {
   const baseUrlRaw = requireBaseUrl(raw);
   const baseUrl = withDefaultHttpScheme(baseUrlRaw);
@@ -36,13 +40,13 @@ function requireBaseUrl(raw: unknown): string {
 }
 
 function withDefaultHttpScheme(baseUrlRaw: string): string {
-  return /^https?:\/\//i.test(baseUrlRaw) ? baseUrlRaw : `http://${baseUrlRaw}`;
+  return HTTP_BASE_URL_PREFIX.test(baseUrlRaw) ? baseUrlRaw : `http://${baseUrlRaw}`;
 }
 
 function assertHttpUrl(baseUrl: string): void {
   try {
     const parsed = new URL(baseUrl);
-    if (/^https?:$/i.test(parsed.protocol)) return;
+    if (HTTP_PROTOCOL.test(parsed.protocol)) return;
   } catch {
     // validated below
   }
@@ -64,7 +68,23 @@ function buildDockerLocalhostHint(baseUrlHost: string): string {
 }
 
 function isUnauthorizedPlexError(message: string): boolean {
-  return /HTTP\\s+401\\b/.test(message) || message.includes('401 Unauthorized');
+  return PLEX_UNAUTHORIZED_ERROR.test(message) || message.includes('401 Unauthorized');
+}
+
+function mapPlexConnectionError(
+  err: unknown,
+  params: { baseUrl: string; dockerLocalhostHint: string },
+): BadRequestException | BadGatewayException {
+  const message = (err as Error)?.message ?? String(err);
+  // Plex returns 401 when token is invalid or doesn't grant access.
+  if (isUnauthorizedPlexError(message)) {
+    return new BadRequestException(
+      `Plex token was rejected by the server (401 Unauthorized).${params.dockerLocalhostHint}`.trim(),
+    );
+  }
+  return new BadGatewayException(
+    `Could not connect to Plex at ${params.baseUrl}.${params.dockerLocalhostHint}`.trim(),
+  );
 }
 
 @Controller('plex')
@@ -165,23 +185,7 @@ export class PlexController {
         token: params.token,
       });
     } catch (err) {
-      throw this.mapPlexConnectionError(err, params);
+      throw mapPlexConnectionError(err, params);
     }
-  }
-
-  private mapPlexConnectionError(
-    err: unknown,
-    params: { baseUrl: string; dockerLocalhostHint: string },
-  ): BadRequestException | BadGatewayException {
-    const msg = (err as Error)?.message ?? String(err);
-    // Plex returns 401 when token is invalid or doesn't grant access.
-    if (isUnauthorizedPlexError(msg)) {
-      return new BadRequestException(
-        `Plex token was rejected by the server (401 Unauthorized).${params.dockerLocalhostHint}`.trim(),
-      );
-    }
-    return new BadGatewayException(
-      `Could not connect to Plex at ${params.baseUrl}.${params.dockerLocalhostHint}`.trim(),
-    );
   }
 }

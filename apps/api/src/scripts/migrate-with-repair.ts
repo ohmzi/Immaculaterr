@@ -123,30 +123,19 @@ async function repairPartialSessionSchema(prisma: PrismaClient) {
   }
 }
 
-async function repairFailedMigrationIfNeeded(prisma: PrismaClient): Promise<void> {
-  const failedMigration = await hasFailedTargetMigration(prisma);
-  if (!failedMigration) return;
+function isSessionSchemaUpgraded(columns: TableInfoRow[]): boolean {
+  return hasColumn(columns, 'tokenVersion') && hasColumn(columns, 'expiresAt');
+}
 
-  // Old installs stored Session.lastSeenAt as epoch milliseconds.
-  // Normalize before retrying migration logic.
-  await normalizeLegacySessionTimestamps(prisma);
+function shouldRepairPartialSessionSchema(
+  sessionColumns: TableInfoRow[],
+  userColumns: TableInfoRow[],
+): boolean {
+  return !isSessionSchemaUpgraded(sessionColumns) && hasColumn(userColumns, 'tokenVersion');
+}
 
-  let sessionInfo = await tableInfo(prisma, 'Session');
-  const userInfo = await tableInfo(prisma, 'User');
-
-  const sessionAlreadyUpgraded =
-    hasColumn(sessionInfo, 'tokenVersion') && hasColumn(sessionInfo, 'expiresAt');
-  const userAlreadyUpgraded = hasColumn(userInfo, 'tokenVersion');
-
-  if (!sessionAlreadyUpgraded && userAlreadyUpgraded) {
-    await repairPartialSessionSchema(prisma);
-    sessionInfo = await tableInfo(prisma, 'Session');
-  }
-
-  const repairedSessionUpgraded =
-    hasColumn(sessionInfo, 'tokenVersion') && hasColumn(sessionInfo, 'expiresAt');
-
-  if (repairedSessionUpgraded) {
+function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
+  if (sessionSchemaUpgraded) {
     runPrisma(
       ['migrate', 'resolve', '--applied', TARGET_MIGRATION],
       'prisma migrate resolve --applied',
@@ -158,6 +147,25 @@ async function repairFailedMigrationIfNeeded(prisma: PrismaClient): Promise<void
     ['migrate', 'resolve', '--rolled-back', TARGET_MIGRATION],
     'prisma migrate resolve --rolled-back',
   );
+}
+
+async function repairFailedMigrationIfNeeded(prisma: PrismaClient): Promise<void> {
+  const failedMigration = await hasFailedTargetMigration(prisma);
+  if (!failedMigration) return;
+
+  // Old installs stored Session.lastSeenAt as epoch milliseconds.
+  // Normalize before retrying migration logic.
+  await normalizeLegacySessionTimestamps(prisma);
+
+  let sessionInfo = await tableInfo(prisma, 'Session');
+  const userInfo = await tableInfo(prisma, 'User');
+
+  if (shouldRepairPartialSessionSchema(sessionInfo, userInfo)) {
+    await repairPartialSessionSchema(prisma);
+    sessionInfo = await tableInfo(prisma, 'Session');
+  }
+
+  resolveTargetMigrationState(isSessionSchemaUpgraded(sessionInfo));
 }
 
 async function main() {

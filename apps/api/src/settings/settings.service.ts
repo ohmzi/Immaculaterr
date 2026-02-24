@@ -24,6 +24,19 @@ export const SERVICE_SECRET_IDS = [
 
 export type ServiceSecretId = (typeof SERVICE_SECRET_IDS)[number];
 
+const TRUE_BOOL_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const FALSE_BOOL_ENV_VALUES = new Set(['0', 'false', 'no', 'off']);
+
+const SERVICE_SECRET_PATHS: Record<ServiceSecretId, readonly string[]> = {
+  plex: ['plex.token', 'plexToken'],
+  radarr: ['radarr.apiKey', 'radarrApiKey'],
+  sonarr: ['sonarr.apiKey', 'sonarrApiKey'],
+  tmdb: ['tmdb.apiKey', 'tmdbApiKey', 'tmdb.api_key'],
+  overseerr: ['overseerr.apiKey', 'overseerrApiKey'],
+  google: ['google.apiKey', 'googleApiKey'],
+  openai: ['openai.apiKey', 'openAiApiKey'],
+};
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -49,23 +62,24 @@ function pickString(obj: Record<string, unknown>, path: string): string {
 function parseBoolEnv(raw: string | undefined, fallback: boolean): boolean {
   const normalized = raw?.trim().toLowerCase();
   if (!normalized) return fallback;
-  if (
-    normalized === '1' ||
-    normalized === 'true' ||
-    normalized === 'yes' ||
-    normalized === 'on'
-  ) {
-    return true;
-  }
-  if (
-    normalized === '0' ||
-    normalized === 'false' ||
-    normalized === 'no' ||
-    normalized === 'off'
-  ) {
-    return false;
-  }
+  if (TRUE_BOOL_ENV_VALUES.has(normalized)) return true;
+  if (FALSE_BOOL_ENV_VALUES.has(normalized)) return false;
   return fallback;
+}
+
+function countProvidedSecretModes(flags: readonly boolean[]): number {
+  let count = 0;
+  for (const flag of flags) {
+    if (flag) count += 1;
+  }
+  return count;
+}
+
+function assertEnvelopeObject(value: unknown): CredentialEnvelope {
+  if (!isPlainObject(value)) {
+    throw new BadRequestException('credentialEnvelope must be an object');
+  }
+  return value as CredentialEnvelope;
 }
 
 function deepMerge(
@@ -98,6 +112,7 @@ export class SettingsService {
     process.env.SECRETS_TRANSPORT_ALLOW_PLAINTEXT,
     false,
   );
+  private readonly serviceSecretPaths = SERVICE_SECRET_PATHS;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -169,9 +184,9 @@ export class SettingsService {
     const merged = deepMerge({ ...current }, patch);
 
     // Interpret nulls as deletes for secrets
-    for (const [k, v] of Object.entries(merged)) {
-      if (v === null) {
-        delete merged[k];
+    for (const [key, value] of Object.entries(merged)) {
+      if (value === null) {
+        delete merged[key];
       }
     }
 
@@ -187,7 +202,7 @@ export class SettingsService {
 
   async updateSecretsFromEnvelope(userId: string, envelope: unknown) {
     const payload = this.credentialEnvelope.decryptPayload(
-      this.assertEnvelopeObject(envelope),
+      assertEnvelopeObject(envelope),
       {
         expectedPurpose: 'settings.secrets',
         requireTimestamp: true,
@@ -217,45 +232,71 @@ export class SettingsService {
       params.envelope !== undefined && params.envelope !== null;
     const secretRef = asString(params.secretRef);
     const plaintext = asString(params.plaintext);
-    const modes = [envelopeProvided, Boolean(secretRef), Boolean(plaintext)]
-      .map((v) => (v ? 1 : 0))
-      .reduce((sum, n) => sum + n, 0);
-    if (modes > 1) {
+    const providedModeCount = countProvidedSecretModes([
+      envelopeProvided,
+      secretRef.length > 0,
+      plaintext.length > 0,
+    ]);
+    if (providedModeCount > 1) {
       throw new BadRequestException(
         'Provide only one secret source: envelope, secretRef, or plaintext.',
       );
     }
 
     if (envelopeProvided) {
-      return {
-        value: this.decryptServiceSecretEnvelope({
-          envelope: params.envelope,
-          service: params.service,
-          secretField: params.secretField,
-          expectedPurpose: params.expectedPurpose,
-        }),
-        source: 'envelope',
-      };
+      return this.resolveEnvelopeSecretInput({
+        envelope: params.envelope,
+        service: params.service,
+        secretField: params.secretField,
+        expectedPurpose: params.expectedPurpose,
+      });
     }
 
     if (secretRef) {
-      return {
-        value: await this.resolveServiceSecretRef({
-          userId: params.userId,
-          service: params.service,
-          secretRef,
-          currentSecrets: params.currentSecrets,
-        }),
-        source: 'secretRef',
-      };
+      return await this.resolveSecretRefInput({
+        userId: params.userId,
+        service: params.service,
+        secretRef,
+        currentSecrets: params.currentSecrets,
+      });
     }
 
     if (plaintext) {
-      this.assertPlaintextSecretTransportAllowed();
-      return { value: plaintext, source: 'plaintext' };
+      return this.resolvePlaintextSecretInput(plaintext);
     }
 
     return { value: '', source: 'none' };
+  }
+
+  private resolveEnvelopeSecretInput(params: {
+    envelope: unknown;
+    service: ServiceSecretId;
+    secretField: 'apiKey' | 'token';
+    expectedPurpose: string;
+  }): { value: string; source: 'envelope' } {
+    return {
+      value: this.decryptServiceSecretEnvelope(params),
+      source: 'envelope',
+    };
+  }
+
+  private async resolveSecretRefInput(params: {
+    userId: string;
+    service: ServiceSecretId;
+    secretRef: string;
+    currentSecrets?: Record<string, unknown>;
+  }): Promise<{ value: string; source: 'secretRef' }> {
+    return {
+      value: await this.resolveServiceSecretRef(params),
+      source: 'secretRef',
+    };
+  }
+
+  private resolvePlaintextSecretInput(
+    plaintext: string,
+  ): { value: string; source: 'plaintext' } {
+    this.assertPlaintextSecretTransportAllowed();
+    return { value: plaintext, source: 'plaintext' };
   }
 
   decryptServiceSecretEnvelope(params: {
@@ -265,26 +306,38 @@ export class SettingsService {
     expectedPurpose: string;
   }): string {
     const payload = this.credentialEnvelope.decryptPayload(
-      this.assertEnvelopeObject(params.envelope),
+      assertEnvelopeObject(params.envelope),
       {
         expectedPurpose: params.expectedPurpose,
         requireTimestamp: true,
         requireNonce: true,
       },
     );
+    this.assertEnvelopeService(payload, params.service);
+    return this.readSecretFromEnvelopePayload(payload, params.secretField);
+  }
 
+  private assertEnvelopeService(
+    payload: Record<string, unknown>,
+    expectedService: ServiceSecretId,
+  ): void {
     const payloadService = asString(payload['service']).toLowerCase();
-    if (payloadService && payloadService !== params.service) {
+    if (payloadService && payloadService !== expectedService) {
       throw new BadRequestException('credentialEnvelope service is invalid');
     }
+  }
 
-    let secret = asString(payload[params.secretField]);
+  private readSecretFromEnvelopePayload(
+    payload: Record<string, unknown>,
+    secretField: 'apiKey' | 'token',
+  ): string {
+    let secret = asString(payload[secretField]);
     if (!secret && isPlainObject(payload['secret'])) {
-      secret = asString(payload['secret'][params.secretField]);
+      secret = asString(payload['secret'][secretField]);
     }
     if (!secret) {
       throw new BadRequestException(
-        `credentialEnvelope payload must include ${params.secretField}`,
+        `credentialEnvelope payload must include ${secretField}`,
       );
     }
     return secret;
@@ -297,70 +350,55 @@ export class SettingsService {
     currentSecrets?: Record<string, unknown>;
   }): Promise<string> {
     const parsed = this.parseSecretRef(params.secretRef);
-    if (parsed.service !== params.service) {
-      throw new BadRequestException('secretRef service mismatch');
-    }
-
-    // Backward compatibility: verify legacy 4-part refs that include a signature.
-    if (parsed.signature) {
-      const signingInput = `${params.userId}.${parsed.service}.${parsed.fingerprint}`;
-      if (!this.crypto.verifyDetached(signingInput, parsed.signature)) {
-        throw new BadRequestException('secretRef signature is invalid');
-      }
-    }
-
+    this.assertSecretRefServiceMatch(parsed.service, params.service);
+    this.assertSecretRefSignature(params.userId, parsed);
     const secrets = params.currentSecrets ?? (await this.getSecretsDoc(params.userId));
     const currentSecret = this.readServiceSecret(parsed.service, secrets);
-    if (!currentSecret) {
-      throw new BadRequestException('secretRef could not be resolved');
-    }
-    const fingerprint = this.secretFingerprint(currentSecret);
-    if (fingerprint !== parsed.fingerprint) {
-      throw new BadRequestException('secretRef is stale');
-    }
-
+    this.assertSecretRefResolved(currentSecret);
+    this.assertSecretRefFresh(currentSecret, parsed.fingerprint);
     return currentSecret;
+  }
+
+  private assertSecretRefServiceMatch(
+    actualService: ServiceSecretId,
+    expectedService: ServiceSecretId,
+  ): void {
+    if (actualService !== expectedService) {
+      throw new BadRequestException('secretRef service mismatch');
+    }
+  }
+
+  private assertSecretRefSignature(
+    userId: string,
+    parsed: { service: ServiceSecretId; fingerprint: string; signature?: string },
+  ): void {
+    if (!parsed.signature) return;
+
+    // Backward compatibility: verify legacy 4-part refs that include a signature.
+    const signingInput = `${userId}.${parsed.service}.${parsed.fingerprint}`;
+    if (!this.crypto.verifyDetached(signingInput, parsed.signature)) {
+      throw new BadRequestException('secretRef signature is invalid');
+    }
+  }
+
+  private assertSecretRefResolved(secret: string): void {
+    if (secret) return;
+    throw new BadRequestException('secretRef could not be resolved');
+  }
+
+  private assertSecretRefFresh(secret: string, expectedFingerprint: string): void {
+    if (this.secretFingerprint(secret) === expectedFingerprint) return;
+    throw new BadRequestException('secretRef is stale');
   }
 
   readServiceSecret(
     service: ServiceSecretId,
     secrets: Record<string, unknown>,
   ): string {
-    if (service === 'plex') {
-      return pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
-    }
-    if (service === 'radarr') {
-      return (
-        pickString(secrets, 'radarr.apiKey') || pickString(secrets, 'radarrApiKey')
-      );
-    }
-    if (service === 'sonarr') {
-      return (
-        pickString(secrets, 'sonarr.apiKey') || pickString(secrets, 'sonarrApiKey')
-      );
-    }
-    if (service === 'tmdb') {
-      return (
-        pickString(secrets, 'tmdb.apiKey') ||
-        pickString(secrets, 'tmdbApiKey') ||
-        pickString(secrets, 'tmdb.api_key')
-      );
-    }
-    if (service === 'overseerr') {
-      return (
-        pickString(secrets, 'overseerr.apiKey') ||
-        pickString(secrets, 'overseerrApiKey')
-      );
-    }
-    if (service === 'google') {
-      return (
-        pickString(secrets, 'google.apiKey') || pickString(secrets, 'googleApiKey')
-      );
-    }
-    if (service === 'openai') {
-      return (
-        pickString(secrets, 'openai.apiKey') || pickString(secrets, 'openAiApiKey')
-      );
+    const paths = this.serviceSecretPaths[service];
+    for (const path of paths) {
+      const secret = pickString(secrets, path);
+      if (secret) return secret;
     }
     return '';
   }
@@ -446,13 +484,6 @@ export class SettingsService {
     } catch {
       return {};
     }
-  }
-
-  private assertEnvelopeObject(value: unknown): CredentialEnvelope {
-    if (!isPlainObject(value)) {
-      throw new BadRequestException('credentialEnvelope must be an object');
-    }
-    return value as CredentialEnvelope;
   }
 
   private createSecretRefs(

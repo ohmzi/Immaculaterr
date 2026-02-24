@@ -9,10 +9,10 @@ const workflowPath = resolve(
 );
 
 const workflow = readFileSync(workflowPath, 'utf8');
-const workflowExprPrefix = '$' + '{{ ';
+const workflowExprPrefix = '${{ ';
 const workflowExprSuffix = ' }}';
 const withWorkflowExpression = (expression) =>
-  '    if: ' + workflowExprPrefix + expression + workflowExprSuffix;
+  `    if: ${workflowExprPrefix}${expression}${workflowExprSuffix}`;
 
 const requiredSnippets = [
   {
@@ -57,11 +57,7 @@ const requiredSnippets = [
   },
   {
     name: 'docker hub login requires both username and token',
-    snippet:
-      '        if: ' +
-      workflowExprPrefix +
-      "env.DOCKERHUB_TOKEN != '' && env.DOCKERHUB_USERNAME != ''" +
-      workflowExprSuffix,
+    snippet: `        if: ${workflowExprPrefix}env.DOCKERHUB_TOKEN != '' && env.DOCKERHUB_USERNAME != ''${workflowExprSuffix}`,
   },
   {
     name: 'release job depends on build-and-push',
