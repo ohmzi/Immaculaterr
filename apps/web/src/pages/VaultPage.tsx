@@ -6,8 +6,8 @@ import {
   useRef,
   type ChangeEvent,
   type ClipboardEvent,
-  type FormEvent,
   type KeyboardEvent,
+  type SyntheticEvent,
   type ReactNode,
 } from 'react';
 import { AnimatePresence, motion, useAnimation } from 'motion/react';
@@ -95,29 +95,6 @@ function runAsyncTask(promise: Promise<unknown>): void {
   promise.catch(() => undefined);
 }
 
-// skipcq: JS-R1005 - Selection-aware masking needs explicit branch handling.
-function normalizeAsteriskInput(
-  previous: string,
-  key: 'Backspace' | 'Delete',
-  selectionStart: number | null,
-  selectionEnd: number | null,
-): string {
-  if (!previous) return '';
-  const start = selectionStart ?? previous.length;
-  const end = selectionEnd ?? start;
-  const safeStart = Math.max(0, Math.min(start, previous.length));
-  const safeEnd = Math.max(safeStart, Math.min(end, previous.length));
-  if (safeEnd > safeStart) {
-    return `${previous.slice(0, safeStart)}${previous.slice(safeEnd)}`;
-  }
-  if (key === 'Backspace') {
-    if (safeStart <= 0) return previous;
-    return `${previous.slice(0, safeStart - 1)}${previous.slice(safeStart)}`;
-  }
-  if (safeStart >= previous.length) return previous;
-  return `${previous.slice(0, safeStart)}${previous.slice(safeStart + 1)}`;
-}
-
 function MaskedSecretInput(props: {
   value: string;
   setValue: React.Dispatch<React.SetStateAction<string>>;
@@ -127,76 +104,92 @@ function MaskedSecretInput(props: {
   onEditStart: () => void;
   onBlur?: () => void;
 }) {
-  const displayValue = props.value
-    ? '*'.repeat(props.value.length)
-    : props.hasSavedValue
+  const { value, setValue, hasSavedValue, placeholder, className, onEditStart, onBlur } =
+    props;
+
+  const maskedDisplayValue = value
+    ? '*'.repeat(value.length)
+    : hasSavedValue
       ? MASKED_SECRET
       : '';
 
-  const handleDisplayValueChange = useCallback(() => undefined, []);
+  const handleValueChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onEditStart();
+    setValue(event.target.value);
+  };
 
-  const handleBeforeInput = useCallback(
-    (event: FormEvent<HTMLInputElement>) => {
-      const native = event.nativeEvent as InputEvent;
-      const data = typeof native.data === 'string' ? native.data : '';
-      if (!data) return;
-      event.preventDefault();
-      props.onEditStart();
-      props.setValue((previous) => `${previous}${data}`);
+  const collapseSelectionToEnd = useCallback(
+    (input: HTMLInputElement) => {
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
     },
-    [props.onEditStart, props.setValue],
-  );
-
-  const handlePaste = useCallback(
-    (event: ClipboardEvent<HTMLInputElement>) => {
-      event.preventDefault();
-      const pasted = event.clipboardData.getData('text');
-      if (!pasted) return;
-      props.onEditStart();
-      props.setValue((previous) => `${previous}${pasted}`);
-    },
-    [props.onEditStart, props.setValue],
+    [],
   );
 
   const handleKeyDown = useCallback(
-    // skipcq: JS-R1005 - Key handling intentionally branches on modifier and delete semantics.
     (event: KeyboardEvent<HTMLInputElement>) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
-        return;
+        event.preventDefault();
+        collapseSelectionToEnd(event.currentTarget);
       }
-      const key = event.key;
-      if (key !== 'Backspace' && key !== 'Delete') return;
-      event.preventDefault();
-      props.onEditStart();
-      props.setValue((previous) =>
-        normalizeAsteriskInput(
-          previous,
-          key,
-          event.currentTarget.selectionStart,
-          event.currentTarget.selectionEnd,
-        ),
-      );
     },
-    [props.onEditStart, props.setValue],
+    [collapseSelectionToEnd],
   );
 
+  const handleSelect = useCallback(
+    (event: SyntheticEvent<HTMLInputElement>) => {
+      collapseSelectionToEnd(event.currentTarget);
+    },
+    [collapseSelectionToEnd],
+  );
+
+  const handleSecretClipboard = useCallback(
+    (event: ClipboardEvent<HTMLInputElement>) => {
+      event.preventDefault();
+    },
+    [],
+  );
+
+  const showMaskedOverlay = maskedDisplayValue.length > 0;
+  const inputClassName = className;
+  const inputStyle = showMaskedOverlay
+    ? {
+        color: 'transparent',
+        WebkitTextFillColor: 'transparent',
+        caretColor: '#ffffff',
+      }
+    : undefined;
+  const metricClass = 'font-mono';
+
   return (
-    <input
-      type="text"
-      value={displayValue}
-      onChange={handleDisplayValueChange}
-      onBeforeInput={handleBeforeInput}
-      onPaste={handlePaste}
-      onKeyDown={handleKeyDown}
-      onBlur={props.onBlur}
-      autoComplete="off"
-      autoCorrect="off"
-      autoCapitalize="off"
-      spellCheck={false}
-      inputMode="text"
-      placeholder={props.placeholder}
-      className={props.className}
-    />
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={handleValueChange}
+        onKeyDown={handleKeyDown}
+        onSelect={handleSelect}
+        onCopy={handleSecretClipboard}
+        onCut={handleSecretClipboard}
+        onBlur={onBlur}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        inputMode="text"
+        placeholder={showMaskedOverlay ? '' : placeholder}
+        className={`${inputClassName} ${metricClass} selection:text-transparent`}
+        style={inputStyle}
+      />
+      {showMaskedOverlay ? (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-y-0 left-4 right-4 flex items-center overflow-hidden whitespace-nowrap text-white ${metricClass}`}
+        >
+          {maskedDisplayValue}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -369,16 +362,10 @@ export function SettingsPage({
 
   const [openAiApiKey, setOpenAiApiKey] = useState('');
 
-  const secretsKeyPromiseRef = useRef<Promise<
-    Awaited<ReturnType<typeof getSecretsEnvelopeKey>>
-  > | null>(null);
-
-  const loadSecretsEnvelopeKey = async () => {
-    if (!secretsKeyPromiseRef.current) {
-      secretsKeyPromiseRef.current = getSecretsEnvelopeKey();
-    }
-    return await secretsKeyPromiseRef.current;
-  };
+  const loadSecretsEnvelopeKey = useCallback(
+    async () => await getSecretsEnvelopeKey(),
+    [],
+  );
 
   const buildSecretEnvelope = async (params: {
     service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'overseerr' | 'google' | 'openai';
