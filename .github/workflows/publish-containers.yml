@@ -33,6 +33,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Validate Docker Hub HTTP+HTTPS stack compose file
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest \
+            docker compose -f docker/immaculaterr/docker-compose.dockerhub.yml config >/dev/null
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -89,6 +96,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Validate Docker Hub HTTP+HTTPS stack compose file
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest \
+            docker compose -f docker/immaculaterr/docker-compose.dockerhub.yml config >/dev/null
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -194,7 +208,7 @@ jobs:
 
           ## Updating
 
-          ### Docker
+          ### Docker Option A: HTTP-only (legacy single container)
 
           \`\`\`bash
           docker pull ohmzii/immaculaterr:latest
@@ -213,12 +227,33 @@ jobs:
             ohmzii/immaculaterr:latest
           \`\`\`
 
+          ### Docker Option B: HTTP + HTTPS (recommended, Caddy + app)
+
+          \`\`\`bash
+          mkdir -p /opt/immaculaterr
+          cd /opt/immaculaterr
+
+          curl -fsSL -o docker-compose.dockerhub.yml "https://raw.githubusercontent.com/ohmzi/Immaculaterr/v${VERSION}/docker/immaculaterr/docker-compose.dockerhub.yml"
+          curl -fsSL -o caddy-entrypoint.sh "https://raw.githubusercontent.com/ohmzi/Immaculaterr/v${VERSION}/docker/immaculaterr/caddy-entrypoint.sh"
+          chmod +x caddy-entrypoint.sh
+
+          docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
+
+          IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml pull
+          IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
+          \`\`\`
+
+          Option B brings up:
+          - **HTTP** on \`5454\`
+          - **HTTPS** on \`5464\` (local/LAN certificate via Caddy internal CA)
+          - Optional domain HTTPS on \`443\` when \`IMM_PUBLIC_DOMAIN\` is configured
+
           ### Portainer
 
-          1. In Portainer: **Containers** -> select **Immaculaterr**
-          2. Click **Recreate**
-          3. Enable **Re-pull image**
-          4. Click **Recreate**
+          1. For HTTP-only, recreate container **Immaculaterr** with image pull enabled.
+          2. For HTTP+HTTPS, open your stack directory (for example \`/opt/immaculaterr\`).
+          3. Refresh \`docker-compose.dockerhub.yml\` and \`caddy-entrypoint.sh\` from this release tag.
+          4. Recreate both containers (**Immaculaterr** and **ImmaculaterrHttps**) with image pull enabled.
           EOF
 
       - name: Create or update release
@@ -230,4 +265,3 @@ jobs:
           body_path: RELEASE_NOTES.md
           generate_release_notes: false
           make_latest: true
-

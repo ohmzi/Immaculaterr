@@ -33,21 +33,22 @@ Run with Docker
 Immaculaterr works best with **host networking** on Linux (so it can reach Plex/Radarr/Sonarr via `http://localhost:<port>`).
 
 ```bash
-docker run -d \
-  --name Immaculaterr \
-  --network host \
-  -e HOST=0.0.0.0 \
-  -e PORT=5454 \
-  -e APP_DATA_DIR=/data \
-  -e DATABASE_URL=file:/data/tcp.sqlite \
-  -v immaculaterr-data:/data \
-  --restart unless-stopped \
-  ohmzii/immaculaterr:latest
+mkdir -p /opt/immaculaterr
+cd /opt/immaculaterr
+
+curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/docker-compose.dockerhub.yml
+curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
+chmod +x caddy-entrypoint.sh
+
+docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
+
+IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
 ```
 
 Then open:
 
 - `http://<server-ip>:5454/`
+- `https://<server-ip>:5464/`
 
 Run with Docker Compose
 ---
@@ -83,8 +84,8 @@ Updating (Docker Compose)
 
 ```bash
 cd docker/immaculaterr
-docker compose -f docker-compose.yml pull
-docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.dockerhub.yml pull
+docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
 ```
 
 Run with HTTP + HTTPS (Docker Compose)
@@ -149,20 +150,17 @@ Updating (Docker)
 - If you prefer GHCR, replace the image with `ghcr.io/ohmzi/immaculaterr:latest`.
 
 ```bash
-docker pull ohmzii/immaculaterr:latest
+mkdir -p /opt/immaculaterr
+cd /opt/immaculaterr
 
-docker rm -f Immaculaterr 2>/dev/null || true
+curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/docker-compose.dockerhub.yml
+curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
+chmod +x caddy-entrypoint.sh
 
-docker run -d \
-  --name Immaculaterr \
-  --network host \
-  -e HOST=0.0.0.0 \
-  -e PORT=5454 \
-  -e APP_DATA_DIR=/data \
-  -e DATABASE_URL=file:/data/tcp.sqlite \
-  -v immaculaterr-data:/data \
-  --restart unless-stopped \
-  ohmzii/immaculaterr:latest
+docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
+
+IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml pull
+IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
 ```
 
 License
