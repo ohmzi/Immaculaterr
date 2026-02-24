@@ -1,0 +1,14 @@
+name: huntarr
+
+services:
+  huntarr:
+    image: ghcr.io/plexguide/huntarr:dc69ceb41125683caca6faeaae6476f32e05ae7f
+    container_name: huntarr
+    ports:
+      - "9705:9705"
+    volumes:
+      - ../../data/huntarr/config:/config
+      - ../../data/huntarr/media:/media
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
