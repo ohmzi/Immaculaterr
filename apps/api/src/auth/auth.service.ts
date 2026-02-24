@@ -24,6 +24,7 @@ import {
 } from './password';
 
 const SESSION_COOKIE = 'tcp_session';
+const SESSION_COOKIE_PAYLOAD_PREFIX = 'sid:v1:';
 const DEFAULT_SESSION_MAX_AGE_MS = 24 * 60 * 60_000;
 const DEFAULT_PASSWORD_PROOF_ITERATIONS = 210_000;
 
@@ -75,12 +76,23 @@ export class AuthService {
     return this.credentialEnvelope.getLoginKey();
   }
 
+  encodeSessionIdForCookie(sessionId: string): string {
+    const normalized = sessionId.trim();
+    if (!normalized) {
+      throw new BadRequestException('Invalid session');
+    }
+    return this.crypto.encryptString(
+      `${SESSION_COOKIE_PAYLOAD_PREFIX}${normalized}`,
+    );
+  }
+
   readSessionIdFromRequest(req: Request): string | null {
     const cookieName = this.getSessionCookieName();
     const cookies = (req as unknown as { cookies?: unknown }).cookies;
     if (!cookies || typeof cookies !== 'object') return null;
     const v = (cookies as Record<string, unknown>)[cookieName];
-    return typeof v === 'string' && v.trim() ? v : null;
+    if (typeof v !== 'string' || !v.trim()) return null;
+    return this.decodeSessionIdFromCookie(v);
   }
 
   async hasAnyUser(): Promise<boolean> {
@@ -311,7 +323,7 @@ export class AuthService {
     } as const;
   }
 
-  async loginWithPasswordProof(params: {
+  async loginWithChallengeProof(params: {
     challengeId: string;
     proof: string;
     ip: string | null;
@@ -678,6 +690,27 @@ export class AuthService {
 
   private createSessionId() {
     return randomBytes(32).toString('base64url');
+  }
+
+  private decodeSessionIdFromCookie(rawCookieValue: string): string | null {
+    const value = rawCookieValue.trim();
+    if (!value) return null;
+
+    // Backward compatibility: accept legacy plaintext session cookies.
+    if (!this.crypto.isEncrypted(value)) {
+      return value;
+    }
+
+    try {
+      const decoded = this.crypto.decryptString(value);
+      if (!decoded.startsWith(SESSION_COOKIE_PAYLOAD_PREFIX)) {
+        return null;
+      }
+      const sessionId = decoded.slice(SESSION_COOKIE_PAYLOAD_PREFIX.length).trim();
+      return sessionId || null;
+    } catch {
+      return null;
+    }
   }
 
   // Exposed for tests / future client helpers.

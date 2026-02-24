@@ -102,7 +102,7 @@ export class AuthController {
         ? req.headers['user-agent']
         : null;
 
-    const result = await this.authService.loginWithPasswordProof({
+    const result = await this.authService.loginWithChallengeProof({
       challengeId,
       proof,
       ip,
@@ -302,7 +302,8 @@ export class AuthController {
   }
 
   private setSessionCookie(req: Request, res: Response, sessionId: string) {
-    res.cookie(this.authService.getSessionCookieName(), sessionId, {
+    const cookieValue = this.authService.encodeSessionIdForCookie(sessionId);
+    res.cookie(this.authService.getSessionCookieName(), cookieValue, {
       ...this.getSessionCookieOptions(req),
       maxAge: this.authService.getSessionMaxAgeMs(),
     });
