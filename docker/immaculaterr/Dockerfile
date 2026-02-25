@@ -28,6 +28,12 @@ RUN set -eu; \
     sleep $((attempt * 5)); \
   done
 
+# npm@11 can sometimes omit the Prisma CLI binary path in this workspace layout.
+# Ensure a Prisma CLI executable exists for startup migrations.
+RUN if [ ! -x /app/apps/api/node_modules/.bin/prisma ] && [ ! -x /app/node_modules/.bin/prisma ]; then \
+      npm i --no-save prisma@6.19.1; \
+    fi
+
 # Ensure Prisma client/types exist for `nest build` in CI/Docker.
 RUN npm -w apps/api run db:generate
 
@@ -35,7 +41,6 @@ RUN npm -w apps/api run db:generate
 COPY apps/api apps/api
 COPY apps/web apps/web
 RUN npm run build \
-  && npm prune --omit=dev \
   && npm cache clean --force
 
 
@@ -67,12 +72,12 @@ WORKDIR /app
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
 
-# Reuse prod deps and Prisma client generated in builder. This avoids a second
-# registry install in runner (which can be flaky on arm64 CI) and keeps runtime
+# Reuse deps and Prisma artifacts from builder. This avoids a second registry
+# install in runner (which can be flaky on arm64 CI) and keeps runtime
 # dependency set aligned with the lockfile used by builder.
 COPY --from=builder /app/node_modules /app/node_modules
-COPY --from=builder /app/apps/api/node_modules/.prisma /app/apps/api/node_modules/.prisma
-COPY --from=builder /app/apps/api/node_modules/@prisma/client /app/apps/api/node_modules/@prisma/client
+COPY --from=builder /app/apps/api/node_modules /app/apps/api/node_modules
+COPY --from=builder /app/apps/api/prisma /app/apps/api/prisma
 
 # Copy built artifacts
 COPY --from=builder /app/apps/api/dist /app/apps/api/dist
