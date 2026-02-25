@@ -21,7 +21,9 @@ RUN npm -w apps/api run db:generate
 # 2) Build
 COPY apps/api apps/api
 COPY apps/web apps/web
-RUN npm run build
+RUN npm run build \
+  && npm prune --omit=dev \
+  && npm cache clean --force
 
 
 FROM ${NODE_IMAGE} AS runner
@@ -52,15 +54,10 @@ WORKDIR /app
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
 
-# Install prod deps only
-COPY package.json package-lock.json ./
-COPY apps/api/package.json apps/api/package.json
-COPY apps/web/package.json apps/web/package.json
-COPY apps/api/prisma apps/api/prisma
-RUN npm ci --omit=dev && npm cache clean --force
-
-# Reuse Prisma client generated in builder. A second generation here is flaky on
-# linux/arm64 under emulation (Prisma getDmmf JSON parse errors).
+# Reuse prod deps and Prisma client generated in builder. This avoids a second
+# registry install in runner (which can be flaky on arm64 CI) and keeps runtime
+# dependency set aligned with the lockfile used by builder.
+COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/apps/api/node_modules/.prisma /app/apps/api/node_modules/.prisma
 COPY --from=builder /app/apps/api/node_modules/@prisma/client /app/apps/api/node_modules/@prisma/client
 
