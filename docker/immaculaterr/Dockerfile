@@ -8,11 +8,6 @@ WORKDIR /app
 # Keep builder image minimal; do not install distro OpenSSL packages.
 # Prisma may log OpenSSL detection warnings during generate, but generation works.
 
-# Pin npm to ensure patched bundled deps (e.g. glob/cross-spawn) regardless of base-image npm version.
-ARG NPM_VERSION=11.7.0
-RUN npm i -g "npm@${NPM_VERSION}" \
-  && npm cache clean --force
-
 # 1) Install deps (cached)
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
@@ -56,11 +51,6 @@ WORKDIR /app
 # base image defaults to reduce exposure to OpenSSL CVEs from apt packages.
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
-
-# Pin npm to ensure patched bundled deps (e.g. glob/cross-spawn) regardless of base-image npm version.
-ARG NPM_VERSION=11.7.0
-RUN npm i -g "npm@${NPM_VERSION}" \
-  && npm cache clean --force
 
 # Install prod deps only
 COPY package.json package-lock.json ./
