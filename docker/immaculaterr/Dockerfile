@@ -13,7 +13,20 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/api/prisma apps/api/prisma
-RUN npm ci
+ARG NPM_CI_RETRIES=3
+RUN set -eu; \
+  attempt=1; \
+  while :; do \
+    npm ci && break; \
+    if [ "$attempt" -ge "$NPM_CI_RETRIES" ]; then \
+      echo "npm ci failed after ${attempt} attempt(s)" >&2; \
+      exit 1; \
+    fi; \
+    echo "npm ci failed (attempt ${attempt}/${NPM_CI_RETRIES}); retrying..." >&2; \
+    npm cache clean --force || true; \
+    attempt=$((attempt + 1)); \
+    sleep $((attempt * 5)); \
+  done
 
 # Ensure Prisma client/types exist for `nest build` in CI/Docker.
 RUN npm -w apps/api run db:generate
