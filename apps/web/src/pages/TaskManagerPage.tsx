@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,6 +53,9 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup', // webhook/manual input only
   'immaculateTastePoints', // webhook/manual input only
   'watchedMovieRecommendations', // webhook/manual input only
+]);
+const TASK_MANAGER_HIDDEN_JOB_IDS = new Set<string>([
+  'collectionResyncUpgrade', // one-time startup migration, not user-managed
 ]);
 
 const DAYS_OF_WEEK: Array<{ value: string; label: string; short: string }> = [
@@ -841,6 +844,13 @@ export function TaskManagerPage() {
     staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
+  const visibleJobs = useMemo(
+    () =>
+      (jobsQuery.data?.jobs ?? []).filter(
+        (job) => !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
+      ),
+    [jobsQuery.data?.jobs],
+  );
 
   const runMutation = useMutation({
     mutationFn: async (params: { jobId: string; dryRun: boolean; input?: unknown }) =>
@@ -978,7 +988,7 @@ export function TaskManagerPage() {
     ];
 
     for (const jobId of targetJobIds) {
-      const job = jobsQuery.data?.jobs?.find((j) => j.id === jobId);
+      const job = visibleJobs.find((j) => j.id === jobId);
       if (!job) continue;
       const enabled = job.schedule?.enabled ?? false;
       if (!enabled) continue;
@@ -989,7 +999,7 @@ export function TaskManagerPage() {
   }, [
     settingsQuery.status,
     jobsQuery.status,
-    jobsQuery.data?.jobs,
+    visibleJobs,
     arrPing.loading,
     arrPing.checkedAtMs,
     arrPing.radarrOk,
@@ -1000,12 +1010,12 @@ export function TaskManagerPage() {
 
   // Check for recent runs on mount and when jobs change
   useEffect(() => {
-    if (!jobsQuery.data?.jobs) return;
+    if (visibleJobs.length === 0) return;
 
     const checkRecentRuns = async () => {
       const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
 
-      for (const job of jobsQuery.data.jobs) {
+      for (const job of visibleJobs) {
         try {
           const { runs } = await listRuns({ jobId: job.id, take: 1 });
           if (runs.length === 0) continue;
@@ -1039,7 +1049,7 @@ export function TaskManagerPage() {
     };
 
     void checkRecentRuns();
-  }, [jobsQuery.data?.jobs]);
+  }, [visibleJobs]);
 
   // Poll for running jobs to update their status
   useEffect(() => {
@@ -1085,7 +1095,7 @@ export function TaskManagerPage() {
     const timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
     Object.entries(drafts).forEach(([jobId, draft]) => {
-      const job = jobsQuery.data?.jobs.find((j) => j.id === jobId);
+      const job = visibleJobs.find((j) => j.id === jobId);
       if (!job) return;
 
       const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
@@ -1111,7 +1121,7 @@ export function TaskManagerPage() {
     return () => {
       timeoutIds.forEach((id) => clearTimeout(id));
     };
-  }, [drafts, jobsQuery.data?.jobs]);
+  }, [drafts, visibleJobs]);
 
   const integrationSetupMeta = (() => {
     if (integrationSetupTarget === 'radarr') {
@@ -1298,7 +1308,7 @@ export function TaskManagerPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {(jobsQuery.data?.jobs ?? []).map((job) => {
+            {visibleJobs.map((job) => {
               const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
               const baseEnabled = job.schedule?.enabled ?? false;
 
@@ -3609,7 +3619,7 @@ export function TaskManagerPage() {
                     onClick={() => {
                       setImmaculateStartSearchDialogOpen(false);
                       const arrJob =
-                        jobsQuery.data?.jobs?.find((j) => j.id === 'arrMonitoredSearch') ??
+                        visibleJobs.find((j) => j.id === 'arrMonitoredSearch') ??
                         null;
                       const baseCron =
                         arrJob?.schedule?.cron ??
