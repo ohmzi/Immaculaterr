@@ -13,7 +13,20 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/api/prisma apps/api/prisma
-RUN npm ci
+ARG NPM_CI_RETRIES=3
+RUN set -eu; \
+  attempt=1; \
+  while :; do \
+    npm ci && break; \
+    if [ "$attempt" -ge "$NPM_CI_RETRIES" ]; then \
+      echo "npm ci failed after ${attempt} attempt(s)" >&2; \
+      exit 1; \
+    fi; \
+    echo "npm ci failed (attempt ${attempt}/${NPM_CI_RETRIES}); retrying..." >&2; \
+    npm cache clean --force || true; \
+    attempt=$((attempt + 1)); \
+    sleep $((attempt * 5)); \
+  done
 
 # Ensure Prisma client/types exist for `nest build` in CI/Docker.
 RUN npm -w apps/api run db:generate
@@ -21,7 +34,9 @@ RUN npm -w apps/api run db:generate
 # 2) Build
 COPY apps/api apps/api
 COPY apps/web apps/web
-RUN npm run build
+RUN npm run build \
+  && npm prune --omit=dev \
+  && npm cache clean --force
 
 
 FROM ${NODE_IMAGE} AS runner
@@ -52,15 +67,10 @@ WORKDIR /app
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
 
-# Install prod deps only
-COPY package.json package-lock.json ./
-COPY apps/api/package.json apps/api/package.json
-COPY apps/web/package.json apps/web/package.json
-COPY apps/api/prisma apps/api/prisma
-RUN npm ci --omit=dev && npm cache clean --force
-
-# Reuse Prisma client generated in builder. A second generation here is flaky on
-# linux/arm64 under emulation (Prisma getDmmf JSON parse errors).
+# Reuse prod deps and Prisma client generated in builder. This avoids a second
+# registry install in runner (which can be flaky on arm64 CI) and keeps runtime
+# dependency set aligned with the lockfile used by builder.
+COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/apps/api/node_modules/.prisma /app/apps/api/node_modules/.prisma
 COPY --from=builder /app/apps/api/node_modules/@prisma/client /app/apps/api/node_modules/@prisma/client
 
