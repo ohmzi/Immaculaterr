@@ -1100,6 +1100,7 @@ export class BasedonLatestWatchedCollectionJob {
       failed: [] as string[],
       skipped: [] as string[],
     };
+    const radarrTmdbLookupCache = new Map<number, boolean | null>();
 
     if (
       !overseerrModeSelected &&
@@ -1137,6 +1138,28 @@ export class BasedonLatestWatchedCollectionJob {
             radarrStats.skipped += 1;
             radarrLists.skipped.push(title);
             continue;
+          }
+          const precheck = await this.validateRadarrTmdbId({
+            ctx,
+            baseUrl: radarr.baseUrl,
+            apiKey: radarr.apiKey,
+            tmdbId: tmdbMatch.tmdbId,
+            cache: radarrTmdbLookupCache,
+          });
+          if (precheck === false) {
+            radarrStats.skipped += 1;
+            radarrLists.skipped.push(tmdbMatch.title);
+            await ctx.warn('radarr: skipped add (tmdb precheck not found)', {
+              title: tmdbMatch.title,
+              tmdbId: tmdbMatch.tmdbId,
+            });
+            continue;
+          }
+          if (precheck === null) {
+            await ctx.warn('radarr: tmdb precheck unavailable (continuing with add)', {
+              title: tmdbMatch.title,
+              tmdbId: tmdbMatch.tmdbId,
+            });
           }
 
           try {
@@ -1630,6 +1653,7 @@ export class BasedonLatestWatchedCollectionJob {
           )
         : null;
 
+    const sonarrTvdbLookupCache = new Map<number, boolean | null>();
     const perCollection: JsonObject[] = [];
     for (const col of collectionsToBuild) {
       try {
@@ -1661,6 +1685,7 @@ export class BasedonLatestWatchedCollectionJob {
                 defaults: sonarrDefaults,
               }
             : null,
+          sonarrTvdbLookupCache,
         });
         perCollection.push(summary);
       } catch (err) {
@@ -1774,6 +1799,7 @@ export class BasedonLatestWatchedCollectionJob {
         tagIds: number[];
       } | null;
     } | null;
+    sonarrTvdbLookupCache: Map<number, boolean | null>;
   }): Promise<JsonObject> {
     const {
       ctx,
@@ -1791,6 +1817,7 @@ export class BasedonLatestWatchedCollectionJob {
       overseerrModeSelected,
       overseerr,
       sonarr,
+      sonarrTvdbLookupCache,
     } = params;
 
     await ctx.info('collection_run(tv): start', {
@@ -2164,6 +2191,28 @@ export class BasedonLatestWatchedCollectionJob {
             continue;
           }
           const tvdbId = ids.tvdbId;
+          const precheck = await this.validateSonarrTvdbId({
+            ctx,
+            baseUrl: sonarr.baseUrl,
+            apiKey: sonarr.apiKey,
+            tvdbId,
+            cache: sonarrTvdbLookupCache,
+          });
+          if (precheck === false) {
+            sonarrStats.skipped += 1;
+            sonarrLists.skipped.push(title);
+            await ctx.warn('sonarr: skipped add (tvdb precheck not found)', {
+              title: ids.title,
+              tvdbId,
+            });
+            continue;
+          }
+          if (precheck === null) {
+            await ctx.warn('sonarr: tvdb precheck unavailable (continuing with add)', {
+              title: ids.title,
+              tvdbId,
+            });
+          }
 
           try {
             const result = await withJobRetry(
@@ -2252,6 +2301,96 @@ export class BasedonLatestWatchedCollectionJob {
 
     await ctx.info('collection_run(tv): done', summary);
     return summary;
+  }
+
+  private async validateSonarrTvdbId(params: {
+    ctx: JobContext;
+    baseUrl: string;
+    apiKey: string;
+    tvdbId: number;
+    cache: Map<number, boolean | null>;
+  }): Promise<boolean | null> {
+    const tvdbId = Math.trunc(params.tvdbId);
+    if (!Number.isFinite(tvdbId) || tvdbId <= 0) return false;
+
+    if (params.cache.has(tvdbId)) {
+      return params.cache.get(tvdbId) ?? null;
+    }
+
+    const lookup = await withJobRetryOrNull(
+      () =>
+        this.sonarr.lookupSeries({
+          baseUrl: params.baseUrl,
+          apiKey: params.apiKey,
+          term: `tvdb:${tvdbId}`,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'sonarr: lookup tvdb precheck',
+        meta: { tvdbId },
+      },
+    );
+
+    if (!lookup) {
+      params.cache.set(tvdbId, null);
+      return null;
+    }
+
+    const hasMatch = lookup.some((series) => {
+      const raw = series?.tvdbId;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.trunc(raw) === tvdbId;
+      }
+      return false;
+    });
+
+    params.cache.set(tvdbId, hasMatch);
+    return hasMatch;
+  }
+
+  private async validateRadarrTmdbId(params: {
+    ctx: JobContext;
+    baseUrl: string;
+    apiKey: string;
+    tmdbId: number;
+    cache: Map<number, boolean | null>;
+  }): Promise<boolean | null> {
+    const tmdbId = Math.trunc(params.tmdbId);
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return false;
+
+    if (params.cache.has(tmdbId)) {
+      return params.cache.get(tmdbId) ?? null;
+    }
+
+    const lookup = await withJobRetryOrNull(
+      () =>
+        this.radarr.lookupMovies({
+          baseUrl: params.baseUrl,
+          apiKey: params.apiKey,
+          term: `tmdb:${tmdbId}`,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'radarr: lookup tmdb precheck',
+        meta: { tmdbId },
+      },
+    );
+
+    if (!lookup) {
+      params.cache.set(tmdbId, null);
+      return null;
+    }
+
+    const hasMatch = lookup.some((movie) => {
+      const raw = movie?.tmdbId;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.trunc(raw) === tmdbId;
+      }
+      return false;
+    });
+
+    params.cache.set(tmdbId, hasMatch);
+    return hasMatch;
   }
 
   private async resolvePlexUserContext(ctx: JobContext) {
@@ -2941,6 +3080,7 @@ function buildWatchedLatestCollectionReport(params: {
     const sonarrFacts: Array<{ label: string; value: JsonValue }> = [];
     let sonarrEnabled = false;
     let sonarrFailed = 0;
+    const sonarrFailedTitles: string[] = [];
 
     for (const [idx, c] of collections.entries()) {
       const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
@@ -2955,6 +3095,7 @@ function buildWatchedLatestCollectionReport(params: {
       const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
       const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
       const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
+      sonarrFailedTitles.push(...failed);
 
       const attemptedCount = sonarr ? asNum((sonarr as Record<string, unknown>).attempted) : null;
       const addedCount = sonarr ? asNum((sonarr as Record<string, unknown>).added) : null;
@@ -2974,22 +3115,36 @@ function buildWatchedLatestCollectionReport(params: {
     tasks.push({
       id: 'sonarr_add',
       title: 'Sonarr: add missing shows',
-      status:
-        ctx.dryRun || !sonarrEnabled
-          ? 'skipped'
-          : sonarrFailed
-            ? 'failed'
-            : 'success',
+      status: ctx.dryRun || !sonarrEnabled ? 'skipped' : 'success',
       facts: [
         { label: 'Enabled', value: sonarrEnabled },
         { label: 'Dry run', value: ctx.dryRun },
         ...sonarrFacts,
       ],
+      issues:
+        !ctx.dryRun && sonarrEnabled && sonarrFailed > 0
+          ? [
+              issue(
+                'warn',
+                (() => {
+                  const titles = sortTitles(uniqueStrings(sonarrFailedTitles));
+                  const suffix =
+                    titles.length > 6
+                      ? ` (examples: ${titles.slice(0, 6).join(', ')} +${titles.length - 6} more)`
+                      : titles.length
+                        ? ` (${titles.join(', ')})`
+                        : '';
+                  return `Sonarr could not add ${sonarrFailed} show${sonarrFailed === 1 ? '' : 's'}; continuing run.${suffix}`;
+                })(),
+              ),
+            ]
+          : undefined,
     });
   } else {
     const radarrFacts: Array<{ label: string; value: JsonValue }> = [];
     let radarrEnabled = false;
     let radarrFailed = 0;
+    const radarrFailedTitles: string[] = [];
 
     for (const [idx, c] of collections.entries()) {
       const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
@@ -3004,6 +3159,7 @@ function buildWatchedLatestCollectionReport(params: {
       const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
       const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
       const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
+      radarrFailedTitles.push(...failed);
 
       const attemptedCount = radarr ? asNum((radarr as Record<string, unknown>).attempted) : null;
       const addedCount = radarr ? asNum((radarr as Record<string, unknown>).added) : null;
@@ -3023,17 +3179,30 @@ function buildWatchedLatestCollectionReport(params: {
     tasks.push({
       id: 'radarr_add',
       title: 'Radarr: add missing movies',
-      status:
-        ctx.dryRun || !radarrEnabled
-          ? 'skipped'
-          : radarrFailed
-            ? 'failed'
-            : 'success',
+      status: ctx.dryRun || !radarrEnabled ? 'skipped' : 'success',
       facts: [
         { label: 'Enabled', value: radarrEnabled },
         { label: 'Dry run', value: ctx.dryRun },
         ...radarrFacts,
       ],
+      issues:
+        !ctx.dryRun && radarrEnabled && radarrFailed > 0
+          ? [
+              issue(
+                'warn',
+                (() => {
+                  const titles = sortTitles(uniqueStrings(radarrFailedTitles));
+                  const suffix =
+                    titles.length > 6
+                      ? ` (examples: ${titles.slice(0, 6).join(', ')} +${titles.length - 6} more)`
+                      : titles.length
+                        ? ` (${titles.join(', ')})`
+                        : '';
+                  return `Radarr could not add ${radarrFailed} movie${radarrFailed === 1 ? '' : 's'}; continuing run.${suffix}`;
+                })(),
+              ),
+            ]
+          : undefined,
     });
   }
 

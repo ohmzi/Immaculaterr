@@ -808,6 +808,7 @@ export class ImmaculateTasteCollectionJob {
       skipped: [] as string[],
     };
     const radarrSentTmdbIds: number[] = [];
+    const radarrTmdbLookupCache = new Map<number, boolean | null>();
 
     if (!ctx.dryRun && radarrEnabled && missingTitles.length) {
       if (approvalRequiredFromObservatory) {
@@ -887,6 +888,28 @@ export class ImmaculateTasteCollectionJob {
               radarrStats.skipped += 1;
               radarrLists.skipped.push(title.trim());
               continue;
+            }
+            const precheck = await this.validateRadarrTmdbId({
+              ctx,
+              baseUrl: radarrBaseUrl,
+              apiKey: radarrApiKey,
+              tmdbId: tmdbMatch.tmdbId,
+              cache: radarrTmdbLookupCache,
+            });
+            if (precheck === false) {
+              radarrStats.skipped += 1;
+              radarrLists.skipped.push(tmdbMatch.title);
+              await ctx.warn('radarr: skipped add (tmdb precheck not found)', {
+                title: tmdbMatch.title,
+                tmdbId: tmdbMatch.tmdbId,
+              });
+              continue;
+            }
+            if (precheck === null) {
+              await ctx.warn('radarr: tmdb precheck unavailable (continuing with add)', {
+                title: tmdbMatch.title,
+                tmdbId: tmdbMatch.tmdbId,
+              });
             }
             radarrStats.attempted += 1;
             radarrLists.attempted.push(tmdbMatch.title);
@@ -1698,6 +1721,7 @@ export class ImmaculateTasteCollectionJob {
       skipped: [] as string[],
     };
     const sonarrSentTvdbIds: number[] = [];
+    const sonarrTvdbLookupCache = new Map<number, boolean | null>();
 
     if (!ctx.dryRun && sonarrEnabled && missingTitles.length) {
       if (approvalRequiredFromObservatory) {
@@ -1774,6 +1798,28 @@ export class ImmaculateTasteCollectionJob {
             const tvdbId = ids.tvdbId;
             sonarrStats.attempted += 1;
             sonarrLists.attempted.push(ids.title);
+            const precheck = await this.validateSonarrTvdbId({
+              ctx,
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
+              tvdbId,
+              cache: sonarrTvdbLookupCache,
+            });
+            if (precheck === false) {
+              sonarrStats.skipped += 1;
+              sonarrLists.skipped.push(ids.title);
+              await ctx.warn('sonarr: skipped add (tvdb precheck not found)', {
+                title: ids.title,
+                tvdbId,
+              });
+              continue;
+            }
+            if (precheck === null) {
+              await ctx.warn('sonarr: tvdb precheck unavailable (continuing with add)', {
+                title: ids.title,
+                tvdbId,
+              });
+            }
 
             try {
               const result = await withJobRetry(
@@ -2094,6 +2140,96 @@ export class ImmaculateTasteCollectionJob {
       plexUserTitle: admin.plexAccountTitle,
       pinCollections: true,
     };
+  }
+
+  private async validateSonarrTvdbId(params: {
+    ctx: JobContext;
+    baseUrl: string;
+    apiKey: string;
+    tvdbId: number;
+    cache: Map<number, boolean | null>;
+  }): Promise<boolean | null> {
+    const tvdbId = Math.trunc(params.tvdbId);
+    if (!Number.isFinite(tvdbId) || tvdbId <= 0) return false;
+
+    if (params.cache.has(tvdbId)) {
+      return params.cache.get(tvdbId) ?? null;
+    }
+
+    const lookup = await withJobRetryOrNull(
+      () =>
+        this.sonarr.lookupSeries({
+          baseUrl: params.baseUrl,
+          apiKey: params.apiKey,
+          term: `tvdb:${tvdbId}`,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'sonarr: lookup tvdb precheck',
+        meta: { tvdbId },
+      },
+    );
+
+    if (!lookup) {
+      params.cache.set(tvdbId, null);
+      return null;
+    }
+
+    const hasMatch = lookup.some((series) => {
+      const raw = series?.tvdbId;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.trunc(raw) === tvdbId;
+      }
+      return false;
+    });
+
+    params.cache.set(tvdbId, hasMatch);
+    return hasMatch;
+  }
+
+  private async validateRadarrTmdbId(params: {
+    ctx: JobContext;
+    baseUrl: string;
+    apiKey: string;
+    tmdbId: number;
+    cache: Map<number, boolean | null>;
+  }): Promise<boolean | null> {
+    const tmdbId = Math.trunc(params.tmdbId);
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return false;
+
+    if (params.cache.has(tmdbId)) {
+      return params.cache.get(tmdbId) ?? null;
+    }
+
+    const lookup = await withJobRetryOrNull(
+      () =>
+        this.radarr.lookupMovies({
+          baseUrl: params.baseUrl,
+          apiKey: params.apiKey,
+          term: `tmdb:${tmdbId}`,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'radarr: lookup tmdb precheck',
+        meta: { tmdbId },
+      },
+    );
+
+    if (!lookup) {
+      params.cache.set(tmdbId, null);
+      return null;
+    }
+
+    const hasMatch = lookup.some((movie) => {
+      const raw = movie?.tmdbId;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.trunc(raw) === tmdbId;
+      }
+      return false;
+    });
+
+    params.cache.set(tmdbId, hasMatch);
+    return hasMatch;
   }
 
   private async pickRadarrDefaults(params: {
@@ -2762,9 +2898,7 @@ function buildImmaculateTastePointsReport(params: {
               status:
                 ctx.dryRun || !Boolean(radarr.enabled)
                   ? ('skipped' as const)
-                  : radarrFailed
-                    ? ('failed' as const)
-                    : ('success' as const),
+                  : ('success' as const),
               facts: [
                 {
                   label: 'Attempted',
@@ -2815,6 +2949,30 @@ function buildImmaculateTastePointsReport(params: {
                   },
                 },
               ],
+              issues:
+                !ctx.dryRun && Boolean(radarr.enabled) && radarrFailed > 0
+                  ? [
+                      issue(
+                        'warn',
+                        (() => {
+                          const titles = sortTitles(
+                            uniqueStrings(
+                              radarrLists
+                                ? asStringArray(radarrLists.failed)
+                                : [],
+                            ),
+                          );
+                          const suffix =
+                            titles.length > 6
+                              ? ` (examples: ${titles.slice(0, 6).join(', ')} +${titles.length - 6} more)`
+                              : titles.length
+                                ? ` (${titles.join(', ')})`
+                                : '';
+                          return `Radarr could not add ${radarrFailed} movie${radarrFailed === 1 ? '' : 's'}; continuing run.${suffix}`;
+                        })(),
+                      ),
+                    ]
+                  : undefined,
             },
           ]
         : []),
@@ -2826,9 +2984,7 @@ function buildImmaculateTastePointsReport(params: {
               status:
                 ctx.dryRun || !Boolean(sonarr.enabled)
                   ? ('skipped' as const)
-                  : sonarrFailed
-                    ? ('failed' as const)
-                    : ('success' as const),
+                  : ('success' as const),
               facts: [
                 {
                   label: 'Attempted',
@@ -2879,6 +3035,30 @@ function buildImmaculateTastePointsReport(params: {
                   },
                 },
               ],
+              issues:
+                !ctx.dryRun && Boolean(sonarr.enabled) && sonarrFailed > 0
+                  ? [
+                      issue(
+                        'warn',
+                        (() => {
+                          const titles = sortTitles(
+                            uniqueStrings(
+                              sonarrLists
+                                ? asStringArray(sonarrLists.failed)
+                                : [],
+                            ),
+                          );
+                          const suffix =
+                            titles.length > 6
+                              ? ` (examples: ${titles.slice(0, 6).join(', ')} +${titles.length - 6} more)`
+                              : titles.length
+                                ? ` (${titles.join(', ')})`
+                                : '';
+                          return `Sonarr could not add ${sonarrFailed} show${sonarrFailed === 1 ? '' : 's'}; continuing run.${suffix}`;
+                        })(),
+                      ),
+                    ]
+                  : undefined,
             },
           ]
         : []),

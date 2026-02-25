@@ -375,6 +375,52 @@ export class RadarrService {
     }
   }
 
+  async lookupMovies(params: {
+    baseUrl: string;
+    apiKey: string;
+    term: string;
+  }): Promise<RadarrMovie[]> {
+    const { baseUrl, apiKey } = params;
+    const term = (params.term ?? '').trim();
+    if (!term) return [];
+
+    const url = this.buildApiUrl(
+      baseUrl,
+      `api/v3/movie/lookup?term=${encodeURIComponent(term)}`,
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr lookup movies failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      return Array.isArray(data) ? (data as RadarrMovie[]) : [];
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr lookup movies failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async addMovie(params: {
     baseUrl: string;
     apiKey: string;
