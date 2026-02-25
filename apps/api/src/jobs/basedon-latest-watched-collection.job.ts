@@ -1100,6 +1100,7 @@ export class BasedonLatestWatchedCollectionJob {
       failed: [] as string[],
       skipped: [] as string[],
     };
+    const radarrTmdbLookupCache = new Map<number, boolean | null>();
 
     if (
       !overseerrModeSelected &&
@@ -1137,6 +1138,28 @@ export class BasedonLatestWatchedCollectionJob {
             radarrStats.skipped += 1;
             radarrLists.skipped.push(title);
             continue;
+          }
+          const precheck = await this.validateRadarrTmdbId({
+            ctx,
+            baseUrl: radarr.baseUrl,
+            apiKey: radarr.apiKey,
+            tmdbId: tmdbMatch.tmdbId,
+            cache: radarrTmdbLookupCache,
+          });
+          if (precheck === false) {
+            radarrStats.skipped += 1;
+            radarrLists.skipped.push(tmdbMatch.title);
+            await ctx.warn('radarr: skipped add (tmdb precheck not found)', {
+              title: tmdbMatch.title,
+              tmdbId: tmdbMatch.tmdbId,
+            });
+            continue;
+          }
+          if (precheck === null) {
+            await ctx.warn('radarr: tmdb precheck unavailable (continuing with add)', {
+              title: tmdbMatch.title,
+              tmdbId: tmdbMatch.tmdbId,
+            });
           }
 
           try {
@@ -2325,6 +2348,51 @@ export class BasedonLatestWatchedCollectionJob {
     return hasMatch;
   }
 
+  private async validateRadarrTmdbId(params: {
+    ctx: JobContext;
+    baseUrl: string;
+    apiKey: string;
+    tmdbId: number;
+    cache: Map<number, boolean | null>;
+  }): Promise<boolean | null> {
+    const tmdbId = Math.trunc(params.tmdbId);
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return false;
+
+    if (params.cache.has(tmdbId)) {
+      return params.cache.get(tmdbId) ?? null;
+    }
+
+    const lookup = await withJobRetryOrNull(
+      () =>
+        this.radarr.lookupMovies({
+          baseUrl: params.baseUrl,
+          apiKey: params.apiKey,
+          term: `tmdb:${tmdbId}`,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'radarr: lookup tmdb precheck',
+        meta: { tmdbId },
+      },
+    );
+
+    if (!lookup) {
+      params.cache.set(tmdbId, null);
+      return null;
+    }
+
+    const hasMatch = lookup.some((movie) => {
+      const raw = movie?.tmdbId;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.trunc(raw) === tmdbId;
+      }
+      return false;
+    });
+
+    params.cache.set(tmdbId, hasMatch);
+    return hasMatch;
+  }
+
   private async resolvePlexUserContext(ctx: JobContext) {
     const input = ctx.input ?? {};
     const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
@@ -3076,6 +3144,7 @@ function buildWatchedLatestCollectionReport(params: {
     const radarrFacts: Array<{ label: string; value: JsonValue }> = [];
     let radarrEnabled = false;
     let radarrFailed = 0;
+    const radarrFailedTitles: string[] = [];
 
     for (const [idx, c] of collections.entries()) {
       const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
@@ -3090,6 +3159,7 @@ function buildWatchedLatestCollectionReport(params: {
       const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
       const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
       const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
+      radarrFailedTitles.push(...failed);
 
       const attemptedCount = radarr ? asNum((radarr as Record<string, unknown>).attempted) : null;
       const addedCount = radarr ? asNum((radarr as Record<string, unknown>).added) : null;
@@ -3109,17 +3179,30 @@ function buildWatchedLatestCollectionReport(params: {
     tasks.push({
       id: 'radarr_add',
       title: 'Radarr: add missing movies',
-      status:
-        ctx.dryRun || !radarrEnabled
-          ? 'skipped'
-          : radarrFailed
-            ? 'failed'
-            : 'success',
+      status: ctx.dryRun || !radarrEnabled ? 'skipped' : 'success',
       facts: [
         { label: 'Enabled', value: radarrEnabled },
         { label: 'Dry run', value: ctx.dryRun },
         ...radarrFacts,
       ],
+      issues:
+        !ctx.dryRun && radarrEnabled && radarrFailed > 0
+          ? [
+              issue(
+                'warn',
+                (() => {
+                  const titles = sortTitles(uniqueStrings(radarrFailedTitles));
+                  const suffix =
+                    titles.length > 6
+                      ? ` (examples: ${titles.slice(0, 6).join(', ')} +${titles.length - 6} more)`
+                      : titles.length
+                        ? ` (${titles.join(', ')})`
+                        : '';
+                  return `Radarr could not add ${radarrFailed} movie${radarrFailed === 1 ? '' : 's'}; continuing run.${suffix}`;
+                })(),
+              ),
+            ]
+          : undefined,
     });
   }
 

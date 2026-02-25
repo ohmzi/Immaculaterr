@@ -808,6 +808,7 @@ export class ImmaculateTasteCollectionJob {
       skipped: [] as string[],
     };
     const radarrSentTmdbIds: number[] = [];
+    const radarrTmdbLookupCache = new Map<number, boolean | null>();
 
     if (!ctx.dryRun && radarrEnabled && missingTitles.length) {
       if (approvalRequiredFromObservatory) {
@@ -887,6 +888,28 @@ export class ImmaculateTasteCollectionJob {
               radarrStats.skipped += 1;
               radarrLists.skipped.push(title.trim());
               continue;
+            }
+            const precheck = await this.validateRadarrTmdbId({
+              ctx,
+              baseUrl: radarrBaseUrl,
+              apiKey: radarrApiKey,
+              tmdbId: tmdbMatch.tmdbId,
+              cache: radarrTmdbLookupCache,
+            });
+            if (precheck === false) {
+              radarrStats.skipped += 1;
+              radarrLists.skipped.push(tmdbMatch.title);
+              await ctx.warn('radarr: skipped add (tmdb precheck not found)', {
+                title: tmdbMatch.title,
+                tmdbId: tmdbMatch.tmdbId,
+              });
+              continue;
+            }
+            if (precheck === null) {
+              await ctx.warn('radarr: tmdb precheck unavailable (continuing with add)', {
+                title: tmdbMatch.title,
+                tmdbId: tmdbMatch.tmdbId,
+              });
             }
             radarrStats.attempted += 1;
             radarrLists.attempted.push(tmdbMatch.title);
@@ -2164,6 +2187,51 @@ export class ImmaculateTasteCollectionJob {
     return hasMatch;
   }
 
+  private async validateRadarrTmdbId(params: {
+    ctx: JobContext;
+    baseUrl: string;
+    apiKey: string;
+    tmdbId: number;
+    cache: Map<number, boolean | null>;
+  }): Promise<boolean | null> {
+    const tmdbId = Math.trunc(params.tmdbId);
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return false;
+
+    if (params.cache.has(tmdbId)) {
+      return params.cache.get(tmdbId) ?? null;
+    }
+
+    const lookup = await withJobRetryOrNull(
+      () =>
+        this.radarr.lookupMovies({
+          baseUrl: params.baseUrl,
+          apiKey: params.apiKey,
+          term: `tmdb:${tmdbId}`,
+        }),
+      {
+        ctx: params.ctx,
+        label: 'radarr: lookup tmdb precheck',
+        meta: { tmdbId },
+      },
+    );
+
+    if (!lookup) {
+      params.cache.set(tmdbId, null);
+      return null;
+    }
+
+    const hasMatch = lookup.some((movie) => {
+      const raw = movie?.tmdbId;
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.trunc(raw) === tmdbId;
+      }
+      return false;
+    });
+
+    params.cache.set(tmdbId, hasMatch);
+    return hasMatch;
+  }
+
   private async pickRadarrDefaults(params: {
     ctx: JobContext;
     baseUrl: string;
@@ -2830,9 +2898,7 @@ function buildImmaculateTastePointsReport(params: {
               status:
                 ctx.dryRun || !Boolean(radarr.enabled)
                   ? ('skipped' as const)
-                  : radarrFailed
-                    ? ('failed' as const)
-                    : ('success' as const),
+                  : ('success' as const),
               facts: [
                 {
                   label: 'Attempted',
@@ -2883,6 +2949,30 @@ function buildImmaculateTastePointsReport(params: {
                   },
                 },
               ],
+              issues:
+                !ctx.dryRun && Boolean(radarr.enabled) && radarrFailed > 0
+                  ? [
+                      issue(
+                        'warn',
+                        (() => {
+                          const titles = sortTitles(
+                            uniqueStrings(
+                              radarrLists
+                                ? asStringArray(radarrLists.failed)
+                                : [],
+                            ),
+                          );
+                          const suffix =
+                            titles.length > 6
+                              ? ` (examples: ${titles.slice(0, 6).join(', ')} +${titles.length - 6} more)`
+                              : titles.length
+                                ? ` (${titles.join(', ')})`
+                                : '';
+                          return `Radarr could not add ${radarrFailed} movie${radarrFailed === 1 ? '' : 's'}; continuing run.${suffix}`;
+                        })(),
+                      ),
+                    ]
+                  : undefined,
             },
           ]
         : []),
