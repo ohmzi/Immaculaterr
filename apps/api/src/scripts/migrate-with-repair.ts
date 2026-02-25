@@ -1,9 +1,16 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 
 const TARGET_MIGRATION = '20260224090000_auth_security_hardening';
-const PRISMA_BIN = './apps/api/node_modules/.bin/prisma';
-const PRISMA_SCHEMA = 'apps/api/prisma/schema.prisma';
+const PRISMA_BIN_CANDIDATES = [
+  './apps/api/node_modules/.bin/prisma',
+  './node_modules/.bin/prisma',
+];
+const PRISMA_SCHEMA_CANDIDATES = [
+  'apps/api/prisma/schema.prisma',
+  'prisma/schema.prisma',
+];
 
 type TableInfoRow = {
   name: string;
@@ -14,8 +21,29 @@ type MigrationStatusRow = {
   rolled_back_at: number | null;
 };
 
+function isMissingMigrationsTableError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    err.message.includes('no such table: _prisma_migrations')
+  );
+}
+
+function resolveExistingPath(paths: string[], kind: string): string {
+  const match = paths.find((candidate) => existsSync(candidate));
+  if (match) return match;
+
+  throw new Error(
+    `Unable to locate ${kind}. Checked: ${paths.join(', ')}`,
+  );
+}
+
 function runPrisma(args: string[], label: string): void {
-  const result = spawnSync(PRISMA_BIN, [...args, '--schema', PRISMA_SCHEMA], {
+  const prismaBin = resolveExistingPath(PRISMA_BIN_CANDIDATES, 'Prisma CLI');
+  const prismaSchema = resolveExistingPath(
+    PRISMA_SCHEMA_CANDIDATES,
+    'Prisma schema',
+  );
+  const result = spawnSync(prismaBin, [...args, '--schema', prismaSchema], {
     stdio: 'inherit',
     env: process.env,
   });
@@ -42,14 +70,20 @@ async function tableInfo(
 }
 
 async function hasFailedTargetMigration(prisma: PrismaClient): Promise<boolean> {
-  const rows = await prisma.$queryRawUnsafe<MigrationStatusRow[]>(
-    `SELECT "finished_at", "rolled_back_at"
-       FROM "_prisma_migrations"
-      WHERE "migration_name" = ?
-      ORDER BY "started_at" DESC
-      LIMIT 1`,
-    TARGET_MIGRATION,
-  );
+  let rows: MigrationStatusRow[];
+  try {
+    rows = await prisma.$queryRawUnsafe<MigrationStatusRow[]>(
+      `SELECT "finished_at", "rolled_back_at"
+         FROM "_prisma_migrations"
+        WHERE "migration_name" = ?
+        ORDER BY "started_at" DESC
+        LIMIT 1`,
+      TARGET_MIGRATION,
+    );
+  } catch (err) {
+    if (isMissingMigrationsTableError(err)) return false;
+    throw err;
+  }
 
   if (rows.length === 0) return false;
   return rows[0].finished_at == null && rows[0].rolled_back_at == null;
