@@ -97,9 +97,6 @@
 ## Getting started (Docker)
 
 ### Installation 
-## Updating
-
-### Docker
 
 #### HTTP-only update (required)
 
