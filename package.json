@@ -20,7 +20,10 @@
     "test:workflow:publish": "node scripts/test-publish-workflow.mjs",
     "build": "npm --workspaces --if-present run build",
     "lint": "npm --workspaces --if-present run lint",
-    "test": "npm --workspaces --if-present run test"
+    "test": "npm --workspaces --if-present run test",
+    "security:check:ajv": "bash -lc 'command -v rg >/dev/null 2>&1 || { echo \"rg is required for security:check:ajv\"; exit 2; }; ! rg -n \"\\\\$data[[:space:]]*:[[:space:]]*true\" apps scripts .github -g \"**/*.{js,cjs,mjs,ts,tsx,cts,mts,json,yml,yaml}\" -g \"!**/node_modules/**\" -g \"!**/dist/**\" -g \"!**/coverage/**\"'",
+    "security:audit:prod": "npm audit --omit=dev --audit-level=high",
+    "security:ci": "npm run security:check:ajv && npm run security:audit:prod"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
@@ -29,4 +32,3 @@
     "diff": "4.0.4"
   }
 }
-
