@@ -25,6 +25,9 @@ import {
   getSecretsEnvelopeKey,
   putSettings,
 } from '@/api/settings';
+import { ApiError } from '@/api/http';
+import { testSavedIntegration } from '@/api/integrations';
+import { checkPlexPin, createPlexPin } from '@/api/plex';
 import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -45,6 +48,14 @@ import {
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 
 const MASKED_SECRET = '*******';
+type IntegrationId =
+  | 'plex'
+  | 'radarr'
+  | 'sonarr'
+  | 'tmdb'
+  | 'overseerr'
+  | 'google'
+  | 'openai';
 
 function readString(obj: unknown, path: string): string {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
@@ -397,21 +408,19 @@ export function SettingsPage({
   };
 
   const callIntegrationTest = async (
-    integrationId: string,
+    integrationId: IntegrationId,
     body?: Record<string, unknown>,
   ) => {
-    const response = await fetch(`/api/integrations/test/${integrationId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body ?? {}),
-    });
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ message: response.statusText }));
-      throw new Error(readErrorMessage(error, `${integrationId} test failed`));
+    try {
+      return await testSavedIntegration(integrationId, body ?? {});
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw new Error(
+          readErrorMessage(error.body, error.message || `${integrationId} test failed`),
+        );
+      }
+      throw new Error(`${integrationId} test failed`);
     }
-    return await response.json();
   };
 
   const buildIntegrationSecretPayload = async (params: {
@@ -515,16 +524,13 @@ export function SettingsPage({
 
     try {
       // Step 1: Create a PIN
-      const pinResponse = await fetch('/api/plex/pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!pinResponse.ok) {
+      let pinData: Awaited<ReturnType<typeof createPlexPin>>;
+      try {
+        pinData = await createPlexPin();
+      } catch {
         throw new Error('Failed to create Plex PIN');
       }
 
-      const pinData = await pinResponse.json();
       const { id: pinId, authUrl } = pinData;
 
       // Step 2: Navigate the pre-opened window/tab to Plex auth.
@@ -562,24 +568,21 @@ export function SettingsPage({
         }
 
         try {
-          const checkResponse = await fetch(`/api/plex/pin/${pinId}`);
-          if (checkResponse.ok) {
-            const checkData = await checkResponse.json();
+          const checkData = await checkPlexPin(pinId);
 
-            if (checkData.authToken) {
-              // Success! Got the token
-              clearInterval(pollInterval);
-              try {
-                popup.close();
-              } catch {
-                // ignore
-              }
-              setPlexTouched(true);
-              setPlexTestOk(null);
-              setPlexToken(checkData.authToken);
-              setIsPlexOAuthLoading(false);
-              toast.success('Connected to Plex.', { id: toastId });
+          if (checkData.authToken) {
+            // Success! Got the token
+            clearInterval(pollInterval);
+            try {
+              popup.close();
+            } catch {
+              // ignore
             }
+            setPlexTouched(true);
+            setPlexTestOk(null);
+            setPlexToken(checkData.authToken);
+            setIsPlexOAuthLoading(false);
+            toast.success('Connected to Plex.', { id: toastId });
           }
         } catch {
           // Continue polling on transient errors.

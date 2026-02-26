@@ -26,6 +26,7 @@ import {
 } from '@/api/integrations';
 import { putSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
+import { testOverseerrConnection } from '@/api/overseerr';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -460,12 +461,9 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       if (!apiKey) throw new Error('Please enter Overseerr API key');
 
       toast.info('Validating Overseerr credentials...');
-      const res = await fetch('/api/overseerr/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl, apiKey }),
-      });
-      if (!res.ok) {
+      try {
+        await testOverseerrConnection({ baseUrl, apiKey });
+      } catch {
         throw new Error('Overseerr credentials are incorrect.');
       }
 
