@@ -99,7 +99,6 @@
 ### Installation 
 
 #### HTTP-only update (required)
-
 ```bash
 docker pull ohmzii/immaculaterr:v1.6.0
 
@@ -118,7 +117,6 @@ docker run -d \
 ```
 
 #### Optional HTTPS sidecar (can run anytime later)
-
 ```bash
 mkdir -p ~/immaculaterr
 curl -fsSL -o ~/immaculaterr/caddy-entrypoint.sh \
@@ -144,34 +142,37 @@ docker run -d \
   caddy:2.8.4-alpine \
   /bin/sh /etc/caddy/caddy-entrypoint.sh
 ```
+## 
 
-Immaculaterr supports both local access modes:
-
-- HTTP on `5454` for backward-compatible access.
-- HTTPS on `5464` for encrypted local/LAN browser traffic.
+## Access after installation
+- HTTP app (available after the required install step):
+  - `http://localhost:5454/`
+  - `http://<server-ip>:5454/`
+- HTTPS sidecar (available only if you ran the optional HTTPS command):
+  - `https://localhost:5464/`
+  - `https://<server-ip>:5464/`
+- Available ports:
+  - `5454/tcp`: Immaculaterr HTTP
+  - `5464/tcp`: Immaculaterr HTTPS sidecar (optional)
+##
 
 For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/setupguide.md).
 For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
-
-Tips:
-
-- **Command Center → Reset Immaculate Taste Collection** deletes the Plex collection and clears the saved dataset for a selected library (then rerun the collection job to rebuild).
-- **Command Center → Reset Overseerr Requests** clears all Overseerr requests (all statuses) after confirmation.
+##
 
 ## Documentation
-
 - Setup guide: [`doc/setupguide.md`](doc/setupguide.md)
 - FAQ: [`doc/FAQ.md`](doc/FAQ.md)
 - Security policy: [`doc/security.md`](doc/security.md)
 - Version history: [`doc/Version_History.md`](doc/Version_History.md)
 
 Full project README: [`doc/README.md`](doc/README.md)
+##
 
 ## Security and Suggestions
-
 - Report Bug: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
 - Send Suggestion: [Immaculaterr Feedback Form](https://forms.gle/wMpsDu9jPEY14dua6)
+##
 
 ## License
-
 Immaculaterr is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
