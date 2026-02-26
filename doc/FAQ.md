@@ -103,7 +103,7 @@ If you run the HTTPS Docker Compose profile, both are available:
 - HTTPS (local/LAN): `https://<server-ip>:5464/`
 - HTTPS (public domain): `https://<your-domain>/` on `443` when configured.
 
-For local HTTPS, install the local certificate authority to remove warnings, or accept the browser risk page when prompted (some browsers may ask again in later sessions).
+For local HTTPS, run `docker/immaculaterr/install-local-ca.sh` on the Docker host to install the local certificate authority. For other client devices, import `/tmp/immaculaterr-local-ca.crt` from the host into that device's trust store. You can also accept the browser risk page when prompted (some browsers may ask again in later sessions).
 
 ### Why keep both HTTP and HTTPS enabled?
 

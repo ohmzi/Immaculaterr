@@ -38,7 +38,8 @@ cd /opt/immaculaterr
 
 curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/docker-compose.dockerhub.yml
 curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
-chmod +x caddy-entrypoint.sh
+curl -fsSL -o install-local-ca.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh
+chmod +x caddy-entrypoint.sh install-local-ca.sh
 
 docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
 
@@ -49,6 +50,15 @@ Then open:
 
 - `http://<server-ip>:5454/`
 - `https://<server-ip>:5464/`
+
+Optional (recommended for HTTPS without browser warnings):
+
+```bash
+cd /opt/immaculaterr
+./install-local-ca.sh
+```
+
+Run this on the Docker host. If users browse from other devices, import the same CA certificate on those devices.
 
 Run with Docker Compose
 ---
@@ -86,6 +96,13 @@ Updating (Docker Compose)
 cd docker/immaculaterr
 docker compose -f docker-compose.dockerhub.yml pull
 docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
+```
+
+If you use local HTTPS (`:5464`) from this host and still get browser trust warnings, run:
+
+```bash
+cd docker/immaculaterr
+./install-local-ca.sh
 ```
 
 Run with HTTP + HTTPS (Docker Compose)
@@ -129,6 +146,7 @@ Notes:
 cd docker/immaculaterr
 ./install-local-ca.sh
 ```
+- The script exports the cert to `/tmp/immaculaterr-local-ca.crt`. Import this cert on other client devices that browse `https://<server-ip>:5464/`.
 - If you do not install the local CA, you can still open HTTPS by accepting the browser risk warning page. Some browsers may require accepting this again in future sessions.
 - If Firefox import is skipped, install `certutil` and rerun:
 ```bash
@@ -155,12 +173,20 @@ cd /opt/immaculaterr
 
 curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/docker-compose.dockerhub.yml
 curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
-chmod +x caddy-entrypoint.sh
+curl -fsSL -o install-local-ca.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh
+chmod +x caddy-entrypoint.sh install-local-ca.sh
 
 docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
 
 IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml pull
 IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
+```
+
+Optional (recommended if you use local HTTPS on `:5464`):
+
+```bash
+cd /opt/immaculaterr
+./install-local-ca.sh
 ```
 
 License

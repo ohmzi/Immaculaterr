@@ -76,7 +76,8 @@ cd /opt/immaculaterr
 
 curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/docker-compose.dockerhub.yml
 curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
-chmod +x caddy-entrypoint.sh
+curl -fsSL -o install-local-ca.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh
+chmod +x caddy-entrypoint.sh install-local-ca.sh
 
 docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
 
@@ -87,6 +88,15 @@ Then open either:
 
 - `http://<server-ip>:5454/`
 - `https://<server-ip>:5464/`
+
+Optional (recommended for HTTPS without browser warnings):
+
+```bash
+cd /opt/immaculaterr
+./install-local-ca.sh
+```
+
+If users browse from other devices, import `/tmp/immaculaterr-local-ca.crt` from the Docker host into those devices.
 
 For full setup and update options (including certificate trust), use [`doc/setupguide.md`](setupguide.md).
 

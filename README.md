@@ -102,7 +102,7 @@ Immaculaterr supports both local access modes:
 - HTTPS on `5464` for encrypted local/LAN browser traffic.
 
 For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/setupguide.md).
-For local HTTPS, either trust the local certificate once (recommended) or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
+For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 
 Tips:
 
