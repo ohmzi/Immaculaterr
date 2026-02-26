@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath, JSON_HEADERS } from '@/api/constants';
 
 export type ImmaculateTasteCollectionsResponse = {
   collectionName: string;
@@ -27,13 +28,13 @@ export type ImmaculateTasteUserSummaryResponse = {
 
 export async function getImmaculateTasteCollections() {
   return await fetchJson<ImmaculateTasteCollectionsResponse>(
-    '/api/immaculate-taste/collections',
+    apiPath('/immaculate-taste/collections'),
   );
 }
 
 export async function getImmaculateTasteUserSummary() {
   return await fetchJson<ImmaculateTasteUserSummaryResponse>(
-    '/api/immaculate-taste/collections/users',
+    apiPath('/immaculate-taste/collections/users'),
   );
 }
 
@@ -52,9 +53,9 @@ export async function resetImmaculateTasteCollection(params: {
       deleted: boolean;
     };
     dataset: { deleted: number };
-  }>('/api/immaculate-taste/collections/reset', {
+  }>(apiPath('/immaculate-taste/collections/reset'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
 }
@@ -74,12 +75,11 @@ export async function resetImmaculateTasteUserCollection(params: {
       libraries: number;
     };
     dataset: { deleted: number };
-  }>('/api/immaculate-taste/collections/reset-user', {
+  }>(apiPath('/immaculate-taste/collections/reset-user'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
 }
-
 
 

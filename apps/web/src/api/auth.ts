@@ -1,4 +1,5 @@
 import { ApiError, fetchJson } from '@/api/http';
+import { apiPath, JSON_HEADERS } from '@/api/constants';
 import {
   createCredentialEnvelope,
   type LoginKeyResponse,
@@ -27,12 +28,14 @@ export type LoginChallengeResponse = {
   expiresAt: string;
 };
 
+type AuthCredentialPath = '/auth/register' | '/auth/login';
+
 export function bootstrap() {
-  return fetchJson<BootstrapResponse>('/api/auth/bootstrap');
+  return fetchJson<BootstrapResponse>(apiPath('/auth/bootstrap'));
 }
 
 export function me() {
-  return fetchJson<MeResponse>('/api/auth/me');
+  return fetchJson<MeResponse>(apiPath('/auth/me'));
 }
 
 export async function getMeOrNull(): Promise<AuthUser | null> {
@@ -46,11 +49,11 @@ export async function getMeOrNull(): Promise<AuthUser | null> {
 }
 
 async function getLoginKey(): Promise<LoginKeyResponse> {
-  return await fetchJson<LoginKeyResponse>('/api/auth/login-key');
+  return await fetchJson<LoginKeyResponse>(apiPath('/auth/login-key'));
 }
 
 async function postWithCredentialEnvelope(params: {
-  path: '/api/auth/register' | '/api/auth/login';
+  path: AuthCredentialPath;
   username: string;
   password: string;
   captchaToken?: string | null;
@@ -62,9 +65,9 @@ async function postWithCredentialEnvelope(params: {
     key,
   });
 
-  return await fetchJson<AuthOkResponse>(params.path, {
+  return await fetchJson<AuthOkResponse>(apiPath(params.path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({
       credentialEnvelope: envelope,
       ...(params.captchaToken ? { captchaToken: params.captchaToken } : {}),
@@ -73,14 +76,14 @@ async function postWithCredentialEnvelope(params: {
 }
 
 async function postWithPlainCredentials(params: {
-  path: '/api/auth/register' | '/api/auth/login';
+  path: AuthCredentialPath;
   username: string;
   password: string;
   captchaToken?: string | null;
 }): Promise<AuthOkResponse> {
-  return await fetchJson<AuthOkResponse>(params.path, {
+  return await fetchJson<AuthOkResponse>(apiPath(params.path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({
       username: params.username,
       password: params.password,
@@ -96,7 +99,7 @@ export async function register(params: {
 }) {
   try {
     return await postWithCredentialEnvelope({
-      path: '/api/auth/register',
+      path: '/auth/register',
       username: params.username,
       password: params.password,
       captchaToken: params.captchaToken,
@@ -104,7 +107,7 @@ export async function register(params: {
   } catch (err) {
     if (err instanceof ApiError) throw err;
     return await postWithPlainCredentials({
-      path: '/api/auth/register',
+      path: '/auth/register',
       username: params.username,
       password: params.password,
       captchaToken: params.captchaToken,
@@ -119,7 +122,7 @@ export async function login(params: {
 }) {
   try {
     return await postWithCredentialEnvelope({
-      path: '/api/auth/login',
+      path: '/auth/login',
       username: params.username,
       password: params.password,
       captchaToken: params.captchaToken,
@@ -127,7 +130,7 @@ export async function login(params: {
   } catch (err) {
     if (err instanceof ApiError) throw err;
     return await postWithPlainCredentials({
-      path: '/api/auth/login',
+      path: '/auth/login',
       username: params.username,
       password: params.password,
       captchaToken: params.captchaToken,
@@ -136,9 +139,9 @@ export async function login(params: {
 }
 
 export function createLoginChallenge(params: { username: string }) {
-  return fetchJson<LoginChallengeResponse>('/api/auth/login-challenge', {
+  return fetchJson<LoginChallengeResponse>(apiPath('/auth/login-challenge'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
 }
@@ -148,19 +151,19 @@ export function loginWithPasswordProof(params: {
   proof: string;
   captchaToken?: string | null;
 }) {
-  return fetchJson<AuthOkResponse>('/api/auth/login-proof', {
+  return fetchJson<AuthOkResponse>(apiPath('/auth/login-proof'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
 }
 
 export function logout() {
-  return fetchJson<LogoutResponse>('/api/auth/logout', { method: 'POST' });
+  return fetchJson<LogoutResponse>(apiPath('/auth/logout'), { method: 'POST' });
 }
 
 export function logoutAll() {
-  return fetchJson<LogoutResponse>('/api/auth/logout-all', { method: 'POST' });
+  return fetchJson<LogoutResponse>(apiPath('/auth/logout-all'), { method: 'POST' });
 }
 
 export function changePassword(params: {
@@ -169,15 +172,15 @@ export function changePassword(params: {
   captchaToken?: string | null;
 }) {
   return fetchJson<{ ok: true; requireReauth: boolean }>(
-    '/api/auth/change-password',
+    apiPath('/auth/change-password'),
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(params),
     },
   );
 }
 
 export function resetDev() {
-  return fetchJson<{ ok: true }>('/api/auth/reset-dev', { method: 'POST' });
+  return fetchJson<{ ok: true }>(apiPath('/auth/reset-dev'), { method: 'POST' });
 }

@@ -1,4 +1,5 @@
-import { fetchJson } from './http';
+import { fetchJson } from '@/api/http';
+import { apiPath } from '@/api/constants';
 
 export type UpdatesResponse = {
   currentVersion: string;
@@ -12,6 +13,5 @@ export type UpdatesResponse = {
 };
 
 export function getUpdates() {
-  return fetchJson<UpdatesResponse>('/api/updates');
+  return fetchJson<UpdatesResponse>(apiPath('/updates'));
 }
-

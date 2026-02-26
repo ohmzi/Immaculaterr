@@ -24,6 +24,7 @@ import { CollectionsModule } from './collections/collections.module';
 import { LogsModule } from './logs/logs.module';
 import { UpdatesModule } from './updates/updates.module';
 import { ObservatoryModule } from './observatory/observatory.module';
+import { API_STATIC_EXCLUDE_PATH } from './app.constants';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -33,7 +34,7 @@ const staticImports = existsSync(webDistPath)
         // Keep API routes on the Nest side.
         // NOTE: path-to-regexp v8 no longer supports legacy regexp syntax like "/api/(.*)".
         // Use an optional wildcard group instead: matches "/api" and anything under it.
-        exclude: ['/api{/*path}'],
+        exclude: [API_STATIC_EXCLUDE_PATH],
       }),
     ]
   : [];

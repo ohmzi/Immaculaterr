@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath } from '@/api/constants';
 
 export async function resetOverseerrRequests() {
   return await fetchJson<{
@@ -7,5 +8,5 @@ export async function resetOverseerrRequests() {
     deleted: number;
     failed: number;
     failedRequestIds: number[];
-  }>('/api/overseerr/requests/reset', { method: 'DELETE' });
+  }>(apiPath('/overseerr/requests/reset'), { method: 'DELETE' });
 }

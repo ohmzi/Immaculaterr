@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath, JSON_HEADERS } from '@/api/constants';
 import type {
   CredentialEnvelope,
   EnvelopeKeyResponse,
@@ -12,11 +13,11 @@ export type PublicSettingsResponse = {
 };
 
 export function getPublicSettings() {
-  return fetchJson<PublicSettingsResponse>('/api/settings');
+  return fetchJson<PublicSettingsResponse>(apiPath('/settings'));
 }
 
 export function getSecretsEnvelopeKey() {
-  return fetchJson<EnvelopeKeyResponse>('/api/settings/secrets-key');
+  return fetchJson<EnvelopeKeyResponse>(apiPath('/settings/secrets-key'));
 }
 
 export function putSettings(body: {
@@ -24,10 +25,9 @@ export function putSettings(body: {
   secrets?: Record<string, unknown>;
   secretsEnvelope?: CredentialEnvelope;
 }) {
-  return fetchJson<PublicSettingsResponse>('/api/settings', {
+  return fetchJson<PublicSettingsResponse>(apiPath('/settings'), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(body),
   });
 }
-

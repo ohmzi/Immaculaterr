@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath, toQuerySuffix } from '@/api/constants';
 
 export type ServerLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -14,12 +15,12 @@ export function listServerLogs(params?: { afterId?: number; limit?: number }) {
   const q = new URLSearchParams();
   if (params?.afterId !== undefined) q.set('afterId', String(params.afterId));
   if (params?.limit !== undefined) q.set('limit', String(params.limit));
-  const suffix = q.toString() ? `?${q.toString()}` : '';
-  return fetchJson<{ ok: true; logs: ServerLogEntry[]; latestId: number }>(`/api/logs${suffix}`);
+  return fetchJson<{ ok: true; logs: ServerLogEntry[]; latestId: number }>(
+    apiPath(`/logs${toQuerySuffix(q)}`),
+  );
 }
 
 export function clearServerLogs() {
-  return fetchJson<{ ok: true }>('/api/logs', { method: 'DELETE' });
+  return fetchJson<{ ok: true }>(apiPath('/logs'), { method: 'DELETE' });
 }
-
 

@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath, JSON_HEADERS, toQuerySuffix } from '@/api/constants';
 
 export type JobSchedule = {
   jobId: string;
@@ -43,18 +44,21 @@ export type JobLogLine = {
 };
 
 export function listJobs() {
-  return fetchJson<{ jobs: JobDefinition[] }>('/api/jobs');
+  return fetchJson<{ jobs: JobDefinition[] }>(apiPath('/jobs'));
 }
 
 export function runJob(jobId: string, dryRun: boolean, input?: unknown) {
-  return fetchJson<{ ok: true; run: JobRun }>(`/api/jobs/${encodeURIComponent(jobId)}/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      dryRun,
-      ...(input !== undefined ? { input } : {}),
-    }),
-  });
+  return fetchJson<{ ok: true; run: JobRun }>(
+    apiPath(`/jobs/${encodeURIComponent(jobId)}/run`),
+    {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        dryRun,
+        ...(input !== undefined ? { input } : {}),
+      }),
+    },
+  );
 }
 
 export function updateJobSchedule(params: {
@@ -64,10 +68,10 @@ export function updateJobSchedule(params: {
 }) {
   const { jobId, cron, enabled } = params;
   return fetchJson<{ ok: true; schedule: JobSchedule }>(
-    `/api/jobs/schedules/${encodeURIComponent(jobId)}`,
+    apiPath(`/jobs/schedules/${encodeURIComponent(jobId)}`),
     {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify({ cron, enabled }),
     },
   );
@@ -79,16 +83,14 @@ export function listRuns(params?: { jobId?: string; take?: number; skip?: number
   if (params?.take) q.set('take', String(params.take));
   if (params?.skip) q.set('skip', String(params.skip));
 
-  const suffix = q.toString() ? `?${q.toString()}` : '';
-  return fetchJson<{ runs: JobRun[] }>(`/api/jobs/runs${suffix}`);
+  return fetchJson<{ runs: JobRun[] }>(apiPath(`/jobs/runs${toQuerySuffix(q)}`));
 }
 
 export function clearRuns(params?: { jobId?: string }) {
   const q = new URLSearchParams();
   if (params?.jobId) q.set('jobId', params.jobId);
-  const suffix = q.toString() ? `?${q.toString()}` : '';
   return fetchJson<{ ok: true; deletedRuns: number; deletedLogs: number }>(
-    `/api/jobs/runs${suffix}`,
+    apiPath(`/jobs/runs${toQuerySuffix(q)}`),
     {
       method: 'DELETE',
     },
@@ -96,17 +98,15 @@ export function clearRuns(params?: { jobId?: string }) {
 }
 
 export function getRun(runId: string) {
-  return fetchJson<{ run: JobRun }>(`/api/jobs/runs/${encodeURIComponent(runId)}`);
+  return fetchJson<{ run: JobRun }>(apiPath(`/jobs/runs/${encodeURIComponent(runId)}`));
 }
 
 export function getRunLogs(params: { runId: string; take?: number; skip?: number }) {
   const q = new URLSearchParams();
   if (params.take) q.set('take', String(params.take));
   if (params.skip) q.set('skip', String(params.skip));
-  const suffix = q.toString() ? `?${q.toString()}` : '';
   return fetchJson<{ logs: JobLogLine[] }>(
-    `/api/jobs/runs/${encodeURIComponent(params.runId)}/logs${suffix}`,
+    apiPath(`/jobs/runs/${encodeURIComponent(params.runId)}/logs${toQuerySuffix(q)}`),
   );
 }
-
 
