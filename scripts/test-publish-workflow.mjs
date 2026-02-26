@@ -68,28 +68,60 @@ const requiredSnippets = [
     snippet: '      - build-and-push',
   },
   {
-    name: 'release notes include docker option A heading',
-    snippet: '### Docker Option A: HTTP-only (legacy single container)',
+    name: "release notes include what's changed heading",
+    snippet: "## What's Changed",
+  },
+  {
+    name: 'release notes include full changelog link',
+    snippet: '**Full Changelog**:',
+  },
+  {
+    name: 'release notes include updating heading',
+    snippet: '## Updating',
+  },
+  {
+    name: 'release notes include docker heading',
+    snippet: '### Docker',
+  },
+  {
+    name: 'release notes include required HTTP-only label',
+    snippet: 'HTTP-only update (required)',
+  },
+  {
+    name: 'release notes include version-pinned docker pull',
+    snippet: 'docker pull ohmzii/immaculaterr:v${VERSION}',
   },
   {
     name: 'release notes include docker option A single-container run',
     snippet: '--name Immaculaterr \\',
   },
   {
-    name: 'release notes include docker option B heading',
-    snippet: '### Docker Option B: HTTP + HTTPS (recommended, Caddy + app)',
+    name: 'release notes include optional HTTPS sidecar label',
+    snippet: 'Optional HTTPS sidecar (can run anytime later)',
   },
   {
-    name: 'release notes include dockerhub compose stack update command',
-    snippet: 'docker-compose.dockerhub.yml',
+    name: 'release notes include sidecar container name',
+    snippet: '--name ImmaculaterrHttps \\',
   },
   {
-    name: 'release notes recreate both app and caddy containers',
-    snippet: 'docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true',
+    name: 'release notes remove only caddy container for sidecar refresh',
+    snippet: 'docker rm -f ImmaculaterrHttps 2>/dev/null || true',
   },
   {
-    name: 'release notes fetch caddy entrypoint for stack boot',
-    snippet: 'caddy-entrypoint.sh',
+    name: 'release notes fetch sidecar caddy entrypoint from release tag',
+    snippet: 'v${VERSION}/docker/immaculaterr/caddy-entrypoint.sh',
+  },
+  {
+    name: 'release notes include sidecar internal port bridge to app',
+    snippet: '-e APP_INTERNAL_PORT=5454 \\',
+  },
+  {
+    name: 'release notes include portainer heading',
+    snippet: '### Portainer',
+  },
+  {
+    name: 'release notes include portainer recreate flow',
+    snippet: '1. In Portainer: **Containers** → select **Immaculaterr**',
   },
 ];
 

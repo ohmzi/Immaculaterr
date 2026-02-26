@@ -185,33 +185,64 @@ jobs:
       - build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout merge commit (with tags)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
       - name: Prepare release notes (custom format)
         shell: bash
         env:
           VERSION: ${{ needs.build-and-push.outputs.version }}
-          GHCR_IMAGE: ${{ needs.build-and-push.outputs.ghcr_image }}
-          DOCKERHUB_IMAGE: ${{ needs.build-and-push.outputs.dockerhub_image }}
-          BUILD_TIME: ${{ needs.build-and-push.outputs.build_time }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          REPO: ${{ github.repository }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          PREV_TAG="$(
+            {
+              git tag --list 'v*' --sort=-version:refname \
+                | grep -Fxv "v${VERSION}" \
+                | head -n 1
+            } || true
+          )"
+
+          CHANGES_FILE="$(mktemp)"
+          if [ -n "${PR_BODY:-}" ]; then
+            printf '%s\n' "${PR_BODY}" \
+              | sed 's/\r$//' \
+              | awk '/^[-*] / { print }' > "${CHANGES_FILE}" || true
+          fi
+
+          if [ ! -s "${CHANGES_FILE}" ]; then
+            {
+              echo "- ${PR_TITLE}"
+              echo "- Merged pull request [#${PR_NUMBER}](https://github.com/${REPO}/pull/${PR_NUMBER})"
+            } > "${CHANGES_FILE}"
+          fi
+
+          if [ -n "${PREV_TAG}" ]; then
+            CHANGELOG_URL="https://github.com/${REPO}/compare/${PREV_TAG}..v${VERSION}"
+          else
+            CHANGELOG_URL="https://github.com/${REPO}/releases/tag/v${VERSION}"
+          fi
+
           cat > RELEASE_NOTES.md <<EOF
-          ## Release v${VERSION}
+          ## What's Changed
+          $(cat "${CHANGES_FILE}")
 
-          Docker images are published from \`master\` after merge from \`develop\`.
-
-          - GHCR: \`${GHCR_IMAGE}:v${VERSION}\`
-          - GHCR (rolling): \`${GHCR_IMAGE}:latest\`
-          - Docker Hub (rolling): \`${DOCKERHUB_IMAGE}:latest\`
-          - Published at (UTC): \`${BUILD_TIME}\`
-          - Commit: \`${MERGE_SHA}\`
+          **Full Changelog**: ${CHANGELOG_URL}
 
           ## Updating
 
-          ### Docker Option A: HTTP-only (legacy single container)
+          ### Docker
+
+          HTTP-only update (required)
 
           \`\`\`bash
-          docker pull ohmzii/immaculaterr:latest
+          docker pull ohmzii/immaculaterr:v${VERSION}
 
           docker rm -f Immaculaterr 2>/dev/null || true
 
@@ -224,36 +255,43 @@ jobs:
             -e DATABASE_URL=file:/data/tcp.sqlite \
             -v immaculaterr-data:/data \
             --restart unless-stopped \
-            ohmzii/immaculaterr:latest
+            ohmzii/immaculaterr:v${VERSION}
           \`\`\`
 
-          ### Docker Option B: HTTP + HTTPS (recommended, Caddy + app)
+          Optional HTTPS sidecar (can run anytime later)
 
           \`\`\`bash
-          mkdir -p /opt/immaculaterr
-          cd /opt/immaculaterr
+          mkdir -p ~/immaculaterr
+          curl -fsSL -o ~/immaculaterr/caddy-entrypoint.sh \
+            "https://raw.githubusercontent.com/ohmzi/Immaculaterr/v${VERSION}/docker/immaculaterr/caddy-entrypoint.sh"
+          chmod +x ~/immaculaterr/caddy-entrypoint.sh
 
-          curl -fsSL -o docker-compose.dockerhub.yml "https://raw.githubusercontent.com/ohmzi/Immaculaterr/v${VERSION}/docker/immaculaterr/docker-compose.dockerhub.yml"
-          curl -fsSL -o caddy-entrypoint.sh "https://raw.githubusercontent.com/ohmzi/Immaculaterr/v${VERSION}/docker/immaculaterr/caddy-entrypoint.sh"
-          chmod +x caddy-entrypoint.sh
+          docker pull caddy:2.8.4-alpine
+          docker rm -f ImmaculaterrHttps 2>/dev/null || true
 
-          docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
-
-          IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml pull
-          IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
+          docker run -d \
+            --name ImmaculaterrHttps \
+            --network host \
+            -e IMM_ENABLE_HTTP=false \
+            -e IMM_ENABLE_HTTPS=true \
+            -e IMM_HTTPS_PORT=5464 \
+            -e IMM_INCLUDE_LOCALHOST=true \
+            -e IMM_ENABLE_LAN_IP=true \
+            -e APP_INTERNAL_PORT=5454 \
+            -v ~/immaculaterr/caddy-entrypoint.sh:/etc/caddy/caddy-entrypoint.sh:ro \
+            -v immaculaterr-caddy-data:/data \
+            -v immaculaterr-caddy-config:/config \
+            --restart unless-stopped \
+            caddy:2.8.4-alpine \
+            /bin/sh /etc/caddy/caddy-entrypoint.sh
           \`\`\`
-
-          Option B brings up:
-          - **HTTP** on \`5454\`
-          - **HTTPS** on \`5464\` (local/LAN certificate via Caddy internal CA)
-          - Optional domain HTTPS on \`443\` when \`IMM_PUBLIC_DOMAIN\` is configured
 
           ### Portainer
 
-          1. For HTTP-only, recreate container **Immaculaterr** with image pull enabled.
-          2. For HTTP+HTTPS, open your stack directory (for example \`/opt/immaculaterr\`).
-          3. Refresh \`docker-compose.dockerhub.yml\` and \`caddy-entrypoint.sh\` from this release tag.
-          4. Recreate both containers (**Immaculaterr** and **ImmaculaterrHttps**) with image pull enabled.
+          1. In Portainer: **Containers** → select **Immaculaterr**
+          2. Click **Recreate**
+          3. Enable **Re-pull image**
+          4. Click **Recreate**
           EOF
 
       - name: Create or update release
