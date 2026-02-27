@@ -99,9 +99,9 @@
 ### Installation 
 
 #### HTTP-only update (required)
+Option A (DockerHub):
 ```bash
-docker pull ohmzii/immaculaterr:v1.6.0
-
+docker pull ohmzii/immaculaterr:latest
 docker rm -f Immaculaterr 2>/dev/null || true
 
 docker run -d \
@@ -113,7 +113,24 @@ docker run -d \
   -e DATABASE_URL=file:/data/tcp.sqlite \
   -v immaculaterr-data:/data \
   --restart unless-stopped \
-  ohmzii/immaculaterr:v1.6.0
+  ohmzii/immaculaterr:latest
+```
+
+Option B (GHCR):
+```bash
+docker pull ghcr.io/ohmzi/immaculaterr:latest
+docker rm -f Immaculaterr 2>/dev/null || true
+
+docker run -d \
+  --name Immaculaterr \
+  --network host \
+  -e HOST=0.0.0.0 \
+  -e PORT=5454 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  ohmzii/immaculaterr:latest
 ```
 
 #### Optional HTTPS sidecar (can run anytime later)
