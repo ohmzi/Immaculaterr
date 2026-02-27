@@ -380,6 +380,8 @@ export function Navigation() {
                   <div
                     key={item.label}
                     className="relative"
+                    role="button"
+                    tabIndex={0}
                     data-nav-index={String(index)}
                     onMouseEnter={handleNavItemMouseEnter}
                     onMouseLeave={handleNavItemMouseLeave}
