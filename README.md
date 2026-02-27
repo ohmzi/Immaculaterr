@@ -99,7 +99,7 @@
 ### Installation 
 
 #### HTTP-only update (required)
-Option A DockerHub:
+Option A (DockerHub):
 ```bash
 docker pull ohmzii/immaculaterr:latest
 docker rm -f Immaculaterr 2>/dev/null || true
