@@ -1052,8 +1052,8 @@ export function TaskManagerPage() {
               },
             }));
           }
-        } catch (error) {
-          console.error(`Failed to fetch runs for job ${job.id}:`, error);
+        } catch {
+          // Ignore transient polling failures; the next refresh will retry.
         }
       }
     };
@@ -1091,8 +1091,8 @@ export function TaskManagerPage() {
               },
             }));
           }
-        } catch (error) {
-          console.error(`Failed to poll job ${jobId}:`, error);
+        } catch {
+          // Ignore transient polling failures; the next poll will retry.
         }
       }
     }, 3000); // Poll every 3 seconds

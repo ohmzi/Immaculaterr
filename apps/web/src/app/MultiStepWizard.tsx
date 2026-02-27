@@ -204,8 +204,8 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
           toast.success('Connected to Plex.');
         }
-      } catch (error) {
-        console.error('Error polling Plex pin:', error);
+      } catch {
+        // Ignore polling errors; a later poll can still succeed.
       }
     }, 2000);
 
@@ -290,14 +290,13 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       }
 
       toast.info('Please authorize in the Plex window/tab...');
-    } catch (error) {
+    } catch {
       try {
         popup?.close();
       } catch {
         // ignore
       }
       toast.error('Failed to start Plex OAuth');
-      console.error(error);
     }
   };
 
