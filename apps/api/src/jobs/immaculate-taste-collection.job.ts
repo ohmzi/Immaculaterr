@@ -2660,7 +2660,7 @@ function buildImmaculateTastePointsReport(params: {
     .trim()
     .toLowerCase();
   const recommendationStrategy =
-    recommendationStrategyRaw || (Boolean(recommendationUsed?.openai) ? 'openai' : 'tmdb');
+    recommendationStrategyRaw || (recommendationUsed?.openai ? 'openai' : 'tmdb');
 
   const googleEnabled = Boolean(recommendationDebug?.googleEnabled);
   const openAiEnabled = Boolean(recommendationDebug?.openAiEnabled);
