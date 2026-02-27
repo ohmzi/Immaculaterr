@@ -6,11 +6,11 @@ import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+};
 
-function pick(obj: Record<string, unknown>, path: string): unknown {
+const pick = (obj: Record<string, unknown>, path: string): unknown => {
   const parts = path.split('.');
   let cur: unknown = obj;
   for (const part of parts) {
@@ -18,29 +18,29 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
     cur = cur[part];
   }
   return cur;
-}
+};
 
-function pickString(obj: Record<string, unknown>, path: string): string | null {
+const pickString = (obj: Record<string, unknown>, path: string): string | null => {
   const v = pick(obj, path);
   if (typeof v !== 'string') return null;
   const s = v.trim();
   return s ? s : null;
-}
+};
 
-function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+const pickBool = (obj: Record<string, unknown>, path: string): boolean | null => {
   const v = pick(obj, path);
   return typeof v === 'boolean' ? v : null;
-}
+};
 
-function normalizeHttpUrl(raw: string): string {
+const normalizeHttpUrl = (raw: string): string => {
   const trimmed = raw.trim();
   return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-}
+};
 
-async function sleep(ms: number) {
+const sleep = async (ms: number) => {
   if (!Number.isFinite(ms) || ms <= 0) return;
   await new Promise<void>((resolve) => setTimeout(resolve, Math.trunc(ms)));
-}
+};
 
 @Injectable()
 export class ArrMonitoredSearchJob {
@@ -396,4 +396,3 @@ export class ArrMonitoredSearchJob {
     return { summary: report as unknown as JsonObject };
   }
 }
-
