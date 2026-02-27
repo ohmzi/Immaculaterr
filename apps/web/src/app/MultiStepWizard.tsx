@@ -1629,33 +1629,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     </>
   );
 }
-
-const RequirementItem = ({
-  icon,
-  text,
-  required = false,
-}: {
-  icon: ReactNode;
-  text: string;
-  required?: boolean;
-}) => {
-  return (
-    <li className="flex items-center gap-3 text-zinc-300">
-      <div
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
-          required ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-white/5 bg-white/5'
-        }`}
-      >
-        {required ? <Check className="h-4 w-4 text-emerald-500" /> : <div className="h-1.5 w-1.5 rounded-full bg-zinc-600" />}
-      </div>
-      <div className="flex flex-1 items-center gap-3">
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${required ? 'bg-white/5' : 'bg-transparent'}`}>
-          {icon}
-        </div>
-        <span className={required ? 'font-medium text-zinc-200' : 'text-zinc-400'}>{text}</span>
-      </div>
-    </li>
-  );
 };
 
 export function WizardSection({ children }: { children: ReactNode }) {

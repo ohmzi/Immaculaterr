@@ -954,6 +954,7 @@ export class PlexPollingService implements OnModuleInit {
         const derivedTv = (() => {
             const seasonNumber = Array.from(seasons)[0] ?? null;
           (() => {
+          (() => {
             return {
               mediaType: 'season' as const,
               title: newestEpisode.parentTitle ?? (seasonNumber ? `Season ${seasonNumber}` : ''),

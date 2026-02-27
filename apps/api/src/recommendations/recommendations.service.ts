@@ -80,7 +80,7 @@ export class RecommendationsService {
     titles: string[];
     strategy: 'openai' | 'tmdb';
     debug: JsonObject;
-  }> => {
+  }> {
     const { ctx } = params;
     const seedTitle = params.seedTitle.trim();
     const count = clampInt(params.count || 50, RECS_MIN_COUNT, RECS_MAX_COUNT, 50);
@@ -92,9 +92,6 @@ export class RecommendationsService {
         progress: {
           step: 'recs_tmdb_pools',
           message: 'Building recommendation pools (TMDB)…',
-        },
-      });
-          updatedAt: new Date().toISOString(),
         },
       })
       .catch(() => undefined);

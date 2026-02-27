@@ -106,7 +106,7 @@ const levelClass = (level: ServerLogEntry['level']) => {
   return 'text-white/80';
 };
 
-export function DebuggerPage() {
+export const DebuggerPage = () => {
   const { token } = useParams<{ token: string }>();
   const accessAllowed = isDebuggerAccessAllowed(token);
 
@@ -133,7 +133,7 @@ export function DebuggerPage() {
     staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
-  });
+};
 
   const [copied, setCopied] = useState(false);
   const [snapshotQuery, setSnapshotQuery] = useState('');

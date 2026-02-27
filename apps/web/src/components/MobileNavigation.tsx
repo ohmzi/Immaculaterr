@@ -90,6 +90,7 @@ export const MobileNavigation = ({ onLogout }: MobileNavigationProps) => {
 
     navigate(dest);
   }, [navigate]);
+  useSafeNavigate((dest) => {
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       Boolean((navigator as unknown as { standalone?: boolean } | undefined)?.standalone);
     if (isStandalone) {
@@ -113,8 +114,8 @@ export const MobileNavigation = ({ onLogout }: MobileNavigationProps) => {
 
   const updateAvailable =
     Boolean(updatesQuery.data?.updateAvailable) && Boolean(updatesQuery.data?.latestVersion);
-  const updateLabel = updatesQuery.data?.latestVersion ? `v${updatesQuery.data.latestVersion}` : null;
-  const currentLabel = updatesQuery.data?.currentVersion ? `v${updatesQuery.data.currentVersion}` : null;
+  const updateLabel = updatesQuery.data?.latestVersion ? `v${updatesQuery.data?.latestVersion}` : null;
+  const currentLabel = updatesQuery.data?.currentVersion ? `v${updatesQuery.data?.currentVersion}` : null;
 
   useEffect(() => {
     const updatePositions = () => {

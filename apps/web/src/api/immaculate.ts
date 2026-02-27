@@ -38,10 +38,10 @@ export async function getImmaculateTasteUserSummary() {
   );
 }
 
-export async function resetImmaculateTasteCollection(params: {
+export const resetImmaculateTasteCollection = async (params: {
   mediaType: 'movie' | 'tv';
   librarySectionKey: string;
-}) {
+}) => {
   return await fetchJson<{
     ok: true;
     mediaType: 'movie' | 'tv';
@@ -58,7 +58,7 @@ export async function resetImmaculateTasteCollection(params: {
     headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
-}
+};
 
 export async function resetImmaculateTasteUserCollection(params: {
   plexUserId: string;

@@ -26,7 +26,7 @@ const settingsReaders = {
   },
 };
 
-function readSetting<T>(settings: unknown, key: keyof typeof settingsReaders): T {
+const readSetting = <T>(settings: unknown, key: keyof typeof settingsReaders): T => {
   const reader = settingsReaders[key];
   let value: unknown = settings;
   for (const segment of reader.path) {
@@ -36,7 +36,7 @@ function readSetting<T>(settings: unknown, key: keyof typeof settingsReaders): T
     value = (value as Record<string, unknown>)[segment];
   }
   return reader.format(value) as T;
-}
+};
 
 const readOnboardingCompleted = (settings: unknown): boolean =>
   readSetting<boolean>(settings, 'onboardingCompleted');

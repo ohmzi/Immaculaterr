@@ -701,8 +701,9 @@ export class ImmaculateTasteCollectionService {
     const mid = sorted.slice(highSize, highSize + midSize);
     const low = sorted.slice(highSize + midSize);
 
-    const pickOne = <T>(arr: T[]): T | null =>
-      arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+    const pickOne = <T>(arr: T[]): T | null => {
+      return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
+    };
 
     const picks: number[] = [];
     const used = new Set<number>();

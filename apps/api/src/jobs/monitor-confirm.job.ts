@@ -827,8 +827,11 @@ const buildMonitorConfirmReport = (params: {
       : null;
   const sonarrSearchQueued =
     typeof sonarr.missingEpisodeSearchQueued === 'boolean'
+  const sonarrSearchQueued = (ctx, sonarr) => {
+    return sonarrConfigured && !ctx.dryRun
       ? sonarr.missingEpisodeSearchQueued
       : null;
+  };
 
   const issues = [
     ...(radarrMissingTmdbId

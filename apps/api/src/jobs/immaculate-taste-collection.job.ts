@@ -61,20 +61,17 @@ const normalizeAndCapTitles = (rawTitles: string[], max: number): string[] => {
   const limit = Math.max(0, Math.min(100, Math.trunc(max ?? 0)));
   if (limit <= 0) return [];
 
-  const out: string[] = [];
   const seen = new Set<string>();
-
-  for (const raw of rawTitles ?? []) {
-    const t = normalizeTitleForMatching(String(raw ?? '').trim());
-    if (!t) continue;
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-    if (out.length >= limit) break;
-  }
-
-  return out;
+  return (rawTitles ?? [])
+    .map(raw => normalizeTitleForMatching(String(raw ?? '').trim()))
+    .filter(t => {
+      if (!t) return false;
+      const key = t.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
 };
 
 export function normalizeHttpUrl(raw: string): string {
@@ -2472,7 +2469,6 @@ export class ImmaculateTasteCollectionJob {
 
     const voteAverageRaw = details?.vote_average ?? best.vote_average ?? null;
     const voteCountRaw = details?.vote_count ?? best.vote_count ?? null;
-
 
     const vote_average =
       typeof voteAverageRaw === 'number' && Number.isFinite(voteAverageRaw)

@@ -118,7 +118,7 @@ const MaskedSecretInput = (props: {
   const { value, setValue, hasSavedValue, placeholder, className, onEditStart, onBlur } =
     props;
 
-  const displayValueMap: Record<string, () => string> = {
+  const displayValueMap: Record<'value' | 'saved' | 'empty', () => string> = {
     value: () => '*'.repeat(value.length),
     saved: () => MASKED_SECRET,
     empty: () => '',
@@ -131,6 +131,18 @@ const MaskedSecretInput = (props: {
       : 'empty';
 
   const maskedDisplayValue = displayValueMap[status]();
+
+  return (
+    <input
+      className={className}
+      placeholder={placeholder}
+      value={value ? value : maskedDisplayValue}
+      onFocus={() => onEditStart()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={onBlur}
+    />
+  );
+};
 
   const handleValueChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {

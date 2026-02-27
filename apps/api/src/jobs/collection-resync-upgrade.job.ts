@@ -221,12 +221,15 @@ const pickString = (obj: Record<string, unknown>, path: string): string => {
 
 const pickNumber = (obj: Record<string, unknown>, path: string): number | null => {
   const v = pick(obj, path);
-  const converters: Record<'number' | 'string', (val: any) => number | null> = {
-    number: (val) => (Number.isFinite(val) ? val : null),
-    string: (val) => {
-      const s = (val as string).trim();
-      const n = Number.parseFloat(s);
-      return s && Number.isFinite(n) ? n : null;
+  const converters: Record<'number' | 'string', (val: unknown) => number | null> = {
+    number: (val: unknown) => (typeof val === 'number' && Number.isFinite(val) ? val : null),
+    string: (val: unknown) => {
+      if (typeof val !== 'string') {
+        return null;
+      }
+      const trimmedValue = val.trim();
+      const parsedNumber = Number.parseFloat(trimmedValue);
+      return trimmedValue && Number.isFinite(parsedNumber) ? parsedNumber : null;
     }
   };
   const handler = converters[typeof v as keyof typeof converters];
@@ -248,12 +251,12 @@ const normalizeHttpUrl = (raw: string): string => {
 })();
 
 export function toFiniteInt(value: unknown, fallback = 0): number {
-  const converters: Record<'number' | 'string', (val: any) => number> = {
-    number: (val) => (Number.isFinite(val) ? Math.max(0, Math.trunc(val)) : fallback),
-    string: (val) => {
-      const s = (val as string).trim();
-      const n = Number.parseInt(s, 10);
-      return s && Number.isFinite(n) ? Math.max(0, n) : fallback;
+  const converters: Record<'number' | 'string', (val: unknown) => number> = {
+    number: (val: unknown) => (Number.isFinite(val as number) ? Math.max(0, Math.trunc(val as number)) : fallback),
+    string: (val: unknown) => {
+      const trimmedString = (val as string).trim();
+      const parsedInt = Number.parseInt(trimmedString, 10);
+      return trimmedString && Number.isFinite(parsedInt) ? Math.max(0, parsedInt) : fallback;
     }
   };
   const handler = converters[typeof value as keyof typeof converters];

@@ -129,11 +129,14 @@ const issueSummary = (run: JobRun): string => {
   };
 
   const s = run.summary;
-  const key = run.errorMessage
-    ? 'error'
-    : isPlainObject(s) && (s as Record<string, unknown>).template === 'jobReportV1' && Number((s as Record<string, unknown>).version) === 1
-    ? 'jobReportV1'
-    : 'default';
+  const typeMap: Record<string, boolean> = {
+    error: Boolean(run.errorMessage),
+    jobReportV1:
+      isPlainObject(s) &&
+      (s as Record<string, unknown>).template === 'jobReportV1' &&
+      Number((s as Record<string, unknown>).version) === 1,
+  };
+  const key = Object.keys(typeMap).find((k) => typeMap[k]) ?? 'default';
 
   return handlers[key](key === 'jobReportV1' ? (s as Record<string, unknown>) : null);
 };
@@ -141,7 +144,7 @@ const issueSummary = (run: JobRun): string => {
 const getPlexUserContext = (run: JobRun): { plexUserId: string; plexUserTitle: string } => {
   const handlers: Record<string, (obj: Record<string, unknown> | null) => { plexUserId: string; plexUserTitle: string }> = {
     jobReportV1: (obj) => {
-      const rawObj = isPlainObject(obj!.raw) ? (obj!.raw as Record<string, unknown>) : obj!;
+      const rawObj = isPlainObject(obj?.raw) ? (obj.raw as Record<string, unknown>) : obj ?? {};
       const plexUserId = typeof rawObj.plexUserId === 'string' ? rawObj.plexUserId.trim() : '';
       const plexUserTitle = typeof rawObj.plexUserTitle === 'string' ? rawObj.plexUserTitle.trim() : '';
       return { plexUserId, plexUserTitle };
@@ -216,7 +219,23 @@ const getMediaTypeContext = (run: JobRun): { key: 'movie' | 'tv' | ''; label: st
     'input.metadata.type',
   ];
 
-  const resolve = (source: Record<string, unknown>) => {
+  const typeKey =
+    candidatePaths
+      .map(path => pickSummaryString(raw, path))
+      .map(v => normalizeMediaType(v))
+      .find((t): t is 'movie' | 'tv' => t !== null) ?? '';
+
+  const labelsMap: Record<'movie' | 'tv' | '', string> = {
+    movie: 'Movie',
+    tv: 'TV',
+    '': '—',
+  };
+
+  return {
+    key: typeKey,
+    label: labelsMap[typeKey],
+  };
+};
     for (const path of candidatePaths) {
       const normalized = normalizeMediaType(pickSummaryString(source, path));
       if (normalized) return normalized;

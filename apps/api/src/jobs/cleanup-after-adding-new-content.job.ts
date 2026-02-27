@@ -235,14 +235,14 @@ export class CleanupAfterAddingNewContentJob {
     // original delete duplicates logic goes here
   }
 
-  private async handleUnmonitorInArr(
+  private handleUnmonitorInArr = async (
     ctx: JobContext,
     settings: any,
     secrets: any,
     setProgress: ReturnType<CleanupAfterAddingNewContentJob['getSetProgress']>,
   ) => {
     // original unmonitorInArr logic goes here
-  }
+  };
 
   private async handleRemoveFromWatchlist(
     ctx: JobContext,
