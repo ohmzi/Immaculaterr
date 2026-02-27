@@ -1474,7 +1474,8 @@ export class CollectionResyncUpgradeJob {
     });
 
     for (let index = 0; index < pendingItems.length; index += 1) {
-      const item = pendingItems[index]!;
+      const item = pendingItems[index];
+      if (!item) continue;
       const progress =
         params.state.itemProgress[item.key] ??
         createProgress('immaculaterr', 'captured');
@@ -1760,8 +1761,9 @@ export class CollectionResyncUpgradeJob {
   }): Promise<Array<{ ratingKey: string; title: string }>> {
     const item = params.item;
     const getMovieMap = async () => {
-      if (params.movieIndexBySection.has(item.librarySectionKey)) {
-        return params.movieIndexBySection.get(item.librarySectionKey)!;
+      const existingMap = params.movieIndexBySection.get(item.librarySectionKey);
+      if (existingMap) {
+        return existingMap;
       }
       const rows = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
         baseUrl: params.plexBaseUrl,
@@ -1779,8 +1781,9 @@ export class CollectionResyncUpgradeJob {
       return map;
     };
     const getTvMap = async () => {
-      if (params.tvIndexBySection.has(item.librarySectionKey)) {
-        return params.tvIndexBySection.get(item.librarySectionKey)!;
+      const existingMap = params.tvIndexBySection.get(item.librarySectionKey);
+      if (existingMap) {
+        return existingMap;
       }
       const rows = await this.plexServer.listShowsWithTvdbIdsForSectionKey({
         baseUrl: params.plexBaseUrl,

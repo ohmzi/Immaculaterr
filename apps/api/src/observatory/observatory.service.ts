@@ -2244,13 +2244,18 @@ export class ObservatoryService {
     ]);
     if (!rootFolders.length) throw new BadGatewayException('Radarr has no root folders');
     if (!qualityProfiles.length) throw new BadGatewayException('Radarr has no quality profiles');
+    const fallbackRootFolder = rootFolders[0];
+    const fallbackQualityProfile = qualityProfiles[0];
+    if (!fallbackRootFolder || !fallbackQualityProfile) {
+      throw new BadGatewayException('Radarr defaults are unavailable');
+    }
 
     const rootFolderPath =
       rootFolders.find((r) => r.path === params.preferredRootFolderPath)?.path ??
-      rootFolders[0]!.path;
+      fallbackRootFolder.path;
     const qualityProfileId =
       qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)?.id ??
-      qualityProfiles[0]!.id;
+      fallbackQualityProfile.id;
 
     const tagIds: number[] = [];
     if (params.preferredTagId) {
@@ -2274,13 +2279,18 @@ export class ObservatoryService {
     ]);
     if (!rootFolders.length) throw new BadGatewayException('Sonarr has no root folders');
     if (!qualityProfiles.length) throw new BadGatewayException('Sonarr has no quality profiles');
+    const fallbackRootFolder = rootFolders[0];
+    const fallbackQualityProfile = qualityProfiles[0];
+    if (!fallbackRootFolder || !fallbackQualityProfile) {
+      throw new BadGatewayException('Sonarr defaults are unavailable');
+    }
 
     const rootFolderPath =
       rootFolders.find((r) => r.path === params.preferredRootFolderPath)?.path ??
-      rootFolders[0]!.path;
+      fallbackRootFolder.path;
     const qualityProfileId =
       qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)?.id ??
-      qualityProfiles[0]!.id;
+      fallbackQualityProfile.id;
 
     const tagIds: number[] = [];
     if (params.preferredTagId) {

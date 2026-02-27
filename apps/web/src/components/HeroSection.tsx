@@ -117,8 +117,13 @@ function densifyDailySeries<T extends { x: number; movies: number; tv: number }>
   let i = 0;
 
   for (let x = start; x <= end; x += DAY_MS) {
-    while (i + 1 < anchors.length && anchors[i + 1]!.x < x) i++;
-    const left = anchors[i]!;
+    while (i + 1 < anchors.length) {
+      const nextAnchor = anchors[i + 1];
+      if (!nextAnchor || nextAnchor.x >= x) break;
+      i += 1;
+    }
+    const left = anchors[i];
+    if (!left) continue;
     const right = anchors[i + 1] ?? left;
 
     const span = right.x - left.x;
@@ -426,13 +431,14 @@ export function HeroSection() {
     const inRange = seriesWithX.filter((p) => p.x >= startMs && p.x <= endMs);
     const prev = [...seriesWithX].reverse().find((p) => p.x < startMs) ?? null;
     const first = inRange[0] ?? null;
+    const startBase = prev ?? first;
 
     const startPoint =
-      prev ?? first
+      startBase
         ? {
             month: new Date(startMs).toISOString().slice(0, 10), // YYYY-MM-DD
-            movies: (prev ?? first)!.movies,
-            tv: (prev ?? first)!.tv,
+            movies: startBase.movies,
+            tv: startBase.tv,
             x: startMs,
           }
         : null;

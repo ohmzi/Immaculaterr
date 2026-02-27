@@ -1595,8 +1595,8 @@ export class CleanupAfterAddingNewContentJob {
                   } else {
                     const ok = await this.sonarr
                       .setEpisodeMonitored({
-                        baseUrl: sonarrBaseUrl!,
-                        apiKey: sonarrApiKey!,
+                        baseUrl: sonarrBaseUrl as string,
+                        apiKey: sonarrApiKey as string,
                         episode: sonarrEp,
                         monitored: false,
                       })
@@ -2734,7 +2734,8 @@ export class CleanupAfterAddingNewContentJob {
           const sb = b.bestSize ?? 0;
           return sb - sa;
         });
-        const keep = sorted[0]!;
+        const keep = sorted[0];
+        if (!keep) continue;
         const deleteKeys = group.map((g) => g.ratingKey).filter((rk) => rk !== keep.ratingKey);
 
         if (group.length > 1) episodeStats.groupsWithDuplicates += 1;

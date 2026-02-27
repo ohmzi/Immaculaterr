@@ -188,8 +188,8 @@ export class ArrMonitoredSearchJob {
       });
       try {
         await this.radarr.searchMonitoredMovies({
-          baseUrl: radarrBaseUrl!,
-          apiKey: radarrApiKey!,
+          baseUrl: radarrBaseUrl as string,
+          apiKey: radarrApiKey as string,
         });
         radarrQueued = 1;
         tasks.push({
@@ -197,7 +197,7 @@ export class ArrMonitoredSearchJob {
           title: 'Radarr: MissingMoviesSearch (monitored)',
           status: 'success',
           rows: [metricRow({ label: 'Queued', start: 0, changed: 1, end: 1, unit: 'cmd' })],
-          facts: [{ label: 'Base URL', value: radarrBaseUrl! }],
+          facts: [{ label: 'Base URL', value: radarrBaseUrl as string }],
         });
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
@@ -207,7 +207,7 @@ export class ArrMonitoredSearchJob {
           title: 'Radarr: MissingMoviesSearch (monitored)',
           status: 'failed',
           issues: [issue('warn', msg)],
-          facts: [{ label: 'Base URL', value: radarrBaseUrl! }],
+          facts: [{ label: 'Base URL', value: radarrBaseUrl as string }],
         });
       }
     }
@@ -296,8 +296,8 @@ export class ArrMonitoredSearchJob {
       });
       try {
         await this.sonarr.searchMonitoredEpisodes({
-          baseUrl: sonarrBaseUrl!,
-          apiKey: sonarrApiKey!,
+          baseUrl: sonarrBaseUrl as string,
+          apiKey: sonarrApiKey as string,
         });
         sonarrQueued = 1;
         tasks.push({
@@ -305,7 +305,7 @@ export class ArrMonitoredSearchJob {
           title: 'Sonarr: MissingEpisodeSearch (monitored)',
           status: 'success',
           rows: [metricRow({ label: 'Queued', start: 0, changed: 1, end: 1, unit: 'cmd' })],
-          facts: [{ label: 'Base URL', value: sonarrBaseUrl! }],
+          facts: [{ label: 'Base URL', value: sonarrBaseUrl as string }],
         });
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
@@ -315,7 +315,7 @@ export class ArrMonitoredSearchJob {
           title: 'Sonarr: MissingEpisodeSearch (monitored)',
           status: 'failed',
           issues: [issue('warn', msg)],
-          facts: [{ label: 'Base URL', value: sonarrBaseUrl! }],
+          facts: [{ label: 'Base URL', value: sonarrBaseUrl as string }],
         });
       }
     }
@@ -396,5 +396,4 @@ export class ArrMonitoredSearchJob {
     return { summary: report as unknown as JsonObject };
   }
 }
-
 

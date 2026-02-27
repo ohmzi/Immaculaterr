@@ -211,7 +211,7 @@ export class RecommendationsService {
         },
       })
       .catch(() => undefined);
-    if (googleEnabled && this.canUseGoogle()) {
+    if (googleEnabled && this.canUseGoogle() && params.google) {
       const desiredGoogleResults = Math.min(
         50,
         Math.max(0, Math.ceil(count * webFrac)),
@@ -225,8 +225,8 @@ export class RecommendationsService {
 
         try {
           const { results, meta } = await this.google.search({
-            apiKey: params.google!.apiKey,
-            cseId: params.google!.searchEngineId,
+            apiKey: params.google.apiKey,
+            cseId: params.google.searchEngineId,
             query: googleQuery,
             numResults: desiredGoogleResults,
           });
@@ -319,7 +319,7 @@ export class RecommendationsService {
     if (!openAiEnabled) openAiSkipReason = 'disabled';
     else if (!this.canUseOpenAi()) openAiSkipReason = 'cooldown';
 
-    if (openAiEnabled && this.canUseOpenAi()) {
+    if (openAiEnabled && this.canUseOpenAi() && params.openai) {
       const model =
         (params.openai?.model ?? 'gpt-5.2-chat-latest') ||
         'gpt-5.2-chat-latest';
@@ -360,7 +360,7 @@ export class RecommendationsService {
       });
 
           const selection = await this.openai.selectFromCandidates({
-          apiKey: params.openai!.apiKey,
+          apiKey: params.openai.apiKey,
             model,
           seedTitle,
           tmdbSeedMetadata: seedMeta,
@@ -446,7 +446,7 @@ export class RecommendationsService {
             });
 
             const ids = await this.openai.selectFromCandidatesNoSplit({
-              apiKey: params.openai!.apiKey,
+              apiKey: params.openai.apiKey,
               model,
               seedTitle,
               tmdbSeedMetadata: seedMeta,
@@ -519,7 +519,7 @@ export class RecommendationsService {
           const model =
             (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
           const titles = await this.openai.getRelatedMovieTitles({
-            apiKey: params.openai!.apiKey,
+            apiKey: params.openai.apiKey,
             model,
             seedTitle,
             limit: count,
@@ -779,7 +779,7 @@ export class RecommendationsService {
         },
       })
       .catch(() => undefined);
-    if (googleEnabled && this.canUseGoogle()) {
+    if (googleEnabled && this.canUseGoogle() && params.google) {
       const desiredGoogleResults = Math.min(
         50,
         Math.max(0, Math.ceil(count * webFrac)),
@@ -793,8 +793,8 @@ export class RecommendationsService {
 
         try {
           const { results, meta } = await this.google.search({
-            apiKey: params.google!.apiKey,
-            cseId: params.google!.searchEngineId,
+            apiKey: params.google.apiKey,
+            cseId: params.google.searchEngineId,
             query: googleQuery,
             numResults: desiredGoogleResults,
           });
@@ -878,7 +878,7 @@ export class RecommendationsService {
     if (!openAiEnabled) openAiSkipReason = 'disabled';
     else if (!this.canUseOpenAi()) openAiSkipReason = 'cooldown';
 
-    if (openAiEnabled && this.canUseOpenAi()) {
+    if (openAiEnabled && this.canUseOpenAi() && params.openai) {
       const model =
         (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
       const topReleased = scoredReleased.slice(
@@ -912,7 +912,7 @@ export class RecommendationsService {
         });
 
           const selected = await this.openai.selectFromCandidates({
-            apiKey: params.openai!.apiKey,
+            apiKey: params.openai.apiKey,
             model,
             seedTitle,
             mediaType: 'tv',
@@ -999,7 +999,7 @@ export class RecommendationsService {
             });
 
             const ids = await this.openai.selectFromCandidatesNoSplit({
-              apiKey: params.openai!.apiKey,
+              apiKey: params.openai.apiKey,
               model,
               seedTitle,
               mediaType: 'tv',
@@ -1075,7 +1075,7 @@ export class RecommendationsService {
           const model =
             (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
           const titles = await this.openai.getRelatedTvTitles({
-            apiKey: params.openai!.apiKey,
+            apiKey: params.openai.apiKey,
             model,
             seedTitle,
             limit: count,
@@ -1259,7 +1259,7 @@ export class RecommendationsService {
     });
 
     // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
-    if (openAiEnabled && this.canUseOpenAi()) {
+    if (openAiEnabled && this.canUseOpenAi() && params.openai) {
       const model =
         (params.openai?.model ?? 'gpt-5.2-chat-latest') ||
         'gpt-5.2-chat-latest';
@@ -1289,7 +1289,7 @@ export class RecommendationsService {
 
         try {
           const selection = await this.openai.selectFromCandidates({
-            apiKey: params.openai!.apiKey,
+            apiKey: params.openai.apiKey,
             model,
             seedTitle,
             tmdbSeedMetadata: { intent: 'change_of_taste', seed: pools.seed },
@@ -1441,7 +1441,7 @@ export class RecommendationsService {
       unknownPool: scoredUnknown,
     });
 
-    if (openAiEnabled && this.canUseOpenAi()) {
+    if (openAiEnabled && this.canUseOpenAi() && params.openai) {
       const model =
         (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
       const topReleased = scoredReleased.slice(
@@ -1467,7 +1467,7 @@ export class RecommendationsService {
 
         try {
           const selected = await this.openai.selectFromCandidates({
-            apiKey: params.openai!.apiKey,
+            apiKey: params.openai.apiKey,
             model,
             seedTitle,
             mediaType: 'tv',

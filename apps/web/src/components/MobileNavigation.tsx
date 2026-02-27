@@ -256,12 +256,14 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     setIsHelpOpen(false);
     onLogout();
   }, [onLogout]);
+  const selectedDropdown =
+    selectedIndex !== null ? (navItems[selectedIndex]?.dropdown ?? null) : null;
 
   return (
     <>
       {/* Card that opens above navigation */}
       <AnimatePresence>
-        {selectedIndex !== null && navItems[selectedIndex].dropdown && (
+        {selectedIndex !== null && selectedDropdown && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -272,7 +274,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
           >
             <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-[#0b0c0f]/70 p-4 shadow-2xl backdrop-blur-2xl">
               <div className="grid grid-cols-2 gap-2">
-                {navItems[selectedIndex].dropdown!.map((item) => (
+                {selectedDropdown.map((item) => (
                   <button
                     key={item.to}
                     className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] touch-manipulation"

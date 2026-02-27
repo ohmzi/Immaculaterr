@@ -468,10 +468,12 @@ export function ObservatoryPage() {
   }, [collectionsQuery.data?.collections]);
 
   useEffect(() => {
-    if (!movieLibrary && movieLibraries.length) setMovieLibrary(movieLibraries[0]!.key);
+    const firstMovieLibrary = movieLibraries[0];
+    if (!movieLibrary && firstMovieLibrary) setMovieLibrary(firstMovieLibrary.key);
   }, [movieLibraries, movieLibrary]);
   useEffect(() => {
-    if (!tvLibrary && tvLibraries.length) setTvLibrary(tvLibraries[0]!.key);
+    const firstTvLibrary = tvLibraries[0];
+    if (!tvLibrary && firstTvLibrary) setTvLibrary(firstTvLibrary.key);
   }, [tvLibraries, tvLibrary]);
 
   const activeLibraryKey = mediaTab === 'movie' ? movieLibrary : tvLibrary;
