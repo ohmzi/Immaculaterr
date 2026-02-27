@@ -8,6 +8,8 @@ import {
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
   hasSameCuratedCollectionBase,
+  IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   normalizeCollectionTitle,
 } from '../plex/plex-collections.utils';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
@@ -32,12 +34,33 @@ export const COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY = `upgrade.collectionRes
 
 const RESTART_GUIDANCE =
   'Restart Immaculaterr to resume migration from checkpoint.';
-const IMMACULATE_BASE_COLLECTION = 'Inspired by your Immaculate Taste';
+const IMMACULATE_LEGACY_BASE_COLLECTION =
+  'Inspired by your Immaculate Taste';
 const LOCK_TTL_MS = 10 * 60_000;
 const ITEM_RETRY_MAX = 3;
 const ITEM_PACING_MS = 250;
 const RESYNC_REPORT_ITEMS_LIMIT = 300;
 const RESYNC_MAX_COLLECTIONS_PER_LIBRARY = 50_000;
+
+function immaculateBaseCollectionNameForMediaType(
+  mediaType: UpgradeMediaType,
+): string {
+  return mediaType === 'movie'
+    ? IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME
+    : IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME;
+}
+
+function isImmaculateBaseCollection(params: {
+  mediaType: UpgradeMediaType;
+  collectionBaseName: string;
+}): boolean {
+  const candidate = normalizeCollectionTitle(params.collectionBaseName);
+  const target = normalizeCollectionTitle(
+    immaculateBaseCollectionNameForMediaType(params.mediaType),
+  );
+  const legacy = normalizeCollectionTitle(IMMACULATE_LEGACY_BASE_COLLECTION);
+  return candidate === target || candidate === legacy;
+}
 
 type UpgradeMediaType = 'movie' | 'tv';
 type UpgradeSource = 'plex' | 'immaculaterr';
@@ -1165,7 +1188,7 @@ export class CollectionResyncUpgradeJob {
         plexUserId: row.plexUserId,
         mediaType: 'movie',
         librarySectionKey: row.librarySectionKey,
-        collectionBaseName: IMMACULATE_BASE_COLLECTION,
+        collectionBaseName: immaculateBaseCollectionNameForMediaType('movie'),
         sourceTable: 'ImmaculateTasteMovieLibrary',
         isActive: row.status === 'active' && row.points > 0,
       });
@@ -1184,7 +1207,7 @@ export class CollectionResyncUpgradeJob {
         plexUserId: row.plexUserId,
         mediaType: 'tv',
         librarySectionKey: row.librarySectionKey,
-        collectionBaseName: IMMACULATE_BASE_COLLECTION,
+        collectionBaseName: immaculateBaseCollectionNameForMediaType('tv'),
         sourceTable: 'ImmaculateTasteShowLibrary',
         isActive: row.status === 'active' && row.points > 0,
       });
@@ -1806,7 +1829,12 @@ export class CollectionResyncUpgradeJob {
 
     if (item.mediaType === 'movie') {
       const movieMap = await getMovieMap();
-      if (item.collectionBaseName === IMMACULATE_BASE_COLLECTION) {
+      if (
+        isImmaculateBaseCollection({
+          mediaType: item.mediaType,
+          collectionBaseName: item.collectionBaseName,
+        })
+      ) {
         const active = await this.immaculateMovies.getActiveMovies({
           plexUserId: item.plexUserId,
           librarySectionKey: item.librarySectionKey,
@@ -1844,7 +1872,12 @@ export class CollectionResyncUpgradeJob {
     }
 
     const tvMap = await getTvMap();
-    if (item.collectionBaseName === IMMACULATE_BASE_COLLECTION) {
+    if (
+      isImmaculateBaseCollection({
+        mediaType: item.mediaType,
+        collectionBaseName: item.collectionBaseName,
+      })
+    ) {
       const active = await this.immaculateShows.getActiveShows({
         plexUserId: item.plexUserId,
         librarySectionKey: item.librarySectionKey,

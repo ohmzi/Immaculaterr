@@ -6,8 +6,14 @@ import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collec
 import type { JobContext } from '../jobs/jobs.types';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import {
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
   buildUserCollectionHubOrder,
   buildUserCollectionName,
 } from '../plex/plex-collections.utils';
@@ -84,10 +90,14 @@ function watchedCollectionName(params: {
   mediaType: 'movie' | 'tv';
   kind: WatchedCollectionKind;
 }): string {
-  if (params.kind === 'changeOfTaste') return 'Change of Taste';
+  if (params.kind === 'changeOfTaste') {
+    return params.mediaType === 'movie'
+      ? CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME
+      : CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME;
+  }
   return params.mediaType === 'movie'
-    ? 'Based on your recently watched movie'
-    : 'Based on your recently watched show';
+    ? RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME
+    : RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME;
 }
 
 function readEffectiveApproval(params: {
@@ -1361,8 +1371,14 @@ export class ObservatoryService {
 
     const collectionNames =
       params.mediaType === 'movie'
-        ? ['Based on your recently watched movie', 'Change of Taste']
-        : ['Based on your recently watched show', 'Change of Taste'];
+        ? [
+            RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+            CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+          ]
+        : [
+            RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+            CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+          ];
 
     const collectionLimitRaw =
       pickNumber(settings, 'recommendations.collectionLimit') ?? 15;
@@ -1970,7 +1986,7 @@ export class ObservatoryService {
       .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
     const collectionName = buildUserCollectionName(
-      'Inspired by your Immaculate Taste',
+      IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
       params.plexUserTitle,
     );
     const collectionHubOrder = buildUserCollectionHubOrder(
@@ -2192,7 +2208,7 @@ export class ObservatoryService {
       .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
     const collectionName = buildUserCollectionName(
-      'Inspired by your Immaculate Taste',
+      IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
       params.plexUserTitle,
     );
     const collectionHubOrder = buildUserCollectionHubOrder(

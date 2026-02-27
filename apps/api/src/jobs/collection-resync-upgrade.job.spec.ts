@@ -97,19 +97,19 @@ describe('CollectionResyncUpgradeJob', () => {
       plexUserId: 'u-1',
       mediaType: 'movie',
       librarySectionKey: '1',
-      collectionBaseName: 'Based on your recently watched movie',
+      collectionBaseName: 'Based on your recently watched Movie',
     });
     const second = createQueueItem({
       plexUserId: 'u-1',
       mediaType: 'tv',
       librarySectionKey: '2',
-      collectionBaseName: 'Based on your recently watched show',
+      collectionBaseName: 'Based on your recently watched Show',
     });
     const third = createQueueItem({
       plexUserId: 'u-2',
       mediaType: 'movie',
       librarySectionKey: '3',
-      collectionBaseName: 'Change of Taste',
+      collectionBaseName: 'Change of Movie Taste',
     });
 
     const ordered = getPendingQueueItemsInOrder({
@@ -133,19 +133,19 @@ describe('CollectionResyncUpgradeJob', () => {
       plexUserId: 'u-1',
       mediaType: 'movie',
       librarySectionKey: '1',
-      collectionBaseName: 'Based on your recently watched movie',
+      collectionBaseName: 'Based on your recently watched Movie',
     });
     const second = createQueueItem({
       plexUserId: 'u-1',
       mediaType: 'tv',
       librarySectionKey: '2',
-      collectionBaseName: 'Based on your recently watched show',
+      collectionBaseName: 'Based on your recently watched Show',
     });
     const third = createQueueItem({
       plexUserId: 'u-2',
       mediaType: 'movie',
       librarySectionKey: '3',
-      collectionBaseName: 'Inspired by your Immaculate Taste',
+      collectionBaseName: 'Inspired by your Immaculate Taste in Movies',
     });
 
     const pending = getPendingQueueItemsInOrder({

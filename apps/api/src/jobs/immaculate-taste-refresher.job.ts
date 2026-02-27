@@ -4,6 +4,8 @@ import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.
 import {
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   buildUserCollectionHubOrder,
   buildUserCollectionName,
 } from '../plex/plex-collections.utils';
@@ -71,7 +73,10 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 @Injectable()
 export class ImmaculateTasteRefresherJob {
-  private static readonly COLLECTION_NAME = 'Inspired by your Immaculate Taste';
+  private static readonly MOVIE_COLLECTION_NAME =
+    IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME;
+  private static readonly TV_COLLECTION_NAME =
+    IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME;
   private static readonly ACTIVATION_POINTS = 50;
 
   constructor(
@@ -358,8 +363,12 @@ export class ImmaculateTasteRefresherJob {
 
     const maxPoints =
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
-    const plexCollectionName = buildUserCollectionName(
-      ImmaculateTasteRefresherJob.COLLECTION_NAME,
+    const plexMovieCollectionName = buildUserCollectionName(
+      ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
+      plexUserTitle,
+    );
+    const plexTvCollectionName = buildUserCollectionName(
+      ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
       plexUserTitle,
     );
     const movieCollectionHubOrder = buildUserCollectionHubOrder(
@@ -385,8 +394,10 @@ export class ImmaculateTasteRefresherJob {
       tvLibraries: includeTv ? scopedTvSections.map((s) => s.title) : [],
       movieScopeSource,
       tvScopeSource,
-      collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
-      plexCollectionName,
+      collectionName: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
+      tvCollectionName: ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
+      plexMovieCollectionName,
+      plexTvCollectionName,
       maxPoints,
       activationPoints: ImmaculateTasteRefresherJob.ACTIVATION_POINTS,
       limit,
@@ -730,7 +741,7 @@ export class ImmaculateTasteRefresherJob {
             token: plexToken,
             machineIdentifier,
             movieSectionKey: sec.key,
-            collectionName: plexCollectionName,
+            collectionName: plexMovieCollectionName,
             desiredItems: desiredLimited,
             randomizeOrder: false,
             pinCollections: true,
@@ -767,9 +778,9 @@ export class ImmaculateTasteRefresherJob {
     let curatedCollectionId: string | null = null;
     if (!ctx.dryRun) {
       const col = await this.prisma.curatedCollection.upsert({
-        where: { name: ImmaculateTasteRefresherJob.COLLECTION_NAME },
+        where: { name: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME },
         update: {},
-        create: { name: ImmaculateTasteRefresherJob.COLLECTION_NAME },
+        create: { name: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME },
         select: { id: true },
       });
       curatedCollectionId = col.id;
@@ -806,7 +817,7 @@ export class ImmaculateTasteRefresherJob {
     }
 
     movieSummary = {
-      collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
+      collectionName: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
       totalLibraries: orderedMovieSections.length,
       dbSaved,
       curatedCollectionId,
@@ -1139,7 +1150,7 @@ export class ImmaculateTasteRefresherJob {
               machineIdentifier,
               movieSectionKey: sec.key,
               itemType: 2,
-              collectionName: plexCollectionName,
+              collectionName: plexTvCollectionName,
               desiredItems: desiredLimited,
               randomizeOrder: false,
               pinCollections: true,
@@ -1172,7 +1183,7 @@ export class ImmaculateTasteRefresherJob {
       }
 
       tvSummary = {
-        collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
+        collectionName: ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
         totalLibraries: orderedTvSections.length,
         activatedNow: activatedNowTotal,
         tmdbBackfilled: tmdbBackfilledTotal,
@@ -1194,7 +1205,8 @@ export class ImmaculateTasteRefresherJob {
       plexUserId,
       plexUserTitle,
       pinTarget,
-      collectionName: ImmaculateTasteRefresherJob.COLLECTION_NAME,
+      collectionName: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
+      tvCollectionName: ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
       movie: movieSummary,
       tv: tvSummary,
     };

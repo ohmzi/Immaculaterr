@@ -5,6 +5,12 @@ import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
+import {
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+} from '../plex/plex-collections.utils';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
@@ -15,13 +21,13 @@ import {
 } from './refresher-sweep.utils';
 
 const MOVIE_COLLECTIONS = [
-  'Based on your recently watched movie',
-  'Change of Taste',
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
 ] as const;
 
 const TV_COLLECTIONS = [
-  'Based on your recently watched show',
-  'Change of Taste',
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
 ] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

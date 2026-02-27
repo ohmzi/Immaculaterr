@@ -3,21 +3,25 @@ import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import {
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
   buildUserCollectionHubOrder,
   buildUserCollectionName,
 } from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 
 const MOVIE_COLLECTIONS = [
-  'Based on your recently watched movie',
-  'Change of Taste',
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
 ] as const;
 
 const TV_COLLECTIONS = [
-  'Based on your recently watched show',
-  'Change of Taste',
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
 ] as const;
 
 type PlexLibrarySection = { key: string; title: string; type?: string };

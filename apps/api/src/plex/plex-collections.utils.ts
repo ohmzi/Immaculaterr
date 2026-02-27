@@ -11,26 +11,46 @@ export function normalizeCollectionTitle(value: string): string {
     .toLowerCase();
 }
 
+export const RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME =
+  'Based on your recently watched Movie';
+export const CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME =
+  'Change of Movie Taste';
+export const IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME =
+  'Inspired by your Immaculate Taste in Movies';
+
+export const RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME =
+  'Based on your recently watched Show';
+export const CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME =
+  'Change of Show Taste';
+export const IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME =
+  'Inspired by your Immaculate Taste in Shows';
+
 export const CURATED_MOVIE_COLLECTION_HUB_ORDER = [
-  'Based on your recently watched movie',
-  'Change of Taste',
-  'Inspired by your Immaculate Taste',
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
 ] as const;
 
 export const CURATED_TV_COLLECTION_HUB_ORDER = [
-  'Based on your recently watched show',
-  'Change of Taste',
-  'Inspired by your Immaculate Taste',
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
 ] as const;
 
 type CuratedMediaType = 'movie' | 'tv';
 
 const CURATED_BASE_HINTS = {
+  recentlyWatchedMovieLegacy: 'based on your recently watched movie',
+  recentlyWatchedShowLegacy: 'based on your recently watched show',
   recentlyWatchedMovie: 'based on your recently watched movie',
   recentlyWatchedShow: 'based on your recently watched show',
   recentlyWatchedGeneric: 'based on your recently watched',
-  changeOfTaste: 'change of taste',
-  immaculateTaste: 'inspired by your immaculate taste',
+  changeOfMovieTaste: 'change of movie taste',
+  changeOfShowTaste: 'change of show taste',
+  changeOfTasteLegacy: 'change of taste',
+  immaculateTasteMovies: 'inspired by your immaculate taste in movies',
+  immaculateTasteShows: 'inspired by your immaculate taste in shows',
+  immaculateTasteLegacy: 'inspired by your immaculate taste',
 } as const;
 
 const CURATED_ORDER_LOOKUP = {
@@ -71,6 +91,8 @@ export function stripUserCollectionSuffix(collectionName: string): string {
     const after = parenMatch[2]?.trim() || '';
     const baseHints = [
       'based on your',
+      'change of movie taste',
+      'change of show taste',
       'change of taste',
       'inspired by your immaculate taste',
     ];
@@ -104,22 +126,44 @@ function normalizeCuratedBaseName(params: {
   ].filter(Boolean);
 
   for (const value of candidates) {
-    if (value.includes(CURATED_BASE_HINTS.changeOfTaste)) {
-      return 'Change of Taste';
+    if (value.includes(CURATED_BASE_HINTS.changeOfMovieTaste)) {
+      return CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME;
     }
-    if (value.includes(CURATED_BASE_HINTS.immaculateTaste)) {
-      return 'Inspired by your Immaculate Taste';
+    if (value.includes(CURATED_BASE_HINTS.changeOfShowTaste)) {
+      return CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME;
+    }
+    if (value.includes(CURATED_BASE_HINTS.changeOfTasteLegacy)) {
+      return params.mediaType === 'tv'
+        ? CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME
+        : CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME;
+    }
+    if (value.includes(CURATED_BASE_HINTS.immaculateTasteMovies)) {
+      return IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME;
+    }
+    if (value.includes(CURATED_BASE_HINTS.immaculateTasteShows)) {
+      return IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME;
+    }
+    if (value.includes(CURATED_BASE_HINTS.immaculateTasteLegacy)) {
+      return params.mediaType === 'tv'
+        ? IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME
+        : IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME;
     }
     if (value.includes(CURATED_BASE_HINTS.recentlyWatchedMovie)) {
-      return 'Based on your recently watched movie';
+      return RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME;
     }
     if (value.includes(CURATED_BASE_HINTS.recentlyWatchedShow)) {
-      return 'Based on your recently watched show';
+      return RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME;
+    }
+    if (value.includes(CURATED_BASE_HINTS.recentlyWatchedMovieLegacy)) {
+      return RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME;
+    }
+    if (value.includes(CURATED_BASE_HINTS.recentlyWatchedShowLegacy)) {
+      return RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME;
     }
     if (value.includes(CURATED_BASE_HINTS.recentlyWatchedGeneric)) {
       return params.mediaType === 'tv'
-        ? 'Based on your recently watched show'
-        : 'Based on your recently watched movie';
+        ? RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME
+        : RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME;
     }
   }
 

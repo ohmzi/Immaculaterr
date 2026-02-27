@@ -10,7 +10,11 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { PrismaService } from '../db/prisma.service';
-import { buildUserCollectionName } from '../plex/plex-collections.utils';
+import {
+  IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+  buildUserCollectionName,
+} from '../plex/plex-collections.utils';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
@@ -50,8 +54,11 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-const IMMACULATE_PLEX_COLLECTION_BASE_NAME =
-  'Inspired by your Immaculate Taste';
+function getImmaculateCollectionBaseName(mediaType: 'movie' | 'tv'): string {
+  return mediaType === 'movie'
+    ? IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME
+    : IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME;
+}
 
 type ResetBody = {
   mediaType?: unknown;
@@ -121,8 +128,12 @@ export class ImmaculateTasteController {
         selectedSectionKeySet.has(String(s.key ?? '').trim()),
     );
 
-    const collectionName = buildUserCollectionName(
-      IMMACULATE_PLEX_COLLECTION_BASE_NAME,
+    const movieCollectionName = buildUserCollectionName(
+      getImmaculateCollectionBaseName('movie'),
+      plexUserTitle,
+    );
+    const tvCollectionName = buildUserCollectionName(
+      getImmaculateCollectionBaseName('tv'),
       plexUserTitle,
     );
 
@@ -156,7 +167,7 @@ export class ImmaculateTasteController {
             baseUrl: plexBaseUrl,
             token: plexToken,
             librarySectionKey: sec.key,
-            collectionName,
+            collectionName: movieCollectionName,
           });
           if (collectionRatingKey) {
             const items = await this.plexServer.getCollectionItems({
@@ -176,7 +187,7 @@ export class ImmaculateTasteController {
           libraryTitle: sec.title,
           dataset: { total, active, pending },
           plex: {
-            collectionName,
+            collectionName: movieCollectionName,
             collectionRatingKey,
             itemCount: plexItemCount,
           },
@@ -214,7 +225,7 @@ export class ImmaculateTasteController {
             baseUrl: plexBaseUrl,
             token: plexToken,
             librarySectionKey: sec.key,
-            collectionName,
+            collectionName: tvCollectionName,
           });
           if (collectionRatingKey) {
             const items = await this.plexServer.getCollectionItems({
@@ -234,7 +245,7 @@ export class ImmaculateTasteController {
           libraryTitle: sec.title,
           dataset: { total, active, pending },
           plex: {
-            collectionName,
+            collectionName: tvCollectionName,
             collectionRatingKey,
             itemCount: plexItemCount,
           },
@@ -243,7 +254,8 @@ export class ImmaculateTasteController {
     );
 
     return {
-      collectionName,
+      collectionName: movieCollectionName,
+      tvCollectionName,
       collections: [...movieEntries, ...tvEntries],
     };
   }
@@ -304,12 +316,13 @@ export class ImmaculateTasteController {
     if (!librarySectionKey) {
       throw new BadRequestException('librarySectionKey is required');
     }
+    const resolvedMediaType: 'movie' | 'tv' = mediaType;
 
     const adminPlexUser = await this.plexUsers.ensureAdminPlexUser({ userId });
     const plexUserId = adminPlexUser.id;
     const plexUserTitle = adminPlexUser.plexAccountTitle;
     const collectionName = buildUserCollectionName(
-      IMMACULATE_PLEX_COLLECTION_BASE_NAME,
+      getImmaculateCollectionBaseName(resolvedMediaType),
       plexUserTitle,
     );
 
@@ -335,10 +348,10 @@ export class ImmaculateTasteController {
     }
 
     const secType = (sec.type ?? '').toLowerCase();
-    if (mediaType === 'movie' && secType !== 'movie') {
+    if (resolvedMediaType === 'movie' && secType !== 'movie') {
       throw new BadRequestException('librarySectionKey is not a movie library');
     }
-    if (mediaType === 'tv' && secType !== 'show') {
+    if (resolvedMediaType === 'tv' && secType !== 'show') {
       throw new BadRequestException('librarySectionKey is not a TV library');
     }
 
@@ -366,7 +379,7 @@ export class ImmaculateTasteController {
 
     // Delete dataset rows
     const datasetDeleted =
-      mediaType === 'movie'
+      resolvedMediaType === 'movie'
         ? await this.prisma.immaculateTasteMovieLibrary.deleteMany({
             where: { plexUserId, librarySectionKey },
           })
@@ -379,11 +392,17 @@ export class ImmaculateTasteController {
     await this.prisma.setting
       .upsert({
         where: {
-          key: immaculateTasteResetMarkerKey({ mediaType, librarySectionKey }),
+          key: immaculateTasteResetMarkerKey({
+            mediaType: resolvedMediaType,
+            librarySectionKey,
+          }),
         },
         update: { value: new Date().toISOString(), encrypted: false },
         create: {
-          key: immaculateTasteResetMarkerKey({ mediaType, librarySectionKey }),
+          key: immaculateTasteResetMarkerKey({
+            mediaType: resolvedMediaType,
+            librarySectionKey,
+          }),
           value: new Date().toISOString(),
           encrypted: false,
         },
@@ -392,7 +411,7 @@ export class ImmaculateTasteController {
 
     return {
       ok: true,
-      mediaType,
+      mediaType: resolvedMediaType,
       librarySectionKey,
       libraryTitle: sec.title,
       plex: {
@@ -427,6 +446,7 @@ export class ImmaculateTasteController {
     if (!plexUserId) {
       throw new BadRequestException('plexUserId is required');
     }
+    const resolvedMediaType: 'movie' | 'tv' = mediaType;
 
     const plexUser = await this.plexUsers.getPlexUserById(plexUserId);
     if (!plexUser) {
@@ -448,13 +468,13 @@ export class ImmaculateTasteController {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
-    const targetType = mediaType === 'movie' ? 'movie' : 'show';
+    const targetType = resolvedMediaType === 'movie' ? 'movie' : 'show';
     const targetSections = sections.filter(
       (s) => (s.type ?? '').toLowerCase() === targetType,
     );
 
     const collectionName = buildUserCollectionName(
-      IMMACULATE_PLEX_COLLECTION_BASE_NAME,
+      getImmaculateCollectionBaseName(resolvedMediaType),
       plexUser.plexAccountTitle,
     );
 
@@ -481,7 +501,7 @@ export class ImmaculateTasteController {
     }
 
     const datasetDeleted =
-      mediaType === 'movie'
+      resolvedMediaType === 'movie'
         ? await this.prisma.immaculateTasteMovieLibrary.deleteMany({
             where: { plexUserId: plexUser.id },
           })
@@ -496,14 +516,14 @@ export class ImmaculateTasteController {
           .upsert({
             where: {
               key: immaculateTasteResetMarkerKey({
-                mediaType,
+                mediaType: resolvedMediaType,
                 librarySectionKey: sec.key,
               }),
             },
             update: { value: resetAt, encrypted: false },
             create: {
               key: immaculateTasteResetMarkerKey({
-                mediaType,
+                mediaType: resolvedMediaType,
                 librarySectionKey: sec.key,
               }),
               value: resetAt,
@@ -516,7 +536,7 @@ export class ImmaculateTasteController {
 
     return {
       ok: true,
-      mediaType,
+      mediaType: resolvedMediaType,
       plexUserId: plexUser.id,
       plexUserTitle: plexUser.plexAccountTitle,
       plex: {
