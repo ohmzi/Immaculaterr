@@ -408,7 +408,7 @@ function SwipeCard({
   );
 }
 
-export function ObservatoryPage() {
+export const ObservatoryPage = () => {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
   const queryClient = useQueryClient();

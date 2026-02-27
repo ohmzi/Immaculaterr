@@ -20,12 +20,12 @@ export function pick(obj: Record<string, unknown>, path: string): unknown {
   return cur;
 }
 
-function pickString(obj: Record<string, unknown>, path: string): string | null {
+export const pickString = (obj: Record<string, unknown>, path: string): string | null => {
   const v = pick(obj, path);
   if (typeof v !== 'string') return null;
   const s = v.trim();
   return s ? s : null;
-}
+};
 
 const pickBool = (obj: Record<string, unknown>, path: string): boolean | null => {
   const v = pick(obj, path);

@@ -51,7 +51,7 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function MobileNavigation({ onLogout }: MobileNavigationProps) {
+export const MobileNavigation = ({ onLogout }: MobileNavigationProps) => {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);

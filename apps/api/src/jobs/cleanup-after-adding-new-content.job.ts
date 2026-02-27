@@ -240,7 +240,7 @@ export class CleanupAfterAddingNewContentJob {
     settings: any,
     secrets: any,
     setProgress: ReturnType<CleanupAfterAddingNewContentJob['getSetProgress']>,
-  ) {
+  ) => {
     // original unmonitorInArr logic goes here
   }
 
@@ -249,7 +249,7 @@ export class CleanupAfterAddingNewContentJob {
     settings: any,
     secrets: any,
     setProgress: ReturnType<CleanupAfterAddingNewContentJob['getSetProgress']>,
-  ) {
+  ) => {
     // original removeFromWatchlist logic goes here
   }
 }

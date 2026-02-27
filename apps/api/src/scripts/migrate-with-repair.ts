@@ -75,6 +75,7 @@ const isMissingMigrationsTableError = (err: unknown): boolean => (
 );
 
 (function() {
+  // empty because this IIFE creates an isolated scope without executing any code
 })();
 
 const runPrisma = (args: string[], label: string): void => {

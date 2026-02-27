@@ -78,7 +78,7 @@ export class PlexCuratedCollectionsService {
       pinTarget = 'admin',
       collectionHubOrder,
       preferredHubTargets = [],
-    } = params;
+    } = params) => {
 
     const mediaType = itemType === 2 ? 'tv' : 'movie';
     const unitLabel = itemType === 2 ? 'shows' : 'movies';

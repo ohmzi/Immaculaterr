@@ -57,9 +57,9 @@ type IntegrationId =
   | 'google'
   | 'openai';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+};
 
 const defaultValues: { [key: string]: string | boolean | null } = {
   string: '',
@@ -118,11 +118,19 @@ const MaskedSecretInput = (props: {
   const { value, setValue, hasSavedValue, placeholder, className, onEditStart, onBlur } =
     props;
 
-  const maskedDisplayValue = value
-    ? '*'.repeat(value.length)
+  const displayValueMap: Record<string, () => string> = {
+    value: () => '*'.repeat(value.length),
+    saved: () => MASKED_SECRET,
+    empty: () => '',
+  };
+
+  const status = value
+    ? 'value'
     : hasSavedValue
-      ? MASKED_SECRET
-      : '';
+      ? 'saved'
+      : 'empty';
+
+  const maskedDisplayValue = displayValueMap[status]();
 
   const handleValueChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {

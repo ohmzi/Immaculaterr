@@ -47,10 +47,10 @@ export function pickNumber(obj: Record<string, unknown>, path: string): number |
   const handlers: Record<string, (val: unknown) => number | null> = {
     number: (val) => Number.isFinite(val as number) ? (val as number) : null,
     string: (val) => {
-      const s = (val as string).trim();
-      if (!s) return null;
-      const n = Number.parseFloat(s);
-      return Number.isFinite(n) ? n : null;
+      const trimmedValue = (val as string).trim();
+      if (!trimmedValue) return null;
+      const parsedNumber = Number.parseFloat(trimmedValue);
+      return Number.isFinite(parsedNumber) ? parsedNumber : null;
     }
   };
   const handler = handlers[typeof v];
@@ -94,12 +94,15 @@ const buildLibrarySelectionSkippedReport = (params: {
   seedLibrarySectionId: string;
   seedLibrarySectionTitle: string;
 }): JobReportV1 => {
-  const reasonMessage =
-    params.reason === 'library_excluded'
-      ? 'Seed library is excluded by Plex library selection.'
-      : params.reason === 'no_selected_movie_libraries'
-        ? 'No selected movie libraries are available.'
-        : 'No selected TV libraries are available.';
+  const reasonMessages: Record<
+    'library_excluded' | 'no_selected_movie_libraries' | 'no_selected_tv_libraries',
+    string
+  > = {
+    library_excluded: 'Seed library is excluded by Plex library selection.',
+    no_selected_movie_libraries: 'No selected movie libraries are available.',
+    no_selected_tv_libraries: 'No selected TV libraries are available.'
+  };
+  const reasonMessage = reasonMessages[params.reason];
 
   return {
     template: 'jobReportV1',

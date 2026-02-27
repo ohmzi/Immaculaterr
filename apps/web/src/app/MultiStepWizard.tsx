@@ -628,6 +628,16 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   }, [completeWizard]);
 
   const renderStepContent = () => {
+    const RequirementItem: React.FC<{ icon: React.ReactNode; text: string; required?: boolean }> = ({ icon, text, required = false }) => (
+      <li className="flex items-center justify-between text-white/80">
+        <div className="flex items-center gap-2">
+          {icon}
+          <span>{text}</span>
+        </div>
+        {required && <span className="text-emerald-400">*</span>}
+      </li>
+    );
+
     switch (currentStep) {
       case 'welcome':
         return (
@@ -638,17 +648,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
             <motion.div
               initial={{ opacity: 0, scale: 0.98, y: 10 }}
-              // RequirementItem component must be declared before its first use
-              const RequirementItem: React.FC<{ icon: React.ReactNode; text: string; required?: boolean }> = ({ icon, text, required = false }) => (
-                <li className="flex items-center justify-between text-white/80">
-                  <div className="flex items-center gap-2">
-                    {icon}
-                    <span>{text}</span>
-                  </div>
-                  {required && <span className="text-emerald-400">*</span>}
-                </li>
-              );
-
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
               className="relative flex flex-col items-center px-8 py-12 text-center sm:px-12"

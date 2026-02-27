@@ -199,7 +199,7 @@ export class OpenAiService {
       'Return STRICT JSON only (no markdown, no prose) with this schema:',
       '{',
       '  "primary_recommendations": ["Title 1", "Title 2", "..."],',
-      '  "upcoming_from_search": ["Upcoming Title A", "Upcoming Title B", "..."]',
+      '  "upcoming_from_search": ["Upcoming Title A", "Upcoming Title B", "..."],',
       '}',
       '',
       'Rules:',
@@ -551,6 +551,7 @@ export function safeJsonString(value: unknown): string {
     return '{}';
   }
 }
+}
 
 function cleanTitle(line: string): string | null {
   let s = line.trim();
@@ -567,8 +568,8 @@ function cleanTitle(line: string): string | null {
   // Remove surrounding quotes
   s = s
     .trim()
-    .replace(/^['\"]+/, '')
-    .replace(/['\"]+$/, '')
+    .replace(/^['"]+/, '')
+    .replace(/['"]+$/, '')
     .trim();
 
   return s || null;
@@ -677,9 +678,9 @@ export function mergePrimaryAndUpcoming(
   return out.slice(0, limit);
 }
 
-function tryParseSelectionJson(
+const tryParseSelectionJson = (
   text: string,
-): { released: number[]; upcoming: number[] } | null {
+): { released: number[]; upcoming: number[] } | null => {
   const t = stripMarkdownFences(text || '');
   let obj: unknown;
   try {
@@ -693,7 +694,7 @@ function tryParseSelectionJson(
     released: coerceNumberList(rec['released']),
     upcoming: coerceNumberList(rec['upcoming']),
   };
-}
+};
 
 const tryParseNoSplitSelectionJson = (
   text: string,
@@ -714,17 +715,22 @@ export function coerceNumberList(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   const out: number[] = [];
   const seen = new Set<number>();
+  const converters: Record<string, (v: unknown) => number> = {
+    number: (v) => (Number.isFinite(v as number) ? Math.trunc(v as number) : NaN),
+    string: (v) => {
+      const s = (v as string).trim();
+      return s ? Number.parseInt(s, 10) : NaN;
+    },
+  };
+
   for (const v of value) {
-    const n =
-      typeof v === 'number' && Number.isFinite(v)
-        ? Math.trunc(v)
-        : typeof v === 'string' && v.trim()
-          ? Number.parseInt(v.trim(), 10)
-          : NaN;
+    const convert = converters[typeof v];
+    const n = convert ? convert(v) : NaN;
     if (!Number.isFinite(n) || n <= 0) continue;
     if (seen.has(n)) continue;
     seen.add(n);
     out.push(n);
   }
+
   return out;
 }

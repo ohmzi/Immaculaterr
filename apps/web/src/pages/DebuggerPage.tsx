@@ -133,6 +133,7 @@ export function DebuggerPage() {
     staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
+  });
 
   const [copied, setCopied] = useState(false);
   const [snapshotQuery, setSnapshotQuery] = useState('');

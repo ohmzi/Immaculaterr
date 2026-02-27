@@ -114,34 +114,46 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 };
 
 const issueSummary = (run: JobRun): string => {
-  if (run.errorMessage) return decodeHtmlEntities(run.errorMessage);
+  const handlers: Record<string, (input: Record<string, unknown> | null) => string> = {
+    error: () => decodeHtmlEntities(run.errorMessage!),
+    jobReportV1: (obj) => {
+      const issuesRaw = obj.issues;
+      if (!Array.isArray(issuesRaw)) return '';
+      const msgs = issuesRaw
+        .filter(isPlainObject)
+        .map((it) => (typeof it.message === 'string' ? it.message.trim() : ''))
+        .filter(Boolean);
+      return decodeHtmlEntities(msgs[0] ?? '');
+    },
+    default: () => '',
+  };
+
   const s = run.summary;
-  if (!s || typeof s !== 'object' || Array.isArray(s)) return '';
-  const obj = s as Record<string, unknown>;
-  if (obj.template !== 'jobReportV1' || Number(obj.version) !== 1) return '';
-  const issuesRaw = obj.issues;
-  if (!Array.isArray(issuesRaw)) return '';
-  const msgs = issuesRaw
-    .filter(isPlainObject)
-    .map((it) => (typeof it.message === 'string' ? it.message.trim() : ''))
-    .filter(Boolean);
-  return decodeHtmlEntities(msgs[0] ?? '');
+  const key = run.errorMessage
+    ? 'error'
+    : isPlainObject(s) && (s as Record<string, unknown>).template === 'jobReportV1' && Number((s as Record<string, unknown>).version) === 1
+    ? 'jobReportV1'
+    : 'default';
+
+  return handlers[key](key === 'jobReportV1' ? (s as Record<string, unknown>) : null);
 };
 
 const getPlexUserContext = (run: JobRun): { plexUserId: string; plexUserTitle: string } => {
+  const handlers: Record<string, (obj: Record<string, unknown> | null) => { plexUserId: string; plexUserTitle: string }> = {
+    jobReportV1: (obj) => {
+      const rawObj = isPlainObject(obj!.raw) ? (obj!.raw as Record<string, unknown>) : obj!;
+      const plexUserId = typeof rawObj.plexUserId === 'string' ? rawObj.plexUserId.trim() : '';
+      const plexUserTitle = typeof rawObj.plexUserTitle === 'string' ? rawObj.plexUserTitle.trim() : '';
+      return { plexUserId, plexUserTitle };
+    },
+    default: () => ({ plexUserId: '', plexUserTitle: '' }),
+  };
+
   const s = run.summary;
-  if (!s || typeof s !== 'object' || Array.isArray(s))
-    return { plexUserId: '', plexUserTitle: '' };
-  const obj = s as Record<string, unknown>;
-  const raw =
-    obj.template === 'jobReportV1' && isPlainObject(obj.raw)
-      ? (obj.raw as Record<string, unknown>)
-      : obj;
-  const plexUserId =
-    typeof raw.plexUserId === 'string' ? raw.plexUserId.trim() : '';
-  const plexUserTitle =
-    typeof raw.plexUserTitle === 'string' ? raw.plexUserTitle.trim() : '';
-  return { plexUserId, plexUserTitle };
+  const obj = isPlainObject(s) ? (s as Record<string, unknown>) : null;
+  const key = obj && (obj as Record<string, unknown>).template === 'jobReportV1' ? 'jobReportV1' : 'default';
+
+  return handlers[key](obj);
 };
 
 const pickSummaryValue = (obj: Record<string, unknown>, path: string): unknown => {
@@ -154,10 +166,11 @@ const pickSummaryValue = (obj: Record<string, unknown>, path: string): unknown =
   return cur;
 };
 
-function pickSummaryString(obj: Record<string, unknown>, path: string): string {
+
+const pickSummaryString = (obj: Record<string, unknown>, path: string): string => {
   const v = pickSummaryValue(obj, path);
   return typeof v === 'string' ? v.trim() : '';
-}
+};
 
 const normalizeMediaType = (raw: string): 'movie' | 'tv' | null => {
   const v = raw.trim().toLowerCase();
@@ -178,7 +191,7 @@ const normalizeMediaType = (raw: string): 'movie' | 'tv' | null => {
   return map[v] ?? null;
 };
 
-function getMediaTypeContext(run: JobRun): { key: 'movie' | 'tv' | ''; label: string } {
+const getMediaTypeContext = (run: JobRun): { key: 'movie' | 'tv' | ''; label: string } => {
   const summary = run.summary;
   if (!summary || typeof summary !== 'object' || Array.isArray(summary)) {
     return { key: '', label: '—' };

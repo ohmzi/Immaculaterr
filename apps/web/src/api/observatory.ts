@@ -117,7 +117,7 @@ export async function listWatchedTvObservatory(params: {
   );
 }
 
-export async function recordWatchedDecisions(params: {
+export const recordWatchedDecisions = async (params: {
   librarySectionKey: string;
   mediaType: 'movie' | 'tv';
   collectionKind: WatchedCollectionKind;
@@ -125,7 +125,7 @@ export async function recordWatchedDecisions(params: {
     id: number;
     action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
   };
-}) {
+}) => {
   return await fetchJson<{ ok: true; applied: number; ignored: number }>(
     apiPath('/observatory/watched/decisions'),
     {
@@ -134,7 +134,7 @@ export async function recordWatchedDecisions(params: {
       body: JSON.stringify(params),
     },
   );
-}
+};
 
 export async function applyWatchedObservatory(params: {
   librarySectionKey: string;

@@ -43,9 +43,9 @@ export type SonarrOptionsResponse = {
   tags: Array<{ id: number; label: string }>;
 };
 
-export function getSonarrOptions() {
+export const getSonarrOptions = () => {
   return fetchJson<SonarrOptionsResponse>(apiPath('/integrations/sonarr/options'));
-}
+};
 
 export type PlexLibraryItem = {
   key: string;

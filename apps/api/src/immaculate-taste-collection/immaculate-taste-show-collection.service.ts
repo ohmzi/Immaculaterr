@@ -447,11 +447,6 @@ export class ImmaculateTasteShowCollectionService {
     const ids = sorted.map((s) => s.tvdbId);
     return ids;
   }
-      const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
-      const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
-      if (bc !== ac) return bc - ac;
-      return a.tvdbId - b.tvdbId;
-    });
 
     const n = sorted.length;
     if (!n) return [];

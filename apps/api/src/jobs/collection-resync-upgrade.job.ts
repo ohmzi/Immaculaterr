@@ -193,6 +193,7 @@ class UpgradeOperationError extends Error {
 }
 
 (function() {
+  // empty because no initialization logic is required here
 })();
 
 const sleep = (ms: number): Promise<void> => {
@@ -220,12 +221,16 @@ const pickString = (obj: Record<string, unknown>, path: string): string => {
 
 const pickNumber = (obj: Record<string, unknown>, path: string): number | null => {
   const v = pick(obj, path);
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v === 'string' && v.trim()) {
-    const n = Number.parseFloat(v.trim());
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  const converters: Record<'number' | 'string', (val: any) => number | null> = {
+    number: (val) => (Number.isFinite(val) ? val : null),
+    string: (val) => {
+      const s = (val as string).trim();
+      const n = Number.parseFloat(s);
+      return s && Number.isFinite(n) ? n : null;
+    }
+  };
+  const handler = converters[typeof v as keyof typeof converters];
+  return handler ? handler(v) : null;
 };
 
 const normalizeHttpUrl = (raw: string): string => {
@@ -239,16 +244,20 @@ const normalizeHttpUrl = (raw: string): string => {
 };
 
 (function() {
+  // empty because no initialization is required here
 })();
 
 export function toFiniteInt(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value))
-    return Math.max(0, Math.trunc(value));
-  if (typeof value === 'string' && value.trim()) {
-    const n = Number.parseInt(value.trim(), 10);
-    if (Number.isFinite(n)) return Math.max(0, n);
-  }
-  return fallback;
+  const converters: Record<'number' | 'string', (val: any) => number> = {
+    number: (val) => (Number.isFinite(val) ? Math.max(0, Math.trunc(val)) : fallback),
+    string: (val) => {
+      const s = (val as string).trim();
+      const n = Number.parseInt(s, 10);
+      return s && Number.isFinite(n) ? Math.max(0, n) : fallback;
+    }
+  };
+  const handler = converters[typeof value as keyof typeof converters];
+  return handler ? handler(value) : fallback;
 }
 
 const isNotFoundError = (err: unknown): boolean => {
