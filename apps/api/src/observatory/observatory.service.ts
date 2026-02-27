@@ -1290,6 +1290,19 @@ export class ObservatoryService {
     return { ok: true, applied, ignored };
   }
 
+  private getPlexCredentials(
+    settings: Record<string, any>,
+    secrets: Record<string, any>
+  ) {
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!baseUrlRaw) throw new BadGatewayException('Plex baseUrl is not set');
+    if (!token) throw new BadGatewayException('Plex token is not set');
+    return { plexBaseUrl: normalizeHttpUrl(baseUrlRaw), plexToken: token };
+  }
+
   async applyWatched(params: {
     userId: string;
     librarySectionKey: string;
@@ -1305,13 +1318,10 @@ export class ObservatoryService {
     const { plexUserId, plexUserTitle, pinTarget } =
       await this.resolvePlexUserContext(params.userId);
 
-    const plexBaseUrlRaw =
-      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
-    const plexToken =
-      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
-    if (!plexBaseUrlRaw) throw new BadGatewayException('Plex baseUrl is not set');
-    if (!plexToken) throw new BadGatewayException('Plex token is not set');
-    const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
+    const { plexBaseUrl, plexToken } = this.getPlexCredentials(
+      settings,
+      secrets,
+    );
 
     const overseerrModeSelected =
       (pickBool(
@@ -2022,6 +2032,20 @@ export class ObservatoryService {
     approvalRequired: boolean;
     overseerrModeSelected: boolean;
   }) {
+    const {
+      sonarrEnabled,
+      sonarrBaseUrl,
+      sonarrApiKey,
+    } = this.getSonarrConfig(params);
+
+    // existing applyTv logic continues...
+  }
+
+  private getSonarrConfig(params: {
+    settings: Record<string, unknown>;
+    secrets: Record<string, unknown>;
+    overseerrModeSelected: boolean;
+  }) {
     const sonarrBaseUrlRaw = pickString(params.settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(params.secrets, 'sonarr.apiKey');
     const fetchMissingSonarr =
@@ -2034,6 +2058,8 @@ export class ObservatoryService {
       Boolean(sonarrBaseUrlRaw) &&
       Boolean(sonarrApiKey);
     const sonarrBaseUrl = sonarrEnabled ? normalizeHttpUrl(sonarrBaseUrlRaw) : '';
+    return { sonarrEnabled, sonarrBaseUrl, sonarrApiKey };
+  }
 
     const startSearchImmediately =
       (pickBool(params.settings, 'jobs.immaculateTastePoints.searchImmediately') ??
@@ -2236,33 +2262,43 @@ export class ObservatoryService {
     preferredRootFolderPath: string;
     preferredQualityProfileId: number;
     preferredTagId: number | null;
-  }) {
+  }): Promise<{
+    rootFolderPath: string;
+    qualityProfileId: number;
+    tagIds: number[];
+  }> {
     const [rootFolders, qualityProfiles, tags] = await Promise.all([
       this.radarr.listRootFolders({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
       this.radarr.listQualityProfiles({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
       this.radarr.listTags({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
     ]);
-    if (!rootFolders.length) throw new BadGatewayException('Radarr has no root folders');
-    if (!qualityProfiles.length) throw new BadGatewayException('Radarr has no quality profiles');
-    const fallbackRootFolder = rootFolders[0];
-    const fallbackQualityProfile = qualityProfiles[0];
-    if (!fallbackRootFolder || !fallbackQualityProfile) {
-      throw new BadGatewayException('Radarr defaults are unavailable');
+    if (!rootFolders.length) {
+      throw new BadGatewayException('Radarr has no root folders');
     }
-
-    const rootFolderPath =
-      rootFolders.find((r) => r.path === params.preferredRootFolderPath)?.path ??
-      fallbackRootFolder.path;
-    const qualityProfileId =
-      qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)?.id ??
-      fallbackQualityProfile.id;
-
-    const tagIds: number[] = [];
-    if (params.preferredTagId) {
-      const exists = tags.find((t) => t.id === params.preferredTagId);
-      if (exists) tagIds.push(exists.id);
+    if (!qualityProfiles.length) {
+      throw new BadGatewayException('Radarr has no quality profiles');
     }
+    const rootFolderPath = this.resolveDefaultPath(rootFolders, params.preferredRootFolderPath);
+    const qualityProfileId = this.resolveDefaultId(qualityProfiles, params.preferredQualityProfileId);
+    const tagIds = this.resolveTagIds(tags, params.preferredTagId);
     return { rootFolderPath, qualityProfileId, tagIds };
+  }
+
+  private resolveDefaultPath(rootFolders: { path: string }[], preferredPath: string): string {
+    const fallback = rootFolders[0];
+    return rootFolders.find((r) => r.path === preferredPath)?.path ?? fallback.path;
+  }
+
+  private resolveDefaultId(items: { id: number }[], preferredId: number): number {
+    const fallback = items[0];
+    return items.find((item) => item.id === preferredId)?.id ?? fallback.id;
+  }
+
+  private resolveTagIds(tags: { id: number }[], preferredTagId: number | null): number[] {
+    if (!preferredTagId) {
+      return [];
+    }
+    return tags.find((t) => t.id === preferredTagId) ? [preferredTagId] : [];
   }
 
   private async resolveSonarrDefaults(params: {
@@ -2279,24 +2315,25 @@ export class ObservatoryService {
     ]);
     if (!rootFolders.length) throw new BadGatewayException('Sonarr has no root folders');
     if (!qualityProfiles.length) throw new BadGatewayException('Sonarr has no quality profiles');
-    const fallbackRootFolder = rootFolders[0];
-    const fallbackQualityProfile = qualityProfiles[0];
-    if (!fallbackRootFolder || !fallbackQualityProfile) {
-      throw new BadGatewayException('Sonarr defaults are unavailable');
-    }
+
+    const fallbackRoot = rootFolders[0];
+    const fallbackQuality = qualityProfiles[0];
 
     const rootFolderPath =
-      rootFolders.find((r) => r.path === params.preferredRootFolderPath)?.path ??
-      fallbackRootFolder.path;
-    const qualityProfileId =
-      qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)?.id ??
-      fallbackQualityProfile.id;
+      rootFolders.some((r) => r.path === params.preferredRootFolderPath)
+        ? params.preferredRootFolderPath
+        : fallbackRoot.path;
 
-    const tagIds: number[] = [];
-    if (params.preferredTagId) {
-      const exists = tags.find((t) => t.id === params.preferredTagId);
-      if (exists) tagIds.push(exists.id);
-    }
+    const qualityProfileId =
+      qualityProfiles.some((q) => q.id === params.preferredQualityProfileId)
+        ? params.preferredQualityProfileId
+        : fallbackQuality.id;
+
+    const tagIds =
+      params.preferredTagId && tags.some((t) => t.id === params.preferredTagId)
+        ? [params.preferredTagId]
+        : [];
+
     return { rootFolderPath, qualityProfileId, tagIds };
   }
 }

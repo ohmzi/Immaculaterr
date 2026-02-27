@@ -19,12 +19,11 @@ export class ImmaculateTasteShowCollectionService {
   ) {}
 
   // TV has no legacy JSON import (movie-only historical artifact).
-  async ensureLegacyImported(params: {
+  async ensureLegacyImported(_params: {
     ctx: JobContext;
     plexUserId: string;
     maxPoints?: number;
   }): Promise<{ imported: boolean; sourcePath: string | null; importedCount: number }> {
-    undefined;
     return { imported: false, sourcePath: null, importedCount: 0 };
   }
 
