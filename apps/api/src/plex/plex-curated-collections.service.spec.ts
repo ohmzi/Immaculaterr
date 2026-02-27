@@ -39,12 +39,12 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
         { ratingKey: '12', title: 'Change of Taste (Alice)' },
         { ratingKey: '13', title: 'Inspired by your Immaculate Taste (Alice)' },
       ])),
-      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve()),
       getCollectionHubIdentifier: jest.fn(
         (args: { collectionRatingKey: string }) =>
           Promise.resolve(`hub-${args.collectionRatingKey}`),
       ),
-      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
+      moveHubRow: jest.fn(() => Promise.resolve()),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -105,7 +105,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
         (args: { collectionRatingKey: string }) =>
           Promise.resolve(`hub-${args.collectionRatingKey}`),
       ),
-      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
+      moveHubRow: jest.fn(() => Promise.resolve()),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -169,12 +169,12 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
         .fn()
         .mockResolvedValueOnce(firstList)
         .mockResolvedValue(secondList),
-      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve()),
       getCollectionHubIdentifier: jest.fn(
         (args: { collectionRatingKey: string }) =>
           `hub-${args.collectionRatingKey}`,
       ),
-      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
+      moveHubRow: jest.fn(() => Promise.resolve()),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -225,7 +225,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
           }
           return Promise.resolve(`hub-${args.collectionRatingKey}`);
         }),
-      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
+      moveHubRow: jest.fn(() => Promise.resolve()),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -296,10 +296,10 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
           { ratingKey: '233616', title: 'Game of Thrones' },
           { ratingKey: '233617', title: 'Breaking Bad' },
         ]),
-      addItemToCollection: jest.fn(() => Promise.resolve(undefined)),
+      addItemToCollection: jest.fn(() => Promise.resolve()),
       setCollectionSort: jest.fn(() => undefined),
       moveCollectionItem: jest.fn(() => Promise.resolve()),
-      uploadCollectionPoster: jest.fn(() => Promise.resolve(undefined)),
+      uploadCollectionPoster: jest.fn(() => Promise.resolve()),
       uploadCollectionBackground: jest.fn(() => undefined),
     };
 

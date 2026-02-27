@@ -16,42 +16,29 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 }
 
 ;(function() {
-  function pick(obj: Record<string, unknown>, path: string): unknown {
-    const parts = path.split('.');
-    let cur: unknown = obj;
-    for (const part of parts) {
-      if (!isPlainObject(cur)) return undefined;
-      cur = cur[part];
-    }
-    return cur;
-  }
 })();
 
-function pickString(obj: Record<string, unknown>, path: string): string | null {
-  const v = pick(obj, path);
-  if (typeof v !== 'string') return null;
-  const s = v.trim();
-  return s ? s : null;
+export function pickString(obj: Record<string, unknown>, path: string): string | null {
+  const rawValue = pick(obj, path);
+  if (typeof rawValue !== 'string') return null;
+  const trimmedString = rawValue.trim();
+  return trimmedString ? trimmedString : null;
 }
 
 (function() {
-  function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
-    const v = pick(obj, path);
-    return typeof v === 'boolean' ? v : null;
-  }
 })();
 
 export function requireString(obj: Record<string, unknown>, path: string): string {
-  const s = pickString(obj, path);
-  if (!s) throw new Error(`Missing required setting: ${path}`);
-  return s;
+  const foundString = pickString(obj, path);
+  if (!foundString) throw new Error(`Missing required setting: ${path}`);
+  return foundString;
 }
 
 export function toInt(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) ? n : null;
+  const parsedNumber = Number.parseInt(value, 10);
+  return Number.isFinite(parsedNumber) ? parsedNumber : null;
 }
 
 const episodeKey = (season: number, episode: number): string => {
@@ -766,6 +753,28 @@ export class MonitorConfirmJob {
       skippedPathConflicts: radarrSkippedPathConflicts,
       sampleTitles: radarrSample,
     };
+const asNum = (v: unknown): number | null => {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+};
+
+const asBool = (v: unknown): boolean | null => {
+  return typeof v === 'boolean' ? v : null;
+};
+
+const buildMonitorConfirmReport = (params: {
+  ctx: JobContext;
+  raw: JsonObject;
+}): JobReportV1 => {
+  const { ctx, raw } = params;
+
+  const plex = isPlainObject(raw.plex) ? raw.plex : {};
+  const radarr = isPlainObject(raw.radarr) ? raw.radarr : {};
+  const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : {};
+
+  const plexMovieLibraries = Array.isArray(plex.movieLibraries)
+    ? plex.movieLibraries.length
+    : null;
+
     summary.sonarr = {
       configured: sonarrConfigured,
       totalSeries: sonarrSeriesTotal,
@@ -795,28 +804,6 @@ export class MonitorConfirmJob {
     return { summary: report as unknown as JsonObject };
   }
 }
-
-const asNum = (v: unknown): number | null => {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
-};
-
-const asBool = (v: unknown): boolean | null => {
-  return typeof v === 'boolean' ? v : null;
-};
-
-const buildMonitorConfirmReport = (params: {
-  ctx: JobContext;
-  raw: JsonObject;
-}): JobReportV1 => {
-  const { ctx, raw } = params;
-
-  const plex = isPlainObject(raw.plex) ? raw.plex : {};
-  const radarr = isPlainObject(raw.radarr) ? raw.radarr : {};
-  const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : {};
-
-  const plexMovieLibraries = Array.isArray(plex.movieLibraries)
-    ? plex.movieLibraries.length
-    : null;
   const plexTvLibraries = Array.isArray(plex.tvLibraries) ? plex.tvLibraries.length : null;
 
   const radarrTotalMonitored = asNum(radarr.totalMonitored) ?? 0;

@@ -49,6 +49,6 @@ export function getPlexLibraryGrowth(): Promise<PlexLibraryGrowthResponse> {
   return fetchJson(apiPath('/plex/library-growth'));
 }
 
-export async function getPlexLibraryGrowthVersion(): Promise<PlexLibraryGrowthVersionResponse> {
+export function getPlexLibraryGrowthVersion(): Promise<PlexLibraryGrowthVersionResponse> {
   return fetchJson(apiPath('/plex/library-growth/version'));
 }

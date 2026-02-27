@@ -46,7 +46,7 @@ export class ImmaculateTasteShowCollectionService {
     if (!plexUserId) throw new Error('plexUserId is required');
     const librarySectionKey = params.librarySectionKey.trim();
     if (!librarySectionKey) throw new Error('librarySectionKey is required');
-    const maxPoints = clampMaxPoints(params.maxPoints);
+    const maxPoints = this.clampMaxPoints(params.maxPoints);
 
     const suggestedByTvdbId = new Map<
       number,
@@ -436,6 +436,17 @@ export class ImmaculateTasteShowCollectionService {
       const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN) ? Number(a.tmdbVoteAvg) : 0;
       const br = Number.isFinite(b.tmdbVoteAvg ?? NaN) ? Number(b.tmdbVoteAvg) : 0;
       if (br !== ar) return br - ar;
+    
+      const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
+      const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
+      if (bc !== ac) return bc - ac;
+    
+      return a.tvdbId - b.tvdbId;
+    });
+
+    const ids = sorted.map((s) => s.tvdbId);
+    return ids;
+  }
       const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
       const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
       if (bc !== ac) return bc - ac;
@@ -482,24 +493,16 @@ export class ImmaculateTasteShowCollectionService {
 }
 
 const clampMaxPoints = (v: unknown): number => {
-  const n =
-    typeof v === 'number' && Number.isFinite(v)
-      ? Math.trunc(v)
-      : typeof v === 'string' && v.trim()
-        ? Number.parseInt(v.trim(), 10)
-        : ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS;
-  if (!Number.isFinite(n)) return ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS;
+  const DEFAULT = ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS;
+  const parsers: Record<string, (val: unknown) => number> = {
+    number: val => typeof val === 'number' && Number.isFinite(val) ? Math.trunc(val) : DEFAULT,
+    string: val => typeof val === 'string' && val.trim() ? Number.parseInt(val.trim(), 10) : DEFAULT,
+  };
+  const parser = parsers[typeof v] ?? (() => DEFAULT);
+  const n = parser(v);
+  if (!Number.isFinite(n)) return DEFAULT;
   return Math.max(1, Math.min(100, n));
 };
 
 (function() {
-  function shuffleInPlace<T>(arr: T[]) {
-    for (let i = arr.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = arr[i];
-      arr[i] = arr[j] as T;
-      arr[j] = tmp as T;
-    }
-    return arr;
-  }
 })();

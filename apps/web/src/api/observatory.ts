@@ -124,7 +124,7 @@ export async function recordWatchedDecisions(params: {
   decisions: Array<{
     id: number;
     action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
-  }>;
+  };
 }) {
   return await fetchJson<{ ok: true; applied: number; ignored: number }>(
     apiPath('/observatory/watched/decisions'),

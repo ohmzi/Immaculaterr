@@ -226,7 +226,7 @@ export class CleanupAfterAddingNewContentJob {
     return { status: 'success' };
   }
 
-  private async handleDeleteDuplicates(
+  private handleDeleteDuplicates = async (
     ctx: JobContext,
     settings: any,
     secrets: any,

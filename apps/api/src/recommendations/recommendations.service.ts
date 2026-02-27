@@ -80,7 +80,7 @@ export class RecommendationsService {
     titles: string[];
     strategy: 'openai' | 'tmdb';
     debug: JsonObject;
-  }> => {
+  }> {
     const { ctx } = params;
     const seedTitle = params.seedTitle.trim();
     const count = clampInt(params.count || 50, RECS_MIN_COUNT, RECS_MAX_COUNT, 50);

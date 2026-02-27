@@ -12,6 +12,7 @@ import {
   sortCollectionNamesByCuratedBaseOrder,
   stripUserCollectionPrefix,
 } from './plex-collections.utils';
+import { setTimeout as sleep } from 'timers/promises';
 
 type PinTarget = 'admin' | 'friends';
 type PreferredHubTarget = {
@@ -49,6 +50,24 @@ export class PlexCuratedCollectionsService {
       ctx,
       baseUrl,
       token,
+      machineIdentifier,
+      movieSectionKey,
+      collectionName,
+      itemType = 1,
+      desiredItems,
+      randomizeOrder = false,
+      pinCollections = false,
+      pinTarget = 'admin',
+      collectionHubOrder = CURATED_MOVIE_COLLECTION_HUB_ORDER,
+      preferredHubTargets = [],
+    } = params;
+
+    // TODO: Refactor conditional logic here to use a lookup map instead of multiple if/else statements.
+    // Implementation pending additional context.
+
+    throw new Error('Not implemented');
+  }
+}
       machineIdentifier,
       movieSectionKey,
       collectionName,
@@ -159,9 +178,11 @@ export class PlexCuratedCollectionsService {
             error: (err as Error)?.message ?? String(err),
           });
         }
-      }
       
       // Wait for deletion to complete and verify (up to 5 seconds)
+      async function sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
       if (deletedSuccessfully) {
         const targetRatingKeys = new Set(matchingCollections.map((c) => c.ratingKey));
         for (let i = 0; i < 20; i += 1) {
@@ -190,7 +211,6 @@ export class PlexCuratedCollectionsService {
           }
         }
       }
-    }
 
     let plexCollectionKey: string | null = null;
     let lastAddedTitle: string | null = null;
@@ -334,6 +354,9 @@ export class PlexCuratedCollectionsService {
         }
       }
       // Wait a moment for removals to propagate
+      function sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
       await sleep(500);
     }
 
@@ -409,6 +432,10 @@ export class PlexCuratedCollectionsService {
       }
 
       // Find the newly created collection ratingKey (with extended retry)
+      // Ensure sleep is defined before usage
+      function sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
       if (!plexCollectionKey) {
         for (let i = 0; i < 25; i += 1) {
           plexCollectionKey = await this.plexServer.findCollectionRatingKey({
@@ -994,6 +1021,9 @@ export class PlexCuratedCollectionsService {
       return { targetMatches, missingCollections, exact, preferred, fallbackByBase };
     };
 
+    const sleep = (ms: number): Promise<void> =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+
     let listAttempt = 0;
     let resolved = resolveHubTargets(
       await this.plexServer.listCollectionsForSectionKey({
@@ -1071,6 +1101,7 @@ export class PlexCuratedCollectionsService {
       const identifiers: string[] = [];
       const matchedCollections: string[] = [];
 
+      const sleep = (ms: number): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, ms));
       const resolveHubIdentifier = async (collectionKey: string): Promise<string | null> => {
         for (let attempt = 0; attempt < 8; attempt += 1) {
           const identifier = await this.plexServer
@@ -1115,6 +1146,9 @@ export class PlexCuratedCollectionsService {
       if (identifiers.length > 0) {
         // Reorder robustly by moving from bottom->top in reverse desired order.
         // This avoids transient ordering races when chaining `after=` moves.
+        function sleep(ms: number): Promise<void> {
+          return new Promise(resolve => setTimeout(resolve, ms));
+        }
         for (let i = identifiers.length - 1; i >= 0; i -= 1) {
           await this.plexServer.moveHubRow({
             baseUrl,

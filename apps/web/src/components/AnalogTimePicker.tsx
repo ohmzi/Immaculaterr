@@ -9,7 +9,7 @@ interface AnalogTimePickerProps {
   onClose?: () => void;
 }
 
-export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerProps) {
+export const AnalogTimePicker = ({ value, onChange, onClose }: AnalogTimePickerProps) => {
   // Parse initial value
   const [initialHours, initialMinutes] = value.split(':').map(Number);
   
@@ -36,7 +36,7 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
   const setModeMinutes = useCallback(() => {
     setMode('minutes');
   }, []);
-  }, []);
+};
   const setAm = useCallback(() => {
     setAmpm('AM');
   }, []);

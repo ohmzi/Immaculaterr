@@ -44,15 +44,20 @@ const pickBool = (obj: Record<string, unknown>, path: string): boolean | null =>
 
 export function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   const v = pick(obj, path);
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v === 'string' && v.trim()) {
-    const n = Number.parseFloat(v.trim());
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  const handlers: Record<string, (val: unknown) => number | null> = {
+    number: (val) => Number.isFinite(val as number) ? (val as number) : null,
+    string: (val) => {
+      const s = (val as string).trim();
+      if (!s) return null;
+      const n = Number.parseFloat(s);
+      return Number.isFinite(n) ? n : null;
+    }
+  };
+  const handler = handlers[typeof v];
+  return handler ? handler(v) : null;
 }
 
-function normalizeAndCapTitles(rawTitles: string[], max: number): string[] {
+const normalizeAndCapTitles = (rawTitles: string[], max: number): string[] => {
   const limit = Math.max(0, Math.min(100, Math.trunc(max ?? 0)));
   if (limit <= 0) return [];
 
@@ -70,7 +75,7 @@ function normalizeAndCapTitles(rawTitles: string[], max: number): string[] {
   }
 
   return out;
-}
+};
 
 export function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
@@ -82,13 +87,13 @@ export function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-function buildLibrarySelectionSkippedReport(params: {
+const buildLibrarySelectionSkippedReport = (params: {
   ctx: JobContext;
   mediaType: 'movie' | 'tv';
   reason: 'library_excluded' | 'no_selected_movie_libraries' | 'no_selected_tv_libraries';
   seedLibrarySectionId: string;
   seedLibrarySectionTitle: string;
-}): JobReportV1 {
+}): JobReportV1 => {
   const reasonMessage =
     params.reason === 'library_excluded'
       ? 'Seed library is excluded by Plex library selection.'
@@ -2465,6 +2470,7 @@ export class ImmaculateTasteCollectionJob {
     const voteAverageRaw = details?.vote_average ?? best.vote_average ?? null;
     const voteCountRaw = details?.vote_count ?? best.vote_count ?? null;
 
+
     const vote_average =
       typeof voteAverageRaw === 'number' && Number.isFinite(voteAverageRaw)
         ? Number(voteAverageRaw)
@@ -2485,11 +2491,11 @@ export class ImmaculateTasteCollectionJob {
   }
 }
 
-function asNum(v: unknown): number | null {
+export function asNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-function buildImmaculateTastePointsReport(params: {
+export function buildImmaculateTastePointsReport(params: {
   ctx: JobContext;
   raw: JsonObject;
 }): JobReportV1 {

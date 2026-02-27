@@ -144,7 +144,7 @@ const getPlexUserContext = (run: JobRun): { plexUserId: string; plexUserTitle: s
   return { plexUserId, plexUserTitle };
 };
 
-function pickSummaryValue(obj: Record<string, unknown>, path: string): unknown {
+const pickSummaryValue = (obj: Record<string, unknown>, path: string): unknown => {
   const parts = path.split('.');
   let cur: unknown = obj;
   for (const part of parts) {
@@ -152,7 +152,7 @@ function pickSummaryValue(obj: Record<string, unknown>, path: string): unknown {
     cur = cur[part];
   }
   return cur;
-}
+};
 
 function pickSummaryString(obj: Record<string, unknown>, path: string): string {
   const v = pickSummaryValue(obj, path);
@@ -162,20 +162,20 @@ function pickSummaryString(obj: Record<string, unknown>, path: string): string {
 const normalizeMediaType = (raw: string): 'movie' | 'tv' | null => {
   const v = raw.trim().toLowerCase();
   if (!v) return null;
-  if (v === 'movie' || v === 'movies' || v === 'film') return 'movie';
-  if (
-    v === 'tv' ||
-    v === 'show' ||
-    v === 'shows' ||
-    v === 'tvshow' ||
-    v === 'tv show' ||
-    v === 'series' ||
-    v === 'episode' ||
-    v === 'season'
-  ) {
-    return 'tv';
-  }
-  return null;
+  const map: Record<string, 'movie' | 'tv'> = {
+    movie: 'movie',
+    movies: 'movie',
+    film: 'movie',
+    tv: 'tv',
+    show: 'tv',
+    shows: 'tv',
+    tvshow: 'tv',
+    'tv show': 'tv',
+    series: 'tv',
+    episode: 'tv',
+    season: 'tv',
+  };
+  return map[v] ?? null;
 };
 
 function getMediaTypeContext(run: JobRun): { key: 'movie' | 'tv' | ''; label: string } {

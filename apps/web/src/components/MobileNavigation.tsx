@@ -76,7 +76,20 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     // iOS "Add to Home Screen" / standalone PWAs can have flaky SPA navigation,
     // especially after visiting heavy animated/backdrop-filter pages (Observatory).
     // Prefer a hard navigation there to guarantee leaving the current view.
-    const isStandalone =
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+    const hardNavigateActions: Record<string, () => void> = {
+      '/observatory': () => window.location.assign(dest),
+      '/task-manager': () => window.location.assign(dest),
+    };
+
+    if (isStandalone && hardNavigateActions[dest]) {
+      hardNavigateActions[dest]();
+      return;
+    }
+
+    navigate(dest);
+  }, [navigate]);
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       Boolean((navigator as unknown as { standalone?: boolean } | undefined)?.standalone);
     if (isStandalone) {

@@ -592,8 +592,6 @@ export function parseNewlineRecommendations(text: string, limit: number): string
   return out;
 }
 
-t = t.replace(/^
-
 const tryParseJsonRecs = (text: string): {
   primary: string[];
   upcoming: string[];

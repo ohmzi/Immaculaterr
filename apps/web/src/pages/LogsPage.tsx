@@ -109,37 +109,62 @@ const TYPE_TAG_LABEL: Record<Exclude<ServiceFilter, 'errors'>, string> = {
   openai: 'OpenAI',
 };
 
+// Helper keyword maps for log matching
+const JOB_CONTEXT_KEYWORDS = ['jobsservice', 'jobsscheduler', 'jobsretentionservice'];
+const WEBHOOK_AUTOMATION_MSG_KEYWORDS = ['plex automation:', 'runs={', 'skipped={', 'errors={'];
+const TASK_HAY_KEYWORDS = [
+  'job started jobid=',
+  'job passed jobid=',
+  'job failed jobid=',
+  'scheduled job failed',
+  'skipping scheduled run',
+  'trigger=schedule',
+  'trigger=auto',
+  'run: started',
+  'run: finished',
+  'run: failed',
+];
+
+const ANY_SERVICE_KEYWORDS = [
+  'plex',
+  'tmdb',
+  'themoviedb',
+  'radarr',
+  'sonarr',
+  'openai',
+  'open ai',
+  'google',
+  'programmable search',
+  'custom search',
+  'cse',
+];
+
+const SERVICE_KEYWORDS_MAP: Record<Exclude<ServiceFilter, 'errors' | 'task' | 'immaculaterr'>, string[]> = {
+  plex: ['plex', 'media.scrobble', 'library.new', 'webhook', 'notificationcontainer'],
+  tmdb: ['tmdb', 'themoviedb'],
+  radarr: ['radarr'],
+  sonarr: ['sonarr'],
+  google: ['google', 'programmable search', 'custom search', 'cse'],
+  openai: ['openai', 'open ai'],
+};
+
 const logMatchesTask = (line: { message?: string; context?: string | null }) => {
   const msg = String(line.message ?? '').toLowerCase();
   const ctx = String(line.context ?? '').toLowerCase();
   const hay = `${ctx} ${msg}`;
 
-  const jobContext =
-    ctx.includes('jobsservice') ||
-    ctx.includes('jobsscheduler') ||
-    ctx.includes('jobsretentionservice');
-  if (jobContext) return true;
+  if (JOB_CONTEXT_KEYWORDS.some(kw => ctx.includes(kw))) {
+    return true;
+  }
 
-  const webhookAutomation =
+  if (
     ctx.includes('webhooksservice') &&
-    (msg.includes('plex automation:') ||
-      msg.includes('runs={') ||
-      msg.includes('skipped={') ||
-      msg.includes('errors={'));
-  if (webhookAutomation) return true;
+    WEBHOOK_AUTOMATION_MSG_KEYWORDS.some(kw => msg.includes(kw))
+  ) {
+    return true;
+  }
 
-  return (
-    hay.includes('job started jobid=') ||
-    hay.includes('job passed jobid=') ||
-    hay.includes('job failed jobid=') ||
-    hay.includes('scheduled job failed') ||
-    hay.includes('skipping scheduled run') ||
-    hay.includes('trigger=schedule') ||
-    hay.includes('trigger=auto') ||
-    hay.includes('run: started') ||
-    hay.includes('run: finished') ||
-    hay.includes('run: failed')
-  );
+  return TASK_HAY_KEYWORDS.some(kw => hay.includes(kw));
 };
 
 const logMatchesAnyService = (line: { message?: string; context?: string | null }) => {
@@ -148,17 +173,7 @@ const logMatchesAnyService = (line: { message?: string; context?: string | null 
   const hay = `${ctx} ${msg}`;
   return (
     logMatchesTask(line) ||
-    hay.includes('plex') ||
-    hay.includes('tmdb') ||
-    hay.includes('themoviedb') ||
-    hay.includes('radarr') ||
-    hay.includes('sonarr') ||
-    hay.includes('openai') ||
-    hay.includes('open ai') ||
-    hay.includes('google') ||
-    hay.includes('programmable search') ||
-    hay.includes('custom search') ||
-    hay.includes('cse')
+    ANY_SERVICE_KEYWORDS.some(kw => hay.includes(kw))
   );
 };
 
@@ -176,34 +191,17 @@ const logMatchesAnyService = (line: { message?: string; context?: string | null 
     if (String(line.level ?? '').toLowerCase() === 'error') out.add('errors');
     if (logMatchesTask(line)) out.add('task');
 
-    if (
-      hay.includes('plex') ||
-      msg.includes('media.scrobble') ||
-      msg.includes('library.new') ||
-      msg.includes('webhook') ||
-      msg.includes('notificationcontainer')
-    ) {
-      out.add('plex');
+    for (const [service, keywords] of Object.entries(SERVICE_KEYWORDS_MAP) as [ServiceFilter, string[]][]) {
+      if (keywords.some(kw => hay.includes(kw))) {
+        out.add(service);
+      }
     }
-    if (hay.includes('tmdb') || hay.includes('themoviedb')) out.add('tmdb');
-    if (hay.includes('radarr')) out.add('radarr');
-    if (hay.includes('sonarr')) out.add('sonarr');
-    if (
-      hay.includes('google') ||
-      hay.includes('programmable search') ||
-      hay.includes('custom search') ||
-      hay.includes('cse')
-    ) {
-      out.add('google');
-    }
-    if (hay.includes('openai') || hay.includes('open ai')) out.add('openai');
 
     // App-core bucket (Immaculaterr): anything not clearly attributable to an external service.
     if (!logMatchesAnyService(line)) out.add('immaculaterr');
 
     return out;
   }
-})();
 
 export function LogsPage() {
   const queryClient = useQueryClient();

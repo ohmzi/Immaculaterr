@@ -80,12 +80,9 @@ function buildDeck(items: ObservatoryItem[]): CardModel[] {
 }
 
 const formatRating = (v: unknown): string | null => {
-  const n = typeof v === 'number' && Number.isFinite(v) ? v : null;
-  if (n === null) return null;
-  // TMDB vote_average is /10; show 1 decimal.
-  const rounded = Math.round(n * 10) / 10;
-  if (!Number.isFinite(rounded) || rounded <= 0) return null;
-  return `${rounded.toFixed(1)}/10`;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  const rounded = Math.round(v * 10) / 10;
+  return rounded > 0 ? `${rounded.toFixed(1)}/10` : null;
 };
 
 function SwipeCard({
@@ -404,7 +401,7 @@ function SwipeCard({
                 </div>
               </div>
             </div>
-          </>
+          <>
         )}
       </div>
     </motion.div>

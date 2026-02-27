@@ -4,7 +4,7 @@ import {
 import type { JobContext, JsonObject } from './jobs.types';
 
 const createCtx = (dryRun = false): JobContext => {
-  const noop = () => Promise.resolve(undefined);
+  const noop = () => Promise.resolve();
   return {
     jobId: 'mediaAddedCleanup',
     runId: 'run-1',

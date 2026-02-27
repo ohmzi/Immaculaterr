@@ -12,14 +12,18 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+const intParsers: Record<string, (value: unknown) => number | null> = {
+  number: (value) => Number.isFinite(value as number) ? Math.trunc(value as number) : null,
+  string: (value) => {
+    const str = (value as string).trim();
+    const n = Number.parseInt(str, 10);
+    return str && Number.isFinite(n) ? n : null;
+  },
+};
+
 const asInt = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value))
-    return Math.trunc(value);
-  if (typeof value === 'string' && value.trim()) {
-    const n = Number.parseInt(value.trim(), 10);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  const parser = intParsers[typeof value];
+  return parser ? parser(value) : null;
 };
 
 export function resolveLegacyPointsPath(fileName: string): string | null {
@@ -638,6 +642,35 @@ export class ImmaculateTasteCollectionService {
         });
     }
 
+    const movies = Array.from(uniq.values());
+
+    const buckets: Record<'tier1' | 'tier2' | 'tier3', number[]> = {
+      tier1: [],
+      tier2: [],
+      tier3: [],
+    };
+
+    const thresholds = [
+      { key: 'tier1', minAvg: 7 },
+      { key: 'tier2', minAvg: 5 },
+      { key: 'tier3', minAvg: 0 },
+    ];
+
+    for (const m of movies) {
+      const avg = m.tmdbVoteAvg ?? 0;
+      const bucketKey = thresholds.find(t => avg >= t.minAvg)!.key as 'tier1' | 'tier2' | 'tier3';
+      buckets[bucketKey].push(m.tmdbId);
+    }
+
+    const shuffle = (arr: number[]) => arr.sort(() => Math.random() - 0.5);
+
+    return [
+      ...shuffle(buckets.tier1),
+      ...shuffle(buckets.tier2),
+      ...shuffle(buckets.tier3),
+    ];
+  }
+
     const sorted = Array.from(uniq.values()).sort((a, b) => {
       const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN)
         ? Number(a.tmdbVoteAvg)
@@ -697,17 +730,6 @@ export class ImmaculateTasteCollectionService {
 }
 
 (function() {
-  function clampMaxPoints(v: unknown): number {
-    const n =
-      typeof v === 'number' && Number.isFinite(v)
-        ? Math.trunc(v)
-        : typeof v === 'string' && v.trim()
-          ? Number.parseInt(v.trim(), 10)
-          : ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
-    if (!Number.isFinite(n))
-      return ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
-    return Math.max(1, Math.min(100, n));
-  }
 })();
 
 export function shuffleInPlace<T>(arr: T[]) {

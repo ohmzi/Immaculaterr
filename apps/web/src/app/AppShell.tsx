@@ -13,22 +13,36 @@ import { WhatsNewModal } from '@/app/WhatsNewModal';
 import { getVersionHistoryEntry, normalizeVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
-const readOnboardingCompleted = (settings: unknown): boolean => {
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
-  const onboarding = (settings as Record<string, unknown>)['onboarding'];
-  if (!onboarding || typeof onboarding !== 'object' || Array.isArray(onboarding)) return false;
-  return Boolean((onboarding as Record<string, unknown>)['completed']);
+const settingsReaders = {
+  onboardingCompleted: {
+    path: ['onboarding', 'completed'] as const,
+    format: (value: unknown) => Boolean(value),
+    default: false,
+  },
+  acknowledgedWhatsNewVersion: {
+    path: ['ui', 'whatsNew', 'acknowledgedVersion'] as const,
+    format: (value: unknown) => normalizeVersion(typeof value === 'string' ? value : null),
+    default: null as string | null,
+  },
 };
 
-const readAcknowledgedWhatsNewVersion = (settings: unknown): string | null => {
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
-  const ui = (settings as Record<string, unknown>)['ui'];
-  if (!ui || typeof ui !== 'object' || Array.isArray(ui)) return null;
-  const whatsNew = (ui as Record<string, unknown>)['whatsNew'];
-  if (!whatsNew || typeof whatsNew !== 'object' || Array.isArray(whatsNew)) return null;
-  const acknowledgedVersion = (whatsNew as Record<string, unknown>)['acknowledgedVersion'];
-  return normalizeVersion(typeof acknowledgedVersion === 'string' ? acknowledgedVersion : null);
-};
+function readSetting<T>(settings: unknown, key: keyof typeof settingsReaders): T {
+  const reader = settingsReaders[key];
+  let value: unknown = settings;
+  for (const segment of reader.path) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return reader.default as T;
+    }
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return reader.format(value) as T;
+}
+
+const readOnboardingCompleted = (settings: unknown): boolean =>
+  readSetting<boolean>(settings, 'onboardingCompleted');
+
+const readAcknowledgedWhatsNewVersion = (settings: unknown): string | null =>
+  readSetting<string | null>(settings, 'acknowledgedWhatsNewVersion');
 
 export function AppShell() {
   const location = useLocation();

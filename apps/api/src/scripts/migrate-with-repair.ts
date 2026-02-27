@@ -1,6 +1,5 @@
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { PrismaClient } from '@prisma/client';
+  import { spawnSync } from 'node:child_process';
+  import { PrismaClient } from '@prisma/client';
 
 const TARGET_MIGRATION = '20260224090000_auth_security_hardening';
 const PRISMA_BIN_CANDIDATES = [
@@ -76,12 +75,6 @@ const isMissingMigrationsTableError = (err: unknown): boolean => (
 );
 
 (function() {
-  function resolveExistingPath(paths: string[], kind: string): string {
-    const match = paths.find((candidate) => existsSync(candidate));
-    if (match) return match;
-
-    throw new Error(`Unable to locate ${kind}. Checked: ${paths.join(', ')}`);
-  }
 })();
 
 const runPrisma = (args: string[], label: string): void => {
@@ -116,7 +109,7 @@ export async function tableInfo(
   );
 }
 
-async function hasFailedTargetMigration(
+export async function hasFailedTargetMigration(
   prisma: PrismaClient,
 ): Promise<boolean> {
   let rows: MigrationStatusRow[];

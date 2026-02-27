@@ -951,32 +951,33 @@ export class PlexPollingService implements OnModuleInit {
       }
 
       if (seasons.size === 1) {
-    const derivedTv = (() => {
-        const seasonNumber = Array.from(seasons)[0] ?? null;
-        return {
-          mediaType: 'season' as const,
-          title: newestEpisode.parentTitle ?? (seasonNumber ? `Season ${seasonNumber}` : ''),
-          ratingKey: newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
-          showTitle,
-          showRatingKey,
-          seasonNumber,
-          episodeNumber: null,
-          newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
-          newlyAddedCount: episodesForShow.length,
-        };
-      }
+        const derivedTv = (() => {
+            const seasonNumber = Array.from(seasons)[0] ?? null;
+            return {
+              mediaType: 'season' as const,
+              title: newestEpisode.parentTitle ?? (seasonNumber ? `Season ${seasonNumber}` : ''),
+              ratingKey: newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
+              showTitle,
+              showRatingKey,
+              seasonNumber,
+              episodeNumber: null,
+              newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
+              newlyAddedCount: episodesForShow.length,
+            };
+          })();
 
-      return {
-        mediaType: 'show' as const,
-        title: showTitle ?? newestEpisode.grandparentTitle ?? '',
-        ratingKey: newestEpisode.grandparentRatingKey ?? newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
-        showTitle,
-        showRatingKey,
-        seasonNumber: null,
-        episodeNumber: null,
-        newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
-        newlyAddedCount: episodesForShow.length,
-      };
+          return {
+            mediaType: 'show' as const,
+            title: showTitle ?? newestEpisode.grandparentTitle ?? '',
+            ratingKey: newestEpisode.grandparentRatingKey ?? newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
+            showTitle,
+            showRatingKey,
+            seasonNumber: null,
+            episodeNumber: null,
+            newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
+            newlyAddedCount: episodesForShow.length,
+          };
+      }
     })();
 
     const mediaType = derivedTv?.mediaType ?? mediaTypeRaw;

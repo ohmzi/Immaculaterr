@@ -57,39 +57,39 @@ type IntegrationId =
   | 'google'
   | 'openai';
 
-const readString = (obj: unknown, path: string): string => {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
-  const parts = path.split('.');
-  let cur: unknown = obj;
-  for (const p of parts) {
-    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return '';
-    cur = (cur as Record<string, unknown>)[p];
-  }
-  return typeof cur === 'string' ? cur : '';
-};
-
-const readBool = (obj: unknown, path: string): boolean | null => {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
-  const parts = path.split('.');
-  let cur: unknown = obj;
-  for (const p of parts) {
-    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return null;
-    cur = (cur as Record<string, unknown>)[p];
-  }
-  return typeof cur === 'boolean' ? cur : null;
-};
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function readNonEmptyStrings(value: unknown): string[] {
+const defaultValues: { [key: string]: string | boolean | null } = {
+  string: '',
+  boolean: null,
+};
+
+const readValue = (obj: unknown, path: string): unknown => {
+  if (!isPlainObject(obj)) return undefined;
+  return path.split('.').reduce((cur, p) =>
+    isPlainObject(cur) && p in cur ? (cur as Record<string, unknown>)[p] : undefined,
+  obj);
+};
+
+const readString = (obj: unknown, path: string): string => {
+  const value = readValue(obj, path);
+  return typeof value === 'string' ? value : (defaultValues.string as string);
+};
+
+const readBool = (obj: unknown, path: string): boolean | null => {
+  const value = readValue(obj, path);
+  return typeof value === 'boolean' ? value : (defaultValues.boolean as null);
+};
+
+const readNonEmptyStrings = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (entry): entry is string =>
       typeof entry === 'string' && entry.trim().length > 0,
   );
-}
+};
 
 const readErrorMessage = (data: unknown, fallback: string): string => {
   if (!isPlainObject(data)) return fallback;
@@ -106,7 +106,7 @@ const runAsyncTask = (promise: Promise<unknown>): void => {
   promise.catch(() => undefined);
 };
 
-function MaskedSecretInput(props: {
+const MaskedSecretInput = (props: {
   value: string;
   setValue: React.Dispatch<React.SetStateAction<string>>;
   hasSavedValue: boolean;
@@ -114,7 +114,7 @@ function MaskedSecretInput(props: {
   className: string;
   onEditStart: () => void;
   onBlur?: () => void;
-}) {
+}) => {
   const { value, setValue, hasSavedValue, placeholder, className, onEditStart, onBlur } =
     props;
 

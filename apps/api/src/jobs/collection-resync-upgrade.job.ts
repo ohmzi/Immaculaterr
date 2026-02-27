@@ -193,9 +193,6 @@ class UpgradeOperationError extends Error {
 }
 
 (function() {
-  function nowIso(): string {
-    return new Date().toISOString();
-  }
 })();
 
 const sleep = (ms: number): Promise<void> => {
@@ -231,7 +228,7 @@ const pickNumber = (obj: Record<string, unknown>, path: string): number | null =
   return null;
 };
 
-function normalizeHttpUrl(raw: string): string {
+const normalizeHttpUrl = (raw: string): string => {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   const parsed = new URL(baseUrl);
@@ -239,13 +236,9 @@ function normalizeHttpUrl(raw: string): string {
     throw new Error('baseUrl must be a valid http(s) URL');
   }
   return baseUrl;
-}
+};
 
 (function() {
-  function safeErrorMessage(err: unknown): string {
-    if (err instanceof Error) return err.message;
-    return String(err);
-  }
 })();
 
 export function toFiniteInt(value: unknown, fallback = 0): number {
@@ -281,18 +274,30 @@ const createProgress = (
   phase: UpgradePhase = 'pending',
 ): UpgradeItemProgress => {
   const stamp = nowIso();
-  return {
+  const timeFields: Record<UpgradePhase, keyof UpgradeItemProgress> = {
+    captured: 'capturedAt',
+    deleted: 'deletedAt',
+    recreated: 'recreatedAt',
+    verified: 'verifiedAt',
+    done: 'doneAt',
+  };
+  const progress: UpgradeItemProgress = {
     phase,
     source,
     attempts: 0,
     lastError: null,
     updatedAt: stamp,
-    capturedAt: phase === 'captured' ? stamp : null,
-    deletedAt: phase === 'deleted' ? stamp : null,
-    recreatedAt: phase === 'recreated' ? stamp : null,
-    verifiedAt: phase === 'verified' ? stamp : null,
-    doneAt: phase === 'done' ? stamp : null,
+    capturedAt: null,
+    deletedAt: null,
+    recreatedAt: null,
+    verifiedAt: null,
+    doneAt: null,
   };
+  const key = timeFields[phase];
+  if (key) {
+    progress[key] = stamp;
+  }
+  return progress;
 };
 
 export function markProgressPhase(
@@ -300,13 +305,19 @@ export function markProgressPhase(
   phase: UpgradePhase,
 ): UpgradeItemProgress {
   const stamp = nowIso();
+  const timeFields: Record<UpgradePhase, keyof UpgradeItemProgress> = {
+    captured: 'capturedAt',
+    deleted: 'deletedAt',
+    recreated: 'recreatedAt',
+    verified: 'verifiedAt',
+    done: 'doneAt',
+  };
   progress.phase = phase;
   progress.updatedAt = stamp;
-  if (phase === 'captured') progress.capturedAt = stamp;
-  if (phase === 'deleted') progress.deletedAt = stamp;
-  if (phase === 'recreated') progress.recreatedAt = stamp;
-  if (phase === 'verified') progress.verifiedAt = stamp;
-  if (phase === 'done') progress.doneAt = stamp;
+  const key = timeFields[phase];
+  if (key) {
+    progress[key] = stamp;
+  }
   if (phase !== 'failed') progress.lastError = null;
   return progress;
 }

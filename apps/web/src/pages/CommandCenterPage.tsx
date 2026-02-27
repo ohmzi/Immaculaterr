@@ -1493,6 +1493,7 @@ export function CommandCenterPage() {
                       data-plex-user-id={adminImmaculateUser.id}
                       onClick={toggleActiveImmaculateUser}
                       className="w-full flex items-center justify-between gap-4 text-left"
+                    >
                 const renderUserCard = ({ user, isAdmin }) => {
                   const isActive = activeImmaculateUserId === user.id;
                   const movieCount = user.movieCount ?? 0;

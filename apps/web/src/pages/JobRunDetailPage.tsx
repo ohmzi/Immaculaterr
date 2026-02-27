@@ -1157,7 +1157,6 @@ export function JobRunDetailPage() {
                                   </div>
                                 </div>
                               ) : null}
-
                               {issues.length ? (
                                 <div className="mb-6 rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-5">
                                   <div className="text-sm font-semibold text-white mb-3">
@@ -1207,7 +1206,7 @@ export function JobRunDetailPage() {
                                         return row ? pickNumber(row, 'end') : null;
                                       };
 
-                                      const plural = (
+                                      const plural = (...args) => {
                                       ) => {
                                         n: number | null,
                                         singular: string,
