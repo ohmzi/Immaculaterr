@@ -3,20 +3,138 @@ import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { TmdbService } from '../tmdb/tmdb.service';
 
+const DEFAULT_MAX_POINTS = 50;
+
+type ThreeTierShowShuffleParams = {
+  shows: Array<{
+    tvdbId: number;
+    tmdbVoteAvg: number | null;
+    tmdbVoteCount: number | null;
+  }>;
+};
+
+type RatedShow = {
+  tvdbId: number;
+  tmdbVoteAvg: number | null;
+  tmdbVoteCount: number | null;
+};
+
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 };
 
+const asFiniteNumber = (value: unknown): number | null => {
+  if (typeof value !== 'number') return null;
+  return Number.isFinite(value) ? value : null;
+};
+
+const parseIntegerString = (value: unknown): number | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const clampMaxPoints = (value: unknown): number => {
+  const parsed = asFiniteNumber(value) ?? parseIntegerString(value);
+  if (parsed === null) return DEFAULT_MAX_POINTS;
+  const n = Math.trunc(parsed);
+  return Math.max(1, Math.min(100, n));
+};
+
+const shuffleInPlace = <T>(arr: T[]) => {
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j] as T, arr[i] as T];
+  }
+  return arr;
+};
+
+const toUniqueRatedShows = (shows: ThreeTierShowShuffleParams['shows']): RatedShow[] => {
+  const uniq = new Map<number, RatedShow>();
+  for (const show of shows ?? []) {
+    const tvdbId = Number.isFinite(show.tvdbId) ? Math.trunc(show.tvdbId) : NaN;
+    if (!Number.isFinite(tvdbId) || tvdbId <= 0) continue;
+    if (uniq.has(tvdbId)) continue;
+    uniq.set(tvdbId, {
+      tvdbId,
+      tmdbVoteAvg: show.tmdbVoteAvg ?? null,
+      tmdbVoteCount: show.tmdbVoteCount ?? null,
+    });
+  }
+  return Array.from(uniq.values());
+};
+
+const sortByTmdbRating = (shows: RatedShow[]): RatedShow[] => {
+  return [...shows].sort((a, b) => {
+    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN) ? Number(a.tmdbVoteAvg) : 0;
+    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN) ? Number(b.tmdbVoteAvg) : 0;
+    if (br !== ar) return br - ar;
+    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
+    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
+    if (bc !== ac) return bc - ac;
+    return a.tvdbId - b.tvdbId;
+  });
+};
+
+const splitThreeTiers = <T>(items: T[]) => {
+  const n = items.length;
+  const base = Math.floor(n / 3);
+  const rem = n % 3;
+  const highSize = base + (rem > 0 ? 1 : 0);
+  const midSize = base + (rem > 1 ? 1 : 0);
+  return {
+    high: items.slice(0, highSize),
+    mid: items.slice(highSize, highSize + midSize),
+    low: items.slice(highSize + midSize),
+  };
+};
+
+const pickTopTierShowIds = (tiers: { high: RatedShow[]; mid: RatedShow[]; low: RatedShow[] }): number[] => {
+  const picks: number[] = [];
+  const used = new Set<number>();
+  const pickOne = (tier: RatedShow[]) => {
+    const pool = tier.filter((show) => !used.has(show.tvdbId));
+    if (!pool.length) return;
+    const pick = pool[Math.floor(Math.random() * pool.length)] as RatedShow;
+    used.add(pick.tvdbId);
+    picks.push(pick.tvdbId);
+  };
+  pickOne(tiers.high);
+  pickOne(tiers.mid);
+  pickOne(tiers.low);
+  shuffleInPlace(picks);
+  return picks;
+};
+
+const buildThreeTierShowOrder = (params: ThreeTierShowShuffleParams): number[] => {
+  const sorted = sortByTmdbRating(toUniqueRatedShows(params.shows));
+  if (!sorted.length) return [];
+  const tiers = splitThreeTiers(sorted);
+  const topPicks = pickTopTierShowIds(tiers);
+  const used = new Set(topPicks);
+  const remaining = sorted
+    .filter((show) => !used.has(show.tvdbId))
+    .map((show) => show.tvdbId);
+  shuffleInPlace(remaining);
+  return [...topPicks, ...remaining];
+};
+
 @Injectable()
 export class ImmaculateTasteShowCollectionService {
-  static readonly DEFAULT_MAX_POINTS = 50;
+  static readonly DEFAULT_MAX_POINTS = DEFAULT_MAX_POINTS;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tmdb: TmdbService,
   ) {}
+
+  private readonly legacyImportImportedCount = 0;
+
+  private readonly buildThreeTierTmdbRatingShuffleOrderImpl = buildThreeTierShowOrder;
 
   // TV has no legacy JSON import (movie-only historical artifact).
   ensureLegacyImported(params: {
@@ -24,10 +142,11 @@ export class ImmaculateTasteShowCollectionService {
     plexUserId: string;
     maxPoints?: number;
   }): Promise<{ imported: boolean; sourcePath: string | null; importedCount: number }> {
+    const importedCount = this.legacyImportImportedCount;
     return Promise.resolve({
       imported: false,
       sourcePath: null,
-      importedCount: params.maxPoints ? 0 : 0,
+      importedCount: params.maxPoints ? importedCount : importedCount,
     });
   }
 
@@ -414,94 +533,7 @@ export class ImmaculateTasteShowCollectionService {
     });
   }
 
-  buildThreeTierTmdbRatingShuffleOrder = (params: {
-    shows: Array<{
-      tvdbId: number;
-      tmdbVoteAvg: number | null;
-      tmdbVoteCount: number | null;
-    }>;
-  }): number[] => {
-    const uniq = new Map<
-      number,
-      { tvdbId: number; tmdbVoteAvg: number | null; tmdbVoteCount: number | null }
-    >();
-    for (const s of params.shows ?? []) {
-      const tvdbId = Number.isFinite(s.tvdbId) ? Math.trunc(s.tvdbId) : NaN;
-      if (!Number.isFinite(tvdbId) || tvdbId <= 0) continue;
-      if (!uniq.has(tvdbId))
-        uniq.set(tvdbId, {
-          tvdbId,
-          tmdbVoteAvg: s.tmdbVoteAvg ?? null,
-          tmdbVoteCount: s.tmdbVoteCount ?? null,
-        });
-    }
-
-    const sorted = Array.from(uniq.values()).sort((a, b) => {
-      const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN) ? Number(a.tmdbVoteAvg) : 0;
-      const br = Number.isFinite(b.tmdbVoteAvg ?? NaN) ? Number(b.tmdbVoteAvg) : 0;
-      if (br !== ar) return br - ar;
-      const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
-      const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
-      if (bc !== ac) return bc - ac;
-      return a.tvdbId - b.tvdbId;
-    });
-
-    const n = sorted.length;
-    if (!n) return [];
-
-    const base = Math.floor(n / 3);
-    const rem = n % 3;
-    const highSize = base + (rem > 0 ? 1 : 0);
-    const midSize = base + (rem > 1 ? 1 : 0);
-
-    const high = sorted.slice(0, highSize);
-    const mid = sorted.slice(highSize, highSize + midSize);
-    const low = sorted.slice(highSize + midSize);
-
-    const pickOne = <T>(arr: T[]): T | null =>
-      arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
-
-    const picks: number[] = [];
-    const used = new Set<number>();
-    const pickTier = (tier: typeof sorted) => {
-      const pool = tier.filter((m) => !used.has(m.tvdbId));
-      const p = pickOne(pool);
-      if (!p) return;
-      used.add(p.tvdbId);
-      picks.push(p.tvdbId);
-    };
-
-    pickTier(high);
-    pickTier(mid);
-    pickTier(low);
-    shuffleInPlace(picks);
-
-    const remaining = sorted
-      .filter((m) => !used.has(m.tvdbId))
-      .map((m) => m.tvdbId);
-    shuffleInPlace(remaining);
-
-    return [...picks, ...remaining];
-  };
-}
-
-const clampMaxPoints = (v: unknown): number => {
-  const n =
-    typeof v === 'number' && Number.isFinite(v)
-      ? Math.trunc(v)
-      : typeof v === 'string' && v.trim()
-        ? Number.parseInt(v.trim(), 10)
-      : ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS;
-  if (!Number.isFinite(n)) return ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS;
-  return Math.max(1, Math.min(100, n));
-};
-
-const shuffleInPlace = <T>(arr: T[]) => {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = arr[i];
-    arr[i] = arr[j] as T;
-    arr[j] = tmp as T;
+  buildThreeTierTmdbRatingShuffleOrder(params: ThreeTierShowShuffleParams): number[] {
+    return this.buildThreeTierTmdbRatingShuffleOrderImpl(params);
   }
-  return arr;
-};
+}
