@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import {
   AnimatePresence,
   motion,
@@ -63,6 +71,8 @@ type WatchedUndoState = {
   action: 'approve' | 'reject' | 'keep' | 'remove';
 } | null;
 
+const NOOP = () => {};
+
 function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));
 }
@@ -105,7 +115,7 @@ function SwipeCard({
     null,
   );
 
-  const releasePointerCapture = () => {
+  const releasePointerCapture = useCallback(() => {
     const p = pointerCaptureRef.current;
     if (!p) return;
     try {
@@ -114,7 +124,7 @@ function SwipeCard({
       // ignore
     }
     pointerCaptureRef.current = null;
-  };
+  }, []);
 
   useEffect(() => {
     return () => releasePointerCapture();
@@ -132,6 +142,80 @@ function SwipeCard({
     damping: 34,
     mass: 0.55,
   };
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      // Ensure we always release capture on pointerup/cancel/unmount.
+      pointerCaptureRef.current = {
+        el: event.currentTarget,
+        pointerId: event.pointerId,
+      };
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // ignore
+      }
+    },
+    [],
+  );
+  const handlePointerRelease = useCallback(() => {
+    releasePointerCapture();
+  }, [releasePointerCapture]);
+  const handleDragEnd = useCallback(
+    (_: unknown, info: { offset: { x: number } }) => {
+      // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
+      releasePointerCapture();
+      if (disabled) return;
+      if (leavingRef.current) return;
+      if (info.offset.x > threshold) {
+        leavingRef.current = true;
+        void controls
+          .start({
+            x: throwX,
+            rotate: throwRotate,
+            opacity: 0,
+            transition: springThrow,
+          })
+          .then(() => onSwipeRight())
+          .finally(() => {
+            leavingRef.current = false;
+            x.set(0);
+            void controls.set({ x: 0, rotate: 0, opacity: 1 });
+          });
+        return;
+      }
+      if (info.offset.x < -threshold) {
+        leavingRef.current = true;
+        void controls
+          .start({
+            x: -throwX,
+            rotate: -throwRotate,
+            opacity: 0,
+            transition: springThrow,
+          })
+          .then(() => onSwipeLeft())
+          .finally(() => {
+            leavingRef.current = false;
+            x.set(0);
+            void controls.set({ x: 0, rotate: 0, opacity: 1 });
+          });
+        return;
+      }
+      void controls.start({ x: 0, rotate: 0, transition: springBack });
+    },
+    [
+      controls,
+      disabled,
+      onSwipeLeft,
+      onSwipeRight,
+      releasePointerCapture,
+      springBack,
+      springThrow,
+      threshold,
+      throwRotate,
+      throwX,
+      x,
+    ],
+  );
 
   return (
     <motion.div
@@ -141,58 +225,10 @@ function SwipeCard({
       dragMomentum={false}
       // Lock swipe interactions to horizontal so the page doesn't scroll/bounce while swiping cards.
       style={{ x, rotate, opacity, touchAction: 'pan-x' }}
-      onPointerDown={(e) => {
-        // Ensure we always release capture on pointerup/cancel/unmount.
-        pointerCaptureRef.current = { el: e.currentTarget, pointerId: e.pointerId };
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {
-          // ignore
-        }
-      }}
-      onPointerUp={() => releasePointerCapture()}
-      onPointerCancel={() => releasePointerCapture()}
-      onDragEnd={(_, info) => {
-        // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
-        releasePointerCapture();
-        if (disabled) return;
-        if (leavingRef.current) return;
-        if (info.offset.x > threshold) {
-          leavingRef.current = true;
-          void controls
-            .start({
-              x: throwX,
-              rotate: throwRotate,
-              opacity: 0,
-              transition: springThrow,
-            })
-            .then(() => onSwipeRight())
-            .finally(() => {
-              leavingRef.current = false;
-              x.set(0);
-              void controls.set({ x: 0, rotate: 0, opacity: 1 });
-            });
-          return;
-        }
-        if (info.offset.x < -threshold) {
-          leavingRef.current = true;
-          void controls
-            .start({
-              x: -throwX,
-              rotate: -throwRotate,
-              opacity: 0,
-              transition: springThrow,
-            })
-            .then(() => onSwipeLeft())
-            .finally(() => {
-              leavingRef.current = false;
-              x.set(0);
-              void controls.set({ x: 0, rotate: 0, opacity: 1 });
-            });
-          return;
-        }
-        void controls.start({ x: 0, rotate: 0, transition: springBack });
-      }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerRelease}
+      onPointerCancel={handlePointerRelease}
+      onDragEnd={handleDragEnd}
       className="relative w-full h-full"
     >
       <div className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
@@ -1006,16 +1042,16 @@ export function ObservatoryPage() {
     },
   });
 
-  const scheduleApply = () => {
+  const scheduleApply = useCallback(() => {
     if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
     applyTimerRef.current = window.setTimeout(() => {
       if (!pendingApplyRef.current) return;
       if (activeCollectionTab !== 'immaculate') return;
       applyMutation.mutate({ mediaType: mediaTab, librarySectionKey: activeLibraryKey });
     }, 120_000);
-  };
+  }, [activeCollectionTab, activeLibraryKey, applyMutation, mediaTab]);
 
-  const scheduleWatchedApply = () => {
+  const scheduleWatchedApply = useCallback(() => {
     if (watchedApplyTimerRef.current)
       window.clearTimeout(watchedApplyTimerRef.current);
     watchedApplyTimerRef.current = window.setTimeout(() => {
@@ -1026,7 +1062,7 @@ export function ObservatoryPage() {
         librarySectionKey: activeLibraryKey,
       });
     }, 120_000);
-  };
+  }, [activeCollectionTab, activeLibraryKey, applyWatchedMutation, mediaTab]);
 
   const canUndo =
     Boolean(undoState) &&
@@ -1043,7 +1079,7 @@ export function ObservatoryPage() {
     !recordWatchedDecisionMutation.isPending &&
     !applyWatchedMutation.isPending;
 
-  const undoLast = () => {
+  const undoLast = useCallback(() => {
     if (!undoState) return;
     if (undoState.tab !== mediaTab) return;
     if (undoState.librarySectionKey !== activeLibraryKey) return;
@@ -1064,9 +1100,15 @@ export function ObservatoryPage() {
       action: 'undo',
     });
     scheduleApply();
-  };
+  }, [
+    activeLibraryKey,
+    mediaTab,
+    recordDecisionMutation,
+    scheduleApply,
+    undoState,
+  ]);
 
-  const undoWatchedLast = () => {
+  const undoWatchedLast = useCallback(() => {
     if (!watchedUndoState) return;
     if (watchedUndoState.tab !== mediaTab) return;
     if (watchedUndoState.librarySectionKey !== activeLibraryKey) return;
@@ -1088,7 +1130,14 @@ export function ObservatoryPage() {
       action: 'undo',
     });
     scheduleWatchedApply();
-  };
+  }, [
+    activeLibraryKey,
+    mediaTab,
+    recordWatchedDecisionMutation,
+    scheduleWatchedApply,
+    watchedCollectionKind,
+    watchedUndoState,
+  ]);
 
   const swipeTopCardImmaculate = (dir: 'left' | 'right') => {
     if (activeCollectionTab !== 'immaculate') return;
@@ -1260,6 +1309,53 @@ export function ObservatoryPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCollectionTab, mediaTab, activeLibraryKey]);
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
+  const handleCollectionTabClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const tab = event.currentTarget.dataset.collectionTab as CollectionTab | undefined;
+      if (!tab) return;
+      setActiveCollectionTab(tab);
+    },
+    [],
+  );
+  const handleMediaTabClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const tab = event.currentTarget.dataset.mediaTab as Tab | undefined;
+      if (!tab) return;
+      setMediaTab(tab);
+    },
+    [],
+  );
+  const handleLibraryValueChange = useCallback(
+    (value: string) => {
+      if (mediaTab === 'movie') setMovieLibrary(value);
+      else setTvLibrary(value);
+    },
+    [mediaTab],
+  );
+  const handleImmaculateSwipeLeft = useCallback(() => {
+    swipeTopCardImmaculate('left');
+  }, [swipeTopCardImmaculate]);
+  const handleImmaculateSwipeRight = useCallback(() => {
+    swipeTopCardImmaculate('right');
+  }, [swipeTopCardImmaculate]);
+  const handleWatchedSwipeLeft = useCallback(() => {
+    swipeTopCardWatched('left');
+  }, [swipeTopCardWatched]);
+  const handleWatchedSwipeRight = useCallback(() => {
+    swipeTopCardWatched('right');
+  }, [swipeTopCardWatched]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -1288,18 +1384,7 @@ export function ObservatoryPage() {
               <div className="flex items-center gap-5">
                 <motion.button
                   type="button"
-                  onClick={() => {
-                    titleIconControls.stop();
-                    titleIconGlowControls.stop();
-                    void titleIconControls.start({
-                      scale: [1, 1.06, 1],
-                      transition: { duration: 0.55, ease: 'easeOut' },
-                    });
-                    void titleIconGlowControls.start({
-                      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                      transition: { duration: 1.4, ease: 'easeInOut' },
-                    });
-                  }}
+                  onClick={handleAnimateTitleIcon}
                   animate={titleIconControls}
                   className="relative group focus:outline-none touch-manipulation"
                   aria-label="Animate Observatory icon"
@@ -1346,7 +1431,8 @@ export function ObservatoryPage() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setActiveCollectionTab(t.id as CollectionTab)}
+                data-collection-tab={t.id}
+                onClick={handleCollectionTabClick}
                 className={cn(
                   'relative pb-4 text-sm font-bold tracking-wide uppercase transition-colors duration-300',
                   activeCollectionTab === (t.id as CollectionTab)
@@ -1386,7 +1472,8 @@ export function ObservatoryPage() {
                             <button
                               key={id}
                               type="button"
-                              onClick={() => setMediaTab(id)}
+                              data-media-tab={id}
+                              onClick={handleMediaTabClick}
                               className={cn(
                                 'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
                                 isActive
@@ -1424,10 +1511,7 @@ export function ObservatoryPage() {
                           value: l.key,
                           label: l.title,
                         }))}
-                        onValueChange={(value) => {
-                          if (mediaTab === 'movie') setMovieLibrary(value);
-                          else setTvLibrary(value);
-                        }}
+                        onValueChange={handleLibraryValueChange}
                         triggerClassName="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-white/5 px-3 py-2 text-sm shadow-none"
                       />
                     </div>
@@ -1488,67 +1572,8 @@ export function ObservatoryPage() {
                                       recordDecisionMutation.isPending ||
                                       applyMutation.isPending
                                     }
-                                    onSwipeLeft={() => {
-                                      if (card.kind === 'sentinel') return;
-                                      const action =
-                                        phase === 'pendingApprovals'
-                                          ? 'reject'
-                                          : 'remove';
-                                      setUndoState({
-                                        tab: mediaTab,
-                                        librarySectionKey: activeLibraryKey,
-                                        phase,
-                                        card: { kind: 'item', item: card.item },
-                                        action,
-                                      });
-                                      recordDecisionMutation.mutate({
-                                        mediaType: mediaTab,
-                                        librarySectionKey: activeLibraryKey,
-                                        id: card.item.id,
-                                        action,
-                                      });
-                                      advanceOneOrSentinel(
-                                        phase === 'pendingApprovals'
-                                          ? approvalsDoneCard
-                                          : reviewDoneCard,
-                                      );
-                                      scheduleApply();
-                                    }}
-                                    onSwipeRight={() => {
-                                      if (card.kind === 'sentinel') {
-                                        setUndoState(null);
-                                        // approvalsDone -> review, reviewDone -> restart loop
-                                        if (card.sentinel === 'approvalsDone') {
-                                          setDeckForReview();
-                                        } else {
-                                          restartCycle();
-                                        }
-                                        return;
-                                      }
-                                      const action =
-                                        phase === 'pendingApprovals'
-                                          ? 'approve'
-                                          : 'keep';
-                                      setUndoState({
-                                        tab: mediaTab,
-                                        librarySectionKey: activeLibraryKey,
-                                        phase,
-                                        card: { kind: 'item', item: card.item },
-                                        action,
-                                      });
-                                      recordDecisionMutation.mutate({
-                                        mediaType: mediaTab,
-                                        librarySectionKey: activeLibraryKey,
-                                        id: card.item.id,
-                                        action,
-                                      });
-                                      advanceOneOrSentinel(
-                                        phase === 'pendingApprovals'
-                                          ? approvalsDoneCard
-                                          : reviewDoneCard,
-                                      );
-                                      scheduleApply();
-                                    }}
+                                    onSwipeLeft={handleImmaculateSwipeLeft}
+                                    onSwipeRight={handleImmaculateSwipeRight}
                                   />
                                 </motion.div>
                               );
@@ -1563,8 +1588,8 @@ export function ObservatoryPage() {
                                 ? makeNoDataCard()
                                 : reviewDoneCard
                             }
-                            onSwipeLeft={() => undefined}
-                            onSwipeRight={() => restartCycle()}
+                            onSwipeLeft={NOOP}
+                            onSwipeRight={handleImmaculateSwipeRight}
                           />
                         </div>
                       )}
@@ -1609,7 +1634,8 @@ export function ObservatoryPage() {
                               <button
                                 key={id}
                                 type="button"
-                                onClick={() => setMediaTab(id)}
+                                data-media-tab={id}
+                                onClick={handleMediaTabClick}
                                 className={cn(
                                   'relative px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors z-10',
                                   isActive
@@ -1645,10 +1671,7 @@ export function ObservatoryPage() {
                           value: l.key,
                           label: l.title,
                         }))}
-                        onValueChange={(value) => {
-                          if (mediaTab === 'movie') setMovieLibrary(value);
-                          else setTvLibrary(value);
-                        }}
+                        onValueChange={handleLibraryValueChange}
                         triggerClassName="w-auto min-w-[12rem] rounded-2xl border-white/10 bg-transparent px-3 py-2 text-sm text-white/90 shadow-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                       />
                     </div>
@@ -1698,8 +1721,8 @@ export function ObservatoryPage() {
                                       recordWatchedDecisionMutation.isPending ||
                                       applyWatchedMutation.isPending
                                     }
-                                    onSwipeLeft={() => swipeTopCardWatched('left')}
-                                    onSwipeRight={() => swipeTopCardWatched('right')}
+                                    onSwipeLeft={handleWatchedSwipeLeft}
+                                    onSwipeRight={handleWatchedSwipeRight}
                                   />
                                 </motion.div>
                               );
@@ -1709,8 +1732,8 @@ export function ObservatoryPage() {
                         <div className="absolute inset-0">
                           <SwipeCard
                             card={makeWatchedNoDataCard()}
-                            onSwipeLeft={() => undefined}
-                            onSwipeRight={() => swipeTopCardWatched('right')}
+                            onSwipeLeft={NOOP}
+                            onSwipeRight={handleWatchedSwipeRight}
                           />
                         </div>
                       )}
@@ -1744,4 +1767,3 @@ export function ObservatoryPage() {
     </div>
   );
 }
-

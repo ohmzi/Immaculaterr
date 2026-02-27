@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { LogOut } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -52,11 +59,17 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [resetError, setResetError] = useState<string | null>(null);
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const getButtonRefHandler = useCallback(
+    (index: number) => (element: HTMLButtonElement | null) => {
+      buttonRefs.current[index] = element;
+    },
+    [],
+  );
   const debugLongPressTimeoutRef = useRef<number | null>(null);
   const debugLongPressTriggeredRef = useRef(false);
   const navigate = useSafeNavigate();
 
-  const go = (to: string) => {
+  const go = useCallback((to: string) => {
     const dest = (to ?? '').trim();
     if (!dest) return;
 
@@ -73,7 +86,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
     // Prefer SPA navigation with a safety fallback handled by useSafeNavigate.
     navigate(dest);
-  };
+  }, [navigate]);
 
   const updatesQuery = useQuery({
     queryKey: ['updates'],
@@ -111,16 +124,16 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     return () => window.removeEventListener('resize', updatePositions);
   }, []);
 
-  const handleButtonClick = (index: number) => {
+  const handleButtonClick = useCallback((index: number) => {
     setIsHelpOpen(false);
     if (selectedIndex === index) {
       setSelectedIndex(null);
     } else {
       setSelectedIndex(index);
     }
-  };
+  }, [selectedIndex]);
 
-  const doResetAccount = async () => {
+  const doResetAccount = useCallback(async () => {
     if (resetting) return;
     setResetError(null);
     setResetting(true);
@@ -133,21 +146,21 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     } finally {
       setResetting(false);
     }
-  };
+  }, [resetting]);
 
-  const clearDebugLongPress = () => {
+  const clearDebugLongPress = useCallback(() => {
     const t = debugLongPressTimeoutRef.current;
     if (t !== null) window.clearTimeout(t);
     debugLongPressTimeoutRef.current = null;
-  };
+  }, []);
 
-  const openDebugger = () => {
+  const openDebugger = useCallback(() => {
     setIsHelpOpen(false);
     const url = createDebuggerUrl();
     go(url);
-  };
+  }, [go]);
 
-  const startDebugLongPress = (pointerType: string) => {
+  const startDebugLongPress = useCallback((pointerType: string) => {
     if (pointerType !== 'touch') return;
     clearDebugLongPress();
     debugLongPressTriggeredRef.current = false;
@@ -155,13 +168,94 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
       debugLongPressTriggeredRef.current = true;
       openDebugger();
     }, 1100);
-  };
+  }, [clearDebugLongPress, openDebugger]);
 
   useEffect(() => {
     return () => {
       clearDebugLongPress();
     };
+  }, [clearDebugLongPress]);
+  const goHome = useCallback(() => {
+    go('/');
+  }, [go]);
+  const closeResetDialog = useCallback(() => {
+    setResetOpen(false);
   }, []);
+  const confirmResetDialog = useCallback(() => {
+    void doResetAccount();
+  }, [doResetAccount]);
+  const closeSelectedNavMenu = useCallback(() => {
+    setSelectedIndex(null);
+  }, []);
+  const handleNavDropdownClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const to = event.currentTarget.dataset.to;
+      if (!to) return;
+      setSelectedIndex(null);
+      go(to);
+    },
+    [go],
+  );
+  const handleBottomNavClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const raw = event.currentTarget.dataset.navIndex;
+      const index = Number.parseInt(raw ?? '', 10);
+      if (!Number.isFinite(index)) return;
+      handleButtonClick(index);
+    },
+    [handleButtonClick],
+  );
+  const handleTopHelpToggle = useCallback(() => {
+    setSelectedIndex(null);
+    setIsHelpOpen((prev) => {
+      const next = !prev;
+      if (next) void updatesQuery.refetch();
+      return next;
+    });
+  }, [updatesQuery]);
+  const closeHelpPanel = useCallback(() => {
+    setIsHelpOpen(false);
+  }, []);
+  const openFaqFromHelp = useCallback(() => {
+    setIsHelpOpen(false);
+    go('/faq');
+  }, [go]);
+  const handleDebugPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      startDebugLongPress(event.pointerType);
+    },
+    [startDebugLongPress],
+  );
+  const handleDebugClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (debugLongPressTriggeredRef.current) {
+        debugLongPressTriggeredRef.current = false;
+        return;
+      }
+      if (event.altKey || event.shiftKey || event.metaKey) {
+        openDebugger();
+        return;
+      }
+      setIsHelpOpen(false);
+      go('/version-history');
+    },
+    [go, openDebugger],
+  );
+  const openLatestUpdate = useCallback(() => {
+    setIsHelpOpen(false);
+    const url = updatesQuery.data?.latestUrl;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  }, [updatesQuery.data?.latestUrl]);
+  const openResetAccountDialog = useCallback(() => {
+    setIsHelpOpen(false);
+    setResetError(null);
+    setResetOpen(true);
+  }, []);
+  const handleLogoutFromHelp = useCallback(() => {
+    setIsHelpOpen(false);
+    onLogout();
+  }, [onLogout]);
 
   return (
     <>
@@ -182,10 +276,8 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   <button
                     key={idx}
                     className="rounded-2xl px-4 py-3 text-left text-sm font-medium text-white/90 transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] touch-manipulation"
-                    onClick={() => {
-                      setSelectedIndex(null);
-                      go(item.to);
-                    }}
+                    data-to={item.to}
+                    onClick={handleNavDropdownClick}
                   >
                     {item.label}
                   </button>
@@ -203,7 +295,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setSelectedIndex(null)}
+            onClick={closeSelectedNavMenu}
             className="fixed inset-0 z-[1000] bg-black/20 backdrop-blur-sm"
           />
         )}
@@ -273,10 +365,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               {navItems.map((item, index) => (
                 <button
                   key={item.label}
-                  ref={(el) => {
-                    buttonRefs.current[index] = el;
-                  }}
-                  onClick={() => handleButtonClick(index)}
+                  ref={getButtonRefHandler(index)}
+                  data-nav-index={String(index)}
+                  onClick={handleBottomNavClick}
                   className="relative z-20 rounded-full px-4 py-2.5 text-xs font-medium text-white/70 transition-all duration-200 hover:text-white active:bg-white/10 active:text-white active:scale-[0.98] touch-manipulation"
                 >
                   <span className={selectedIndex === index ? 'text-white' : ''}>{item.label}</span>
@@ -297,7 +388,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
         <div className="flex items-center gap-3 px-4 py-3">
           {/* Logo */}
           <button
-            onClick={() => go('/')}
+            onClick={goHome}
             className="flex min-w-0 items-center gap-2 active:opacity-70 transition-opacity touch-manipulation"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -319,14 +410,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
           <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1">
             {/* Help button (matches desktop top bar) */}
             <button
-              onClick={() => {
-                setSelectedIndex(null);
-                setIsHelpOpen((v) => {
-                  const next = !v;
-                  if (next) void updatesQuery.refetch();
-                  return next;
-                });
-              }}
+              onClick={handleTopHelpToggle}
               className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95 touch-manipulation"
             >
               <span className="inline-flex items-center gap-2">
@@ -352,7 +436,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsHelpOpen(false)}
+              onClick={closeHelpPanel}
               className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 lg:hidden"
             />
 
@@ -368,10 +452,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                 <div className="p-4">
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsHelpOpen(false);
-                      go('/faq');
-                    }}
+                    onClick={openFaqFromHelp}
                     className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                   >
                     FAQ
@@ -380,25 +461,11 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                   <div className="mt-2 space-y-2">
                     <button
                       type="button"
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        startDebugLongPress(e.pointerType);
-                      }}
-                      onPointerUp={() => clearDebugLongPress()}
-                      onPointerLeave={() => clearDebugLongPress()}
-                      onPointerCancel={() => clearDebugLongPress()}
-                      onClick={(event) => {
-                        if (debugLongPressTriggeredRef.current) {
-                          debugLongPressTriggeredRef.current = false;
-                          return;
-                        }
-                        if (event.altKey || event.shiftKey || event.metaKey) {
-                          openDebugger();
-                          return;
-                        }
-                        setIsHelpOpen(false);
-                        go('/version-history');
-                      }}
+                      onPointerDown={handleDebugPointerDown}
+                      onPointerUp={clearDebugLongPress}
+                      onPointerLeave={clearDebugLongPress}
+                      onPointerCancel={clearDebugLongPress}
+                      onClick={handleDebugClick}
                       className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5 touch-manipulation"
                     >
                       Version: {currentLabel ?? '—'}
@@ -407,11 +474,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     {updateAvailable && updateLabel ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          setIsHelpOpen(false);
-                          const url = updatesQuery.data?.latestUrl;
-                          if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                        }}
+                        onClick={openLatestUpdate}
                         className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                       >
                         Update available {updateLabel}
@@ -419,11 +482,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     ) : null}
 
                     <button
-                      onClick={() => {
-                        setIsHelpOpen(false);
-                        setResetError(null);
-                        setResetOpen(true);
-                      }}
+                      onClick={openResetAccountDialog}
                       className="w-full px-4 py-2.5 text-left text-sm text-rose-100/80 hover:text-rose-100 hover:bg-rose-500/10 active:bg-rose-500/15 active:scale-[0.99] rounded-xl transition-all font-medium border border-white/10 bg-rose-500/5"
                     >
                       Reset Account to Fresh Setup
@@ -432,10 +491,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
                   <div className="mt-4 pt-4 border-t border-white/10">
                     <button
-                      onClick={() => {
-                        setIsHelpOpen(false);
-                        onLogout();
-                      }}
+                      onClick={handleLogoutFromHelp}
                       className="w-full px-4 py-2.5 text-left text-sm text-red-300 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all flex items-center gap-2 font-medium"
                     >
                       <LogOut size={16} />
@@ -451,8 +507,8 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
       <ConfirmDialog
         open={resetOpen}
-        onClose={() => setResetOpen(false)}
-        onConfirm={() => void doResetAccount()}
+        onClose={closeResetDialog}
+        onConfirm={confirmResetDialog}
         label="Reset"
         title="Reset account?"
         description={

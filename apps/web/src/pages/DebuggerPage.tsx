@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react';
 import {
   Bug,
   Clipboard,
@@ -302,6 +309,47 @@ export function DebuggerPage() {
       setPlexLogClearing(false);
     }
   };
+  const togglePlexLogCollapse = useCallback(() => {
+    setPlexLogCollapsed((prev) => !prev);
+  }, []);
+  const handlePlexLogPollChange = useCallback((raw: string) => {
+    const next = Number.parseInt(raw, 10);
+    if (!Number.isFinite(next)) return;
+    setPlexLogPollMs(next);
+  }, []);
+  const togglePlexLogPaused = useCallback(() => {
+    setPlexLogPaused((prev) => !prev);
+  }, []);
+  const refreshPlexLogNow = useCallback(() => {
+    void refreshPlexLogs('initial');
+  }, [refreshPlexLogs]);
+  const copyPlexLogs = useCallback(() => {
+    void handlePlexCopy();
+  }, [handlePlexCopy]);
+  const clearPlexLogs = useCallback(() => {
+    void handlePlexClear();
+  }, [handlePlexClear]);
+  const handlePlexLogQueryChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setPlexLogQuery(event.target.value);
+    },
+    [],
+  );
+  const toggleSnapshotCollapse = useCallback(() => {
+    setSnapshotCollapsed((prev) => !prev);
+  }, []);
+  const refreshSettings = useCallback(() => {
+    void settingsQuery.refetch();
+  }, [settingsQuery]);
+  const copySnapshot = useCallback(() => {
+    void handleCopy();
+  }, [handleCopy]);
+  const handleSnapshotQueryChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setSnapshotQuery(event.target.value);
+    },
+    [],
+  );
 
   if (!accessAllowed) {
     return <NotFoundPage />;
@@ -328,7 +376,7 @@ export function DebuggerPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setPlexLogCollapsed((v) => !v)}
+                  onClick={togglePlexLogCollapse}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/80 transition hover:bg-white/10"
                   aria-expanded={!plexLogCollapsed}
                 >
@@ -337,11 +385,7 @@ export function DebuggerPage() {
                 </button>
                 <Select
                   value={String(plexLogPollMs)}
-                  onValueChange={(raw) => {
-                    const next = Number.parseInt(raw, 10);
-                    if (!Number.isFinite(next)) return;
-                    setPlexLogPollMs(next);
-                  }}
+                  onValueChange={handlePlexLogPollChange}
                   disabled={plexLogPaused}
                 >
                   <SelectTrigger className="w-[140px]">
@@ -356,21 +400,21 @@ export function DebuggerPage() {
                   </SelectContent>
                 </Select>
                 <button
-                  onClick={() => setPlexLogPaused((v) => !v)}
+                  onClick={togglePlexLogPaused}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10"
                 >
                   {plexLogPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
                   {plexLogPaused ? 'Resume' : 'Pause'}
                 </button>
                 <button
-                  onClick={() => void refreshPlexLogs('initial')}
+                  onClick={refreshPlexLogNow}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Refresh
                 </button>
                 <button
-                  onClick={() => void handlePlexCopy()}
+                  onClick={copyPlexLogs}
                   disabled={!plexLogsDisplay.length}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10 disabled:opacity-60"
                 >
@@ -378,7 +422,7 @@ export function DebuggerPage() {
                   {plexCopied ? 'Copied' : 'Copy'}
                 </button>
                 <button
-                  onClick={() => void handlePlexClear()}
+                  onClick={clearPlexLogs}
                   disabled={plexLogClearing}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10 disabled:opacity-60"
                 >
@@ -410,7 +454,7 @@ export function DebuggerPage() {
                 <div className="mt-5">
                   <Input
                     value={plexLogQuery}
-                    onChange={(event) => setPlexLogQuery(event.target.value)}
+                    onChange={handlePlexLogQueryChange}
                     placeholder="Search Plex activity..."
                     className="h-10 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:border-transparent focus:ring-2 focus:ring-white/20"
                   />
@@ -464,7 +508,7 @@ export function DebuggerPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setSnapshotCollapsed((v) => !v)}
+                  onClick={toggleSnapshotCollapse}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/80 transition hover:bg-white/10"
                   aria-expanded={!snapshotCollapsed}
                 >
@@ -472,14 +516,14 @@ export function DebuggerPage() {
                   {snapshotCollapsed ? 'Expand' : 'Minimize'}
                 </button>
                 <button
-                  onClick={() => void settingsQuery.refetch()}
+                  onClick={refreshSettings}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Refresh
                 </button>
                 <button
-                  onClick={() => void handleCopy()}
+                  onClick={copySnapshot}
                   className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10"
                 >
                   {copied ? <ClipboardCheck className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
@@ -516,7 +560,7 @@ export function DebuggerPage() {
                 <div className="mt-5">
                   <Input
                     value={snapshotQuery}
-                    onChange={(event) => setSnapshotQuery(event.target.value)}
+                    onChange={handleSnapshotQueryChange}
                     placeholder="Search snapshot..."
                     className="h-10 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:border-transparent focus:ring-2 focus:ring-white/20"
                   />

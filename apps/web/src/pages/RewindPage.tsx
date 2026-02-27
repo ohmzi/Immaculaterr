@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ChangeEvent } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -307,6 +307,61 @@ export function RewindPage() {
       setClearAllOpen(false);
     },
   });
+  const closeClearAllDialog = useCallback(() => {
+    setClearAllOpen(false);
+  }, []);
+  const confirmClearAllDialog = useCallback(() => {
+    clearAllMutation.mutate();
+  }, [clearAllMutation]);
+  const animateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
+  const handleJobFilterChange = useCallback((value: string) => {
+    setJobId(value === 'all' ? '' : value);
+  }, []);
+  const handleStatusFilterChange = useCallback((value: string) => {
+    setStatus(value === 'any' ? '' : value);
+  }, []);
+  const handlePlexUserFilterChange = useCallback((value: string) => {
+    setPlexUserFilter(value === 'all' ? '' : value);
+  }, []);
+  const handleMediaTypeFilterChange = useCallback((value: string) => {
+    setMediaTypeFilter(value === 'all' ? '' : value);
+  }, []);
+  const handleSearchChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setQ(event.target.value);
+    },
+    [],
+  );
+  const toggleMobileFilters = useCallback(() => {
+    setMobileFiltersOpen((prev) => !prev);
+  }, []);
+  const handleClearAllRequest = useCallback(() => {
+    const total = historyQuery.data?.runs?.length ?? 0;
+    if (!total) return;
+    const isCoarsePointer =
+      typeof window !== 'undefined' &&
+      Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
+    if (isCoarsePointer) {
+      const ok = window.confirm(
+        `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`,
+      );
+      if (ok) clearAllMutation.mutate();
+      return;
+    }
+
+    setClearAllOpen(true);
+  }, [clearAllMutation, historyQuery.data?.runs]);
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
@@ -322,7 +377,7 @@ export function RewindPage() {
         <label className={labelClass}>Job</label>
         <Select
           value={jobId || 'all'}
-          onValueChange={(value) => setJobId(value === 'all' ? '' : value)}
+          onValueChange={handleJobFilterChange}
         >
           <SelectTrigger className={selectTriggerClass}>
             <SelectValue placeholder="All jobs" />
@@ -342,7 +397,7 @@ export function RewindPage() {
         <label className={labelClass}>Status</label>
         <Select
           value={status || 'any'}
-          onValueChange={(value) => setStatus(value === 'any' ? '' : value)}
+          onValueChange={handleStatusFilterChange}
         >
           <SelectTrigger className={selectTriggerClass}>
             <SelectValue placeholder="Any" />
@@ -361,9 +416,7 @@ export function RewindPage() {
         <label className={labelClass}>User</label>
         <Select
           value={plexUserFilter || 'all'}
-          onValueChange={(value) =>
-            setPlexUserFilter(value === 'all' ? '' : value)
-          }
+          onValueChange={handlePlexUserFilterChange}
         >
           <SelectTrigger className={selectTriggerClass}>
             <SelectValue placeholder="All users" />
@@ -383,9 +436,7 @@ export function RewindPage() {
         <label className={labelClass}>Media type</label>
         <Select
           value={mediaTypeFilter || 'all'}
-          onValueChange={(value) =>
-            setMediaTypeFilter(value === 'all' ? '' : value)
-          }
+          onValueChange={handleMediaTypeFilterChange}
         >
           <SelectTrigger className={selectTriggerClass}>
             <SelectValue placeholder="All types" />
@@ -402,7 +453,7 @@ export function RewindPage() {
         <label className={labelClass}>Search</label>
         <input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={handleSearchChange}
           placeholder="jobId, user, media type, status, error text…"
           className={inputClass}
         />
@@ -438,18 +489,7 @@ export function RewindPage() {
                 <div className="flex items-center gap-4">
                   <motion.button
                     type="button"
-                    onClick={() => {
-                      titleIconControls.stop();
-                      titleIconGlowControls.stop();
-                      void titleIconControls.start({
-                        scale: [1, 1.06, 1],
-                        transition: { duration: 0.55, ease: 'easeOut' },
-                      });
-                      void titleIconGlowControls.start({
-                        opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                        transition: { duration: 1.4, ease: 'easeInOut' },
-                      });
-                    }}
+                    onClick={animateTitleIcon}
                     animate={titleIconControls}
                     className="relative group focus:outline-none touch-manipulation"
                     aria-label="Animate Rewind icon"
@@ -519,7 +559,7 @@ export function RewindPage() {
                 <div className={`${cardClass} md:hidden`}>
                   <button
                     type="button"
-                    onClick={() => setMobileFiltersOpen((v) => !v)}
+                    onClick={toggleMobileFilters}
                     className="w-full text-left focus:outline-none touch-manipulation"
                     aria-expanded={mobileFiltersOpen}
                   >
@@ -555,22 +595,7 @@ export function RewindPage() {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        const total = historyQuery.data?.runs?.length ?? 0;
-                        if (!total) return;
-                        const isCoarsePointer =
-                          typeof window !== 'undefined' &&
-                          Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
-                        if (isCoarsePointer) {
-                          const ok = window.confirm(
-                            `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`,
-                          );
-                          if (ok) clearAllMutation.mutate();
-                          return;
-                        }
-
-                        setClearAllOpen(true);
-                      }}
+                      onClick={handleClearAllRequest}
                       disabled={
                         clearAllMutation.isPending ||
                         !(historyQuery.data?.runs?.length ?? 0)
@@ -761,8 +786,8 @@ export function RewindPage() {
 
       <ConfirmDialog
         open={clearAllOpen}
-        onClose={() => setClearAllOpen(false)}
-        onConfirm={() => clearAllMutation.mutate()}
+        onClose={closeClearAllDialog}
+        onConfirm={confirmClearAllDialog}
         label="Clear"
         title="Clear all execution history"
         description={

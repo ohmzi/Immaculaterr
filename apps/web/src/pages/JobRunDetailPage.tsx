@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -400,6 +406,50 @@ export function JobRunDetailPage() {
 
   const cardClass =
     'w-full max-w-full min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-5 sm:p-6 lg:p-8 shadow-2xl';
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
+  const handleContextToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const lineIdRaw = event.currentTarget.dataset.lineId;
+      if (!lineIdRaw) return;
+      const lineId = Number.parseInt(lineIdRaw, 10);
+      if (!Number.isFinite(lineId)) return;
+      setExpandedContext((prev) => ({
+        ...prev,
+        [lineId]: !prev[lineId],
+      }));
+    },
+    [],
+  );
+  const handleRawResponseToggle = useCallback(() => {
+    setShowRawResponse((value) => !value);
+  }, []);
+  const handleCopyRunSummary = useCallback(async () => {
+    try {
+      await copyToClipboard(JSON.stringify(run?.summary, null, 2));
+      toast.success('Copied run summary JSON.');
+    } catch {
+      toast.error('Failed to copy.');
+    }
+  }, [run]);
+  const handleCopyLogs = useCallback(async () => {
+    try {
+      await copyToClipboard(JSON.stringify(logs, null, 2));
+      toast.success('Copied logs JSON.');
+    } catch {
+      toast.error('Failed to copy.');
+    }
+  }, [logs]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -428,18 +478,7 @@ export function JobRunDetailPage() {
                   <div className="flex items-center gap-4">
                     <motion.button
                       type="button"
-                      onClick={() => {
-                        titleIconControls.stop();
-                        titleIconGlowControls.stop();
-                        void titleIconControls.start({
-                          scale: [1, 1.06, 1],
-                          transition: { duration: 0.55, ease: 'easeOut' },
-                        });
-                        void titleIconGlowControls.start({
-                          opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                          transition: { duration: 1.4, ease: 'easeInOut' },
-                        });
-                      }}
+                      onClick={handleAnimateTitleIcon}
                       animate={titleIconControls}
                       className="relative group focus:outline-none touch-manipulation shrink-0"
                       aria-label="Animate Rewind icon"
@@ -2212,12 +2251,8 @@ export function JobRunDetailPage() {
                               {line.context ? (
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    setExpandedContext((prev) => ({
-                                      ...prev,
-                                      [line.id]: !prev[line.id],
-                                    }))
-                                  }
+                                  data-line-id={String(line.id)}
+                                  onClick={handleContextToggle}
                                   className="shrink-0 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-white/70 transition-all duration-200 active:scale-95 hover:bg-white/10"
                                 >
                                   {expandedContext[line.id] ? 'Hide details' : 'Details'}
@@ -2279,12 +2314,8 @@ export function JobRunDetailPage() {
                                     <div className="mt-2">
                                       <button
                                         type="button"
-                                        onClick={() =>
-                                          setExpandedContext((prev) => ({
-                                            ...prev,
-                                            [line.id]: !prev[line.id],
-                                          }))
-                                        }
+                                        data-line-id={String(line.id)}
+                                        onClick={handleContextToggle}
                                         className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-white/70 transition-all duration-200 active:scale-95 hover:bg-white/10"
                                       >
                                         {expandedContext[line.id]
@@ -2313,7 +2344,7 @@ export function JobRunDetailPage() {
                   <div className="mt-5">
                     <button
                       type="button"
-                      onClick={() => setShowRawResponse((v) => !v)}
+                      onClick={handleRawResponseToggle}
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition-all duration-200 active:scale-95 hover:bg-white/10 touch-manipulation"
                     >
                       {showRawResponse ? 'Hide raw response' : 'See raw response'}
@@ -2328,16 +2359,7 @@ export function JobRunDetailPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  await copyToClipboard(
-                                    JSON.stringify(run.summary, null, 2),
-                                  );
-                                  toast.success('Copied run summary JSON.');
-                                } catch {
-                                  toast.error('Failed to copy.');
-                                }
-                              }}
+                              onClick={handleCopyRunSummary}
                               className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/70 transition-all duration-200 active:scale-95 hover:bg-white/10 touch-manipulation"
                             >
                               <Copy className="h-3.5 w-3.5" />
@@ -2355,16 +2377,7 @@ export function JobRunDetailPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  await copyToClipboard(
-                                    JSON.stringify(logs, null, 2),
-                                  );
-                                  toast.success('Copied logs JSON.');
-                                } catch {
-                                  toast.error('Failed to copy.');
-                                }
-                              }}
+                              onClick={handleCopyLogs}
                               className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/70 transition-all duration-200 active:scale-95 hover:bg-white/10 touch-manipulation"
                             >
                               <Copy className="h-3.5 w-3.5" />
@@ -2390,4 +2403,3 @@ export function JobRunDetailPage() {
     </div>
   );
 }
-

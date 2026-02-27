@@ -1,4 +1,10 @@
-import { useMemo, useState } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Eye, EyeOff, Loader2, LogIn, UserPlus } from 'lucide-react';
 
@@ -66,6 +72,28 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       }
     },
   });
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      authMutation.mutate();
+    },
+    [authMutation],
+  );
+  const handleUsernameChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setUsername(event.target.value);
+    },
+    [],
+  );
+  const handlePasswordChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setPassword(event.target.value);
+    },
+    [],
+  );
+  const handlePasswordToggleClick = useCallback(() => {
+    setShowPassword((value) => !value);
+  }, []);
 
   // Errors (bootstrap errors are important; auth/me errors other than 401 are handled in getMeOrNull).
   if (bootstrapQuery.error) {
@@ -177,13 +205,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            <form
-              className="mt-6 space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                authMutation.mutate();
-              }}
-            >
+            <form className="mt-6 space-y-4" onSubmit={handleFormSubmit}>
               <div className="space-y-2">
                 <label
                   htmlFor="username"
@@ -199,7 +221,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   autoCorrect="off"
                   autoFocus
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={handleUsernameChange}
                   placeholder="admin"
                   className={inputClass}
                 />
@@ -218,12 +240,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     type={showPassword ? 'text' : 'password'}
                     autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={handlePasswordChange}
                     className={cn(inputClass, 'pr-12')}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword((v) => !v)}
+                    onClick={handlePasswordToggleClick}
                     className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
@@ -278,4 +300,3 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

@@ -1,5 +1,6 @@
 import { motion, useAnimation } from 'motion/react';
 import { BookOpen } from 'lucide-react';
+import { useCallback, type MouseEvent as ReactMouseEvent } from 'react';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -27,6 +28,34 @@ export function FaqPage() {
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
+  const handleCatalogSectionClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const { sectionId } = event.currentTarget.dataset;
+      if (!sectionId) return;
+      scrollToId(sectionId);
+    },
+    [],
+  );
+  const handleCatalogItemClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const { itemId } = event.currentTarget.dataset;
+      if (!itemId) return;
+      scrollToId(itemId);
+    },
+    [],
+  );
 
   const anchorClass = 'scroll-mt-28 md:scroll-mt-32';
 
@@ -1053,18 +1082,7 @@ export function FaqPage() {
               <div className="flex items-center gap-5">
                 <motion.button
                   type="button"
-                  onClick={() => {
-                    titleIconControls.stop();
-                    titleIconGlowControls.stop();
-                    void titleIconControls.start({
-                      scale: [1, 1.06, 1],
-                      transition: { duration: 0.55, ease: 'easeOut' },
-                    });
-                    void titleIconGlowControls.start({
-                      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                      transition: { duration: 1.4, ease: 'easeInOut' },
-                    });
-                  }}
+                  onClick={handleAnimateTitleIcon}
                   animate={titleIconControls}
                   className="relative group focus:outline-none touch-manipulation"
                   aria-label="Animate FAQ icon"
@@ -1114,7 +1132,8 @@ export function FaqPage() {
                 >
                   <button
                     type="button"
-                    onClick={() => scrollToId(section.id)}
+                    data-section-id={section.id}
+                    onClick={handleCatalogSectionClick}
                     className="w-full text-left text-sm font-semibold text-white/90 hover:text-white transition-colors"
                   >
                     {section.title}
@@ -1124,7 +1143,8 @@ export function FaqPage() {
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => scrollToId(item.id)}
+                        data-item-id={item.id}
+                        onClick={handleCatalogItemClick}
                         className="w-full text-left text-sm text-white/65 hover:text-white/90 transition-colors"
                       >
                         {item.question}

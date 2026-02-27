@@ -1,5 +1,6 @@
 import { motion, useAnimation } from 'motion/react';
 import { Tags } from 'lucide-react';
+import { useCallback } from 'react';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -39,6 +40,18 @@ export function VersionHistoryPage() {
       </>
     );
   };
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -66,18 +79,7 @@ export function VersionHistoryPage() {
               <div className="flex items-center gap-5">
                 <motion.button
                   type="button"
-                  onClick={() => {
-                    titleIconControls.stop();
-                    titleIconGlowControls.stop();
-                    void titleIconControls.start({
-                      scale: [1, 1.06, 1],
-                      transition: { duration: 0.55, ease: 'easeOut' },
-                    });
-                    void titleIconGlowControls.start({
-                      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                      transition: { duration: 1.4, ease: 'easeInOut' },
-                    });
-                  }}
+                  onClick={handleAnimateTitleIcon}
                   animate={titleIconControls}
                   className="relative group focus:outline-none touch-manipulation"
                   aria-label="Animate Version History icon"

@@ -124,10 +124,13 @@ function MaskedSecretInput(props: {
       ? MASKED_SECRET
       : '';
 
-  const handleValueChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onEditStart();
-    setValue(event.target.value);
-  };
+  const handleValueChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      onEditStart();
+      setValue(event.target.value);
+    },
+    [onEditStart, setValue],
+  );
 
   const collapseSelectionToEnd = useCallback(
     (input: HTMLInputElement) => {

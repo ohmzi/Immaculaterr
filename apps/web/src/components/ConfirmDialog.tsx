@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { CircleAlert, Loader2, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useCallback, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 
 export type ConfirmDialogVariant = 'danger' | 'primary';
 
@@ -37,6 +37,17 @@ export function ConfirmDialog(props: {
     variant === 'primary'
       ? 'bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02]'
       : 'bg-red-500/90 text-white font-bold shadow-[0_0_20px_rgba(239,68,68,0.25)] hover:shadow-[0_0_28px_rgba(239,68,68,0.35)] hover:scale-[1.02]';
+  const handleOverlayClick = useCallback(() => {
+    if (confirming) return;
+    onClose();
+  }, [confirming, onClose]);
+  const handleDialogClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  }, []);
+  const handleCloseClick = useCallback(() => {
+    if (confirming) return;
+    onClose();
+  }, [confirming, onClose]);
 
   return (
     <AnimatePresence>
@@ -46,10 +57,7 @@ export function ConfirmDialog(props: {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={() => {
-            if (confirming) return;
-            onClose();
-          }}
+          onClick={handleOverlayClick}
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -58,7 +66,7 @@ export function ConfirmDialog(props: {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={handleDialogClick}
             className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
           >
             <div className="p-6 sm:p-7">
@@ -73,10 +81,7 @@ export function ConfirmDialog(props: {
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (confirming) return;
-                    onClose();
-                  }}
+                  onClick={handleCloseClick}
                   className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                   aria-label="Close"
                   disabled={confirming}
@@ -142,4 +147,3 @@ export function ConfirmDialog(props: {
     </AnimatePresence>
   );
 }
-

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "./ui/utils";
 import { Button } from "./ui/button";
@@ -30,8 +30,38 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
   const handleMinuteSelect = (m: number) => {
     setMinutes(m);
   };
+  const setModeHours = useCallback(() => {
+    setMode('hours');
+  }, []);
+  const setModeMinutes = useCallback(() => {
+    setMode('minutes');
+  }, []);
+  const setAm = useCallback(() => {
+    setAmpm('AM');
+  }, []);
+  const setPm = useCallback(() => {
+    setAmpm('PM');
+  }, []);
+  const handleHourButtonClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const raw = event.currentTarget.dataset.hour;
+      const hour = Number.parseInt(raw ?? '', 10);
+      if (!Number.isFinite(hour)) return;
+      handleHourSelect(hour);
+    },
+    [],
+  );
+  const handleMinuteButtonClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const raw = event.currentTarget.dataset.minute;
+      const minute = Number.parseInt(raw ?? '', 10);
+      if (!Number.isFinite(minute)) return;
+      handleMinuteSelect(minute);
+    },
+    [],
+  );
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     let finalHours = hours;
     if (ampm === 'PM' && hours !== 12) finalHours += 12;
     if (ampm === 'AM' && hours === 12) finalHours = 0;
@@ -39,7 +69,7 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
     const formattedTime = `${String(finalHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     onChange(formattedTime);
     onClose?.();
-  };
+  }, [ampm, hours, minutes, onChange, onClose]);
 
   // Calculate hand rotation
   const getRotation = () => {
@@ -55,7 +85,7 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
       {/* Time Display Header */}
       <div className="flex items-center justify-center gap-2 p-4 bg-white/5 rounded-2xl border border-white/5">
         <button
-          onClick={() => setMode('hours')}
+          onClick={setModeHours}
           className={cn(
             "text-4xl font-bold transition-colors rounded px-2",
             mode === 'hours' ? "text-[#facc15] bg-white/5" : "text-white/50 hover:text-white"
@@ -65,7 +95,7 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
         </button>
         <span className="text-4xl font-bold text-white/30 pb-2">:</span>
         <button
-          onClick={() => setMode('minutes')}
+          onClick={setModeMinutes}
           className={cn(
             "text-4xl font-bold transition-colors rounded px-2",
             mode === 'minutes' ? "text-[#facc15] bg-white/5" : "text-white/50 hover:text-white"
@@ -75,7 +105,7 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
         </button>
         <div className="flex flex-col gap-1 ml-2">
           <button
-            onClick={() => setAmpm('AM')}
+            onClick={setAm}
             className={cn(
               "text-xs font-bold px-2 py-1 rounded transition-colors",
               ampm === 'AM' ? "bg-[#facc15] text-black" : "bg-white/5 text-gray-400 hover:text-white"
@@ -84,7 +114,7 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
             AM
           </button>
           <button
-            onClick={() => setAmpm('PM')}
+            onClick={setPm}
             className={cn(
               "text-xs font-bold px-2 py-1 rounded transition-colors",
               ampm === 'PM' ? "bg-[#facc15] text-black" : "bg-white/5 text-gray-400 hover:text-white"
@@ -133,7 +163,8 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
                   return (
                     <button
                       key={num}
-                      onClick={() => handleHourSelect(num)}
+                      data-hour={String(num)}
+                      onClick={handleHourButtonClick}
                       className={cn(
                         "absolute w-10 h-10 -ml-5 -mt-5 rounded-full flex items-center justify-center font-bold transition-all z-20",
                         hours === num 
@@ -165,7 +196,8 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
                   return (
                     <button
                       key={num}
-                      onClick={() => handleMinuteSelect(num)}
+                      data-minute={String(num)}
+                      onClick={handleMinuteButtonClick}
                       className={cn(
                         "absolute w-10 h-10 -ml-5 -mt-5 rounded-full flex items-center justify-center font-bold transition-all z-20",
                         minutes === num 

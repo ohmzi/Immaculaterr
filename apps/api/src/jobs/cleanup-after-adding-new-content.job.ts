@@ -4168,6 +4168,9 @@ export function buildMediaAddedCleanupReport(params: {
   const watchlistApplicable =
     features.removeFromWatchlist &&
     (mediaType === 'movie' || mediaType === 'show' || mediaType === 'season');
+  const runSkipped = asBool(rawRec.skipped) === true;
+  const watchlistSkippedByFlow =
+    features.removeFromWatchlist && runSkipped && !watchlistChecked;
 
   const isFullSweep =
     duplicates && typeof (duplicates as Record<string, unknown>).mode === 'string'
@@ -4371,12 +4374,16 @@ export function buildMediaAddedCleanupReport(params: {
           id: 'watchlist',
           title: 'Full sweep: reconciled Plex watchlist',
           status: features.removeFromWatchlist
-            ? watchlistChecked
+            ? watchlistSkippedByFlow
+              ? 'skipped'
+              : watchlistChecked
               ? 'success'
               : 'failed'
             : 'skipped',
           facts: features.removeFromWatchlist
-            ? [
+            ? watchlistSkippedByFlow
+              ? [{ label: 'Note', value: 'Skipped before watchlist check.' }]
+              : [
                 { label: ctx.dryRun ? 'Would remove (movies)' : 'Removed (movies)', value: watchlistMovieRemoved },
                 { label: ctx.dryRun ? 'Would remove (shows)' : 'Removed (shows)', value: watchlistShowRemoved },
                 ...(watchlist && isPlainObject(watchlist.movies)
@@ -4464,7 +4471,9 @@ export function buildMediaAddedCleanupReport(params: {
               ]
             : [{ label: 'Result', value: 'Disabled in task settings.' }],
           issues:
-            features.removeFromWatchlist && !watchlistChecked
+            features.removeFromWatchlist &&
+            !watchlistChecked &&
+            !watchlistSkippedByFlow
               ? [issue('error', 'Plex watchlist reconciliation was not executed.')]
               : [],
         },
@@ -4513,8 +4522,14 @@ export function buildMediaAddedCleanupReport(params: {
         {
           id: 'watchlist',
           title: 'Checked Plex watchlist',
-          status: watchlistApplicable ? (watchlistChecked ? 'success' : 'failed') : 'skipped',
-          facts: watchlistApplicable
+          status: watchlistApplicable
+            ? watchlistSkippedByFlow
+              ? 'skipped'
+              : watchlistChecked
+                ? 'success'
+                : 'failed'
+            : 'skipped',
+          facts: watchlistApplicable && !watchlistSkippedByFlow
             ? [
                 { label: 'Found', value: (watchlistAttempted ?? 0) > 0 ? 'found' : 'not found' },
                 { label: ctx.dryRun ? 'Would remove' : 'Removed', value: watchlistRemoved ?? 0 },
@@ -4524,13 +4539,17 @@ export function buildMediaAddedCleanupReport(params: {
             : [
                 {
                   label: 'Note',
-                  value: features.removeFromWatchlist
+                  value: watchlistSkippedByFlow
+                    ? 'Skipped before watchlist check.'
+                    : features.removeFromWatchlist
                     ? 'Not checked for episodes.'
                     : 'Disabled in task settings.',
                 },
               ],
           issues:
-            watchlistApplicable && !watchlistChecked
+            watchlistApplicable &&
+            !watchlistChecked &&
+            !watchlistSkippedByFlow
               ? [issue('error', 'Plex watchlist check was not executed.')]
               : [],
         },

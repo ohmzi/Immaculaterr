@@ -1,4 +1,14 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { motion, AnimatePresence, useAnimation } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -265,7 +275,7 @@ function calculateNextRuns(draft: ScheduleDraft, count: number = 5): Date[] {
 
   const runs: Date[] = [];
   const now = new Date();
-  let current = new Date(now);
+  const current = new Date(now);
 
   // Start from tomorrow if current time has passed
   if (current.getHours() > t.hour || (current.getHours() === t.hour && current.getMinutes() >= t.minute)) {
@@ -428,10 +438,10 @@ export function TaskManagerPage() {
     setIntegrationSetupOpen(true);
   };
 
-  const closeIntegrationSetupDialog = () => {
+  const closeIntegrationSetupDialog = useCallback(() => {
     setIntegrationSetupOpen(false);
     setIntegrationSetupTarget(null);
-  };
+  }, []);
 
   const markAutoExpandSeen = (jobId: string) => {
     setAutoExpandSeen((prev) => {
@@ -1215,6 +1225,867 @@ export function TaskManagerPage() {
       </div>
     );
   })();
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
+  const handleStopPropagation = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+  }, []);
+  const handleStopPropagationPointer = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+  const closeMovieSeedDialog = useCallback(() => {
+    setMovieSeedDialogOpen(false);
+    setMovieSeedDialogJobId(null);
+  }, []);
+  const resetMovieSeedDialogState = useCallback(() => {
+    setMovieSeedMediaType('movie');
+    setMovieSeedTitle('');
+    setMovieSeedYear('');
+    setMovieSeedError(null);
+  }, []);
+  const submitMovieSeedRun = useCallback((): boolean => {
+    const title = movieSeedTitle.trim();
+    if (!title) {
+      setMovieSeedError('Please enter a title.');
+      return false;
+    }
+
+    const yearRaw = movieSeedYear.trim();
+    const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
+    if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
+      setMovieSeedError('Year must be a valid 4-digit number.');
+      return false;
+    }
+
+    if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
+    setTerminalState((prev) => ({
+      ...prev,
+      ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),
+    }));
+    if (movieSeedDialogJobId) {
+      runMutation.mutate({
+        jobId: movieSeedDialogJobId,
+        dryRun: false,
+        input: {
+          source: 'manualRun',
+          plexEvent: 'media.scrobble',
+          mediaType: movieSeedMediaType,
+          seedTitle: title,
+          seedYear: Number.isFinite(year) ? year : null,
+          seedRatingKey: null,
+        },
+      });
+    }
+    resetMovieSeedDialogOnCloseRef.current = true;
+    closeMovieSeedDialog();
+    return true;
+  }, [
+    closeMovieSeedDialog,
+    movieSeedDialogJobId,
+    movieSeedMediaType,
+    movieSeedTitle,
+    movieSeedYear,
+    runMutation,
+    startRunNowUi,
+  ]);
+  const handleMovieSeedExitComplete = useCallback(() => {
+    if (!resetMovieSeedDialogOnCloseRef.current) return;
+    resetMovieSeedDialogOnCloseRef.current = false;
+    resetMovieSeedDialogState();
+  }, [resetMovieSeedDialogState]);
+  const handleMovieSeedMediaTypeChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const value = event.target.value === 'tv' ? 'tv' : 'movie';
+      setMovieSeedError(null);
+      setMovieSeedMediaType(value);
+    },
+    [],
+  );
+  const handleMovieSeedTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setMovieSeedError(null);
+    setMovieSeedTitle(event.target.value);
+  }, []);
+  const handleMovieSeedYearChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setMovieSeedError(null);
+    setMovieSeedYear(event.target.value);
+  }, []);
+  const handleMovieSeedTitleKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      submitMovieSeedRun();
+    },
+    [submitMovieSeedRun],
+  );
+  const closeImmaculateStartSearchDialog = useCallback(() => {
+    setImmaculateStartSearchDialogOpen(false);
+  }, []);
+  const handleCloseArrRequiresSetupDialog = useCallback(() => {
+    setArrRequiresSetupOpen(false);
+    setArrRequiresSetupJobId(null);
+  }, []);
+  const handleConfirmArrRequiresSetupDialog = useCallback(() => {
+    setArrRequiresSetupOpen(false);
+    setArrRequiresSetupJobId(null);
+    navigate('/vault');
+  }, [navigate]);
+  const handleConfirmIntegrationSetupDialog = useCallback(() => {
+    const target = integrationSetupMeta?.id;
+    closeIntegrationSetupDialog();
+    navigate(target ? `/vault#vault-${target}` : '/vault');
+  }, [closeIntegrationSetupDialog, integrationSetupMeta?.id, navigate]);
+  const handleToggleImmaculateRefresherDetails = useCallback(() => {
+    setImmaculateRefresherDetailsOpen((value) => !value);
+  }, []);
+  const handleImmaculateRefresherDetailsKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      setImmaculateRefresherDetailsOpen((value) => !value);
+    },
+    [],
+  );
+  const handleScrollToImmaculateRefresher = useCallback(
+    (event: ReactMouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      document
+        .getElementById('job-immaculateTasteRefresher')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setFlashJob({
+        jobId: 'immaculateTasteRefresher',
+        nonce: Date.now(),
+      });
+    },
+    [],
+  );
+  const handleJobCardPointerDownCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      setCardIconPulse({ jobId, nonce: Date.now() });
+    },
+    [],
+  );
+  const handleJobCardClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const { jobId, arrRequiredBlocked, canExpand, expanded } = event.currentTarget.dataset;
+      if (!jobId) return;
+      if (arrRequiredBlocked === 'true') {
+        setArrRequiresSetupJobId(jobId);
+        setArrRequiresSetupOpen(true);
+        return;
+      }
+      if (canExpand !== 'true') return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        target.closest(
+          'button, a, input, select, textarea, [role="switch"], [data-no-card-toggle="true"]',
+        )
+      ) {
+        return;
+      }
+      const isExpanded = expanded === 'true';
+      setExpandedCards((prev) => ({ ...prev, [jobId]: !isExpanded }));
+    },
+    [],
+  );
+  const handleOpenArrRequiresSetupForJob = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      setArrRequiresSetupJobId(jobId);
+      setArrRequiresSetupOpen(true);
+    },
+    [],
+  );
+  const handleScheduleToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      const job = visibleJobs.find((entry) => entry.id === jobId);
+      if (!job) return;
+      const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
+      const baseEnabled = job.schedule?.enabled ?? false;
+      const draft =
+        drafts[jobId] ??
+        defaultDraftFromCron({
+          cron: baseCron,
+          enabled: baseEnabled,
+        });
+      const newEnabled = !draft.enabled;
+
+      if (newEnabled) {
+        setExpandedCards((prev) => ({ ...prev, [jobId]: true }));
+        const defaultCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '0 3 * * *';
+        const defaultDraft = defaultDraftFromCron({
+          cron: defaultCron,
+          enabled: true,
+        });
+
+        setDrafts((prev) => ({
+          ...prev,
+          [jobId]: defaultDraft,
+        }));
+
+        scheduleMutation.mutate({
+          jobId,
+          cron: defaultCron,
+          enabled: true,
+        });
+        return;
+      }
+
+      const cron = buildCronFromDraft(draft) || baseCron || job.defaultScheduleCron || '0 3 * * *';
+      setDrafts((prev) => ({
+        ...prev,
+        [jobId]: { ...draft, enabled: false },
+      }));
+
+      scheduleMutation.mutate({
+        jobId,
+        cron,
+        enabled: false,
+      });
+    },
+    [drafts, scheduleMutation, visibleJobs],
+  );
+  const handleWebhookAutoRunToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      const webhookEnabled =
+        webhookAutoRun[jobId] ??
+        (readBool(settingsQuery.data?.settings, `jobs.webhookEnabled.${jobId}`) ?? false);
+      const prev = webhookEnabled;
+      const next = !webhookEnabled;
+      const shouldAutoExpandOnce =
+        next &&
+        (jobId === 'mediaAddedCleanup' ||
+          jobId === 'immaculateTastePoints' ||
+          jobId === 'watchedMovieRecommendations') &&
+        autoExpandSeen[jobId] !== true;
+      setWebhookAutoRun((current) => ({ ...current, [jobId]: next }));
+      if (shouldAutoExpandOnce) {
+        setExpandedCards((current) => ({ ...current, [jobId]: true }));
+        markAutoExpandSeen(jobId);
+      }
+      webhookAutoRunMutation.mutate(
+        { jobId, enabled: next },
+        {
+          onError: () => {
+            setWebhookAutoRun((current) => ({ ...current, [jobId]: prev }));
+          },
+        },
+      );
+    },
+    [
+      autoExpandSeen,
+      markAutoExpandSeen,
+      settingsQuery.data?.settings,
+      webhookAutoRun,
+      webhookAutoRunMutation,
+    ],
+  );
+  const handleTerminalClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const runId = event.currentTarget.dataset.runId;
+      if (!runId) return;
+      navigate(`/rewind/${runId}`);
+    },
+    [navigate],
+  );
+  const handleRunNow = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      const needsSeedInput =
+        jobId === 'watchedMovieRecommendations' || jobId === 'immaculateTastePoints';
+      if (needsSeedInput) {
+        setMovieSeedError(null);
+        setMovieSeedDialogJobId(jobId);
+        setMovieSeedDialogOpen(true);
+        return;
+      }
+
+      startRunNowUi(jobId);
+      setTerminalState((prev) => ({
+        ...prev,
+        [jobId]: { status: 'running' },
+      }));
+      runMutation.mutate({ jobId, dryRun: false });
+    },
+    [runMutation, startRunNowUi],
+  );
+  const handleToggleMediaAddedCleanupDeleteDuplicates = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = mediaAddedCleanupDeleteDuplicates;
+      const next = !prev;
+      setMediaAddedCleanupDeleteDuplicates(next);
+      mediaAddedCleanupFeaturesMutation.mutate(
+        { deleteDuplicates: next },
+        {
+          onError: () => setMediaAddedCleanupDeleteDuplicates(prev),
+        },
+      );
+    },
+    [mediaAddedCleanupDeleteDuplicates, mediaAddedCleanupFeaturesMutation],
+  );
+  const handleToggleMediaAddedCleanupUnmonitorInArr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = mediaAddedCleanupUnmonitorInArr;
+      const next = !prev;
+      setMediaAddedCleanupUnmonitorInArr(next);
+      mediaAddedCleanupFeaturesMutation.mutate(
+        { unmonitorInArr: next },
+        {
+          onError: () => setMediaAddedCleanupUnmonitorInArr(prev),
+        },
+      );
+    },
+    [mediaAddedCleanupFeaturesMutation, mediaAddedCleanupUnmonitorInArr],
+  );
+  const handleToggleMediaAddedCleanupRemoveFromWatchlist = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = mediaAddedCleanupRemoveFromWatchlist;
+      const next = !prev;
+      setMediaAddedCleanupRemoveFromWatchlist(next);
+      mediaAddedCleanupFeaturesMutation.mutate(
+        { removeFromWatchlist: next },
+        {
+          onError: () => setMediaAddedCleanupRemoveFromWatchlist(prev),
+        },
+      );
+    },
+    [mediaAddedCleanupFeaturesMutation, mediaAddedCleanupRemoveFromWatchlist],
+  );
+  const handleToggleImmaculateIncludeRefresher = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const next = !immaculateIncludeRefresherAfterUpdate;
+      setImmaculateIncludeRefresherAfterUpdate(next);
+      immaculateIncludeRefresherMutation.mutate(next);
+    },
+    [immaculateIncludeRefresherAfterUpdate, immaculateIncludeRefresherMutation],
+  );
+  const handleToggleImmaculateFetchMissingRadarr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = immaculateFetchMissingRadarr;
+      const next = !prev;
+      if (next && !canEnableRadarrTaskToggles) {
+        openIntegrationSetupDialog('radarr');
+        return;
+      }
+      setImmaculateFetchMissingRadarr(next);
+      fetchMissingMutation.mutate(
+        {
+          jobId: 'immaculateTastePoints',
+          patch: { radarr: next },
+        },
+        {
+          onError: () => setImmaculateFetchMissingRadarr(prev),
+        },
+      );
+    },
+    [
+      canEnableRadarrTaskToggles,
+      fetchMissingMutation,
+      immaculateFetchMissingRadarr,
+      openIntegrationSetupDialog,
+    ],
+  );
+  const handleToggleImmaculateFetchMissingSonarr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = immaculateFetchMissingSonarr;
+      const next = !prev;
+      if (next && !canEnableSonarrTaskToggles) {
+        openIntegrationSetupDialog('sonarr');
+        return;
+      }
+      setImmaculateFetchMissingSonarr(next);
+      fetchMissingMutation.mutate(
+        {
+          jobId: 'immaculateTastePoints',
+          patch: { sonarr: next },
+        },
+        {
+          onError: () => setImmaculateFetchMissingSonarr(prev),
+        },
+      );
+    },
+    [
+      canEnableSonarrTaskToggles,
+      fetchMissingMutation,
+      immaculateFetchMissingSonarr,
+      openIntegrationSetupDialog,
+    ],
+  );
+  const handleToggleImmaculateStartSearchImmediately = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      if (!immaculateStartSearchImmediately) {
+        setImmaculateStartSearchDialogOpen(true);
+        return;
+      }
+
+      const prev = immaculateStartSearchImmediately;
+      const next = false;
+      setImmaculateStartSearchImmediately(next);
+      immaculateStartSearchMutation.mutate(next, {
+        onError: () => setImmaculateStartSearchImmediately(prev),
+      });
+    },
+    [immaculateStartSearchImmediately, immaculateStartSearchMutation],
+  );
+  const handleToggleImmaculateApprovalRequired = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = immaculateApprovalRequired;
+      const next = !prev;
+      setImmaculateApprovalRequired(next);
+      immaculateApprovalRequiredMutation.mutate(next, {
+        onError: () => setImmaculateApprovalRequired(prev),
+      });
+    },
+    [immaculateApprovalRequired, immaculateApprovalRequiredMutation],
+  );
+  const handleToggleImmaculateOverseerrMode = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = {
+        overseerr: immaculateFetchMissingOverseerr,
+        radarr: immaculateFetchMissingRadarr,
+        sonarr: immaculateFetchMissingSonarr,
+        approval: immaculateApprovalRequired,
+        search: immaculateStartSearchImmediately,
+      };
+      const next = !prev.overseerr;
+      if (next && !canEnableOverseerrTaskToggles) {
+        openIntegrationSetupDialog('overseerr');
+        return;
+      }
+
+      if (next) {
+        setImmaculateFetchMissingOverseerr(true);
+        setImmaculateFetchMissingRadarr(false);
+        setImmaculateFetchMissingSonarr(false);
+        setImmaculateApprovalRequired(false);
+        setImmaculateStartSearchImmediately(false);
+      } else {
+        setImmaculateFetchMissingOverseerr(false);
+      }
+
+      overseerrModeMutation.mutate(
+        {
+          jobId: 'immaculateTastePoints',
+          enabled: next,
+        },
+        {
+          onError: () => {
+            setImmaculateFetchMissingOverseerr(prev.overseerr);
+            setImmaculateFetchMissingRadarr(prev.radarr);
+            setImmaculateFetchMissingSonarr(prev.sonarr);
+            setImmaculateApprovalRequired(prev.approval);
+            setImmaculateStartSearchImmediately(prev.search);
+          },
+        },
+      );
+    },
+    [
+      canEnableOverseerrTaskToggles,
+      immaculateApprovalRequired,
+      immaculateFetchMissingOverseerr,
+      immaculateFetchMissingRadarr,
+      immaculateFetchMissingSonarr,
+      immaculateStartSearchImmediately,
+      openIntegrationSetupDialog,
+      overseerrModeMutation,
+    ],
+  );
+  const handleToggleWatchedFetchMissingRadarr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = watchedFetchMissingRadarr;
+      const next = !prev;
+      if (next && !canEnableRadarrTaskToggles) {
+        openIntegrationSetupDialog('radarr');
+        return;
+      }
+      setWatchedFetchMissingRadarr(next);
+      fetchMissingMutation.mutate(
+        {
+          jobId: 'watchedMovieRecommendations',
+          patch: { radarr: next },
+        },
+        {
+          onError: () => setWatchedFetchMissingRadarr(prev),
+        },
+      );
+    },
+    [
+      canEnableRadarrTaskToggles,
+      fetchMissingMutation,
+      openIntegrationSetupDialog,
+      watchedFetchMissingRadarr,
+    ],
+  );
+  const handleToggleWatchedFetchMissingSonarr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = watchedFetchMissingSonarr;
+      const next = !prev;
+      if (next && !canEnableSonarrTaskToggles) {
+        openIntegrationSetupDialog('sonarr');
+        return;
+      }
+      setWatchedFetchMissingSonarr(next);
+      fetchMissingMutation.mutate(
+        {
+          jobId: 'watchedMovieRecommendations',
+          patch: { sonarr: next },
+        },
+        {
+          onError: () => setWatchedFetchMissingSonarr(prev),
+        },
+      );
+    },
+    [
+      canEnableSonarrTaskToggles,
+      fetchMissingMutation,
+      openIntegrationSetupDialog,
+      watchedFetchMissingSonarr,
+    ],
+  );
+  const handleToggleWatchedApprovalRequired = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = watchedApprovalRequired;
+      const next = !prev;
+      setWatchedApprovalRequired(next);
+      watchedApprovalRequiredMutation.mutate(next, {
+        onError: () => setWatchedApprovalRequired(prev),
+      });
+    },
+    [watchedApprovalRequired, watchedApprovalRequiredMutation],
+  );
+  const handleToggleWatchedOverseerrMode = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = {
+        overseerr: watchedFetchMissingOverseerr,
+        radarr: watchedFetchMissingRadarr,
+        sonarr: watchedFetchMissingSonarr,
+        approval: watchedApprovalRequired,
+      };
+      const next = !prev.overseerr;
+      if (next && !canEnableOverseerrTaskToggles) {
+        openIntegrationSetupDialog('overseerr');
+        return;
+      }
+
+      if (next) {
+        setWatchedFetchMissingOverseerr(true);
+        setWatchedFetchMissingRadarr(false);
+        setWatchedFetchMissingSonarr(false);
+        setWatchedApprovalRequired(false);
+      } else {
+        setWatchedFetchMissingOverseerr(false);
+      }
+
+      overseerrModeMutation.mutate(
+        {
+          jobId: 'watchedMovieRecommendations',
+          enabled: next,
+        },
+        {
+          onError: () => {
+            setWatchedFetchMissingOverseerr(prev.overseerr);
+            setWatchedFetchMissingRadarr(prev.radarr);
+            setWatchedFetchMissingSonarr(prev.sonarr);
+            setWatchedApprovalRequired(prev.approval);
+          },
+        },
+      );
+    },
+    [
+      canEnableOverseerrTaskToggles,
+      openIntegrationSetupDialog,
+      overseerrModeMutation,
+      watchedApprovalRequired,
+      watchedFetchMissingOverseerr,
+      watchedFetchMissingRadarr,
+      watchedFetchMissingSonarr,
+    ],
+  );
+  const handleToggleArrMonitoredIncludeRadarr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = arrMonitoredIncludeRadarr;
+      const next = !arrMonitoredIncludeRadarr;
+      if (next && !canEnableRadarrTaskToggles) {
+        openIntegrationSetupDialog('radarr');
+        return;
+      }
+      setArrMonitoredIncludeRadarr(next);
+      arrMonitoredSearchOptionsMutation.mutate(
+        { includeRadarr: next },
+        {
+          onError: () => {
+            setArrMonitoredIncludeRadarr(prev);
+          },
+        },
+      );
+    },
+    [
+      arrMonitoredIncludeRadarr,
+      arrMonitoredSearchOptionsMutation,
+      canEnableRadarrTaskToggles,
+      openIntegrationSetupDialog,
+    ],
+  );
+  const handleToggleArrMonitoredIncludeSonarr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const prev = arrMonitoredIncludeSonarr;
+      const next = !arrMonitoredIncludeSonarr;
+      if (next && !canEnableSonarrTaskToggles) {
+        openIntegrationSetupDialog('sonarr');
+        return;
+      }
+      setArrMonitoredIncludeSonarr(next);
+      arrMonitoredSearchOptionsMutation.mutate(
+        { includeSonarr: next },
+        {
+          onError: () => {
+            setArrMonitoredIncludeSonarr(prev);
+          },
+        },
+      );
+    },
+    [
+      arrMonitoredIncludeSonarr,
+      arrMonitoredSearchOptionsMutation,
+      canEnableSonarrTaskToggles,
+      openIntegrationSetupDialog,
+    ],
+  );
+  const resolveDraftForJob = useCallback(
+    (jobId: string, sourceDrafts: Record<string, ScheduleDraft>) => {
+      const job = visibleJobs.find((entry) => entry.id === jobId);
+      if (!job) return null;
+      const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
+      const baseEnabled = job.schedule?.enabled ?? false;
+      return (
+        sourceDrafts[jobId] ??
+        defaultDraftFromCron({
+          cron: baseCron,
+          enabled: baseEnabled,
+        })
+      );
+    },
+    [visibleJobs],
+  );
+  const handleFrequencySelect = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const { jobId, frequency } = event.currentTarget.dataset;
+      if (!jobId || !frequency) return;
+      if (frequency !== 'daily' && frequency !== 'weekly' && frequency !== 'monthly') return;
+      setDrafts((prev) => {
+        const draft = resolveDraftForJob(jobId, prev);
+        if (!draft) return prev;
+        return {
+          ...prev,
+          [jobId]: { ...draft, frequency },
+        };
+      });
+    },
+    [resolveDraftForJob],
+  );
+  const handleWeeklySelectorToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      setWeeklyDaySelector((prev) => ({
+        ...prev,
+        [jobId]: !prev[jobId],
+      }));
+    },
+    [],
+  );
+  const handleMonthlySelectorToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      setMonthlyDaySelector((prev) => ({
+        ...prev,
+        [jobId]: !prev[jobId],
+      }));
+    },
+    [],
+  );
+  const handleWeeklyDayChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const { jobId, dayValue } = event.currentTarget.dataset;
+      if (!jobId || !dayValue) return;
+      const checked = event.currentTarget.checked;
+      setDrafts((prev) => {
+        const draft = resolveDraftForJob(jobId, prev);
+        if (!draft) return prev;
+        const alreadySelected = draft.daysOfWeek.includes(dayValue);
+        const daysOfWeek = checked
+          ? alreadySelected
+            ? draft.daysOfWeek
+            : [...draft.daysOfWeek, dayValue]
+          : draft.daysOfWeek.filter((value) => value !== dayValue);
+        return {
+          ...prev,
+          [jobId]: { ...draft, daysOfWeek },
+        };
+      });
+    },
+    [resolveDraftForJob],
+  );
+  const handleMonthlyDayToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const { jobId, dayValue } = event.currentTarget.dataset;
+      if (!jobId || !dayValue) return;
+      setDrafts((prev) => {
+        const draft = resolveDraftForJob(jobId, prev);
+        if (!draft) return prev;
+        const isSelected = draft.daysOfMonth.includes(dayValue);
+        const daysOfMonth = isSelected
+          ? draft.daysOfMonth.filter((value) => value !== dayValue)
+          : [...draft.daysOfMonth, dayValue];
+        return {
+          ...prev,
+          [jobId]: { ...draft, daysOfMonth },
+        };
+      });
+    },
+    [resolveDraftForJob],
+  );
+  const handleTimePickerOpenChange = useCallback((jobId: string, open: boolean) => {
+    setTimePickerOpen((prev) => ({ ...prev, [jobId]: open }));
+  }, []);
+  const handleDraftTimeChange = useCallback(
+    (jobId: string, newTime: string) => {
+      setDrafts((prev) => {
+        const draft = resolveDraftForJob(jobId, prev);
+        if (!draft) return prev;
+        return {
+          ...prev,
+          [jobId]: { ...draft, time: newTime },
+        };
+      });
+    },
+    [resolveDraftForJob],
+  );
+  const handleTimePickerClose = useCallback((jobId: string) => {
+    setTimePickerOpen((prev) => ({ ...prev, [jobId]: false }));
+  }, []);
+  const noopTimePickerOpenChange = useCallback(() => {}, []);
+  const noopTimePickerChange = useCallback(() => {}, []);
+  const noopTimePickerClose = useCallback(() => {}, []);
+  const jobTimePickerOpenChangeHandlers = useMemo(() => {
+    const handlers: Record<string, (open: boolean) => void> = {};
+    for (const job of visibleJobs) {
+      handlers[job.id] = (open: boolean) => {
+        handleTimePickerOpenChange(job.id, open);
+      };
+    }
+    return handlers;
+  }, [handleTimePickerOpenChange, visibleJobs]);
+  const jobTimeChangeHandlers = useMemo(() => {
+    const handlers: Record<string, (newTime: string) => void> = {};
+    for (const job of visibleJobs) {
+      handlers[job.id] = (newTime: string) => {
+        handleDraftTimeChange(job.id, newTime);
+      };
+    }
+    return handlers;
+  }, [handleDraftTimeChange, visibleJobs]);
+  const jobTimePickerCloseHandlers = useMemo(() => {
+    const handlers: Record<string, () => void> = {};
+    for (const job of visibleJobs) {
+      handlers[job.id] = () => {
+        handleTimePickerClose(job.id);
+      };
+    }
+    return handlers;
+  }, [handleTimePickerClose, visibleJobs]);
+  const handleNextRunsToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const jobId = event.currentTarget.dataset.jobId;
+      if (!jobId) return;
+      setNextRunsPopup((prev) => ({
+        ...prev,
+        [jobId]: !prev[jobId],
+      }));
+    },
+    [],
+  );
+  const handleScheduleArrMonitoredSearchInstead = useCallback(() => {
+    setImmaculateStartSearchDialogOpen(false);
+    const arrJob = visibleJobs.find((job) => job.id === 'arrMonitoredSearch') ?? null;
+    const baseCron = arrJob?.schedule?.cron ?? arrJob?.defaultScheduleCron ?? '0 4 * * 0';
+    const defaultCron = baseCron || '0 4 * * 0';
+
+    setExpandedCards((prev) => ({ ...prev, arrMonitoredSearch: true }));
+    setDrafts((prev) => ({
+      ...prev,
+      arrMonitoredSearch: defaultDraftFromCron({
+        cron: defaultCron,
+        enabled: true,
+      }),
+    }));
+    scheduleMutation.mutate({
+      jobId: 'arrMonitoredSearch',
+      cron: defaultCron,
+      enabled: true,
+    });
+
+    setFlashJob({ jobId: 'arrMonitoredSearch', nonce: Date.now() });
+    setTimeout(() => {
+      const element = document.getElementById('job-arrMonitoredSearch');
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      const target = window.scrollY + rect.top - window.innerHeight * 0.25;
+      window.scrollTo({
+        top: Math.max(0, Math.trunc(target)),
+        behavior: 'smooth',
+      });
+    }, 50);
+  }, [scheduleMutation, visibleJobs]);
+  const handleConfirmRunImmediately = useCallback(() => {
+    setImmaculateStartSearchDialogOpen(false);
+    const prev = immaculateStartSearchImmediately;
+    const next = true;
+    setImmaculateStartSearchImmediately(next);
+    immaculateStartSearchMutation.mutate(next, {
+      onError: () => setImmaculateStartSearchImmediately(prev),
+    });
+  }, [immaculateStartSearchImmediately, immaculateStartSearchMutation]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -1243,18 +2114,7 @@ export function TaskManagerPage() {
             <div className="flex items-center gap-5">
               <motion.button
                 type="button"
-                onClick={() => {
-                  titleIconControls.stop();
-                  titleIconGlowControls.stop();
-                  void titleIconControls.start({
-                    scale: [1, 1.06, 1],
-                    transition: { duration: 0.55, ease: 'easeOut' },
-                  });
-                  void titleIconGlowControls.start({
-                    opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                    transition: { duration: 1.4, ease: 'easeInOut' },
-                  });
-                }}
+                onClick={handleAnimateTitleIcon}
                 animate={titleIconControls}
                 className="relative group focus:outline-none touch-manipulation"
                 aria-label="Animate Task Manager icon"
@@ -1402,6 +2262,12 @@ export function TaskManagerPage() {
                 job.id === 'mediaAddedCleanup' ||
                 job.id === 'immaculateTastePoints' ||
                 job.id === 'watchedMovieRecommendations';
+              const handleJobTimePickerOpenChange =
+                jobTimePickerOpenChangeHandlers[job.id] ?? noopTimePickerOpenChange;
+              const handleJobTimeChange =
+                jobTimeChangeHandlers[job.id] ?? noopTimePickerChange;
+              const handleJobTimePickerClose =
+                jobTimePickerCloseHandlers[job.id] ?? noopTimePickerClose;
 
               return (
                 <div
@@ -1443,27 +2309,12 @@ export function TaskManagerPage() {
                   <motion.div
                     layout
                     aria-disabled={arrRequiredJobBlocked ? true : undefined}
-                    onPointerDownCapture={() => {
-                      setCardIconPulse({ jobId: job.id, nonce: Date.now() });
-                    }}
-                    onClick={(e) => {
-                      if (arrRequiredJobBlocked) {
-                        setArrRequiresSetupJobId(job.id);
-                        setArrRequiresSetupOpen(true);
-                        return;
-                      }
-                      if (!canExpand) return;
-                      const t = e.target as HTMLElement | null;
-                      if (!t) return;
-                      if (
-                        t.closest(
-                          'button, a, input, select, textarea, [role="switch"], [data-no-card-toggle="true"]',
-                        )
-                      ) {
-                        return;
-                      }
-                      setExpandedCards((prev) => ({ ...prev, [job.id]: !isExpanded }));
-                    }}
+                    data-job-id={job.id}
+                    data-arr-required-blocked={arrRequiredJobBlocked ? 'true' : 'false'}
+                    data-can-expand={canExpand ? 'true' : 'false'}
+                    data-expanded={isExpanded ? 'true' : 'false'}
+                    onPointerDownCapture={handleJobCardPointerDownCapture}
+                    onClick={handleJobCardClick}
                     className={cn(
                       'group relative overflow-hidden rounded-[32px] bg-[#1a1625]/60 backdrop-blur-xl border border-white/5 transition-all duration-300 hover:bg-[#1a1625]/80 hover:shadow-2xl hover:shadow-purple-500/10 active:bg-[#1a1625]/85 active:shadow-2xl active:shadow-purple-500/15',
                       arrRequiredJobBlocked
@@ -1476,10 +2327,8 @@ export function TaskManagerPage() {
                       <button
                         type="button"
                         data-no-card-toggle="true"
-                        onClick={() => {
-                          setArrRequiresSetupJobId(job.id);
-                          setArrRequiresSetupOpen(true);
-                        }}
+                        data-job-id={job.id}
+                        onClick={handleOpenArrRequiresSetupForJob}
                         className="absolute inset-0 z-20 rounded-[32px] bg-transparent cursor-not-allowed"
                         aria-label="Enable Radarr or Sonarr in Vault to use this task"
                         title="Enable Radarr or Sonarr in Vault to use this task"
@@ -1548,52 +2397,8 @@ export function TaskManagerPage() {
                             type="button"
                             role="switch"
                             aria-checked={draft.enabled}
-                            onClick={() => {
-                              const newEnabled = !draft.enabled;
-
-                              if (newEnabled) {
-                                setExpandedCards((prev) => ({ ...prev, [job.id]: true }));
-                                // If enabling, auto-save with the job's default schedule (or keep existing cron)
-                                const defaultCron =
-                                  job.schedule?.cron ??
-                                  job.defaultScheduleCron ??
-                                  '0 3 * * *'; // fallback: daily at 3am
-
-                                const defaultDraft = defaultDraftFromCron({
-                                  cron: defaultCron,
-                                  enabled: true,
-                                });
-
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [job.id]: defaultDraft,
-                                }));
-
-                                scheduleMutation.mutate({
-                                  jobId: job.id,
-                                  cron: defaultCron,
-                                  enabled: true,
-                                });
-                              } else {
-                                // If disabling, save immediately
-                                const cron =
-                                  buildCronFromDraft(draft) ||
-                                  baseCron ||
-                                  job.defaultScheduleCron ||
-                                  '0 3 * * *';
-
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [job.id]: { ...draft, enabled: false },
-                                }));
-
-                                scheduleMutation.mutate({
-                                  jobId: job.id,
-                                  cron,
-                                  enabled: false,
-                                });
-                              }
-                            }}
+                            data-job-id={job.id}
+                            onClick={handleScheduleToggle}
                             disabled={
                               scheduleMutation.isPending &&
                               scheduleMutation.variables?.jobId === job.id
@@ -1628,29 +2433,8 @@ export function TaskManagerPage() {
                             type="button"
                             role="switch"
                             aria-checked={webhookEnabled}
-                            onClick={() => {
-                              const prev = webhookEnabled;
-                              const next = !webhookEnabled;
-                              const shouldAutoExpandOnce =
-                                next &&
-                                (job.id === 'mediaAddedCleanup' ||
-                                  job.id === 'immaculateTastePoints' ||
-                                  job.id === 'watchedMovieRecommendations') &&
-                                autoExpandSeen[job.id] !== true;
-                              setWebhookAutoRun((p) => ({ ...p, [job.id]: next }));
-                              if (shouldAutoExpandOnce) {
-                                setExpandedCards((p) => ({ ...p, [job.id]: true }));
-                                markAutoExpandSeen(job.id);
-                              }
-                              webhookAutoRunMutation.mutate(
-                                { jobId: job.id, enabled: next },
-                                {
-                                  onError: () => {
-                                    setWebhookAutoRun((p) => ({ ...p, [job.id]: prev }));
-                                  },
-                                },
-                              );
-                            }}
+                            data-job-id={job.id}
+                            onClick={handleWebhookAutoRunToggle}
                             disabled={
                               settingsQuery.isLoading ||
                               (webhookAutoRunMutation.isPending &&
@@ -1680,11 +2464,8 @@ export function TaskManagerPage() {
                         <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (isTerminalActive && terminalInfo?.runId) {
-                              navigate(`/rewind/${terminalInfo.runId}`);
-                            }
-                          }}
+                          data-run-id={terminalInfo?.runId ?? ''}
+                          onClick={handleTerminalClick}
                           disabled={!isTerminalActive}
                           className={cn(
                             'w-12 h-12 rounded-full transition-all duration-200 active:scale-95 flex items-center justify-center',
@@ -1747,24 +2528,8 @@ export function TaskManagerPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            const needsSeedInput =
-                              job.id === 'watchedMovieRecommendations' ||
-                              job.id === 'immaculateTastePoints';
-                            if (needsSeedInput) {
-                              setMovieSeedError(null);
-                              setMovieSeedDialogJobId(job.id);
-                              setMovieSeedDialogOpen(true);
-                              return;
-                            }
-
-                            startRunNowUi(job.id);
-                            setTerminalState((prev) => ({
-                              ...prev,
-                              [job.id]: { status: 'running' },
-                            }));
-                            runMutation.mutate({ jobId: job.id, dryRun: false });
-                          }}
+                          data-job-id={job.id}
+                          onClick={handleRunNow}
                           disabled={runMutation.isPending || runUiActive}
                           className={cn(
                             'h-12 w-32 rounded-full font-bold text-sm overflow-hidden relative',
@@ -1878,20 +2643,8 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={mediaAddedCleanupDeleteDuplicates}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = mediaAddedCleanupDeleteDuplicates;
-                                            const next = !prev;
-                                            setMediaAddedCleanupDeleteDuplicates(next);
-                                            mediaAddedCleanupFeaturesMutation.mutate(
-                                              { deleteDuplicates: next },
-                                              {
-                                                onError: () =>
-                                                  setMediaAddedCleanupDeleteDuplicates(prev),
-                                              },
-                                            );
-                                          }}
-                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={handleToggleMediaAddedCleanupDeleteDuplicates}
+                                          onPointerDown={handleStopPropagationPointer}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             mediaAddedCleanupFeaturesMutation.isPending
@@ -1932,20 +2685,8 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={mediaAddedCleanupUnmonitorInArr}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = mediaAddedCleanupUnmonitorInArr;
-                                            const next = !prev;
-                                            setMediaAddedCleanupUnmonitorInArr(next);
-                                            mediaAddedCleanupFeaturesMutation.mutate(
-                                              { unmonitorInArr: next },
-                                              {
-                                                onError: () =>
-                                                  setMediaAddedCleanupUnmonitorInArr(prev),
-                                              },
-                                            );
-                                          }}
-                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={handleToggleMediaAddedCleanupUnmonitorInArr}
+                                          onPointerDown={handleStopPropagationPointer}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             mediaAddedCleanupFeaturesMutation.isPending
@@ -1986,20 +2727,8 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={mediaAddedCleanupRemoveFromWatchlist}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = mediaAddedCleanupRemoveFromWatchlist;
-                                            const next = !prev;
-                                            setMediaAddedCleanupRemoveFromWatchlist(next);
-                                            mediaAddedCleanupFeaturesMutation.mutate(
-                                              { removeFromWatchlist: next },
-                                              {
-                                                onError: () =>
-                                                  setMediaAddedCleanupRemoveFromWatchlist(prev),
-                                              },
-                                            );
-                                          }}
-                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={handleToggleMediaAddedCleanupRemoveFromWatchlist}
+                                          onPointerDown={handleStopPropagationPointer}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             mediaAddedCleanupFeaturesMutation.isPending
@@ -2047,15 +2776,8 @@ export function TaskManagerPage() {
                                       role="button"
                                       tabIndex={0}
                                       aria-expanded={immaculateRefresherDetailsOpen}
-                                      onClick={() =>
-                                        setImmaculateRefresherDetailsOpen((v) => !v)
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          e.preventDefault();
-                                          setImmaculateRefresherDetailsOpen((v) => !v);
-                                        }
-                                      }}
+                                      onClick={handleToggleImmaculateRefresherDetails}
+                                      onKeyDown={handleImmaculateRefresherDetailsKeyDown}
                                       className="p-4 rounded-2xl bg-[#0F0B15]/35 border border-white/5 cursor-pointer select-none hover:bg-[#0F0B15]/45 transition-colors"
                                     >
                                       <div className="flex items-start justify-between gap-4">
@@ -2078,7 +2800,7 @@ export function TaskManagerPage() {
                                                   mass: 0.85,
                                                 }}
                                                 className="overflow-hidden"
-                                                onClick={(e) => e.stopPropagation()}
+                                                onClick={handleStopPropagation}
                                               >
                                                 <p className="mt-2 text-sm text-gray-400 leading-relaxed">
                                                   After updating points, automatically rebuild your{' '}
@@ -2091,21 +2813,7 @@ export function TaskManagerPage() {
                                                   If disabled, you can still{' '}
                                                   <a
                                                     href="#job-immaculateTasteRefresher"
-                                                    onClick={(e) => {
-                                                      e.preventDefault();
-                                                      document
-                                                        .getElementById(
-                                                          'job-immaculateTasteRefresher',
-                                                        )
-                                                        ?.scrollIntoView({
-                                                          behavior: 'smooth',
-                                                          block: 'start',
-                                                        });
-                                                      setFlashJob({
-                                                        jobId: 'immaculateTasteRefresher',
-                                                        nonce: Date.now(),
-                                                      });
-                                                    }}
+                                                    onClick={handleScrollToImmaculateRefresher}
                                                     className="text-sky-200/90 underline underline-offset-4 hover:text-sky-100 transition-colors"
                                                   >
                                                     run/schedule the refresher from its own card
@@ -2127,21 +2835,15 @@ export function TaskManagerPage() {
 
                                         <div
                                           className="flex flex-col items-end gap-2 shrink-0"
-                                          onClick={(e) => e.stopPropagation()}
-                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={handleStopPropagation}
+                                          onPointerDown={handleStopPropagationPointer}
                                         >
                                           <button
                                             type="button"
                                             role="switch"
                                             aria-checked={immaculateIncludeRefresherAfterUpdate}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              const next =
-                                                !immaculateIncludeRefresherAfterUpdate;
-                                              setImmaculateIncludeRefresherAfterUpdate(next);
-                                              immaculateIncludeRefresherMutation.mutate(next);
-                                            }}
-                                            onPointerDown={(e) => e.stopPropagation()}
+                                            onClick={handleToggleImmaculateIncludeRefresher}
+                                            onPointerDown={handleStopPropagationPointer}
                                             disabled={
                                               settingsQuery.isLoading ||
                                               immaculateIncludeRefresherMutation.isPending
@@ -2187,26 +2889,7 @@ export function TaskManagerPage() {
                                             type="button"
                                             role="switch"
                                             aria-checked={immaculateFetchMissingRadarr}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              const prev = immaculateFetchMissingRadarr;
-                                              const next = !prev;
-                                              if (next && !canEnableRadarrTaskToggles) {
-                                                openIntegrationSetupDialog('radarr');
-                                                return;
-                                              }
-                                              setImmaculateFetchMissingRadarr(next);
-                                              fetchMissingMutation.mutate(
-                                                {
-                                                  jobId: 'immaculateTastePoints',
-                                                  patch: { radarr: next },
-                                                },
-                                                {
-                                                  onError: () =>
-                                                    setImmaculateFetchMissingRadarr(prev),
-                                                },
-                                              );
-                                            }}
+                                            onClick={handleToggleImmaculateFetchMissingRadarr}
                                             disabled={
                                               settingsQuery.isLoading ||
                                               fetchMissingMutation.isPending ||
@@ -2246,26 +2929,7 @@ export function TaskManagerPage() {
                                             type="button"
                                             role="switch"
                                             aria-checked={immaculateFetchMissingSonarr}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              const prev = immaculateFetchMissingSonarr;
-                                              const next = !prev;
-                                              if (next && !canEnableSonarrTaskToggles) {
-                                                openIntegrationSetupDialog('sonarr');
-                                                return;
-                                              }
-                                              setImmaculateFetchMissingSonarr(next);
-                                              fetchMissingMutation.mutate(
-                                                {
-                                                  jobId: 'immaculateTastePoints',
-                                                  patch: { sonarr: next },
-                                                },
-                                                {
-                                                  onError: () =>
-                                                    setImmaculateFetchMissingSonarr(prev),
-                                                },
-                                              );
-                                            }}
+                                            onClick={handleToggleImmaculateFetchMissingSonarr}
                                             disabled={
                                               settingsQuery.isLoading ||
                                               fetchMissingMutation.isPending ||
@@ -2311,22 +2975,8 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={immaculateStartSearchImmediately}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (!immaculateStartSearchImmediately) {
-                                              setImmaculateStartSearchDialogOpen(true);
-                                              return;
-                                            }
-
-                                            const prev = immaculateStartSearchImmediately;
-                                            const next = false;
-                                            setImmaculateStartSearchImmediately(next);
-                                            immaculateStartSearchMutation.mutate(next, {
-                                              onError: () =>
-                                                setImmaculateStartSearchImmediately(prev),
-                                            });
-                                          }}
-                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={handleToggleImmaculateStartSearchImmediately}
+                                          onPointerDown={handleStopPropagationPointer}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             immaculateStartSearchMutation.isPending ||
@@ -2379,17 +3029,8 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={immaculateApprovalRequired}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = immaculateApprovalRequired;
-                                            const next = !prev;
-                                            setImmaculateApprovalRequired(next);
-                                            immaculateApprovalRequiredMutation.mutate(next, {
-                                              onError: () =>
-                                                setImmaculateApprovalRequired(prev),
-                                            });
-                                          }}
-                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={handleToggleImmaculateApprovalRequired}
+                                          onPointerDown={handleStopPropagationPointer}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             immaculateApprovalRequiredMutation.isPending ||
@@ -2435,58 +3076,8 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={immaculateFetchMissingOverseerr}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = {
-                                              overseerr: immaculateFetchMissingOverseerr,
-                                              radarr: immaculateFetchMissingRadarr,
-                                              sonarr: immaculateFetchMissingSonarr,
-                                              approval: immaculateApprovalRequired,
-                                              search: immaculateStartSearchImmediately,
-                                            };
-                                            const next = !prev.overseerr;
-                                            if (next && !canEnableOverseerrTaskToggles) {
-                                              openIntegrationSetupDialog('overseerr');
-                                              return;
-                                            }
-
-                                            if (next) {
-                                              setImmaculateFetchMissingOverseerr(true);
-                                              setImmaculateFetchMissingRadarr(false);
-                                              setImmaculateFetchMissingSonarr(false);
-                                              setImmaculateApprovalRequired(false);
-                                              setImmaculateStartSearchImmediately(false);
-                                            } else {
-                                              setImmaculateFetchMissingOverseerr(false);
-                                            }
-
-                                            overseerrModeMutation.mutate(
-                                              {
-                                                jobId: 'immaculateTastePoints',
-                                                enabled: next,
-                                              },
-                                              {
-                                                onError: () => {
-                                                  setImmaculateFetchMissingOverseerr(
-                                                    prev.overseerr,
-                                                  );
-                                                  setImmaculateFetchMissingRadarr(
-                                                    prev.radarr,
-                                                  );
-                                                  setImmaculateFetchMissingSonarr(
-                                                    prev.sonarr,
-                                                  );
-                                                  setImmaculateApprovalRequired(
-                                                    prev.approval,
-                                                  );
-                                                  setImmaculateStartSearchImmediately(
-                                                    prev.search,
-                                                  );
-                                                },
-                                              },
-                                            );
-                                          }}
-                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={handleToggleImmaculateOverseerrMode}
+                                          onPointerDown={handleStopPropagationPointer}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             immaculateOverseerrModePending
@@ -2533,27 +3124,7 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={watchedFetchMissingRadarr}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = watchedFetchMissingRadarr;
-                                            const next = !prev;
-                                            if (next && !canEnableRadarrTaskToggles) {
-                                              openIntegrationSetupDialog('radarr');
-                                              return;
-                                            }
-                                            setWatchedFetchMissingRadarr(next);
-
-                                            fetchMissingMutation.mutate(
-                                              {
-                                                jobId: 'watchedMovieRecommendations',
-                                                patch: { radarr: next },
-                                              },
-                                              {
-                                                onError: () =>
-                                                  setWatchedFetchMissingRadarr(prev),
-                                              },
-                                            );
-                                          }}
+                                          onClick={handleToggleWatchedFetchMissingRadarr}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             fetchMissingMutation.isPending ||
@@ -2593,27 +3164,7 @@ export function TaskManagerPage() {
                                           type="button"
                                           role="switch"
                                           aria-checked={watchedFetchMissingSonarr}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prev = watchedFetchMissingSonarr;
-                                            const next = !prev;
-                                            if (next && !canEnableSonarrTaskToggles) {
-                                              openIntegrationSetupDialog('sonarr');
-                                              return;
-                                            }
-                                            setWatchedFetchMissingSonarr(next);
-
-                                            fetchMissingMutation.mutate(
-                                              {
-                                                jobId: 'watchedMovieRecommendations',
-                                                patch: { sonarr: next },
-                                              },
-                                              {
-                                                onError: () =>
-                                                  setWatchedFetchMissingSonarr(prev),
-                                              },
-                                            );
-                                          }}
+                                          onClick={handleToggleWatchedFetchMissingSonarr}
                                           disabled={
                                             settingsQuery.isLoading ||
                                             fetchMissingMutation.isPending ||
@@ -2660,16 +3211,8 @@ export function TaskManagerPage() {
                                         type="button"
                                         role="switch"
                                         aria-checked={watchedApprovalRequired}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const prev = watchedApprovalRequired;
-                                          const next = !prev;
-                                          setWatchedApprovalRequired(next);
-                                          watchedApprovalRequiredMutation.mutate(next, {
-                                            onError: () => setWatchedApprovalRequired(prev),
-                                          });
-                                        }}
-                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={handleToggleWatchedApprovalRequired}
+                                        onPointerDown={handleStopPropagationPointer}
                                         disabled={
                                           settingsQuery.isLoading ||
                                           watchedApprovalRequiredMutation.isPending ||
@@ -2715,53 +3258,8 @@ export function TaskManagerPage() {
                                         type="button"
                                         role="switch"
                                         aria-checked={watchedFetchMissingOverseerr}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const prev = {
-                                            overseerr: watchedFetchMissingOverseerr,
-                                            radarr: watchedFetchMissingRadarr,
-                                            sonarr: watchedFetchMissingSonarr,
-                                            approval: watchedApprovalRequired,
-                                          };
-                                          const next = !prev.overseerr;
-                                          if (next && !canEnableOverseerrTaskToggles) {
-                                            openIntegrationSetupDialog('overseerr');
-                                            return;
-                                          }
-
-                                          if (next) {
-                                            setWatchedFetchMissingOverseerr(true);
-                                            setWatchedFetchMissingRadarr(false);
-                                            setWatchedFetchMissingSonarr(false);
-                                            setWatchedApprovalRequired(false);
-                                          } else {
-                                            setWatchedFetchMissingOverseerr(false);
-                                          }
-
-                                          overseerrModeMutation.mutate(
-                                            {
-                                              jobId: 'watchedMovieRecommendations',
-                                              enabled: next,
-                                            },
-                                            {
-                                              onError: () => {
-                                                setWatchedFetchMissingOverseerr(
-                                                  prev.overseerr,
-                                                );
-                                                setWatchedFetchMissingRadarr(
-                                                  prev.radarr,
-                                                );
-                                                setWatchedFetchMissingSonarr(
-                                                  prev.sonarr,
-                                                );
-                                                setWatchedApprovalRequired(
-                                                  prev.approval,
-                                                );
-                                              },
-                                            },
-                                          );
-                                        }}
-                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={handleToggleWatchedOverseerrMode}
+                                        onPointerDown={handleStopPropagationPointer}
                                         disabled={
                                           settingsQuery.isLoading ||
                                           watchedOverseerrModePending
@@ -2834,24 +3332,7 @@ export function TaskManagerPage() {
                                         type="button"
                                         role="switch"
                                         aria-checked={arrMonitoredIncludeRadarr}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const prev = arrMonitoredIncludeRadarr;
-                                          const next = !arrMonitoredIncludeRadarr;
-                                          if (next && !canEnableRadarrTaskToggles) {
-                                            openIntegrationSetupDialog('radarr');
-                                            return;
-                                          }
-                                          setArrMonitoredIncludeRadarr(next);
-                                          arrMonitoredSearchOptionsMutation.mutate(
-                                            { includeRadarr: next },
-                                            {
-                                              onError: () => {
-                                                setArrMonitoredIncludeRadarr(prev);
-                                              },
-                                            },
-                                          );
-                                        }}
+                                        onClick={handleToggleArrMonitoredIncludeRadarr}
                                         disabled={
                                           settingsQuery.isLoading ||
                                           arrMonitoredSearchOptionsMutation.isPending
@@ -2889,24 +3370,7 @@ export function TaskManagerPage() {
                                         type="button"
                                         role="switch"
                                         aria-checked={arrMonitoredIncludeSonarr}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const prev = arrMonitoredIncludeSonarr;
-                                          const next = !arrMonitoredIncludeSonarr;
-                                          if (next && !canEnableSonarrTaskToggles) {
-                                            openIntegrationSetupDialog('sonarr');
-                                            return;
-                                          }
-                                          setArrMonitoredIncludeSonarr(next);
-                                          arrMonitoredSearchOptionsMutation.mutate(
-                                            { includeSonarr: next },
-                                            {
-                                              onError: () => {
-                                                setArrMonitoredIncludeSonarr(prev);
-                                              },
-                                            },
-                                          );
-                                        }}
+                                        onClick={handleToggleArrMonitoredIncludeSonarr}
                                         disabled={
                                           settingsQuery.isLoading ||
                                           arrMonitoredSearchOptionsMutation.isPending
@@ -2985,12 +3449,9 @@ export function TaskManagerPage() {
                                     (freq) => (
                                       <button
                                         key={freq}
-                                        onClick={() =>
-                                          setDrafts((prev) => ({
-                                            ...prev,
-                                            [job.id]: { ...draft, frequency: freq },
-                                          }))
-                                        }
+                                        data-job-id={job.id}
+                                        data-frequency={freq}
+                                        onClick={handleFrequencySelect}
                                         className={cn(
                                           'relative z-10 px-3 text-xs font-bold transition-all duration-300 flex items-center justify-center whitespace-nowrap h-full',
                                           draft.frequency === freq
@@ -3035,13 +3496,8 @@ export function TaskManagerPage() {
                                     <motion.button
                                       initial={{ opacity: 0, y: -10 }}
                                       animate={{ opacity: 1, y: 0 }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setWeeklyDaySelector((prev) => ({
-                                          ...prev,
-                                          [job.id]: !prev[job.id],
-                                        }));
-                                      }}
+                                      data-job-id={job.id}
+                                      onClick={handleWeeklySelectorToggle}
                                       className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
                                     >
                                       Select days
@@ -3059,7 +3515,7 @@ export function TaskManagerPage() {
                                           animate={{ opacity: 1, y: 0, scale: 1 }}
                                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                           transition={{ type: 'spring', stiffness: 250, damping: 22 }}
-                                          onClick={(e) => e.stopPropagation()}
+                                          onClick={handleStopPropagation}
                                           className="absolute bottom-full mb-2 left-0 bg-[#1a1625] border border-white/10 rounded-xl p-3 shadow-2xl z-[10000] min-w-[200px]"
                                         >
                                           <div className="space-y-2">
@@ -3071,20 +3527,9 @@ export function TaskManagerPage() {
                                                 <input
                                                   type="checkbox"
                                                   checked={draft.daysOfWeek.includes(day.value)}
-                                                  onChange={(e) => {
-                                                    const checked = e.target.checked;
-                                                    setDrafts((prev) => ({
-                                                      ...prev,
-                                                      [job.id]: {
-                                                        ...draft,
-                                                        daysOfWeek: checked
-                                                          ? [...draft.daysOfWeek, day.value]
-                                                          : draft.daysOfWeek.filter(
-                                                              (d) => d !== day.value
-                                                            ),
-                                                      },
-                                                    }));
-                                                  }}
+                                                  data-job-id={job.id}
+                                                  data-day-value={day.value}
+                                                  onChange={handleWeeklyDayChange}
                                                   className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
                                                 />
                                                 <span className="text-sm text-white">
@@ -3105,13 +3550,8 @@ export function TaskManagerPage() {
                                     <motion.button
                                       initial={{ opacity: 0, y: -10 }}
                                       animate={{ opacity: 1, y: 0 }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setMonthlyDaySelector((prev) => ({
-                                          ...prev,
-                                          [job.id]: !prev[job.id],
-                                        }));
-                                      }}
+                                      data-job-id={job.id}
+                                      onClick={handleMonthlySelectorToggle}
                                       className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
                                     >
                                       Select dates
@@ -3129,7 +3569,7 @@ export function TaskManagerPage() {
                                           animate={{ opacity: 1, y: 0, scale: 1 }}
                                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                           transition={{ type: 'spring', stiffness: 250, damping: 22 }}
-                                          onClick={(e) => e.stopPropagation()}
+                                          onClick={handleStopPropagation}
                                           className="absolute bottom-full mb-2 left-0 bg-[#1a1625] border border-white/10 rounded-xl p-4 shadow-2xl z-[10000] w-[280px]"
                                         >
                                           <div className="text-xs text-gray-500 mb-3">
@@ -3142,17 +3582,9 @@ export function TaskManagerPage() {
                                                 return (
                                                   <button
                                                     key={day}
-                                                    onClick={() => {
-                                                      setDrafts((prev) => ({
-                                                        ...prev,
-                                                        [job.id]: {
-                                                          ...draft,
-                                                          daysOfMonth: isSelected
-                                                            ? draft.daysOfMonth.filter((d) => d !== day)
-                                                            : [...draft.daysOfMonth, day],
-                                                        },
-                                                      }));
-                                                    }}
+                                                    data-job-id={job.id}
+                                                    data-day-value={day}
+                                                    onClick={handleMonthlyDayToggle}
                                                     className={cn(
                                                       'w-8 h-8 rounded-lg text-xs font-medium transition-all',
                                                       isSelected
@@ -3184,9 +3616,7 @@ export function TaskManagerPage() {
                                 </label>
                                 <Popover
                                   open={timePickerOpen[job.id]}
-                                  onOpenChange={(open) =>
-                                    setTimePickerOpen((prev) => ({ ...prev, [job.id]: open }))
-                                  }
+                                  onOpenChange={handleJobTimePickerOpenChange}
                                 >
                                   <PopoverTrigger asChild>
                                     <button className="relative group/input w-full">
@@ -3204,15 +3634,8 @@ export function TaskManagerPage() {
                                   >
                                     <AnalogTimePicker
                                       value={draft.time}
-                                      onChange={(newTime) => {
-                                        setDrafts((prev) => ({
-                                          ...prev,
-                                          [job.id]: { ...draft, time: newTime },
-                                        }));
-                                      }}
-                                      onClose={() =>
-                                        setTimePickerOpen((prev) => ({ ...prev, [job.id]: false }))
-                                      }
+                                      onChange={handleJobTimeChange}
+                                      onClose={handleJobTimePickerClose}
                                     />
                                   </PopoverContent>
                                 </Popover>
@@ -3228,13 +3651,8 @@ export function TaskManagerPage() {
                                 </label>
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setNextRunsPopup((prev) => ({
-                                      ...prev,
-                                      [job.id]: !prev[job.id],
-                                    }));
-                                  }}
+                                  data-job-id={job.id}
+                                  onClick={handleNextRunsToggle}
                                   disabled={!draft.enabled}
                                   className="w-full flex items-center justify-between bg-[#1a1625] border border-white/10 rounded-xl px-4 py-3 h-[42px] hover:bg-[#1a1625]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -3258,7 +3676,7 @@ export function TaskManagerPage() {
                                       animate={{ opacity: 1, y: 0, scale: 1 }}
                                       exit={{ opacity: 0, y: -10, scale: 0.95 }}
                                       transition={{ type: 'spring', stiffness: 250, damping: 22 }}
-                                      onClick={(e) => e.stopPropagation()}
+                                      onClick={handleStopPropagation}
                                       className="absolute top-full mt-2 right-0 bg-[#1a1625] border border-white/10 rounded-xl p-4 shadow-2xl z-[10000] min-w-[220px]"
                                     >
                                       <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
@@ -3336,26 +3754,14 @@ export function TaskManagerPage() {
       </section>
 
       {/* Immaculate Taste / Based on Latest Watched - Run Now Dialog */}
-      <AnimatePresence
-        onExitComplete={() => {
-          if (!resetMovieSeedDialogOnCloseRef.current) return;
-          resetMovieSeedDialogOnCloseRef.current = false;
-          setMovieSeedMediaType('movie');
-          setMovieSeedTitle('');
-          setMovieSeedYear('');
-          setMovieSeedError(null);
-        }}
-      >
+      <AnimatePresence onExitComplete={handleMovieSeedExitComplete}>
         {movieSeedDialogOpen && (
           <motion.div
             className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => {
-              setMovieSeedDialogOpen(false);
-              setMovieSeedDialogJobId(null);
-            }}
+            onClick={closeMovieSeedDialog}
           >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -3364,7 +3770,7 @@ export function TaskManagerPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 24, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={handleStopPropagation}
               className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
             >
               <div className="p-6 sm:p-7">
@@ -3381,10 +3787,7 @@ export function TaskManagerPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setMovieSeedDialogOpen(false);
-                      setMovieSeedDialogJobId(null);
-                    }}
+                    onClick={closeMovieSeedDialog}
                     className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center"
                     aria-label="Close"
                   >
@@ -3401,11 +3804,7 @@ export function TaskManagerPage() {
                     </div>
                     <select
                       value={movieSeedMediaType}
-                      onChange={(e) => {
-                        const v = e.target.value === 'tv' ? 'tv' : 'movie';
-                        setMovieSeedError(null);
-                        setMovieSeedMediaType(v);
-                      }}
+                      onChange={handleMovieSeedMediaTypeChange}
                       className="mt-2 h-12 w-full appearance-none bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     >
                       <option value="movie">Movie</option>
@@ -3422,50 +3821,8 @@ export function TaskManagerPage() {
                     <input
                       ref={movieSeedTitleRef}
                       value={movieSeedTitle}
-                      onChange={(e) => {
-                        setMovieSeedError(null);
-                        setMovieSeedTitle(e.target.value);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter') return;
-                        e.preventDefault();
-                        const title = movieSeedTitle.trim();
-                        if (!title) {
-                          setMovieSeedError('Please enter a title.');
-                          return;
-                        }
-                        const yearRaw = movieSeedYear.trim();
-                        const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
-                        if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
-                          setMovieSeedError('Year must be a valid 4-digit number.');
-                          return;
-                        }
-
-                        if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
-                        setTerminalState((prev) => ({
-                          ...prev,
-                          ...(movieSeedDialogJobId
-                            ? { [movieSeedDialogJobId]: { status: 'running' } }
-                            : {}),
-                        }));
-                        if (movieSeedDialogJobId) {
-                          runMutation.mutate({
-                            jobId: movieSeedDialogJobId,
-                            dryRun: false,
-                            input: {
-                              source: 'manualRun',
-                              plexEvent: 'media.scrobble',
-                              mediaType: movieSeedMediaType,
-                              seedTitle: title,
-                              seedYear: Number.isFinite(year) ? year : null,
-                              seedRatingKey: null,
-                            },
-                          });
-                        }
-                        resetMovieSeedDialogOnCloseRef.current = true;
-                        setMovieSeedDialogOpen(false);
-                        setMovieSeedDialogJobId(null);
-                      }}
+                      onChange={handleMovieSeedTitleChange}
+                      onKeyDown={handleMovieSeedTitleKeyDown}
                       placeholder={movieSeedMediaType === 'tv' ? 'Breaking Bad' : 'Inception'}
                       className="mt-2 h-12 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-white/35 leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
                     />
@@ -3479,10 +3836,7 @@ export function TaskManagerPage() {
                     </div>
                     <input
                       value={movieSeedYear}
-                      onChange={(e) => {
-                        setMovieSeedError(null);
-                        setMovieSeedYear(e.target.value);
-                      }}
+                      onChange={handleMovieSeedYearChange}
                       inputMode="numeric"
                       placeholder="2010"
                       className="mt-2 h-12 w-full bg-[#0F0B15]/60 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-white/35 leading-none focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 focus:border-transparent transition"
@@ -3499,53 +3853,14 @@ export function TaskManagerPage() {
                 <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      setMovieSeedDialogOpen(false);
-                      setMovieSeedDialogJobId(null);
-                    }}
+                    onClick={closeMovieSeedDialog}
                     className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98]"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      const title = movieSeedTitle.trim();
-                      if (!title) {
-                        setMovieSeedError('Please enter a title.');
-                        return;
-                      }
-
-                      const yearRaw = movieSeedYear.trim();
-                      const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
-                      if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
-                        setMovieSeedError('Year must be a valid 4-digit number.');
-                        return;
-                      }
-
-                      if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
-                      setTerminalState((prev) => ({
-                        ...prev,
-                        ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),
-                      }));
-                      if (movieSeedDialogJobId) {
-                        runMutation.mutate({
-                          jobId: movieSeedDialogJobId,
-                          dryRun: false,
-                          input: {
-                            source: 'manualRun',
-                            plexEvent: 'media.scrobble',
-                            mediaType: movieSeedMediaType,
-                            seedTitle: title,
-                            seedYear: Number.isFinite(year) ? year : null,
-                            seedRatingKey: null,
-                          },
-                        });
-                      }
-                      resetMovieSeedDialogOnCloseRef.current = true;
-                      setMovieSeedDialogOpen(false);
-                      setMovieSeedDialogJobId(null);
-                    }}
+                    onClick={submitMovieSeedRun}
                     className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2"
                     disabled={runMutation.isPending}
                   >
@@ -3576,7 +3891,7 @@ export function TaskManagerPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setImmaculateStartSearchDialogOpen(false)}
+            onClick={closeImmaculateStartSearchDialog}
           >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -3585,7 +3900,7 @@ export function TaskManagerPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 24, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={handleStopPropagation}
               className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-fuchsia-500/10 overflow-hidden"
             >
               <div className="p-6 sm:p-7">
@@ -3605,7 +3920,7 @@ export function TaskManagerPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setImmaculateStartSearchDialogOpen(false)}
+                    onClick={closeImmaculateStartSearchDialog}
                     className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center"
                     aria-label="Close"
                   >
@@ -3616,60 +3931,14 @@ export function TaskManagerPage() {
                 <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      setImmaculateStartSearchDialogOpen(false);
-                      const arrJob =
-                        visibleJobs.find((j) => j.id === 'arrMonitoredSearch') ??
-                        null;
-                      const baseCron =
-                        arrJob?.schedule?.cron ??
-                        arrJob?.defaultScheduleCron ??
-                        '0 4 * * 0';
-                      const defaultCron = baseCron || '0 4 * * 0';
-
-                      // Turn on Auto-Run immediately (and open the card).
-                      setExpandedCards((p) => ({ ...p, arrMonitoredSearch: true }));
-                      setDrafts((prev) => ({
-                        ...prev,
-                        arrMonitoredSearch: defaultDraftFromCron({
-                          cron: defaultCron,
-                          enabled: true,
-                        }),
-                      }));
-                      scheduleMutation.mutate({
-                        jobId: 'arrMonitoredSearch',
-                        cron: defaultCron,
-                        enabled: true,
-                      });
-
-                      // Glow + scroll so the card lands ~25% from the top of the viewport.
-                      setFlashJob({ jobId: 'arrMonitoredSearch', nonce: Date.now() });
-                      setTimeout(() => {
-                        const el = document.getElementById('job-arrMonitoredSearch');
-                        if (!el) return;
-                        const rect = el.getBoundingClientRect();
-                        const target = window.scrollY + rect.top - window.innerHeight * 0.25;
-                        window.scrollTo({
-                          top: Math.max(0, Math.trunc(target)),
-                          behavior: 'smooth',
-                        });
-                      }, 50);
-                    }}
+                    onClick={handleScheduleArrMonitoredSearchInstead}
                     className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98]"
                   >
                     Schedule instead
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setImmaculateStartSearchDialogOpen(false);
-                      const prev = immaculateStartSearchImmediately;
-                      const next = true;
-                      setImmaculateStartSearchImmediately(next);
-                      immaculateStartSearchMutation.mutate(next, {
-                        onError: () => setImmaculateStartSearchImmediately(prev),
-                      });
-                    }}
+                    onClick={handleConfirmRunImmediately}
                     className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2"
                     disabled={immaculateStartSearchMutation.isPending}
                   >
@@ -3694,15 +3963,8 @@ export function TaskManagerPage() {
 
       <ConfirmDialog
         open={arrRequiresSetupOpen}
-        onClose={() => {
-          setArrRequiresSetupOpen(false);
-          setArrRequiresSetupJobId(null);
-        }}
-        onConfirm={() => {
-          setArrRequiresSetupOpen(false);
-          setArrRequiresSetupJobId(null);
-          navigate('/vault');
-        }}
+        onClose={handleCloseArrRequiresSetupDialog}
+        onConfirm={handleConfirmArrRequiresSetupDialog}
         label="Setup required"
         title="Enable Radarr or Sonarr"
         description={
@@ -3782,11 +4044,7 @@ export function TaskManagerPage() {
       <ConfirmDialog
         open={integrationSetupOpen}
         onClose={closeIntegrationSetupDialog}
-        onConfirm={() => {
-          const target = integrationSetupMeta?.id;
-          closeIntegrationSetupDialog();
-          navigate(target ? `/vault#vault-${target}` : '/vault');
-        }}
+        onConfirm={handleConfirmIntegrationSetupDialog}
         label="Setup required"
         title={
           integrationSetupMeta
