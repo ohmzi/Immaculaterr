@@ -19,11 +19,12 @@ export class ImmaculateTasteShowCollectionService {
   ) {}
 
   // TV has no legacy JSON import (movie-only historical artifact).
-  async ensureLegacyImported(_params: {
+  async ensureLegacyImported(params: {
     ctx: JobContext;
     plexUserId: string;
     maxPoints?: number;
   }): Promise<{ imported: boolean; sourcePath: string | null; importedCount: number }> {
+    void params;
     return { imported: false, sourcePath: null, importedCount: 0 };
   }
 
@@ -501,4 +502,3 @@ function shuffleInPlace<T>(arr: T[]) {
   }
   return arr;
 }
-

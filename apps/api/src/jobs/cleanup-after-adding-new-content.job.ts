@@ -2822,7 +2822,6 @@ export class CleanupAfterAddingNewContentJob {
       let tmdbId: number | null = tmdbIdInput ?? null;
       let resolvedTitle = title;
       let resolvedYear = year;
-      let resolvedAddedAt: number | null = null;
       let movieLibrarySectionKey: string | null = movieSectionKeyHint;
       let movieLibrarySectionTitle: string | null = movieSectionTitleHint;
 
@@ -2836,7 +2835,6 @@ export class CleanupAfterAddingNewContentJob {
           tmdbId = tmdbId ?? meta?.tmdbIds?.[0] ?? null;
           resolvedTitle = meta?.title?.trim() || resolvedTitle;
           resolvedYear = meta?.year ?? resolvedYear;
-          resolvedAddedAt = meta?.addedAt ?? resolvedAddedAt;
           movieLibrarySectionKey =
             meta?.librarySectionId ?? movieLibrarySectionKey;
           movieLibrarySectionTitle =
@@ -3874,10 +3872,6 @@ export class CleanupAfterAddingNewContentJob {
   }
 }
 
-function asNum(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
-}
-
 export function buildMediaAddedCleanupReport(params: {
   ctx: JobContext;
   raw: JsonObject;
@@ -3899,7 +3893,6 @@ export function buildMediaAddedCleanupReport(params: {
   const year = pickNumber(rawRec, 'year');
   const ratingKey = pickString(rawRec, 'ratingKey') ?? null;
   const showTitle = pickString(rawRec, 'showTitle') ?? null;
-  const showRatingKey = pickString(rawRec, 'showRatingKey') ?? null;
   const seasonNumber = pickNumber(rawRec, 'seasonNumber');
   const episodeNumber = pickNumber(rawRec, 'episodeNumber');
   const featuresRaw = isPlainObject(rawRec.features)

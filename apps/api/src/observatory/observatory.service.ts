@@ -856,7 +856,7 @@ export class ObservatoryService {
             applied += 1;
             continue;
           }
-          const updated = await this.prisma.immaculateTasteMovieLibrary.update({
+          await this.prisma.immaculateTasteMovieLibrary.update({
             where: {
               plexUserId_librarySectionKey_tmdbId: {
                 plexUserId,

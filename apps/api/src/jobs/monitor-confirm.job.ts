@@ -581,7 +581,6 @@ export class MonitorConfirmJob {
 
         for (const [season, seasonEpisodes] of episodesBySeason.entries()) {
           let seasonMissing = 0;
-          let seasonEpisodesInPlex = 0;
           const seasonEpisodesToUnmonitor: SonarrEpisode[] = [];
 
           // Process all episodes in the season (matching Python script logic)
@@ -597,7 +596,6 @@ export class MonitorConfirmJob {
 
             if (isInPlex) {
               sonarrEpisodesInPlex += 1;
-              seasonEpisodesInPlex += 1;
               if (isMonitored) {
                 seasonEpisodesToUnmonitor.push(ep);
               }
