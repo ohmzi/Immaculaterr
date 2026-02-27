@@ -1,7 +1,5 @@
 # Keep to an LTS line; Node 25 has shown flaky Prisma getDMMF failures on arm64 QEMU builds.
-ARG NODE_IMAGE=node:24-trixie-slim
-
-FROM ${NODE_IMAGE} AS builder
+FROM node:24-trixie-slim AS builder
 
 WORKDIR /app
 
@@ -44,7 +42,7 @@ RUN npm run build \
   && npm cache clean --force
 
 
-FROM ${NODE_IMAGE} AS runner
+FROM node:24-trixie-slim AS runner
 
 # Source of truth for the app's version is `apps/api/src/version.ts`.
 # (We do not inject APP_VERSION into the runtime container env; allowing APP_VERSION
