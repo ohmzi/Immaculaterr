@@ -79,14 +79,14 @@ function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));
 }
 
-function formatRating(v: unknown): string | null {
+const formatRating = (v: unknown): string | null => {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : null;
   if (n === null) return null;
   // TMDB vote_average is /10; show 1 decimal.
   const rounded = Math.round(n * 10) / 10;
   if (!Number.isFinite(rounded) || rounded <= 0) return null;
   return `${rounded.toFixed(1)}/10`;
-}
+};
 
 function SwipeCard({
   card,

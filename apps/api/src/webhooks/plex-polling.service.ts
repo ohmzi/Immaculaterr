@@ -951,6 +951,7 @@ export class PlexPollingService implements OnModuleInit {
       }
 
       if (seasons.size === 1) {
+    const derivedTv = (() => {
         const seasonNumber = Array.from(seasons)[0] ?? null;
         return {
           mediaType: 'season' as const,

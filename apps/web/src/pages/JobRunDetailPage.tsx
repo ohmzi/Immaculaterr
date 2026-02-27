@@ -1208,6 +1208,7 @@ export function JobRunDetailPage() {
                                       };
 
                                       const plural = (
+                                      ) => {
                                         n: number | null,
                                         singular: string,
                                         pluralWord: string,

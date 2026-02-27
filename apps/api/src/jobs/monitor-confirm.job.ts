@@ -11,19 +11,21 @@ import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function pick(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split('.');
-  let cur: unknown = obj;
-  for (const part of parts) {
-    if (!isPlainObject(cur)) return undefined;
-    cur = cur[part];
+;(function() {
+  function pick(obj: Record<string, unknown>, path: string): unknown {
+    const parts = path.split('.');
+    let cur: unknown = obj;
+    for (const part of parts) {
+      if (!isPlainObject(cur)) return undefined;
+      cur = cur[part];
+    }
+    return cur;
   }
-  return cur;
-}
+})();
 
 function pickString(obj: Record<string, unknown>, path: string): string | null {
   const v = pick(obj, path);
@@ -32,27 +34,29 @@ function pickString(obj: Record<string, unknown>, path: string): string | null {
   return s ? s : null;
 }
 
-function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
-  const v = pick(obj, path);
-  return typeof v === 'boolean' ? v : null;
-}
+(function() {
+  function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+    const v = pick(obj, path);
+    return typeof v === 'boolean' ? v : null;
+  }
+})();
 
-function requireString(obj: Record<string, unknown>, path: string): string {
+export function requireString(obj: Record<string, unknown>, path: string): string {
   const s = pickString(obj, path);
   if (!s) throw new Error(`Missing required setting: ${path}`);
   return s;
 }
 
-function toInt(value: unknown): number | null {
+export function toInt(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
   const n = Number.parseInt(value, 10);
   return Number.isFinite(n) ? n : null;
 }
 
-function episodeKey(season: number, episode: number) {
+const episodeKey = (season: number, episode: number): string => {
   return `${season}:${episode}`;
-}
+};
 
 @Injectable()
 export class MonitorConfirmJob {
@@ -792,18 +796,18 @@ export class MonitorConfirmJob {
   }
 }
 
-function asNum(v: unknown): number | null {
+const asNum = (v: unknown): number | null => {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
-}
+};
 
-function asBool(v: unknown): boolean | null {
+const asBool = (v: unknown): boolean | null => {
   return typeof v === 'boolean' ? v : null;
-}
+};
 
-function buildMonitorConfirmReport(params: {
+const buildMonitorConfirmReport = (params: {
   ctx: JobContext;
   raw: JsonObject;
-}): JobReportV1 {
+}): JobReportV1 => {
   const { ctx, raw } = params;
 
   const plex = isPlainObject(raw.plex) ? raw.plex : {};

@@ -2,7 +2,7 @@ import net from 'node:net';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 
-function getLanIps() {
+const getLanIps = () => {
   const nets = os.networkInterfaces();
   const ips = [];
   for (const name of Object.keys(nets)) {
@@ -14,7 +14,7 @@ function getLanIps() {
   return ips;
 }
 
-function isPortFree(port, host = '0.0.0.0') {
+const isPortFree = (port, host = '0.0.0.0') => {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.unref();

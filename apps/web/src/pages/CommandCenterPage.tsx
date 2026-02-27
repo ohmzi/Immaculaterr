@@ -839,20 +839,20 @@ export function CommandCenterPage() {
     setActiveImmaculateUserId((prev) => (prev === userId ? null : userId));
   }, []);
   const openImmaculateUserResetTarget = useCallback(
-    const parseResetTarget = (dataset: DOMStringMap) => {
-      const { plexUserId, mediaType, total: totalRaw, plexUserTitle } = dataset;
-      if (!plexUserId || !mediaType || !totalRaw) return null;
-      const total = Number.parseInt(totalRaw, 10);
-      if (!Number.isFinite(total)) return null;
-      return {
-        plexUserId,
-        plexUserTitle: plexUserTitle || 'Plex User',
-        mediaType: mediaType === 'tv' ? 'tv' : 'movie',
-        total,
-      };
-    };
-
     (event: MouseEvent<HTMLButtonElement>) => {
+      const parseResetTarget = (dataset: DOMStringMap) => {
+        const { plexUserId, mediaType, total: totalRaw, plexUserTitle } = dataset;
+        if (!plexUserId || !mediaType || !totalRaw) return null;
+        const total = Number.parseInt(totalRaw, 10);
+        if (!Number.isFinite(total)) return null;
+        return {
+          plexUserId,
+          plexUserTitle: plexUserTitle || 'Plex User',
+          mediaType: mediaType === 'tv' ? 'tv' : 'movie',
+          total,
+        };
+      };
+
       const target = parseResetTarget(event.currentTarget.dataset);
       if (!target) return;
       setImmaculateUserResetTarget(target);

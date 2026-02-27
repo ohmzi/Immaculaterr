@@ -70,21 +70,21 @@ type MigrationStatusRow = {
   rolled_back_at: number | null;
 };
 
-function isMissingMigrationsTableError(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    err.message.includes('no such table: _prisma_migrations')
-  );
-}
+const isMissingMigrationsTableError = (err: unknown): boolean => (
+  err instanceof Error &&
+  err.message.includes('no such table: _prisma_migrations')
+);
 
-function resolveExistingPath(paths: string[], kind: string): string {
-  const match = paths.find((candidate) => existsSync(candidate));
-  if (match) return match;
+(function() {
+  function resolveExistingPath(paths: string[], kind: string): string {
+    const match = paths.find((candidate) => existsSync(candidate));
+    if (match) return match;
 
-  throw new Error(`Unable to locate ${kind}. Checked: ${paths.join(', ')}`);
-}
+    throw new Error(`Unable to locate ${kind}. Checked: ${paths.join(', ')}`);
+  }
+})();
 
-function runPrisma(args: string[], label: string): void {
+const runPrisma = (args: string[], label: string): void => {
   const prismaBin = resolveExistingPath(PRISMA_BIN_CANDIDATES, 'Prisma CLI');
   const prismaSchema = resolveExistingPath(
     PRISMA_SCHEMA_CANDIDATES,
@@ -101,13 +101,13 @@ function runPrisma(args: string[], label: string): void {
   if (result.status !== 0) {
     throw new Error(`${label} failed (exit ${result.status ?? 1})`);
   }
-}
+};
 
-function hasColumn(rows: TableInfoRow[], column: string): boolean {
+const hasColumn = (rows: TableInfoRow[], column: string): boolean => {
   return rows.some((row) => row.name === column);
-}
+};
 
-async function tableInfo(
+export async function tableInfo(
   prisma: PrismaClient,
   table: string,
 ): Promise<TableInfoRow[]> {
@@ -134,11 +134,11 @@ async function hasFailedTargetMigration(
   return rows[0].finished_at == null && rows[0].rolled_back_at == null;
 }
 
-async function normalizeLegacySessionTimestamps(prisma: PrismaClient) {
+const normalizeLegacySessionTimestamps = async (prisma: PrismaClient) => {
   await prisma.$executeRawUnsafe(NORMALIZE_LEGACY_SESSION_TIMESTAMPS_SQL);
-}
+};
 
-async function repairPartialSessionSchema(prisma: PrismaClient) {
+export async function repairPartialSessionSchema(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe('PRAGMA defer_foreign_keys=ON');
   await prisma.$executeRawUnsafe('PRAGMA foreign_keys=OFF');
   try {
@@ -163,21 +163,21 @@ async function repairPartialSessionSchema(prisma: PrismaClient) {
   }
 }
 
-function isSessionSchemaUpgraded(columns: TableInfoRow[]): boolean {
+const isSessionSchemaUpgraded = (columns: TableInfoRow[]): boolean => {
   return hasColumn(columns, 'tokenVersion') && hasColumn(columns, 'expiresAt');
-}
+};
 
-function shouldRepairPartialSessionSchema(
+const shouldRepairPartialSessionSchema = (
   sessionColumns: TableInfoRow[],
   userColumns: TableInfoRow[],
-): boolean {
+): boolean => {
   return (
     !isSessionSchemaUpgraded(sessionColumns) &&
     hasColumn(userColumns, 'tokenVersion')
   );
-}
+};
 
-function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
+export function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
   if (sessionSchemaUpgraded) {
     runPrisma(
       ['migrate', 'resolve', '--applied', TARGET_MIGRATION],
@@ -192,9 +192,9 @@ function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
   );
 }
 
-async function repairFailedMigrationIfNeeded(
+export const repairFailedMigrationIfNeeded = async (
   prisma: PrismaClient,
-): Promise<void> {
+): Promise<void> => {
   const failedMigration = await hasFailedTargetMigration(prisma);
   if (!failedMigration) return;
 
@@ -211,9 +211,9 @@ async function repairFailedMigrationIfNeeded(
   }
 
   resolveTargetMigrationState(isSessionSchemaUpgraded(sessionInfo));
-}
+};
 
-async function main() {
+(async () => {
   const prisma = new PrismaClient();
   try {
     await repairFailedMigrationIfNeeded(prisma);
@@ -222,7 +222,7 @@ async function main() {
   } finally {
     await prisma.$disconnect();
   }
-}
+})();
 
 main().catch((err) => {
   // eslint-disable-next-line no-console

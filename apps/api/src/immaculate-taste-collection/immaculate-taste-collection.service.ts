@@ -8,11 +8,11 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { immaculateTasteResetMarkerKey } from './immaculate-taste-reset';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function asInt(value: unknown): number | null {
+const asInt = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value))
     return Math.trunc(value);
   if (typeof value === 'string' && value.trim()) {
@@ -20,9 +20,9 @@ function asInt(value: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
-}
+};
 
-function resolveLegacyPointsPath(fileName: string): string | null {
+export function resolveLegacyPointsPath(fileName: string): string | null {
   // Prefer APP_DATA_DIR (same place tcp.sqlite lives)
   const appDataDir = process.env['APP_DATA_DIR'];
   if (appDataDir) {
@@ -45,7 +45,7 @@ function resolveLegacyPointsPath(fileName: string): string | null {
   return null;
 }
 
-function chunk<T>(arr: T[], size: number): T[][] {
+export function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
@@ -612,7 +612,7 @@ export class ImmaculateTasteCollectionService {
     });
   }
 
-  buildThreeTierTmdbRatingShuffleOrder(params: {
+  static buildThreeTierTmdbRatingShuffleOrder(params: {
     movies: Array<{
       tmdbId: number;
       tmdbVoteAvg: number | null;
@@ -696,19 +696,21 @@ export class ImmaculateTasteCollectionService {
   }
 }
 
-function clampMaxPoints(v: unknown): number {
-  const n =
-    typeof v === 'number' && Number.isFinite(v)
-      ? Math.trunc(v)
-      : typeof v === 'string' && v.trim()
-        ? Number.parseInt(v.trim(), 10)
-        : ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
-  if (!Number.isFinite(n))
-    return ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
-  return Math.max(1, Math.min(100, n));
-}
+(function() {
+  function clampMaxPoints(v: unknown): number {
+    const n =
+      typeof v === 'number' && Number.isFinite(v)
+        ? Math.trunc(v)
+        : typeof v === 'string' && v.trim()
+          ? Number.parseInt(v.trim(), 10)
+          : ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
+    if (!Number.isFinite(n))
+      return ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
+    return Math.max(1, Math.min(100, n));
+  }
+})();
 
-function shuffleInPlace<T>(arr: T[]) {
+export function shuffleInPlace<T>(arr: T[]) {
   for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     const tmp = arr[i];

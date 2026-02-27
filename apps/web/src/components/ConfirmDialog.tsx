@@ -84,42 +84,42 @@ export function ConfirmDialog(props: {
           >
             <div className="p-6 sm:p-7">
               <DialogHeader label={label} title={title} />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCloseClick}
-                  className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
-                  aria-label="Close"
-                  disabled={confirming}
-                >
-                  <X className="w-5 h-5" />
-                </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleCloseClick}
+              className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+              aria-label="Close"
+              disabled={confirming}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </motion.div>
+
+          {description ? (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+              <div className="flex items-start gap-3">
+                <CircleAlert
+                  className={`w-4 h-4 mt-0.5 shrink-0 ${
+                    variant === 'primary' ? 'text-amber-200' : 'text-red-200'
+                  }`}
+                />
+                <div className="min-w-0">{description}</div>
               </div>
+            </div>
+          ) : null}
 
-              {description ? (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-                  <div className="flex items-start gap-3">
-                    <CircleAlert
-                      className={`w-4 h-4 mt-0.5 shrink-0 ${
-                        variant === 'primary' ? 'text-amber-200' : 'text-red-200'
-                      }`}
-                    />
-                    <div className="min-w-0">{description}</div>
-                  </div>
-                </div>
-              ) : null}
+          {details ? <div className="mt-4">{details}</div> : null}
 
-              {details ? <div className="mt-4">{details}</div> : null}
+          {error ? (
+            <div className="mt-4 flex items-start gap-2 text-sm text-red-200/90">
+              <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          ) : null}
 
-              {error ? (
-                <div className="mt-4 flex items-start gap-2 text-sm text-red-200/90">
-                  <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              ) : null}
-
-              <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
-                <button
+          <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+            <button
                   type="button"
                   onClick={onClose}
                   className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"

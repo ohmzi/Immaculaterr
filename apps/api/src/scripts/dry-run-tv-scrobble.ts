@@ -5,61 +5,62 @@ import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../db/prisma.service';
 
-async function sleep(ms: number) {
+const sleep = (ms: number) => {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
+};
 
-async function waitForRunFinish(params: {
-  prisma: PrismaService;
-  runId: string;
-  timeoutMs: number;
-}) {
-  const started = Date.now();
-  for (;;) {
-    const run = await params.prisma.jobRun.findUnique({
-      where: { id: params.runId },
-      select: {
-        id: true,
-        status: true,
-        finishedAt: true,
-        errorMessage: true,
-        startedAt: true,
-      },
-    });
-    if (!run) throw new Error(`Run not found: ${params.runId}`);
+(async function() {
+  async function waitForRunFinish(params: {
+    prisma: PrismaService;
+    runId: string;
+    timeoutMs: number;
+  }) {
+    const started = Date.now();
+    for (;;) {
+      const run = await params.prisma.jobRun.findUnique({
+        where: { id: params.runId },
+        select: {
+          id: true,
+          status: true,
+          finishedAt: true,
+          errorMessage: true,
+          startedAt: true,
+        },
+      });
+      if (!run) throw new Error(`Run not found: ${params.runId}`);
 
-    if (run.status !== 'RUNNING' && run.status !== 'PENDING') return run;
-    if (Date.now() - started > params.timeoutMs) return run;
-    await sleep(500);
-  }
-}
-
-async function main() {
-  await ensureBootstrapEnv();
-
-  const seedTitle = process.argv.slice(2).join(' ').trim() || 'Breaking Bad';
-
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['error', 'warn', 'log'],
-  });
-
-  try {
-    // Ensure Prisma is connected before we trigger background job log writes.
-    const prisma = app.get(PrismaService);
-    await prisma.$connect();
-
-    const auth = app.get(AuthService);
-    const jobs = app.get(JobsService);
-
-    const userId = await auth.getFirstAdminUserId();
-    if (!userId) {
-      throw new Error(
-        'No admin user exists. Open the web UI and complete onboarding first.',
-      );
+      if (run.status !== 'RUNNING' && run.status !== 'PENDING') return run;
+      if (Date.now() - started > params.timeoutMs) return run;
+      await sleep(500);
     }
+  }
 
-    const input = {
-      source: 'dryRunScript',
+  async function main() {
+    await ensureBootstrapEnv();
+
+    const seedTitle = process.argv.slice(2).join(' ').trim() || 'Breaking Bad';
+
+    const app = await NestFactory.createApplicationContext(AppModule, {
+      logger: ['error', 'warn', 'log'],
+    });
+
+    try {
+      // Ensure Prisma is connected before we trigger background job log writes.
+      const prisma = app.get(PrismaService);
+      await prisma.$connect();
+
+      const auth = app.get(AuthService);
+      const jobs = app.get(JobsService);
+
+      const userId = await auth.getFirstAdminUserId();
+      if (!userId) {
+        throw new Error(
+          'No admin user exists. Open the web UI and complete onboarding first.',
+        );
+      }
+
+      const input = {
+        source: 'dryRunScript',
       plexEvent: 'media.scrobble',
       mediaType: 'episode',
       seedTitle, // TV pipeline uses show title as the seed
@@ -111,9 +112,9 @@ async function main() {
       prisma.jobLogLine.count({ where: { runId: immaculateRun.id } }),
     ]);
 
-    // eslint-disable-next-line no-console
-    console.log('\n=== DRY RUN COMPLETE ===');
-    // eslint-disable-next-line no-console
+    // Logging dry run completion message for user feedback in CLI
+    console.log('\n=== DRY RUN COMPLETE ==='); // skipcq: JS-0002
+    // Logging dry run summary details for user feedback in CLI
     console.log(
       JSON.stringify(
         {
@@ -134,7 +135,7 @@ async function main() {
         null,
         2,
       ),
-    );
+    ); // skipcq: JS-0002
   } finally {
     await app.close();
   }

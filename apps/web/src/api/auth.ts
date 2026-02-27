@@ -48,11 +48,11 @@ export async function getMeOrNull(): Promise<AuthUser | null> {
   }
 }
 
-async function getLoginKey(): Promise<LoginKeyResponse> {
+export async function getLoginKey(): Promise<LoginKeyResponse> {
   return await fetchJson<LoginKeyResponse>(apiPath('/auth/login-key'));
 }
 
-async function postWithCredentialEnvelope(params: {
+export async function postWithCredentialEnvelope(params: {
   path: AuthCredentialPath;
   username: string;
   password: string;
@@ -75,7 +75,7 @@ async function postWithCredentialEnvelope(params: {
   });
 }
 
-async function postWithPlainCredentials(params: {
+export async function postWithPlainCredentials(params: {
   path: AuthCredentialPath;
   username: string;
   password: string;

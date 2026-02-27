@@ -13,14 +13,14 @@ import { WhatsNewModal } from '@/app/WhatsNewModal';
 import { getVersionHistoryEntry, normalizeVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
-function readOnboardingCompleted(settings: unknown): boolean {
+const readOnboardingCompleted = (settings: unknown): boolean => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
   const onboarding = (settings as Record<string, unknown>)['onboarding'];
   if (!onboarding || typeof onboarding !== 'object' || Array.isArray(onboarding)) return false;
   return Boolean((onboarding as Record<string, unknown>)['completed']);
-}
+};
 
-function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
+const readAcknowledgedWhatsNewVersion = (settings: unknown): string | null => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
   const ui = (settings as Record<string, unknown>)['ui'];
   if (!ui || typeof ui !== 'object' || Array.isArray(ui)) return null;
@@ -28,7 +28,7 @@ function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
   if (!whatsNew || typeof whatsNew !== 'object' || Array.isArray(whatsNew)) return null;
   const acknowledgedVersion = (whatsNew as Record<string, unknown>)['acknowledgedVersion'];
   return normalizeVersion(typeof acknowledgedVersion === 'string' ? acknowledgedVersion : null);
-}
+};
 
 export function AppShell() {
   const location = useLocation();

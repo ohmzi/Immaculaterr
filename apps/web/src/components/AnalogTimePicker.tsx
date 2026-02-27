@@ -36,6 +36,7 @@ export function AnalogTimePicker({ value, onChange, onClose }: AnalogTimePickerP
   const setModeMinutes = useCallback(() => {
     setMode('minutes');
   }, []);
+  }, []);
   const setAm = useCallback(() => {
     setAmpm('AM');
   }, []);

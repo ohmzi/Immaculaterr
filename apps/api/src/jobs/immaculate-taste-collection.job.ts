@@ -18,11 +18,11 @@ import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import { withJobRetry, withJobRetryOrNull } from './job-retry';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function pick(obj: Record<string, unknown>, path: string): unknown {
+const pick = (obj: Record<string, unknown>, path: string): unknown => {
   const parts = path.split('.');
   let cur: unknown = obj;
   for (const part of parts) {
@@ -30,19 +30,19 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
     cur = cur[part];
   }
   return cur;
-}
+};
 
-function pickString(obj: Record<string, unknown>, path: string): string {
+const pickString = (obj: Record<string, unknown>, path: string): string => {
   const v = pick(obj, path);
   return typeof v === 'string' ? v.trim() : '';
-}
+};
 
-function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+const pickBool = (obj: Record<string, unknown>, path: string): boolean | null => {
   const v = pick(obj, path);
   return typeof v === 'boolean' ? v : null;
-}
+};
 
-function pickNumber(obj: Record<string, unknown>, path: string): number | null {
+export function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   const v = pick(obj, path);
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string' && v.trim()) {
@@ -72,7 +72,7 @@ function normalizeAndCapTitles(rawTitles: string[], max: number): string[] {
   return out;
 }
 
-function normalizeHttpUrl(raw: string): string {
+export function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   const parsed = new URL(baseUrl);

@@ -3,7 +3,7 @@ import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { TmdbService } from '../tmdb/tmdb.service';
 
-function chunk<T>(arr: T[], size: number): T[][] {
+export function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
@@ -19,12 +19,12 @@ export class ImmaculateTasteShowCollectionService {
   ) {}
 
   // TV has no legacy JSON import (movie-only historical artifact).
-  async ensureLegacyImported(_params: {
+  static ensureLegacyImported(_params: {
     ctx: JobContext;
     plexUserId: string;
     maxPoints?: number;
   }): Promise<{ imported: boolean; sourcePath: string | null; importedCount: number }> {
-    return { imported: false, sourcePath: null, importedCount: 0 };
+    return Promise.resolve({ imported: false, sourcePath: null, importedCount: 0 });
   }
 
   async applyPointsUpdate(params: {
@@ -410,7 +410,7 @@ export class ImmaculateTasteShowCollectionService {
     });
   }
 
-  buildThreeTierTmdbRatingShuffleOrder(params: {
+  static buildThreeTierTmdbRatingShuffleOrder(params: {
     shows: Array<{
       tvdbId: number;
       tmdbVoteAvg: number | null;
@@ -481,7 +481,7 @@ export class ImmaculateTasteShowCollectionService {
   }
 }
 
-function clampMaxPoints(v: unknown): number {
+const clampMaxPoints = (v: unknown): number => {
   const n =
     typeof v === 'number' && Number.isFinite(v)
       ? Math.trunc(v)
@@ -490,14 +490,16 @@ function clampMaxPoints(v: unknown): number {
         : ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS;
   if (!Number.isFinite(n)) return ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS;
   return Math.max(1, Math.min(100, n));
-}
+};
 
-function shuffleInPlace<T>(arr: T[]) {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = arr[i];
-    arr[i] = arr[j] as T;
-    arr[j] = tmp as T;
+(function() {
+  function shuffleInPlace<T>(arr: T[]) {
+    for (let i = arr.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = arr[i];
+      arr[i] = arr[j] as T;
+      arr[j] = tmp as T;
+    }
+    return arr;
   }
-  return arr;
-}
+})();

@@ -8,7 +8,7 @@ const REPO = process.env.GHCR_REPO ?? process.env.GITHUB_REPOSITORY ?? `${OWNER}
 
 if (!OWNER) throw new Error('Missing GHCR_OWNER / GITHUB_REPOSITORY_OWNER');
 
-async function fetchJsonWithToken(url) {
+const fetchJsonWithToken = async (url) => {
   if (!TOKEN) throw new Error('Missing GITHUB_TOKEN (or GH_TOKEN)');
   const res = await fetch(url, {
     headers: {
@@ -23,7 +23,7 @@ async function fetchJsonWithToken(url) {
     throw new Error(`Request failed: ${res.status} ${res.statusText} (${url}) ${text}`);
   }
   return res.json();
-}
+};
 
 async function fetchText(url) {
   const res = await fetch(url, {

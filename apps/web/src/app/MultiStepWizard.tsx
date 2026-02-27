@@ -212,7 +212,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     return () => clearInterval(pollInterval);
   }, [isPollingPlex, plexOAuthPinId]);
 
-  const handleNext = async () => {
+  const handleNext = () => {
     const currentIndex = getCurrentStepIndex();
     if (currentIndex < STEP_ORDER.length - 1) {
       const nextStep = STEP_ORDER[currentIndex + 1];
@@ -1620,7 +1620,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   );
 }
 
-function RequirementItem({
+const RequirementItem = ({
   icon,
   text,
   required = false,
@@ -1628,7 +1628,7 @@ function RequirementItem({
   icon: ReactNode;
   text: string;
   required?: boolean;
-}) {
+}) => {
   return (
     <li className="flex items-center gap-3 text-zinc-300">
       <div
@@ -1646,13 +1646,13 @@ function RequirementItem({
       </div>
     </li>
   );
-}
+};
 
-function WizardSection({ children }: { children: ReactNode }) {
+export function WizardSection({ children }: { children: ReactNode }) {
   return <div className="rounded-2xl border border-white/10 bg-white/5 p-6">{children}</div>;
 }
 
-function WizardShell(params: {
+export function WizardShell(params: {
   step: WizardStep;
   title: ReactNode;
   subtitle: string;

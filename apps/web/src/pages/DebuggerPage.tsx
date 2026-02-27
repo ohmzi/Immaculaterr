@@ -327,6 +327,7 @@ export function DebuggerPage() {
     handlePlexCopy();
     return undefined;
   }, [handlePlexCopy]);
+  const clearPlexLogs = useCallback(() => {
     handlePlexClear();
   }, [handlePlexClear]);
   const handlePlexLogQueryChange = useCallback(

@@ -231,7 +231,7 @@ export class CleanupAfterAddingNewContentJob {
     settings: any,
     secrets: any,
     setProgress: ReturnType<CleanupAfterAddingNewContentJob['getSetProgress']>,
-  ) {
+  ) => {
     // original delete duplicates logic goes here
   }
 

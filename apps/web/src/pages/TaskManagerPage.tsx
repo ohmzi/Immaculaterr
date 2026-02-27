@@ -1304,57 +1304,58 @@ export function TaskManagerPage() {
 
     const yearRaw = movieSeedYear.trim();
     const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
-    if (!hasValidYear(yearRaw, year)) {
-      return false;
-    }
+  const handleMovieSeedRun = useCallback((titleRaw, yearRaw, title, year) => {
+      if (!hasValidYear(yearRaw, year)) {
+        return false;
+      }
 
-    executeMovieSeedRun(title, year);
-    return true;
-  }, [
-    movieSeedTitle,
-    movieSeedYear,
-    movieSeedDialogJobId,
-    movieSeedMediaType,
-    runMutation,
-    setMovieSeedError,
-    startRunNowUi,
-    setTerminalState,
-    resetMovieSeedDialogOnCloseRef,
-    closeMovieSeedDialog,
-  ]);
-    closeMovieSeedDialog,
-    movieSeedDialogJobId,
-    movieSeedMediaType,
-    movieSeedTitle,
-    movieSeedYear,
-    runMutation,
-    startRunNowUi,
-  ]);
-  const handleMovieSeedExitComplete = useCallback(() => {
-    if (!resetMovieSeedDialogOnCloseRef.current) return;
-    resetMovieSeedDialogOnCloseRef.current = false;
-    resetMovieSeedDialogState();
-  }, [resetMovieSeedDialogState]);
-  const handleMovieSeedMediaTypeChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const value = event.target.value === 'tv' ? 'tv' : 'movie';
+      executeMovieSeedRun(title, year);
+      return true;
+    }, [
+      movieSeedTitle,
+      movieSeedYear,
+      movieSeedDialogJobId,
+      movieSeedMediaType,
+      runMutation,
+      setMovieSeedError,
+      startRunNowUi,
+      setTerminalState,
+      resetMovieSeedDialogOnCloseRef,
+      closeMovieSeedDialog,
+    ]);
+      closeMovieSeedDialog,
+      movieSeedDialogJobId,
+      movieSeedMediaType,
+      movieSeedTitle,
+      movieSeedYear,
+      runMutation,
+      startRunNowUi,
+    ]);
+    const handleMovieSeedExitComplete = useCallback(() => {
+      if (!resetMovieSeedDialogOnCloseRef.current) return;
+      resetMovieSeedDialogOnCloseRef.current = false;
+      resetMovieSeedDialogState();
+    }, [resetMovieSeedDialogState]);
+    const handleMovieSeedMediaTypeChange = useCallback(
+      (event: ChangeEvent<HTMLSelectElement>) => {
+        const value = event.target.value === 'tv' ? 'tv' : 'movie';
+        setMovieSeedError(null);
+        setMovieSeedMediaType(value);
+      },
+      [],
+    );
+    const handleMovieSeedTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
       setMovieSeedError(null);
-      setMovieSeedMediaType(value);
-    },
-    [],
-  );
-  const handleMovieSeedTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setMovieSeedError(null);
-    setMovieSeedTitle(event.target.value);
-  }, []);
-  const handleMovieSeedYearChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setMovieSeedError(null);
-    setMovieSeedYear(event.target.value);
-  }, []);
-  const handleMovieSeedTitleKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
+      setMovieSeedTitle(event.target.value);
+    }, []);
+    const handleMovieSeedYearChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+      setMovieSeedError(null);
+      setMovieSeedYear(event.target.value);
+    }, []);
+    const handleMovieSeedTitleKeyDown = useCallback(
+      (event: ReactKeyboardEvent<HTMLInputElement>) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
       submitMovieSeedRun();
     },
     [submitMovieSeedRun],

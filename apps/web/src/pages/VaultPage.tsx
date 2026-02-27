@@ -57,7 +57,7 @@ type IntegrationId =
   | 'google'
   | 'openai';
 
-function readString(obj: unknown, path: string): string {
+const readString = (obj: unknown, path: string): string => {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
   const parts = path.split('.');
   let cur: unknown = obj;
@@ -66,9 +66,9 @@ function readString(obj: unknown, path: string): string {
     cur = (cur as Record<string, unknown>)[p];
   }
   return typeof cur === 'string' ? cur : '';
-}
+};
 
-function readBool(obj: unknown, path: string): boolean | null {
+const readBool = (obj: unknown, path: string): boolean | null => {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
   const parts = path.split('.');
   let cur: unknown = obj;
@@ -77,7 +77,7 @@ function readBool(obj: unknown, path: string): boolean | null {
     cur = (cur as Record<string, unknown>)[p];
   }
   return typeof cur === 'boolean' ? cur : null;
-}
+};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -91,7 +91,7 @@ function readNonEmptyStrings(value: unknown): string[] {
   );
 }
 
-function readErrorMessage(data: unknown, fallback: string): string {
+const readErrorMessage = (data: unknown, fallback: string): string => {
   if (!isPlainObject(data)) return fallback;
   const message = data.message;
   if (typeof message === 'string') {
@@ -100,11 +100,11 @@ function readErrorMessage(data: unknown, fallback: string): string {
   }
   const parts = readNonEmptyStrings(message);
   return parts.length ? parts.join(', ') : fallback;
-}
+};
 
-function runAsyncTask(promise: Promise<unknown>): void {
+const runAsyncTask = (promise: Promise<unknown>): void => {
   promise.catch(() => undefined);
-}
+};
 
 function MaskedSecretInput(props: {
   value: string;
@@ -912,7 +912,7 @@ export function SettingsPage({
   });
 
   const integrationEnabledMutation = useMutation({
-    mutationFn: async (params: {
+    mutationFn: (params: {
       integration: 'radarr' | 'sonarr' | 'overseerr' | 'google' | 'openai';
       enabled: boolean;
     }) =>

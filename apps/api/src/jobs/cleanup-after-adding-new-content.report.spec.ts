@@ -3,8 +3,8 @@ import {
 } from './cleanup-after-adding-new-content.job';
 import type { JobContext, JsonObject } from './jobs.types';
 
-function createCtx(dryRun = false): JobContext {
-  const noop = async () => undefined;
+const createCtx = (dryRun = false): JobContext => {
+  const noop = () => Promise.resolve(undefined);
   return {
     jobId: 'mediaAddedCleanup',
     runId: 'run-1',
@@ -20,7 +20,7 @@ function createCtx(dryRun = false): JobContext {
     warn: noop,
     error: noop,
   };
-}
+};
 
 describe('buildMediaAddedCleanupReport', () => {
   it('renders separate ARR tasks and skips unconfigured Sonarr without top-level ARR issue', () => {

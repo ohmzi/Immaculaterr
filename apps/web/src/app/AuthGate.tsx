@@ -48,7 +48,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }, [bootstrapQuery.data?.needsAdminSetup]);
 
   const authMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: () => {
       setPostAuthError(null);
       const u = username.trim();
       const p = password;

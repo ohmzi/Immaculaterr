@@ -37,15 +37,15 @@ export type PlexLibraryGrowthVersionResponse = {
   version: string;
 };
 
-export async function createPlexPin(): Promise<PlexPinResponse> {
+export function createPlexPin(): Promise<PlexPinResponse> {
   return fetchJson(apiPath('/plex/pin'), { method: 'POST' });
 }
 
-export async function checkPlexPin(pinId: number): Promise<PlexPinCheckResponse> {
+export function checkPlexPin(pinId: number): Promise<PlexPinCheckResponse> {
   return fetchJson(apiPath(`/plex/pin/${pinId}`));
 }
 
-export async function getPlexLibraryGrowth(): Promise<PlexLibraryGrowthResponse> {
+export function getPlexLibraryGrowth(): Promise<PlexLibraryGrowthResponse> {
   return fetchJson(apiPath('/plex/library-growth'));
 }
 

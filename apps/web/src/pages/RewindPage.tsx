@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-function statusPill(status: string) {
+const statusPill = (status: string) => {
   switch (status) {
     case 'SUCCESS':
       return 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25';
@@ -41,19 +41,19 @@ function statusPill(status: string) {
     default:
       return 'bg-white/10 text-white/70 border border-white/10';
   }
-}
+};
 
-function durationMs(run: JobRun): number | null {
+const durationMs = (run: JobRun): number | null => {
   if (!run.finishedAt) return null;
   const a = Date.parse(run.startedAt);
   const b = Date.parse(run.finishedAt);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return Math.max(0, b - a);
-}
+};
 
 const PENDING_QUEUE_SLOT_MS = 10 * 60_000;
 
-function estimatePendingRemainingMs(run: JobRun, allRuns: JobRun[]): number | null {
+const estimatePendingRemainingMs = (run: JobRun, allRuns: JobRun[]): number | null => {
   if (run.status !== 'PENDING') return null;
   const queuedAt = Date.parse(run.startedAt);
   if (!Number.isFinite(queuedAt)) return null;
@@ -71,9 +71,9 @@ function estimatePendingRemainingMs(run: JobRun, allRuns: JobRun[]): number | nu
 
   const estimatedStartAt = queuedAt + (position + 1) * PENDING_QUEUE_SLOT_MS;
   return Math.max(0, estimatedStartAt - Date.now());
-}
+};
 
-function formatDuration(ms: number): string {
+const formatDuration = (ms: number): string => {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -82,38 +82,38 @@ function formatDuration(ms: number): string {
   const h = Math.floor(m / 60);
   const mm = m % 60;
   return `${h}h ${mm}m`;
-}
+};
 
-function formatRemaining(ms: number): string {
+const formatRemaining = (ms: number): string => {
   if (ms < 30_000) return 'starting soon';
   const minutes = Math.ceil(ms / 60_000);
   if (minutes < 60) return `~${minutes}m remaining`;
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
   return rem ? `~${hours}h ${rem}m remaining` : `~${hours}h remaining`;
-}
+};
 
-function formatRunDuration(run: JobRun, allRuns: JobRun[]): string {
+const formatRunDuration = (run: JobRun, allRuns: JobRun[]): string => {
   if (run.status === 'PENDING') {
     const remainingMs = estimatePendingRemainingMs(run, allRuns);
     return remainingMs === null ? '—' : formatRemaining(remainingMs);
   }
   const ms = durationMs(run);
   return ms === null ? '—' : formatDuration(ms);
-}
+};
 
-function modeLabel(run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' {
+const modeLabel = (run: JobRun): 'Auto-Run' | 'Manual' | 'Dry-Run' => {
   if (run.dryRun) return 'Dry-Run';
   return run.trigger === 'schedule' || run.trigger === 'auto'
     ? 'Auto-Run'
     : 'Manual';
-}
+};
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+};
 
-function issueSummary(run: JobRun): string {
+const issueSummary = (run: JobRun): string => {
   if (run.errorMessage) return decodeHtmlEntities(run.errorMessage);
   const s = run.summary;
   if (!s || typeof s !== 'object' || Array.isArray(s)) return '';
@@ -126,9 +126,9 @@ function issueSummary(run: JobRun): string {
     .map((it) => (typeof it.message === 'string' ? it.message.trim() : ''))
     .filter(Boolean);
   return decodeHtmlEntities(msgs[0] ?? '');
-}
+};
 
-function getPlexUserContext(run: JobRun): { plexUserId: string; plexUserTitle: string } {
+const getPlexUserContext = (run: JobRun): { plexUserId: string; plexUserTitle: string } => {
   const s = run.summary;
   if (!s || typeof s !== 'object' || Array.isArray(s))
     return { plexUserId: '', plexUserTitle: '' };
@@ -142,7 +142,7 @@ function getPlexUserContext(run: JobRun): { plexUserId: string; plexUserTitle: s
   const plexUserTitle =
     typeof raw.plexUserTitle === 'string' ? raw.plexUserTitle.trim() : '';
   return { plexUserId, plexUserTitle };
-}
+};
 
 function pickSummaryValue(obj: Record<string, unknown>, path: string): unknown {
   const parts = path.split('.');
@@ -159,7 +159,7 @@ function pickSummaryString(obj: Record<string, unknown>, path: string): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 
-function normalizeMediaType(raw: string): 'movie' | 'tv' | null {
+const normalizeMediaType = (raw: string): 'movie' | 'tv' | null => {
   const v = raw.trim().toLowerCase();
   if (!v) return null;
   if (v === 'movie' || v === 'movies' || v === 'film') return 'movie';
@@ -176,7 +176,7 @@ function normalizeMediaType(raw: string): 'movie' | 'tv' | null {
     return 'tv';
   }
   return null;
-}
+};
 
 function getMediaTypeContext(run: JobRun): { key: 'movie' | 'tv' | ''; label: string } {
   const summary = run.summary;
@@ -301,7 +301,7 @@ export function RewindPage() {
   }, [historyQuery.data?.runs]);
 
   const clearAllMutation = useMutation({
-    mutationFn: async () => clearRuns(),
+    mutationFn: () => clearRuns(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['jobRuns', 'rewind'] });
       setClearAllOpen(false);

@@ -109,7 +109,7 @@ const TYPE_TAG_LABEL: Record<Exclude<ServiceFilter, 'errors'>, string> = {
   openai: 'OpenAI',
 };
 
-function logMatchesTask(line: { message?: string; context?: string | null }) {
+const logMatchesTask = (line: { message?: string; context?: string | null }) => {
   const msg = String(line.message ?? '').toLowerCase();
   const ctx = String(line.context ?? '').toLowerCase();
   const hay = `${ctx} ${msg}`;
@@ -140,9 +140,9 @@ function logMatchesTask(line: { message?: string; context?: string | null }) {
     hay.includes('run: finished') ||
     hay.includes('run: failed')
   );
-}
+};
 
-function logMatchesAnyService(line: { message?: string; context?: string | null }) {
+const logMatchesAnyService = (line: { message?: string; context?: string | null }) => {
   const msg = String(line.message ?? '').toLowerCase();
   const ctx = String(line.context ?? '').toLowerCase();
   const hay = `${ctx} ${msg}`;
@@ -160,48 +160,50 @@ function logMatchesAnyService(line: { message?: string; context?: string | null 
     hay.includes('custom search') ||
     hay.includes('cse')
   );
-}
+};
 
-function serviceTagsForLine(line: {
-  message?: string;
-  context?: string | null;
-  level?: string;
-}): Set<ServiceFilter> {
-  const out = new Set<ServiceFilter>();
-  const msg = String(line.message ?? '').toLowerCase();
-  const ctx = String(line.context ?? '').toLowerCase();
-  const hay = `${ctx} ${msg}`;
+(function() {
+  function serviceTagsForLine(line: {
+    message?: string;
+    context?: string | null;
+    level?: string;
+  }): Set<ServiceFilter> {
+    const out = new Set<ServiceFilter>();
+    const msg = String(line.message ?? '').toLowerCase();
+    const ctx = String(line.context ?? '').toLowerCase();
+    const hay = `${ctx} ${msg}`;
 
-  if (String(line.level ?? '').toLowerCase() === 'error') out.add('errors');
-  if (logMatchesTask(line)) out.add('task');
+    if (String(line.level ?? '').toLowerCase() === 'error') out.add('errors');
+    if (logMatchesTask(line)) out.add('task');
 
-  if (
-    hay.includes('plex') ||
-    msg.includes('media.scrobble') ||
-    msg.includes('library.new') ||
-    msg.includes('webhook') ||
-    msg.includes('notificationcontainer')
-  ) {
-    out.add('plex');
+    if (
+      hay.includes('plex') ||
+      msg.includes('media.scrobble') ||
+      msg.includes('library.new') ||
+      msg.includes('webhook') ||
+      msg.includes('notificationcontainer')
+    ) {
+      out.add('plex');
+    }
+    if (hay.includes('tmdb') || hay.includes('themoviedb')) out.add('tmdb');
+    if (hay.includes('radarr')) out.add('radarr');
+    if (hay.includes('sonarr')) out.add('sonarr');
+    if (
+      hay.includes('google') ||
+      hay.includes('programmable search') ||
+      hay.includes('custom search') ||
+      hay.includes('cse')
+    ) {
+      out.add('google');
+    }
+    if (hay.includes('openai') || hay.includes('open ai')) out.add('openai');
+
+    // App-core bucket (Immaculaterr): anything not clearly attributable to an external service.
+    if (!logMatchesAnyService(line)) out.add('immaculaterr');
+
+    return out;
   }
-  if (hay.includes('tmdb') || hay.includes('themoviedb')) out.add('tmdb');
-  if (hay.includes('radarr')) out.add('radarr');
-  if (hay.includes('sonarr')) out.add('sonarr');
-  if (
-    hay.includes('google') ||
-    hay.includes('programmable search') ||
-    hay.includes('custom search') ||
-    hay.includes('cse')
-  ) {
-    out.add('google');
-  }
-  if (hay.includes('openai') || hay.includes('open ai')) out.add('openai');
-
-  // App-core bucket (Immaculaterr): anything not clearly attributable to an external service.
-  if (!logMatchesAnyService(line)) out.add('immaculaterr');
-
-  return out;
-}
+})();
 
 export function LogsPage() {
   const queryClient = useQueryClient();

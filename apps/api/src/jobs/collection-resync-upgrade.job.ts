@@ -192,19 +192,21 @@ class UpgradeOperationError extends Error {
   }
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
+(function() {
+  function nowIso(): string {
+    return new Date().toISOString();
+  }
+})();
 
-function sleep(ms: number): Promise<void> {
+const sleep = (ms: number): Promise<void> => {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
+};
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function pick(obj: Record<string, unknown>, path: string): unknown {
+const pick = (obj: Record<string, unknown>, path: string): unknown => {
   const parts = path.split('.');
   let cur: unknown = obj;
   for (const part of parts) {
@@ -212,14 +214,14 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
     cur = cur[part];
   }
   return cur;
-}
+};
 
-function pickString(obj: Record<string, unknown>, path: string): string {
+const pickString = (obj: Record<string, unknown>, path: string): string => {
   const v = pick(obj, path);
   return typeof v === 'string' ? v.trim() : '';
-}
+};
 
-function pickNumber(obj: Record<string, unknown>, path: string): number | null {
+const pickNumber = (obj: Record<string, unknown>, path: string): number | null => {
   const v = pick(obj, path);
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string' && v.trim()) {
@@ -227,7 +229,7 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
-}
+};
 
 function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
@@ -239,12 +241,14 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-function safeErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
+(function() {
+  function safeErrorMessage(err: unknown): string {
+    if (err instanceof Error) return err.message;
+    return String(err);
+  }
+})();
 
-function toFiniteInt(value: unknown, fallback = 0): number {
+export function toFiniteInt(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value))
     return Math.max(0, Math.trunc(value));
   if (typeof value === 'string' && value.trim()) {
@@ -254,28 +258,28 @@ function toFiniteInt(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function isNotFoundError(err: unknown): boolean {
+const isNotFoundError = (err: unknown): boolean => {
   const msg = safeErrorMessage(err).toLowerCase();
   return msg.includes('http 404') || msg.includes('not found');
-}
+};
 
-function extractPlexUserTitleFromCollectionName(name: string): string | null {
+const extractPlexUserTitleFromCollectionName = (name: string): string | null => {
   const match = String(name ?? '')
     .trim()
     .match(/\(([^)]+)\)\s*$/);
   if (!match?.[1]) return null;
   const title = match[1].trim();
   return title || null;
-}
+};
 
-function asJsonObject(value: unknown): JsonObject | null {
+const asJsonObject = (value: unknown): JsonObject | null => {
   return isPlainObject(value) ? (value as JsonObject) : null;
-}
+};
 
-function createProgress(
+const createProgress = (
   source: UpgradeSource,
   phase: UpgradePhase = 'pending',
-): UpgradeItemProgress {
+): UpgradeItemProgress => {
   const stamp = nowIso();
   return {
     phase,
@@ -289,9 +293,9 @@ function createProgress(
     verifiedAt: phase === 'verified' ? stamp : null,
     doneAt: phase === 'done' ? stamp : null,
   };
-}
+};
 
-function markProgressPhase(
+export function markProgressPhase(
   progress: UpgradeItemProgress,
   phase: UpgradePhase,
 ): UpgradeItemProgress {
@@ -321,7 +325,7 @@ export function buildCollectionResyncQueueItemKey(params: {
   ].join('|');
 }
 
-function sortQueueItems(
+export function sortQueueItems(
   items: CollectionResyncQueueItem[],
 ): CollectionResyncQueueItem[] {
   return items.slice().sort((a, b) => {
@@ -346,16 +350,14 @@ export function getPendingQueueItemsInOrder(params: {
   );
 }
 
-function taskTitles(): Record<UpgradeTaskId, string> {
-  return {
-    capture_existing_state: 'Capture Existing State',
-    delete_all_plex_collections: 'Delete All Plex Collections',
-    recreate_collections_sequentially: 'Recreate Collections Sequentially',
-    verification_and_finalize: 'Verification and Finalize',
-  };
-}
+const taskTitles = (): Record<UpgradeTaskId, string> => ({
+  capture_existing_state: 'Capture Existing State',
+  delete_all_plex_collections: 'Delete All Plex Collections',
+  recreate_collections_sequentially: 'Recreate Collections Sequentially',
+  verification_and_finalize: 'Verification and Finalize',
+});
 
-function orderedTaskIds(): UpgradeTaskId[] {
+export function orderedTaskIds(): UpgradeTaskId[] {
   return [
     'capture_existing_state',
     'delete_all_plex_collections',
@@ -364,7 +366,7 @@ function orderedTaskIds(): UpgradeTaskId[] {
   ];
 }
 
-function buildInitialTaskState(): Record<UpgradeTaskId, TaskState> {
+const buildInitialTaskState = (): Record<UpgradeTaskId, TaskState> => {
   const titles = taskTitles();
   return {
     capture_existing_state: {
@@ -400,9 +402,9 @@ function buildInitialTaskState(): Record<UpgradeTaskId, TaskState> {
       issues: [],
     },
   };
-}
+};
 
-function toTaskArray(map: Record<UpgradeTaskId, TaskState>): JobReportTask[] {
+const toTaskArray = (map: Record<UpgradeTaskId, TaskState>): JobReportTask[] => {
   return orderedTaskIds().map((id) => {
     const task = map[id];
     return {
@@ -414,7 +416,7 @@ function toTaskArray(map: Record<UpgradeTaskId, TaskState>): JobReportTask[] {
       ...(task.issues.length ? { issues: task.issues } : {}),
     };
   });
-}
+};
 
 @Injectable()
 export class CollectionResyncUpgradeJob {

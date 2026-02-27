@@ -185,6 +185,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     doResetAccount();
     return undefined;
   }, [doResetAccount]);
+  useEffect(() => {
     setSelectedIndex(null);
   }, []);
   const handleNavDropdownClick = useCallback(

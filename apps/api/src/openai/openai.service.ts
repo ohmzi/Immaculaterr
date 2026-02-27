@@ -544,7 +544,7 @@ export class OpenAiService {
   }
 }
 
-function safeJsonString(value: unknown): string {
+export function safeJsonString(value: unknown): string {
   try {
     return JSON.stringify(value ?? {}, null, 0);
   } catch {
@@ -567,14 +567,14 @@ function cleanTitle(line: string): string | null {
   // Remove surrounding quotes
   s = s
     .trim()
-    .replace(/^["']+/, '')
-    .replace(/["']+$/, '')
+    .replace(/^['\"]+/, '')
+    .replace(/['\"]+$/, '')
     .trim();
 
   return s || null;
 }
 
-function parseNewlineRecommendations(text: string, limit: number): string[] {
+export function parseNewlineRecommendations(text: string, limit: number): string[] {
   const lines = text.split(/\r?\n/);
   const out: string[] = [];
   const seen = new Set<string>();
@@ -592,18 +592,12 @@ function parseNewlineRecommendations(text: string, limit: number): string[] {
   return out;
 }
 
-function stripMarkdownFences(text: string): string {
-  let t = text.trim();
-  if (!t.startsWith('```')) return t;
-  t = t.replace(/^```[a-zA-Z0-9_-]*\s*/, '').trim();
-  t = t.replace(/\s*```$/, '').trim();
-  return t;
-}
+t = t.replace(/^
 
-function tryParseJsonRecs(text: string): {
+const tryParseJsonRecs = (text: string): {
   primary: string[];
   upcoming: string[];
-} {
+} => {
   if (!text || !text.trim()) return { primary: [], upcoming: [] };
   const t = stripMarkdownFences(text);
   let obj: unknown;
@@ -623,9 +617,9 @@ function tryParseJsonRecs(text: string): {
     primary: cleanStringList(primaryRaw),
     upcoming: cleanStringList(upcomingRaw),
   };
-}
+};
 
-function cleanStringList(value: unknown): string[] {
+const cleanStringList = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];
   const seen = new Set<string>();
@@ -639,9 +633,9 @@ function cleanStringList(value: unknown): string[] {
     out.push(title);
   }
   return out;
-}
+};
 
-function mergePrimaryAndUpcoming(
+export function mergePrimaryAndUpcoming(
   primary: string[],
   upcoming: string[],
   params: { limit: number; upcomingCapFraction: number },
@@ -703,9 +697,9 @@ function tryParseSelectionJson(
   };
 }
 
-function tryParseNoSplitSelectionJson(
+const tryParseNoSplitSelectionJson = (
   text: string,
-): { selected: number[] } | null {
+): { selected: number[] } | null => {
   const t = stripMarkdownFences(text || '');
   let obj: unknown;
   try {
@@ -716,9 +710,9 @@ function tryParseNoSplitSelectionJson(
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
   const rec = obj as Record<string, unknown>;
   return { selected: coerceNumberList(rec['selected']) };
-}
+};
 
-function coerceNumberList(value: unknown): number[] {
+export function coerceNumberList(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   const out: number[] = [];
   const seen = new Set<number>();
