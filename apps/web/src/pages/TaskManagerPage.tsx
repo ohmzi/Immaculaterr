@@ -3416,10 +3416,10 @@ export function TaskManagerPage() {
                             <div className="flex flex-col md:flex-row gap-4 md:items-start">
                               {/* Frequency Selector */}
                               <div className="flex-1 min-w-[200px] h-[106px] flex flex-col">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
                                   <CalendarDays className="w-3 h-3" />
                                   Repeat
-                                </label>
+                                </div>
                                 <div className="flex flex-col gap-0.5 h-[90px]">
                                 <div className="relative grid grid-cols-3 bg-[#1a1625]/80 backdrop-blur-sm p-1 rounded-xl border border-white/10 shadow-inner h-[42px]">
                                   {/* Animated sliding background pill */}
@@ -3610,10 +3610,10 @@ export function TaskManagerPage() {
 
                               {/* Time Picker */}
                               <div className="flex-1 max-w-xs h-[106px] flex flex-col">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
                                   <Clock className="w-3 h-3" />
                                   Time
-                                </label>
+                                </div>
                                 <Popover
                                   open={timePickerOpen[job.id]}
                                   onOpenChange={handleJobTimePickerOpenChange}
@@ -3645,10 +3645,10 @@ export function TaskManagerPage() {
 
                               {/* Next Run Info */}
                               <div className="relative z-50 flex-1 max-w-xs h-[106px] flex flex-col">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                <div className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-2">
                                   <Clock className="w-3 h-3" />
                                   Next Run
-                                </label>
+                                </div>
                                 <button
                                   type="button"
                                   data-job-id={job.id}
@@ -3798,9 +3798,9 @@ export function TaskManagerPage() {
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <div className="sm:col-span-1">
                     <div className="h-8 flex items-end">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                      <div className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
                         Media type
-                      </label>
+                      </div>
                     </div>
                     <select
                       value={movieSeedMediaType}
@@ -3814,9 +3814,9 @@ export function TaskManagerPage() {
 
                   <div className="sm:col-span-2">
                     <div className="h-8 flex items-end">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                      <div className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
                         Content title
-                      </label>
+                      </div>
                     </div>
                     <input
                       ref={movieSeedTitleRef}
@@ -3830,9 +3830,9 @@ export function TaskManagerPage() {
 
                   <div className="sm:col-span-1">
                     <div className="h-8 flex items-end">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
+                      <div className="text-xs font-bold text-gray-400 uppercase tracking-wider leading-none whitespace-nowrap">
                         Year (optional)
-                      </label>
+                      </div>
                     </div>
                     <input
                       value={movieSeedYear}

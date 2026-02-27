@@ -2278,7 +2278,7 @@ export function SettingsPage({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className={labelClass}>Base URL</label>
+                    <div className={labelClass}>Base URL</div>
                     <input
                       type="text"
                       value={plexBaseUrl}
@@ -2292,7 +2292,7 @@ export function SettingsPage({
                     </p>
                   </div>
                   <div>
-                    <label className={labelClass}>Token</label>
+                    <div className={labelClass}>Token</div>
                     <div className="flex min-w-0 gap-2">
                       <MaskedSecretInput
                         value={plexToken}
@@ -2373,7 +2373,7 @@ export function SettingsPage({
                 </div>
                 <div className="grid grid-cols-1 gap-6">
                   <div>
-                    <label className={labelClass}>API Key</label>
+                    <div className={labelClass}>API Key</div>
                     <MaskedSecretInput
                       value={tmdbApiKey}
                       setValue={setTmdbApiKey}
@@ -2502,7 +2502,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className={labelClass}>Base URL</label>
+                          <div className={labelClass}>Base URL</div>
                           <input
                             type="text"
                             value={radarrBaseUrl}
@@ -2512,7 +2512,7 @@ export function SettingsPage({
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={radarrApiKey}
                             setValue={setRadarrApiKey}
@@ -2647,7 +2647,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className={labelClass}>Base URL</label>
+                          <div className={labelClass}>Base URL</div>
                           <input
                             type="text"
                             value={sonarrBaseUrl}
@@ -2657,7 +2657,7 @@ export function SettingsPage({
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={sonarrApiKey}
                             setValue={setSonarrApiKey}
@@ -2793,7 +2793,7 @@ export function SettingsPage({
                       >
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div>
-                            <label className={labelClass}>Base URL</label>
+                            <div className={labelClass}>Base URL</div>
                             <input
                               type="text"
                               value={overseerrBaseUrl}
@@ -2803,7 +2803,7 @@ export function SettingsPage({
                             />
                           </div>
                           <div>
-                            <label className={labelClass}>API Key</label>
+                            <div className={labelClass}>API Key</div>
                             <MaskedSecretInput
                               value={overseerrApiKey}
                               setValue={setOverseerrApiKey}
@@ -2917,7 +2917,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className={labelClass}>Search Engine ID</label>
+                          <div className={labelClass}>Search Engine ID</div>
                           <input
                             type="text"
                             value={googleSearchEngineId}
@@ -2927,7 +2927,7 @@ export function SettingsPage({
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={googleApiKey}
                             setValue={setGoogleApiKey}
@@ -3037,7 +3037,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 gap-6">
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={openAiApiKey}
                             setValue={setOpenAiApiKey}

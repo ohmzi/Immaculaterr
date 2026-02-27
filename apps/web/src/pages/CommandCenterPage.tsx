@@ -1098,9 +1098,9 @@ export function CommandCenterPage() {
                       {/* Count */}
                       <div className="space-y-3">
                         <div className="flex items-end justify-between gap-4">
-                          <label className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                          <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
                             Recommendation count
-                          </label>
+                          </div>
                         </div>
 
                         <FunCountSlider
@@ -2491,9 +2491,9 @@ export function CommandCenterPage() {
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
-                            </label>
+                            </div>
                           <Select
                             value={draftRootFolderPath || effectiveDefaults.rootFolderPath}
                             onValueChange={handleRadarrRootFolderChange}
@@ -2516,9 +2516,9 @@ export function CommandCenterPage() {
               </div>
 
                   <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Quality profile
-                            </label>
+                            </div>
                           <Select
                             value={String(
                               draftQualityProfileId || effectiveDefaults.qualityProfileId,
@@ -2543,9 +2543,9 @@ export function CommandCenterPage() {
                 </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Tag (optional)
-                            </label>
+                            </div>
                           <Select
                             value={draftTagId !== null ? String(draftTagId) : 'none'}
                             onValueChange={handleRadarrTagChange}
@@ -2688,9 +2688,9 @@ export function CommandCenterPage() {
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
-                            </label>
+                            </div>
                           <Select
                             value={
                               sonarrDraftRootFolderPath || sonarrEffectiveDefaults.rootFolderPath
@@ -2715,9 +2715,9 @@ export function CommandCenterPage() {
                 </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Quality profile
-                            </label>
+                            </div>
                           <Select
                             value={String(
                               sonarrDraftQualityProfileId ||
@@ -2743,9 +2743,9 @@ export function CommandCenterPage() {
                 </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Tag (optional)
-                            </label>
+                            </div>
                           <Select
                             value={sonarrDraftTagId !== null ? String(sonarrDraftTagId) : 'none'}
                             onValueChange={handleSonarrTagChange}

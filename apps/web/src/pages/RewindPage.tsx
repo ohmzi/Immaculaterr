@@ -374,7 +374,7 @@ export function RewindPage() {
   const filtersForm = (
     <div className="grid gap-4 md:grid-cols-5">
       <div>
-        <label className={labelClass}>Job</label>
+        <div className={labelClass}>Job</div>
         <Select
           value={jobId || 'all'}
           onValueChange={handleJobFilterChange}
@@ -394,7 +394,7 @@ export function RewindPage() {
       </div>
 
       <div>
-        <label className={labelClass}>Status</label>
+        <div className={labelClass}>Status</div>
         <Select
           value={status || 'any'}
           onValueChange={handleStatusFilterChange}
@@ -413,7 +413,7 @@ export function RewindPage() {
       </div>
 
       <div>
-        <label className={labelClass}>User</label>
+        <div className={labelClass}>User</div>
         <Select
           value={plexUserFilter || 'all'}
           onValueChange={handlePlexUserFilterChange}
@@ -433,7 +433,7 @@ export function RewindPage() {
       </div>
 
       <div>
-        <label className={labelClass}>Media type</label>
+        <div className={labelClass}>Media type</div>
         <Select
           value={mediaTypeFilter || 'all'}
           onValueChange={handleMediaTypeFilterChange}
@@ -450,7 +450,7 @@ export function RewindPage() {
       </div>
 
       <div>
-        <label className={labelClass}>Search</label>
+        <div className={labelClass}>Search</div>
         <input
           value={q}
           onChange={handleSearchChange}
