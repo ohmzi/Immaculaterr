@@ -1164,7 +1164,7 @@ export function JobRunDetailPage() {
                                     Issues ({issues.length})
                                   </div>
                                   <ul className="space-y-2 text-sm">
-                                    {issues.slice(0, 50).map((it, idx) => {
+                                    {issues.slice(0, 50).map((it) => {
                                       const level = String(it.level ?? 'warn').toLowerCase();
                                       const msg = String(it.message ?? '').trim();
                                       const cls =
@@ -1173,7 +1173,7 @@ export function JobRunDetailPage() {
                                           : 'text-amber-200';
                                       return (
                                         <li
-                                          key={`${idx}-${level}-${msg.slice(0, 24)}`}
+                                          key={`${level}-${msg}`}
                                           className={`${cls} font-mono text-xs whitespace-pre-wrap break-words`}
                                         >
                                           {level.toUpperCase()}: {msg}
@@ -1244,7 +1244,7 @@ export function JobRunDetailPage() {
 
                                       return (
                                         <div
-                                          key={`${idx}-${title}`}
+                                          key={sectionId ?? title}
                                           className="rounded-2xl border border-white/10 bg-white/5 p-6"
                                         >
                                           <div className="text-sm font-semibold text-white mb-4">
@@ -1281,7 +1281,7 @@ export function JobRunDetailPage() {
 
                                     return (
                                       <div
-                                        key={`${idx}-${title}`}
+                                        key={sectionId ?? title}
                                         className="rounded-2xl border border-white/10 bg-white/5 p-6"
                                       >
                                         <div className="text-sm font-semibold text-white mb-4">
@@ -1299,7 +1299,7 @@ export function JobRunDetailPage() {
                                                 </tr>
                                               </thead>
                                               <tbody>
-                                                {rows.map((r, rIdx) => {
+                                                {rows.map((r) => {
                                                   const label = pickString(r, 'label') ?? 'Metric';
                                                   const unit = pickString(r, 'unit');
                                                   const note = pickString(r, 'note');
@@ -1318,7 +1318,10 @@ export function JobRunDetailPage() {
                                                           : 'text-white/70';
 
                                                   return (
-                                                    <tr key={`${rIdx}-${label}`} className="border-t border-white/10">
+                                                    <tr
+                                                      key={`${label}-${start ?? ''}-${changed ?? ''}-${end ?? ''}-${unit ?? ''}-${note ?? ''}`}
+                                                      className="border-t border-white/10"
+                                                    >
                                                       <td className="px-4 py-3 text-white/85">
                                                         <div className="font-semibold">{label}</div>
                                                         {note ? (
@@ -1502,8 +1505,8 @@ export function JobRunDetailPage() {
                                       Sample affected Radarr titles ({radarr.sampleTitles.length})
                                     </summary>
                                     <ul className="mt-3 space-y-1 text-xs text-white/70">
-                                      {radarr.sampleTitles.slice(0, 25).map((t, idx) => (
-                                        <li key={`${idx}-${String(t)}`} className="font-mono">
+                                      {radarr.sampleTitles.slice(0, 25).map((t) => (
+                                        <li key={String(t)} className="font-mono">
                                           {String(t)}
                                         </li>
                                       ))}
@@ -1712,8 +1715,8 @@ export function JobRunDetailPage() {
                                       Warnings ({warnings.length})
                                     </summary>
                                     <ul className="mt-3 space-y-1 text-xs text-amber-100/90">
-                                      {warnings.slice(0, 50).map((w, idx) => (
-                                        <li key={`${idx}-${w}`} className="font-mono">
+                                      {warnings.slice(0, 50).map((w) => (
+                                        <li key={w} className="font-mono">
                                           {w}
                                         </li>
                                       ))}
@@ -1729,7 +1732,7 @@ export function JobRunDetailPage() {
                         if (collections) {
                           return (
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
-                              {collections.map((c, idx) => {
+                              {collections.map((c) => {
                                 const name = String(c?.collectionName ?? 'Collection');
                                 const jsonFile = c?.jsonFile ? String(c.jsonFile) : null;
                                 const jsonFound = typeof c?.jsonFound === 'boolean' ? c.jsonFound : null;
@@ -1741,7 +1744,7 @@ export function JobRunDetailPage() {
 
                                 return (
                                   <div
-                                    key={`${name}-${idx}`}
+                                    key={jsonFile ?? name}
                                     className="rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-5"
                                   >
                                     <div className="flex items-start justify-between gap-3">
@@ -1921,7 +1924,7 @@ export function JobRunDetailPage() {
 
                             return (
                               <details
-                                key={`${idx}-${title}`}
+                                key={taskId || title}
                                 className="rounded-2xl border border-white/10 bg-white/5 p-5"
                               >
                                 <summary className="cursor-pointer list-none">
@@ -1952,7 +1955,7 @@ export function JobRunDetailPage() {
                                       Issues
                                     </div>
                                     <ul className="space-y-1 text-xs font-mono">
-                                      {issues.slice(0, 50).map((it, ii) => {
+                                      {issues.slice(0, 50).map((it) => {
                                         const level = String(it.level ?? 'warn').toLowerCase();
                                         const msg = String(it.message ?? '').trim();
                                         const cls =
@@ -1961,7 +1964,7 @@ export function JobRunDetailPage() {
                                             : 'text-amber-200';
                                         return (
                                           <li
-                                            key={`${idx}-${ii}-${level}-${msg.slice(0, 24)}`}
+                                            key={`${taskId || title}-${level}-${msg}`}
                                             className={`${cls} whitespace-pre-wrap break-words`}
                                           >
                                             {level.toUpperCase()}: {msg}
@@ -1984,7 +1987,7 @@ export function JobRunDetailPage() {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {rows.map((r, rIdx) => {
+                                        {rows.map((r) => {
                                           const label = pickString(r, 'label') ?? 'Metric';
                                           const unit = pickString(r, 'unit');
                                           const start = pickNumber(r, 'start');
@@ -2000,7 +2003,7 @@ export function JobRunDetailPage() {
                                                   : 'text-white/70';
                                           return (
                                             <tr
-                                              key={`${idx}-${rIdx}-${label}`}
+                                              key={`${taskId || title}-${label}-${start ?? ''}-${changed ?? ''}-${end ?? ''}-${unit ?? ''}`}
                                               className="border-t border-white/10"
                                             >
                                               <td className="px-4 py-3 text-white/85 font-semibold">
@@ -2029,10 +2032,17 @@ export function JobRunDetailPage() {
                                       Facts
                                     </div>
                                     <div className="grid gap-2 sm:grid-cols-2">
-                                      {facts.slice(0, 50).map((f, fi) => {
+                                      {facts.slice(0, 50).map((f) => {
                                         const labelRaw = String(f.label ?? '').trim() || 'Fact';
                                         const label = decodeHtmlEntities(labelRaw);
                                         const rawValue = (f as Record<string, unknown>).value;
+                                        const factValueKey =
+                                          typeof rawValue === 'string'
+                                            ? rawValue
+                                            : rawValue === null || rawValue === undefined
+                                              ? ''
+                                              : JSON.stringify(rawValue);
+                                        const factKey = `${taskId || title}-${label}-${factValueKey}`;
                                         const order = isPlainObject(rawValue)
                                           ? pickString(rawValue, 'order')
                                           : null;
@@ -2077,7 +2087,7 @@ export function JobRunDetailPage() {
                                           if (collectionDetails.lastAddedItems.length) {
                                             return (
                                               <details
-                                                key={`${idx}-${fi}-${label}`}
+                                                key={factKey}
                                                 className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
                                               >
                                                 <summary className="cursor-pointer list-none">
@@ -2100,9 +2110,9 @@ export function JobRunDetailPage() {
                                                     <ul className="space-y-1 text-xs text-white/80 font-mono">
                                                       {collectionDetails.lastAddedItems
                                                         .slice(0, 50)
-                                                        .map((it, ii) => (
+                                                        .map((it) => (
                                                           <li
-                                                            key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
+                                                            key={it}
                                                             className="whitespace-pre-wrap break-words"
                                                           >
                                                             {decodeHtmlEntities(it)}
@@ -2117,7 +2127,7 @@ export function JobRunDetailPage() {
 
                                           return (
                                             <div
-                                              key={`${idx}-${fi}-${label}`}
+                                              key={factKey}
                                               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
                                             >
                                               <div className="text-[11px] text-white/60 font-mono">
@@ -2136,7 +2146,7 @@ export function JobRunDetailPage() {
                                             : expandable.items;
                                           return (
                                             <details
-                                              key={`${idx}-${fi}-${label}`}
+                                              key={factKey}
                                               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
                                             >
                                               <summary className="cursor-pointer list-none">
@@ -2160,9 +2170,9 @@ export function JobRunDetailPage() {
                                                   </div>
                                                   <div className="max-h-64 overflow-auto pr-1">
                                                     <ul className="space-y-1 text-xs text-white/80 font-mono">
-                                                      {listItems.slice(0, 300).map((it, ii) => (
+                                                      {listItems.slice(0, 300).map((it) => (
                                                         <li
-                                                          key={`${idx}-${fi}-${ii}-${it.slice(0, 24)}`}
+                                                          key={it}
                                                           className="whitespace-pre-wrap break-words"
                                                         >
                                                           {decodeHtmlEntities(it)}
@@ -2178,7 +2188,7 @@ export function JobRunDetailPage() {
 
                                         return (
                                           <div
-                                            key={`${idx}-${fi}-${label}`}
+                                            key={factKey}
                                             className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
                                           >
                                             <div className="text-[11px] text-white/60 font-mono">

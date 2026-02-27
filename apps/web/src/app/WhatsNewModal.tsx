@@ -62,9 +62,9 @@ export function WhatsNewModal(props: {
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
               <div className="space-y-2">
-                {highlights.map((line, index) => (
+                {highlights.map((line) => (
                   <div
-                    key={`${line}-${index}`}
+                    key={line}
                     className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
                   >
                     <span

@@ -404,9 +404,9 @@ export function Navigation() {
                           className="absolute top-full left-0 mt-2 min-w-[220px] rounded-2xl overflow-hidden shadow-2xl"
                         >
                           <div className="bg-[#0b0c0f]/70 backdrop-blur-2xl border border-white/10 p-2">
-                            {item.dropdown.map((subItem, subIndex) => (
+                            {item.dropdown.map((subItem) => (
                               <button
-                                key={subIndex}
+                                key={subItem.to}
                                 data-to={subItem.to}
                                 className="w-full text-left px-4 py-3 text-sm text-white/90 rounded-xl transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99]"
                                 onClick={handleDropdownClick}

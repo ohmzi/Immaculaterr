@@ -115,13 +115,16 @@ export function VersionHistoryPage() {
           </div>
 
           <div className="space-y-6">
-            {VERSION_HISTORY_ENTRIES.map((entry, entryIndex) => (
-              <div key={`${entry.version}-${entryIndex}`} className={cardClass}>
+            {VERSION_HISTORY_ENTRIES.map((entry) => (
+              <div key={entry.version} className={cardClass}>
                 <div className="text-2xl font-black tracking-tight text-white">V{entry.version}</div>
 
                 <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/75">
                   {entry.sections.map((section, sectionIndex) => (
-                    <div key={`${section.title}-${sectionIndex}`} className={sectionIndex ? 'pt-2' : ''}>
+                    <div
+                      key={`${entry.version}-${section.title}`}
+                      className={sectionIndex ? 'pt-2' : ''}
+                    >
                       <div className="font-semibold text-white/90">
                         {(() => {
                           const parsed = splitFeatureDetail(section.title);
@@ -137,8 +140,8 @@ export function VersionHistoryPage() {
                         })()}
                       </div>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
-                        {section.bullets.map((bullet, bulletIndex) => (
-                          <li key={`${section.title}-${bulletIndex}`}>
+                        {section.bullets.map((bullet) => (
+                          <li key={`${entry.version}-${section.title}-${bullet}`}>
                             {renderFeatureDetail(bullet, {
                               feature: 'text-[#facc15] font-medium',
                               detail: 'text-white/75',

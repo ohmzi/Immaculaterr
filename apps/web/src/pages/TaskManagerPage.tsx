@@ -3683,9 +3683,9 @@ export function TaskManagerPage() {
                                         Next 5 Runs
                                       </div>
                                       <div className="space-y-2">
-                                        {calculateNextRuns(draft, 5).map((run, idx) => (
+                                        {calculateNextRuns(draft, 5).map((run) => (
                                           <div
-                                            key={idx}
+                                            key={run.toISOString()}
                                             className="flex items-center gap-3 text-sm p-2 rounded-lg bg-white/5"
                                           >
                                             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
