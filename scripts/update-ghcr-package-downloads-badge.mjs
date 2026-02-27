@@ -22,7 +22,7 @@ async function fetchJsonWithToken(url) {
     const text = await res.text().catch(() => '');
     throw new Error(`Request failed: ${res.status} ${res.statusText} (${url}) ${text}`);
   }
-  return await res.json();
+  return res.json();
 }
 
 async function fetchText(url) {
@@ -37,7 +37,7 @@ async function fetchText(url) {
     const text = await res.text().catch(() => '');
     throw new Error(`Request failed: ${res.status} ${res.statusText} (${url}) ${text}`);
   }
-  return await res.text();
+  return res.text();
 }
 
 async function sumDownloadsForEndpoint(endpointUrlBase) {
@@ -103,7 +103,7 @@ async function getGhcrDownloadsTotalFromApi() {
     const msg = (err instanceof Error ? err.message : String(err)) ?? '';
     // Fallback for org-owned packages.
     if (msg.includes('/users/') && (msg.includes('404') || msg.includes('403'))) {
-      return await sumDownloadsForEndpoint(orgEndpointBase);
+      return sumDownloadsForEndpoint(orgEndpointBase);
     }
     throw err;
   }
@@ -159,4 +159,3 @@ if (prevRaw === nextRaw) {
   await writeFile(badgePath, nextRaw, 'utf8');
   console.log(`Updated ${badgePath} (total=${total}).`);
 }
-
