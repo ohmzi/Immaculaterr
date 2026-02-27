@@ -550,46 +550,63 @@ export function SettingsPage({
       let attempts = 0;
       const maxAttempts = 60; // 60 attempts * 2 seconds = 2 minutes max
 
-      const pollInterval = setInterval(async () => {
-        attempts++;
+      const closePopupSafely = () => {
+        try {
+          popup.close();
+        } catch {
+          // ignore
+        }
+      };
 
-        // Check if popup is closed
+      const completePolling = (
+        pollIntervalId: ReturnType<typeof setInterval>,
+        message: string,
+        options?: { closePopup?: boolean; success?: boolean },
+      ) => {
+        clearInterval(pollIntervalId);
+        if (options?.closePopup) {
+          closePopupSafely();
+        }
+        setIsPlexOAuthLoading(false);
+        if (options?.success) {
+          toast.success(message, { id: toastId });
+          return;
+        }
+        toast.error(message, { id: toastId });
+      };
+
+      const pollForAuthToken = async (pollIntervalId: ReturnType<typeof setInterval>) => {
+        attempts += 1;
+
         if (popup.closed) {
-          clearInterval(pollInterval);
-          setIsPlexOAuthLoading(false);
-          toast.error('Login cancelled', { id: toastId });
+          completePolling(pollIntervalId, 'Login cancelled');
           return;
         }
 
-        // Max attempts reached
         if (attempts >= maxAttempts) {
-          clearInterval(pollInterval);
-          popup.close();
-          setIsPlexOAuthLoading(false);
-          toast.error('Login timed out. Please try again.', { id: toastId });
+          completePolling(pollIntervalId, 'Login timed out. Please try again.', {
+            closePopup: true,
+          });
           return;
         }
 
         try {
           const checkData = await checkPlexPin(pinId);
-
-          if (checkData.authToken) {
-            // Success! Got the token
-            clearInterval(pollInterval);
-            try {
-              popup.close();
-            } catch {
-              // ignore
-            }
-            setPlexTouched(true);
-            setPlexTestOk(null);
-            setPlexToken(checkData.authToken);
-            setIsPlexOAuthLoading(false);
-            toast.success('Connected to Plex.', { id: toastId });
-          }
+          if (!checkData.authToken) return;
+          setPlexTouched(true);
+          setPlexTestOk(null);
+          setPlexToken(checkData.authToken);
+          completePolling(pollIntervalId, 'Connected to Plex.', {
+            closePopup: true,
+            success: true,
+          });
         } catch {
           // Continue polling on transient errors.
         }
+      };
+
+      const pollInterval = setInterval(() => {
+        runAsyncTask(pollForAuthToken(pollInterval));
       }, 2000); // Poll every 2 seconds
 
     } catch {

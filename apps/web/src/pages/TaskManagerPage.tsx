@@ -2003,9 +2003,6 @@ export function TaskManagerPage() {
   const handleTimePickerClose = useCallback((jobId: string) => {
     setTimePickerOpen((prev) => ({ ...prev, [jobId]: false }));
   }, []);
-  const noopTimePickerOpenChange = useCallback(() => {}, []);
-  const noopTimePickerChange = useCallback(() => {}, []);
-  const noopTimePickerClose = useCallback(() => {}, []);
   const jobTimePickerOpenChangeHandlers = useMemo(() => {
     const handlers: Record<string, (open: boolean) => void> = {};
     for (const job of visibleJobs) {
@@ -2168,6 +2165,7 @@ export function TaskManagerPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* skipcq: JS-R1005 - This renderer intentionally composes multiple job-specific states to keep behavior stable. */}
             {visibleJobs.map((job) => {
               const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
               const baseEnabled = job.schedule?.enabled ?? false;
@@ -2263,11 +2261,9 @@ export function TaskManagerPage() {
                 job.id === 'immaculateTastePoints' ||
                 job.id === 'watchedMovieRecommendations';
               const handleJobTimePickerOpenChange =
-                jobTimePickerOpenChangeHandlers[job.id] ?? noopTimePickerOpenChange;
-              const handleJobTimeChange =
-                jobTimeChangeHandlers[job.id] ?? noopTimePickerChange;
-              const handleJobTimePickerClose =
-                jobTimePickerCloseHandlers[job.id] ?? noopTimePickerClose;
+                jobTimePickerOpenChangeHandlers[job.id];
+              const handleJobTimeChange = jobTimeChangeHandlers[job.id];
+              const handleJobTimePickerClose = jobTimePickerCloseHandlers[job.id];
 
               return (
                 <div
@@ -3771,9 +3767,8 @@ export function TaskManagerPage() {
               exit={{ opacity: 0, y: 24, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 260, damping: 26 }}
               onClick={handleStopPropagation}
-              className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
+              className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden p-6 sm:p-7"
             >
-              <div className="p-6 sm:p-7">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
@@ -3877,7 +3872,6 @@ export function TaskManagerPage() {
                     )}
                   </button>
                 </div>
-              </div>
             </motion.div>
           </motion.div>
         )}

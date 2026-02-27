@@ -510,16 +510,17 @@ export class RecommendationsService {
 
     // --- Tier 3 (ultimate): OpenAI freeform fallback when we have no candidates at all ---
     if (!deterministic.titles.length) {
+      const openAiApiKey = params.openai?.apiKey?.trim();
       const canUseFreeform =
-        openAiEnabled && this.canUseOpenAi() && Boolean(params.openai?.apiKey?.trim());
-      if (!canUseFreeform) {
+        openAiEnabled && this.canUseOpenAi() && Boolean(openAiApiKey);
+      if (!canUseFreeform || !openAiApiKey) {
         // keep deterministic (empty)
       } else {
         try {
           const model =
             (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
           const titles = await this.openai.getRelatedMovieTitles({
-            apiKey: params.openai.apiKey,
+            apiKey: openAiApiKey,
             model,
             seedTitle,
             limit: count,
@@ -1066,16 +1067,17 @@ export class RecommendationsService {
 
     // --- Tier 3 (ultimate): OpenAI freeform fallback when we have no candidates at all ---
     if (!deterministic.titles.length) {
+      const openAiApiKey = params.openai?.apiKey?.trim();
       const canUseFreeform =
-        openAiEnabled && this.canUseOpenAi() && Boolean(params.openai?.apiKey?.trim());
-      if (!canUseFreeform) {
+        openAiEnabled && this.canUseOpenAi() && Boolean(openAiApiKey);
+      if (!canUseFreeform || !openAiApiKey) {
         // keep deterministic (empty)
       } else {
         try {
           const model =
             (params.openai?.model ?? 'gpt-5.2-chat-latest') || 'gpt-5.2-chat-latest';
           const titles = await this.openai.getRelatedTvTitles({
-            apiKey: params.openai.apiKey,
+            apiKey: openAiApiKey,
             model,
             seedTitle,
             limit: count,

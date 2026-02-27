@@ -43,14 +43,18 @@ export function VersionHistoryPage() {
   const handleAnimateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
-    void titleIconControls.start({
-      scale: [1, 1.06, 1],
-      transition: { duration: 0.55, ease: 'easeOut' },
-    });
-    void titleIconGlowControls.start({
-      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-      transition: { duration: 1.4, ease: 'easeInOut' },
-    });
+    titleIconControls
+      .start({
+        scale: [1, 1.06, 1],
+        transition: { duration: 0.55, ease: 'easeOut' },
+      })
+      .catch(() => undefined);
+    titleIconGlowControls
+      .start({
+        opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+        transition: { duration: 1.4, ease: 'easeInOut' },
+      })
+      .catch(() => undefined);
   }, [titleIconControls, titleIconGlowControls]);
 
   return (
