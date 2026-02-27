@@ -284,7 +284,7 @@ export function Navigation() {
   const handleHelpToggle = useCallback(() => {
     const next = !isHelpOpen;
     setIsHelpOpen(next);
-    if (next) void updatesQuery.refetch();
+    if (next) updatesQuery.refetch();
   }, [isHelpOpen, updatesQuery]);
   const openFaq = useCallback(() => {
     setIsHelpOpen(false);

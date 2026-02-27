@@ -114,24 +114,15 @@ function densifyDailySeries<T extends { x: number; movies: number; tv: number }>
   const end = Math.floor(endMs / DAY_MS) * DAY_MS;
 
   const out: Array<{ month: string; x: number; movies: number; tv: number }> = [];
+  const days = getDays(start, end, DAY_MS);
   let i = 0;
 
-  for (let x = start; x <= end; x += DAY_MS) {
-    while (i + 1 < anchors.length) {
-      const nextAnchor = anchors[i + 1];
-      if (!nextAnchor || nextAnchor.x >= x) break;
-      i += 1;
-    }
-    const left = anchors[i];
+  for (const x of days) {
+    const { left, right, index } = getAnchorsForX(anchors, x, i);
+    i = index;
     if (!left) continue;
-    const right = anchors[i + 1] ?? left;
 
-    const span = right.x - left.x;
-    const tRaw = span > 0 ? (x - left.x) / span : 0;
-    const t = clamp(tRaw, 0, 1);
-
-    const movies = interpolateLinear(left.movies, right.movies, t);
-    const tv = interpolateLinear(left.tv, right.tv, t);
+    const { movies, tv } = interpolateValues(left, right, x);
 
     out.push({
       month: isoDayKeyUtc(x),
@@ -142,6 +133,45 @@ function densifyDailySeries<T extends { x: number; movies: number; tv: number }>
   }
 
   return out;
+}
+
+function getDays(start: number, end: number, step: number): number[] {
+  const days: number[] = [];
+  for (let x = start; x <= end; x += step) {
+    days.push(x);
+  }
+  return days;
+}
+
+function getAnchorsForX<T extends { x: number; movies: number; tv: number }>(
+  anchors: T[],
+  x: number,
+  startIndex: number
+): { left?: T; right: T; index: number } {
+  let i = startIndex;
+
+  while (i + 1 < anchors.length && anchors[i + 1].x < x) {
+    i += 1;
+  }
+
+  const left = anchors[i];
+  const right = anchors[i + 1] ?? left;
+  return { left, right, index: i };
+}
+
+function interpolateValues<T extends { x: number; movies: number; tv: number }>(
+  left: T,
+  right: T,
+  x: number
+): { movies: number; tv: number } {
+  const span = right.x - left.x;
+  const tRaw = span > 0 ? (x - left.x) / span : 0;
+  const t = clamp(tRaw, 0, 1);
+
+  return {
+    movies: interpolateLinear(left.movies, right.movies, t),
+    tv: interpolateLinear(left.tv, right.tv, t),
+  };
 }
 
 function niceCeilStep(rawStep: number) {
@@ -281,17 +311,25 @@ function readStoredPlexGrowth(): StoredPlexGrowth | null {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(PLEX_GROWTH_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    const obj = parsed as Record<string, unknown>;
-    const version = typeof obj.version === 'string' ? obj.version : '';
-    const cachedAt = typeof obj.cachedAt === 'number' ? obj.cachedAt : NaN;
-    const data = obj.data as PlexLibraryGrowthResponse | undefined;
-    if (!version) return null;
-    if (!Number.isFinite(cachedAt) || cachedAt <= 0) return null;
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
-    if ((data as { ok?: unknown }).ok !== true) return null;
-    return { version, cachedAt, data };
+function isObject(x: unknown): x is Record<string, unknown> {
+  return x !== null && typeof x === 'object' && !Array.isArray(x);
+}
+
+function isStoredPlexGrowth(obj: unknown): obj is StoredPlexGrowth {
+  if (!isObject(obj)) return false;
+  const { version, cachedAt, data } = obj;
+  if (typeof version !== 'string') return false;
+  if (typeof cachedAt !== 'number' || cachedAt <= 0) return false;
+  if (!isObject(data) || (data as { ok?: unknown }).ok !== true) return false;
+  return true;
+}
+
+function readStoredPlexGrowth(): StoredPlexGrowth | null {
+  try {
+    const raw = window.localStorage.getItem(PLEX_GROWTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return isStoredPlexGrowth(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -429,40 +467,32 @@ export function HeroSection() {
     const { startMs, endMs } = rangeBounds;
 
     const inRange = seriesWithX.filter((p) => p.x >= startMs && p.x <= endMs);
-    const prev = [...seriesWithX].reverse().find((p) => p.x < startMs) ?? null;
-    const first = inRange[0] ?? null;
-    const startBase = prev ?? first;
+    const prev = [...seriesWithX].reverse().find((p) => p.x < startMs) || null;
+    const first = inRange[0] || null;
+    const startBase = prev || first;
 
-    const startPoint =
-      startBase
-        ? {
-            month: new Date(startMs).toISOString().slice(0, 10), // YYYY-MM-DD
-            movies: startBase.movies,
-            tv: startBase.tv,
-            x: startMs,
-          }
-        : null;
-
-    const endPoint = (() => {
-      const last = inRange.at(-1) ?? null;
-      if (last && last.x === endMs) return null;
-      const base = last ?? prev ?? first;
+    const createPoint = (xValue, base) => {
       if (!base) return null;
       return {
-        month: new Date(endMs).toISOString().slice(0, 10),
+        month: new Date(xValue).toISOString().slice(0, 10),
         movies: base.movies,
         tv: base.tv,
-        x: endMs,
+        x: xValue,
       };
-    })();
+    };
 
-    const next = [
-      ...(startPoint ? [startPoint] : []),
-      ...inRange,
-      ...(endPoint ? [endPoint] : []),
-    ]
-      .filter((p, idx, arr) => arr.findIndex((q) => q.x === p.x) === idx)
-      .sort((a, b) => a.x - b.x);
+    const startPoint = createPoint(startMs, startBase);
+
+    const last = inRange.at(-1) || null;
+    const needEndPoint = last ? last.x !== endMs : Boolean(startBase);
+    const baseForEnd = last || startBase;
+    const endPoint = needEndPoint ? createPoint(endMs, baseForEnd) : null;
+
+    const allPoints = [startPoint, ...inRange, endPoint].filter(Boolean);
+    const uniquePoints = Array.from(
+      new Map(allPoints.map((p) => [p.x, p])).values()
+    );
+    const next = uniquePoints.sort((a, b) => a.x - b.x);
 
     return next;
   }, [rangeBounds, seriesWithX]);
@@ -564,11 +594,15 @@ export function HeroSection() {
       ? formatTooltipDateUtc(numericLabel)
       : String(label);
   }, []);
+  const nameMap: Record<string, string> = { movies: 'Movies', tv: 'TV Shows' };
+  const formatValue = (val: unknown): string | number =>
+    typeof val === 'number' ? Math.round(val) : String(val ?? '');
+  const formatName = (n: unknown): string => {
+    const key = String(n ?? '');
+    return nameMap[key] || key;
+  };
   const handleTooltipValue = useCallback((value: unknown, name: unknown) => {
-    const formattedValue = typeof value === 'number' ? Math.round(value) : String(value ?? '');
-    const formattedName =
-      name === 'movies' ? 'Movies' : name === 'tv' ? 'TV Shows' : String(name ?? '');
-    return [formattedValue, formattedName] as [string | number, string];
+    return [formatValue(value), formatName(name)] as [string | number, string];
   }, []);
 
   return (

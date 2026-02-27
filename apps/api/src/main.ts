@@ -49,7 +49,6 @@ function parseTrustProxyEnv(
 ): boolean | number | string | undefined {
   const value = raw?.trim();
   if (!value) return undefined;
-
   const lower = value.toLowerCase();
   if (lower === 'true' || lower === 'yes' || lower === 'on') return true;
   if (lower === 'false' || lower === 'no' || lower === 'off') return false;
@@ -74,32 +73,43 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function bootstrap() {
-  await ensureBootstrapEnv();
-  ensureLegacyGlobals();
-  const bootstrapLogger = new Logger('Bootstrap');
-
+function setupProcessHandlers(logger: Logger) {
   process.on('unhandledRejection', (reason) => {
-    bootstrapLogger.error(`Unhandled rejection: ${String(reason)}`);
+    logger.error(`Unhandled rejection: ${String(reason)}`);
   });
   process.on('uncaughtException', (err) => {
-    bootstrapLogger.error(`Uncaught exception: ${err?.stack ?? String(err)}`);
+    logger.error(`Uncaught exception: ${err?.stack ?? String(err)}`);
     process.exit(1);
   });
+}
 
-  const app = await NestFactory.create(AppModule, {
-    logger: new BufferedLogger(),
-  });
-
-  // Transition safety: keep PlexUser admin/backfill state consistent across legacy DB upgrades.
+async function performPlexUserTransition(
+  app,
+  logger: Logger,
+): Promise<void> {
   try {
     const plexUsers = app.get(PlexUsersService);
     await plexUsers.ensureAdminPlexUser({ userId: null });
     await plexUsers.backfillAdminOnMissing();
   } catch (err) {
-    bootstrapLogger.warn(
+    logger.warn(
       `Plex user transition guard skipped: ${(err as Error)?.message ?? String(err)}`,
     );
+  }
+}
+
+async function bootstrap() {
+  await ensureBootstrapEnv();
+  ensureLegacyGlobals();
+  const bootstrapLogger = new Logger('Bootstrap');
+
+  setupProcessHandlers(bootstrapLogger);
+
+  const app = await NestFactory.create(AppModule, {
+    logger: new BufferedLogger(),
+  });
+
+  await performPlexUserTransition(app, bootstrapLogger);
   }
 
   // Reverse-proxy correctness (req.ip, req.secure, etc.). Configurable via TRUST_PROXY.

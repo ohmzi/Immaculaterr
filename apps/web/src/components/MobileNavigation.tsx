@@ -182,9 +182,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     setResetOpen(false);
   }, []);
   const confirmResetDialog = useCallback(() => {
-    void doResetAccount();
+    doResetAccount();
+    return undefined;
   }, [doResetAccount]);
-  const closeSelectedNavMenu = useCallback(() => {
     setSelectedIndex(null);
   }, []);
   const handleNavDropdownClick = useCallback(
@@ -209,7 +209,9 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     setSelectedIndex(null);
     setIsHelpOpen((prev) => {
       const next = !prev;
-      if (next) void updatesQuery.refetch();
+      if (next) {
+        updatesQuery.refetch();
+      }
       return next;
     });
   }, [updatesQuery]);

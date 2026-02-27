@@ -316,11 +316,11 @@ export function RewindPage() {
   const animateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
-    void titleIconControls.start({
+    titleIconControls.start({
       scale: [1, 1.06, 1],
       transition: { duration: 0.55, ease: 'easeOut' },
     });
-    void titleIconGlowControls.start({
+    titleIconGlowControls.start({
       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
       transition: { duration: 1.4, ease: 'easeInOut' },
     });
@@ -346,22 +346,26 @@ export function RewindPage() {
   const toggleMobileFilters = useCallback(() => {
     setMobileFiltersOpen((prev) => !prev);
   }, []);
+  const handleCoarseClear = (total: number) => {
+    const message = `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`;
+    if (customConfirm(message)) {
+      clearAllMutation.mutate();
+    }
+  };
+
+  const handleFineClear = (_total: number) => {
+    setClearAllOpen(true);
+  };
+
   const handleClearAllRequest = useCallback(() => {
     const total = historyQuery.data?.runs?.length ?? 0;
     if (!total) return;
     const isCoarsePointer =
       typeof window !== 'undefined' &&
       Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
-    if (isCoarsePointer) {
-      const ok = window.confirm(
-        `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`,
-      );
-      if (ok) clearAllMutation.mutate();
-      return;
-    }
-
-    setClearAllOpen(true);
-  }, [clearAllMutation, historyQuery.data?.runs]);
+    const handler = isCoarsePointer ? handleCoarseClear : handleFineClear;
+    handler(total);
+  }, [clearAllMutation, historyQuery.data?.runs, setClearAllOpen]);
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';

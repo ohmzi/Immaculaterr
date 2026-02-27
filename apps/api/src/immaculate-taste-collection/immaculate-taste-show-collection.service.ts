@@ -24,7 +24,7 @@ export class ImmaculateTasteShowCollectionService {
     plexUserId: string;
     maxPoints?: number;
   }): Promise<{ imported: boolean; sourcePath: string | null; importedCount: number }> {
-    void params;
+    undefined;
     return { imported: false, sourcePath: null, importedCount: 0 };
   }
 

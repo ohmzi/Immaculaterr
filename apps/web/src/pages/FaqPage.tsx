@@ -31,11 +31,11 @@ export function FaqPage() {
   const handleAnimateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
-    void titleIconControls.start({
+    titleIconControls.start({
       scale: [1, 1.06, 1],
       transition: { duration: 0.55, ease: 'easeOut' },
     });
-    void titleIconGlowControls.start({
+    titleIconGlowControls.start({
       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
       transition: { duration: 1.4, ease: 'easeInOut' },
     });

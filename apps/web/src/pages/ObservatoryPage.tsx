@@ -71,7 +71,9 @@ type WatchedUndoState = {
   action: 'approve' | 'reject' | 'keep' | 'remove';
 } | null;
 
-const NOOP = () => {};
+const NOOP = () => {
+  // Intentionally left empty: placeholder for no operation
+};
 
 function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));
@@ -168,7 +170,7 @@ function SwipeCard({
       if (leavingRef.current) return;
       if (info.offset.x > threshold) {
         leavingRef.current = true;
-        void controls
+        controls
           .start({
             x: throwX,
             rotate: throwRotate,
@@ -179,13 +181,13 @@ function SwipeCard({
           .finally(() => {
             leavingRef.current = false;
             x.set(0);
-            void controls.set({ x: 0, rotate: 0, opacity: 1 });
+            controls.set({ x: 0, rotate: 0, opacity: 1 });
           });
         return;
       }
       if (info.offset.x < -threshold) {
         leavingRef.current = true;
-        void controls
+        controls
           .start({
             x: -throwX,
             rotate: -throwRotate,
@@ -196,11 +198,11 @@ function SwipeCard({
           .finally(() => {
             leavingRef.current = false;
             x.set(0);
-            void controls.set({ x: 0, rotate: 0, opacity: 1 });
+            controls.set({ x: 0, rotate: 0, opacity: 1 });
           });
         return;
       }
-      void controls.start({ x: 0, rotate: 0, transition: springBack });
+      controls.start({ x: 0, rotate: 0, transition: springBack });
     },
     [
       controls,
@@ -1314,11 +1316,11 @@ export function ObservatoryPage() {
   const handleAnimateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
-    void titleIconControls.start({
+    titleIconControls.start({
       scale: [1, 1.06, 1],
       transition: { duration: 0.55, ease: 'easeOut' },
     });
-    void titleIconGlowControls.start({
+    titleIconGlowControls.start({
       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
       transition: { duration: 1.4, ease: 'easeInOut' },
     });

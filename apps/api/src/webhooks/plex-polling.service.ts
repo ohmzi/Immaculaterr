@@ -362,24 +362,34 @@ export class PlexPollingService implements OnModuleInit {
 
   private dequeueNextPendingCollectionRun(params: { plexUserId: string }) {
     const queue = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
+    while (queue.length) {
+      const run = queue[0];
+      if (!run || this.isActiveRun(run)) {
+        queue.shift();
+        continue;
+      }
+      break;
+    }
     if (!queue.length) {
       this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
       return null;
     }
+    const run = queue.shift()!;
+    this.updatePendingRuns(params.plexUserId, queue);
+    return run;
+  }
 
-    while (queue.length) {
-      const run = queue.shift();
-      if (!run) continue;
-      const state = this.getSessionJobStatus(run.sessionAutomationId, run.jobId);
-      if (state === 'success' || state === 'running') continue;
+  private isActiveRun(run: { sessionAutomationId: string; jobId: string }) {
+    const state = this.getSessionJobStatus(run.sessionAutomationId, run.jobId);
+    return state === 'success' || state === 'running';
+  }
 
-      if (!queue.length) this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
-      else this.pendingCollectionRunsByPlexUser.set(params.plexUserId, queue);
-      return run;
+  private updatePendingRuns(plexUserId: string, queue: Array<any>) {
+    if (queue.length) {
+      this.pendingCollectionRunsByPlexUser.set(plexUserId, queue);
+    } else {
+      this.pendingCollectionRunsByPlexUser.delete(plexUserId);
     }
-
-    this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
-    return null;
   }
 
   private async runCollectionJobNow(params: {
@@ -816,24 +826,72 @@ export class PlexPollingService implements OnModuleInit {
     const pendingLibraryNew = this.pendingLibraryNew;
 
     // Use the newest item (from this poll or pending) as representative metadata for logs + job input.
-    const newest = (() => {
-      let newestFromPoll: PlexRecentlyAddedItem | null = null;
-      if (newItems.length > 0) {
-        const firstNewItem = newItems[0];
-        if (firstNewItem) {
-          newestFromPoll = newItems.reduce((best, it) => pickNewer(best, it), firstNewItem);
-        }
+    // Helper functions to simplify main workflow.
+    const computeNewest = (
+      items: PlexRecentlyAddedItem[],
+      pending: typeof this.pendingLibraryNew,
+    ): PlexRecentlyAddedItem | null => {
+      if (items.length === 0) {
+        return pending?.newest ?? null;
       }
-      if (newestFromPoll && pendingLibraryNew) {
-        return pickNewer(pendingLibraryNew.newest, newestFromPoll);
+      const firstItem = items[0];
+      if (!firstItem) {
+        return pending?.newest ?? null;
       }
-      return newestFromPoll ?? pendingLibraryNew?.newest ?? null;
-    })();
+      let newestItem = items.reduce((best, it) => pickNewer(best, it), firstItem);
+      if (pending?.newest) {
+        newestItem = pickNewer(pending.newest, newestItem);
+      }
+      return newestItem;
+    };
+
+    const computeNewlyAddedCount = (
+      items: PlexRecentlyAddedItem[],
+      pending: typeof this.pendingLibraryNew,
+    ): number =>
+      items.length > 0
+        ? Math.max(items.length, pending?.newlyAddedCount ?? 0)
+        : pending?.newlyAddedCount ?? 1;
+
+    const deriveTvType = async (
+      mediaRaw: string,
+      sectionId: number | null,
+      windowSec: number,
+    ): Promise<'episode' | 'season' | 'show' | null> => {
+      if (mediaRaw === 'movie' || sectionId === null) return null;
+      let sectionItems: PlexRecentlyAddedItem[] = [];
+      try {
+        sectionItems = await this.plexServer.listRecentlyAddedForSectionKey({
+          baseUrl,
+          token,
+          librarySectionKey: String(Math.trunc(sectionId)),
+          take: 200,
+        });
+      } catch (err) {
+        this.logger.debug(
+          `Polling /library/sections/${String(sectionId)}/recentlyAdded failed: ${(err as Error)?.message ?? String(err)}`,
+        );
+        return null;
+      }
+      const episodeItems = sectionItems.filter(
+        (it) => (it.type ?? '').toLowerCase() === 'episode',
+      );
+      const newEpisodes = episodeItems.filter(
+        (it) => (itemTimestampSec(it) ?? 0) > windowSec,
+      );
+      if (newEpisodes.length === 0) {
+        return null;
+      } else if (newEpisodes.length === 1) {
+        return 'episode';
+      }
+      const uniqueSeasons = new Set(newEpisodes.map((it) => it.parentIndex));
+      return uniqueSeasons.size === 1 ? 'season' : 'show';
+    };
+
+    const newest = computeNewest(newItems, pendingLibraryNew);
     if (!newest) return;
-    const newlyAddedCount =
-      newItems.length > 0
-        ? Math.max(newItems.length, pendingLibraryNew?.newlyAddedCount ?? 0)
-        : (pendingLibraryNew?.newlyAddedCount ?? 1);
+
+    const newlyAddedCount = computeNewlyAddedCount(newItems, pendingLibraryNew);
     const windowSinceSec = pendingLibraryNew?.sinceSec ?? since;
 
     // Clear pending now that we're going to run.
@@ -843,42 +901,11 @@ export class PlexPollingService implements OnModuleInit {
     const mediaTypeRaw = (newest.type ?? '').toLowerCase();
     if (!['movie', 'show', 'season', 'episode'].includes(mediaTypeRaw)) return;
 
-    // Derive accurate TV type from the *section-specific* recentlyAdded feed.
-    // Plex's global /library/recentlyAdded often reports TV changes as "season" even
-    // when a single episode was added. For reports and job routing, we want:
-    // - 1 new episode => episode
-    // - multiple new episodes within one season => season
-    // - multiple new episodes across multiple seasons => show
-    const librarySectionKey =
+    const librarySectionId =
       typeof newest.librarySectionId === 'number' && Number.isFinite(newest.librarySectionId)
-        ? String(Math.trunc(newest.librarySectionId))
+        ? newest.librarySectionId
         : null;
-    const derivedTv = await (async () => {
-      if (!librarySectionKey) return null;
-      // Only attempt this for TV-ish items (and only when we can identify the section).
-      if (mediaTypeRaw === 'movie') return null;
-
-      let sectionItems: PlexRecentlyAddedItem[] = [];
-      try {
-        sectionItems = await this.plexServer.listRecentlyAddedForSectionKey({
-          baseUrl,
-          token,
-          librarySectionKey,
-          take: 200,
-        });
-      } catch (err) {
-        this.logger.debug(
-          `Polling /library/sections/${librarySectionKey}/recentlyAdded failed: ${(err as Error)?.message ?? String(err)}`,
-        );
-        return null;
-      }
-
-      const episodeItems = sectionItems.filter(
-        (it) => (it.type ?? '').toLowerCase() === 'episode',
-      );
-      const newEpisodes = episodeItems.filter(
-        (it) => (itemTimestampSec(it) ?? 0) > windowSinceSec,
-      );
+    const derivedTv = await deriveTvType(mediaTypeRaw, librarySectionId, windowSinceSec);
       if (newEpisodes.length === 0) return null;
 
       const firstNewEpisode = newEpisodes[0];

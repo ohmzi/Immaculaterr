@@ -92,6 +92,8 @@ export class RecommendationsService {
         progress: {
           step: 'recs_tmdb_pools',
           message: 'Building recommendation pools (TMDB)…',
+        },
+      });
           updatedAt: new Date().toISOString(),
         },
       })
@@ -1335,57 +1337,32 @@ export class RecommendationsService {
 
           await ctx.warn('change_of_taste: openai invalid selection (fallback)', {
             releasedReturned: selection.released.length,
-            upcomingReturned: selection.upcoming.length,
-            releasedTarget,
-            upcomingTarget,
-          });
-        } catch (err) {
-          await ctx.warn(
-            'change_of_taste: openai selector failed (falling back to deterministic)',
-            {
-              error: (err as Error)?.message ?? String(err),
-            },
-          );
-          this.openAiDownUntilMs = Date.now() + SERVICE_COOLDOWN_MS;
-        }
-      }
-    }
-
-    await ctx.info('change_of_taste: deterministic select done', {
-      returned: deterministic.titles.length,
-      released: deterministic.releasedCount,
-      upcoming: deterministic.upcomingCount,
-    });
-
-    return { titles: deterministic.titles, strategy: 'tmdb' };
-  }
-
   async buildChangeOfTasteTvTitles(params: {
-    ctx: JobContext;
-    seedTitle: string;
-    seedYear?: number | null;
-    tmdbApiKey: string;
-    count: number;
-    upcomingPercent?: number | null;
-    openai?: { apiKey: string; model?: string | null } | null;
-  }): Promise<{ titles: string[]; strategy: 'openai' | 'tmdb' }> {
-    const { ctx } = params;
-    const seedTitle = params.seedTitle.trim();
-    const count = clampInt(
-      params.count || 50,
-      RECS_MIN_COUNT,
-      RECS_MAX_COUNT,
-      50,
-    );
+      ctx: JobContext;
+      seedTitle: string;
+      seedYear?: number | null;
+      tmdbApiKey: string;
+      count: number;
+      upcomingPercent?: number | null;
+      openai?: { apiKey: string; model?: string | null } | null;
+    }): Promise<{ titles: string[]; strategy: 'openai' | 'tmdb' }> {
+      const { ctx } = params;
+      const seedTitle = params.seedTitle.trim();
+      const count = clampInt(
+        params.count || 50,
+        RECS_MIN_COUNT,
+        RECS_MAX_COUNT,
+        50,
+      );
 
-    const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
+      const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
 
-    const upcomingPercent = clampInt(
-      params.upcomingPercent ?? 25,
-      0,
-      100 - RECS_MIN_RELEASED_PERCENT,
-      25,
-    );
+      const upcomingPercent = clampInt(
+        params.upcomingPercent ?? 25,
+        0,
+        100 - RECS_MIN_RELEASED_PERCENT,
+        25,
+      );
     const upcomingTargetRaw = Math.round((count * upcomingPercent) / 100);
     const minReleasedTarget = Math.ceil((count * RECS_MIN_RELEASED_PERCENT) / 100);
     const maxUpcomingTarget = Math.max(0, count - minReleasedTarget);

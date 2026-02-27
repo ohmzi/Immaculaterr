@@ -321,13 +321,13 @@ export function DebuggerPage() {
     setPlexLogPaused((prev) => !prev);
   }, []);
   const refreshPlexLogNow = useCallback(() => {
-    void refreshPlexLogs('initial');
+    refreshPlexLogs('initial');
   }, [refreshPlexLogs]);
   const copyPlexLogs = useCallback(() => {
-    void handlePlexCopy();
+    handlePlexCopy();
+    return undefined;
   }, [handlePlexCopy]);
-  const clearPlexLogs = useCallback(() => {
-    void handlePlexClear();
+    handlePlexClear();
   }, [handlePlexClear]);
   const handlePlexLogQueryChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -339,10 +339,10 @@ export function DebuggerPage() {
     setSnapshotCollapsed((prev) => !prev);
   }, []);
   const refreshSettings = useCallback(() => {
-    void settingsQuery.refetch();
+    settingsQuery.refetch();
   }, [settingsQuery]);
   const copySnapshot = useCallback(() => {
-    void handleCopy();
+    handleCopy();
   }, [handleCopy]);
   const handleSnapshotQueryChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {

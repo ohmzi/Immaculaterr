@@ -592,18 +592,32 @@ export function CommandCenterPage() {
     plexMonitoringUsersQuery.data,
     serverSelectedPlexUserIds,
   ]);
-
-  const togglePlexUserSelectionDraft = useCallback((plexUserId: string, checked: boolean) => {
-    setDraftSelectedPlexUserIds((prev) => {
-      const has = prev.includes(plexUserId);
-      if (checked) {
-        if (has) return prev;
-        return [...prev, plexUserId];
-      }
-      if (!has) return prev;
+  /**
+   * Returns updated array of selected Plex user IDs based on the checked state.
+   */
+  const getUpdatedPlexUserIds = (
+    prev: string[],
+    plexUserId: string,
+    checked: boolean
+  ): string[] => {
+    const has = prev.includes(plexUserId);
+    if (checked && !has) {
+      return [...prev, plexUserId];
+    }
+    if (!checked && has) {
       return prev.filter((id) => id !== plexUserId);
-    });
-  }, []);
+    }
+    return prev;
+  };
+
+  const togglePlexUserSelectionDraft = useCallback(
+    (plexUserId: string, checked: boolean) => {
+      setDraftSelectedPlexUserIds((prev) =>
+        getUpdatedPlexUserIds(prev, plexUserId, checked)
+      );
+    },
+    []
+  );
 
   const savePlexMonitoringUsersMutation = useMutation({
     mutationFn: async (selectedPlexUserIds: string[]) =>
@@ -734,7 +748,7 @@ export function CommandCenterPage() {
     [saveRecommendationsMutation],
   );
   const retryPlexLibraries = useCallback(() => {
-    void plexLibrariesQuery.refetch();
+    plexLibrariesQuery.refetch();
   }, [plexLibrariesQuery]);
   const handlePlexLibraryCheckboxChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -781,41 +795,41 @@ export function CommandCenterPage() {
   const openRejectedResetDialog = useCallback(() => {
     setRejectedResetOpen(true);
   }, []);
+  const parseValidInt = (value?: string): number | null => {
+    if (!value) return null;
+    const num = Number.parseInt(value, 10);
+    return Number.isFinite(num) ? num : null;
+  };
+
   const openImmaculateResetTarget = useCallback((event: MouseEvent<HTMLButtonElement>) => {
-    const mediaType = event.currentTarget.dataset.mediaType;
-    const librarySectionKey = event.currentTarget.dataset.librarySectionKey;
-    const libraryTitle = event.currentTarget.dataset.libraryTitle;
-    const datasetTotalRaw = event.currentTarget.dataset.datasetTotal;
-    const datasetActiveRaw = event.currentTarget.dataset.datasetActive;
-    const datasetPendingRaw = event.currentTarget.dataset.datasetPending;
-    const plexCollectionName = event.currentTarget.dataset.plexCollectionName ?? '';
-    const plexCollectionRatingKey = event.currentTarget.dataset.plexCollectionRatingKey;
-    const plexItemCountRaw = event.currentTarget.dataset.plexItemCount;
-    if (!mediaType || !librarySectionKey || !libraryTitle) return;
-    if (!datasetTotalRaw || !datasetActiveRaw || !datasetPendingRaw) return;
-    const datasetTotal = Number.parseInt(datasetTotalRaw, 10);
-    const datasetActive = Number.parseInt(datasetActiveRaw, 10);
-    const datasetPending = Number.parseInt(datasetPendingRaw, 10);
-    if (!Number.isFinite(datasetTotal)) return;
-    if (!Number.isFinite(datasetActive)) return;
-    if (!Number.isFinite(datasetPending)) return;
-    const parsedItemCount =
-      typeof plexItemCountRaw === 'string' && plexItemCountRaw.length > 0
-        ? Number.parseInt(plexItemCountRaw, 10)
-        : null;
+    const {
+      mediaType: mt,
+      librarySectionKey: lsk,
+      libraryTitle: lt,
+      datasetTotal: dtRaw,
+      datasetActive: daRaw,
+      datasetPending: dpRaw,
+      plexCollectionName: pcName = '',
+      plexCollectionRatingKey: pcKey,
+      plexItemCount: picRaw,
+    } = event.currentTarget.dataset;
+
+    if (!mt || !lsk || !lt) return;
+
+    const [total, active, pending] = [dtRaw, daRaw, dpRaw].map(parseValidInt);
+    if ([total, active, pending].some(n => n === null)) return;
+
+    const parsedItemCount = parseValidInt(picRaw);
+
     setImmaculateResetTarget({
-      mediaType: mediaType === 'tv' ? 'tv' : 'movie',
-      librarySectionKey,
-      libraryTitle,
-      dataset: {
-        total: datasetTotal,
-        active: datasetActive,
-        pending: datasetPending,
-      },
+      mediaType: mt === 'tv' ? 'tv' : 'movie',
+      librarySectionKey: lsk,
+      libraryTitle: lt,
+      dataset: { total: total!, active: active!, pending: pending! },
       plex: {
-        collectionName: plexCollectionName,
-        collectionRatingKey: plexCollectionRatingKey || null,
-        itemCount: Number.isFinite(parsedItemCount ?? NaN) ? parsedItemCount : null,
+        collectionName: pcName,
+        collectionRatingKey: pcKey || null,
+        itemCount: parsedItemCount,
       },
     });
   }, []);
@@ -825,19 +839,23 @@ export function CommandCenterPage() {
     setActiveImmaculateUserId((prev) => (prev === userId ? null : userId));
   }, []);
   const openImmaculateUserResetTarget = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
-      const plexUserId = event.currentTarget.dataset.plexUserId;
-      const mediaType = event.currentTarget.dataset.mediaType;
-      const totalRaw = event.currentTarget.dataset.total;
-      if (!plexUserId || !mediaType || !totalRaw) return;
+    const parseResetTarget = (dataset: DOMStringMap) => {
+      const { plexUserId, mediaType, total: totalRaw, plexUserTitle } = dataset;
+      if (!plexUserId || !mediaType || !totalRaw) return null;
       const total = Number.parseInt(totalRaw, 10);
-      if (!Number.isFinite(total)) return;
-      setImmaculateUserResetTarget({
+      if (!Number.isFinite(total)) return null;
+      return {
         plexUserId,
-        plexUserTitle: event.currentTarget.dataset.plexUserTitle || 'Plex User',
+        plexUserTitle: plexUserTitle || 'Plex User',
         mediaType: mediaType === 'tv' ? 'tv' : 'movie',
         total,
-      });
+      };
+    };
+
+    (event: MouseEvent<HTMLButtonElement>) => {
+      const target = parseResetTarget(event.currentTarget.dataset);
+      if (!target) return;
+      setImmaculateUserResetTarget(target);
     },
     [],
   );
@@ -1475,40 +1493,12 @@ export function CommandCenterPage() {
                       data-plex-user-id={adminImmaculateUser.id}
                       onClick={toggleActiveImmaculateUser}
                       className="w-full flex items-center justify-between gap-4 text-left"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-[#facc15]/15 text-[#facc15] border border-[#facc15]/30">
-                            Admin
-                          </span>
-                          <div className="text-sm font-semibold text-white truncate">
-                            {adminImmaculateUser.plexAccountTitle || 'Admin'}
-                          </div>
-                        </div>
-                        <div className="mt-1 text-xs text-white/60">
-                          Movie: {adminImmaculateUser.movieCount} • TV: {adminImmaculateUser.tvCount}
-                        </div>
-                      </div>
-                      <span className="text-xs font-semibold text-white/60">
-                        {activeImmaculateUserId === adminImmaculateUser.id ? 'Hide' : 'View'}
-                      </span>
-                    </button>
-
-                    {activeImmaculateUserId === adminImmaculateUser.id ? (
-                      <div className="mt-4">{renderAdminCollectionList()}</div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {nonAdminImmaculateUsers.map((user) => {
+                const renderUserCard = ({ user, isAdmin }) => {
                   const isActive = activeImmaculateUserId === user.id;
                   const movieCount = user.movieCount ?? 0;
                   const tvCount = user.tvCount ?? 0;
                   return (
-                    <div
-                      key={user.id}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
-                    >
+                    <div key={user.id} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                       <button
                         type="button"
                         data-plex-user-id={user.id}
@@ -1516,8 +1506,15 @@ export function CommandCenterPage() {
                         className="w-full flex items-center justify-between gap-4 text-left"
                       >
                         <div className="min-w-0">
+                          {isAdmin && (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-[#facc15]/15 text-[#facc15] border border-[#facc15]/30">
+                                Admin
+                              </span>
+                            </div>
+                          )}
                           <div className="text-sm font-semibold text-white truncate">
-                            {user.plexAccountTitle || 'Plex User'}
+                            {user.plexAccountTitle || (isAdmin ? 'Admin' : 'Plex User')}
                           </div>
                           <div className="mt-1 text-xs text-white/60">
                             Movie: {movieCount} • TV: {tvCount}
@@ -1526,6 +1523,15 @@ export function CommandCenterPage() {
                         <span className="text-xs font-semibold text-white/60">
                           {isActive ? 'Hide' : 'View'}
                         </span>
+                      </button>
+                      {isActive && isAdmin && <div className="mt-4">{renderAdminCollectionList()}</div>}
+                    </div>
+                  );
+                };
+
+                {adminImmaculateUser && renderUserCard({ user: adminImmaculateUser, isAdmin: true })}
+
+                {nonAdminImmaculateUsers.map((user) => renderUserCard({ user, isAdmin: false }))}
                       </button>
 
                       {isActive ? (
@@ -1743,34 +1749,11 @@ export function CommandCenterPage() {
           </div>
 
           {/* Reset Immaculate Taste - Confirm Dialog */}
-          <AnimatePresence>
-            {immaculateResetTarget && (
-              <motion.div
-                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={closeImmaculateReset}
-              >
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-                <motion.div
-                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
-                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={stopClickPropagation}
-                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-amber-500/10 overflow-hidden"
-                >
-                  <div className="p-6 sm:p-7">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
-                          Reset
-                        </div>
-                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                          Immaculate Taste Collection
-                        </h2>
+          <ResetImmaculateTasteDialog
+            target={immaculateResetTarget}
+            onClose={closeImmaculateReset}
+            onStopClick={stopClickPropagation}
+          />
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                           <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white/10 text-white/75 border border-white/10">
                             {immaculateResetTarget.mediaType === 'movie' ? 'Movie' : 'TV'}
@@ -1832,57 +1815,93 @@ export function CommandCenterPage() {
                       <button
                         type="button"
                         onClick={confirmImmaculateReset}
-                        className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                        disabled={resetImmaculateMutation.isPending}
-                      >
-                        {resetImmaculateMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Resetting…
-                          </>
-                        ) : (
-                          <>
-                            <RotateCcw className="w-4 h-4" />
-                            Reset
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Reset Immaculate Taste (User) - Confirm Dialog */}
-          <AnimatePresence>
-            {immaculateUserResetTarget && (
+          const ImmaculateUserResetModalContent: React.FC<{ isPending: boolean; onConfirm: () => void; stopPropagation: (e: React.MouseEvent) => void; }> = ({ isPending, onConfirm, stopPropagation }) => (
+            <>
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
               <motion.div
-                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={closeImmaculateUserReset}
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                onClick={stopPropagation}
+                className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-amber-500/10 overflow-hidden"
               >
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-                <motion.div
-                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
-                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={stopClickPropagation}
-                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-amber-500/10 overflow-hidden"
-                >
-                  <div className="p-6 sm:p-7">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                <div className="p-6 sm:p-7">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                        Reset
+                      </div>
+                      <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                        Immaculate Taste (User)
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onConfirm}
+                      className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      disabled={isPending}
+                    >
+                      {isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Resetting…
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="w-4 h-4" />
                           Reset
-                        </div>
-                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                          Immaculate Taste (User)
-                        </h2>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          );
+
+                                  className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  disabled={resetImmaculateMutation.isPending}
+                                >
+                                  {resetImmaculateMutation.isPending ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      Resetting…
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RotateCcw className="w-4 h-4" />
+                                      Reset
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Reset Immaculate Taste (User) - Confirm Dialog */}
+                    <AnimatePresence>
+                      {immaculateUserResetTarget && (
+                        <motion.div
+                          className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          onClick={closeImmaculateUserReset}
+                        >
+                          <ImmaculateUserResetModalContent
+                            isPending={resetImmaculateMutation.isPending}
+                            onConfirm={() => resetImmaculateMutation.mutate(immaculateUserResetTarget)}
+                            stopPropagation={stopClickPropagation}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* next code continues */}
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                           <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 bg-white/10 text-white/75 border border-white/10">
                             {immaculateUserResetTarget.mediaType === 'movie' ? 'Movie' : 'TV'}
@@ -1960,34 +1979,11 @@ export function CommandCenterPage() {
           </AnimatePresence>
 
           {/* Reset Overseerr Requests - Confirm Dialog */}
-          <AnimatePresence>
-            {overseerrResetOpen && (
-              <motion.div
-                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={closeOverseerrReset}
-              >
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-                <motion.div
-                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
-                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={stopClickPropagation}
-                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-cyan-500/10 overflow-hidden"
-                >
-                  <div className="p-6 sm:p-7">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
-                          Reset
-                        </div>
-                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                          Overseerr Requests
-                        </h2>
+          <OverseerrResetDialog
+            isOpen={overseerrResetOpen}
+            onClose={closeOverseerrReset}
+            stopClickPropagation={stopClickPropagation}
+          />
                       </div>
                       <button
                         type="button"
@@ -2033,57 +2029,21 @@ export function CommandCenterPage() {
                       <button
                         type="button"
                         onClick={confirmOverseerrReset}
-                        className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                        disabled={resetOverseerrMutation.isPending}
-                      >
-                        {resetOverseerrMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Resetting…
-                          </>
-                        ) : (
-                          <>
-                            <RotateCcw className="w-4 h-4" />
-                            Reset
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Reset Overseerr - Confirm Dialog */}
+          <ResetOverseerrConfirmDialog
+            isOpen={resetOverseerrOpen}
+            onClose={closeResetOverseerr}
+            isPending={resetOverseerrMutation.isPending}
+            onConfirm={handleResetOverseerr}
+          />
 
           {/* Reset Rejected List - Confirm Dialog */}
-          <AnimatePresence>
-            {rejectedResetOpen && (
-              <motion.div
-                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={closeRejectedReset}
-              >
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-                <motion.div
-                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
-                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={stopClickPropagation}
-                  className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden"
-                >
-                  <div className="p-6 sm:p-7">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
-                          Reset
-                        </div>
-                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                          Rejected List
-                        </h2>
+          <ResetRejectedConfirmDialog
+            isOpen={rejectedResetOpen}
+            onClose={closeRejectedReset}
+            isPending={resetRejectedListMutation.isPending}
+            onConfirm={handleResetRejectedList}
+          />
                       </div>
                       <button
                         type="button"
@@ -2130,23 +2090,26 @@ export function CommandCenterPage() {
                       <button
                         type="button"
                         onClick={confirmRejectedReset}
-                        className="h-12 rounded-full px-6 bg-[#f43f5e] text-white font-bold shadow-[0_0_20px_rgba(244,63,94,0.25)] hover:shadow-[0_0_28px_rgba(244,63,94,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                        disabled={resetRejectedMutation.isPending}
-                      >
-                        {resetRejectedMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Resetting…
-                          </>
-                        ) : (
-                          <>
-                            <RotateCcw className="w-4 h-4" />
-                            Reset
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
+          <AnimatePresence>
+            {rejectedResetOpen && (
+              <motion.div
+                // Mobile: keep the modal within the visible area between the fixed top bar and bottom nav.
+                // Desktop/tablet: center as usual.
+                className="fixed inset-0 z-[100000] flex items-start sm:items-center justify-center px-4 pt-20 pb-28 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={closeRejectedReset}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                  onClick={stopClickPropagation}
+                  className="relative w-full sm:max-w-md sm:max-h-[calc(100dvh-160px)] rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden flex flex-col"
+                >
+                  <ResetRejectedSection isPending={resetRejectedMutation.isPending} />
                 </motion.div>
               </motion.div>
             )}

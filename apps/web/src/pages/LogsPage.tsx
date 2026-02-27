@@ -257,11 +257,11 @@ export function LogsPage() {
   const animateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
-    void titleIconControls.start({
+    titleIconControls.start({
       scale: [1, 1.06, 1],
       transition: { duration: 0.55, ease: 'easeOut' },
     });
-    void titleIconGlowControls.start({
+    titleIconGlowControls.start({
       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
       transition: { duration: 1.4, ease: 'easeInOut' },
     });
@@ -302,10 +302,7 @@ export function LogsPage() {
       typeof window !== 'undefined' &&
       Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
     if (isCoarsePointer) {
-      const ok = window.confirm(
-        `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
-      );
-      if (ok) clearMutation.mutate();
+      setClearAllOpen(true);
       return;
     }
 

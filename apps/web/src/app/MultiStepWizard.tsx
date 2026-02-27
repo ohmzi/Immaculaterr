@@ -545,7 +545,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     savePlexLibrarySelectionStep.mutate();
   }, [savePlexLibrarySelectionStep]);
   const retryPlexLibraries = useCallback(() => {
-    void plexLibrariesQuery.refetch();
+    plexLibrariesQuery.refetch();
   }, [plexLibrariesQuery]);
   const handleWizardLibraryCheckboxChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -559,7 +559,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     savePlexMonitoringUsersStep.mutate();
   }, [savePlexMonitoringUsersStep]);
   const retryPlexUsers = useCallback(() => {
-    void plexMonitoringUsersQuery.refetch();
+    plexMonitoringUsersQuery.refetch();
   }, [plexMonitoringUsersQuery]);
   const handleWizardPlexUserCheckboxChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {

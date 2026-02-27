@@ -1228,11 +1228,11 @@ export function TaskManagerPage() {
   const handleAnimateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
-    void titleIconControls.start({
+    titleIconControls.start({
       scale: [1, 1.06, 1],
       transition: { duration: 0.55, ease: 'easeOut' },
     });
-    void titleIconGlowControls.start({
+    titleIconGlowControls.start({
       opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
       transition: { duration: 1.4, ease: 'easeInOut' },
     });
@@ -1256,20 +1256,23 @@ export function TaskManagerPage() {
     setMovieSeedYear('');
     setMovieSeedError(null);
   }, []);
-  const submitMovieSeedRun = useCallback((): boolean => {
-    const title = movieSeedTitle.trim();
+  const hasValidTitle = (title: string): boolean => {
     if (!title) {
       setMovieSeedError('Please enter a title.');
       return false;
     }
+    return true;
+  };
 
-    const yearRaw = movieSeedYear.trim();
-    const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
+  const hasValidYear = (yearRaw: string, year: number): boolean => {
     if (yearRaw && (!Number.isFinite(year) || year < 1888 || year > 2100)) {
       setMovieSeedError('Year must be a valid 4-digit number.');
       return false;
     }
+    return true;
+  };
 
+  const executeMovieSeedRun = (title: string, year: number): void => {
     if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
     setTerminalState((prev) => ({
       ...prev,
@@ -1291,8 +1294,34 @@ export function TaskManagerPage() {
     }
     resetMovieSeedDialogOnCloseRef.current = true;
     closeMovieSeedDialog();
+  };
+
+  const submitMovieSeedRun = useCallback((): boolean => {
+    const title = movieSeedTitle.trim();
+    if (!hasValidTitle(title)) {
+      return false;
+    }
+
+    const yearRaw = movieSeedYear.trim();
+    const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
+    if (!hasValidYear(yearRaw, year)) {
+      return false;
+    }
+
+    executeMovieSeedRun(title, year);
     return true;
   }, [
+    movieSeedTitle,
+    movieSeedYear,
+    movieSeedDialogJobId,
+    movieSeedMediaType,
+    runMutation,
+    setMovieSeedError,
+    startRunNowUi,
+    setTerminalState,
+    resetMovieSeedDialogOnCloseRef,
+    closeMovieSeedDialog,
+  ]);
     closeMovieSeedDialog,
     movieSeedDialogJobId,
     movieSeedMediaType,
@@ -1380,26 +1409,32 @@ export function TaskManagerPage() {
     [],
   );
   const handleJobCardClick = useCallback(
+    const isClickOnIgnoredElement = (target: HTMLElement | null): boolean => {
+      return !target || !!target.closest(
+        'button, a, input, select, textarea, [role="switch"], [data-no-card-toggle="true"]',
+      );
+    };
+
+    const handleArrRequiresSetup = (jobId: string) => {
+      setArrRequiresSetupJobId(jobId);
+      setArrRequiresSetupOpen(true);
+    };
+
+    const toggleCardExpansion = (jobId: string, expanded: boolean) => {
+      setExpandedCards((prev) => ({ ...prev, [jobId]: !expanded }));
+    };
+
     (event: ReactMouseEvent<HTMLDivElement>) => {
       const { jobId, arrRequiredBlocked, canExpand, expanded } = event.currentTarget.dataset;
       if (!jobId) return;
       if (arrRequiredBlocked === 'true') {
-        setArrRequiresSetupJobId(jobId);
-        setArrRequiresSetupOpen(true);
+        handleArrRequiresSetup(jobId);
         return;
       }
       if (canExpand !== 'true') return;
       const target = event.target as HTMLElement | null;
-      if (!target) return;
-      if (
-        target.closest(
-          'button, a, input, select, textarea, [role="switch"], [data-no-card-toggle="true"]',
-        )
-      ) {
-        return;
-      }
-      const isExpanded = expanded === 'true';
-      setExpandedCards((prev) => ({ ...prev, [jobId]: !isExpanded }));
+      if (isClickOnIgnoredElement(target)) return;
+      toggleCardExpansion(jobId, expanded === 'true');
     },
     [],
   );
@@ -1413,6 +1448,19 @@ export function TaskManagerPage() {
     [],
   );
   const handleScheduleToggle = useCallback(
+    const enableJob = (jobId: string, job: Job) => {
+      setExpandedCards((prev) => ({ ...prev, [jobId]: true }));
+      const defaultCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '0 3 * * *';
+      const defaultDraft = defaultDraftFromCron({ cron: defaultCron, enabled: true });
+      setDrafts((prev) => ({ ...prev, [jobId]: defaultDraft }));
+      scheduleMutation.mutate({ jobId, cron: defaultCron, enabled: true });
+    };
+    const disableJob = (jobId: string, draft: Draft, job: Job) => {
+      const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
+      const cron = buildCronFromDraft(draft) || baseCron || job.defaultScheduleCron || '0 3 * * *';
+      setDrafts((prev) => ({ ...prev, [jobId]: { ...draft, enabled: false } }));
+      scheduleMutation.mutate({ jobId, cron, enabled: false });
+    };
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       const jobId = event.currentTarget.dataset.jobId;
       if (!jobId) return;
@@ -1422,72 +1470,37 @@ export function TaskManagerPage() {
       const baseEnabled = job.schedule?.enabled ?? false;
       const draft =
         drafts[jobId] ??
-        defaultDraftFromCron({
-          cron: baseCron,
-          enabled: baseEnabled,
-        });
+        defaultDraftFromCron({ cron: baseCron, enabled: baseEnabled });
       const newEnabled = !draft.enabled;
-
-      if (newEnabled) {
-        setExpandedCards((prev) => ({ ...prev, [jobId]: true }));
-        const defaultCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '0 3 * * *';
-        const defaultDraft = defaultDraftFromCron({
-          cron: defaultCron,
-          enabled: true,
-        });
-
-        setDrafts((prev) => ({
-          ...prev,
-          [jobId]: defaultDraft,
-        }));
-
-        scheduleMutation.mutate({
-          jobId,
-          cron: defaultCron,
-          enabled: true,
-        });
-        return;
-      }
-
-      const cron = buildCronFromDraft(draft) || baseCron || job.defaultScheduleCron || '0 3 * * *';
-      setDrafts((prev) => ({
-        ...prev,
-        [jobId]: { ...draft, enabled: false },
-      }));
-
-      scheduleMutation.mutate({
-        jobId,
-        cron,
-        enabled: false,
-      });
+      newEnabled ? enableJob(jobId, job) : disableJob(jobId, draft, job);
     },
     [drafts, scheduleMutation, visibleJobs],
   );
   const handleWebhookAutoRunToggle = useCallback(
+    const AUTO_EXPAND_JOB_IDS = ['mediaAddedCleanup', 'immaculateTastePoints', 'watchedMovieRecommendations'] as const;
+
+    function shouldAutoExpandOnce(jobId: string, next: boolean): boolean {
+      return next && AUTO_EXPAND_JOB_IDS.includes(jobId) && autoExpandSeen[jobId] !== true;
+    }
+
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       const jobId = event.currentTarget.dataset.jobId;
       if (!jobId) return;
-      const webhookEnabled =
+      const prev =
         webhookAutoRun[jobId] ??
         (readBool(settingsQuery.data?.settings, `jobs.webhookEnabled.${jobId}`) ?? false);
-      const prev = webhookEnabled;
-      const next = !webhookEnabled;
-      const shouldAutoExpandOnce =
-        next &&
-        (jobId === 'mediaAddedCleanup' ||
-          jobId === 'immaculateTastePoints' ||
-          jobId === 'watchedMovieRecommendations') &&
-        autoExpandSeen[jobId] !== true;
-      setWebhookAutoRun((current) => ({ ...current, [jobId]: next }));
-      if (shouldAutoExpandOnce) {
-        setExpandedCards((current) => ({ ...current, [jobId]: true }));
+      const next = !prev;
+
+      setWebhookAutoRun(current => ({ ...current, [jobId]: next }));
+      if (shouldAutoExpandOnce(jobId, next)) {
+        setExpandedCards(current => ({ ...current, [jobId]: true }));
         markAutoExpandSeen(jobId);
       }
       webhookAutoRunMutation.mutate(
         { jobId, enabled: next },
         {
           onError: () => {
-            setWebhookAutoRun((current) => ({ ...current, [jobId]: prev }));
+            setWebhookAutoRun(current => ({ ...current, [jobId]: prev }));
           },
         },
       );
@@ -1891,23 +1904,22 @@ export function TaskManagerPage() {
     (jobId: string, sourceDrafts: Record<string, ScheduleDraft>) => {
       const job = visibleJobs.find((entry) => entry.id === jobId);
       if (!job) return null;
+      const draft = sourceDrafts[jobId];
+      if (draft) return draft;
       const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
       const baseEnabled = job.schedule?.enabled ?? false;
-      return (
-        sourceDrafts[jobId] ??
-        defaultDraftFromCron({
-          cron: baseCron,
-          enabled: baseEnabled,
-        })
-      );
+      return defaultDraftFromCron({
+        cron: baseCron,
+        enabled: baseEnabled,
+      });
     },
     [visibleJobs],
   );
   const handleFrequencySelect = useCallback(
+    const validFrequencies = new Set(['daily', 'weekly', 'monthly']);
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       const { jobId, frequency } = event.currentTarget.dataset;
-      if (!jobId || !frequency) return;
-      if (frequency !== 'daily' && frequency !== 'weekly' && frequency !== 'monthly') return;
+      if (!jobId || !frequency || !validFrequencies.has(frequency)) return;
       setDrafts((prev) => {
         const draft = resolveDraftForJob(jobId, prev);
         if (!draft) return prev;
@@ -2188,10 +2200,7 @@ export function TaskManagerPage() {
               const runUiState = runNowUi[job.id] ?? { phase: 'idle' as const };
               const runUiActive = runUiState.phase !== 'idle';
               const runUiProgressPct =
-                runUiState.phase === 'running'
-                  ? 80
-                  : runUiState.phase === 'finishing' || runUiState.phase === 'complete'
-                    ? 100
+                ({ running: 80, finishing: 100, complete: 100 } as Record<string, number>)[runUiState.phase] ?? 0;
                     : 0;
               const runUiFillClass =
                 runUiState.phase === 'complete'
@@ -3750,34 +3759,13 @@ export function TaskManagerPage() {
       </section>
 
       {/* Immaculate Taste / Based on Latest Watched - Run Now Dialog */}
-      <AnimatePresence onExitComplete={handleMovieSeedExitComplete}>
-        {movieSeedDialogOpen && (
-          <motion.div
-            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closeMovieSeedDialog}
-          >
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-            <motion.div
-              initial={{ opacity: 0, y: 24, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 24, scale: 0.98 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-              onClick={handleStopPropagation}
-              className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden p-6 sm:p-7"
-            >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
-                      Run now
-                    </div>
-                    <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                      {movieSeedDialogJobId === 'immaculateTastePoints'
-                        ? 'Immaculate Taste Collection'
-                        : 'Based on Latest Watched Collection'}
+      <MovieSeedDialog
+        isOpen={movieSeedDialogOpen}
+        onExitComplete={handleMovieSeedExitComplete}
+        onClose={closeMovieSeedDialog}
+        jobId={movieSeedDialogJobId}
+        onStopPropagation={handleStopPropagation}
+      />
                     </h2>
                   </div>
                   <button

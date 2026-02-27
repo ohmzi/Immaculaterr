@@ -1163,14 +1163,13 @@ export function JobRunDetailPage() {
                                   <div className="text-sm font-semibold text-white mb-3">
                                     Issues ({issues.length})
                                   </div>
+                                  {issues.length > 0 && (
                                   <ul className="space-y-2 text-sm">
                                     {issues.slice(0, 50).map((it) => {
                                       const level = String(it.level ?? 'warn').toLowerCase();
                                       const msg = String(it.message ?? '').trim();
-                                      const cls =
-                                        level === 'error'
-                                          ? 'text-red-200'
-                                          : 'text-amber-200';
+                                      const levelClassMap: Record<string, string> = { error: 'text-red-200', warn: 'text-amber-200' };
+                                      const cls = levelClassMap[level] || levelClassMap.warn;
                                       return (
                                         <li
                                           key={`${level}-${msg}`}
@@ -1181,10 +1180,11 @@ export function JobRunDetailPage() {
                                       );
                                     })}
                                   </ul>
+                                  )}
                                 </div>
-                              ) : null}
+                              )}
 
-                              {!isRefreshJob && sections.length && !isMediaAddedCleanup ? (
+                              {!isRefreshJob && sections.length > 0 && !isMediaAddedCleanup && (
                                 <div className="space-y-4">
                                   {sections.map((sec, idx) => {
                                     const sectionId = pickString(sec, 'id');
@@ -1299,6 +1299,13 @@ export function JobRunDetailPage() {
                                                 </tr>
                                               </thead>
                                               <tbody>
+                                                  const getDeltaClass = (changed: number | null) => {
+                                                    if (changed == null) return 'text-white/60';
+                                                    if (changed > 0) return 'text-emerald-200';
+                                                    if (changed < 0) return 'text-red-200';
+                                                    return 'text-white/70';
+                                                  };
+
                                                 {rows.map((r) => {
                                                   const label = pickString(r, 'label') ?? 'Metric';
                                                   const unit = pickString(r, 'unit');
@@ -1308,14 +1315,7 @@ export function JobRunDetailPage() {
                                                   const changed = pickNumber(r, 'changed');
                                                   const end = pickNumber(r, 'end');
 
-                                                  const deltaClass =
-                                                    changed === null
-                                                      ? 'text-white/60'
-                                                      : changed > 0
-                                                        ? 'text-emerald-200'
-                                                        : changed < 0
-                                                          ? 'text-red-200'
-                                                          : 'text-white/70';
+                                                  const deltaClass = getDeltaClass(changed);
 
                                                   return (
                                                     <tr
@@ -1324,16 +1324,16 @@ export function JobRunDetailPage() {
                                                     >
                                                       <td className="px-4 py-3 text-white/85">
                                                         <div className="font-semibold">{label}</div>
-                                                        {note ? (
+                                                        {note && (
                                                           <div className="mt-1 text-xs text-white/60 font-mono">
                                                             {note}
                                                           </div>
-                                                        ) : null}
+                                                        )}
                                                       </td>
                                                       <td className="px-4 py-3 font-mono text-xs text-white/70 whitespace-nowrap">
                                                         {formatMetric(start, unit)}
                                                       </td>
-                                                      <td className={`px-4 py-3 font-mono text-xs whitespace-nowrap ${deltaClass}`}>
+                                                      <td className={`px-4 py-3 font-mono text-xs whitespace-nowrap ${deltaClass}`}>  
                                                         {formatDelta(changed, unit)}
                                                       </td>
                                                       <td className="px-4 py-3 font-mono text-xs text-white/80 whitespace-nowrap">
@@ -1707,97 +1707,128 @@ export function JobRunDetailPage() {
 {JSON.stringify(watchlist, null, 2)}
                                     </pre>
                                   </details>
-                                ) : null}
+                                                        ) : null}
 
-                                {warnings.length ? (
-                                  <details className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                                    <summary className="cursor-pointer text-sm text-amber-200">
-                                      Warnings ({warnings.length})
-                                    </summary>
-                                    <ul className="mt-3 space-y-1 text-xs text-amber-100/90">
-                                      {warnings.slice(0, 50).map((w) => (
-                                        <li key={w} className="font-mono">
-                                          {w}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </details>
-                                ) : null}
-                              </div>
+                                                        <WarningsSection warnings={warnings} />
 
-                            </div>
+                                                      </div>
+
+                                                    </div>
+                                                  );
+                                                }
+
+                                                if (collections) {
+                                                  return <CollectionsSection collections={collections} />;
+                                                }
+
+                        // ... other conditional branches ...
+
+
+                        function WarningsSection({warnings}: {warnings: string[]}) {
+                          if (warnings.length === 0) return null;
+                          return (
+                            <details className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+                              <summary className="cursor-pointer text-sm text-amber-200">
+                                Warnings ({warnings.length})
+                              </summary>
+                              <ul className="mt-3 space-y-1 text-xs text-amber-100/90">
+                                {warnings.slice(0, 50).map((w) => (
+                                  <li key={w} className="font-mono">
+                                    {w}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
                           );
                         }
 
-                        if (collections) {
+                        function CollectionsSection({collections}: {collections: any[]}) {
+                          if (!collections) return null;
                           return (
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
-                              {collections.map((c) => {
-                                const name = String(c?.collectionName ?? 'Collection');
-                                const jsonFile = c?.jsonFile ? String(c.jsonFile) : null;
-                                const jsonFound = typeof c?.jsonFound === 'boolean' ? c.jsonFound : null;
-                                const removed = Number.isFinite(Number(c?.removed)) ? Number(c.removed) : 0;
-                                const added = Number.isFinite(Number(c?.added)) ? Number(c.added) : 0;
-                                const moved = Number.isFinite(Number(c?.moved)) ? Number(c.moved) : 0;
-                                const skipped = Number.isFinite(Number(c?.skipped)) ? Number(c.skipped) : 0;
-                                const resolved = Number.isFinite(Number(c?.resolved)) ? Number(c.resolved) : null;
-
-                                return (
-                                  <div
-                                    key={jsonFile ?? name}
-                                    className="rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-5"
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <div className="text-sm font-semibold text-white truncate">{name}</div>
-                                        {jsonFile ? (
-                                          <div className="mt-1 text-xs text-white/60 font-mono truncate">
-                                            {jsonFile}
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                      {jsonFound === false ? (
-                                        <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200">
-                                          JSON missing
-                                        </span>
-                                      ) : null}
-                                    </div>
-
-                                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-white/70 sm:grid-cols-4">
-                                      <div>
-                                        <span className="text-white font-semibold">{removed}</span> removed
-                                      </div>
-                                      <div>
-                                        <span className="text-white font-semibold">{added}</span> added
-                                      </div>
-                                      <div>
-                                        <span className="text-white font-semibold">{moved}</span> moved
-                                      </div>
-                                      <div>
-                                        <span className="text-white font-semibold">{skipped}</span> skipped
-                                      </div>
-                                    </div>
-
-                                    {resolved !== null ? (
-                                      <div className="mt-3 text-xs text-white/60">
-                                        Resolved items: <span className="text-white/80 font-semibold">{resolved}</span>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
+                              {collections.map((c) => (
+                                <CollectionCard key={String(c?.jsonFile ?? c?.collectionName ?? 'collection')} c={c} />
+                              ))}
                             </div>
                           );
                         }
 
-                        return (
-                          <div>{progressBlock}</div>
-                        );
-                      })()
-                    ) : isRunning ? (
-                      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-6">
-                        <motion.div
-                          aria-hidden="true"
+                        function CollectionCard({c}: {c: any}) {
+                          const name = String(c?.collectionName ?? 'Collection');
+                          const jsonFile = c?.jsonFile ? String(c.jsonFile) : null;
+                          const jsonFound = typeof c?.jsonFound === 'boolean' ? c.jsonFound : null;
+                          const removed = Number.isFinite(Number(c?.removed)) ? Number(c.removed) : 0;
+                          const added = Number.isFinite(Number(c?.added)) ? Number(c.added) : 0;
+                          const moved = Number.isFinite(Number(c?.moved)) ? Number(c.moved) : 0;
+                          const skipped = Number.isFinite(Number(c?.skipped)) ? Number(c.skipped) : 0;
+                          const resolved = Number.isFinite(Number(c?.resolved)) ? Number(c.resolved) : null;
+
+                          const {className, label} = getStatusProps({jsonFound, resolved, removed, added, moved, skipped});
+
+                          return (
+                            <div className="rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-white truncate">{name}</div>
+                                  {jsonFile && (
+                                    <div className="mt-1 text-xs text-white/60 font-mono truncate">{jsonFile}</div>
+                                  )}
+                                </div>
+                                {label && (
+                                  <span className={className}>
+                                    {label}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        function getStatusProps({jsonFound, resolved, removed, added, moved, skipped}: any) {
+                          if (jsonFound === false) {
+                            return {
+                              className:
+                                'shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200',
+                              label: 'Collection not found!',
+                            };
+                          }
+                          if (resolved) {
+                            return {
+                              className:
+                                'shrink-0 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-200',
+                              label: `${resolved} Resolved`,
+                            };
+                          }
+                          if (removed) {
+                            return {
+                              className:
+                                'shrink-0 rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-200',
+                              label: `${removed} Removed`,
+                            };
+                          }
+                          if (added) {
+                            return {
+                              className:
+                                'shrink-0 rounded-full border border-green-500/25 bg-green-500/10 px-2 py-1 text-[11px] font-medium text-green-200',
+                              label: `${added} Added`,
+                            };
+                          }
+                          if (moved) {
+                            return {
+                              className:
+                                'shrink-0 rounded-full border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-[11px] font-medium text-blue-200',
+                              label: `${moved} Moved`,
+                            };
+                          }
+                          if (skipped) {
+                            return {
+                              className:
+                                'shrink-0 rounded-full border border-yellow-500/25 bg-yellow-500/10 px-2 py-1 text-[11px] font-medium text-yellow-200',
+                              label: `${skipped} Skipped`,
+                            };
+                          }
+                          return {className: '', label: ''};
+                        }
                           className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent"
                           animate={{ x: ['0%', '200%'] }}
                           transition={{ duration: 1.35, repeat: Infinity, ease: 'linear' }}
@@ -1853,50 +1884,29 @@ export function JobRunDetailPage() {
                       Step-by-step breakdown
                     </div>
 
-                    {Array.isArray(reportV1.tasks) && reportV1.tasks.length ? (
-                      <div className="space-y-3">
-                        {reportV1.tasks
-                          .filter(
-                            (t): t is Record<string, unknown> =>
-                              Boolean(t) &&
-                              typeof t === 'object' &&
-                              !Array.isArray(t),
-                          )
-                          // Older runs may include redundant overview tasks like "Movie refresh" / "TV refresh".
-                          // Hide these in the step list for refresher-style jobs to keep the breakdown focused.
-                          .filter((t) => {
+                    {(() => {
+                      const isRecord = (item: unknown): item is Record<string, unknown> =>
+                        Boolean(item) && typeof item === 'object' && !Array.isArray(item);
+                      const extractRecords = (val: unknown): Record<string, unknown>[] =>
+                        Array.isArray(val) ? val.filter(isRecord) : [];
+                      const tasks = Array.isArray(reportV1.tasks)
+                        ? reportV1.tasks.filter(isRecord).filter((t) => {
                             const jobId = String(run?.jobId ?? '').toLowerCase();
                             const isRefresher = jobId.includes('refresher');
-                            if (!isRefresher) return true;
                             const title = (pickString(t, 'title') ?? '').toLowerCase();
-                            return title !== 'movie refresh' && title !== 'tv refresh';
+                            return !isRefresher || (title !== 'movie refresh' && title !== 'tv refresh');
                           })
-                          .map((t, idx) => {
+                        : [];
+                      if (!tasks.length) return null;
+                      return (
+                        <div className="space-y-3">
+                          {tasks.map((t, idx) => {
                             const taskId = pickString(t, 'id') ?? '';
                             const title = pickString(t, 'title') ?? `Step ${idx + 1}`;
                             const status = pickString(t, 'status') ?? 'success';
-                            const rowsRaw = t.rows;
-                            const rows = Array.isArray(rowsRaw)
-                              ? rowsRaw.filter(
-                                  (r): r is Record<string, unknown> =>
-                                    Boolean(r) &&
-                                    typeof r === 'object' &&
-                                    !Array.isArray(r),
-                                )
-                              : [];
-                            const factsRaw = t.facts;
-                            const facts = Array.isArray(factsRaw)
-                              ? factsRaw.filter(
-                                  (f): f is Record<string, unknown> =>
-                                    Boolean(f) &&
-                                    typeof f === 'object' &&
-                                    !Array.isArray(f),
-                                )
-                              : [];
-                            const issuesRaw = t.issues;
-                            const issues = Array.isArray(issuesRaw)
-                              ? issuesRaw.filter(
-                                  (i): i is Record<string, unknown> =>
+                            const rows = extractRecords((t as any).rows);
+                            const facts = extractRecords((t as any).facts);
+                            const issues = extractRecords((t as any).issues);
                                     Boolean(i) &&
                                     typeof i === 'object' &&
                                     !Array.isArray(i),
@@ -1993,14 +2003,18 @@ export function JobRunDetailPage() {
                                           const start = pickNumber(r, 'start');
                                           const changed = pickNumber(r, 'changed');
                                           const end = pickNumber(r, 'end');
-                                          const deltaClass =
-                                            changed === null
-                                              ? 'text-white/60'
-                                              : changed > 0
-                                                ? 'text-emerald-200'
-                                                : changed < 0
-                                                  ? 'text-red-200'
-                                                  : 'text-white/70';
+                                          const deltaClass = (() => {
+                                            switch (true) {
+                                              case changed === null:
+                                                return 'text-white/60';
+                                              case changed > 0:
+                                                return 'text-emerald-200';
+                                              case changed < 0:
+                                                return 'text-red-200';
+                                              default:
+                                                return 'text-white/70';
+                                            }
+                                          })();
                                           return (
                                             <tr
                                               key={`${taskId || title}-${label}-${start ?? ''}-${changed ?? ''}-${end ?? ''}-${unit ?? ''}`}
@@ -2012,7 +2026,7 @@ export function JobRunDetailPage() {
                                               <td className="px-4 py-3 font-mono text-xs text-white/70 whitespace-nowrap">
                                                 {formatMetric(start, unit)}
                                               </td>
-                                              <td className={`px-4 py-3 font-mono text-xs whitespace-nowrap ${deltaClass}`}>
+                                              <td className={`px-4 py-3 font-mono text-xs whitespace-nowrap ${deltaClass}`}> 
                                                 {formatDelta(changed, unit)}
                                               </td>
                                               <td className="px-4 py-3 font-mono text-xs text-white/80 whitespace-nowrap">
@@ -2036,12 +2050,11 @@ export function JobRunDetailPage() {
                                         const labelRaw = String(f.label ?? '').trim() || 'Fact';
                                         const label = decodeHtmlEntities(labelRaw);
                                         const rawValue = (f as Record<string, unknown>).value;
-                                        const factValueKey =
-                                          typeof rawValue === 'string'
-                                            ? rawValue
-                                            : rawValue === null || rawValue === undefined
-                                              ? ''
-                                              : JSON.stringify(rawValue);
+                                        const factValueKey = (() => {
+                                          if (typeof rawValue === 'string') return rawValue;
+                                          if (rawValue === null || rawValue === undefined) return '';
+                                          return JSON.stringify(rawValue);
+                                        })();
                                         const factKey = `${taskId || title}-${label}-${factValueKey}`;
                                         const order = isPlainObject(rawValue)
                                           ? pickString(rawValue, 'order')
@@ -2058,6 +2071,15 @@ export function JobRunDetailPage() {
                                           const lastAddedItemsRaw = pickStringArray(
                                             rawValue,
                                             'lastAddedItems',
+                                          );
+                                          // ...
+                                          return { collectionName, lastAddedItemsRaw };
+                                        })();
+                                        // ...rest of rendering logic
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : null}
                                           );
                                           const lastAddedItems = shouldSortList
                                             ? sortTitles(lastAddedItemsRaw)

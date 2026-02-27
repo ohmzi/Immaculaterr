@@ -33,6 +33,19 @@ export function ConfirmDialog(props: {
     details,
   } = props;
 
+  const DialogHeader: React.FC<{ label: string; title: string }> = ({ label, title }) => (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+          {label}
+        </div>
+        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+          {title}
+        </h2>
+      </div>
+    </div>
+  );
+
   const confirmClass =
     variant === 'primary'
       ? 'bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02]'
@@ -70,14 +83,7 @@ export function ConfirmDialog(props: {
             className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
           >
             <div className="p-6 sm:p-7">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
-                    {label}
-                  </div>
-                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                    {title}
-                  </h2>
+              <DialogHeader label={label} title={title} />
                 </div>
                 <button
                   type="button"
