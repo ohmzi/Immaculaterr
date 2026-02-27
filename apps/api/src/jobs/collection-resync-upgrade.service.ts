@@ -3,8 +3,44 @@ import { PrismaService } from '../db/prisma.service';
 import { JobsService } from './jobs.service';
 import {
   COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY,
+  COLLECTION_RESYNC_UPGRADE_COMPLETED_VERSIONS_KEY,
   COLLECTION_RESYNC_UPGRADE_JOB_ID,
+  COLLECTION_RESYNC_UPGRADE_LAST_COMPLETED_VERSION_KEY,
+  COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION,
 } from './collection-resync-upgrade.job';
+
+function summarizeCompletedVersionHistory(raw: string): {
+  count: number;
+  parseError: boolean;
+  hasCurrentRelease: boolean;
+} {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { count: 0, parseError: false, hasCurrentRelease: false };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed) as unknown;
+  } catch {
+    return { count: 0, parseError: true, hasCurrentRelease: false };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { count: 0, parseError: true, hasCurrentRelease: false };
+  }
+
+  let count = 0;
+  let hasCurrentRelease = false;
+  for (const [version, completedAt] of Object.entries(parsed)) {
+    const versionKey = String(version ?? '').trim();
+    const completedAtValue = String(completedAt ?? '').trim();
+    if (!versionKey || !completedAtValue) continue;
+    count += 1;
+    if (versionKey === COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION) {
+      hasCurrentRelease = true;
+    }
+  }
+  return { count, parseError: false, hasCurrentRelease };
+}
 
 @Injectable()
 export class CollectionResyncUpgradeService implements OnModuleInit {
@@ -26,15 +62,34 @@ export class CollectionResyncUpgradeService implements OnModuleInit {
   }
 
   private async enqueueUpgradeRun() {
-    const completed = await this.prisma.setting
-      .findUnique({
-        where: { key: COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY },
-      })
-      .catch(() => null);
+    const [completed, lastCompletedVersionRow, completedVersionsRow] =
+      await Promise.all([
+        this.prisma.setting
+          .findUnique({
+            where: { key: COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY },
+          })
+          .catch(() => null),
+        this.prisma.setting
+          .findUnique({
+            where: {
+              key: COLLECTION_RESYNC_UPGRADE_LAST_COMPLETED_VERSION_KEY,
+            },
+          })
+          .catch(() => null),
+        this.prisma.setting
+          .findUnique({
+            where: { key: COLLECTION_RESYNC_UPGRADE_COMPLETED_VERSIONS_KEY },
+          })
+          .catch(() => null),
+      ]);
     const completedAt = completed?.value?.trim() ?? '';
+    const lastCompletedVersion = lastCompletedVersionRow?.value?.trim() ?? '';
+    const completedVersionsSummary = summarizeCompletedVersionHistory(
+      completedVersionsRow?.value ?? '',
+    );
     if (completedAt) {
       this.logger.log(
-        `Collection resync upgrade already completed at=${completedAt}; skipping startup run`,
+        `Collection resync upgrade already completed at=${completedAt}; skipping startup run (lastCompletedVersion=${lastCompletedVersion || 'none'} completedVersions=${completedVersionsSummary.count} historyParseError=${completedVersionsSummary.parseError} hasCurrentRelease=${completedVersionsSummary.hasCurrentRelease})`,
       );
       return;
     }
@@ -58,7 +113,7 @@ export class CollectionResyncUpgradeService implements OnModuleInit {
         userId: firstUser.id,
       });
       this.logger.log(
-        `Collection resync upgrade queued runId=${run.id} userId=${firstUser.id} trigger=auto`,
+        `Collection resync upgrade queued runId=${run.id} userId=${firstUser.id} trigger=auto (lastCompletedVersion=${lastCompletedVersion || 'none'} completedVersions=${completedVersionsSummary.count} hasCurrentRelease=${completedVersionsSummary.hasCurrentRelease})`,
       );
     } catch (err) {
       const message = (err as Error)?.message ?? String(err);

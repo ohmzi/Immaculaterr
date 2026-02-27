@@ -11,6 +11,7 @@ import {
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   normalizeCollectionTitle,
+  resolveCuratedCollectionBaseName,
 } from '../plex/plex-collections.utils';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
@@ -27,15 +28,19 @@ import type {
 } from './jobs.types';
 
 export const COLLECTION_RESYNC_UPGRADE_JOB_ID = 'collectionResyncUpgrade';
-export const COLLECTION_RESYNC_UPGRADE_VERSION = 'v1_5_3';
+export const COLLECTION_RESYNC_UPGRADE_VERSION = 'v1_7_0';
+export const COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION = '1.7.0';
 export const COLLECTION_RESYNC_UPGRADE_STATE_KEY = `upgrade.collectionResync.${COLLECTION_RESYNC_UPGRADE_VERSION}.state`;
 export const COLLECTION_RESYNC_UPGRADE_LOCK_UNTIL_KEY = `upgrade.collectionResync.${COLLECTION_RESYNC_UPGRADE_VERSION}.lockUntil`;
 export const COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY = `upgrade.collectionResync.${COLLECTION_RESYNC_UPGRADE_VERSION}.completedAt`;
+export const COLLECTION_RESYNC_UPGRADE_LAST_COMPLETED_VERSION_KEY =
+  'upgrade.collectionResync.lastCompletedVersion';
+export const COLLECTION_RESYNC_UPGRADE_COMPLETED_VERSIONS_KEY =
+  'upgrade.collectionResync.completedVersions';
 
 const RESTART_GUIDANCE =
   'Restart Immaculaterr to resume migration from checkpoint.';
-const IMMACULATE_LEGACY_BASE_COLLECTION =
-  'Inspired by your Immaculate Taste';
+const IMMACULATE_LEGACY_BASE_COLLECTION = 'Inspired by your Immaculate Taste';
 const LOCK_TTL_MS = 10 * 60_000;
 const ITEM_RETRY_MAX = 3;
 const ITEM_PACING_MS = 250;
@@ -60,6 +65,17 @@ function isImmaculateBaseCollection(params: {
   );
   const legacy = normalizeCollectionTitle(IMMACULATE_LEGACY_BASE_COLLECTION);
   return candidate === target || candidate === legacy;
+}
+
+function sectionTypeToMediaType(
+  sectionType: string | null | undefined,
+): UpgradeMediaType | null {
+  const normalized = String(sectionType ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'movie') return 'movie';
+  if (normalized === 'show' || normalized === 'tv') return 'tv';
+  return null;
 }
 
 type UpgradeMediaType = 'movie' | 'tv';
@@ -372,7 +388,7 @@ export function getPendingQueueItemsInOrder(params: {
 function taskTitles(): Record<UpgradeTaskId, string> {
   return {
     capture_existing_state: 'Capture Existing State',
-    delete_all_plex_collections: 'Delete All Plex Collections',
+    delete_all_plex_collections: 'Delete Immaculaterr Plex Collections',
     recreate_collections_sequentially: 'Recreate Collections Sequentially',
     verification_and_finalize: 'Verification and Finalize',
   };
@@ -460,9 +476,13 @@ export class CollectionResyncUpgradeJob {
     const reportIssues: ReturnType<typeof issue>[] = [];
     const raw: Record<string, unknown> = {
       version: COLLECTION_RESYNC_UPGRADE_VERSION,
+      releaseVersion: COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION,
       stateKey: COLLECTION_RESYNC_UPGRADE_STATE_KEY,
       lockKey: COLLECTION_RESYNC_UPGRADE_LOCK_UNTIL_KEY,
       completedAtKey: COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY,
+      lastCompletedVersionKey:
+        COLLECTION_RESYNC_UPGRADE_LAST_COMPLETED_VERSION_KEY,
+      completedVersionsKey: COLLECTION_RESYNC_UPGRADE_COMPLETED_VERSIONS_KEY,
       restartGuidance: RESTART_GUIDANCE,
       runStartedAt,
     };
@@ -503,6 +523,15 @@ export class CollectionResyncUpgradeJob {
         COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY,
       );
       if (completedAt) {
+        const markerWrite = await this.writeReleaseVersionMarkers(completedAt);
+        if (markerWrite.historyParseError) {
+          reportIssues.push(
+            issue(
+              'warn',
+              'Completed migration version history was invalid JSON and has been reset while backfilling release markers.',
+            ),
+          );
+        }
         taskState.capture_existing_state.status = 'skipped';
         taskState.capture_existing_state.facts.push({
           label: 'Reason',
@@ -514,6 +543,10 @@ export class CollectionResyncUpgradeJob {
         });
         raw['skipReason'] = 'already_completed';
         raw['completedAt'] = completedAt;
+        raw['releaseVersion'] = COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION;
+        raw['lastCompletedVersion'] = COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION;
+        raw['completedVersionsCount'] = markerWrite.historySize;
+        raw['completedVersionsParseError'] = markerWrite.historyParseError;
 
         return {
           summary: this.buildReport({
@@ -722,7 +755,7 @@ export class CollectionResyncUpgradeJob {
       );
       taskState.capture_existing_state.rows.push(
         metricRow({
-          label: 'Collections discovered before delete',
+          label: 'Immaculaterr collections discovered before delete',
           start: null,
           changed: null,
           end: state.deleteQueue.length,
@@ -735,7 +768,7 @@ export class CollectionResyncUpgradeJob {
       currentTask = 'delete_all_plex_collections';
       await patchProgress({
         step: 'delete_all_plex_collections',
-        message: 'Deleting all Plex collections across all libraries…',
+        message: 'Deleting Immaculaterr-managed Plex collections…',
       });
       const deleteResult = await this.deleteAllCollections({
         ctx,
@@ -751,7 +784,7 @@ export class CollectionResyncUpgradeJob {
       taskState.delete_all_plex_collections.status = 'success';
       taskState.delete_all_plex_collections.rows.push(
         metricRow({
-          label: 'Collections deleted',
+          label: 'Immaculaterr collections deleted',
           start: null,
           changed: null,
           end: deleteResult.deleted,
@@ -812,7 +845,8 @@ export class CollectionResyncUpgradeJob {
             count: recreateResult.details.length,
             unit: 'collections',
             items: recreateResult.details.map((detail) => {
-              const before = detail.collectionBefore ?? '(not found in snapshot)';
+              const before =
+                detail.collectionBefore ?? '(not found in snapshot)';
               return `[${detail.libraryTitle}] ${before} -> ${detail.collectionAfter}`;
             }),
           },
@@ -847,11 +881,27 @@ export class CollectionResyncUpgradeJob {
       const finalize = await this.verifyAndFinalize({ state });
       raw['completedAt'] = finalize.completedAt;
       raw['summaryCounts'] = finalize;
+      raw['releaseVersion'] = finalize.releaseVersion;
+      raw['lastCompletedVersion'] = finalize.releaseVersion;
+      raw['completedVersionsCount'] = finalize.completedVersionsCount;
+      raw['completedVersionsParseError'] = finalize.completedVersionsParseError;
+      if (finalize.completedVersionsParseError) {
+        reportIssues.push(
+          issue(
+            'warn',
+            'Completed migration version history was invalid JSON and has been reset while recording release markers.',
+          ),
+        );
+      }
 
       taskState.verification_and_finalize.status = 'success';
       taskState.verification_and_finalize.facts.push({
         label: 'Completed at',
         value: finalize.completedAt,
+      });
+      taskState.verification_and_finalize.facts.push({
+        label: 'Release version',
+        value: finalize.releaseVersion,
       });
       taskState.verification_and_finalize.rows.push(
         metricRow({
@@ -1223,7 +1273,12 @@ export class CollectionResyncUpgradeJob {
         },
       });
     for (const row of watchedMovieRows) {
-      const collectionBaseName = String(row.collectionName ?? '').trim();
+      const collectionName = String(row.collectionName ?? '').trim();
+      if (!collectionName) continue;
+      const collectionBaseName = resolveCuratedCollectionBaseName({
+        collectionName,
+        mediaType: 'movie',
+      });
       if (!collectionBaseName) continue;
       upsertAccumulator({
         plexUserId: row.plexUserId,
@@ -1245,7 +1300,12 @@ export class CollectionResyncUpgradeJob {
         },
       });
     for (const row of watchedShowRows) {
-      const collectionBaseName = String(row.collectionName ?? '').trim();
+      const collectionName = String(row.collectionName ?? '').trim();
+      if (!collectionName) continue;
+      const collectionBaseName = resolveCuratedCollectionBaseName({
+        collectionName,
+        mediaType: 'tv',
+      });
       if (!collectionBaseName) continue;
       upsertAccumulator({
         plexUserId: row.plexUserId,
@@ -1337,6 +1397,7 @@ export class CollectionResyncUpgradeJob {
     const plexInventory: JsonObject[] = [];
 
     for (const section of sections) {
+      const mediaType = sectionTypeToMediaType(section.type);
       const collections = await this.plexServer.listCollectionsForSectionKey({
         baseUrl: params.plexBaseUrl,
         token: params.plexToken,
@@ -1355,6 +1416,12 @@ export class CollectionResyncUpgradeJob {
       });
 
       for (const collection of collections) {
+        if (!mediaType) continue;
+        const curatedBaseName = resolveCuratedCollectionBaseName({
+          collectionName: collection.title,
+          mediaType,
+        });
+        if (!curatedBaseName) continue;
         deleteQueue.push({
           deleteKey: `delete|${section.key}|${collection.ratingKey}`,
           librarySectionKey: section.key,
@@ -1723,7 +1790,8 @@ export class CollectionResyncUpgradeJob {
     const findExact = (needleNormalized: string): string | null => {
       if (!needleNormalized) return null;
       const found = sectionCollections.find(
-        (entry) => normalizeCollectionTitle(entry.collectionTitle) === needleNormalized,
+        (entry) =>
+          normalizeCollectionTitle(entry.collectionTitle) === needleNormalized,
       );
       return found?.collectionTitle ?? null;
     };
@@ -1784,7 +1852,9 @@ export class CollectionResyncUpgradeJob {
   }): Promise<Array<{ ratingKey: string; title: string }>> {
     const item = params.item;
     const getMovieMap = async () => {
-      const existingMap = params.movieIndexBySection.get(item.librarySectionKey);
+      const existingMap = params.movieIndexBySection.get(
+        item.librarySectionKey,
+      );
       if (existingMap) {
         return existingMap;
       }
@@ -1914,10 +1984,11 @@ export class CollectionResyncUpgradeJob {
     return desired;
   }
 
-  private async verifyAndFinalize(params: {
-    state: UpgradeState;
-  }): Promise<{
+  private async verifyAndFinalize(params: { state: UpgradeState }): Promise<{
     completedAt: string;
+    releaseVersion: string;
+    completedVersionsCount: number;
+    completedVersionsParseError: boolean;
     deleteDone: number;
     recreateDone: number;
   }> {
@@ -1948,10 +2019,14 @@ export class CollectionResyncUpgradeJob {
 
     const completedAt = nowIso();
     await this.writeCompletedAt(completedAt);
+    const markerWrite = await this.writeReleaseVersionMarkers(completedAt);
     params.state.phases.finalizedAt = completedAt;
     await this.saveState(params.state);
     return {
       completedAt,
+      releaseVersion: COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION,
+      completedVersionsCount: markerWrite.historySize,
+      completedVersionsParseError: markerWrite.historyParseError,
       deleteDone: params.state.deleteQueue.length,
       recreateDone: params.state.queue.length,
     };
@@ -2329,6 +2404,59 @@ export class CollectionResyncUpgradeJob {
       COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY,
       value,
     );
+  }
+
+  private parseCompletedVersions(value: string | null): {
+    history: Record<string, string>;
+    parseError: boolean;
+  } {
+    if (!value) {
+      return { history: {}, parseError: false };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      return { history: {}, parseError: true };
+    }
+    if (!isPlainObject(parsed)) {
+      return { history: {}, parseError: true };
+    }
+    const history: Record<string, string> = {};
+    for (const [version, completedAt] of Object.entries(parsed)) {
+      const versionKey = String(version ?? '').trim();
+      const completedAtValue = String(completedAt ?? '').trim();
+      if (!versionKey || !completedAtValue) continue;
+      history[versionKey] = completedAtValue;
+    }
+    return { history, parseError: false };
+  }
+
+  private async writeReleaseVersionMarkers(
+    completedAt: string,
+  ): Promise<{ historySize: number; historyParseError: boolean }> {
+    const rawHistory = await this.getSettingValue(
+      COLLECTION_RESYNC_UPGRADE_COMPLETED_VERSIONS_KEY,
+    );
+    const parsedHistory = this.parseCompletedVersions(rawHistory);
+    const mergedHistory = {
+      ...parsedHistory.history,
+      [COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION]: completedAt,
+    };
+
+    await this.putSettingValue(
+      COLLECTION_RESYNC_UPGRADE_LAST_COMPLETED_VERSION_KEY,
+      COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION,
+    );
+    await this.putSettingValue(
+      COLLECTION_RESYNC_UPGRADE_COMPLETED_VERSIONS_KEY,
+      JSON.stringify(mergedHistory),
+    );
+
+    return {
+      historySize: Object.keys(mergedHistory).length,
+      historyParseError: parsedHistory.parseError,
+    };
   }
 
   private async getSettingValue(key: string): Promise<string | null> {

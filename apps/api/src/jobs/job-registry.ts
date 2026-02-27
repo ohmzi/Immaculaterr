@@ -10,7 +10,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'collectionResyncUpgrade',
     name: 'One-Time Collection Resync Upgrade',
     description:
-      'Startup migration: refresh Plex user titles, delete all Plex collections, and recreate managed collections sequentially with crash-safe checkpoints.',
+      'Startup migration: refresh Plex user titles, delete Immaculaterr-managed curated collections, and recreate managed collections sequentially with crash-safe checkpoints.',
     defaultScheduleCron: undefined,
   },
   {
