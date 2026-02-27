@@ -101,7 +101,7 @@
 #### HTTP-only update (required)
 Option A (DockerHub):
 ```bash
-docker pull ohmzii/immaculaterr:latest
+docker pull ghcr.io/ohmzi/immaculaterr:latest
 docker rm -f Immaculaterr 2>/dev/null || true
 
 docker run -d \
@@ -118,7 +118,7 @@ docker run -d \
 
 Option B (GHCR):
 ```bash
-docker pull ghcr.io/ohmzi/immaculaterr:latest
+docker pull ohmzii/immaculaterr:latest
 docker rm -f Immaculaterr 2>/dev/null || true
 
 docker run -d \
