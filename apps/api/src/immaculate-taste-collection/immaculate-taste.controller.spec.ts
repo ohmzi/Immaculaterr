@@ -2,6 +2,21 @@ import { ForbiddenException } from '@nestjs/common';
 import { ImmaculateTasteController } from './immaculate-taste.controller';
 
 describe('ImmaculateTasteController', () => {
+  const asAuthenticatedRequest = (
+    userId: string,
+  ): Parameters<ImmaculateTasteController['listCollections']>[0] =>
+    ({ user: { id: userId } }) as unknown as Parameters<
+      ImmaculateTasteController['listCollections']
+    >[0];
+
+  const asResetUserBody = (
+    mediaType: string,
+    plexUserId: string,
+  ): Parameters<ImmaculateTasteController['resetUserCollections']>[1] => ({
+    mediaType,
+    plexUserId,
+  });
+
   function makeController() {
     const prisma = {
       user: {
@@ -16,29 +31,35 @@ describe('ImmaculateTasteController', () => {
       plexUser: {
         findMany: jest.fn(),
       },
-    } as any;
+    };
 
     const settingsService = {
       getInternalSettings: jest.fn(),
-    } as any;
+    };
 
     const plexServer = {
       getSections: jest.fn(),
       findCollectionRatingKey: jest.fn(),
       getCollectionItems: jest.fn(),
       deleteCollection: jest.fn(),
-    } as any;
+    };
 
     const plexUsers = {
       ensureAdminPlexUser: jest.fn(),
       getPlexUserById: jest.fn(),
-    } as any;
+    };
 
     const controller = new ImmaculateTasteController(
-      prisma,
-      settingsService,
-      plexServer,
-      plexUsers,
+      prisma as unknown as ConstructorParameters<typeof ImmaculateTasteController>[0],
+      settingsService as unknown as ConstructorParameters<
+        typeof ImmaculateTasteController
+      >[1],
+      plexServer as unknown as ConstructorParameters<
+        typeof ImmaculateTasteController
+      >[2],
+      plexUsers as unknown as ConstructorParameters<
+        typeof ImmaculateTasteController
+      >[3],
     );
 
     return { controller, prisma, settingsService, plexServer, plexUsers };
@@ -50,8 +71,8 @@ describe('ImmaculateTasteController', () => {
 
     await expect(
       controller.resetUserCollections(
-        { user: { id: 'viewer-user' } } as any,
-        { mediaType: 'movie', plexUserId: 'plex-user-1' } as any,
+        asAuthenticatedRequest('viewer-user'),
+        asResetUserBody('movie', 'plex-user-1'),
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
@@ -64,7 +85,7 @@ describe('ImmaculateTasteController', () => {
     prisma.user.findFirst.mockResolvedValue({ id: 'admin-user' });
 
     await expect(
-      controller.listCollectionUsers({ user: { id: 'viewer-user' } } as any),
+      controller.listCollectionUsers(asAuthenticatedRequest('viewer-user')),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
     expect(plexUsers.ensureAdminPlexUser).not.toHaveBeenCalled();
@@ -80,8 +101,8 @@ describe('ImmaculateTasteController', () => {
 
     await expect(
       controller.resetUserCollections(
-        { user: { id: 'admin-user' } } as any,
-        { mediaType: 'invalid', plexUserId: 'plex-user-1' } as any,
+        asAuthenticatedRequest('admin-user'),
+        asResetUserBody('invalid', 'plex-user-1'),
       ),
     ).rejects.toThrow('mediaType must be "movie" or "tv"');
 
@@ -118,7 +139,7 @@ describe('ImmaculateTasteController', () => {
     prisma.immaculateTasteShowLibrary.count.mockResolvedValue(0);
     plexServer.findCollectionRatingKey.mockResolvedValue(null);
 
-    const res = await controller.listCollections({ user: { id: 'admin-user' } } as any);
+    const res = await controller.listCollections(asAuthenticatedRequest('admin-user'));
     const keys = (res.collections as Array<{ librarySectionKey: string }>).map(
       (entry) => entry.librarySectionKey,
     );

@@ -74,6 +74,12 @@ function posterUrlFromPath(pathRaw: string | null): string | null {
   return `https://image.tmdb.org/t/p/w500${normalized}`;
 }
 
+function readPosterPath(details: unknown): string | null {
+  if (!isPlainObject(details)) return null;
+  const value = details.poster_path;
+  return typeof value === 'string' ? value : null;
+}
+
 function watchedCollectionName(params: {
   mediaType: 'movie' | 'tv';
   kind: WatchedCollectionKind;
@@ -319,10 +325,7 @@ export class ObservatoryService {
           const details = await this.tmdb
             .getMovie({ apiKey: tmdbApiKey, tmdbId: r.tmdbId })
             .catch(() => null);
-          const posterPath =
-            typeof (details as any)?.poster_path === 'string'
-              ? String((details as any).poster_path)
-              : null;
+          const posterPath = readPosterPath(details);
           if (!posterPath) return;
           await this.prisma.immaculateTasteMovieLibrary
             .update({
@@ -432,10 +435,7 @@ export class ObservatoryService {
           const details = await this.tmdb
             .getTv({ apiKey: tmdbApiKey, tmdbId })
             .catch(() => null);
-          const posterPath =
-            typeof (details as any)?.poster_path === 'string'
-              ? String((details as any).poster_path)
-              : null;
+          const posterPath = readPosterPath(details);
           if (!posterPath) return;
           await this.prisma.immaculateTasteShowLibrary
             .update({
@@ -556,10 +556,7 @@ export class ObservatoryService {
           const details = await this.tmdb
             .getMovie({ apiKey: tmdbApiKey, tmdbId: r.tmdbId })
             .catch(() => null);
-          const posterPath =
-            typeof (details as any)?.poster_path === 'string'
-              ? String((details as any).poster_path)
-              : null;
+          const posterPath = readPosterPath(details);
           if (!posterPath) return;
           await this.prisma.watchedMovieRecommendationLibrary
             .update({
@@ -684,10 +681,7 @@ export class ObservatoryService {
           const details = await this.tmdb
             .getTv({ apiKey: tmdbApiKey, tmdbId })
             .catch(() => null);
-          const posterPath =
-            typeof (details as any)?.poster_path === 'string'
-              ? String((details as any).poster_path)
-              : null;
+          const posterPath = readPosterPath(details);
           if (!posterPath) return;
           await this.prisma.watchedShowRecommendationLibrary
             .update({
@@ -1429,12 +1423,10 @@ export class ObservatoryService {
         });
         const byTmdb = new Map<number, RadarrMovie>();
         for (const m of movies) {
-          const tmdbId =
-            typeof (m as any).tmdbId === 'number'
-              ? (m as any).tmdbId
-              : Number((m as any).tmdbId);
-          if (Number.isFinite(tmdbId) && tmdbId > 0)
-            byTmdb.set(Math.trunc(tmdbId), m as any);
+          const tmdbId = pickNumber(m, 'tmdbId');
+          if (tmdbId !== null && tmdbId > 0) {
+            byTmdb.set(Math.trunc(tmdbId), m);
+          }
         }
 
         for (const r of rejected) {
@@ -1445,7 +1437,7 @@ export class ObservatoryService {
             .setMovieMonitored({
               baseUrl: radarrBaseUrl,
               apiKey: radarrApiKey,
-              movie: movie as any,
+              movie,
               monitored: false,
             })
             .catch(() => undefined);
@@ -1593,12 +1585,10 @@ export class ObservatoryService {
       });
       const byTvdb = new Map<number, SonarrSeries>();
       for (const s of series) {
-        const tvdbId =
-          typeof (s as any).tvdbId === 'number'
-            ? (s as any).tvdbId
-            : Number((s as any).tvdbId);
-        if (Number.isFinite(tvdbId) && tvdbId > 0)
-          byTvdb.set(Math.trunc(tvdbId), s as any);
+        const tvdbId = pickNumber(s, 'tvdbId');
+        if (tvdbId !== null && tvdbId > 0) {
+          byTvdb.set(Math.trunc(tvdbId), s);
+        }
       }
 
       for (const r of rejected) {
@@ -1609,7 +1599,7 @@ export class ObservatoryService {
           .updateSeries({
             baseUrl: sonarrBaseUrl,
             apiKey: sonarrApiKey,
-            series: { ...(s as any), monitored: false },
+            series: { ...s, monitored: false },
           })
           .catch(() => undefined);
         unmonitored += 1;
@@ -1853,11 +1843,10 @@ export class ObservatoryService {
       });
       const byTmdb = new Map<number, RadarrMovie>();
       for (const m of movies) {
-        const tmdbId =
-          typeof (m as any).tmdbId === 'number'
-            ? (m as any).tmdbId
-            : Number((m as any).tmdbId);
-        if (Number.isFinite(tmdbId) && tmdbId > 0) byTmdb.set(Math.trunc(tmdbId), m as any);
+        const tmdbId = pickNumber(m, 'tmdbId');
+        if (tmdbId !== null && tmdbId > 0) {
+          byTmdb.set(Math.trunc(tmdbId), m);
+        }
       }
 
       for (const r of rejected) {
@@ -1868,7 +1857,7 @@ export class ObservatoryService {
           .setMovieMonitored({
             baseUrl: radarrBaseUrl,
             apiKey: radarrApiKey,
-            movie: movie as any,
+            movie,
             monitored: false,
           })
           .catch(() => undefined);
@@ -2080,23 +2069,22 @@ export class ObservatoryService {
       });
       const byTvdb = new Map<number, SonarrSeries>();
       for (const s of series) {
-        const tvdbId =
-          typeof (s as any).tvdbId === 'number'
-            ? (s as any).tvdbId
-            : Number((s as any).tvdbId);
-        if (Number.isFinite(tvdbId) && tvdbId > 0) byTvdb.set(Math.trunc(tvdbId), s as any);
+        const tvdbId = pickNumber(s, 'tvdbId');
+        if (tvdbId !== null && tvdbId > 0) {
+          byTvdb.set(Math.trunc(tvdbId), s);
+        }
       }
 
       for (const r of rejected) {
         if (!r.sentToSonarrAt) continue;
         const s = byTvdb.get(r.tvdbId) ?? null;
         if (!s) continue;
-        if ((s as any).monitored === false) continue;
+        if (s.monitored === false) continue;
         await this.sonarr
           .updateSeries({
             baseUrl: sonarrBaseUrl,
             apiKey: sonarrApiKey,
-            series: { ...(s as any), monitored: false } as any,
+            series: { ...s, monitored: false },
           })
           .catch(() => undefined);
         unmonitored += 1;
