@@ -10,6 +10,7 @@ import {
   COLLECTION_RESYNC_UPGRADE_LAST_COMPLETED_VERSION_KEY,
   COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION,
   COLLECTION_RESYNC_UPGRADE_STATE_KEY,
+  COLLECTION_RESYNC_UPGRADE_VERSION,
   CollectionResyncUpgradeJob,
   type CollectionResyncQueueItem,
   getPendingQueueItemsInOrder,
@@ -107,6 +108,12 @@ function createSettingStore(initialValues: Record<string, string> = {}) {
 }
 
 describe('CollectionResyncUpgradeJob', () => {
+  it('keeps release and internal migration versions aligned', () => {
+    expect(COLLECTION_RESYNC_UPGRADE_VERSION).toBe(
+      `v${COLLECTION_RESYNC_UPGRADE_RELEASE_VERSION.replaceAll('.', '_')}`,
+    );
+  });
+
   it('backfills release markers when migration already completed', async () => {
     const settings = createSettingStore({
       [COLLECTION_RESYNC_UPGRADE_COMPLETED_AT_KEY]: '2026-02-16T00:00:00.000Z',

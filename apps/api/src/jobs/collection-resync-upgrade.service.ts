@@ -87,7 +87,14 @@ export class CollectionResyncUpgradeService implements OnModuleInit {
     const completedVersionsSummary = summarizeCompletedVersionHistory(
       completedVersionsRow?.value ?? '',
     );
-    if (completedAt) {
+    const markersNeedBackfill =
+      Boolean(completedAt) &&
+      (!lastCompletedVersion ||
+        completedVersionsSummary.parseError ||
+        !completedVersionsSummary.hasCurrentRelease);
+    const runMode = completedAt ? 'marker_backfill' : 'full_resync';
+
+    if (completedAt && !markersNeedBackfill) {
       this.logger.log(
         `Collection resync upgrade already completed at=${completedAt}; skipping startup run (lastCompletedVersion=${lastCompletedVersion || 'none'} completedVersions=${completedVersionsSummary.count} historyParseError=${completedVersionsSummary.parseError} hasCurrentRelease=${completedVersionsSummary.hasCurrentRelease})`,
       );
@@ -100,7 +107,7 @@ export class CollectionResyncUpgradeService implements OnModuleInit {
     });
     if (!firstUser?.id) {
       this.logger.log(
-        'Collection resync upgrade skipped at startup: no app user exists yet',
+        `Collection resync upgrade skipped at startup: no app user exists yet (mode=${runMode} lastCompletedVersion=${lastCompletedVersion || 'none'} completedVersions=${completedVersionsSummary.count} historyParseError=${completedVersionsSummary.parseError} hasCurrentRelease=${completedVersionsSummary.hasCurrentRelease})`,
       );
       return;
     }
@@ -113,7 +120,7 @@ export class CollectionResyncUpgradeService implements OnModuleInit {
         userId: firstUser.id,
       });
       this.logger.log(
-        `Collection resync upgrade queued runId=${run.id} userId=${firstUser.id} trigger=auto (lastCompletedVersion=${lastCompletedVersion || 'none'} completedVersions=${completedVersionsSummary.count} hasCurrentRelease=${completedVersionsSummary.hasCurrentRelease})`,
+        `Collection resync upgrade queued runId=${run.id} userId=${firstUser.id} trigger=auto mode=${runMode} (lastCompletedVersion=${lastCompletedVersion || 'none'} completedVersions=${completedVersionsSummary.count} historyParseError=${completedVersionsSummary.parseError} hasCurrentRelease=${completedVersionsSummary.hasCurrentRelease})`,
       );
     } catch (err) {
       const message = (err as Error)?.message ?? String(err);
