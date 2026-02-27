@@ -26,7 +26,7 @@ const settingsReaders = {
   },
 };
 
-const readSetting = <T>(settings: unknown, key: keyof typeof settingsReaders): T => {
+const readSetting = <T,>(settings: unknown, key: keyof typeof settingsReaders): T => {
   const reader = settingsReaders[key];
   let value: unknown = settings;
   for (const segment of reader.path) {

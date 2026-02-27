@@ -1494,32 +1494,33 @@ export function CommandCenterPage() {
                       onClick={toggleActiveImmaculateUser}
                       className="w-full flex items-center justify-between gap-4 text-left"
                     >
-                const renderUserCard = ({ user, isAdmin }) => {
-                  const isActive = activeImmaculateUserId === user.id;
-                  const movieCount = user.movieCount ?? 0;
-                  const tvCount = user.tvCount ?? 0;
-                  return (
-                    <div key={user.id} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                      <button
-                        type="button"
-                        data-plex-user-id={user.id}
-                        onClick={toggleActiveImmaculateUser}
-                        className="w-full flex items-center justify-between gap-4 text-left"
-                      >
-                        <div className="min-w-0">
-                          {isAdmin && (
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-[#facc15]/15 text-[#facc15] border border-[#facc15]/30">
-                                Admin
-                              </span>
-                            </div>
-                          )}
-                          <div className="text-sm font-semibold text-white truncate">
-                            {user.plexAccountTitle || (isAdmin ? 'Admin' : 'Plex User')}
-                          </div>
-                          <div className="mt-1 text-xs text-white/60">
-                            Movie: {movieCount} • TV: {tvCount}
-                          </div>
+                    </button>
+                    const renderUserCard = ({ user, isAdmin }) => {
+                      const isActive = activeImmaculateUserId === user.id;
+                      const movieCount = user.movieCount ?? 0;
+                      const tvCount = user.tvCount ?? 0;
+                      return (
+                        <div key={user.id} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                          <button
+                            type="button"
+                            data-plex-user-id={user.id}
+                            onClick={toggleActiveImmaculateUser}
+                            className="w-full flex items-center justify-between gap-4 text-left"
+                          >
+                            <div className="min-w-0">
+                              {isAdmin && (
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-[#facc15]/15 text-[#facc15] border border-[#facc15]/30">
+                                    Admin
+                                  </span>
+                                </div>
+                              )}
+                              <div className="text-sm font-semibold text-white truncate">
+                                {user.plexAccountTitle || (isAdmin ? 'Admin' : 'Plex User')}
+                              </div>
+                              <div className="mt-1 text-xs text-white/60">
+                                Movie: {movieCount} • TV: {tvCount}
+                              </div>
                         </div>
                         <span className="text-xs font-semibold text-white/60">
                           {isActive ? 'Hide' : 'View'}

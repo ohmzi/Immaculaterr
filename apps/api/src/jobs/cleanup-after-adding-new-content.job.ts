@@ -244,14 +244,14 @@ export class CleanupAfterAddingNewContentJob {
     // original unmonitorInArr logic goes here
   };
 
-  private async handleRemoveFromWatchlist(
+  private handleRemoveFromWatchlist = async (
     ctx: JobContext,
     settings: any,
     secrets: any,
     setProgress: ReturnType<CleanupAfterAddingNewContentJob['getSetProgress']>,
   ) => {
     // original removeFromWatchlist logic goes here
-  }
+  };
 }
 
     // Manual runs (Task Manager "Run now") should behave like a global cleanup sweep.

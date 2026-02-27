@@ -1307,6 +1307,7 @@ export function TaskManagerPage() {
   const handleMovieSeedRun = useCallback((titleRaw, yearRaw, title, year) => {
     const handleMovieSeedRunNow = useCallback((title, yearRaw, year) => {
         const handleMovieSeedDialogSubmit = useCallback((titleRaw, yearRaw) => {
+                  const handleMovieSeedRun = useCallback((titleRaw: string, year: string) => {
                   if (!hasValidYear(yearRaw, year)) {
                     return false;
                   }
@@ -1324,14 +1325,6 @@ export function TaskManagerPage() {
                   setTerminalState,
                   resetMovieSeedDialogOnCloseRef,
                   closeMovieSeedDialog,
-                ]);
-                  closeMovieSeedDialog,
-                  movieSeedDialogJobId,
-                  movieSeedMediaType,
-                  movieSeedTitle,
-                  movieSeedYear,
-                  runMutation,
-                  startRunNowUi,
                 ]);
                 const handleMovieSeedExitComplete = useCallback(() => {
                   if (!resetMovieSeedDialogOnCloseRef.current) return;

@@ -60,7 +60,7 @@ export class PlexCuratedCollectionsService {
       pinTarget = 'admin',
       collectionHubOrder = CURATED_MOVIE_COLLECTION_HUB_ORDER,
       preferredHubTargets = [],
-    } = params;
+    } = params) => {
 
     // TODO: Refactor conditional logic here to use a lookup map instead of multiple if/else statements.
     // Implementation pending additional context.

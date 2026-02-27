@@ -42,7 +42,7 @@ const pickBool = (obj: Record<string, unknown>, path: string): boolean | null =>
   return typeof v === 'boolean' ? v : null;
 };
 
-export function pickNumber(obj: Record<string, unknown>, path: string): number | null {
+export const pickNumber = (obj: Record<string, unknown>, path: string): number | null => {
   const v = pick(obj, path);
   const handlers: Record<string, (val: unknown) => number | null> = {
     number: (val) => Number.isFinite(val as number) ? (val as number) : null,
@@ -55,7 +55,7 @@ export function pickNumber(obj: Record<string, unknown>, path: string): number |
   };
   const handler = handlers[typeof v];
   return handler ? handler(v) : null;
-}
+};
 
 const normalizeAndCapTitles = (rawTitles: string[], max: number): string[] => {
   const limit = Math.max(0, Math.min(100, Math.trunc(max ?? 0)));

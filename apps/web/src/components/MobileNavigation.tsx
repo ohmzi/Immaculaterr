@@ -91,8 +91,8 @@ export const MobileNavigation = ({ onLogout }: MobileNavigationProps) => {
     navigate(dest);
   }, [navigate]);
   useSafeNavigate((dest) => {
-      window.matchMedia?.('(display-mode: standalone)')?.matches ||
-      Boolean((navigator as unknown as { standalone?: boolean } | undefined)?.standalone);
+      const isStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches ||
+        Boolean((navigator as unknown as { standalone?: boolean } | undefined)?.standalone);
     if (isStandalone) {
       window.location.assign(dest);
       return;

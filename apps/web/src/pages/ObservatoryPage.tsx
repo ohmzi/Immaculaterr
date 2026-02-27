@@ -379,11 +379,11 @@ function SwipeCard({
                     </div>
                     {deck.map((card, index) => {
                       return (
-                        {formatRating(card.item.tmdbVoteAvg ?? null) && (
+                        formatRating(card.item.tmdbVoteAvg ?? null) && (
                           <div className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-black text-white/90">
                             {formatRating(card.item.tmdbVoteAvg ?? null)}
                           </div>
-                        )}
+                        )
                       );
                     })}
                   </div>
