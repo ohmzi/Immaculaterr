@@ -47,8 +47,7 @@ async function sumDownloadsForEndpoint(endpointUrlBase) {
 
   // Pagination until empty page.
   // Note: `download_count` is per-version, and the GHCR UI totals match summing these.
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (;;) {
     const url = `${endpointUrlBase}?per_page=${perPage}&page=${page}`;
     const versions = await fetchJsonWithToken(url);
     if (!Array.isArray(versions) || versions.length === 0) break;
