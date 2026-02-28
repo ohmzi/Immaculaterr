@@ -2259,11 +2259,11 @@ export class TmdbService {
   }
 }
 
-const bestSeedResult = (
+function bestSeedResult(
   query: string,
   results: TmdbMovieSearchResult[],
   seedYear?: number | null,
-): TmdbMovieSearchResult | null => {
+): TmdbMovieSearchResult | null {
   const q = query.trim().toLowerCase();
   if (!results.length) return null;
 
@@ -2302,13 +2302,13 @@ const bestSeedResult = (
   };
 
   return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
-};
+}
 
-const bestSeedTvResult = (
+function bestSeedTvResult(
   query: string,
   results: TmdbTvSearchResult[],
   seedYear?: number | null,
-): TmdbTvSearchResult | null => {
+): TmdbTvSearchResult | null {
   const q = query.trim().toLowerCase();
   if (!results.length) return null;
 
@@ -2344,21 +2344,21 @@ const bestSeedTvResult = (
   };
 
   return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
-};
+}
 
-const classifyByReleaseDate = (
+function classifyByReleaseDate(
   releaseDate: string | null,
   today: string,
-): 'released' | 'upcoming' | 'unknown' => {
+): 'released' | 'upcoming' | 'unknown' {
   const d = (releaseDate ?? '').trim();
   if (!d) return 'unknown';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'unknown';
   if (today && /^\d{4}-\d{2}-\d{2}$/.test(today) && d > today)
     return 'upcoming';
   return 'released';
-};
+}
 
-const normalizeTimezone = (raw: unknown): string | null => {
+function normalizeTimezone(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const tz = raw.trim();
   if (!tz) return null;
@@ -2370,16 +2370,16 @@ const normalizeTimezone = (raw: unknown): string | null => {
   } catch {
     return null;
   }
-};
+}
 
-const addDays = (date: Date, days: number): Date => {
+function addDays(date: Date, days: number): Date {
   const d = new Date(date.getTime());
   d.setDate(d.getDate() + days);
   return d;
-};
+}
 
-const addMonths = (date: Date, months: number): Date => {
+function addMonths(date: Date, months: number): Date {
   const d = new Date(date.getTime());
   d.setMonth(d.getMonth() + months);
   return d;
-};
+}

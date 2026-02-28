@@ -62,7 +62,7 @@ export class SettingsController {
   }
 
   @Get('backup-info')
-  // skipcq: JS-R1005 - Backup diagnostics intentionally consolidates related environment/path checks.
+  // skipcq: JS-0105, JS-R1005 - Backup diagnostics intentionally consolidates related environment/path checks.
   backupInfo() {
     const appDataDir = process.env.APP_DATA_DIR?.trim() || null;
     const databaseUrl = process.env.DATABASE_URL?.trim() || null;

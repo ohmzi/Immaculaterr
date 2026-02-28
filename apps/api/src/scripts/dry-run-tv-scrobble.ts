@@ -5,14 +5,16 @@ import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../db/prisma.service';
 
-const sleep = async (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
-const waitForRunFinish = async (params: {
+// skipcq: JS-R1005 - Polling helper intentionally keeps loop/exit conditions in one place.
+async function waitForRunFinish(params: {
   prisma: PrismaService;
   runId: string;
   timeoutMs: number;
-}) => {
+}) {
   const started = Date.now();
   for (;;) {
     const run = await params.prisma.jobRun.findUnique({
@@ -31,9 +33,9 @@ const waitForRunFinish = async (params: {
     if (Date.now() - started > params.timeoutMs) return run;
     await sleep(500);
   }
-};
+}
 
-const main = async () => {
+async function main() {
   await ensureBootstrapEnv();
 
   const seedTitle = process.argv.slice(2).join(' ').trim() || 'Breaking Bad';
@@ -135,7 +137,7 @@ const main = async () => {
   } finally {
     await app.close();
   }
-};
+}
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
