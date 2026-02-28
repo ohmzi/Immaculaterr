@@ -303,8 +303,8 @@ export class MonitorConfirmJob {
         message: 'Loading Radarr monitored movies…',
       });
       const monitoredMovies = await this.radarr.listMonitoredMovies({
-        baseUrl: radarrBaseUrl!,
-        apiKey: radarrApiKey!,
+        baseUrl: radarrBaseUrl as string,
+        apiKey: radarrApiKey as string,
       });
 
       radarrTotalMonitored = monitoredMovies.length;
@@ -355,8 +355,8 @@ export class MonitorConfirmJob {
           radarrUnmonitored += 1;
         } else {
           const success = await this.radarr.setMovieMonitored({
-            baseUrl: radarrBaseUrl!,
-            apiKey: radarrApiKey!,
+            baseUrl: radarrBaseUrl as string,
+            apiKey: radarrApiKey as string,
             movie,
             monitored: false,
           });
@@ -507,8 +507,8 @@ export class MonitorConfirmJob {
         message: 'Loading Sonarr monitored series…',
       });
       const monitoredSeries = await this.sonarr.listMonitoredSeries({
-        baseUrl: sonarrBaseUrl!,
-        apiKey: sonarrApiKey!,
+        baseUrl: sonarrBaseUrl as string,
+        apiKey: sonarrApiKey as string,
       });
 
       sonarrSeriesTotal = monitoredSeries.length;
@@ -561,8 +561,8 @@ export class MonitorConfirmJob {
         }
 
         const episodes = await this.sonarr.getEpisodesBySeries({
-          baseUrl: sonarrBaseUrl!,
-          apiKey: sonarrApiKey!,
+          baseUrl: sonarrBaseUrl as string,
+          apiKey: sonarrApiKey as string,
           seriesId: series.id,
         });
 
@@ -581,7 +581,6 @@ export class MonitorConfirmJob {
 
         for (const [season, seasonEpisodes] of episodesBySeason.entries()) {
           let seasonMissing = 0;
-          let seasonEpisodesInPlex = 0;
           const seasonEpisodesToUnmonitor: SonarrEpisode[] = [];
 
           // Process all episodes in the season (matching Python script logic)
@@ -597,7 +596,6 @@ export class MonitorConfirmJob {
 
             if (isInPlex) {
               sonarrEpisodesInPlex += 1;
-              seasonEpisodesInPlex += 1;
               if (isMonitored) {
                 seasonEpisodesToUnmonitor.push(ep);
               }
@@ -614,8 +612,8 @@ export class MonitorConfirmJob {
                 sonarrEpisodesUnmonitored += 1;
               } else {
                 const success = await this.sonarr.setEpisodeMonitored({
-                  baseUrl: sonarrBaseUrl!,
-                  apiKey: sonarrApiKey!,
+                  baseUrl: sonarrBaseUrl as string,
+                  apiKey: sonarrApiKey as string,
                   episode: ep,
                   monitored: false,
                 });
@@ -681,8 +679,8 @@ export class MonitorConfirmJob {
           updatedSeries.seasons = seasons;
           if (!ctx.dryRun) {
             await this.sonarr.updateSeries({
-              baseUrl: sonarrBaseUrl!,
-              apiKey: sonarrApiKey!,
+              baseUrl: sonarrBaseUrl as string,
+              apiKey: sonarrApiKey as string,
               series: updatedSeries,
             });
           }
@@ -735,8 +733,8 @@ export class MonitorConfirmJob {
         await ctx.info('sonarr: dry-run; skipping MissingEpisodeSearch trigger');
       } else {
         sonarrSearchQueued = await this.sonarr.searchMonitoredEpisodes({
-          baseUrl: sonarrBaseUrl!,
-          apiKey: sonarrApiKey!,
+          baseUrl: sonarrBaseUrl as string,
+          apiKey: sonarrApiKey as string,
         });
         await ctx.info('sonarr: MissingEpisodeSearch queued', {
           ok: sonarrSearchQueued,

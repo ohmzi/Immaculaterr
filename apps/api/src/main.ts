@@ -12,6 +12,21 @@ import { privateCacheMiddleware } from './security/private-cache.middleware';
 import { securityHeadersMiddleware } from './security/security-headers.middleware';
 import { readAppMeta } from './app.meta';
 import { PlexUsersService } from './plex/plex-users.service';
+import {
+  API_DEFAULT_HOST,
+  API_DEFAULT_PORT,
+  API_DEV_PORT_EXAMPLE,
+  API_DOCS_PATH,
+  API_GLOBAL_PREFIX,
+  API_PREFIX_PATH,
+  AUTH_RATE_LIMIT_DEFAULT_LOGIN_MAX,
+  AUTH_RATE_LIMIT_DEFAULT_REGISTER_MAX,
+  AUTH_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  AUTH_RATE_LIMIT_ROUTES,
+  HTTP_SLOW_REQUEST_THRESHOLD_MS,
+  WEBHOOKS_PLEX_ALIAS_PREFIX,
+  WEBHOOKS_PLEX_CANONICAL_PREFIX,
+} from './app.constants';
 
 function ensureLegacyGlobals() {
   const g = globalThis as Record<string, unknown>;
@@ -45,6 +60,18 @@ function parseTrustProxyEnv(
   // - "loopback, linklocal, uniquelocal"
   // - "172.16.0.0/12"
   return value;
+}
+
+function parsePositiveIntegerEnv(
+  raw: string | undefined,
+  fallback: number,
+): number {
+  const parsed = Number.parseInt(raw ?? `${fallback}`, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function bootstrap() {
@@ -94,16 +121,25 @@ async function bootstrap() {
 
   // Compatibility: people (and some guides) often paste Plex webhook URLs without the `/api` prefix.
   // Accept `/webhooks/plex` as an alias for `/api/webhooks/plex`.
+  const webhookAliasPrefixRegex = new RegExp(
+    `^${escapeRegex(WEBHOOKS_PLEX_ALIAS_PREFIX)}(?:/)?(?:\\?|$)`,
+  );
+  const webhookAliasPrefixReplaceRegex = new RegExp(
+    `^${escapeRegex(WEBHOOKS_PLEX_ALIAS_PREFIX)}(?:/)?`,
+  );
   app.use((req: Request, _res: Response, next: NextFunction) => {
     const url = req.url || '';
-    if (/^\/webhooks\/plex(?:\/)?(?:\?|$)/.test(url)) {
-      req.url = url.replace(/^\/webhooks\/plex(?:\/)?/, '/api/webhooks/plex');
+    if (webhookAliasPrefixRegex.test(url)) {
+      req.url = url.replace(
+        webhookAliasPrefixReplaceRegex,
+        WEBHOOKS_PLEX_CANONICAL_PREFIX,
+      );
     }
     next();
   });
 
   // Keep the API surface separate from the UI routes we’ll serve later.
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix(API_GLOBAL_PREFIX);
 
   // CORS: in production default to same-origin (no CORS). Enable only via CORS_ORIGINS allowlist.
   const corsOrigins = (process.env.CORS_ORIGINS ?? '')
@@ -124,72 +160,59 @@ async function bootstrap() {
   }
 
   // Lightweight CSRF/origin defense for state-changing requests.
-  app.use('/api', createOriginCheckMiddleware({ allowedOrigins: corsOrigins }));
+  app.use(
+    API_PREFIX_PATH,
+    createOriginCheckMiddleware({ allowedOrigins: corsOrigins }),
+  );
 
   // Auth rate limiting (in-memory, per-IP).
-  const authRateLimitWindowMsRaw = Number.parseInt(
-    process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? '60000',
-    10,
+  const authRateLimitWindowMs = parsePositiveIntegerEnv(
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS,
+    AUTH_RATE_LIMIT_DEFAULT_WINDOW_MS,
   );
-  const authRateLimitWindowMs =
-    Number.isFinite(authRateLimitWindowMsRaw) && authRateLimitWindowMsRaw > 0
-      ? authRateLimitWindowMsRaw
-      : 60_000;
-
-  const authLoginMaxRaw = Number.parseInt(
-    process.env.AUTH_RATE_LIMIT_MAX_LOGIN ?? '10',
-    10,
+  const authLoginMax = parsePositiveIntegerEnv(
+    process.env.AUTH_RATE_LIMIT_MAX_LOGIN,
+    AUTH_RATE_LIMIT_DEFAULT_LOGIN_MAX,
   );
-  const authLoginMax =
-    Number.isFinite(authLoginMaxRaw) && authLoginMaxRaw > 0
-      ? authLoginMaxRaw
-      : 10;
-
-  const authRegisterMaxRaw = Number.parseInt(
-    process.env.AUTH_RATE_LIMIT_MAX_REGISTER ?? '3',
-    10,
+  const authRegisterMax = parsePositiveIntegerEnv(
+    process.env.AUTH_RATE_LIMIT_MAX_REGISTER,
+    AUTH_RATE_LIMIT_DEFAULT_REGISTER_MAX,
   );
-  const authRegisterMax =
-    Number.isFinite(authRegisterMaxRaw) && authRegisterMaxRaw > 0
-      ? authRegisterMaxRaw
-      : 3;
 
-  app.use(
-    '/api/auth/login',
-    createIpRateLimitMiddleware({
-      windowMs: authRateLimitWindowMs,
+  const authRateLimitRoutes = [
+    {
+      path: AUTH_RATE_LIMIT_ROUTES.login,
       max: authLoginMax,
       keyPrefix: 'auth_login',
-      methods: ['POST'],
-    }),
-  );
-  app.use(
-    '/api/auth/register',
-    createIpRateLimitMiddleware({
-      windowMs: authRateLimitWindowMs,
+    },
+    {
+      path: AUTH_RATE_LIMIT_ROUTES.register,
       max: authRegisterMax,
       keyPrefix: 'auth_register',
-      methods: ['POST'],
-    }),
-  );
-  app.use(
-    '/api/auth/login-challenge',
-    createIpRateLimitMiddleware({
-      windowMs: authRateLimitWindowMs,
+    },
+    {
+      path: AUTH_RATE_LIMIT_ROUTES.loginChallenge,
       max: authLoginMax,
       keyPrefix: 'auth_login_challenge',
-      methods: ['POST'],
-    }),
-  );
-  app.use(
-    '/api/auth/login-proof',
-    createIpRateLimitMiddleware({
-      windowMs: authRateLimitWindowMs,
+    },
+    {
+      path: AUTH_RATE_LIMIT_ROUTES.loginProof,
       max: authLoginMax,
       keyPrefix: 'auth_login_proof',
-      methods: ['POST'],
-    }),
-  );
+    },
+  ] as const;
+
+  for (const route of authRateLimitRoutes) {
+    app.use(
+      route.path,
+      createIpRateLimitMiddleware({
+        windowMs: authRateLimitWindowMs,
+        max: route.max,
+        keyPrefix: route.keyPrefix,
+        methods: ['POST'],
+      }),
+    );
+  }
 
   // Lightweight request logging (only warnings/errors/slow requests)
   const httpLoggingEnabled =
@@ -207,7 +230,8 @@ async function bootstrap() {
 
         if (status >= 500) httpLogger.error(msg);
         else if (status >= 400) httpLogger.warn(msg);
-        else if (ms >= 1500) httpLogger.warn(`SLOW ${msg}`);
+        else if (ms >= HTTP_SLOW_REQUEST_THRESHOLD_MS)
+          httpLogger.warn(`SLOW ${msg}`);
       });
       next();
     });
@@ -226,7 +250,7 @@ async function bootstrap() {
 
     const document = SwaggerModule.createDocument(app, config);
     // Note: Swagger routes are not affected by Nest's globalPrefix; include it explicitly.
-    SwaggerModule.setup('api/docs', app, document, {
+    SwaggerModule.setup(API_DOCS_PATH, app, document, {
       swaggerOptions: {
         persistAuthorization: true,
       },
@@ -234,8 +258,8 @@ async function bootstrap() {
   }
 
   // Default away from 3000 (commonly taken on dev machines).
-  const port = Number.parseInt(process.env.PORT ?? '5454', 10);
-  const host = process.env.HOST ?? '0.0.0.0';
+  const port = Number.parseInt(process.env.PORT ?? `${API_DEFAULT_PORT}`, 10);
+  const host = process.env.HOST ?? API_DEFAULT_HOST;
   try {
     await app.listen(port, host);
   } catch (err) {
@@ -244,7 +268,9 @@ async function bootstrap() {
       bootstrapLogger.error(
         `Port ${port} is already in use. Stop the other process or set PORT to a free port.`,
       );
-      bootstrapLogger.error(`Example: PORT=5859 npm run dev:api`);
+      bootstrapLogger.error(
+        `Example: PORT=${API_DEV_PORT_EXAMPLE} npm run dev:api`,
+      );
       process.exit(1);
     }
     throw err;
@@ -252,7 +278,7 @@ async function bootstrap() {
 
   const url = await app.getUrl().catch(() => `http://${host}:${port}`);
   bootstrapLogger.log(
-    `API listening: ${url}/api (dataDir=${process.env.APP_DATA_DIR ?? 'n/a'})`,
+    `API listening: ${url}${API_PREFIX_PATH} (dataDir=${process.env.APP_DATA_DIR ?? 'n/a'})`,
   );
 }
 void bootstrap().catch((err) => {

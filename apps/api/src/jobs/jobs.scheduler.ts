@@ -199,14 +199,17 @@ export class JobsScheduler implements OnModuleInit {
     );
     const migratedCount = migrationUpdates.reduce((sum, r) => sum + r.count, 0);
 
-    const toCreate = JOB_DEFINITIONS.filter(
-      (j) => j.defaultScheduleCron && !existingIds.has(j.id),
-    ).map((j) => ({
-      jobId: j.id,
-      cron: j.defaultScheduleCron!,
-      enabled: false,
-      timezone: null as string | null,
-    }));
+    const toCreate = JOB_DEFINITIONS.flatMap((j) => {
+      if (!j.defaultScheduleCron || existingIds.has(j.id)) return [];
+      return [
+        {
+          jobId: j.id,
+          cron: j.defaultScheduleCron,
+          enabled: false,
+          timezone: null as string | null,
+        },
+      ];
+    });
 
     if (!toCreate.length && migratedCount === 0) return;
 

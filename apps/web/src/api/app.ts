@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath } from '@/api/constants';
 
 export type AppMetaResponse = {
   name: string;
@@ -8,5 +9,5 @@ export type AppMetaResponse = {
 };
 
 export function getAppMeta() {
-  return fetchJson<AppMetaResponse>('/api/meta');
+  return fetchJson<AppMetaResponse>(apiPath('/meta'));
 }

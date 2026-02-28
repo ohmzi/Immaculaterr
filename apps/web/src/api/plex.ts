@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath } from '@/api/constants';
 
 export type PlexPinResponse = {
   id: number;
@@ -37,17 +38,17 @@ export type PlexLibraryGrowthVersionResponse = {
 };
 
 export async function createPlexPin(): Promise<PlexPinResponse> {
-  return fetchJson('/api/plex/pin', { method: 'POST' });
+  return fetchJson(apiPath('/plex/pin'), { method: 'POST' });
 }
 
 export async function checkPlexPin(pinId: number): Promise<PlexPinCheckResponse> {
-  return fetchJson(`/api/plex/pin/${pinId}`);
+  return fetchJson(apiPath(`/plex/pin/${pinId}`));
 }
 
 export async function getPlexLibraryGrowth(): Promise<PlexLibraryGrowthResponse> {
-  return fetchJson('/api/plex/library-growth');
+  return fetchJson(apiPath('/plex/library-growth'));
 }
 
 export async function getPlexLibraryGrowthVersion(): Promise<PlexLibraryGrowthVersionResponse> {
-  return fetchJson('/api/plex/library-growth/version');
+  return fetchJson(apiPath('/plex/library-growth/version'));
 }

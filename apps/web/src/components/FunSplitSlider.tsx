@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export function FunSplitSlider(props: {
@@ -32,10 +32,10 @@ export function FunSplitSlider(props: {
   const minPct = Math.max(0, Math.min(100, Math.min(safeMinRaw, safeMaxRaw)));
   const maxPct = Math.max(0, Math.min(100, Math.max(safeMinRaw, safeMaxRaw)));
 
-  const clamp = (n: number) => {
+  const clamp = useCallback((n: number) => {
     if (!Number.isFinite(n)) return minPct;
     return Math.max(minPct, Math.min(maxPct, Math.trunc(n)));
-  };
+  }, [maxPct, minPct]);
 
   const pct = clamp(value);
   const pctClamped = Math.max(0, Math.min(100, pct));
@@ -43,7 +43,7 @@ export function FunSplitSlider(props: {
   const showUpcoming = pctClamped < 100;
   const showSeparator = pctClamped > 0 && pctClamped < 100;
 
-  const handleMove = (clientX: number) => {
+  const handleMove = useCallback((clientX: number) => {
     if (disabled) return;
     const el = containerRef.current;
     if (!el) return;
@@ -52,34 +52,34 @@ export function FunSplitSlider(props: {
     const percentage = rect.width > 0 ? (x / rect.width) * 100 : 0;
     const constrained = clamp(Math.round(Math.max(0, Math.min(100, percentage))));
     onValueChange(constrained);
-  };
+  }, [clamp, disabled, onValueChange]);
 
-  const endDrag = () => {
+  const endDrag = useCallback(() => {
     setIsDragging(false);
     onValueCommit(lastValueRef.current);
-  };
+  }, [onValueCommit]);
 
-  const onPointerDown = (e: React.PointerEvent) => {
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (disabled) return;
     setIsDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
     handleMove(e.clientX);
-  };
+  }, [disabled, handleMove]);
 
-  const onPointerMove = (e: React.PointerEvent) => {
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging) return;
     handleMove(e.clientX);
-  };
+  }, [handleMove, isDragging]);
 
-  const onPointerUp = () => {
+  const onPointerUp = useCallback(() => {
     if (!isDragging) return;
     endDrag();
-  };
+  }, [endDrag, isDragging]);
 
-  const onPointerCancel = () => {
+  const onPointerCancel = useCallback(() => {
     if (!isDragging) return;
     endDrag();
-  };
+  }, [endDrag, isDragging]);
 
   return (
     <div
@@ -206,4 +206,3 @@ export function FunSplitSlider(props: {
     </div>
   );
 }
-

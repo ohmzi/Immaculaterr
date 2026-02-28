@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowLeft, Home } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useCallback } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
@@ -8,6 +9,9 @@ import { useSafeNavigate } from '@/lib/navigation';
 
 export function NotFoundPage() {
   const navigate = useSafeNavigate();
+  const goBack = useCallback(() => {
+    navigate(-1);
+  }, [navigate]);
 
   return (
     <section className="relative min-h-[calc(100vh-160px)] overflow-hidden">
@@ -47,7 +51,7 @@ export function NotFoundPage() {
             <div className="mt-7 flex flex-col sm:flex-row gap-3">
               <Button
                 variant="outline"
-                onClick={() => navigate(-1)}
+                onClick={goBack}
                 className="border-white/15 bg-white/5 text-white hover:bg-white/10"
               >
                 <ArrowLeft />
@@ -66,5 +70,4 @@ export function NotFoundPage() {
     </section>
   );
 }
-
 

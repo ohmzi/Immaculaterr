@@ -11,6 +11,12 @@ import { OverseerrService } from '../overseerr/overseerr.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
+import {
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+} from '../plex/plex-collections.utils';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
@@ -506,13 +512,13 @@ export class BasedonLatestWatchedCollectionJob {
       debug: JsonObject;
     }> = [
       {
-        name: 'Based on your recently watched movie',
+        name: RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
         titles: similar.titles,
         strategy: similar.strategy,
         debug: similar.debug,
       },
       {
-        name: 'Change of Taste',
+        name: CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
         titles: changeOfTaste.titles,
         strategy: changeOfTaste.strategy,
         debug: changeOfTasteDebug,
@@ -1593,13 +1599,13 @@ export class BasedonLatestWatchedCollectionJob {
       debug: JsonObject;
     }> = [
       {
-        name: 'Based on your recently watched show',
+        name: RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
         titles: similar.titles,
         strategy: similar.strategy,
         debug: similar.debug,
       },
       {
-        name: 'Change of Taste',
+        name: CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
         titles: changeOfTaste.titles,
         strategy: changeOfTaste.strategy,
         debug: changeOfTasteDebug,

@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -48,6 +55,12 @@ export function Navigation() {
   const navigate = useSafeNavigate();
   const queryClient = useQueryClient();
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const getButtonRefHandler = useCallback(
+    (index: number) => (element: HTMLButtonElement | null) => {
+      buttonRefs.current[index] = element;
+    },
+    [],
+  );
   const [buttonPositions, setButtonPositions] = useState<{ left: number; width: number }[]>([]);
   const didToastUpdateRef = useRef(false);
   const helpRef = useRef<HTMLDivElement | null>(null);
@@ -97,24 +110,24 @@ export function Navigation() {
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [isHelpOpen]);
 
-  const clearHelpCloseTimeout = () => {
+  const clearHelpCloseTimeout = useCallback(() => {
     const t = helpCloseTimeoutRef.current;
     if (t !== null) window.clearTimeout(t);
     helpCloseTimeoutRef.current = null;
-  };
+  }, []);
 
-  const clearDebugLongPress = () => {
+  const clearDebugLongPress = useCallback(() => {
     const t = debugLongPressTimeoutRef.current;
     if (t !== null) window.clearTimeout(t);
     debugLongPressTimeoutRef.current = null;
-  };
+  }, []);
 
-  const openDebugger = () => {
+  const openDebugger = useCallback(() => {
     setIsHelpOpen(false);
     navigate(createDebuggerUrl());
-  };
+  }, [navigate]);
 
-  const startDebugLongPress = (pointerType: string) => {
+  const startDebugLongPress = useCallback((pointerType: string) => {
     if (pointerType !== 'touch') return;
     clearDebugLongPress();
     debugLongPressTriggeredRef.current = false;
@@ -122,7 +135,7 @@ export function Navigation() {
       debugLongPressTriggeredRef.current = true;
       openDebugger();
     }, 1100);
-  };
+  }, [clearDebugLongPress, openDebugger]);
 
   // Avoid leaking a pending timeout on unmount.
   useEffect(() => {
@@ -132,9 +145,9 @@ export function Navigation() {
       helpCloseTimeoutRef.current = null;
       clearDebugLongPress();
     };
-  }, []);
+  }, [clearDebugLongPress]);
 
-  const scheduleHelpClose = () => {
+  const scheduleHelpClose = useCallback(() => {
     clearHelpCloseTimeout();
     // This hover-only behavior is unreliable on touch devices; prefer explicit outside-tap close.
     // Keep a tiny delay for desktop mouse users only.
@@ -147,7 +160,7 @@ export function Navigation() {
       setIsHelpOpen(false);
       helpCloseTimeoutRef.current = null;
     }, 250);
-  };
+  }, [clearHelpCloseTimeout]);
 
   // Update button positions when they change
   useEffect(() => {
@@ -213,16 +226,16 @@ export function Navigation() {
     },
   });
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setIsHelpOpen(false);
     logoutMutation.mutate();
-  };
+  }, [logoutMutation]);
 
-  const handleResetAccount = async () => {
+  const handleResetAccount = useCallback(() => {
     setIsHelpOpen(false);
     setResetError(null);
     setResetOpen(true);
-  };
+  }, []);
 
   const resetMutation = useMutation({
     mutationFn: async () => {
@@ -238,6 +251,71 @@ export function Navigation() {
       setResetError(err instanceof Error ? err.message : String(err));
     },
   });
+  const navigateHome = useCallback(() => {
+    navigate('/');
+  }, [navigate]);
+  const closeResetDialog = useCallback(() => {
+    setResetOpen(false);
+  }, []);
+  const confirmResetDialog = useCallback(() => {
+    resetMutation.mutate();
+  }, [resetMutation]);
+  const handleNavItemMouseEnter = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const raw = event.currentTarget.dataset.navIndex;
+      const index = Number.parseInt(raw ?? '', 10);
+      if (!Number.isFinite(index)) return;
+      setHoveredIndex(index);
+    },
+    [],
+  );
+  const handleNavItemMouseLeave = useCallback(() => {
+    setHoveredIndex(null);
+  }, []);
+  const handleDropdownClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const to = event.currentTarget.dataset.to;
+      if (!to) return;
+      setHoveredIndex(null);
+      navigate(to);
+    },
+    [navigate],
+  );
+  const handleHelpToggle = useCallback(() => {
+    const next = !isHelpOpen;
+    setIsHelpOpen(next);
+    if (next) void updatesQuery.refetch();
+  }, [isHelpOpen, updatesQuery]);
+  const openFaq = useCallback(() => {
+    setIsHelpOpen(false);
+    navigate('/faq');
+  }, [navigate]);
+  const handleDebugPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      startDebugLongPress(event.pointerType);
+    },
+    [startDebugLongPress],
+  );
+  const handleDebugClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (debugLongPressTriggeredRef.current) {
+        debugLongPressTriggeredRef.current = false;
+        return;
+      }
+      if (event.altKey || event.shiftKey || event.metaKey) {
+        openDebugger();
+        return;
+      }
+      setIsHelpOpen(false);
+      navigate('/version-history');
+    },
+    [navigate, openDebugger],
+  );
+  const openLatestUpdate = useCallback(() => {
+    const url = updatesQuery.data?.latestUrl;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  }, [updatesQuery.data?.latestUrl]);
 
   return (
     <>
@@ -258,7 +336,7 @@ export function Navigation() {
             <div className="relative flex items-center gap-8">
               {/* Logo */}
               <button
-                onClick={() => navigate('/')}
+                onClick={navigateHome}
                 className="flex items-center gap-2 mr-8 hover:opacity-80 active:opacity-70 transition-opacity cursor-pointer"
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -302,13 +380,12 @@ export function Navigation() {
                   <div
                     key={item.label}
                     className="relative"
-                    onMouseEnter={() => setHoveredIndex(index)}
-                    onMouseLeave={() => setHoveredIndex(null)}
+                    data-nav-index={String(index)}
+                    onMouseEnter={handleNavItemMouseEnter}
+                    onMouseLeave={handleNavItemMouseLeave}
                   >
                     <button
-                      ref={(el) => {
-                        buttonRefs.current[index] = el;
-                      }}
+                      ref={getButtonRefHandler(index)}
                       className="relative px-5 py-2.5 text-sm text-white/90 hover:text-white active:text-white transition-all duration-300 rounded-2xl overflow-hidden group active:scale-[0.98]"
                     >
                       {/* Glassy button background */}
@@ -327,14 +404,12 @@ export function Navigation() {
                           className="absolute top-full left-0 mt-2 min-w-[220px] rounded-2xl overflow-hidden shadow-2xl"
                         >
                           <div className="bg-[#0b0c0f]/70 backdrop-blur-2xl border border-white/10 p-2">
-                            {item.dropdown.map((subItem, subIndex) => (
+                            {item.dropdown.map((subItem) => (
                               <button
-                                key={subIndex}
+                                key={subItem.to}
+                                data-to={subItem.to}
                                 className="w-full text-left px-4 py-3 text-sm text-white/90 rounded-xl transition-all duration-200 hover:bg-white/10 active:bg-white/12 active:scale-[0.99]"
-                                onClick={() => {
-                                  setHoveredIndex(null);
-                                  navigate(subItem.to);
-                                }}
+                                onClick={handleDropdownClick}
                               >
                                 {subItem.label}
                               </button>
@@ -352,15 +427,11 @@ export function Navigation() {
                 <div
                   ref={helpRef}
                   className="relative pb-2"
-                  onMouseEnter={() => clearHelpCloseTimeout()}
-                  onMouseLeave={() => scheduleHelpClose()}
+                  onMouseEnter={clearHelpCloseTimeout}
+                  onMouseLeave={scheduleHelpClose}
                 >
                   <button
-                    onClick={() => {
-                      const next = !isHelpOpen;
-                      setIsHelpOpen(next);
-                      if (next) void updatesQuery.refetch();
-                    }}
+                    onClick={handleHelpToggle}
                     className="px-5 py-2.5 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 active:scale-[0.98] backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20"
                   >
                     <span className="inline-flex items-center gap-2">
@@ -387,10 +458,7 @@ export function Navigation() {
                         <div className="p-4 space-y-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              setIsHelpOpen(false);
-                              navigate('/faq');
-                            }}
+                            onClick={openFaq}
                             className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                           >
                             FAQ
@@ -398,25 +466,11 @@ export function Navigation() {
 
                           <button
                             type="button"
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      startDebugLongPress(e.pointerType);
-                    }}
-                    onPointerUp={() => clearDebugLongPress()}
-                    onPointerLeave={() => clearDebugLongPress()}
-                    onPointerCancel={() => clearDebugLongPress()}
-                    onClick={(event) => {
-                      if (debugLongPressTriggeredRef.current) {
-                        debugLongPressTriggeredRef.current = false;
-                        return;
-                      }
-                      if (event.altKey || event.shiftKey || event.metaKey) {
-                        openDebugger();
-                        return;
-                      }
-                      setIsHelpOpen(false);
-                      navigate('/version-history');
-                    }}
+                    onPointerDown={handleDebugPointerDown}
+                    onPointerUp={clearDebugLongPress}
+                    onPointerLeave={clearDebugLongPress}
+                    onPointerCancel={clearDebugLongPress}
+                    onClick={handleDebugClick}
                             className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5 touch-manipulation"
                           >
                             Version: {currentLabel ?? '—'}
@@ -425,10 +479,7 @@ export function Navigation() {
                             {updateAvailable && updateLabel ? (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const url = updatesQuery.data?.latestUrl;
-                                  if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                                }}
+                                onClick={openLatestUpdate}
                                 className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                               >
                                 Update available {updateLabel}
@@ -466,8 +517,8 @@ export function Navigation() {
 
       <ConfirmDialog
         open={resetOpen}
-        onClose={() => setResetOpen(false)}
-        onConfirm={() => resetMutation.mutate()}
+        onClose={closeResetDialog}
+        onConfirm={confirmResetDialog}
         label="Reset"
         title="Reset account?"
         description={

@@ -1595,8 +1595,8 @@ export class CleanupAfterAddingNewContentJob {
                   } else {
                     const ok = await this.sonarr
                       .setEpisodeMonitored({
-                        baseUrl: sonarrBaseUrl!,
-                        apiKey: sonarrApiKey!,
+                        baseUrl: sonarrBaseUrl as string,
+                        apiKey: sonarrApiKey as string,
                         episode: sonarrEp,
                         monitored: false,
                       })
@@ -2734,7 +2734,8 @@ export class CleanupAfterAddingNewContentJob {
           const sb = b.bestSize ?? 0;
           return sb - sa;
         });
-        const keep = sorted[0]!;
+        const keep = sorted[0];
+        if (!keep) continue;
         const deleteKeys = group.map((g) => g.ratingKey).filter((rk) => rk !== keep.ratingKey);
 
         if (group.length > 1) episodeStats.groupsWithDuplicates += 1;
@@ -2822,7 +2823,6 @@ export class CleanupAfterAddingNewContentJob {
       let tmdbId: number | null = tmdbIdInput ?? null;
       let resolvedTitle = title;
       let resolvedYear = year;
-      let resolvedAddedAt: number | null = null;
       let movieLibrarySectionKey: string | null = movieSectionKeyHint;
       let movieLibrarySectionTitle: string | null = movieSectionTitleHint;
 
@@ -2836,7 +2836,6 @@ export class CleanupAfterAddingNewContentJob {
           tmdbId = tmdbId ?? meta?.tmdbIds?.[0] ?? null;
           resolvedTitle = meta?.title?.trim() || resolvedTitle;
           resolvedYear = meta?.year ?? resolvedYear;
-          resolvedAddedAt = meta?.addedAt ?? resolvedAddedAt;
           movieLibrarySectionKey =
             meta?.librarySectionId ?? movieLibrarySectionKey;
           movieLibrarySectionTitle =
@@ -3874,10 +3873,6 @@ export class CleanupAfterAddingNewContentJob {
   }
 }
 
-function asNum(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
-}
-
 export function buildMediaAddedCleanupReport(params: {
   ctx: JobContext;
   raw: JsonObject;
@@ -3899,7 +3894,6 @@ export function buildMediaAddedCleanupReport(params: {
   const year = pickNumber(rawRec, 'year');
   const ratingKey = pickString(rawRec, 'ratingKey') ?? null;
   const showTitle = pickString(rawRec, 'showTitle') ?? null;
-  const showRatingKey = pickString(rawRec, 'showRatingKey') ?? null;
   const seasonNumber = pickNumber(rawRec, 'seasonNumber');
   const episodeNumber = pickNumber(rawRec, 'episodeNumber');
   const featuresRaw = isPlainObject(rawRec.features)
@@ -4168,6 +4162,9 @@ export function buildMediaAddedCleanupReport(params: {
   const watchlistApplicable =
     features.removeFromWatchlist &&
     (mediaType === 'movie' || mediaType === 'show' || mediaType === 'season');
+  const runSkipped = asBool(rawRec.skipped) === true;
+  const watchlistSkippedByFlow =
+    features.removeFromWatchlist && runSkipped && !watchlistChecked;
 
   const isFullSweep =
     duplicates && typeof (duplicates as Record<string, unknown>).mode === 'string'
@@ -4371,12 +4368,16 @@ export function buildMediaAddedCleanupReport(params: {
           id: 'watchlist',
           title: 'Full sweep: reconciled Plex watchlist',
           status: features.removeFromWatchlist
-            ? watchlistChecked
+            ? watchlistSkippedByFlow
+              ? 'skipped'
+              : watchlistChecked
               ? 'success'
               : 'failed'
             : 'skipped',
           facts: features.removeFromWatchlist
-            ? [
+            ? watchlistSkippedByFlow
+              ? [{ label: 'Note', value: 'Skipped before watchlist check.' }]
+              : [
                 { label: ctx.dryRun ? 'Would remove (movies)' : 'Removed (movies)', value: watchlistMovieRemoved },
                 { label: ctx.dryRun ? 'Would remove (shows)' : 'Removed (shows)', value: watchlistShowRemoved },
                 ...(watchlist && isPlainObject(watchlist.movies)
@@ -4464,7 +4465,9 @@ export function buildMediaAddedCleanupReport(params: {
               ]
             : [{ label: 'Result', value: 'Disabled in task settings.' }],
           issues:
-            features.removeFromWatchlist && !watchlistChecked
+            features.removeFromWatchlist &&
+            !watchlistChecked &&
+            !watchlistSkippedByFlow
               ? [issue('error', 'Plex watchlist reconciliation was not executed.')]
               : [],
         },
@@ -4513,8 +4516,14 @@ export function buildMediaAddedCleanupReport(params: {
         {
           id: 'watchlist',
           title: 'Checked Plex watchlist',
-          status: watchlistApplicable ? (watchlistChecked ? 'success' : 'failed') : 'skipped',
-          facts: watchlistApplicable
+          status: watchlistApplicable
+            ? watchlistSkippedByFlow
+              ? 'skipped'
+              : watchlistChecked
+                ? 'success'
+                : 'failed'
+            : 'skipped',
+          facts: watchlistApplicable && !watchlistSkippedByFlow
             ? [
                 { label: 'Found', value: (watchlistAttempted ?? 0) > 0 ? 'found' : 'not found' },
                 { label: ctx.dryRun ? 'Would remove' : 'Removed', value: watchlistRemoved ?? 0 },
@@ -4524,13 +4533,17 @@ export function buildMediaAddedCleanupReport(params: {
             : [
                 {
                   label: 'Note',
-                  value: features.removeFromWatchlist
+                  value: watchlistSkippedByFlow
+                    ? 'Skipped before watchlist check.'
+                    : features.removeFromWatchlist
                     ? 'Not checked for episodes.'
                     : 'Disabled in task settings.',
                 },
               ],
           issues:
-            watchlistApplicable && !watchlistChecked
+            watchlistApplicable &&
+            !watchlistChecked &&
+            !watchlistSkippedByFlow
               ? [issue('error', 'Plex watchlist check was not executed.')]
               : [],
         },

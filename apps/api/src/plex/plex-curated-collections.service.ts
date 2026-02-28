@@ -463,7 +463,8 @@ export class PlexCuratedCollectionsService {
       });
       const addTargets = desired.filter((item) => !existingKeys.has(item.ratingKey));
       for (let i = 0; i < addTargets.length; i += 1) {
-        const item = addTargets[i]!;
+        const item = addTargets[i];
+        if (!item) continue;
         try {
           await this.plexServer.addItemToCollection({
             baseUrl,

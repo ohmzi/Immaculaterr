@@ -14,7 +14,15 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type MouseEvent,
+} from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -537,7 +545,7 @@ export function CommandCenterPage() {
     serverSelectedPlexLibraryKeys,
   ]);
 
-  const togglePlexLibrarySelectionDraft = (
+  const togglePlexLibrarySelectionDraft = useCallback((
     librarySectionKey: string,
     checked: boolean,
   ) => {
@@ -554,7 +562,7 @@ export function CommandCenterPage() {
       }
       return prev.filter((key) => key !== librarySectionKey);
     });
-  };
+  }, []);
 
   const savePlexLibrarySelectionMutation = useMutation({
     mutationFn: async (selectedSectionKeys: string[]) =>
@@ -585,7 +593,7 @@ export function CommandCenterPage() {
     serverSelectedPlexUserIds,
   ]);
 
-  const togglePlexUserSelectionDraft = (plexUserId: string, checked: boolean) => {
+  const togglePlexUserSelectionDraft = useCallback((plexUserId: string, checked: boolean) => {
     setDraftSelectedPlexUserIds((prev) => {
       const has = prev.includes(plexUserId);
       if (checked) {
@@ -595,7 +603,7 @@ export function CommandCenterPage() {
       if (!has) return prev;
       return prev.filter((id) => id !== plexUserId);
     });
-  };
+  }, []);
 
   const savePlexMonitoringUsersMutation = useMutation({
     mutationFn: async (selectedPlexUserIds: string[]) =>
@@ -641,15 +649,18 @@ export function CommandCenterPage() {
             <button
               type="button"
               disabled={resetImmaculateMutation.isPending}
-              onClick={() => {
-                setImmaculateResetTarget({
-                  mediaType: c.mediaType,
-                  librarySectionKey: c.librarySectionKey,
-                  libraryTitle: c.libraryTitle,
-                  dataset: c.dataset,
-                  plex: c.plex,
-                });
-              }}
+              data-media-type={c.mediaType}
+              data-library-section-key={c.librarySectionKey}
+              data-library-title={c.libraryTitle}
+              data-dataset-total={String(c.dataset.total)}
+              data-dataset-active={String(c.dataset.active)}
+              data-dataset-pending={String(c.dataset.pending)}
+              data-plex-collection-name={c.plex.collectionName}
+              data-plex-collection-rating-key={c.plex.collectionRatingKey ?? ''}
+              data-plex-item-count={
+                typeof c.plex.itemCount === 'number' ? String(c.plex.itemCount) : ''
+              }
+              onClick={openImmaculateResetTarget}
               className="inline-flex items-center gap-2 shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
             >
               {resetImmaculateMutation.isPending ? (
@@ -669,6 +680,336 @@ export function CommandCenterPage() {
         <div className="text-sm text-white/60">No Plex libraries found.</div>
       ) : null}
     </div>
+  );
+  const closePlexLibraryDeselectDialog = useCallback(() => {
+    setPlexLibraryDeselectDialogOpen(false);
+  }, []);
+  const confirmPlexLibraryDeselectDialog = useCallback(() => {
+    savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
+  }, [draftSelectedPlexLibraryKeys, savePlexLibrarySelectionMutation]);
+  const closePlexLibraryMinDialog = useCallback(() => {
+    setPlexLibraryMinDialogOpen(false);
+  }, []);
+  const stopClickPropagation = useCallback((event: MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+  }, []);
+  const handleRecommendationCountChange = useCallback((next: number) => {
+    const clamped = Number.isFinite(next)
+      ? Math.max(5, Math.min(100, Math.trunc(next)))
+      : 50;
+    setDraftRecommendationCount(clamped);
+  }, []);
+  const handleRecommendationCountCommit = useCallback(
+    (next: number) => {
+      const clamped = Number.isFinite(next)
+        ? Math.max(5, Math.min(100, Math.trunc(next)))
+        : 50;
+      saveRecommendationsMutation.mutate({ count: clamped });
+    },
+    [saveRecommendationsMutation],
+  );
+  const handleReleasedPercentChange = useCallback((releasedPct: number) => {
+    const clampedReleased = Number.isFinite(releasedPct)
+      ? Math.max(25, Math.min(100, Math.trunc(releasedPct)))
+      : 75;
+    const nextUpcoming = Math.max(
+      0,
+      Math.min(75, Math.trunc(100 - clampedReleased)),
+    );
+    setDraftUpcomingPercent(nextUpcoming);
+  }, []);
+  const handleReleasedPercentCommit = useCallback(
+    (releasedPct: number) => {
+      const clampedReleased = Number.isFinite(releasedPct)
+        ? Math.max(25, Math.min(100, Math.trunc(releasedPct)))
+        : 75;
+      const nextUpcoming = Math.max(
+        0,
+        Math.min(75, Math.trunc(100 - clampedReleased)),
+      );
+      saveRecommendationsMutation.mutate({
+        upcomingPercent: nextUpcoming,
+      });
+    },
+    [saveRecommendationsMutation],
+  );
+  const retryPlexLibraries = useCallback(() => {
+    void plexLibrariesQuery.refetch();
+  }, [plexLibrariesQuery]);
+  const handlePlexLibraryCheckboxChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const librarySectionKey = event.currentTarget.dataset.librarySectionKey;
+      if (!librarySectionKey) return;
+      togglePlexLibrarySelectionDraft(librarySectionKey, event.currentTarget.checked);
+    },
+    [togglePlexLibrarySelectionDraft],
+  );
+  const resetPlexLibrarySelectionDraft = useCallback(() => {
+    setDraftSelectedPlexLibraryKeys(serverSelectedPlexLibraryKeys);
+  }, [serverSelectedPlexLibraryKeys]);
+  const savePlexLibrarySelectionDraft = useCallback(() => {
+    if (deselectedPlexLibraries.length > 0) {
+      setPlexLibraryDeselectDialogOpen(true);
+      return;
+    }
+    savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
+  }, [
+    deselectedPlexLibraries.length,
+    draftSelectedPlexLibraryKeys,
+    savePlexLibrarySelectionMutation,
+  ]);
+  const handlePlexUserCheckboxChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const plexUserId = event.currentTarget.dataset.plexUserId;
+      if (!plexUserId) return;
+      togglePlexUserSelectionDraft(plexUserId, event.currentTarget.checked);
+    },
+    [togglePlexUserSelectionDraft],
+  );
+  const resetPlexUserSelectionDraft = useCallback(() => {
+    setDraftSelectedPlexUserIds(serverSelectedPlexUserIds);
+  }, [serverSelectedPlexUserIds]);
+  const savePlexUserSelectionDraft = useCallback(() => {
+    savePlexMonitoringUsersMutation.mutate(draftSelectedPlexUserIds);
+  }, [draftSelectedPlexUserIds, savePlexMonitoringUsersMutation]);
+  const openOverseerrResetDialog = useCallback(() => {
+    setOverseerrResetOpen(true);
+  }, []);
+  const openRejectedList = useCallback(() => {
+    setRejectedListOpen(true);
+  }, []);
+  const openRejectedResetDialog = useCallback(() => {
+    setRejectedResetOpen(true);
+  }, []);
+  const openImmaculateResetTarget = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    const mediaType = event.currentTarget.dataset.mediaType;
+    const librarySectionKey = event.currentTarget.dataset.librarySectionKey;
+    const libraryTitle = event.currentTarget.dataset.libraryTitle;
+    const datasetTotalRaw = event.currentTarget.dataset.datasetTotal;
+    const datasetActiveRaw = event.currentTarget.dataset.datasetActive;
+    const datasetPendingRaw = event.currentTarget.dataset.datasetPending;
+    const plexCollectionName = event.currentTarget.dataset.plexCollectionName ?? '';
+    const plexCollectionRatingKey = event.currentTarget.dataset.plexCollectionRatingKey;
+    const plexItemCountRaw = event.currentTarget.dataset.plexItemCount;
+    if (!mediaType || !librarySectionKey || !libraryTitle) return;
+    if (!datasetTotalRaw || !datasetActiveRaw || !datasetPendingRaw) return;
+    const datasetTotal = Number.parseInt(datasetTotalRaw, 10);
+    const datasetActive = Number.parseInt(datasetActiveRaw, 10);
+    const datasetPending = Number.parseInt(datasetPendingRaw, 10);
+    if (!Number.isFinite(datasetTotal)) return;
+    if (!Number.isFinite(datasetActive)) return;
+    if (!Number.isFinite(datasetPending)) return;
+    const parsedItemCount =
+      typeof plexItemCountRaw === 'string' && plexItemCountRaw.length > 0
+        ? Number.parseInt(plexItemCountRaw, 10)
+        : null;
+    setImmaculateResetTarget({
+      mediaType: mediaType === 'tv' ? 'tv' : 'movie',
+      librarySectionKey,
+      libraryTitle,
+      dataset: {
+        total: datasetTotal,
+        active: datasetActive,
+        pending: datasetPending,
+      },
+      plex: {
+        collectionName: plexCollectionName,
+        collectionRatingKey: plexCollectionRatingKey || null,
+        itemCount: Number.isFinite(parsedItemCount ?? NaN) ? parsedItemCount : null,
+      },
+    });
+  }, []);
+  const toggleActiveImmaculateUser = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    const userId = event.currentTarget.dataset.plexUserId;
+    if (!userId) return;
+    setActiveImmaculateUserId((prev) => (prev === userId ? null : userId));
+  }, []);
+  const openImmaculateUserResetTarget = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      const plexUserId = event.currentTarget.dataset.plexUserId;
+      const mediaType = event.currentTarget.dataset.mediaType;
+      const totalRaw = event.currentTarget.dataset.total;
+      if (!plexUserId || !mediaType || !totalRaw) return;
+      const total = Number.parseInt(totalRaw, 10);
+      if (!Number.isFinite(total)) return;
+      setImmaculateUserResetTarget({
+        plexUserId,
+        plexUserTitle: event.currentTarget.dataset.plexUserTitle || 'Plex User',
+        mediaType: mediaType === 'tv' ? 'tv' : 'movie',
+        total,
+      });
+    },
+    [],
+  );
+  const closeImmaculateReset = useCallback(() => {
+    if (resetImmaculateMutation.isPending) return;
+    setImmaculateResetTarget(null);
+  }, [resetImmaculateMutation.isPending]);
+  const clearImmaculateReset = useCallback(() => {
+    setImmaculateResetTarget(null);
+  }, []);
+  const confirmImmaculateReset = useCallback(() => {
+    if (resetImmaculateMutation.isPending) return;
+    const target = immaculateResetTarget;
+    if (!target) return;
+    resetImmaculateMutation.mutate(
+      {
+        mediaType: target.mediaType,
+        librarySectionKey: target.librarySectionKey,
+      },
+      {
+        onSuccess: () => setImmaculateResetTarget(null),
+      },
+    );
+  }, [immaculateResetTarget, resetImmaculateMutation]);
+  const closeImmaculateUserReset = useCallback(() => {
+    if (resetImmaculateUserMutation.isPending) return;
+    setImmaculateUserResetTarget(null);
+  }, [resetImmaculateUserMutation.isPending]);
+  const clearImmaculateUserReset = useCallback(() => {
+    setImmaculateUserResetTarget(null);
+  }, []);
+  const confirmImmaculateUserReset = useCallback(() => {
+    if (resetImmaculateUserMutation.isPending) return;
+    const target = immaculateUserResetTarget;
+    if (!target) return;
+    resetImmaculateUserMutation.mutate(
+      {
+        plexUserId: target.plexUserId,
+        mediaType: target.mediaType,
+      },
+      {
+        onSuccess: () => setImmaculateUserResetTarget(null),
+      },
+    );
+  }, [immaculateUserResetTarget, resetImmaculateUserMutation]);
+  const closeOverseerrReset = useCallback(() => {
+    if (resetOverseerrMutation.isPending) return;
+    setOverseerrResetOpen(false);
+  }, [resetOverseerrMutation.isPending]);
+  const clearOverseerrReset = useCallback(() => {
+    setOverseerrResetOpen(false);
+  }, []);
+  const confirmOverseerrReset = useCallback(() => {
+    if (resetOverseerrMutation.isPending) return;
+    resetOverseerrMutation.mutate(undefined, {
+      onSuccess: () => setOverseerrResetOpen(false),
+    });
+  }, [resetOverseerrMutation]);
+  const closeRejectedReset = useCallback(() => {
+    if (resetRejectedMutation.isPending) return;
+    setRejectedResetOpen(false);
+  }, [resetRejectedMutation.isPending]);
+  const clearRejectedReset = useCallback(() => {
+    setRejectedResetOpen(false);
+  }, []);
+  const confirmRejectedReset = useCallback(() => {
+    if (resetRejectedMutation.isPending) return;
+    resetRejectedMutation.mutate(undefined, {
+      onSuccess: () => setRejectedResetOpen(false),
+    });
+  }, [resetRejectedMutation]);
+  const closeRejectedList = useCallback(() => {
+    if (deleteRejectedMutation.isPending) return;
+    setRejectedListOpen(false);
+  }, [deleteRejectedMutation.isPending]);
+  const dismissRejectedList = useCallback(() => {
+    setRejectedListOpen(false);
+  }, []);
+  const selectRejectedMovieTab = useCallback(() => {
+    setRejectedMediaTab('movie');
+  }, []);
+  const selectRejectedTvTab = useCallback(() => {
+    setRejectedMediaTab('tv');
+  }, []);
+  const handleRejectedKindClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    const kind = event.currentTarget.dataset.rejectedKind as
+      | 'all'
+      | 'immaculateTaste'
+      | 'recentlyWatched'
+      | 'changeOfTaste'
+      | undefined;
+    if (!kind) return;
+    setRejectedKind(kind);
+  }, []);
+  const removeRejectedItem = useCallback(
+    (itemId: string) => {
+      deleteRejectedMutation.mutate(itemId, {
+        onSuccess: () => toast.success('Removed from rejected list.'),
+        onError: () => toast.error('Failed to remove.'),
+      });
+    },
+    [deleteRejectedMutation],
+  );
+  const handleRemoveRejectedItemClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      const itemId = event.currentTarget.dataset.itemId;
+      if (!itemId) return;
+      removeRejectedItem(itemId);
+    },
+    [removeRejectedItem],
+  );
+  const handleRadarrRootFolderChange = useCallback(
+    (next: string) => {
+      setDraftRootFolderPath(next);
+      saveRadarrDefaultsMutation.mutate({
+        defaultRootFolderPath: next,
+      });
+    },
+    [saveRadarrDefaultsMutation],
+  );
+  const handleRadarrQualityProfileChange = useCallback(
+    (raw: string) => {
+      const next = Number.parseInt(raw, 10);
+      if (!Number.isFinite(next)) return;
+      setDraftQualityProfileId(next);
+      saveRadarrDefaultsMutation.mutate({
+        defaultQualityProfileId: next,
+      });
+    },
+    [saveRadarrDefaultsMutation],
+  );
+  const handleRadarrTagChange = useCallback(
+    (raw: string) => {
+      const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+      const next = Number.isFinite(parsed ?? NaN) ? (parsed as number) : null;
+      setDraftTagId(next);
+      saveRadarrDefaultsMutation.mutate({
+        defaultTagId: next,
+      });
+    },
+    [saveRadarrDefaultsMutation],
+  );
+  const handleSonarrRootFolderChange = useCallback(
+    (next: string) => {
+      setSonarrDraftRootFolderPath(next);
+      saveSonarrDefaultsMutation.mutate({
+        defaultRootFolderPath: next,
+      });
+    },
+    [saveSonarrDefaultsMutation],
+  );
+  const handleSonarrQualityProfileChange = useCallback(
+    (raw: string) => {
+      const next = Number.parseInt(raw, 10);
+      if (!Number.isFinite(next)) return;
+      setSonarrDraftQualityProfileId(next);
+      saveSonarrDefaultsMutation.mutate({
+        defaultQualityProfileId: next,
+      });
+    },
+    [saveSonarrDefaultsMutation],
+  );
+  const handleSonarrTagChange = useCallback(
+    (raw: string) => {
+      const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+      const next = Number.isFinite(parsed ?? NaN) ? (parsed as number) : null;
+      setSonarrDraftTagId(next);
+      saveSonarrDefaultsMutation.mutate({
+        defaultTagId: next,
+      });
+    },
+    [saveSonarrDefaultsMutation],
   );
 
   return (
@@ -757,9 +1098,9 @@ export function CommandCenterPage() {
                       {/* Count */}
                       <div className="space-y-3">
                         <div className="flex items-end justify-between gap-4">
-                          <label className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                          <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
                             Recommendation count
-                          </label>
+                          </div>
                         </div>
 
                         <FunCountSlider
@@ -767,18 +1108,8 @@ export function CommandCenterPage() {
                           min={0}
                           max={100}
                           disabled={saveRecommendationsMutation.isPending}
-                          onValueChange={(next) => {
-                            const clamped = Number.isFinite(next)
-                              ? Math.max(5, Math.min(100, Math.trunc(next)))
-                              : 50;
-                            setDraftRecommendationCount(clamped);
-                          }}
-                          onValueCommit={(next) => {
-                            const clamped = Number.isFinite(next)
-                              ? Math.max(5, Math.min(100, Math.trunc(next)))
-                              : 50;
-                            saveRecommendationsMutation.mutate({ count: clamped });
-                          }}
+                          onValueChange={handleRecommendationCountChange}
+                          onValueCommit={handleRecommendationCountCommit}
                           aria-label="Recommendation count"
                         />
                       </div>
@@ -790,28 +1121,8 @@ export function CommandCenterPage() {
                           min={25}
                           max={100}
                           disabled={saveRecommendationsMutation.isPending}
-                          onValueChange={(releasedPct) => {
-                            const clampedReleased = Number.isFinite(releasedPct)
-                              ? Math.max(25, Math.min(100, Math.trunc(releasedPct)))
-                              : 75;
-                            const nextUpcoming = Math.max(
-                              0,
-                              Math.min(75, Math.trunc(100 - clampedReleased)),
-                            );
-                            setDraftUpcomingPercent(nextUpcoming);
-                          }}
-                          onValueCommit={(releasedPct) => {
-                            const clampedReleased = Number.isFinite(releasedPct)
-                              ? Math.max(25, Math.min(100, Math.trunc(releasedPct)))
-                              : 75;
-                            const nextUpcoming = Math.max(
-                              0,
-                              Math.min(75, Math.trunc(100 - clampedReleased)),
-                            );
-                            saveRecommendationsMutation.mutate({
-                              upcomingPercent: nextUpcoming,
-                            });
-                          }}
+                          onValueChange={handleReleasedPercentChange}
+                          onValueCommit={handleReleasedPercentCommit}
                           aria-label="Distribution split (released percent)"
                         />
 
@@ -889,9 +1200,7 @@ export function CommandCenterPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    void plexLibrariesQuery.refetch();
-                  }}
+                  onClick={retryPlexLibraries}
                   className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors active:scale-95"
                 >
                   <ExternalLink className="w-4 h-4" />
@@ -919,9 +1228,8 @@ export function CommandCenterPage() {
                       <input
                         type="checkbox"
                         checked={draftSelectedPlexLibraryKeys.includes(lib.key)}
-                        onChange={(e) =>
-                          togglePlexLibrarySelectionDraft(lib.key, e.target.checked)
-                        }
+                        data-library-section-key={lib.key}
+                        onChange={handlePlexLibraryCheckboxChange}
                         className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
                       />
                       <span className="min-w-0 flex-1 truncate font-semibold">
@@ -946,9 +1254,7 @@ export function CommandCenterPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    onClick={() =>
-                      setDraftSelectedPlexLibraryKeys(serverSelectedPlexLibraryKeys)
-                    }
+                    onClick={resetPlexLibrarySelectionDraft}
                     disabled={
                       savePlexLibrarySelectionMutation.isPending ||
                       !plexLibrarySelectionDirty
@@ -959,15 +1265,7 @@ export function CommandCenterPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (deselectedPlexLibraries.length > 0) {
-                        setPlexLibraryDeselectDialogOpen(true);
-                        return;
-                      }
-                      savePlexLibrarySelectionMutation.mutate(
-                        draftSelectedPlexLibraryKeys,
-                      );
-                    }}
+                    onClick={savePlexLibrarySelectionDraft}
                     disabled={
                       savePlexLibrarySelectionMutation.isPending ||
                       !plexLibrarySelectionDirty ||
@@ -1066,9 +1364,8 @@ export function CommandCenterPage() {
                       <input
                         type="checkbox"
                         checked={draftSelectedPlexUserIds.includes(user.id)}
-                        onChange={(e) =>
-                          togglePlexUserSelectionDraft(user.id, e.target.checked)
-                        }
+                        data-plex-user-id={user.id}
+                        onChange={handlePlexUserCheckboxChange}
                         className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
                       />
                       <span className="min-w-0 flex-1 truncate font-semibold">
@@ -1095,9 +1392,7 @@ export function CommandCenterPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    onClick={() =>
-                      setDraftSelectedPlexUserIds(serverSelectedPlexUserIds)
-                    }
+                    onClick={resetPlexUserSelectionDraft}
                     disabled={
                       savePlexMonitoringUsersMutation.isPending ||
                       !plexUserSelectionDirty
@@ -1108,11 +1403,7 @@ export function CommandCenterPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      savePlexMonitoringUsersMutation.mutate(
-                        draftSelectedPlexUserIds,
-                      )
-                    }
+                    onClick={savePlexUserSelectionDraft}
                     disabled={
                       savePlexMonitoringUsersMutation.isPending ||
                       !plexUserSelectionDirty
@@ -1181,11 +1472,8 @@ export function CommandCenterPage() {
                   <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                     <button
                       type="button"
-                      onClick={() =>
-                        setActiveImmaculateUserId((prev) =>
-                          prev === adminImmaculateUser.id ? null : adminImmaculateUser.id,
-                        )
-                      }
+                      data-plex-user-id={adminImmaculateUser.id}
+                      onClick={toggleActiveImmaculateUser}
                       className="w-full flex items-center justify-between gap-4 text-left"
                     >
                       <div className="min-w-0">
@@ -1223,9 +1511,8 @@ export function CommandCenterPage() {
                     >
                       <button
                         type="button"
-                        onClick={() =>
-                          setActiveImmaculateUserId((prev) => (prev === user.id ? null : user.id))
-                        }
+                        data-plex-user-id={user.id}
+                        onClick={toggleActiveImmaculateUser}
                         className="w-full flex items-center justify-between gap-4 text-left"
                       >
                         <div className="min-w-0">
@@ -1264,14 +1551,11 @@ export function CommandCenterPage() {
                                     <button
                                       type="button"
                                       disabled={resetImmaculateUserMutation.isPending || movieCount === 0}
-                                      onClick={() =>
-                                        setImmaculateUserResetTarget({
-                                          plexUserId: user.id,
-                                          plexUserTitle: user.plexAccountTitle || 'Plex User',
-                                          mediaType: 'movie',
-                                          total: movieCount,
-                                        })
-                                      }
+                                      data-plex-user-id={user.id}
+                                      data-plex-user-title={user.plexAccountTitle || 'Plex User'}
+                                      data-media-type="movie"
+                                      data-total={String(movieCount)}
+                                      onClick={openImmaculateUserResetTarget}
                                       className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
@@ -1285,14 +1569,11 @@ export function CommandCenterPage() {
                                     <button
                                       type="button"
                                       disabled={resetImmaculateUserMutation.isPending || tvCount === 0}
-                                      onClick={() =>
-                                        setImmaculateUserResetTarget({
-                                          plexUserId: user.id,
-                                          plexUserTitle: user.plexAccountTitle || 'Plex User',
-                                          mediaType: 'tv',
-                                          total: tvCount,
-                                        })
-                                      }
+                                      data-plex-user-id={user.id}
+                                      data-plex-user-title={user.plexAccountTitle || 'Plex User'}
+                                      data-media-type="tv"
+                                      data-total={String(tvCount)}
+                                      onClick={openImmaculateUserResetTarget}
                                       className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
@@ -1398,7 +1679,7 @@ export function CommandCenterPage() {
                   settingsQuery.isLoading ||
                   settingsQuery.isError
                 }
-                onClick={() => setOverseerrResetOpen(true)}
+                onClick={openOverseerrResetDialog}
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -1440,7 +1721,7 @@ export function CommandCenterPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setRejectedListOpen(true)}
+                  onClick={openRejectedList}
                   disabled={resetRejectedMutation.isPending}
                   className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
                 >
@@ -1451,7 +1732,7 @@ export function CommandCenterPage() {
                 <button
                   type="button"
                   disabled={resetRejectedMutation.isPending}
-                  onClick={() => setRejectedResetOpen(true)}
+                  onClick={openRejectedResetDialog}
                   className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
                 >
                   <RotateCcw className="w-4 h-4" />
@@ -1469,10 +1750,7 @@ export function CommandCenterPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => {
-                  if (resetImmaculateMutation.isPending) return;
-                  setImmaculateResetTarget(null);
-                }}
+                onClick={closeImmaculateReset}
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -1481,7 +1759,7 @@ export function CommandCenterPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 24, scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={stopClickPropagation}
                   className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-amber-500/10 overflow-hidden"
                 >
                   <div className="p-6 sm:p-7">
@@ -1504,10 +1782,7 @@ export function CommandCenterPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetImmaculateMutation.isPending) return;
-                          setImmaculateResetTarget(null);
-                        }}
+                        onClick={closeImmaculateReset}
                         className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                         aria-label="Close"
                         disabled={resetImmaculateMutation.isPending}
@@ -1548,7 +1823,7 @@ export function CommandCenterPage() {
                     <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                       <button
                         type="button"
-                        onClick={() => setImmaculateResetTarget(null)}
+                        onClick={clearImmaculateReset}
                         className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetImmaculateMutation.isPending}
                       >
@@ -1556,20 +1831,7 @@ export function CommandCenterPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetImmaculateMutation.isPending) return;
-                          const target = immaculateResetTarget;
-                          if (!target) return;
-                          resetImmaculateMutation.mutate(
-                            {
-                              mediaType: target.mediaType,
-                              librarySectionKey: target.librarySectionKey,
-                            },
-                            {
-                              onSuccess: () => setImmaculateResetTarget(null),
-                            },
-                          );
-                        }}
+                        onClick={confirmImmaculateReset}
                         className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetImmaculateMutation.isPending}
                       >
@@ -1600,10 +1862,7 @@ export function CommandCenterPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => {
-                  if (resetImmaculateUserMutation.isPending) return;
-                  setImmaculateUserResetTarget(null);
-                }}
+                onClick={closeImmaculateUserReset}
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -1612,7 +1871,7 @@ export function CommandCenterPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 24, scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={stopClickPropagation}
                   className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-amber-500/10 overflow-hidden"
                 >
                   <div className="p-6 sm:p-7">
@@ -1635,10 +1894,7 @@ export function CommandCenterPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetImmaculateUserMutation.isPending) return;
-                          setImmaculateUserResetTarget(null);
-                        }}
+                        onClick={closeImmaculateUserReset}
                         className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                         aria-label="Close"
                         disabled={resetImmaculateUserMutation.isPending}
@@ -1672,7 +1928,7 @@ export function CommandCenterPage() {
                     <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                       <button
                         type="button"
-                        onClick={() => setImmaculateUserResetTarget(null)}
+                        onClick={clearImmaculateUserReset}
                         className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetImmaculateUserMutation.isPending}
                       >
@@ -1680,20 +1936,7 @@ export function CommandCenterPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetImmaculateUserMutation.isPending) return;
-                          const target = immaculateUserResetTarget;
-                          if (!target) return;
-                          resetImmaculateUserMutation.mutate(
-                            {
-                              plexUserId: target.plexUserId,
-                              mediaType: target.mediaType,
-                            },
-                            {
-                              onSuccess: () => setImmaculateUserResetTarget(null),
-                            },
-                          );
-                        }}
+                        onClick={confirmImmaculateUserReset}
                         className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetImmaculateUserMutation.isPending}
                       >
@@ -1724,10 +1967,7 @@ export function CommandCenterPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => {
-                  if (resetOverseerrMutation.isPending) return;
-                  setOverseerrResetOpen(false);
-                }}
+                onClick={closeOverseerrReset}
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -1736,7 +1976,7 @@ export function CommandCenterPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 24, scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={stopClickPropagation}
                   className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-cyan-500/10 overflow-hidden"
                 >
                   <div className="p-6 sm:p-7">
@@ -1751,10 +1991,7 @@ export function CommandCenterPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetOverseerrMutation.isPending) return;
-                          setOverseerrResetOpen(false);
-                        }}
+                        onClick={closeOverseerrReset}
                         className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                         aria-label="Close"
                         disabled={resetOverseerrMutation.isPending}
@@ -1787,7 +2024,7 @@ export function CommandCenterPage() {
                     <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                       <button
                         type="button"
-                        onClick={() => setOverseerrResetOpen(false)}
+                        onClick={clearOverseerrReset}
                         className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetOverseerrMutation.isPending}
                       >
@@ -1795,12 +2032,7 @@ export function CommandCenterPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetOverseerrMutation.isPending) return;
-                          resetOverseerrMutation.mutate(undefined, {
-                            onSuccess: () => setOverseerrResetOpen(false),
-                          });
-                        }}
+                        onClick={confirmOverseerrReset}
                         className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetOverseerrMutation.isPending}
                       >
@@ -1831,10 +2063,7 @@ export function CommandCenterPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => {
-                  if (resetRejectedMutation.isPending) return;
-                  setRejectedResetOpen(false);
-                }}
+                onClick={closeRejectedReset}
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -1843,7 +2072,7 @@ export function CommandCenterPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 24, scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={stopClickPropagation}
                   className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden"
                 >
                   <div className="p-6 sm:p-7">
@@ -1858,10 +2087,7 @@ export function CommandCenterPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetRejectedMutation.isPending) return;
-                          setRejectedResetOpen(false);
-                        }}
+                        onClick={closeRejectedReset}
                         className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                         aria-label="Close"
                         disabled={resetRejectedMutation.isPending}
@@ -1895,7 +2121,7 @@ export function CommandCenterPage() {
                     <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                       <button
                         type="button"
-                        onClick={() => setRejectedResetOpen(false)}
+                        onClick={clearRejectedReset}
                         className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetRejectedMutation.isPending}
                       >
@@ -1903,12 +2129,7 @@ export function CommandCenterPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (resetRejectedMutation.isPending) return;
-                          resetRejectedMutation.mutate(undefined, {
-                            onSuccess: () => setRejectedResetOpen(false),
-                          });
-                        }}
+                        onClick={confirmRejectedReset}
                         className="h-12 rounded-full px-6 bg-[#f43f5e] text-white font-bold shadow-[0_0_20px_rgba(244,63,94,0.25)] hover:shadow-[0_0_28px_rgba(244,63,94,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={resetRejectedMutation.isPending}
                       >
@@ -1941,10 +2162,7 @@ export function CommandCenterPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => {
-                  if (deleteRejectedMutation.isPending) return;
-                  setRejectedListOpen(false);
-                }}
+                onClick={closeRejectedList}
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -1953,7 +2171,7 @@ export function CommandCenterPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 24, scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={stopClickPropagation}
                   className="relative w-full sm:max-w-3xl max-h-[calc(100dvh-184px)] sm:max-h-[84vh] rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-rose-500/10 overflow-hidden flex flex-col"
                 >
                   <div className="p-6 sm:p-7 border-b border-white/10">
@@ -1971,10 +2189,7 @@ export function CommandCenterPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (deleteRejectedMutation.isPending) return;
-                          setRejectedListOpen(false);
-                        }}
+                        onClick={closeRejectedList}
                         className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                         aria-label="Close"
                         disabled={deleteRejectedMutation.isPending}
@@ -1988,7 +2203,7 @@ export function CommandCenterPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setRejectedMediaTab('movie')}
+                          onClick={selectRejectedMovieTab}
                           className={[
                             'inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider border transition',
                             rejectedMediaTab === 'movie'
@@ -2001,7 +2216,7 @@ export function CommandCenterPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setRejectedMediaTab('tv')}
+                          onClick={selectRejectedTvTab}
                           className={[
                             'inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider border transition',
                             rejectedMediaTab === 'tv'
@@ -2026,7 +2241,8 @@ export function CommandCenterPage() {
                           <button
                             key={k}
                             type="button"
-                            onClick={() => setRejectedKind(k)}
+                            data-rejected-kind={k}
+                            onClick={handleRejectedKindClick}
                             className={[
                               'inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-semibold border transition',
                               rejectedKind === k
@@ -2085,12 +2301,8 @@ export function CommandCenterPage() {
                               </div>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  deleteRejectedMutation.mutate(item.id, {
-                                    onSuccess: () => toast.success('Removed from rejected list.'),
-                                    onError: () => toast.error('Failed to remove.'),
-                                  })
-                                }
+                                data-item-id={item.id}
+                                onClick={handleRemoveRejectedItemClick}
                                 disabled={deleteRejectedMutation.isPending}
                                 className="shrink-0 w-9 h-9 rounded-xl border border-white/10 bg-white/5 text-white/60 hover:bg-rose-500/20 hover:border-rose-500/30 hover:text-rose-200 transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
                                 aria-label="Remove from rejected list"
@@ -2112,7 +2324,7 @@ export function CommandCenterPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setRejectedListOpen(false)}
+                        onClick={dismissRejectedList}
                         className="h-10 rounded-full px-5 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98]"
                       >
                         Done
@@ -2126,10 +2338,8 @@ export function CommandCenterPage() {
 
           <ConfirmDialog
             open={plexLibraryDeselectDialogOpen}
-            onClose={() => setPlexLibraryDeselectDialogOpen(false)}
-            onConfirm={() => {
-              savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
-            }}
+            onClose={closePlexLibraryDeselectDialog}
+            onConfirm={confirmPlexLibraryDeselectDialog}
             title="Remove Selected Libraries?"
             description={
               <div className="space-y-2">
@@ -2175,8 +2385,8 @@ export function CommandCenterPage() {
 
           <ConfirmDialog
             open={plexLibraryMinDialogOpen}
-            onClose={() => setPlexLibraryMinDialogOpen(false)}
-            onConfirm={() => setPlexLibraryMinDialogOpen(false)}
+            onClose={closePlexLibraryMinDialog}
+            onConfirm={closePlexLibraryMinDialog}
             title="At Least One Library Required"
             description="Immaculaterr requires at least one Plex movie or TV library to remain selected."
             confirmText="Got it"
@@ -2281,17 +2491,12 @@ export function CommandCenterPage() {
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
-                            </label>
+                            </div>
                           <Select
                             value={draftRootFolderPath || effectiveDefaults.rootFolderPath}
-                            onValueChange={(next) => {
-                              setDraftRootFolderPath(next);
-                              saveRadarrDefaultsMutation.mutate({
-                                defaultRootFolderPath: next,
-                              });
-                            }}
+                            onValueChange={handleRadarrRootFolderChange}
                             disabled={
                               saveRadarrDefaultsMutation.isPending ||
                               !radarrOptionsQuery.data?.rootFolders.length
@@ -2311,21 +2516,14 @@ export function CommandCenterPage() {
               </div>
 
                   <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Quality profile
-                            </label>
+                            </div>
                           <Select
                             value={String(
                               draftQualityProfileId || effectiveDefaults.qualityProfileId,
                             )}
-                            onValueChange={(raw) => {
-                              const next = Number.parseInt(raw, 10);
-                              if (!Number.isFinite(next)) return;
-                              setDraftQualityProfileId(next);
-                              saveRadarrDefaultsMutation.mutate({
-                                defaultQualityProfileId: next,
-                              });
-                            }}
+                            onValueChange={handleRadarrQualityProfileChange}
                             disabled={
                               saveRadarrDefaultsMutation.isPending ||
                               !radarrOptionsQuery.data?.qualityProfiles.length
@@ -2345,21 +2543,12 @@ export function CommandCenterPage() {
                 </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Tag (optional)
-                            </label>
+                            </div>
                           <Select
                             value={draftTagId !== null ? String(draftTagId) : 'none'}
-                            onValueChange={(raw) => {
-                              const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
-                              const next = Number.isFinite(parsed ?? NaN)
-                                ? (parsed as number)
-                                : null;
-                              setDraftTagId(next);
-                              saveRadarrDefaultsMutation.mutate({
-                                defaultTagId: next,
-                              });
-                            }}
+                            onValueChange={handleRadarrTagChange}
                             disabled={saveRadarrDefaultsMutation.isPending}
                           >
                             <SelectTrigger className="w-full">
@@ -2499,19 +2688,14 @@ export function CommandCenterPage() {
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
-                            </label>
+                            </div>
                           <Select
                             value={
                               sonarrDraftRootFolderPath || sonarrEffectiveDefaults.rootFolderPath
                             }
-                            onValueChange={(next) => {
-                              setSonarrDraftRootFolderPath(next);
-                              saveSonarrDefaultsMutation.mutate({
-                                defaultRootFolderPath: next,
-                              });
-                            }}
+                            onValueChange={handleSonarrRootFolderChange}
                             disabled={
                               saveSonarrDefaultsMutation.isPending ||
                               !sonarrOptionsQuery.data?.rootFolders.length
@@ -2531,22 +2715,15 @@ export function CommandCenterPage() {
                 </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Quality profile
-                            </label>
+                            </div>
                           <Select
                             value={String(
                               sonarrDraftQualityProfileId ||
                                 sonarrEffectiveDefaults.qualityProfileId,
                             )}
-                            onValueChange={(raw) => {
-                              const next = Number.parseInt(raw, 10);
-                              if (!Number.isFinite(next)) return;
-                              setSonarrDraftQualityProfileId(next);
-                              saveSonarrDefaultsMutation.mutate({
-                                defaultQualityProfileId: next,
-                              });
-                            }}
+                            onValueChange={handleSonarrQualityProfileChange}
                             disabled={
                               saveSonarrDefaultsMutation.isPending ||
                               !sonarrOptionsQuery.data?.qualityProfiles.length
@@ -2566,21 +2743,12 @@ export function CommandCenterPage() {
                 </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Tag (optional)
-                            </label>
+                            </div>
                           <Select
                             value={sonarrDraftTagId !== null ? String(sonarrDraftTagId) : 'none'}
-                            onValueChange={(raw) => {
-                              const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
-                              const next = Number.isFinite(parsed ?? NaN)
-                                ? (parsed as number)
-                                : null;
-                              setSonarrDraftTagId(next);
-                              saveSonarrDefaultsMutation.mutate({
-                                defaultTagId: next,
-                              });
-                            }}
+                            onValueChange={handleSonarrTagChange}
                             disabled={saveSonarrDefaultsMutation.isPending}
                           >
                             <SelectTrigger className="w-full">

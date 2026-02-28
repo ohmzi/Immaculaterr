@@ -15,7 +15,7 @@ async function waitForRunFinish(params: {
   timeoutMs: number;
 }) {
   const started = Date.now();
-  while (true) {
+  for (;;) {
     const run = await params.prisma.jobRun.findUnique({
       where: { id: params.runId },
       select: {
@@ -145,4 +145,3 @@ main().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });
-

@@ -10,13 +10,39 @@ function createTestCtx() {
   };
 }
 
+type PinCuratedCollectionHubsParams = {
+  ctx: ReturnType<typeof createTestCtx>;
+  baseUrl: string;
+  token: string;
+  librarySectionKey: string;
+  mediaType: 'movie' | 'tv';
+  pinTarget: 'admin' | 'friends';
+  collectionHubOrder: string[];
+  preferredHubTargets?: Array<{ collectionName: string; collectionKey: string }>;
+};
+
+async function callPinCuratedCollectionHubs(
+  service: PlexCuratedCollectionsService,
+  params: PinCuratedCollectionHubsParams,
+) {
+  const internal = service as unknown as {
+    pinCuratedCollectionHubs: (
+      params: PinCuratedCollectionHubsParams,
+    ) => Promise<void>;
+  };
+  await internal.pinCuratedCollectionHubs(params);
+}
+
 describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins admin target to recommended+home and reorders as 1,2,3', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
-        { ratingKey: '11', title: 'Based on your recently watched movie (Alice)' },
-        { ratingKey: '12', title: 'Change of Taste (Alice)' },
-        { ratingKey: '13', title: 'Inspired by your Immaculate Taste (Alice)' },
+        { ratingKey: '11', title: 'Based on your recently watched Movie (Alice)' },
+        { ratingKey: '12', title: 'Change of Movie Taste (Alice)' },
+        {
+          ratingKey: '13',
+          title: 'Inspired by your Immaculate Taste in Movies (Alice)',
+        },
       ]),
       setCollectionHubVisibility: jest.fn(async () => undefined),
       getCollectionHubIdentifier: jest.fn(
@@ -24,12 +50,16 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
           `hub-${args.collectionRatingKey}`,
       ),
       moveHubRow: jest.fn(async () => undefined),
-    } as any;
+    };
 
-    const service = new PlexCuratedCollectionsService(plexServer);
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+    );
     const ctx = createTestCtx();
 
-    await (service as any).pinCuratedCollectionHubs({
+    await callPinCuratedCollectionHubs(service, {
       ctx,
       baseUrl: 'http://plex.local:32400',
       token: 'token',
@@ -38,9 +68,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       pinTarget: 'admin',
       // Intentionally old/wrong order to verify it is normalized before pinning.
       collectionHubOrder: [
-        'Based on your recently watched movie (Alice)',
-        'Inspired by your Immaculate Taste (Alice)',
-        'Change of Taste (Alice)',
+        'Based on your recently watched Movie (Alice)',
+        'Inspired by your Immaculate Taste in Movies (Alice)',
+        'Change of Movie Taste (Alice)',
       ],
     });
 
@@ -71,9 +101,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins friends target to shared home and matches by base when suffix differs', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
-        { ratingKey: '31', title: 'Inspired by your Immaculate Taste (Bob)' },
-        { ratingKey: '32', title: 'Based on your recently watched show (Bob)' },
-        { ratingKey: '33', title: 'Change of Taste (Bob)' },
+        { ratingKey: '31', title: 'Inspired by your Immaculate Taste in Shows (Bob)' },
+        { ratingKey: '32', title: 'Based on your recently watched Show (Bob)' },
+        { ratingKey: '33', title: 'Change of Show Taste (Bob)' },
       ]),
       setCollectionHubVisibility: jest.fn(async () => undefined),
       getCollectionHubIdentifier: jest.fn(
@@ -81,12 +111,16 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
           `hub-${args.collectionRatingKey}`,
       ),
       moveHubRow: jest.fn(async () => undefined),
-    } as any;
+    };
 
-    const service = new PlexCuratedCollectionsService(plexServer);
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+    );
     const ctx = createTestCtx();
 
-    await (service as any).pinCuratedCollectionHubs({
+    await callPinCuratedCollectionHubs(service, {
       ctx,
       baseUrl: 'http://plex.local:32400',
       token: 'token',
@@ -95,9 +129,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       pinTarget: 'friends',
       // Requested for a different user; fallback should still match Bob's rows by base type.
       collectionHubOrder: [
-        'Based on your recently watched show (Alice)',
-        'Change of Taste (Alice)',
-        'Inspired by your Immaculate Taste (Alice)',
+        'Based on your recently watched Show (Alice)',
+        'Change of Show Taste (Alice)',
+        'Inspired by your Immaculate Taste in Shows (Alice)',
       ],
     });
 
@@ -127,12 +161,15 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
 
   it('retries hub target resolution when a freshly rebuilt collection is not visible on first list call', async () => {
     const firstList = [
-      { ratingKey: '41', title: 'Based on your recently watched movie (plex laking)' },
-      { ratingKey: '42', title: 'Change of Taste (plex laking)' },
+      { ratingKey: '41', title: 'Based on your recently watched Movie (plex laking)' },
+      { ratingKey: '42', title: 'Change of Movie Taste (plex laking)' },
     ];
     const secondList = [
       ...firstList,
-      { ratingKey: '43', title: 'Inspired by your Immaculate Taste (plex laking)' },
+      {
+        ratingKey: '43',
+        title: 'Inspired by your Immaculate Taste in Movies (plex laking)',
+      },
     ];
 
     const plexServer = {
@@ -146,12 +183,16 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
           `hub-${args.collectionRatingKey}`,
       ),
       moveHubRow: jest.fn(async () => undefined),
-    } as any;
+    };
 
-    const service = new PlexCuratedCollectionsService(plexServer);
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+    );
     const ctx = createTestCtx();
 
-    await (service as any).pinCuratedCollectionHubs({
+    await callPinCuratedCollectionHubs(service, {
       ctx,
       baseUrl: 'http://plex.local:32400',
       token: 'token',
@@ -159,9 +200,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       mediaType: 'movie',
       pinTarget: 'friends',
       collectionHubOrder: [
-        'Based on your recently watched movie (plex laking)',
-        'Change of Taste (plex laking)',
-        'Inspired by your Immaculate Taste (plex laking)',
+        'Based on your recently watched Movie (plex laking)',
+        'Change of Movie Taste (plex laking)',
+        'Inspired by your Immaculate Taste in Movies (plex laking)',
       ],
     });
 
@@ -173,8 +214,8 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins the freshly rebuilt collection using preferred key even when list endpoint still misses it', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
-        { ratingKey: '61', title: 'Based on your recently watched movie (plex laking)' },
-        { ratingKey: '62', title: 'Change of Taste (plex laking)' },
+        { ratingKey: '61', title: 'Based on your recently watched Movie (plex laking)' },
+        { ratingKey: '62', title: 'Change of Movie Taste (plex laking)' },
       ]),
       setCollectionHubVisibility: jest.fn(async () => undefined),
       getCollectionHubIdentifier: jest
@@ -182,7 +223,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
         .mockImplementation(async (args: { collectionRatingKey: string }) => {
           if (args.collectionRatingKey === '63') {
             // Simulate eventual consistency in hub manage endpoint.
-            const seen = (plexServer.getCollectionHubIdentifier as any).mock.calls.filter(
+            const getCollectionHubIdentifierMock =
+              plexServer.getCollectionHubIdentifier as jest.Mock;
+            const seen = getCollectionHubIdentifierMock.mock.calls.filter(
               (call: Array<{ collectionRatingKey: string }>) =>
                 call[0].collectionRatingKey === '63',
             ).length;
@@ -191,12 +234,16 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
           return `hub-${args.collectionRatingKey}`;
         }),
       moveHubRow: jest.fn(async () => undefined),
-    } as any;
+    };
 
-    const service = new PlexCuratedCollectionsService(plexServer);
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+    );
     const ctx = createTestCtx();
 
-    await (service as any).pinCuratedCollectionHubs({
+    await callPinCuratedCollectionHubs(service, {
       ctx,
       baseUrl: 'http://plex.local:32400',
       token: 'token',
@@ -204,13 +251,13 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       mediaType: 'movie',
       pinTarget: 'friends',
       collectionHubOrder: [
-        'Based on your recently watched movie (plex laking)',
-        'Change of Taste (plex laking)',
-        'Inspired by your Immaculate Taste (plex laking)',
+        'Based on your recently watched Movie (plex laking)',
+        'Change of Movie Taste (plex laking)',
+        'Inspired by your Immaculate Taste in Movies (plex laking)',
       ],
       preferredHubTargets: [
         {
-          collectionName: 'Inspired by your Immaculate Taste (plex laking)',
+          collectionName: 'Inspired by your Immaculate Taste in Movies (plex laking)',
           collectionKey: '63',
         },
       ],
@@ -262,19 +309,25 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
       moveCollectionItem: jest.fn(async () => undefined),
       uploadCollectionPoster: jest.fn(async () => undefined),
       uploadCollectionBackground: jest.fn(async () => undefined),
-    } as any;
+    };
 
-    const service = new PlexCuratedCollectionsService(plexServer);
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+    );
     const ctx = createTestCtx();
 
     const result = await service.rebuildMovieCollection({
-      ctx: ctx as any,
+      ctx: ctx as unknown as Parameters<
+        PlexCuratedCollectionsService['rebuildMovieCollection']
+      >[0]['ctx'],
       baseUrl: 'http://plex.local:32400',
       token: 'token',
       machineIdentifier: 'machine-1',
       movieSectionKey: '3',
       itemType: 2,
-      collectionName: 'Based on your recently watched show (ohmz_i)',
+      collectionName: 'Based on your recently watched Show (ohmz_i)',
       desiredItems: desired,
       randomizeOrder: false,
       pinCollections: false,

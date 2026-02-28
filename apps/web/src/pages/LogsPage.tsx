@@ -1,4 +1,10 @@
-import { useMemo, useState } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Loader2, ScrollText, Trash2 } from 'lucide-react';
@@ -242,18 +248,69 @@ export function LogsPage() {
       setClearAllOpen(false);
     },
   });
+  const closeClearAllDialog = useCallback(() => {
+    setClearAllOpen(false);
+  }, []);
+  const confirmClearAllDialog = useCallback(() => {
+    clearMutation.mutate();
+  }, [clearMutation]);
+  const animateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-3 shadow-2xl';
 
-  const toggle = (id: ServiceFilter) => {
+  const toggle = useCallback((id: ServiceFilter) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
+  }, []);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSelected([]);
     setQuery('');
-  };
+  }, []);
+  const clearSelectedFilters = useCallback(() => {
+    setSelected([]);
+  }, []);
+  const handleServiceFilterClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const filterId = event.currentTarget.dataset.filterId as ServiceFilter | undefined;
+      if (!filterId) return;
+      toggle(filterId);
+    },
+    [toggle],
+  );
+  const toggleErrorsFilter = useCallback(() => {
+    toggle('errors');
+  }, [toggle]);
+  const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setQuery(event.target.value);
+  }, []);
+  const handleClearAllRequest = useCallback(() => {
+    const total = logs.length;
+    if (!total) return;
+    const isCoarsePointer =
+      typeof window !== 'undefined' &&
+      Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
+    if (isCoarsePointer) {
+      const ok = window.confirm(
+        `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
+      );
+      if (ok) clearMutation.mutate();
+      return;
+    }
+
+    setClearAllOpen(true);
+  }, [clearMutation, logs.length]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -282,18 +339,7 @@ export function LogsPage() {
               <div className="flex items-center gap-5">
                 <motion.button
                   type="button"
-                  onClick={() => {
-                    titleIconControls.stop();
-                    titleIconGlowControls.stop();
-                    void titleIconControls.start({
-                      scale: [1, 1.06, 1],
-                      transition: { duration: 0.55, ease: 'easeOut' },
-                    });
-                    void titleIconGlowControls.start({
-                      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                      transition: { duration: 1.4, ease: 'easeInOut' },
-                    });
-                  }}
+                  onClick={animateTitleIcon}
                   animate={titleIconControls}
                   className="relative group focus:outline-none touch-manipulation"
                   aria-label="Animate Logs icon"
@@ -340,7 +386,7 @@ export function LogsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setSelected([])}
+                      onClick={clearSelectedFilters}
                       className={[
                         APP_PRESSABLE_CLASS,
                         'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
@@ -355,7 +401,8 @@ export function LogsPage() {
                       <button
                         key={f.id}
                         type="button"
-                        onClick={() => toggle(f.id)}
+                        data-filter-id={f.id}
+                        onClick={handleServiceFilterClick}
                         className={[
                           APP_PRESSABLE_CLASS,
                           'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
@@ -369,7 +416,7 @@ export function LogsPage() {
                     ))}
                     <button
                       type="button"
-                      onClick={() => toggle('errors')}
+                      onClick={toggleErrorsFilter}
                       className={[
                         APP_PRESSABLE_CLASS,
                         'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
@@ -385,28 +432,13 @@ export function LogsPage() {
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto min-w-0">
                     <input
                       value={query}
-                      onChange={(e) => setQuery(e.target.value)}
+                      onChange={handleQueryChange}
                       placeholder="Filter… (e.g. scrobble, library.new, OFFLINE)"
                       className="w-full sm:flex-1 sm:min-w-0 md:w-[360px] px-4 py-2 rounded-full border border-white/15 bg-white/5 text-white placeholder-white/40 outline-none focus:ring-2 focus:ring-white/15"
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        const total = logs.length;
-                        if (!total) return;
-                        const isCoarsePointer =
-                          typeof window !== 'undefined' &&
-                          Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
-                        if (isCoarsePointer) {
-                          const ok = window.confirm(
-                            `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
-                          );
-                          if (ok) clearMutation.mutate();
-                          return;
-                        }
-
-                        setClearAllOpen(true);
-                      }}
+                      onClick={handleClearAllRequest}
                       disabled={clearMutation.isPending || logs.length === 0}
                       className={[
                         APP_PRESSABLE_CLASS,
@@ -526,8 +558,8 @@ export function LogsPage() {
 
       <ConfirmDialog
         open={clearAllOpen}
-        onClose={() => setClearAllOpen(false)}
-        onConfirm={() => clearMutation.mutate()}
+        onClose={closeClearAllDialog}
+        onConfirm={confirmClearAllDialog}
         label="Clear"
         title="Clear all logs"
         description={

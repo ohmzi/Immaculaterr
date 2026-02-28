@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
+import {
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+} from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 import { SettingsService } from '../settings/settings.service';
 
@@ -94,8 +98,8 @@ export class CollectionsService {
 
   async seedDefaults() {
     const defaults = [
-      'Based on your recently watched movie',
-      'Change of Taste',
+      RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+      CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
     ];
     for (const name of defaults) {
       await this.prisma.curatedCollection.upsert({

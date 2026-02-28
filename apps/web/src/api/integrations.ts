@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath, JSON_HEADERS } from '@/api/constants';
 
 export type TestSavedIntegrationResponse = {
   ok: true;
@@ -11,12 +12,12 @@ export function testSavedIntegration(
   body?: Record<string, unknown>,
 ) {
   return fetchJson<TestSavedIntegrationResponse>(
-    `/api/integrations/test/${encodeURIComponent(integrationId)}`,
+    apiPath(`/integrations/test/${encodeURIComponent(integrationId)}`),
     {
       method: 'POST',
       ...(body
         ? {
-            headers: { 'Content-Type': 'application/json' },
+            headers: JSON_HEADERS,
             body: JSON.stringify(body),
           }
         : {}),
@@ -32,7 +33,7 @@ export type RadarrOptionsResponse = {
 };
 
 export function getRadarrOptions() {
-  return fetchJson<RadarrOptionsResponse>('/api/integrations/radarr/options');
+  return fetchJson<RadarrOptionsResponse>(apiPath('/integrations/radarr/options'));
 }
 
 export type SonarrOptionsResponse = {
@@ -43,7 +44,7 @@ export type SonarrOptionsResponse = {
 };
 
 export function getSonarrOptions() {
-  return fetchJson<SonarrOptionsResponse>('/api/integrations/sonarr/options');
+  return fetchJson<SonarrOptionsResponse>(apiPath('/integrations/sonarr/options'));
 }
 
 export type PlexLibraryItem = {
@@ -81,29 +82,29 @@ export type PlexMonitoringUsersResponse = {
 };
 
 export function getPlexLibraries() {
-  return fetchJson<PlexLibrariesResponse>('/api/integrations/plex/libraries');
+  return fetchJson<PlexLibrariesResponse>(apiPath('/integrations/plex/libraries'));
 }
 
 export function savePlexLibrarySelection(body: { selectedSectionKeys: string[] }) {
-  return fetchJson<PlexLibrariesResponse>('/api/integrations/plex/libraries', {
+  return fetchJson<PlexLibrariesResponse>(apiPath('/integrations/plex/libraries'), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(body),
   });
 }
 
 export function getPlexMonitoringUsers() {
   return fetchJson<PlexMonitoringUsersResponse>(
-    '/api/integrations/plex/monitoring-users',
+    apiPath('/integrations/plex/monitoring-users'),
   );
 }
 
 export function savePlexMonitoringUsers(body: { selectedPlexUserIds: string[] }) {
   return fetchJson<PlexMonitoringUsersResponse>(
-    '/api/integrations/plex/monitoring-users',
+    apiPath('/integrations/plex/monitoring-users'),
     {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(body),
     },
   );

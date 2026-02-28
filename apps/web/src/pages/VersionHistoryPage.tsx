@@ -1,5 +1,6 @@
 import { motion, useAnimation } from 'motion/react';
 import { Tags } from 'lucide-react';
+import { useCallback } from 'react';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -39,6 +40,22 @@ export function VersionHistoryPage() {
       </>
     );
   };
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    titleIconControls
+      .start({
+        scale: [1, 1.06, 1],
+        transition: { duration: 0.55, ease: 'easeOut' },
+      })
+      .catch(() => undefined);
+    titleIconGlowControls
+      .start({
+        opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+        transition: { duration: 1.4, ease: 'easeInOut' },
+      })
+      .catch(() => undefined);
+  }, [titleIconControls, titleIconGlowControls]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -66,18 +83,7 @@ export function VersionHistoryPage() {
               <div className="flex items-center gap-5">
                 <motion.button
                   type="button"
-                  onClick={() => {
-                    titleIconControls.stop();
-                    titleIconGlowControls.stop();
-                    void titleIconControls.start({
-                      scale: [1, 1.06, 1],
-                      transition: { duration: 0.55, ease: 'easeOut' },
-                    });
-                    void titleIconGlowControls.start({
-                      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
-                      transition: { duration: 1.4, ease: 'easeInOut' },
-                    });
-                  }}
+                  onClick={handleAnimateTitleIcon}
                   animate={titleIconControls}
                   className="relative group focus:outline-none touch-manipulation"
                   aria-label="Animate Version History icon"
@@ -113,13 +119,16 @@ export function VersionHistoryPage() {
           </div>
 
           <div className="space-y-6">
-            {VERSION_HISTORY_ENTRIES.map((entry, entryIndex) => (
-              <div key={`${entry.version}-${entryIndex}`} className={cardClass}>
+            {VERSION_HISTORY_ENTRIES.map((entry) => (
+              <div key={entry.version} className={cardClass}>
                 <div className="text-2xl font-black tracking-tight text-white">V{entry.version}</div>
 
                 <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/75">
                   {entry.sections.map((section, sectionIndex) => (
-                    <div key={`${section.title}-${sectionIndex}`} className={sectionIndex ? 'pt-2' : ''}>
+                    <div
+                      key={`${entry.version}-${section.title}`}
+                      className={sectionIndex ? 'pt-2' : ''}
+                    >
                       <div className="font-semibold text-white/90">
                         {(() => {
                           const parsed = splitFeatureDetail(section.title);
@@ -135,8 +144,8 @@ export function VersionHistoryPage() {
                         })()}
                       </div>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
-                        {section.bullets.map((bullet, bulletIndex) => (
-                          <li key={`${section.title}-${bulletIndex}`}>
+                        {section.bullets.map((bullet) => (
+                          <li key={`${entry.version}-${section.title}-${bullet}`}>
                             {renderFeatureDetail(bullet, {
                               feature: 'text-[#facc15] font-medium',
                               detail: 'text-white/75',

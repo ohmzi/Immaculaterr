@@ -14,8 +14,8 @@ function getLanIps() {
   return ips;
 }
 
-async function isPortFree(port, host = '0.0.0.0') {
-  return await new Promise((resolve) => {
+function isPortFree(port, host = '0.0.0.0') {
+  return new Promise((resolve) => {
     const server = net.createServer();
     server.unref();
     server.once('error', (err) => {

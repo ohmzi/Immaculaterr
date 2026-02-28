@@ -1,4 +1,10 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import {
@@ -26,6 +32,7 @@ import {
 } from '@/api/integrations';
 import { putSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
+import { testOverseerrConnection } from '@/api/overseerr';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -197,8 +204,8 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
           toast.success('Connected to Plex.');
         }
-      } catch (error) {
-        console.error('Error polling Plex pin:', error);
+      } catch {
+        // Ignore polling errors; a later poll can still succeed.
       }
     }, 2000);
 
@@ -283,14 +290,13 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       }
 
       toast.info('Please authorize in the Plex window/tab...');
-    } catch (error) {
+    } catch {
       try {
         popup?.close();
       } catch {
         // ignore
       }
       toast.error('Failed to start Plex OAuth');
-      console.error(error);
     }
   };
 
@@ -460,12 +466,9 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       if (!apiKey) throw new Error('Please enter Overseerr API key');
 
       toast.info('Validating Overseerr credentials...');
-      const res = await fetch('/api/overseerr/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl, apiKey }),
-      });
-      if (!res.ok) {
+      try {
+        await testOverseerrConnection({ baseUrl, apiKey });
+      } catch {
         throw new Error('Overseerr credentials are incorrect.');
       }
 
@@ -518,6 +521,111 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       onFinish?.();
     },
   });
+  const submitPlexStep = useCallback(() => {
+    saveAndValidatePlex.mutate();
+  }, [saveAndValidatePlex]);
+  const cancelPlexOAuthPolling = useCallback(() => {
+    setIsPollingPlex(false);
+    setPlexOAuthPinId(null);
+    try {
+      localStorage.removeItem('wizard_plex_pin_id');
+      localStorage.removeItem('wizard_plex_polling');
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+  const handlePlexBaseUrlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setPlexBaseUrl(event.target.value);
+  }, []);
+  const handlePlexTokenChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setPlexToken(event.target.value);
+    setPlexTokenFromOAuth(false);
+  }, []);
+  const submitPlexLibrariesStep = useCallback(() => {
+    savePlexLibrarySelectionStep.mutate();
+  }, [savePlexLibrarySelectionStep]);
+  const retryPlexLibraries = useCallback(() => {
+    void plexLibrariesQuery.refetch();
+  }, [plexLibrariesQuery]);
+  const handleWizardLibraryCheckboxChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const librarySectionKey = event.currentTarget.dataset.librarySectionKey;
+      if (!librarySectionKey) return;
+      toggleWizardLibrarySelection(librarySectionKey, event.currentTarget.checked);
+    },
+    [toggleWizardLibrarySelection],
+  );
+  const submitPlexUsersStep = useCallback(() => {
+    savePlexMonitoringUsersStep.mutate();
+  }, [savePlexMonitoringUsersStep]);
+  const retryPlexUsers = useCallback(() => {
+    void plexMonitoringUsersQuery.refetch();
+  }, [plexMonitoringUsersQuery]);
+  const handleWizardPlexUserCheckboxChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const plexUserId = event.currentTarget.dataset.plexUserId;
+      if (!plexUserId) return;
+      toggleWizardPlexUserSelection(plexUserId, event.currentTarget.checked);
+    },
+    [toggleWizardPlexUserSelection],
+  );
+  const submitTmdbStep = useCallback(() => {
+    saveAndValidateTmdb.mutate();
+  }, [saveAndValidateTmdb]);
+  const handleTmdbApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setTmdbApiKey(event.target.value);
+  }, []);
+  const submitRadarrStep = useCallback(() => {
+    saveOptionalService.mutate('radarr');
+  }, [saveOptionalService]);
+  const handleRadarrBaseUrlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setRadarrBaseUrl(event.target.value);
+  }, []);
+  const handleRadarrApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setRadarrApiKey(event.target.value);
+  }, []);
+  const submitSonarrStep = useCallback(() => {
+    saveOptionalService.mutate('sonarr');
+  }, [saveOptionalService]);
+  const handleSonarrBaseUrlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setSonarrBaseUrl(event.target.value);
+  }, []);
+  const handleSonarrApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setSonarrApiKey(event.target.value);
+  }, []);
+  const submitOverseerrStep = useCallback(() => {
+    saveAndValidateOverseerr.mutate();
+  }, [saveAndValidateOverseerr]);
+  const handleOverseerrBaseUrlChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setOverseerrBaseUrl(event.target.value);
+    },
+    [],
+  );
+  const handleOverseerrApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setOverseerrApiKey(event.target.value);
+  }, []);
+  const submitGoogleStep = useCallback(() => {
+    saveOptionalService.mutate('google');
+  }, [saveOptionalService]);
+  const handleGoogleSearchEngineIdChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setGoogleSearchEngineId(event.target.value);
+    },
+    [],
+  );
+  const handleGoogleApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setGoogleApiKey(event.target.value);
+  }, []);
+  const submitOpenAiStep = useCallback(() => {
+    saveOptionalService.mutate('openai');
+  }, [saveOptionalService]);
+  const handleOpenAiApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setOpenAiApiKey(event.target.value);
+  }, []);
+  const submitWizardCompletion = useCallback(() => {
+    completeWizard.mutate();
+  }, [completeWizard]);
 
   const renderStepContent = () => {
     switch (currentStep) {
@@ -612,7 +720,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </Button>
                 <Button
-                  onClick={() => saveAndValidatePlex.mutate()}
+                  onClick={submitPlexStep}
                   disabled={!plexBaseUrl.trim() || !plexToken.trim() || saveAndValidatePlex.isPending}
                   className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
                 >
@@ -652,16 +760,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                           You have up to 30 minutes to complete authorization. The token will never expire once created.
                         </p>
                         <button
-                          onClick={() => {
-                            setIsPollingPlex(false);
-                            setPlexOAuthPinId(null);
-                            try {
-                              localStorage.removeItem('wizard_plex_pin_id');
-                              localStorage.removeItem('wizard_plex_polling');
-                            } catch {
-                              // Ignore localStorage errors
-                            }
-                          }}
+                          onClick={cancelPlexOAuthPolling}
                           className="text-xs underline text-zinc-400 hover:text-white"
                         >
                           Cancel
@@ -706,7 +805,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Input
                     id="plexBaseUrl"
                     value={plexBaseUrl}
-                    onChange={(e) => setPlexBaseUrl(e.target.value)}
+                    onChange={handlePlexBaseUrlChange}
                     placeholder="http://localhost:32400"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -722,10 +821,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="plexToken"
                     type="password"
                     value={plexToken}
-                    onChange={(e) => {
-                      setPlexToken(e.target.value);
-                      setPlexTokenFromOAuth(false);
-                    }}
+                    onChange={handlePlexTokenChange}
                     placeholder="Enter your Plex token"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -761,7 +857,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </Button>
                 <Button
-                  onClick={() => savePlexLibrarySelectionStep.mutate()}
+                  onClick={submitPlexLibrariesStep}
                   disabled={
                     !plexLibrariesQuery.data?.libraries.length ||
                     wizardSelectedLibraryKeys.length < 1 ||
@@ -798,9 +894,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Button
                     variant="outline"
                     className="h-10 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
-                    onClick={() => {
-                      void plexLibrariesQuery.refetch();
-                    }}
+                    onClick={retryPlexLibraries}
                   >
                     Retry
                   </Button>
@@ -814,9 +908,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Button
                     variant="outline"
                     className="h-10 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
-                    onClick={() => {
-                      void plexLibrariesQuery.refetch();
-                    }}
+                    onClick={retryPlexLibraries}
                   >
                     Retry
                   </Button>
@@ -837,9 +929,8 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                         <input
                           type="checkbox"
                           checked={wizardSelectedLibraryKeys.includes(lib.key)}
-                          onChange={(e) =>
-                            toggleWizardLibrarySelection(lib.key, e.target.checked)
-                          }
+                          data-library-section-key={lib.key}
+                          onChange={handleWizardLibraryCheckboxChange}
                           className="h-4 w-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
                         />
                         <span className="flex-1 truncate">{lib.title}</span>
@@ -880,7 +971,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </Button>
                 <Button
-                  onClick={() => savePlexMonitoringUsersStep.mutate()}
+                  onClick={submitPlexUsersStep}
                   disabled={
                     savePlexMonitoringUsersStep.isPending ||
                     plexMonitoringUsersQuery.isLoading
@@ -914,9 +1005,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Button
                     variant="outline"
                     className="h-10 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
-                    onClick={() => {
-                      void plexMonitoringUsersQuery.refetch();
-                    }}
+                    onClick={retryPlexUsers}
                   >
                     Retry
                   </Button>
@@ -947,9 +1036,8 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                           <input
                             type="checkbox"
                             checked={wizardSelectedPlexUserIds.includes(user.id)}
-                            onChange={(e) =>
-                              toggleWizardPlexUserSelection(user.id, e.target.checked)
-                            }
+                            data-plex-user-id={user.id}
+                            onChange={handleWizardPlexUserCheckboxChange}
                             className="h-4 w-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
                           />
                           <span className="flex-1 truncate">
@@ -995,7 +1083,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </Button>
                 <Button
-                  onClick={() => saveAndValidateTmdb.mutate()}
+                  onClick={submitTmdbStep}
                   disabled={!tmdbApiKey.trim() || saveAndValidateTmdb.isPending}
                   className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
                 >
@@ -1022,7 +1110,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="tmdbApiKey"
                     type="password"
                     value={tmdbApiKey}
-                    onChange={(e) => setTmdbApiKey(e.target.value)}
+                    onChange={handleTmdbApiKeyChange}
                     placeholder="Enter your TMDB API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1076,7 +1164,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   Skip
                 </Button>
                 <Button
-                  onClick={() => saveOptionalService.mutate('radarr')}
+                  onClick={submitRadarrStep}
                   disabled={!radarrBaseUrl.trim() || !radarrApiKey.trim() || saveOptionalService.isPending}
                   className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
                 >
@@ -1105,7 +1193,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Input
                     id="radarrBaseUrl"
                     value={radarrBaseUrl}
-                    onChange={(e) => setRadarrBaseUrl(e.target.value)}
+                    onChange={handleRadarrBaseUrlChange}
                     placeholder="http://localhost:7878"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1121,7 +1209,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="radarrApiKey"
                     type="password"
                     value={radarrApiKey}
-                    onChange={(e) => setRadarrApiKey(e.target.value)}
+                    onChange={handleRadarrApiKeyChange}
                     placeholder="Enter Radarr API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1163,7 +1251,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   Skip
                 </Button>
                 <Button
-                  onClick={() => saveOptionalService.mutate('sonarr')}
+                  onClick={submitSonarrStep}
                   disabled={!sonarrBaseUrl.trim() || !sonarrApiKey.trim() || saveOptionalService.isPending}
                   className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
                 >
@@ -1192,7 +1280,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Input
                     id="sonarrBaseUrl"
                     value={sonarrBaseUrl}
-                    onChange={(e) => setSonarrBaseUrl(e.target.value)}
+                    onChange={handleSonarrBaseUrlChange}
                     placeholder="http://localhost:8989"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1208,7 +1296,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="sonarrApiKey"
                     type="password"
                     value={sonarrApiKey}
-                    onChange={(e) => setSonarrApiKey(e.target.value)}
+                    onChange={handleSonarrApiKeyChange}
                     placeholder="Enter Sonarr API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1250,7 +1338,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   Skip
                 </Button>
                 <Button
-                  onClick={() => saveAndValidateOverseerr.mutate()}
+                  onClick={submitOverseerrStep}
                   disabled={
                     !overseerrBaseUrl.trim() ||
                     !overseerrApiKey.trim() ||
@@ -1283,7 +1371,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Input
                     id="overseerrBaseUrl"
                     value={overseerrBaseUrl}
-                    onChange={(e) => setOverseerrBaseUrl(e.target.value)}
+                    onChange={handleOverseerrBaseUrlChange}
                     placeholder="http://localhost:5055"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1299,7 +1387,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="overseerrApiKey"
                     type="password"
                     value={overseerrApiKey}
-                    onChange={(e) => setOverseerrApiKey(e.target.value)}
+                    onChange={handleOverseerrApiKeyChange}
                     placeholder="Enter Overseerr API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1341,7 +1429,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   Skip
                 </Button>
                 <Button
-                  onClick={() => saveOptionalService.mutate('google')}
+                  onClick={submitGoogleStep}
                   disabled={!googleSearchEngineId.trim() || !googleApiKey.trim() || saveOptionalService.isPending}
                   className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
                 >
@@ -1370,7 +1458,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   <Input
                     id="googleSearchEngineId"
                     value={googleSearchEngineId}
-                    onChange={(e) => setGoogleSearchEngineId(e.target.value)}
+                    onChange={handleGoogleSearchEngineIdChange}
                     placeholder="Enter search engine ID"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1386,7 +1474,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="googleApiKey"
                     type="password"
                     value={googleApiKey}
-                    onChange={(e) => setGoogleApiKey(e.target.value)}
+                    onChange={handleGoogleApiKeyChange}
                     placeholder="Enter Google API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1428,7 +1516,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   Skip
                 </Button>
                 <Button
-                  onClick={() => saveOptionalService.mutate('openai')}
+                  onClick={submitOpenAiStep}
                   disabled={!openAiApiKey.trim() || saveOptionalService.isPending}
                   className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
                 >
@@ -1458,7 +1546,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     id="openAiApiKey"
                     type="password"
                     value={openAiApiKey}
-                    onChange={(e) => setOpenAiApiKey(e.target.value)}
+                    onChange={handleOpenAiApiKeyChange}
                     placeholder="Enter OpenAI API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
@@ -1488,7 +1576,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                 Your Immaculaterr instance is now configured and ready to use.
               </p>
               <Button
-                onClick={() => completeWizard.mutate()}
+                onClick={submitWizardCompletion}
                 size="lg"
                 disabled={completeWizard.isPending}
                 className="h-12 w-full max-w-xs rounded-xl bg-white text-black hover:bg-zinc-100"
@@ -1509,6 +1597,9 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         return null;
     }
   };
+  const closeLibraryMinDialog = useCallback(() => {
+    setLibraryMinDialogOpen(false);
+  }, []);
 
   return (
     <>
@@ -1517,8 +1608,8 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       </div>
       <ConfirmDialog
         open={libraryMinDialogOpen}
-        onClose={() => setLibraryMinDialogOpen(false)}
-        onConfirm={() => setLibraryMinDialogOpen(false)}
+        onClose={closeLibraryMinDialog}
+        onConfirm={closeLibraryMinDialog}
         title="At Least One Library Required"
         description="Immaculaterr requires at least one Plex movie or TV library to stay selected."
         confirmText="Got it"

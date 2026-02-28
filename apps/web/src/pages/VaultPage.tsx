@@ -25,6 +25,9 @@ import {
   getSecretsEnvelopeKey,
   putSettings,
 } from '@/api/settings';
+import { ApiError } from '@/api/http';
+import { testSavedIntegration } from '@/api/integrations';
+import { checkPlexPin, createPlexPin } from '@/api/plex';
 import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -45,6 +48,14 @@ import {
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 
 const MASKED_SECRET = '*******';
+type IntegrationId =
+  | 'plex'
+  | 'radarr'
+  | 'sonarr'
+  | 'tmdb'
+  | 'overseerr'
+  | 'google'
+  | 'openai';
 
 function readString(obj: unknown, path: string): string {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
@@ -113,10 +124,13 @@ function MaskedSecretInput(props: {
       ? MASKED_SECRET
       : '';
 
-  const handleValueChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onEditStart();
-    setValue(event.target.value);
-  };
+  const handleValueChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      onEditStart();
+      setValue(event.target.value);
+    },
+    [onEditStart, setValue],
+  );
 
   const collapseSelectionToEnd = useCallback(
     (input: HTMLInputElement) => {
@@ -397,21 +411,19 @@ export function SettingsPage({
   };
 
   const callIntegrationTest = async (
-    integrationId: string,
+    integrationId: IntegrationId,
     body?: Record<string, unknown>,
   ) => {
-    const response = await fetch(`/api/integrations/test/${integrationId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body ?? {}),
-    });
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ message: response.statusText }));
-      throw new Error(readErrorMessage(error, `${integrationId} test failed`));
+    try {
+      return await testSavedIntegration(integrationId, body ?? {});
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw new Error(
+          readErrorMessage(error.body, error.message || `${integrationId} test failed`),
+        );
+      }
+      throw new Error(`${integrationId} test failed`);
     }
-    return await response.json();
   };
 
   const buildIntegrationSecretPayload = async (params: {
@@ -515,16 +527,13 @@ export function SettingsPage({
 
     try {
       // Step 1: Create a PIN
-      const pinResponse = await fetch('/api/plex/pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!pinResponse.ok) {
+      let pinData: Awaited<ReturnType<typeof createPlexPin>>;
+      try {
+        pinData = await createPlexPin();
+      } catch {
         throw new Error('Failed to create Plex PIN');
       }
 
-      const pinData = await pinResponse.json();
       const { id: pinId, authUrl } = pinData;
 
       // Step 2: Navigate the pre-opened window/tab to Plex auth.
@@ -541,49 +550,63 @@ export function SettingsPage({
       let attempts = 0;
       const maxAttempts = 60; // 60 attempts * 2 seconds = 2 minutes max
 
-      const pollInterval = setInterval(async () => {
-        attempts++;
+      const closePopupSafely = () => {
+        try {
+          popup.close();
+        } catch {
+          // ignore
+        }
+      };
 
-        // Check if popup is closed
+      const completePolling = (
+        pollIntervalId: ReturnType<typeof setInterval>,
+        message: string,
+        options?: { closePopup?: boolean; success?: boolean },
+      ) => {
+        clearInterval(pollIntervalId);
+        if (options?.closePopup) {
+          closePopupSafely();
+        }
+        setIsPlexOAuthLoading(false);
+        if (options?.success) {
+          toast.success(message, { id: toastId });
+          return;
+        }
+        toast.error(message, { id: toastId });
+      };
+
+      const pollForAuthToken = async (pollIntervalId: ReturnType<typeof setInterval>) => {
+        attempts += 1;
+
         if (popup.closed) {
-          clearInterval(pollInterval);
-          setIsPlexOAuthLoading(false);
-          toast.error('Login cancelled', { id: toastId });
+          completePolling(pollIntervalId, 'Login cancelled');
           return;
         }
 
-        // Max attempts reached
         if (attempts >= maxAttempts) {
-          clearInterval(pollInterval);
-          popup.close();
-          setIsPlexOAuthLoading(false);
-          toast.error('Login timed out. Please try again.', { id: toastId });
+          completePolling(pollIntervalId, 'Login timed out. Please try again.', {
+            closePopup: true,
+          });
           return;
         }
 
         try {
-          const checkResponse = await fetch(`/api/plex/pin/${pinId}`);
-          if (checkResponse.ok) {
-            const checkData = await checkResponse.json();
-
-            if (checkData.authToken) {
-              // Success! Got the token
-              clearInterval(pollInterval);
-              try {
-                popup.close();
-              } catch {
-                // ignore
-              }
-              setPlexTouched(true);
-              setPlexTestOk(null);
-              setPlexToken(checkData.authToken);
-              setIsPlexOAuthLoading(false);
-              toast.success('Connected to Plex.', { id: toastId });
-            }
-          }
+          const checkData = await checkPlexPin(pinId);
+          if (!checkData.authToken) return;
+          setPlexTouched(true);
+          setPlexTestOk(null);
+          setPlexToken(checkData.authToken);
+          completePolling(pollIntervalId, 'Connected to Plex.', {
+            closePopup: true,
+            success: true,
+          });
         } catch {
           // Continue polling on transient errors.
         }
+      };
+
+      const pollInterval = setInterval(() => {
+        runAsyncTask(pollForAuthToken(pollInterval));
       }, 2000); // Poll every 2 seconds
 
     } catch {
@@ -2272,7 +2295,7 @@ export function SettingsPage({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className={labelClass}>Base URL</label>
+                    <div className={labelClass}>Base URL</div>
                     <input
                       type="text"
                       value={plexBaseUrl}
@@ -2286,7 +2309,7 @@ export function SettingsPage({
                     </p>
                   </div>
                   <div>
-                    <label className={labelClass}>Token</label>
+                    <div className={labelClass}>Token</div>
                     <div className="flex min-w-0 gap-2">
                       <MaskedSecretInput
                         value={plexToken}
@@ -2367,7 +2390,7 @@ export function SettingsPage({
                 </div>
                 <div className="grid grid-cols-1 gap-6">
                   <div>
-                    <label className={labelClass}>API Key</label>
+                    <div className={labelClass}>API Key</div>
                     <MaskedSecretInput
                       value={tmdbApiKey}
                       setValue={setTmdbApiKey}
@@ -2496,7 +2519,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className={labelClass}>Base URL</label>
+                          <div className={labelClass}>Base URL</div>
                           <input
                             type="text"
                             value={radarrBaseUrl}
@@ -2506,7 +2529,7 @@ export function SettingsPage({
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={radarrApiKey}
                             setValue={setRadarrApiKey}
@@ -2641,7 +2664,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className={labelClass}>Base URL</label>
+                          <div className={labelClass}>Base URL</div>
                           <input
                             type="text"
                             value={sonarrBaseUrl}
@@ -2651,7 +2674,7 @@ export function SettingsPage({
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={sonarrApiKey}
                             setValue={setSonarrApiKey}
@@ -2787,7 +2810,7 @@ export function SettingsPage({
                       >
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div>
-                            <label className={labelClass}>Base URL</label>
+                            <div className={labelClass}>Base URL</div>
                             <input
                               type="text"
                               value={overseerrBaseUrl}
@@ -2797,7 +2820,7 @@ export function SettingsPage({
                             />
                           </div>
                           <div>
-                            <label className={labelClass}>API Key</label>
+                            <div className={labelClass}>API Key</div>
                             <MaskedSecretInput
                               value={overseerrApiKey}
                               setValue={setOverseerrApiKey}
@@ -2911,7 +2934,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className={labelClass}>Search Engine ID</label>
+                          <div className={labelClass}>Search Engine ID</div>
                           <input
                             type="text"
                             value={googleSearchEngineId}
@@ -2921,7 +2944,7 @@ export function SettingsPage({
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={googleApiKey}
                             setValue={setGoogleApiKey}
@@ -3031,7 +3054,7 @@ export function SettingsPage({
                     >
                       <div className="grid grid-cols-1 gap-6">
                         <div>
-                          <label className={labelClass}>API Key</label>
+                          <div className={labelClass}>API Key</div>
                           <MaskedSecretInput
                             value={openAiApiKey}
                             setValue={setOpenAiApiKey}

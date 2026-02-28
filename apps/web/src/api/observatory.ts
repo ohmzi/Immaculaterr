@@ -1,4 +1,5 @@
 import { fetchJson } from '@/api/http';
+import { apiPath, JSON_HEADERS } from '@/api/constants';
 
 export type ObservatoryListMode = 'pendingApproval' | 'review';
 export type WatchedCollectionKind = 'recentlyWatched' | 'changeOfTaste';
@@ -37,7 +38,7 @@ export async function listImmaculateTasteMovieObservatory(params: {
     mode: params.mode,
   });
   return await fetchJson<ListObservatoryResponse>(
-    `/api/observatory/immaculate-taste/movies?${q.toString()}`,
+    apiPath(`/observatory/immaculate-taste/movies?${q.toString()}`),
   );
 }
 
@@ -50,7 +51,7 @@ export async function listImmaculateTasteTvObservatory(params: {
     mode: params.mode,
   });
   return await fetchJson<ListObservatoryResponse>(
-    `/api/observatory/immaculate-taste/tv?${q.toString()}`,
+    apiPath(`/observatory/immaculate-taste/tv?${q.toString()}`),
   );
 }
 
@@ -63,10 +64,10 @@ export async function recordImmaculateTasteDecisions(params: {
   }>;
 }) {
   return await fetchJson<{ ok: true; applied: number; ignored: number }>(
-    '/api/observatory/immaculate-taste/decisions',
+    apiPath('/observatory/immaculate-taste/decisions'),
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(params),
     },
   );
@@ -77,10 +78,10 @@ export async function applyImmaculateTasteObservatory(params: {
   mediaType: 'movie' | 'tv';
 }) {
   return await fetchJson<{ ok: true }>(
-    '/api/observatory/immaculate-taste/apply',
+    apiPath('/observatory/immaculate-taste/apply'),
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(params),
     },
   );
@@ -97,7 +98,7 @@ export async function listWatchedMovieObservatory(params: {
     collectionKind: params.collectionKind,
   });
   return await fetchJson<ListWatchedObservatoryResponse>(
-    `/api/observatory/watched/movies?${q.toString()}`,
+    apiPath(`/observatory/watched/movies?${q.toString()}`),
   );
 }
 
@@ -112,7 +113,7 @@ export async function listWatchedTvObservatory(params: {
     collectionKind: params.collectionKind,
   });
   return await fetchJson<ListWatchedObservatoryResponse>(
-    `/api/observatory/watched/tv?${q.toString()}`,
+    apiPath(`/observatory/watched/tv?${q.toString()}`),
   );
 }
 
@@ -126,10 +127,10 @@ export async function recordWatchedDecisions(params: {
   }>;
 }) {
   return await fetchJson<{ ok: true; applied: number; ignored: number }>(
-    '/api/observatory/watched/decisions',
+    apiPath('/observatory/watched/decisions'),
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(params),
     },
   );
@@ -144,16 +145,16 @@ export async function applyWatchedObservatory(params: {
     approvalRequired: boolean;
     unmonitored: number;
     sent: number;
-  }>('/api/observatory/watched/apply', {
+  }>(apiPath('/observatory/watched/apply'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
 }
 
 export async function resetRejectedSuggestions() {
   return await fetchJson<{ ok: true; deleted: number }>(
-    '/api/observatory/immaculate-taste/rejected/reset',
+    apiPath('/observatory/immaculate-taste/rejected/reset'),
     { method: 'DELETE' },
   );
 }
@@ -175,12 +176,12 @@ export async function listRejectedSuggestions() {
     ok: true;
     items: RejectedSuggestionItem[];
     total: number;
-  }>('/api/observatory/immaculate-taste/rejected');
+  }>(apiPath('/observatory/immaculate-taste/rejected'));
 }
 
 export async function deleteRejectedSuggestion(id: string) {
   return await fetchJson<{ ok: boolean; deleted?: number; error?: string }>(
-    `/api/observatory/immaculate-taste/rejected/${encodeURIComponent(id)}`,
+    apiPath(`/observatory/immaculate-taste/rejected/${encodeURIComponent(id)}`),
     { method: 'DELETE' },
   );
 }

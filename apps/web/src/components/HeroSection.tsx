@@ -1,5 +1,12 @@
 import { motion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { ArrowRight, ChevronRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
@@ -110,8 +117,13 @@ function densifyDailySeries<T extends { x: number; movies: number; tv: number }>
   let i = 0;
 
   for (let x = start; x <= end; x += DAY_MS) {
-    while (i + 1 < anchors.length && anchors[i + 1]!.x < x) i++;
-    const left = anchors[i]!;
+    while (i + 1 < anchors.length) {
+      const nextAnchor = anchors[i + 1];
+      if (!nextAnchor || nextAnchor.x >= x) break;
+      i += 1;
+    }
+    const left = anchors[i];
+    if (!left) continue;
     const right = anchors[i + 1] ?? left;
 
     const span = right.x - left.x;
@@ -327,9 +339,20 @@ export function HeroSection() {
     writeStoredPlexGrowth({ version, cachedAt: Date.now(), data: growthQuery.data });
   }, [growthQuery.data, version]);
 
-  const series = growthQuery.data?.series ?? [];
+  const series = useMemo(
+    () => growthQuery.data?.series ?? [],
+    [growthQuery.data?.series],
+  );
 
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1Y');
+  const handleTimeRangeChange = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const { rangeKey } = event.currentTarget.dataset;
+      if (!rangeKey) return;
+      setTimeRange(rangeKey as TimeRangeKey);
+    },
+    [],
+  );
 
   const seriesWithX = useMemo(() => {
     return series
@@ -408,13 +431,14 @@ export function HeroSection() {
     const inRange = seriesWithX.filter((p) => p.x >= startMs && p.x <= endMs);
     const prev = [...seriesWithX].reverse().find((p) => p.x < startMs) ?? null;
     const first = inRange[0] ?? null;
+    const startBase = prev ?? first;
 
     const startPoint =
-      prev ?? first
+      startBase
         ? {
             month: new Date(startMs).toISOString().slice(0, 10), // YYYY-MM-DD
-            movies: (prev ?? first)!.movies,
-            tv: (prev ?? first)!.tv,
+            movies: startBase.movies,
+            tv: startBase.tv,
             x: startMs,
           }
         : null;
@@ -482,8 +506,9 @@ export function HeroSection() {
     });
   }, [hasData, moviesHasStats, tvHasStats]);
 
-  const toggleStatsMedia = () =>
+  const toggleStatsMedia = useCallback(() => {
     setStatsMedia((m) => (m === 'movies' ? 'tv' : 'movies'));
+  }, []);
 
   const statsLabel = statsMedia === 'movies' ? 'Movies' : 'TV Shows';
   const statsTotal = statsMedia === 'movies' ? moviesTotal : tvTotal;
@@ -512,6 +537,39 @@ export function HeroSection() {
     // Tighter px estimate for 12px text: ~6px/char + small gutter.
     return Math.max(28, Math.min(64, Math.ceil(maxLen * 6 + 10)));
   })();
+  const handleXAxisTick = useCallback(
+    (tickProps: unknown) => (
+      <MonthXAxisTick
+        {...(tickProps as Record<string, unknown>)}
+        firstX={xAxisTicks[0] ?? firstX}
+        lastX={xAxisTicks.at(-1) ?? lastX}
+        mode={rangeBounds.tickMode}
+      />
+    ),
+    [firstX, lastX, rangeBounds.tickMode, xAxisTicks],
+  );
+  const handleYAxisTick = useCallback(
+    (tickProps: unknown) => (
+      <CombinedYAxisTick
+        {...(tickProps as Record<string, unknown>)}
+        tvTicks={tvScale.ticks}
+        movieTicks={moviesScale.ticks}
+      />
+    ),
+    [moviesScale.ticks, tvScale.ticks],
+  );
+  const handleTooltipLabel = useCallback((label: string | number) => {
+    const numericLabel = typeof label === 'number' ? label : Number(label);
+    return Number.isFinite(numericLabel)
+      ? formatTooltipDateUtc(numericLabel)
+      : String(label);
+  }, []);
+  const handleTooltipValue = useCallback((value: unknown, name: unknown) => {
+    const formattedValue = typeof value === 'number' ? Math.round(value) : String(value ?? '');
+    const formattedName =
+      name === 'movies' ? 'Movies' : name === 'tv' ? 'TV Shows' : String(name ?? '');
+    return [formattedValue, formattedName] as [string | number, string];
+  }, []);
 
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8 select-none [-webkit-touch-callout:none]">
@@ -615,7 +673,8 @@ export function HeroSection() {
                             <button
                               key={opt.key}
                               type="button"
-                              onClick={() => setTimeRange(opt.key)}
+                              data-range-key={opt.key}
+                              onClick={handleTimeRangeChange}
                               disabled={!hasData}
                               aria-pressed={selected}
                               title={opt.title}
@@ -663,14 +722,7 @@ export function HeroSection() {
                         ticks={xAxisTicks}
                         stroke="#9ca3af" 
                         style={{ fontSize: '12px' }}
-                        tick={(tickProps) => (
-                          <MonthXAxisTick
-                            {...tickProps}
-                            firstX={xAxisTicks[0] ?? firstX}
-                            lastX={xAxisTicks.at(-1) ?? lastX}
-                            mode={rangeBounds.tickMode}
-                          />
-                        )}
+                        tick={handleXAxisTick}
                         interval={0}
                         minTickGap={0}
                         tickMargin={10}
@@ -691,27 +743,13 @@ export function HeroSection() {
                         style={{ fontSize: '12px' }}
                         width={yAxisWidth}
                         tickMargin={0}
-                        tick={(tickProps) => (
-                          <CombinedYAxisTick
-                            {...tickProps}
-                            tvTicks={tvScale.ticks}
-                            movieTicks={moviesScale.ticks}
-                          />
-                        )}
+                        tick={handleYAxisTick}
                         domain={moviesScale.domain}
                         ticks={moviesScale.ticks}
                       />
                       <Tooltip 
-                        labelFormatter={(label) => {
-                          const n = typeof label === 'number' ? label : Number(label);
-                          return Number.isFinite(n)
-                            ? formatTooltipDateUtc(n)
-                            : String(label);
-                        }}
-                        formatter={(value, name) => [
-                          typeof value === 'number' ? Math.round(value) : value,
-                          name === 'movies' ? 'Movies' : name === 'tv' ? 'TV Shows' : String(name),
-                        ]}
+                        labelFormatter={handleTooltipLabel}
+                        formatter={handleTooltipValue}
                         contentStyle={{ 
                           backgroundColor: '#1f2937', 
                           border: '1px solid #374151',

@@ -8,21 +8,45 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { immaculateTasteResetMarkerKey } from './immaculate-taste-reset';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+const DEFAULT_MAX_POINTS = 50;
+
+type ThreeTierMovieShuffleParams = {
+  movies: Array<{
+    tmdbId: number;
+    tmdbVoteAvg: number | null;
+    tmdbVoteCount: number | null;
+  }>;
+};
+
+type RatedMovie = {
+  tmdbId: number;
+  tmdbVoteAvg: number | null;
+  tmdbVoteCount: number | null;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+};
 
-function asInt(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value))
-    return Math.trunc(value);
-  if (typeof value === 'string' && value.trim()) {
-    const n = Number.parseInt(value.trim(), 10);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
+const asFiniteNumber = (value: unknown): number | null => {
+  if (typeof value !== 'number') return null;
+  return Number.isFinite(value) ? value : null;
+};
 
-function resolveLegacyPointsPath(fileName: string): string | null {
+const parseIntegerString = (value: unknown): number | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const asInt = (value: unknown): number | null => {
+  const parsed = asFiniteNumber(value) ?? parseIntegerString(value);
+  return parsed === null ? null : Math.trunc(parsed);
+};
+
+const resolveLegacyPointsPath = (fileName: string): string | null => {
   // Prefer APP_DATA_DIR (same place tcp.sqlite lives)
   const appDataDir = process.env['APP_DATA_DIR'];
   if (appDataDir) {
@@ -43,17 +67,102 @@ function resolveLegacyPointsPath(fileName: string): string | null {
     if (existsSync(c)) return c;
   }
   return null;
-}
+};
 
-function chunk<T>(arr: T[], size: number): T[][] {
+const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
-}
+};
+
+const clampMaxPoints = (value: unknown): number => {
+  const parsed = asFiniteNumber(value) ?? parseIntegerString(value);
+  if (parsed === null) return DEFAULT_MAX_POINTS;
+  const n = Math.trunc(parsed);
+  return Math.max(1, Math.min(100, n));
+};
+
+const shuffleInPlace = <T>(arr: T[]) => {
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j] as T, arr[i] as T];
+  }
+  return arr;
+};
+
+const toUniqueRatedMovies = (movies: ThreeTierMovieShuffleParams['movies']): RatedMovie[] => {
+  const uniq = new Map<number, RatedMovie>();
+  for (const movie of movies ?? []) {
+    const tmdbId = Number.isFinite(movie.tmdbId) ? Math.trunc(movie.tmdbId) : NaN;
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) continue;
+    if (uniq.has(tmdbId)) continue;
+    uniq.set(tmdbId, {
+      tmdbId,
+      tmdbVoteAvg: movie.tmdbVoteAvg ?? null,
+      tmdbVoteCount: movie.tmdbVoteCount ?? null,
+    });
+  }
+  return Array.from(uniq.values());
+};
+
+const sortByTmdbRating = (movies: RatedMovie[]): RatedMovie[] => {
+  return [...movies].sort((a, b) => {
+    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN) ? Number(a.tmdbVoteAvg) : 0;
+    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN) ? Number(b.tmdbVoteAvg) : 0;
+    if (br !== ar) return br - ar;
+    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
+    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
+    if (bc !== ac) return bc - ac;
+    return a.tmdbId - b.tmdbId;
+  });
+};
+
+const splitThreeTiers = <T>(items: T[]) => {
+  const n = items.length;
+  const base = Math.floor(n / 3);
+  const rem = n % 3;
+  const highSize = base + (rem > 0 ? 1 : 0);
+  const midSize = base + (rem > 1 ? 1 : 0);
+  return {
+    high: items.slice(0, highSize),
+    mid: items.slice(highSize, highSize + midSize),
+    low: items.slice(highSize + midSize),
+  };
+};
+
+const pickTopTierMovieIds = (tiers: { high: RatedMovie[]; mid: RatedMovie[]; low: RatedMovie[] }): number[] => {
+  const picks: number[] = [];
+  const used = new Set<number>();
+  const pickOne = (tier: RatedMovie[]) => {
+    const pool = tier.filter((m) => !used.has(m.tmdbId));
+    if (!pool.length) return;
+    const pick = pool[Math.floor(Math.random() * pool.length)] as RatedMovie;
+    used.add(pick.tmdbId);
+    picks.push(pick.tmdbId);
+  };
+  pickOne(tiers.high);
+  pickOne(tiers.mid);
+  pickOne(tiers.low);
+  shuffleInPlace(picks);
+  return picks;
+};
+
+const buildThreeTierMovieOrder = (params: ThreeTierMovieShuffleParams): number[] => {
+  const sorted = sortByTmdbRating(toUniqueRatedMovies(params.movies));
+  if (!sorted.length) return [];
+  const tiers = splitThreeTiers(sorted);
+  const topPicks = pickTopTierMovieIds(tiers);
+  const used = new Set(topPicks);
+  const remaining = sorted
+    .filter((movie) => !used.has(movie.tmdbId))
+    .map((movie) => movie.tmdbId);
+  shuffleInPlace(remaining);
+  return [...topPicks, ...remaining];
+};
 
 @Injectable()
 export class ImmaculateTasteCollectionService {
-  static readonly DEFAULT_MAX_POINTS = 50;
+  static readonly DEFAULT_MAX_POINTS = DEFAULT_MAX_POINTS;
   static readonly LEGACY_POINTS_FILE = 'recommendation_points.json';
 
   constructor(
@@ -612,108 +721,11 @@ export class ImmaculateTasteCollectionService {
     });
   }
 
-  buildThreeTierTmdbRatingShuffleOrder(params: {
-    movies: Array<{
-      tmdbId: number;
-      tmdbVoteAvg: number | null;
-      tmdbVoteCount: number | null;
-    }>;
-  }): number[] {
-    const uniq = new Map<
-      number,
-      {
-        tmdbId: number;
-        tmdbVoteAvg: number | null;
-        tmdbVoteCount: number | null;
-      }
-    >();
-    for (const m of params.movies ?? []) {
-      const tmdbId = Number.isFinite(m.tmdbId) ? Math.trunc(m.tmdbId) : NaN;
-      if (!Number.isFinite(tmdbId) || tmdbId <= 0) continue;
-      if (!uniq.has(tmdbId))
-        uniq.set(tmdbId, {
-          tmdbId,
-          tmdbVoteAvg: m.tmdbVoteAvg ?? null,
-          tmdbVoteCount: m.tmdbVoteCount ?? null,
-        });
-    }
+  private readonly buildThreeTierTmdbRatingShuffleOrderImpl = buildThreeTierMovieOrder;
 
-    const sorted = Array.from(uniq.values()).sort((a, b) => {
-      const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN)
-        ? Number(a.tmdbVoteAvg)
-        : 0;
-      const br = Number.isFinite(b.tmdbVoteAvg ?? NaN)
-        ? Number(b.tmdbVoteAvg)
-        : 0;
-      if (br !== ar) return br - ar;
-      const ac = Number.isFinite(a.tmdbVoteCount ?? NaN)
-        ? Number(a.tmdbVoteCount)
-        : 0;
-      const bc = Number.isFinite(b.tmdbVoteCount ?? NaN)
-        ? Number(b.tmdbVoteCount)
-        : 0;
-      if (bc !== ac) return bc - ac;
-      return a.tmdbId - b.tmdbId;
-    });
-
-    const n = sorted.length;
-    if (!n) return [];
-
-    const base = Math.floor(n / 3);
-    const rem = n % 3;
-    const highSize = base + (rem > 0 ? 1 : 0);
-    const midSize = base + (rem > 1 ? 1 : 0);
-
-    const high = sorted.slice(0, highSize);
-    const mid = sorted.slice(highSize, highSize + midSize);
-    const low = sorted.slice(highSize + midSize);
-
-    const pickOne = <T>(arr: T[]): T | null =>
-      arr.length ? arr[Math.floor(Math.random() * arr.length)] : null;
-
-    const picks: number[] = [];
-    const used = new Set<number>();
-    const pickTier = (tier: typeof sorted) => {
-      const pool = tier.filter((m) => !used.has(m.tmdbId));
-      const p = pickOne(pool);
-      if (!p) return;
-      used.add(p.tmdbId);
-      picks.push(p.tmdbId);
-    };
-
-    // Top 3: 1 random pick from each tier (high/mid/low), then shuffled.
-    pickTier(high);
-    pickTier(mid);
-    pickTier(low);
-    shuffleInPlace(picks);
-
-    const remaining = sorted
-      .filter((m) => !used.has(m.tmdbId))
-      .map((m) => m.tmdbId);
-    shuffleInPlace(remaining);
-
-    return [...picks, ...remaining];
+  buildThreeTierTmdbRatingShuffleOrder(
+    params: ThreeTierMovieShuffleParams,
+  ): number[] {
+    return this.buildThreeTierTmdbRatingShuffleOrderImpl(params);
   }
-}
-
-function clampMaxPoints(v: unknown): number {
-  const n =
-    typeof v === 'number' && Number.isFinite(v)
-      ? Math.trunc(v)
-      : typeof v === 'string' && v.trim()
-        ? Number.parseInt(v.trim(), 10)
-        : ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
-  if (!Number.isFinite(n))
-    return ImmaculateTasteCollectionService.DEFAULT_MAX_POINTS;
-  return Math.max(1, Math.min(100, n));
-}
-
-function shuffleInPlace<T>(arr: T[]) {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = arr[i];
-    arr[i] = arr[j]!;
-    arr[j] = tmp!;
-  }
-  return arr;
 }

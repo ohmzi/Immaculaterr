@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -171,15 +171,18 @@ export function AppShell() {
     },
   });
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     logoutMutation.mutate();
-  };
+  }, [logoutMutation]);
 
-  const handleAcknowledgeWhatsNew = () => {
+  const handleAcknowledgeWhatsNew = useCallback(() => {
     if (!currentVersion) return;
     setSessionDismissedVersion(currentVersion);
     acknowledgeWhatsNewMutation.mutate(currentVersion);
-  };
+  }, [acknowledgeWhatsNewMutation, currentVersion]);
+  const closeWizard = useCallback(() => {
+    setWizardOpen(false);
+  }, []);
 
   const isHomePage = location.pathname === '/';
 
@@ -214,8 +217,8 @@ export function AppShell() {
       <SetupWizardModal
         open={wizardOpen || onboardingCompleted === false}
         required={onboardingCompleted === false}
-        onClose={() => setWizardOpen(false)}
-        onFinished={() => setWizardOpen(false)}
+        onClose={closeWizard}
+        onFinished={closeWizard}
       />
     </div>
   );

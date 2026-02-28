@@ -183,4 +183,57 @@ describe('buildMediaAddedCleanupReport', () => {
       ),
     ).toBe(true);
   });
+
+  it('marks watchlist as skipped when season flow exits early before watchlist check', () => {
+    const ctx = createCtx(false);
+    const raw: JsonObject = {
+      mediaType: 'season',
+      skipped: true,
+      features: {
+        deleteDuplicates: true,
+        unmonitorInArr: true,
+        removeFromWatchlist: true,
+      },
+      duplicates: {
+        mode: 'librarySweep',
+        librarySectionTitle: 'TV Shows',
+        episode: {
+          metadataDeleted: 0,
+          partsDeleted: 4,
+          groupsWithDuplicates: 0,
+        },
+      },
+      watchlist: {
+        removed: 0,
+        attempted: 0,
+        matchedBy: 'none',
+      },
+      radarr: {
+        configured: true,
+        connected: null,
+        moviesUnmonitored: 0,
+        moviesWouldUnmonitor: 0,
+      },
+      sonarr: {
+        configured: true,
+        connected: null,
+        episodesUnmonitored: 0,
+        episodesWouldUnmonitor: 0,
+      },
+    };
+
+    const report = buildMediaAddedCleanupReport({ ctx, raw });
+    const watchlistTask = report.tasks.find((t) => t.id === 'watchlist');
+
+    expect(watchlistTask?.status).toBe('skipped');
+    expect(watchlistTask?.issues ?? []).toEqual([]);
+    expect(
+      (watchlistTask?.facts ?? []).some(
+        (f) =>
+          f.label === 'Note' &&
+          String(f.value).includes('Skipped before watchlist check'),
+      ),
+    ).toBe(true);
+    expect(report.tasks.some((t) => t.status === 'failed')).toBe(false);
+  });
 });

@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 
@@ -43,7 +51,6 @@ export function GlassSelect(props: {
   useLayoutEffect(() => {
     if (!open) return;
     recomputePosition();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, value]);
 
   useEffect(() => {
@@ -79,10 +86,21 @@ export function GlassSelect(props: {
       window.removeEventListener('resize', onScrollOrResize);
       window.removeEventListener('scroll', onScrollOrResize, true);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const triggerText = selectedLabel || placeholder;
+  const handleOptionClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const { optionValue } = event.currentTarget.dataset;
+      if (!optionValue) return;
+      onValueChange(optionValue);
+      setOpen(false);
+    },
+    [onValueChange],
+  );
+  const handleTriggerClick = useCallback(() => {
+    setOpen((value) => !value);
+  }, []);
 
   const triggerClasses = cn(
     // Matches our Radix Select trigger "glassy" style.
@@ -122,11 +140,8 @@ export function GlassSelect(props: {
                     role="option"
                     aria-selected={isSelected}
                     disabled={o.disabled}
-                    onClick={() => {
-                      if (o.disabled) return;
-                      onValueChange(o.value);
-                      setOpen(false);
-                    }}
+                    data-option-value={o.value}
+                    onClick={handleOptionClick}
                     className={cn(
                       'relative flex w-full select-none items-center rounded-xl py-2 pl-8 pr-3 text-left text-sm outline-none transition',
                       'text-white/90 hover:bg-white/12 hover:text-white',
@@ -156,7 +171,7 @@ export function GlassSelect(props: {
         className={triggerClasses}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleTriggerClick}
       >
         <span className={cn('truncate', selectedLabel ? 'text-white/90' : 'text-white/60')}>
           {triggerText}
@@ -167,4 +182,3 @@ export function GlassSelect(props: {
     </>
   );
 }
-

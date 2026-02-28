@@ -368,7 +368,8 @@ export class PlexPollingService implements OnModuleInit {
     }
 
     while (queue.length) {
-      const run = queue.shift()!;
+      const run = queue.shift();
+      if (!run) continue;
       const state = this.getSessionJobStatus(run.sessionAutomationId, run.jobId);
       if (state === 'success' || state === 'running') continue;
 
@@ -791,7 +792,9 @@ export class PlexPollingService implements OnModuleInit {
 
     // If we saw new items but are within the debounce window, stash the newest one and run later.
     if (newItems.length > 0 && !canRunNow) {
-      const newest = newItems.reduce((best, it) => pickNewer(best, it), newItems[0]!);
+      const firstNewItem = newItems[0];
+      if (!firstNewItem) return;
+      const newest = newItems.reduce((best, it) => pickNewer(best, it), firstNewItem);
       if (!this.pendingLibraryNew) {
         this.pendingLibraryNew = { newest, newlyAddedCount: newItems.length, sinceSec: since };
       } else {
@@ -810,26 +813,28 @@ export class PlexPollingService implements OnModuleInit {
     if (newItems.length === 0) {
       if (!canRunNow || !this.pendingLibraryNew) return;
     }
+    const pendingLibraryNew = this.pendingLibraryNew;
 
     // Use the newest item (from this poll or pending) as representative metadata for logs + job input.
     const newest = (() => {
-      const newestFromPoll =
-        newItems.length > 0
-          ? newItems.reduce((best, it) => pickNewer(best, it), newItems[0]!)
-          : null;
-      if (newestFromPoll && this.pendingLibraryNew) {
-        return pickNewer(this.pendingLibraryNew.newest, newestFromPoll);
+      let newestFromPoll: PlexRecentlyAddedItem | null = null;
+      if (newItems.length > 0) {
+        const firstNewItem = newItems[0];
+        if (firstNewItem) {
+          newestFromPoll = newItems.reduce((best, it) => pickNewer(best, it), firstNewItem);
+        }
       }
-      return newestFromPoll ?? this.pendingLibraryNew!.newest;
+      if (newestFromPoll && pendingLibraryNew) {
+        return pickNewer(pendingLibraryNew.newest, newestFromPoll);
+      }
+      return newestFromPoll ?? pendingLibraryNew?.newest ?? null;
     })();
+    if (!newest) return;
     const newlyAddedCount =
       newItems.length > 0
-        ? Math.max(newItems.length, this.pendingLibraryNew?.newlyAddedCount ?? 0)
-        : (this.pendingLibraryNew?.newlyAddedCount ?? 1);
-    const windowSinceSec =
-      newItems.length > 0
-        ? (this.pendingLibraryNew?.sinceSec ?? since)
-        : this.pendingLibraryNew!.sinceSec;
+        ? Math.max(newItems.length, pendingLibraryNew?.newlyAddedCount ?? 0)
+        : (pendingLibraryNew?.newlyAddedCount ?? 1);
+    const windowSinceSec = pendingLibraryNew?.sinceSec ?? since;
 
     // Clear pending now that we're going to run.
     this.pendingLibraryNew = null;
@@ -876,7 +881,9 @@ export class PlexPollingService implements OnModuleInit {
       );
       if (newEpisodes.length === 0) return null;
 
-      const newestEpisode = newEpisodes.reduce((best, it) => pickNewer(best, it), newEpisodes[0]!);
+      const firstNewEpisode = newEpisodes[0];
+      if (!firstNewEpisode) return null;
+      const newestEpisode = newEpisodes.reduce((best, it) => pickNewer(best, it), firstNewEpisode);
 
       const showRatingKey =
         newestEpisode.grandparentRatingKey ?? newestEpisode.parentRatingKey ?? null;

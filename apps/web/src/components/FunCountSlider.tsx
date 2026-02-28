@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export function FunCountSlider(props: {
@@ -32,10 +32,10 @@ export function FunCountSlider(props: {
   const lo = Math.min(minV, maxV);
   const hi = Math.max(minV, maxV);
 
-  const clamp = (n: number) => {
+  const clamp = useCallback((n: number) => {
     if (!Number.isFinite(n)) return lo;
     return Math.max(lo, Math.min(hi, Math.trunc(n)));
-  };
+  }, [hi, lo]);
 
   const v = clamp(value);
   const range = Math.max(1, hi - lo);
@@ -44,7 +44,7 @@ export function FunCountSlider(props: {
   const showFill = pctClamped > 0;
   const showSeparator = pctClamped > 0 && pctClamped < 100;
 
-  const handleMove = (clientX: number) => {
+  const handleMove = useCallback((clientX: number) => {
     if (disabled) return;
     const el = containerRef.current;
     if (!el) return;
@@ -53,34 +53,34 @@ export function FunCountSlider(props: {
     const p = rect.width > 0 ? x / rect.width : 0;
     const next = lo + Math.round(Math.max(0, Math.min(1, p)) * range);
     onValueChange(clamp(next));
-  };
+  }, [clamp, disabled, lo, onValueChange, range]);
 
-  const endDrag = () => {
+  const endDrag = useCallback(() => {
     setIsDragging(false);
     onValueCommit(lastValueRef.current);
-  };
+  }, [onValueCommit]);
 
-  const onPointerDown = (e: React.PointerEvent) => {
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (disabled) return;
     setIsDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
     handleMove(e.clientX);
-  };
+  }, [disabled, handleMove]);
 
-  const onPointerMove = (e: React.PointerEvent) => {
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging) return;
     handleMove(e.clientX);
-  };
+  }, [handleMove, isDragging]);
 
-  const onPointerUp = () => {
+  const onPointerUp = useCallback(() => {
     if (!isDragging) return;
     endDrag();
-  };
+  }, [endDrag, isDragging]);
 
-  const onPointerCancel = () => {
+  const onPointerCancel = useCallback(() => {
     if (!isDragging) return;
     endDrag();
-  };
+  }, [endDrag, isDragging]);
 
   return (
     <div
@@ -175,4 +175,3 @@ export function FunCountSlider(props: {
     </div>
   );
 }
-

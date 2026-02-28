@@ -1,4 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { WebhooksController } from '../../webhooks/webhooks.controller';
 
 describe('security/webhook secret contract', () => {
@@ -43,7 +44,7 @@ describe('security/webhook secret contract', () => {
   };
 
   it('rejects requests when configured webhook secret is missing', async () => {
-    process.env.PLEX_WEBHOOK_SECRET = 'secret-token';
+    process.env.PLEX_WEBHOOK_SECRET = randomUUID();
     const controller = makeController();
 
     await expect(
@@ -60,12 +61,13 @@ describe('security/webhook secret contract', () => {
   });
 
   it('accepts requests with a matching token query param', async () => {
-    process.env.PLEX_WEBHOOK_SECRET = 'secret-token';
+    const webhookSecret = randomUUID();
+    process.env.PLEX_WEBHOOK_SECRET = webhookSecret;
     const controller = makeController();
 
     const result = await controller.plexWebhook(
       {
-        query: { token: 'secret-token' },
+        query: { token: webhookSecret },
         headers: {},
         ip: '127.0.0.1',
       } as never,
