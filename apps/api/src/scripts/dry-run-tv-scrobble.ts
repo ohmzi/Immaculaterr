@@ -5,15 +5,14 @@ import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../db/prisma.service';
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const sleep = async (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function waitForRunFinish(params: {
+const waitForRunFinish = async (params: {
   prisma: PrismaService;
   runId: string;
   timeoutMs: number;
-}) {
+}) => {
   const started = Date.now();
   for (;;) {
     const run = await params.prisma.jobRun.findUnique({
@@ -32,9 +31,9 @@ async function waitForRunFinish(params: {
     if (Date.now() - started > params.timeoutMs) return run;
     await sleep(500);
   }
-}
+};
 
-async function main() {
+const main = async () => {
   await ensureBootstrapEnv();
 
   const seedTitle = process.argv.slice(2).join(' ').trim() || 'Breaking Bad';
@@ -136,7 +135,7 @@ async function main() {
   } finally {
     await app.close();
   }
-}
+};
 
 main().catch((err) => {
   // eslint-disable-next-line no-console

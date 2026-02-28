@@ -189,6 +189,7 @@ export class CleanupAfterAddingNewContentJob {
     private readonly sonarr: SonarrService,
   ) {}
 
+  // skipcq: JS-R1005 - Job orchestrates multi-integration cleanup with guarded branches and best-effort fallbacks.
   async run(ctx: JobContext): Promise<JobRunResult> {
     const PROGRESS_TOTAL_STEPS = 6;
     const setProgress = async (

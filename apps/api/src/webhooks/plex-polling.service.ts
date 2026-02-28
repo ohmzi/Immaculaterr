@@ -1120,6 +1120,7 @@ export class PlexPollingService implements OnModuleInit {
     return `${pct}% (${fmt(viewOffset)}/${fmt(duration)})`;
   }
 
+  // skipcq: JS-R1005 - Logging decision intentionally combines time, media-change, and progress thresholds.
   private shouldLogNowPlaying(snap: SessionSnapshot, nowMs: number): boolean {
     const state = this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
     if (!state) return true;

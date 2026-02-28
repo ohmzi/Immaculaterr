@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+// skipcq: JS-0833
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

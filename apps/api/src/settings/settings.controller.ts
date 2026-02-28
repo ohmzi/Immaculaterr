@@ -24,28 +24,27 @@ type ParsedUpdateSettingsBody = {
   secretsEnvelope?: Record<string, unknown>;
 };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-function parseObjectPatch(
+const parseObjectPatch = (
   value: unknown,
   fieldName: 'settings' | 'secrets' | 'secretsEnvelope',
-): Record<string, unknown> | undefined {
+): Record<string, unknown> | undefined => {
   if (value === undefined) return undefined;
   if (!isPlainObject(value)) {
     throw new BadRequestException(`${fieldName} must be an object`);
   }
   return value;
-}
+};
 
-function parseUpdateSettingsBody(body: UpdateSettingsBody): ParsedUpdateSettingsBody {
-  return {
+const parseUpdateSettingsBody = (
+  body: UpdateSettingsBody,
+): ParsedUpdateSettingsBody => ({
     settingsPatch: parseObjectPatch(body?.settings, 'settings'),
     secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
     secretsEnvelope: parseObjectPatch(body?.secretsEnvelope, 'secretsEnvelope'),
-  };
-}
+  });
 
 @Controller('settings')
 @ApiTags('settings')
@@ -63,6 +62,7 @@ export class SettingsController {
   }
 
   @Get('backup-info')
+  // skipcq: JS-R1005 - Backup diagnostics intentionally consolidates related environment/path checks.
   backupInfo() {
     const appDataDir = process.env.APP_DATA_DIR?.trim() || null;
     const databaseUrl = process.env.DATABASE_URL?.trim() || null;

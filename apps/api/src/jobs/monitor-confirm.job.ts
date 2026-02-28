@@ -63,6 +63,7 @@ export class MonitorConfirmJob {
     private readonly sonarr: SonarrService,
   ) {}
 
+  // skipcq: JS-R1005 - Job coordinates Plex/Radarr/Sonarr confirmation flow with explicit branch handling.
   async run(ctx: JobContext): Promise<JobRunResult> {
     const setProgress = (params: {
       step: string;

@@ -29,7 +29,7 @@ export class RadarrService {
 
   async testConnection(params: { baseUrl: string; apiKey: string }) {
     const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/system/status');
+    const url = RadarrService.buildApiUrl(baseUrl, 'api/v3/system/status');
 
     this.logger.log(`Testing Radarr connection: ${url}`);
 
@@ -70,7 +70,7 @@ export class RadarrService {
     apiKey: string;
   }): Promise<RadarrMovie[]> {
     const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/movie');
+    const url = RadarrService.buildApiUrl(baseUrl, 'api/v3/movie');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -118,7 +118,7 @@ export class RadarrService {
     movieId: number;
   }): Promise<RadarrMovie | null> {
     const { baseUrl, apiKey, movieId } = params;
-    const url = this.buildApiUrl(baseUrl, `api/v3/movie/${movieId}`);
+    const url = RadarrService.buildApiUrl(baseUrl, `api/v3/movie/${movieId}`);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -166,7 +166,7 @@ export class RadarrService {
       return true;
     }
 
-    const url = this.buildApiUrl(baseUrl, `api/v3/movie/${movie.id}`);
+    const url = RadarrService.buildApiUrl(baseUrl, `api/v3/movie/${movie.id}`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
 
@@ -227,7 +227,7 @@ export class RadarrService {
     apiKey: string;
   }): Promise<RadarrRootFolder[]> {
     const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/rootfolder');
+    const url = RadarrService.buildApiUrl(baseUrl, 'api/v3/rootfolder');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -278,7 +278,7 @@ export class RadarrService {
     apiKey: string;
   }): Promise<RadarrQualityProfile[]> {
     const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/qualityprofile');
+    const url = RadarrService.buildApiUrl(baseUrl, 'api/v3/qualityprofile');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -329,7 +329,7 @@ export class RadarrService {
     apiKey: string;
   }): Promise<RadarrTag[]> {
     const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
+    const url = RadarrService.buildApiUrl(baseUrl, 'api/v3/tag');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -384,7 +384,7 @@ export class RadarrService {
     const term = (params.term ?? '').trim();
     if (!term) return [];
 
-    const url = this.buildApiUrl(
+    const url = RadarrService.buildApiUrl(
       baseUrl,
       `api/v3/movie/lookup?term=${encodeURIComponent(term)}`,
     );
@@ -435,7 +435,7 @@ export class RadarrService {
     searchForMovie?: boolean;
   }): Promise<{ status: 'added' | 'exists'; movie: RadarrMovie | null }> {
     const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/movie');
+    const url = RadarrService.buildApiUrl(baseUrl, 'api/v3/movie');
 
     const payload = {
       title: params.title,
@@ -510,7 +510,7 @@ export class RadarrService {
     apiKey: string;
   }): Promise<boolean> {
     const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/command');
+    const url = RadarrService.buildApiUrl(baseUrl, 'api/v3/command');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -549,7 +549,7 @@ export class RadarrService {
     }
   }
 
-  private buildApiUrl(baseUrl: string, path: string) {
+  private static buildApiUrl(baseUrl: string, path: string) {
     const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     return new URL(path, normalized).toString();
   }
