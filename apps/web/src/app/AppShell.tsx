@@ -13,6 +13,7 @@ import { WhatsNewModal } from '@/app/WhatsNewModal';
 import { getVersionHistoryEntry, normalizeVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
+// skipcq: JS-0067 - Helper is intentionally module-scoped for local reuse.
 function readOnboardingCompleted(settings: unknown): boolean {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
   const onboarding = (settings as Record<string, unknown>)['onboarding'];
@@ -20,6 +21,7 @@ function readOnboardingCompleted(settings: unknown): boolean {
   return Boolean((onboarding as Record<string, unknown>)['completed']);
 }
 
+// skipcq: JS-0067 - Helper is intentionally module-scoped for local reuse.
 function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
   const ui = (settings as Record<string, unknown>)['ui'];
@@ -30,6 +32,8 @@ function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
   return normalizeVersion(typeof acknowledgedVersion === 'string' ? acknowledgedVersion : null);
 }
 
+// skipcq: JS-0067 - Component declaration is intentionally module-scoped.
+// skipcq: JS-R1005 - App shell orchestrates auth/settings/version state in one place by design.
 export function AppShell() {
   const location = useLocation();
   const queryClient = useQueryClient();

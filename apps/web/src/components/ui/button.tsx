@@ -35,6 +35,7 @@ const buttonVariants = cva(
   },
 );
 
+// skipcq: JS-0067 - Component declaration is intentionally module-scoped.
 function Button({
   className,
   variant,

@@ -19,6 +19,7 @@ import { DebuggerPage } from '@/pages/DebuggerPage';
 // skipcq: SCT-A000 - Legacy localStorage cleanup key, not a credential.
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
+// skipcq: JS-0067 - Component declaration is intentionally module-scoped.
 function ProtectedAppShell() {
   return (
     <AuthGate>
@@ -27,6 +28,7 @@ function ProtectedAppShell() {
   );
 }
 
+// skipcq: JS-0067 - Root app component is intentionally module-scoped.
 export default function App() {
   useEffect(() => {
     // One-time cleanup: stop using legacy localStorage onboarding/secrets.

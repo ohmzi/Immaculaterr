@@ -35,6 +35,7 @@ async function waitForRunFinish(params: {
   }
 }
 
+// skipcq: JS-0067 - Script entrypoint intentionally remains top-level for direct execution.
 async function main() {
   await ensureBootstrapEnv();
 

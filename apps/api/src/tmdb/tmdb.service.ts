@@ -2259,6 +2259,7 @@ export class TmdbService {
   }
 }
 
+// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
 function bestSeedResult(
   query: string,
   results: TmdbMovieSearchResult[],
@@ -2304,6 +2305,7 @@ function bestSeedResult(
   return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
 }
 
+// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
 function bestSeedTvResult(
   query: string,
   results: TmdbTvSearchResult[],
@@ -2346,6 +2348,7 @@ function bestSeedTvResult(
   return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
 }
 
+// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
 function classifyByReleaseDate(
   releaseDate: string | null,
   today: string,
@@ -2358,6 +2361,7 @@ function classifyByReleaseDate(
   return 'released';
 }
 
+// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
 function normalizeTimezone(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const tz = raw.trim();
@@ -2372,12 +2376,14 @@ function normalizeTimezone(raw: unknown): string | null {
   }
 }
 
+// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
 function addDays(date: Date, days: number): Date {
   const d = new Date(date.getTime());
   d.setDate(d.getDate() + days);
   return d;
 }
 
+// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
 function addMonths(date: Date, months: number): Date {
   const d = new Date(date.getTime());
   d.setMonth(d.getMonth() + months);
