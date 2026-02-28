@@ -106,6 +106,8 @@ function modePill(mode: RunModeLabel) {
       return 'bg-sky-500/15 text-sky-200 border border-sky-500/25';
     case 'Manual':
       return 'bg-purple-500/15 text-purple-200 border border-purple-500/25';
+    default:
+      return undefined;
   }
 }
 
@@ -498,7 +500,7 @@ export function JobRunDetailPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-3">
                         <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
-                          {(jobName ?? run?.jobId ?? 'Rewind') + ' Report'}
+                          `${jobName ?? run?.jobId ?? 'Rewind'} Report`
                         </h1>
                       </div>
                     </div>

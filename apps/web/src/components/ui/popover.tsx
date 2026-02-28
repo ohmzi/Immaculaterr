@@ -1,5 +1,6 @@
 "use client";
 
+// skipcq: JS-C1003
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 

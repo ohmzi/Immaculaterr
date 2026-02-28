@@ -122,8 +122,7 @@ export function AppShell() {
     if (location.pathname === '/version-history') return false;
     if (!currentVersion || !matchingVersionHistoryEntry) return false;
     if (acknowledgedWhatsNewVersion === currentVersion) return false;
-    if (sessionDismissedVersion === currentVersion) return false;
-    return true;
+    return sessionDismissedVersion !== currentVersion;
   }, [
     onboardingCompleted,
     location.pathname,

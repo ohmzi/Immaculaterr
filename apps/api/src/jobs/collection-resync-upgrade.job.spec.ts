@@ -19,7 +19,7 @@ import type { JobContext, JsonObject } from './jobs.types';
 
 function createCtx(): JobContext {
   let summary: JsonObject | null = null;
-  const log = jest.fn(() => Promise.resolve(undefined));
+  const log = jest.fn(() => Promise.resolve());
   return {
     jobId: 'collectionResyncUpgrade',
     runId: 'run-1',
@@ -29,11 +29,11 @@ function createCtx(): JobContext {
     getSummary: () => summary,
     setSummary: jest.fn((next: JsonObject | null) => {
       summary = next;
-      return Promise.resolve(undefined);
+      return Promise.resolve();
     }),
     patchSummary: jest.fn((patch: JsonObject) => {
       summary = { ...(summary ?? {}), ...(patch ?? {}) };
-      return Promise.resolve(undefined);
+      return Promise.resolve();
     }),
     log,
     debug: log,

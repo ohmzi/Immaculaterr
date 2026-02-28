@@ -18,6 +18,7 @@ import {
 } from '@/lib/ui-classes';
 import { cn } from '@/lib/utils';
 
+// skipcq: JS-0757 - Username autofocus is intentional on the login/register screen.
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
@@ -127,7 +128,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   // If we are authenticated, render the app.
-  if (meQuery.data) return <>{children}</>;
+  if (meQuery.data) return children;
 
   // Loading states - show loading until BOTH queries have completed
   // This prevents flashing the auth form while checking authentication

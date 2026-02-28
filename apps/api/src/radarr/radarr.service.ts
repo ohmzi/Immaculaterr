@@ -109,7 +109,7 @@ export class RadarrService {
     apiKey: string;
   }): Promise<RadarrMovie[]> {
     const movies = await this.listMovies(params);
-    return movies.filter((m) => Boolean(m && m.monitored));
+    return movies.filter((m) => Boolean(m?.monitored));
   }
 
   async getMovieById(params: {

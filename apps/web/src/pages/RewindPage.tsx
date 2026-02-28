@@ -353,6 +353,7 @@ export function RewindPage() {
       typeof window !== 'undefined' &&
       Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
     if (isCoarsePointer) {
+      // skipcq: JS-0052 - Native confirm is intentional on coarse pointers for a fast mobile-safe destructive action.
       const ok = window.confirm(
         `Clear all execution history?\n\nThis will delete ${total.toLocaleString()} run(s) and their logs.\n\nThis cannot be undone.`,
       );

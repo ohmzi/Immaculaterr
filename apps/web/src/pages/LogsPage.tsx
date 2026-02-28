@@ -302,6 +302,7 @@ export function LogsPage() {
       typeof window !== 'undefined' &&
       Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
     if (isCoarsePointer) {
+      // skipcq: JS-0052 - Native confirm is intentional on coarse pointers for a fast mobile-safe destructive action.
       const ok = window.confirm(
         `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
       );

@@ -111,11 +111,9 @@ async function main() {
       prisma.jobLogLine.count({ where: { runId: immaculateRun.id } }),
     ]);
 
-    // eslint-disable-next-line no-console
-    console.log('\n=== DRY RUN COMPLETE ===');
-    // eslint-disable-next-line no-console
-    console.log(
-      JSON.stringify(
+    process.stdout.write('\n=== DRY RUN COMPLETE ===\n');
+    process.stdout.write(
+      `${JSON.stringify(
         {
           seedTitle,
           runs: {
@@ -133,7 +131,7 @@ async function main() {
         },
         null,
         2,
-      ),
+      )}\n`,
     );
   } finally {
     await app.close();

@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
 const OWNER = process.env.GHCR_OWNER ?? process.env.GITHUB_REPOSITORY_OWNER;

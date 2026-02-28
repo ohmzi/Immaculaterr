@@ -660,7 +660,7 @@ export class MonitorConfirmJob {
           const seasonObj = seasons.find(
             (s) => toInt(s.seasonNumber) === seasonNum,
           );
-          if (seasonObj && seasonObj.monitored) {
+          if (seasonObj?.monitored) {
             seasonObj.monitored = false;
             sonarrSeasonsUnmonitored += 1;
             changedSeries = true;

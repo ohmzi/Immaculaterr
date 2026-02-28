@@ -1720,10 +1720,7 @@ export class CollectionResyncUpgradeJob {
               token: params.plexToken,
               collectionRatingKey: key,
             });
-            if (
-              !Number.isFinite(collectionItems.length) ||
-              collectionItems.length < 0
-            ) {
+            if (!Array.isArray(collectionItems)) {
               throw new Error(
                 `Invalid collection item count for ${item.targetCollectionName}`,
               );

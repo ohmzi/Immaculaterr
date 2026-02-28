@@ -71,7 +71,7 @@ type WatchedUndoState = {
   action: 'approve' | 'reject' | 'keep' | 'remove';
 } | null;
 
-const NOOP = () => {};
+const NOOP = () => undefined;
 
 function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));

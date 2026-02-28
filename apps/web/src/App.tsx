@@ -16,6 +16,7 @@ import { FaqPage } from '@/pages/FaqPage';
 import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
 import { DebuggerPage } from '@/pages/DebuggerPage';
 
+// skipcq: SCT-A000 - Legacy localStorage cleanup key, not a credential.
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
 function ProtectedAppShell() {

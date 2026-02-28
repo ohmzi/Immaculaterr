@@ -1533,6 +1533,7 @@ export function SettingsPage({
     const runLandingHealthChecks = async () => {
       // --- TMDB: avoid false \"Active -> Inactive\" flips on transient failures ---
       // Policy: if TMDB fails once, wait a cooldown and retry; only then mark inactive + toast.
+      // skipcq: SCT-A000 - Internal health-state key, not a secret.
       const TMDB_HEALTH_KEY = 'tcp_health_tmdb';
       const TMDB_COOLDOWN_MS = 5 * 60_000;
       const TMDB_FAILS_TO_ALERT = 2;

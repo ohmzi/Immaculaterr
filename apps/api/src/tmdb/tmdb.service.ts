@@ -1410,57 +1410,53 @@ export class TmdbService {
     const includeAdult = Boolean(params.includeAdult);
 
     // --- Released pool: discover excluding the seed genres ---
-    {
-      const releasedDiscoverUrl = new URL(
-        'https://api.themoviedb.org/3/discover/movie',
+    const releasedDiscoverUrl = new URL(
+      'https://api.themoviedb.org/3/discover/movie',
+    );
+    if (seedGenreIds.size) {
+      releasedDiscoverUrl.searchParams.set(
+        'without_genres',
+        Array.from(seedGenreIds).slice(0, 5).join(','),
       );
-      if (seedGenreIds.size) {
-        releasedDiscoverUrl.searchParams.set(
-          'without_genres',
-          Array.from(seedGenreIds).slice(0, 5).join(','),
-        );
-      }
-      releasedDiscoverUrl.searchParams.set('primary_release_date.lte', today);
-      releasedDiscoverUrl.searchParams.set('vote_count.gte', '150');
-      releasedDiscoverUrl.searchParams.set('sort_by', 'vote_average.desc');
-
-      const discResults = await this.pagedResults({
-        apiKey,
-        url: releasedDiscoverUrl,
-        includeAdult,
-        maxItems: 300,
-        maxPages: 10,
-      });
-      addResults(discResults, 'discover_released');
     }
+    releasedDiscoverUrl.searchParams.set('primary_release_date.lte', today);
+    releasedDiscoverUrl.searchParams.set('vote_count.gte', '150');
+    releasedDiscoverUrl.searchParams.set('sort_by', 'vote_average.desc');
+
+    const discResults = await this.pagedResults({
+      apiKey,
+      url: releasedDiscoverUrl,
+      includeAdult,
+      maxItems: 300,
+      maxPages: 10,
+    });
+    addResults(discResults, 'discover_released');
 
     // --- Upcoming pool: future-window discover excluding the seed genres ---
-    {
-      const upcomingDiscoverUrl = new URL(
-        'https://api.themoviedb.org/3/discover/movie',
-      );
-      if (seedGenreIds.size) {
-        upcomingDiscoverUrl.searchParams.set(
-          'without_genres',
-          Array.from(seedGenreIds).slice(0, 5).join(','),
-        );
-      }
-      upcomingDiscoverUrl.searchParams.set('primary_release_date.gte', tomorrow);
+    const upcomingDiscoverUrl = new URL(
+      'https://api.themoviedb.org/3/discover/movie',
+    );
+    if (seedGenreIds.size) {
       upcomingDiscoverUrl.searchParams.set(
-        'primary_release_date.lte',
-        upcomingWindowEnd,
+        'without_genres',
+        Array.from(seedGenreIds).slice(0, 5).join(','),
       );
-      upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
-
-      const upcomingResults = await this.pagedResults({
-        apiKey,
-        url: upcomingDiscoverUrl,
-        includeAdult,
-        maxItems: 300,
-        maxPages: 10,
-      });
-      addResults(upcomingResults, 'discover_upcoming');
     }
+    upcomingDiscoverUrl.searchParams.set('primary_release_date.gte', tomorrow);
+    upcomingDiscoverUrl.searchParams.set(
+      'primary_release_date.lte',
+      upcomingWindowEnd,
+    );
+    upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
+
+    const upcomingResults = await this.pagedResults({
+      apiKey,
+      url: upcomingDiscoverUrl,
+      includeAdult,
+      maxItems: 300,
+      maxPages: 10,
+    });
+    addResults(upcomingResults, 'discover_upcoming');
 
     const released: TmdbMovieCandidate[] = [];
     const upcoming: TmdbMovieCandidate[] = [];
@@ -1951,50 +1947,46 @@ export class TmdbService {
     const includeAdult = Boolean(params.includeAdult);
 
     // --- Released pool: discover excluding the seed genres ---
-    {
-      const releasedDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
-      if (seedGenreIds.size) {
-        releasedDiscoverUrl.searchParams.set(
-          'without_genres',
-          Array.from(seedGenreIds).slice(0, 5).join(','),
-        );
-      }
-      releasedDiscoverUrl.searchParams.set('first_air_date.lte', today);
-      releasedDiscoverUrl.searchParams.set('vote_count.gte', '150');
-      releasedDiscoverUrl.searchParams.set('sort_by', 'vote_average.desc');
-
-      const discResults = await this.pagedTvResults({
-        apiKey,
-        url: releasedDiscoverUrl,
-        includeAdult,
-        maxItems: 300,
-        maxPages: 10,
-      });
-      addResults(discResults, 'discover_released');
+    const releasedDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
+    if (seedGenreIds.size) {
+      releasedDiscoverUrl.searchParams.set(
+        'without_genres',
+        Array.from(seedGenreIds).slice(0, 5).join(','),
+      );
     }
+    releasedDiscoverUrl.searchParams.set('first_air_date.lte', today);
+    releasedDiscoverUrl.searchParams.set('vote_count.gte', '150');
+    releasedDiscoverUrl.searchParams.set('sort_by', 'vote_average.desc');
+
+    const discResults = await this.pagedTvResults({
+      apiKey,
+      url: releasedDiscoverUrl,
+      includeAdult,
+      maxItems: 300,
+      maxPages: 10,
+    });
+    addResults(discResults, 'discover_released');
 
     // --- Upcoming pool: future-window discover excluding the seed genres ---
-    {
-      const upcomingDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
-      if (seedGenreIds.size) {
-        upcomingDiscoverUrl.searchParams.set(
-          'without_genres',
-          Array.from(seedGenreIds).slice(0, 5).join(','),
-        );
-      }
-      upcomingDiscoverUrl.searchParams.set('first_air_date.gte', tomorrow);
-      upcomingDiscoverUrl.searchParams.set('first_air_date.lte', upcomingWindowEnd);
-      upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
-
-      const upcomingResults = await this.pagedTvResults({
-        apiKey,
-        url: upcomingDiscoverUrl,
-        includeAdult,
-        maxItems: 300,
-        maxPages: 10,
-      });
-      addResults(upcomingResults, 'discover_upcoming');
+    const upcomingDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
+    if (seedGenreIds.size) {
+      upcomingDiscoverUrl.searchParams.set(
+        'without_genres',
+        Array.from(seedGenreIds).slice(0, 5).join(','),
+      );
     }
+    upcomingDiscoverUrl.searchParams.set('first_air_date.gte', tomorrow);
+    upcomingDiscoverUrl.searchParams.set('first_air_date.lte', upcomingWindowEnd);
+    upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
+
+    const upcomingResults = await this.pagedTvResults({
+      apiKey,
+      url: upcomingDiscoverUrl,
+      includeAdult,
+      maxItems: 300,
+      maxPages: 10,
+    });
+    addResults(upcomingResults, 'discover_upcoming');
 
     const released: TmdbTvCandidate[] = [];
     const upcoming: TmdbTvCandidate[] = [];
@@ -2372,7 +2364,8 @@ function normalizeTimezone(raw: unknown): string | null {
   if (!tz) return null;
   try {
     // Throws RangeError for invalid time zones
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    formatter.format(0);
     return tz;
   } catch {
     return null;

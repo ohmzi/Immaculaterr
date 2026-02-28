@@ -1126,14 +1126,11 @@ export class PlexPollingService implements OnModuleInit {
     if (state.lastRatingKey && snap.ratingKey && state.lastRatingKey !== snap.ratingKey) return true;
     if (nowMs - state.lastLogAtMs >= this.nowPlayingLogIntervalMs) return true;
     const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
-    if (
+    return (
       viewOffset !== null &&
       state.lastViewOffsetMs !== null &&
       viewOffset - state.lastViewOffsetMs >= this.nowPlayingLogProgressStepMs
-    ) {
-      return true;
-    }
-    return false;
+    );
   }
 
   private updateNowPlayingLogState(snap: SessionSnapshot, nowMs: number) {
@@ -1377,7 +1374,7 @@ export class PlexPollingService implements OnModuleInit {
           ? normalizeTitleForMatching(snap.librarySectionTitle)
           : undefined,
         viewOffset: viewOffset ?? undefined,
-        duration: duration,
+        duration,
         progress: ratio,
         source: params.reason,
         thresholdWatchedMovieRecommendations: this.watchedScrobbleThreshold,

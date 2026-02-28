@@ -1229,9 +1229,9 @@ export class RecommendationsService {
       upcomingWindowMonths: 24,
     });
 
-    let releasedPool = pools.released.slice();
-    let upcomingPool = pools.upcoming.slice();
-    let unknownPool = pools.unknown.slice();
+    const releasedPool = pools.released.slice();
+    const upcomingPool = pools.upcoming.slice();
+    const unknownPool = pools.unknown.slice();
 
     await ctx.info('change_of_taste: tmdb pools done', {
       seed: pools.seed,
@@ -1413,9 +1413,9 @@ export class RecommendationsService {
       upcomingWindowMonths: 24,
     });
 
-    let releasedPool = pools.released.slice();
-    let upcomingPool = pools.upcoming.slice();
-    let unknownPool = pools.unknown.slice();
+    const releasedPool = pools.released.slice();
+    const upcomingPool = pools.upcoming.slice();
+    const unknownPool = pools.unknown.slice();
 
     await ctx.info('change_of_taste(tv): tmdb pools done', {
       seed: pools.seed,

@@ -75,10 +75,9 @@ export class SettingsController {
     const keyFilePath = appDataDir ? join(appDataDir, 'app-master.key') : null;
     const keyFileExists = keyFilePath ? existsSync(keyFilePath) : false;
 
-    const dbFilePath =
-      databaseUrl && databaseUrl.startsWith('file:')
-        ? databaseUrl.slice('file:'.length)
-        : null;
+    const dbFilePath = databaseUrl?.startsWith('file:')
+      ? databaseUrl.slice('file:'.length)
+      : null;
 
     const masterKeySource = envMasterKeySet
       ? ('env' as const)
