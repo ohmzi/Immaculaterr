@@ -98,7 +98,7 @@ function modeLabel(run: JobRun): RunModeLabel {
     : 'Manual';
 }
 
-function modePill(mode: RunModeLabel) {
+const modePill = (mode: RunModeLabel) => {
   switch (mode) {
     case 'Dry-Run':
       return 'bg-[#facc15]/15 text-[#fde68a] border border-[#facc15]/25';
@@ -109,7 +109,7 @@ function modePill(mode: RunModeLabel) {
     default:
       return undefined;
   }
-}
+};
 
 type MediaTypeKey = 'movie' | 'tv' | '';
 type MediaTypeLabel = 'Movie' | 'TV show' | '—';

@@ -1120,17 +1120,48 @@ export class PlexPollingService implements OnModuleInit {
     return `${pct}% (${fmt(viewOffset)}/${fmt(duration)})`;
   }
 
-  // skipcq: JS-R1005 - Logging decision intentionally combines time, media-change, and progress thresholds.
   private shouldLogNowPlaying(snap: SessionSnapshot, nowMs: number): boolean {
     const state = this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
     if (!state) return true;
-    if (state.lastRatingKey && snap.ratingKey && state.lastRatingKey !== snap.ratingKey) return true;
-    if (nowMs - state.lastLogAtMs >= this.nowPlayingLogIntervalMs) return true;
-    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    if (this.didNowPlayingMediaChange(state.lastRatingKey, snap.ratingKey)) {
+      return true;
+    }
+    if (this.didNowPlayingLogIntervalElapse(state.lastLogAtMs, nowMs)) {
+      return true;
+    }
+    return this.didNowPlayingProgressAdvance({
+      previousViewOffsetMs: state.lastViewOffsetMs,
+      currentViewOffsetMs: snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null,
+    });
+  }
+
+  private didNowPlayingMediaChange(
+    lastRatingKey: string | null,
+    currentRatingKey: string | null | undefined,
+  ): boolean {
+    return Boolean(
+      lastRatingKey &&
+        currentRatingKey &&
+        lastRatingKey !== currentRatingKey,
+    );
+  }
+
+  private didNowPlayingLogIntervalElapse(
+    lastLogAtMs: number,
+    nowMs: number,
+  ): boolean {
+    return nowMs - lastLogAtMs >= this.nowPlayingLogIntervalMs;
+  }
+
+  private didNowPlayingProgressAdvance(params: {
+    previousViewOffsetMs: number | null;
+    currentViewOffsetMs: number | null;
+  }): boolean {
     return (
-      viewOffset !== null &&
-      state.lastViewOffsetMs !== null &&
-      viewOffset - state.lastViewOffsetMs >= this.nowPlayingLogProgressStepMs
+      params.currentViewOffsetMs !== null &&
+      params.previousViewOffsetMs !== null &&
+      params.currentViewOffsetMs - params.previousViewOffsetMs >=
+        this.nowPlayingLogProgressStepMs
     );
   }
 

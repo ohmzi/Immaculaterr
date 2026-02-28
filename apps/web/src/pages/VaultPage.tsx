@@ -208,7 +208,7 @@ function MaskedSecretInput(props: {
 }
 
 // skipcq: JS-R1005 - This page coordinates many independent integration flows by design.
-export function SettingsPage({
+export const SettingsPage = ({
   pageTitle,
   headerIcon,
   subtitle,
@@ -224,7 +224,7 @@ export function SettingsPage({
   backgroundGradientClass?: string;
   extraContent?: ReactNode;
   showCards?: boolean;
-}) {
+}) => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
@@ -3101,7 +3101,7 @@ export function SettingsPage({
       </section>
     </div>
   );
-}
+};
 
 export function VaultPage() {
   return (

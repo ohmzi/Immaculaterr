@@ -8,7 +8,7 @@ import {
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
 
-export function FaqPage() {
+export const FaqPage = () => {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
 
@@ -1179,4 +1179,4 @@ export function FaqPage() {
       </section>
     </div>
   );
-}
+};

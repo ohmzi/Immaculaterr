@@ -549,9 +549,8 @@ export class RadarrService {
     }
   }
 
-  // skipcq: JS-0105 - This URL helper is intentionally stateless.
-  private buildApiUrl(baseUrl: string, path: string) {
+  private readonly buildApiUrl = (baseUrl: string, path: string) => {
     const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     return new URL(path, normalized).toString();
-  }
+  };
 }

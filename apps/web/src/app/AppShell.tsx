@@ -13,16 +13,16 @@ import { WhatsNewModal } from '@/app/WhatsNewModal';
 import { getVersionHistoryEntry, normalizeVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
-// skipcq: JS-0067 - Helper is intentionally module-scoped for local reuse.
-function readOnboardingCompleted(settings: unknown): boolean {
+const readOnboardingCompleted = (settings: unknown): boolean => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
   const onboarding = (settings as Record<string, unknown>)['onboarding'];
   if (!onboarding || typeof onboarding !== 'object' || Array.isArray(onboarding)) return false;
   return Boolean((onboarding as Record<string, unknown>)['completed']);
-}
+};
 
-// skipcq: JS-0067 - Helper is intentionally module-scoped for local reuse.
-function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
+const readAcknowledgedWhatsNewVersion = (
+  settings: unknown,
+): string | null => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
   const ui = (settings as Record<string, unknown>)['ui'];
   if (!ui || typeof ui !== 'object' || Array.isArray(ui)) return null;
@@ -30,11 +30,24 @@ function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
   if (!whatsNew || typeof whatsNew !== 'object' || Array.isArray(whatsNew)) return null;
   const acknowledgedVersion = (whatsNew as Record<string, unknown>)['acknowledgedVersion'];
   return normalizeVersion(typeof acknowledgedVersion === 'string' ? acknowledgedVersion : null);
-}
+};
 
-// skipcq: JS-0067 - Component declaration is intentionally module-scoped.
-// skipcq: JS-R1005 - App shell orchestrates auth/settings/version state in one place by design.
-export function AppShell() {
+const shouldShowWhatsNewModal = (params: {
+  onboardingCompleted: null | boolean;
+  pathname: string;
+  currentVersion: string | null;
+  hasMatchingVersionHistoryEntry: boolean;
+  acknowledgedWhatsNewVersion: string | null;
+  sessionDismissedVersion: string | null;
+}): boolean => {
+  if (params.onboardingCompleted !== true) return false;
+  if (params.pathname === '/version-history') return false;
+  if (!params.currentVersion || !params.hasMatchingVersionHistoryEntry) return false;
+  if (params.acknowledgedWhatsNewVersion === params.currentVersion) return false;
+  return params.sessionDismissedVersion !== params.currentVersion;
+};
+
+export const AppShell = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -120,20 +133,30 @@ export function AppShell() {
     () => getVersionHistoryEntry(currentVersion),
     [currentVersion],
   );
+  const effectiveSessionDismissedVersion = useMemo(() => {
+    if (!sessionDismissedVersion) return null;
+    if (!currentVersion) return sessionDismissedVersion;
+    return sessionDismissedVersion === currentVersion
+      ? sessionDismissedVersion
+      : null;
+  }, [sessionDismissedVersion, currentVersion]);
 
   const shouldShowWhatsNew = useMemo(() => {
-    if (onboardingCompleted !== true) return false;
-    if (location.pathname === '/version-history') return false;
-    if (!currentVersion || !matchingVersionHistoryEntry) return false;
-    if (acknowledgedWhatsNewVersion === currentVersion) return false;
-    return sessionDismissedVersion !== currentVersion;
+    return shouldShowWhatsNewModal({
+      onboardingCompleted,
+      pathname: location.pathname,
+      currentVersion,
+      hasMatchingVersionHistoryEntry: Boolean(matchingVersionHistoryEntry),
+      acknowledgedWhatsNewVersion,
+      sessionDismissedVersion: effectiveSessionDismissedVersion,
+    });
   }, [
     onboardingCompleted,
     location.pathname,
     currentVersion,
     matchingVersionHistoryEntry,
     acknowledgedWhatsNewVersion,
-    sessionDismissedVersion,
+    effectiveSessionDismissedVersion,
   ]);
 
   const acknowledgeWhatsNewMutation = useMutation({
@@ -156,14 +179,6 @@ export function AppShell() {
       toast.error('Could not save update acknowledgment. You may see this again after reload.');
     },
   });
-
-  useEffect(() => {
-    setSessionDismissedVersion((prev) => {
-      if (!prev) return prev;
-      if (!currentVersion) return prev;
-      return prev === currentVersion ? prev : null;
-    });
-  }, [currentVersion]);
 
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -225,4 +240,4 @@ export function AppShell() {
       />
     </div>
   );
-}
+};

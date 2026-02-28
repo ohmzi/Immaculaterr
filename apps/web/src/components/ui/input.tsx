@@ -3,8 +3,11 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-// skipcq: JS-0067 - Component declaration is intentionally module-scoped.
-function Input({ className, type, ...props }: React.ComponentProps<'input'>) {
+const Input = ({
+  className,
+  type,
+  ...props
+}: React.ComponentProps<'input'>) => {
   return (
     <input
       type={type}
@@ -18,6 +21,6 @@ function Input({ className, type, ...props }: React.ComponentProps<'input'>) {
       {...props}
     />
   );
-}
+};
 
 export { Input };

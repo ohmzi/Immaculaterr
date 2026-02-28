@@ -75,6 +75,138 @@ export type TmdbTvCandidate = {
   sources: string[];
 };
 
+const bestSeedResult = (
+  query: string,
+  results: TmdbMovieSearchResult[],
+  seedYear?: number | null,
+): TmdbMovieSearchResult | null => {
+  const q = query.trim().toLowerCase();
+  if (!results.length) return null;
+
+  const score = (r: TmdbMovieSearchResult): number => {
+    const title = (r.title || '').trim().toLowerCase();
+    const pop = Number.isFinite(r.popularity) ? Number(r.popularity) : 0;
+    const votes = Number.isFinite(r.vote_count) ? Number(r.vote_count) : 0;
+    const vavg = Number.isFinite(r.vote_average) ? Number(r.vote_average) : 0;
+    const genreIds = new Set(r.genre_ids ?? []);
+
+    // Hard penalty for documentaries unless user explicitly asked
+    const isDoc = genreIds.has(99);
+    const docPenalty = isDoc && !q.includes('documentary') ? -1000 : 0;
+
+    const starts = q && title.startsWith(q) ? 80 : 0;
+    const contains = q && title.includes(q) ? 30 : 0;
+
+    // Franchise heuristic
+    const franchiseBoost =
+      q === 'harry potter' && title.startsWith('harry potter and the') ? 60 : 0;
+
+    const yearBoost = (() => {
+      const y = Math.trunc(seedYear ?? NaN);
+      if (!Number.isFinite(y) || y <= 1800) return 0;
+      const ry =
+        typeof r.release_date === 'string'
+          ? Number(r.release_date.slice(0, 4))
+          : NaN;
+      if (!Number.isFinite(ry)) return 0;
+      const d = Math.abs(ry - y);
+      if (d === 0) return 200;
+      if (d === 1) return 50;
+      if (d === 2) return 10;
+      return 0;
+    })();
+
+    const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
+    return (
+      docPenalty + starts + contains + franchiseBoost + yearBoost + engagement
+    );
+  };
+
+  return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
+};
+
+const bestSeedTvResult = (
+  query: string,
+  results: TmdbTvSearchResult[],
+  seedYear?: number | null,
+): TmdbTvSearchResult | null => {
+  const q = query.trim().toLowerCase();
+  if (!results.length) return null;
+
+  const score = (r: TmdbTvSearchResult): number => {
+    const title = (r.name || '').trim().toLowerCase();
+    const pop = Number.isFinite(r.popularity) ? Number(r.popularity) : 0;
+    const votes = Number.isFinite(r.vote_count) ? Number(r.vote_count) : 0;
+    const vavg = Number.isFinite(r.vote_average) ? Number(r.vote_average) : 0;
+    const genreIds = new Set(r.genre_ids ?? []);
+
+    // Hard penalty for documentaries unless user explicitly asked
+    const isDoc = genreIds.has(99);
+    const docPenalty = isDoc && !q.includes('documentary') ? -1000 : 0;
+
+    const starts = q && title.startsWith(q) ? 80 : 0;
+    const contains = q && title.includes(q) ? 30 : 0;
+
+    const yearBoost = (() => {
+      const y = Math.trunc(seedYear ?? NaN);
+      if (!Number.isFinite(y) || y <= 1800) return 0;
+      const ry =
+        typeof r.first_air_date === 'string'
+          ? Number(r.first_air_date.slice(0, 4))
+          : NaN;
+      if (!Number.isFinite(ry)) return 0;
+      const d = Math.abs(ry - y);
+      if (d === 0) return 200;
+      if (d === 1) return 50;
+      if (d === 2) return 10;
+      return 0;
+    })();
+
+    const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
+    return docPenalty + starts + contains + yearBoost + engagement;
+  };
+
+  return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
+};
+
+const classifyByReleaseDate = (
+  releaseDate: string | null,
+  today: string,
+): 'released' | 'upcoming' | 'unknown' => {
+  const d = (releaseDate ?? '').trim();
+  if (!d) return 'unknown';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'unknown';
+  if (today && /^\d{4}-\d{2}-\d{2}$/.test(today) && d > today)
+    return 'upcoming';
+  return 'released';
+};
+
+const normalizeTimezone = (raw: unknown): string | null => {
+  if (typeof raw !== 'string') return null;
+  const tz = raw.trim();
+  if (!tz) return null;
+  try {
+    // Throws RangeError for invalid time zones
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    formatter.format(0);
+    return tz;
+  } catch {
+    return null;
+  }
+};
+
+const addDays = (date: Date, days: number): Date => {
+  const d = new Date(date.getTime());
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
+const addMonths = (date: Date, months: number): Date => {
+  const d = new Date(date.getTime());
+  d.setMonth(d.getMonth() + months);
+  return d;
+};
+
 @Injectable()
 export class TmdbService {
   private readonly logger = new Logger(TmdbService.name);
@@ -2257,135 +2389,4 @@ export class TmdbService {
     // Fallback: UTC YYYY-MM-DD
     return date.toISOString().slice(0, 10);
   }
-}
-
-// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
-function bestSeedResult(
-  query: string,
-  results: TmdbMovieSearchResult[],
-  seedYear?: number | null,
-): TmdbMovieSearchResult | null {
-  const q = query.trim().toLowerCase();
-  if (!results.length) return null;
-
-  const score = (r: TmdbMovieSearchResult): number => {
-    const title = (r.title || '').trim().toLowerCase();
-    const pop = Number.isFinite(r.popularity) ? Number(r.popularity) : 0;
-    const votes = Number.isFinite(r.vote_count) ? Number(r.vote_count) : 0;
-    const vavg = Number.isFinite(r.vote_average) ? Number(r.vote_average) : 0;
-    const genreIds = new Set(r.genre_ids ?? []);
-
-    // Hard penalty for documentaries unless user explicitly asked
-    const isDoc = genreIds.has(99);
-    const docPenalty = isDoc && !q.includes('documentary') ? -1000 : 0;
-
-    const starts = q && title.startsWith(q) ? 80 : 0;
-    const contains = q && title.includes(q) ? 30 : 0;
-
-    // Franchise heuristic
-    const franchiseBoost =
-      q === 'harry potter' && title.startsWith('harry potter and the') ? 60 : 0;
-
-    const yearBoost = (() => {
-      const y = Math.trunc(seedYear ?? NaN);
-      if (!Number.isFinite(y) || y <= 1800) return 0;
-      const ry = typeof r.release_date === 'string' ? Number(r.release_date.slice(0, 4)) : NaN;
-      if (!Number.isFinite(ry)) return 0;
-      const d = Math.abs(ry - y);
-      if (d === 0) return 200;
-      if (d === 1) return 50;
-      if (d === 2) return 10;
-      return 0;
-    })();
-
-    const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
-    return docPenalty + starts + contains + franchiseBoost + yearBoost + engagement;
-  };
-
-  return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
-}
-
-// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
-function bestSeedTvResult(
-  query: string,
-  results: TmdbTvSearchResult[],
-  seedYear?: number | null,
-): TmdbTvSearchResult | null {
-  const q = query.trim().toLowerCase();
-  if (!results.length) return null;
-
-  const score = (r: TmdbTvSearchResult): number => {
-    const title = (r.name || '').trim().toLowerCase();
-    const pop = Number.isFinite(r.popularity) ? Number(r.popularity) : 0;
-    const votes = Number.isFinite(r.vote_count) ? Number(r.vote_count) : 0;
-    const vavg = Number.isFinite(r.vote_average) ? Number(r.vote_average) : 0;
-    const genreIds = new Set(r.genre_ids ?? []);
-
-    // Hard penalty for documentaries unless user explicitly asked
-    const isDoc = genreIds.has(99);
-    const docPenalty = isDoc && !q.includes('documentary') ? -1000 : 0;
-
-    const starts = q && title.startsWith(q) ? 80 : 0;
-    const contains = q && title.includes(q) ? 30 : 0;
-
-    const yearBoost = (() => {
-      const y = Math.trunc(seedYear ?? NaN);
-      if (!Number.isFinite(y) || y <= 1800) return 0;
-      const ry =
-        typeof r.first_air_date === 'string' ? Number(r.first_air_date.slice(0, 4)) : NaN;
-      if (!Number.isFinite(ry)) return 0;
-      const d = Math.abs(ry - y);
-      if (d === 0) return 200;
-      if (d === 1) return 50;
-      if (d === 2) return 10;
-      return 0;
-    })();
-
-    const engagement = votes * 0.05 + pop * 0.5 + vavg * 2.0;
-    return docPenalty + starts + contains + yearBoost + engagement;
-  };
-
-  return results.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
-}
-
-// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
-function classifyByReleaseDate(
-  releaseDate: string | null,
-  today: string,
-): 'released' | 'upcoming' | 'unknown' {
-  const d = (releaseDate ?? '').trim();
-  if (!d) return 'unknown';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'unknown';
-  if (today && /^\d{4}-\d{2}-\d{2}$/.test(today) && d > today)
-    return 'upcoming';
-  return 'released';
-}
-
-// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
-function normalizeTimezone(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const tz = raw.trim();
-  if (!tz) return null;
-  try {
-    // Throws RangeError for invalid time zones
-    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    formatter.format(0);
-    return tz;
-  } catch {
-    return null;
-  }
-}
-
-// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date.getTime());
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-// skipcq: JS-0067 - Function declaration intentionally used for hoisting across service methods.
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date.getTime());
-  d.setMonth(d.getMonth() + months);
-  return d;
 }

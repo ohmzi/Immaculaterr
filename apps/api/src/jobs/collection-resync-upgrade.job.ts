@@ -1586,6 +1586,7 @@ export class CollectionResyncUpgradeJob {
 
       const desiredItems = await this.buildDesiredItemsForQueueItem({
         item,
+        dryRun: params.ctx.dryRun,
         watchedLimit: params.watchedLimit,
         movieIndexBySection,
         tvIndexBySection,
@@ -1835,6 +1836,7 @@ export class CollectionResyncUpgradeJob {
 
   private async buildDesiredItemsForQueueItem(params: {
     item: CollectionResyncQueueItem;
+    dryRun: boolean;
     watchedLimit: number;
     movieIndexBySection: Map<
       string,
@@ -1915,18 +1917,64 @@ export class CollectionResyncUpgradeJob {
           desired.push(mapped);
         }
       } else {
-        const active =
+        const hasMatchingMovieBase = (collectionName: string): boolean =>
+          hasSameCuratedCollectionBase({
+            left: collectionName,
+            right: item.collectionBaseName,
+            mediaType: 'movie',
+          });
+
+        const pendingRows =
           await this.prisma.watchedMovieRecommendationLibrary.findMany({
             where: {
               plexUserId: item.plexUserId,
               librarySectionKey: item.librarySectionKey,
-              collectionName: item.collectionBaseName,
-              status: 'active',
+              status: 'pending',
             },
-            select: { tmdbId: true },
+            select: { tmdbId: true, collectionName: true },
             orderBy: [{ updatedAt: 'desc' }, { tmdbId: 'asc' }],
           });
-        const limited = active.slice(0, params.watchedLimit);
+        const pendingToActivateCollectionNames = new Set<string>();
+        const pendingToActivateTmdbIds = new Set<number>();
+        for (const row of pendingRows) {
+          if (!hasMatchingMovieBase(row.collectionName)) continue;
+          if (!movieMap.has(row.tmdbId)) continue;
+          pendingToActivateCollectionNames.add(row.collectionName);
+          pendingToActivateTmdbIds.add(row.tmdbId);
+        }
+
+        if (
+          !params.dryRun &&
+          pendingToActivateCollectionNames.size > 0 &&
+          pendingToActivateTmdbIds.size > 0
+        ) {
+          await this.prisma.watchedMovieRecommendationLibrary.updateMany({
+            where: {
+              plexUserId: item.plexUserId,
+              librarySectionKey: item.librarySectionKey,
+              status: 'pending',
+              collectionName: {
+                in: Array.from(pendingToActivateCollectionNames),
+              },
+              tmdbId: { in: Array.from(pendingToActivateTmdbIds) },
+            },
+            data: { status: 'active' },
+          });
+        }
+
+        const activeRows =
+          await this.prisma.watchedMovieRecommendationLibrary.findMany({
+            where: {
+              plexUserId: item.plexUserId,
+              librarySectionKey: item.librarySectionKey,
+              status: 'active',
+            },
+            select: { tmdbId: true, collectionName: true },
+            orderBy: [{ updatedAt: 'desc' }, { tmdbId: 'asc' }],
+          });
+        const limited = activeRows
+          .filter((row) => hasMatchingMovieBase(row.collectionName))
+          .slice(0, params.watchedLimit);
         for (const row of limited) {
           const mapped = movieMap.get(row.tmdbId);
           if (!mapped) continue;
@@ -1958,18 +2006,64 @@ export class CollectionResyncUpgradeJob {
         desired.push(mapped);
       }
     } else {
-      const active =
+      const hasMatchingTvBase = (collectionName: string): boolean =>
+        hasSameCuratedCollectionBase({
+          left: collectionName,
+          right: item.collectionBaseName,
+          mediaType: 'tv',
+        });
+
+      const pendingRows =
         await this.prisma.watchedShowRecommendationLibrary.findMany({
           where: {
             plexUserId: item.plexUserId,
             librarySectionKey: item.librarySectionKey,
-            collectionName: item.collectionBaseName,
-            status: 'active',
+            status: 'pending',
           },
-          select: { tvdbId: true },
+          select: { tvdbId: true, collectionName: true },
           orderBy: [{ updatedAt: 'desc' }, { tvdbId: 'asc' }],
         });
-      const limited = active.slice(0, params.watchedLimit);
+      const pendingToActivateCollectionNames = new Set<string>();
+      const pendingToActivateTvdbIds = new Set<number>();
+      for (const row of pendingRows) {
+        if (!hasMatchingTvBase(row.collectionName)) continue;
+        if (!tvMap.has(row.tvdbId)) continue;
+        pendingToActivateCollectionNames.add(row.collectionName);
+        pendingToActivateTvdbIds.add(row.tvdbId);
+      }
+
+      if (
+        !params.dryRun &&
+        pendingToActivateCollectionNames.size > 0 &&
+        pendingToActivateTvdbIds.size > 0
+      ) {
+        await this.prisma.watchedShowRecommendationLibrary.updateMany({
+          where: {
+            plexUserId: item.plexUserId,
+            librarySectionKey: item.librarySectionKey,
+            status: 'pending',
+            collectionName: {
+              in: Array.from(pendingToActivateCollectionNames),
+            },
+            tvdbId: { in: Array.from(pendingToActivateTvdbIds) },
+          },
+          data: { status: 'active' },
+        });
+      }
+
+      const activeRows =
+        await this.prisma.watchedShowRecommendationLibrary.findMany({
+          where: {
+            plexUserId: item.plexUserId,
+            librarySectionKey: item.librarySectionKey,
+            status: 'active',
+          },
+          select: { tvdbId: true, collectionName: true },
+          orderBy: [{ updatedAt: 'desc' }, { tvdbId: 'asc' }],
+        });
+      const limited = activeRows
+        .filter((row) => hasMatchingTvBase(row.collectionName))
+        .slice(0, params.watchedLimit);
       for (const row of limited) {
         const mapped = tvMap.get(row.tvdbId);
         if (!mapped) continue;

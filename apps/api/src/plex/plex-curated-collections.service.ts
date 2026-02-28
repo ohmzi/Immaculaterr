@@ -1160,9 +1160,15 @@ export class PlexCuratedCollectionsService {
       .toLowerCase();
     const collectionArtworkMap: Record<string, string> = {
       'inspired by your immaculate taste': 'immaculate_taste_collection',
+      'inspired by your immaculate taste in movies':
+        'immaculate_taste_collection',
+      'inspired by your immaculate taste in shows':
+        'immaculate_taste_collection',
       'based on your recently watched movie': 'recently_watched_collection',
       'based on your recently watched show': 'recently_watched_collection',
       'change of taste': 'change_of_taste_collection',
+      'change of movie taste': 'change_of_taste_collection',
+      'change of show taste': 'change_of_taste_collection',
     };
 
     const artworkName = collectionArtworkMap[normalizedName];

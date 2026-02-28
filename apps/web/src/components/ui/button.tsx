@@ -35,8 +35,7 @@ const buttonVariants = cva(
   },
 );
 
-// skipcq: JS-0067 - Component declaration is intentionally module-scoped.
-function Button({
+const Button = ({
   className,
   variant,
   size,
@@ -45,7 +44,7 @@ function Button({
 }: React.ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
-  }) {
+  }) => {
   const Comp = asChild ? Slot : 'button';
 
   return (
@@ -55,6 +54,6 @@ function Button({
       {...props}
     />
   );
-}
+};
 
 export { Button };

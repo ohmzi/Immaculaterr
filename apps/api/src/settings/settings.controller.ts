@@ -62,9 +62,11 @@ export class SettingsController {
   }
 
   @Get('backup-info')
-  // skipcq: JS-0105 - Backup diagnostics intentionally does not use instance state.
-  // skipcq: JS-R1005 - Backup diagnostics intentionally consolidates related environment/path checks.
   backupInfo() {
+    return this.getBackupInfo();
+  }
+
+  private readonly getBackupInfo = () => {
     const appDataDir = process.env.APP_DATA_DIR?.trim() || null;
     const databaseUrl = process.env.DATABASE_URL?.trim() || null;
 
@@ -105,7 +107,7 @@ export class SettingsController {
       },
       whatToBackup,
     };
-  }
+  };
 
   @Put()
   async put(

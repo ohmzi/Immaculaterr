@@ -1,6 +1,10 @@
 import {
+  buildUserCollectionHubOrder,
   CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
 } from '../plex/plex-collections.utils';
 import {
@@ -430,6 +434,353 @@ describe('CollectionResyncUpgradeJob', () => {
     expect(
       queue.some((entry) => entry.collectionBaseName === 'Not a curated name'),
     ).toBe(false);
+  });
+
+  it('matches watched movie rows by curated base across legacy and canonical names', async () => {
+    const settings = createSettingStore();
+    const watchedMovieFindMany = jest.fn(
+      ({ where }: { where: { status?: string } }) => {
+        if (where?.status === 'pending') {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([
+          {
+            collectionName: 'Change of Taste',
+            tmdbId: 10,
+          },
+          {
+            collectionName: 'Change of Movie Taste',
+            tmdbId: 20,
+          },
+          {
+            collectionName: 'Based on your recently watched Movie',
+            tmdbId: 30,
+          },
+        ]);
+      },
+    );
+
+    const prisma = {
+      ...settings.prisma,
+      watchedMovieRecommendationLibrary: {
+        findMany: watchedMovieFindMany,
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+      watchedShowRecommendationLibrary: {
+        findMany: jest.fn(() => Promise.resolve([])),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+    };
+    const plexServer = {
+      listMoviesWithTmdbIdsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          { tmdbId: 10, ratingKey: 'movie-10', title: 'Movie Ten' },
+          { tmdbId: 20, ratingKey: 'movie-20', title: 'Movie Twenty' },
+          { tmdbId: 30, ratingKey: 'movie-30', title: 'Movie Thirty' },
+        ]),
+      ),
+    };
+
+    const job = new CollectionResyncUpgradeJob(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      plexServer as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const buildDesiredItemsForQueueItem = (
+      job as unknown as {
+        buildDesiredItemsForQueueItem: (params: {
+          item: CollectionResyncQueueItem;
+          dryRun: boolean;
+          watchedLimit: number;
+          movieIndexBySection: Map<
+            string,
+            Map<number, { ratingKey: string; title: string }>
+          >;
+          tvIndexBySection: Map<
+            string,
+            Map<number, { ratingKey: string; title: string }>
+          >;
+          plexBaseUrl: string;
+          plexToken: string;
+        }) => Promise<Array<{ ratingKey: string; title: string }>>;
+      }
+    ).buildDesiredItemsForQueueItem.bind(job);
+
+    const desired = await buildDesiredItemsForQueueItem({
+      item: createQueueItem({
+        plexUserId: 'u-1',
+        mediaType: 'movie',
+        librarySectionKey: 'movie-lib',
+        collectionBaseName: CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+      }),
+      dryRun: false,
+      watchedLimit: 15,
+      movieIndexBySection: new Map(),
+      tvIndexBySection: new Map(),
+      plexBaseUrl: 'http://plex.local:32400',
+      plexToken: 'token',
+    });
+
+    expect(desired).toEqual([
+      { ratingKey: 'movie-10', title: 'Movie Ten' },
+      { ratingKey: 'movie-20', title: 'Movie Twenty' },
+    ]);
+    expect(
+      prisma.watchedMovieRecommendationLibrary.updateMany,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('activates pending watched show rows before selecting active snapshot rows', async () => {
+    const settings = createSettingStore();
+    const watchedShowFindMany = jest.fn(
+      ({ where }: { where: { status?: string } }) => {
+        if (where?.status === 'pending') {
+          return Promise.resolve([
+            {
+              collectionName: 'Change of Taste',
+              tvdbId: 101,
+            },
+            {
+              collectionName: 'Change of Show Taste',
+              tvdbId: 202,
+            },
+          ]);
+        }
+        return Promise.resolve([
+          {
+            collectionName: 'Change of Show Taste',
+            tvdbId: 101,
+          },
+          {
+            collectionName: 'Change of Show Taste',
+            tvdbId: 303,
+          },
+        ]);
+      },
+    );
+
+    const prisma = {
+      ...settings.prisma,
+      watchedMovieRecommendationLibrary: {
+        findMany: jest.fn(() => Promise.resolve([])),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+      watchedShowRecommendationLibrary: {
+        findMany: watchedShowFindMany,
+        updateMany: jest.fn(() => Promise.resolve({ count: 1 })),
+      },
+    };
+    const plexServer = {
+      listShowsWithTvdbIdsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          { tvdbId: 101, ratingKey: 'show-101', title: 'Show One' },
+          { tvdbId: 303, ratingKey: 'show-303', title: 'Show Three' },
+        ]),
+      ),
+    };
+
+    const job = new CollectionResyncUpgradeJob(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      plexServer as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const buildDesiredItemsForQueueItem = (
+      job as unknown as {
+        buildDesiredItemsForQueueItem: (params: {
+          item: CollectionResyncQueueItem;
+          dryRun: boolean;
+          watchedLimit: number;
+          movieIndexBySection: Map<
+            string,
+            Map<number, { ratingKey: string; title: string }>
+          >;
+          tvIndexBySection: Map<
+            string,
+            Map<number, { ratingKey: string; title: string }>
+          >;
+          plexBaseUrl: string;
+          plexToken: string;
+        }) => Promise<Array<{ ratingKey: string; title: string }>>;
+      }
+    ).buildDesiredItemsForQueueItem.bind(job);
+
+    const desired = await buildDesiredItemsForQueueItem({
+      item: createQueueItem({
+        plexUserId: 'u-2',
+        mediaType: 'tv',
+        librarySectionKey: 'tv-lib',
+        collectionBaseName: CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+      }),
+      dryRun: false,
+      watchedLimit: 15,
+      movieIndexBySection: new Map(),
+      tvIndexBySection: new Map(),
+      plexBaseUrl: 'http://plex.local:32400',
+      plexToken: 'token',
+    });
+
+    expect(prisma.watchedShowRecommendationLibrary.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          plexUserId: 'u-2',
+          librarySectionKey: 'tv-lib',
+          status: 'pending',
+          collectionName: { in: ['Change of Taste'] },
+          tvdbId: { in: [101] },
+        }),
+        data: { status: 'active' },
+      }),
+    );
+    expect(desired).toEqual([
+      { ratingKey: 'show-101', title: 'Show One' },
+      { ratingKey: 'show-303', title: 'Show Three' },
+    ]);
+  });
+
+  it('rebuilds with pinned curated hub order during upgrade replay', async () => {
+    const settings = createSettingStore();
+    const item = createQueueItem({
+      plexUserId: 'u-3',
+      mediaType: 'movie',
+      librarySectionKey: 'movie-lib',
+      collectionBaseName: IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+    });
+    item.targetCollectionName = `${IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME} (Alice)`;
+    item.pinTarget = 'friends';
+    item.sourceTable = 'ImmaculateTasteMovieLibrary';
+
+    const prisma = {
+      ...settings.prisma,
+      watchedMovieRecommendationLibrary: {
+        findMany: jest.fn(() => Promise.resolve([])),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+      watchedShowRecommendationLibrary: {
+        findMany: jest.fn(() => Promise.resolve([])),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+    };
+
+    const plexServer = {
+      listMoviesWithTmdbIdsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          { tmdbId: 11, ratingKey: 'movie-11', title: 'Movie Eleven' },
+        ]),
+      ),
+      findCollectionRatingKey: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('collection-11'),
+      getCollectionItems: jest.fn(() =>
+        Promise.resolve([{ ratingKey: 'movie-11', title: 'Movie Eleven' }]),
+      ),
+    };
+    const plexCurated = {
+      rebuildMovieCollection: jest.fn(() => Promise.resolve({})),
+    };
+    const immaculateMovies = {
+      getActiveMovies: jest.fn(() =>
+        Promise.resolve([{ tmdbId: 11, status: 'active', points: 2 }]),
+      ),
+    };
+
+    const job = new CollectionResyncUpgradeJob(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      plexServer as never,
+      plexCurated as never,
+      immaculateMovies as never,
+      {} as never,
+    );
+    const recreateCollectionsSequentially = (
+      job as unknown as {
+        recreateCollectionsSequentially: (params: {
+          ctx: JobContext;
+          state: Record<string, unknown>;
+          plexBaseUrl: string;
+          plexToken: string;
+          machineIdentifier: string;
+          watchedLimit: number;
+        }) => Promise<Record<string, unknown>>;
+      }
+    ).recreateCollectionsSequentially.bind(job);
+
+    const state = {
+      queue: [item],
+      itemProgress: {
+        [item.key]: {
+          phase: 'captured',
+          source: 'immaculaterr',
+          attempts: 0,
+          lastError: null,
+          updatedAt: '2026-02-28T00:00:00.000Z',
+          capturedAt: '2026-02-28T00:00:00.000Z',
+          deletedAt: null,
+          recreatedAt: null,
+          verifiedAt: null,
+          doneAt: null,
+        },
+      },
+      deleteQueue: [
+        {
+          deleteKey: 'd1',
+          librarySectionKey: 'movie-lib',
+          libraryTitle: 'Movies',
+          libraryType: 'movie',
+          collectionRatingKey: 'legacy-1',
+          collectionTitle: `${IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME} (Alice)`,
+        },
+      ],
+      deleteProgress: {},
+      deletedCollections: [],
+      preRefreshUserTitles: {},
+      failures: [],
+      phases: {
+        queueBuiltAt: null,
+        captureCompletedAt: null,
+        deleteCompletedAt: null,
+        recreateCompletedAt: null,
+        finalizedAt: null,
+      },
+      version: 1,
+      startedAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:00:00.000Z',
+      adminUserId: 'admin',
+      snapshot: null,
+    };
+
+    await recreateCollectionsSequentially({
+      ctx: createCtx(),
+      state,
+      plexBaseUrl: 'http://plex.local:32400',
+      plexToken: 'token',
+      machineIdentifier: 'machine-1',
+      watchedLimit: 15,
+    });
+
+    expect(plexCurated.rebuildMovieCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionName: `${IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME} (Alice)`,
+        pinCollections: true,
+        pinTarget: 'friends',
+        collectionHubOrder: buildUserCollectionHubOrder(
+          CURATED_MOVIE_COLLECTION_HUB_ORDER,
+          'Alice',
+        ),
+      }),
+    );
   });
 
   it('keeps queue processing order deterministic (sequential)', () => {

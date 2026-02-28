@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { PlexCuratedCollectionsService } from './plex-curated-collections.service';
 
 function createTestCtx() {
@@ -359,5 +360,51 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
       plexCollectionKey: 'new-tv',
       desiredCount: 2,
     });
+  });
+});
+
+describe('PlexCuratedCollectionsService artwork mapping', () => {
+  it('maps canonical curated names to the expected poster assets', () => {
+    const service = new PlexCuratedCollectionsService(
+      {} as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+    );
+    const getArtworkPaths = (
+      service as unknown as {
+        getArtworkPaths: (collectionName: string) => {
+          poster: string | null;
+          background: string | null;
+        };
+      }
+    ).getArtworkPaths.bind(service);
+
+    const cases: Array<{ collectionName: string; expectedPosterBasename: string }> =
+      [
+        {
+          collectionName: 'Inspired by your Immaculate Taste in Movies (Alice)',
+          expectedPosterBasename: 'immaculate_taste_collection.png',
+        },
+        {
+          collectionName: 'Inspired by your Immaculate Taste in Shows (Alice)',
+          expectedPosterBasename: 'immaculate_taste_collection.png',
+        },
+        {
+          collectionName: 'Change of Movie Taste (Alice)',
+          expectedPosterBasename: 'change_of_taste_collection.png',
+        },
+        {
+          collectionName: 'Change of Show Taste (Alice)',
+          expectedPosterBasename: 'change_of_taste_collection.png',
+        },
+      ];
+
+    for (const testCase of cases) {
+      const artwork = getArtworkPaths(testCase.collectionName);
+      expect(artwork.poster).toBeTruthy();
+      expect(basename(String(artwork.poster))).toBe(
+        testCase.expectedPosterBasename,
+      );
+    }
   });
 });
