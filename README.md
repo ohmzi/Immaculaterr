@@ -134,6 +134,9 @@ docker run -d \
 ```
 
 #### Optional HTTPS sidecar (can run anytime later)
+
+restart the browser after running the following command. 
+
 ```bash
 mkdir -p ~/immaculaterr
 curl -fsSL -o ~/immaculaterr/caddy-entrypoint.sh \
