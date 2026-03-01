@@ -30,11 +30,10 @@ RUN set -eu; \
 # Ensure a Prisma CLI executable exists for startup migrations.
 RUN if [ ! -x /app/apps/api/node_modules/.bin/prisma ] && [ ! -x /app/node_modules/.bin/prisma ]; then \
       npm i --no-save prisma@6.19.1; \
-    fi
+    fi \
+    && npm -w apps/api run db:generate
 
 # Ensure Prisma client/types exist for `nest build` in CI/Docker.
-RUN npm -w apps/api run db:generate
-
 # 2) Build
 COPY apps/api apps/api
 COPY apps/web apps/web

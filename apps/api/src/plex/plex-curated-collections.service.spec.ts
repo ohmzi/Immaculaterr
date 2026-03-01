@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { PlexCuratedCollectionsService } from './plex-curated-collections.service';
 
 function createTestCtx() {
@@ -98,7 +99,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
     });
   });
 
-  it('pins friends target to shared home and matches by base when suffix differs', async () => {
+  it('pins friends target to recommended+shared home and matches by base when suffix differs', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
         { ratingKey: '31', title: 'Inspired by your Immaculate Taste in Shows (Bob)' },
@@ -138,7 +139,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
     expect(plexServer.setCollectionHubVisibility).toHaveBeenCalledTimes(3);
     for (const call of plexServer.setCollectionHubVisibility.mock.calls) {
       expect(call[0]).toMatchObject({
-        promotedToRecommended: 0,
+        promotedToRecommended: 1,
         promotedToOwnHome: 0,
         promotedToSharedHome: 1,
       });
@@ -270,7 +271,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
         collectionRatingKey: '63',
         promotedToSharedHome: 1,
         promotedToOwnHome: 0,
-        promotedToRecommended: 0,
+        promotedToRecommended: 1,
       }),
     );
     expect(plexServer.moveHubRow).toHaveBeenCalledTimes(3);
@@ -359,5 +360,51 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
       plexCollectionKey: 'new-tv',
       desiredCount: 2,
     });
+  });
+});
+
+describe('PlexCuratedCollectionsService artwork mapping', () => {
+  it('maps canonical curated names to the expected poster assets', () => {
+    const service = new PlexCuratedCollectionsService(
+      {} as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+    );
+    const getArtworkPaths = (
+      service as unknown as {
+        getArtworkPaths: (collectionName: string) => {
+          poster: string | null;
+          background: string | null;
+        };
+      }
+    ).getArtworkPaths.bind(service);
+
+    const cases: Array<{ collectionName: string; expectedPosterBasename: string }> =
+      [
+        {
+          collectionName: 'Inspired by your Immaculate Taste in Movies (Alice)',
+          expectedPosterBasename: 'immaculate_taste_collection.png',
+        },
+        {
+          collectionName: 'Inspired by your Immaculate Taste in Shows (Alice)',
+          expectedPosterBasename: 'immaculate_taste_collection.png',
+        },
+        {
+          collectionName: 'Change of Movie Taste (Alice)',
+          expectedPosterBasename: 'change_of_taste_collection.png',
+        },
+        {
+          collectionName: 'Change of Show Taste (Alice)',
+          expectedPosterBasename: 'change_of_taste_collection.png',
+        },
+      ];
+
+    for (const testCase of cases) {
+      const artwork = getArtworkPaths(testCase.collectionName);
+      expect(artwork.poster).toBeTruthy();
+      expect(basename(String(artwork.poster))).toBe(
+        testCase.expectedPosterBasename,
+      );
+    }
   });
 });

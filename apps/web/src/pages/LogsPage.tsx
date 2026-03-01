@@ -109,7 +109,10 @@ const TYPE_TAG_LABEL: Record<Exclude<ServiceFilter, 'errors'>, string> = {
   openai: 'OpenAI',
 };
 
-function logMatchesTask(line: { message?: string; context?: string | null }) {
+const logMatchesTask = (line: {
+  message?: string;
+  context?: string | null;
+}) => {
   const msg = String(line.message ?? '').toLowerCase();
   const ctx = String(line.context ?? '').toLowerCase();
   const hay = `${ctx} ${msg}`;
@@ -140,9 +143,12 @@ function logMatchesTask(line: { message?: string; context?: string | null }) {
     hay.includes('run: finished') ||
     hay.includes('run: failed')
   );
-}
+};
 
-function logMatchesAnyService(line: { message?: string; context?: string | null }) {
+const logMatchesAnyService = (line: {
+  message?: string;
+  context?: string | null;
+}) => {
   const msg = String(line.message ?? '').toLowerCase();
   const ctx = String(line.context ?? '').toLowerCase();
   const hay = `${ctx} ${msg}`;
@@ -160,13 +166,13 @@ function logMatchesAnyService(line: { message?: string; context?: string | null 
     hay.includes('custom search') ||
     hay.includes('cse')
   );
-}
+};
 
-function serviceTagsForLine(line: {
+const serviceTagsForLine = (line: {
   message?: string;
   context?: string | null;
   level?: string;
-}): Set<ServiceFilter> {
+}): Set<ServiceFilter> => {
   const out = new Set<ServiceFilter>();
   const msg = String(line.message ?? '').toLowerCase();
   const ctx = String(line.context ?? '').toLowerCase();
@@ -201,9 +207,9 @@ function serviceTagsForLine(line: {
   if (!logMatchesAnyService(line)) out.add('immaculaterr');
 
   return out;
-}
+};
 
-export function LogsPage() {
+export const LogsPage = () => {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
@@ -302,6 +308,7 @@ export function LogsPage() {
       typeof window !== 'undefined' &&
       Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
     if (isCoarsePointer) {
+      // skipcq: JS-0052 - Native confirm is intentional on coarse pointers for a fast mobile-safe destructive action.
       const ok = window.confirm(
         `Clear all logs?\n\nThis will remove ${total.toLocaleString()} log line(s).\n\nThis cannot be undone.`,
       );
@@ -579,4 +586,4 @@ export function LogsPage() {
       />
     </div>
   );
-}
+};

@@ -1123,17 +1123,46 @@ export class PlexPollingService implements OnModuleInit {
   private shouldLogNowPlaying(snap: SessionSnapshot, nowMs: number): boolean {
     const state = this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
     if (!state) return true;
-    if (state.lastRatingKey && snap.ratingKey && state.lastRatingKey !== snap.ratingKey) return true;
-    if (nowMs - state.lastLogAtMs >= this.nowPlayingLogIntervalMs) return true;
-    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
-    if (
-      viewOffset !== null &&
-      state.lastViewOffsetMs !== null &&
-      viewOffset - state.lastViewOffsetMs >= this.nowPlayingLogProgressStepMs
-    ) {
+    if (this.didNowPlayingMediaChange(state.lastRatingKey, snap.ratingKey)) {
       return true;
     }
-    return false;
+    if (this.didNowPlayingLogIntervalElapse(state.lastLogAtMs, nowMs)) {
+      return true;
+    }
+    return this.didNowPlayingProgressAdvance({
+      previousViewOffsetMs: state.lastViewOffsetMs,
+      currentViewOffsetMs: snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null,
+    });
+  }
+
+  private didNowPlayingMediaChange(
+    lastRatingKey: string | null,
+    currentRatingKey: string | null | undefined,
+  ): boolean {
+    return Boolean(
+      lastRatingKey &&
+        currentRatingKey &&
+        lastRatingKey !== currentRatingKey,
+    );
+  }
+
+  private didNowPlayingLogIntervalElapse(
+    lastLogAtMs: number,
+    nowMs: number,
+  ): boolean {
+    return nowMs - lastLogAtMs >= this.nowPlayingLogIntervalMs;
+  }
+
+  private didNowPlayingProgressAdvance(params: {
+    previousViewOffsetMs: number | null;
+    currentViewOffsetMs: number | null;
+  }): boolean {
+    return (
+      params.currentViewOffsetMs !== null &&
+      params.previousViewOffsetMs !== null &&
+      params.currentViewOffsetMs - params.previousViewOffsetMs >=
+        this.nowPlayingLogProgressStepMs
+    );
   }
 
   private updateNowPlayingLogState(snap: SessionSnapshot, nowMs: number) {
@@ -1377,7 +1406,7 @@ export class PlexPollingService implements OnModuleInit {
           ? normalizeTitleForMatching(snap.librarySectionTitle)
           : undefined,
         viewOffset: viewOffset ?? undefined,
-        duration: duration,
+        duration,
         progress: ratio,
         source: params.reason,
         thresholdWatchedMovieRecommendations: this.watchedScrobbleThreshold,

@@ -119,7 +119,7 @@ export class SonarrService {
     apiKey: string;
   }): Promise<SonarrSeries[]> {
     const series = await this.listSeries(params);
-    return series.filter((s) => Boolean(s && s.monitored));
+    return series.filter((s) => Boolean(s?.monitored));
   }
 
   async getEpisodesBySeries(params: {

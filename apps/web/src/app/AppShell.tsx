@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -13,14 +13,16 @@ import { WhatsNewModal } from '@/app/WhatsNewModal';
 import { getVersionHistoryEntry, normalizeVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
-function readOnboardingCompleted(settings: unknown): boolean {
+const readOnboardingCompleted = (settings: unknown): boolean => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
   const onboarding = (settings as Record<string, unknown>)['onboarding'];
   if (!onboarding || typeof onboarding !== 'object' || Array.isArray(onboarding)) return false;
   return Boolean((onboarding as Record<string, unknown>)['completed']);
-}
+};
 
-function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
+const readAcknowledgedWhatsNewVersion = (
+  settings: unknown,
+): string | null => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
   const ui = (settings as Record<string, unknown>)['ui'];
   if (!ui || typeof ui !== 'object' || Array.isArray(ui)) return null;
@@ -28,10 +30,26 @@ function readAcknowledgedWhatsNewVersion(settings: unknown): string | null {
   if (!whatsNew || typeof whatsNew !== 'object' || Array.isArray(whatsNew)) return null;
   const acknowledgedVersion = (whatsNew as Record<string, unknown>)['acknowledgedVersion'];
   return normalizeVersion(typeof acknowledgedVersion === 'string' ? acknowledgedVersion : null);
-}
+};
 
-export function AppShell() {
+const shouldShowWhatsNewModal = (params: {
+  onboardingCompleted: null | boolean;
+  pathname: string;
+  currentVersion: string | null;
+  hasMatchingVersionHistoryEntry: boolean;
+  acknowledgedWhatsNewVersion: string | null;
+  sessionDismissedVersion: string | null;
+}): boolean => {
+  if (params.onboardingCompleted !== true) return false;
+  if (params.pathname === '/version-history') return false;
+  if (!params.currentVersion || !params.hasMatchingVersionHistoryEntry) return false;
+  if (params.acknowledgedWhatsNewVersion === params.currentVersion) return false;
+  return params.sessionDismissedVersion !== params.currentVersion;
+};
+
+export const AppShell = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [sessionDismissedVersion, setSessionDismissedVersion] = useState<string | null>(null);
@@ -116,21 +134,30 @@ export function AppShell() {
     () => getVersionHistoryEntry(currentVersion),
     [currentVersion],
   );
+  const effectiveSessionDismissedVersion = useMemo(() => {
+    if (!sessionDismissedVersion) return null;
+    if (!currentVersion) return sessionDismissedVersion;
+    return sessionDismissedVersion === currentVersion
+      ? sessionDismissedVersion
+      : null;
+  }, [sessionDismissedVersion, currentVersion]);
 
   const shouldShowWhatsNew = useMemo(() => {
-    if (onboardingCompleted !== true) return false;
-    if (location.pathname === '/version-history') return false;
-    if (!currentVersion || !matchingVersionHistoryEntry) return false;
-    if (acknowledgedWhatsNewVersion === currentVersion) return false;
-    if (sessionDismissedVersion === currentVersion) return false;
-    return true;
+    return shouldShowWhatsNewModal({
+      onboardingCompleted,
+      pathname: location.pathname,
+      currentVersion,
+      hasMatchingVersionHistoryEntry: Boolean(matchingVersionHistoryEntry),
+      acknowledgedWhatsNewVersion,
+      sessionDismissedVersion: effectiveSessionDismissedVersion,
+    });
   }, [
     onboardingCompleted,
     location.pathname,
     currentVersion,
     matchingVersionHistoryEntry,
     acknowledgedWhatsNewVersion,
-    sessionDismissedVersion,
+    effectiveSessionDismissedVersion,
   ]);
 
   const acknowledgeWhatsNewMutation = useMutation({
@@ -154,14 +181,6 @@ export function AppShell() {
     },
   });
 
-  useEffect(() => {
-    setSessionDismissedVersion((prev) => {
-      if (!prev) return prev;
-      if (!currentVersion) return prev;
-      return prev === currentVersion ? prev : null;
-    });
-  }, [currentVersion]);
-
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
@@ -183,6 +202,15 @@ export function AppShell() {
   const closeWizard = useCallback(() => {
     setWizardOpen(false);
   }, []);
+
+  const handleWizardFinished = useCallback(() => {
+    const wasRequiredOnboarding = onboardingCompleted === false;
+    setWizardOpen(false);
+
+    if (wasRequiredOnboarding && location.pathname !== '/') {
+      navigate('/', { replace: true });
+    }
+  }, [location.pathname, navigate, onboardingCompleted]);
 
   const isHomePage = location.pathname === '/';
 
@@ -218,8 +246,8 @@ export function AppShell() {
         open={wizardOpen || onboardingCompleted === false}
         required={onboardingCompleted === false}
         onClose={closeWizard}
-        onFinished={closeWizard}
+        onFinished={handleWizardFinished}
       />
     </div>
   );
-}
+};

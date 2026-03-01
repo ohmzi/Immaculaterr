@@ -98,7 +98,7 @@ function modeLabel(run: JobRun): RunModeLabel {
     : 'Manual';
 }
 
-function modePill(mode: RunModeLabel) {
+const modePill = (mode: RunModeLabel) => {
   switch (mode) {
     case 'Dry-Run':
       return 'bg-[#facc15]/15 text-[#fde68a] border border-[#facc15]/25';
@@ -106,8 +106,10 @@ function modePill(mode: RunModeLabel) {
       return 'bg-sky-500/15 text-sky-200 border border-sky-500/25';
     case 'Manual':
       return 'bg-purple-500/15 text-purple-200 border border-purple-500/25';
+    default:
+      return undefined;
   }
-}
+};
 
 type MediaTypeKey = 'movie' | 'tv' | '';
 type MediaTypeLabel = 'Movie' | 'TV show' | '—';
@@ -498,7 +500,7 @@ export function JobRunDetailPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-3">
                         <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
-                          {(jobName ?? run?.jobId ?? 'Rewind') + ' Report'}
+                          `${jobName ?? run?.jobId ?? 'Rewind'} Report`
                         </h1>
                       </div>
                     </div>

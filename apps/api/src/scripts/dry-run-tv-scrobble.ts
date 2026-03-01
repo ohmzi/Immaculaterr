@@ -5,15 +5,16 @@ import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../db/prisma.service';
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const sleep = (ms: number): Promise<void> => {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+};
 
-async function waitForRunFinish(params: {
+// skipcq: JS-R1005 - Polling helper intentionally keeps loop/exit conditions in one place.
+const waitForRunFinish = async (params: {
   prisma: PrismaService;
   runId: string;
   timeoutMs: number;
-}) {
+}) => {
   const started = Date.now();
   for (;;) {
     const run = await params.prisma.jobRun.findUnique({
@@ -32,9 +33,9 @@ async function waitForRunFinish(params: {
     if (Date.now() - started > params.timeoutMs) return run;
     await sleep(500);
   }
-}
+};
 
-async function main() {
+const main = async () => {
   await ensureBootstrapEnv();
 
   const seedTitle = process.argv.slice(2).join(' ').trim() || 'Breaking Bad';
@@ -111,11 +112,9 @@ async function main() {
       prisma.jobLogLine.count({ where: { runId: immaculateRun.id } }),
     ]);
 
-    // eslint-disable-next-line no-console
-    console.log('\n=== DRY RUN COMPLETE ===');
-    // eslint-disable-next-line no-console
-    console.log(
-      JSON.stringify(
+    process.stdout.write('\n=== DRY RUN COMPLETE ===\n');
+    process.stdout.write(
+      `${JSON.stringify(
         {
           seedTitle,
           runs: {
@@ -133,12 +132,12 @@ async function main() {
         },
         null,
         2,
-      ),
+      )}\n`,
     );
   } finally {
     await app.close();
   }
-}
+};
 
 main().catch((err) => {
   // eslint-disable-next-line no-console

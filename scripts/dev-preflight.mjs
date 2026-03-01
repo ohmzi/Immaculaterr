@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import net from 'node:net';
 import os from 'node:os';
 import { execSync } from 'node:child_process';

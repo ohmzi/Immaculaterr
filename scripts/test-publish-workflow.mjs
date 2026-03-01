@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+// skipcq: JS-0833
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -89,7 +90,7 @@ const requiredSnippets = [
   },
   {
     name: 'release notes include version-pinned docker pull',
-    snippet: 'docker pull ohmzii/immaculaterr:v${VERSION}',
+    snippet: `docker pull ohmzii/immaculaterr:v\${VERSION}`,
   },
   {
     name: 'release notes include docker option A single-container run',
@@ -109,7 +110,7 @@ const requiredSnippets = [
   },
   {
     name: 'release notes fetch sidecar caddy entrypoint from release tag',
-    snippet: 'v${VERSION}/docker/immaculaterr/caddy-entrypoint.sh',
+    snippet: `v\${VERSION}/docker/immaculaterr/caddy-entrypoint.sh`,
   },
   {
     name: 'release notes include sidecar internal port bridge to app',

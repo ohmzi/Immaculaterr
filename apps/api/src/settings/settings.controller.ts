@@ -24,28 +24,27 @@ type ParsedUpdateSettingsBody = {
   secretsEnvelope?: Record<string, unknown>;
 };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-function parseObjectPatch(
+const parseObjectPatch = (
   value: unknown,
   fieldName: 'settings' | 'secrets' | 'secretsEnvelope',
-): Record<string, unknown> | undefined {
+): Record<string, unknown> | undefined => {
   if (value === undefined) return undefined;
   if (!isPlainObject(value)) {
     throw new BadRequestException(`${fieldName} must be an object`);
   }
   return value;
-}
+};
 
-function parseUpdateSettingsBody(body: UpdateSettingsBody): ParsedUpdateSettingsBody {
-  return {
+const parseUpdateSettingsBody = (
+  body: UpdateSettingsBody,
+): ParsedUpdateSettingsBody => ({
     settingsPatch: parseObjectPatch(body?.settings, 'settings'),
     secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
     secretsEnvelope: parseObjectPatch(body?.secretsEnvelope, 'secretsEnvelope'),
-  };
-}
+  });
 
 @Controller('settings')
 @ApiTags('settings')
@@ -64,6 +63,10 @@ export class SettingsController {
 
   @Get('backup-info')
   backupInfo() {
+    return this.getBackupInfo();
+  }
+
+  private readonly getBackupInfo = () => {
     const appDataDir = process.env.APP_DATA_DIR?.trim() || null;
     const databaseUrl = process.env.DATABASE_URL?.trim() || null;
 
@@ -75,10 +78,9 @@ export class SettingsController {
     const keyFilePath = appDataDir ? join(appDataDir, 'app-master.key') : null;
     const keyFileExists = keyFilePath ? existsSync(keyFilePath) : false;
 
-    const dbFilePath =
-      databaseUrl && databaseUrl.startsWith('file:')
-        ? databaseUrl.slice('file:'.length)
-        : null;
+    const dbFilePath = databaseUrl?.startsWith('file:')
+      ? databaseUrl.slice('file:'.length)
+      : null;
 
     const masterKeySource = envMasterKeySet
       ? ('env' as const)
@@ -105,7 +107,7 @@ export class SettingsController {
       },
       whatToBackup,
     };
-  }
+  };
 
   @Put()
   async put(

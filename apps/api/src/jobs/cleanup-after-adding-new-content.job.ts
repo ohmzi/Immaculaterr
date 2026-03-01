@@ -189,6 +189,7 @@ export class CleanupAfterAddingNewContentJob {
     private readonly sonarr: SonarrService,
   ) {}
 
+  // skipcq: JS-R1005 - Job orchestrates multi-integration cleanup with guarded branches and best-effort fallbacks.
   async run(ctx: JobContext): Promise<JobRunResult> {
     const PROGRESS_TOTAL_STEPS = 6;
     const setProgress = async (
@@ -1589,7 +1590,7 @@ export class CleanupAfterAddingNewContentJob {
               // Unmonitor in Sonarr (exact episode) if possible
               if (features.unmonitorInArr && epMap) {
                 const sonarrEp = epMap.get(key) ?? null;
-                if (sonarrEp && sonarrEp.monitored) {
+                if (sonarrEp?.monitored) {
                   if (ctx.dryRun) {
                     episodeStats.sonarrWouldUnmonitor += 1;
                   } else {
@@ -2990,51 +2991,49 @@ export class CleanupAfterAddingNewContentJob {
       summary.radarr = radarrSummary as unknown as JsonObject;
 
       // 3) Remove from Plex watchlist (best-effort)
-      {
-        if (!features.removeFromWatchlist) {
-          summary.watchlist = {
-            mode: 'disabled',
-            reason: 'feature_disabled',
-          } as unknown as JsonObject;
+      if (!features.removeFromWatchlist) {
+        summary.watchlist = {
+          mode: 'disabled',
+          reason: 'feature_disabled',
+        } as unknown as JsonObject;
+        await ctx.info(
+          'plex: watchlist cleanup feature disabled (skipping)',
+        );
+      } else {
+        const movieTitle = resolvedTitle || title;
+        const movieYear = resolvedYear ?? year;
+        if (!movieTitle) {
           await ctx.info(
-            'plex: watchlist cleanup feature disabled (skipping)',
+            'plex: missing movie title (skipping watchlist removal)',
           );
         } else {
-          const movieTitle = resolvedTitle || title;
-          const movieYear = resolvedYear ?? year;
-          if (!movieTitle) {
-            await ctx.info(
-              'plex: missing movie title (skipping watchlist removal)',
+          await ctx.info('plex: removing movie from watchlist (best-effort)', {
+            title: movieTitle,
+            year: movieYear,
+            dryRun: ctx.dryRun,
+          });
+          try {
+            const wl = await this.plexWatchlist.removeMovieFromWatchlistByTitle(
+              {
+                token: plexToken,
+                title: movieTitle,
+                year: movieYear,
+                dryRun: ctx.dryRun,
+              },
             );
-          } else {
-            await ctx.info('plex: removing movie from watchlist (best-effort)', {
-              title: movieTitle,
-              year: movieYear,
-              dryRun: ctx.dryRun,
+            summary.watchlist = wl as unknown as JsonObject;
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            (summary.warnings as string[]).push(
+              `plex: watchlist removal failed (non-critical): ${msg}`,
+            );
+            await ctx.warn('plex: watchlist removal failed (non-critical)', {
+              error: msg,
             });
-            try {
-              const wl = await this.plexWatchlist.removeMovieFromWatchlistByTitle(
-                {
-                  token: plexToken,
-                  title: movieTitle,
-                  year: movieYear,
-                  dryRun: ctx.dryRun,
-                },
-              );
-              summary.watchlist = wl as unknown as JsonObject;
-            } catch (err) {
-              const msg = (err as Error)?.message ?? String(err);
-              (summary.warnings as string[]).push(
-                `plex: watchlist removal failed (non-critical): ${msg}`,
-              );
-              await ctx.warn('plex: watchlist removal failed (non-critical)', {
-                error: msg,
-              });
-              summary.watchlist = {
-                ok: false,
-                error: msg,
-              } as unknown as JsonObject;
-            }
+            summary.watchlist = {
+              ok: false,
+              error: msg,
+            } as unknown as JsonObject;
           }
         }
       }

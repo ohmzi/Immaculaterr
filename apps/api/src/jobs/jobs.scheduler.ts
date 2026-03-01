@@ -57,7 +57,14 @@ export class JobsScheduler implements OnModuleInit {
 
     // Validate cron by constructing a job (won't start)
     try {
-      new CronJob(cron, () => undefined, null, false, timezone ?? undefined);
+      const validationJob = new CronJob(
+        cron,
+        () => undefined,
+        null,
+        false,
+        timezone ?? undefined,
+      );
+      validationJob.stop();
     } catch (err) {
       throw new BadRequestException(
         `Invalid cron expression: ${(err as Error)?.message ?? String(err)}`,

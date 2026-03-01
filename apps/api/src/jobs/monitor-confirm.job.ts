@@ -63,6 +63,7 @@ export class MonitorConfirmJob {
     private readonly sonarr: SonarrService,
   ) {}
 
+  // skipcq: JS-R1005 - Job coordinates Plex/Radarr/Sonarr confirmation flow with explicit branch handling.
   async run(ctx: JobContext): Promise<JobRunResult> {
     const setProgress = (params: {
       step: string;
@@ -660,7 +661,7 @@ export class MonitorConfirmJob {
           const seasonObj = seasons.find(
             (s) => toInt(s.seasonNumber) === seasonNum,
           );
-          if (seasonObj && seasonObj.monitored) {
+          if (seasonObj?.monitored) {
             seasonObj.monitored = false;
             sonarrSeasonsUnmonitored += 1;
             changedSeries = true;

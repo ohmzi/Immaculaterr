@@ -864,11 +864,13 @@ export class PlexCuratedCollectionsService {
     const targetVisibility =
       pinTarget === 'friends'
         ? {
-            promotedToRecommended: 0,
+            // Non-admin users: pin to Friends' Home + Library Recommended.
+            promotedToRecommended: 1,
             promotedToOwnHome: 0,
             promotedToSharedHome: 1,
           }
         : {
+            // Admin users: pin to Home + Library Recommended.
             promotedToRecommended: 1,
             promotedToOwnHome: 1,
             promotedToSharedHome: 0,
@@ -1160,9 +1162,15 @@ export class PlexCuratedCollectionsService {
       .toLowerCase();
     const collectionArtworkMap: Record<string, string> = {
       'inspired by your immaculate taste': 'immaculate_taste_collection',
+      'inspired by your immaculate taste in movies':
+        'immaculate_taste_collection',
+      'inspired by your immaculate taste in shows':
+        'immaculate_taste_collection',
       'based on your recently watched movie': 'recently_watched_collection',
       'based on your recently watched show': 'recently_watched_collection',
       'change of taste': 'change_of_taste_collection',
+      'change of movie taste': 'change_of_taste_collection',
+      'change of show taste': 'change_of_taste_collection',
     };
 
     const artworkName = collectionArtworkMap[normalizedName];

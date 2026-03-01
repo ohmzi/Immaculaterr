@@ -12,6 +12,8 @@ export type PlexPinCheckResponse = {
   id: number;
   authToken: string | null;
   expiresAt: string | null;
+  suggestedBaseUrl?: string | null;
+  suggestedBaseUrls?: string[];
 };
 
 export type PlexLibraryGrowthPoint = {

@@ -109,7 +109,7 @@ export class RadarrService {
     apiKey: string;
   }): Promise<RadarrMovie[]> {
     const movies = await this.listMovies(params);
-    return movies.filter((m) => Boolean(m && m.monitored));
+    return movies.filter((m) => Boolean(m?.monitored));
   }
 
   async getMovieById(params: {
@@ -549,8 +549,8 @@ export class RadarrService {
     }
   }
 
-  private buildApiUrl(baseUrl: string, path: string) {
+  private readonly buildApiUrl = (baseUrl: string, path: string) => {
     const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     return new URL(path, normalized).toString();
-  }
+  };
 }

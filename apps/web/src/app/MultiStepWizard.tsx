@@ -30,9 +30,10 @@ import {
   savePlexMonitoringUsers,
   testSavedIntegration,
 } from '@/api/integrations';
-import { putSettings } from '@/api/settings';
+import { ApiError } from '@/api/http';
+import { getSecretsEnvelopeKey, putSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
-import { testOverseerrConnection } from '@/api/overseerr';
+import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -141,6 +142,44 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   // OpenAI state
   const [openAiApiKey, setOpenAiApiKey] = useState('');
 
+  const loadSecretsEnvelopeKey = useCallback(
+    async () => await getSecretsEnvelopeKey(),
+    [],
+  );
+
+  const buildSettingsSecretsEnvelope = useCallback(
+    async (secretsPatch: Record<string, unknown>) => {
+      const key = await loadSecretsEnvelopeKey();
+      return await createPayloadEnvelope({
+        key,
+        purpose: 'settings.secrets',
+        payload: {
+          secrets: secretsPatch,
+        },
+      });
+    },
+    [loadSecretsEnvelopeKey],
+  );
+
+  const buildIntegrationSecretEnvelope = useCallback(
+    async (params: {
+      service: 'overseerr';
+      secretField: 'apiKey';
+      value: string;
+    }) => {
+      const key = await loadSecretsEnvelopeKey();
+      return await createPayloadEnvelope({
+        key,
+        purpose: `integration.${params.service}.test`,
+        service: params.service,
+        payload: {
+          [params.secretField]: params.value,
+        },
+      });
+    },
+    [loadSecretsEnvelopeKey],
+  );
+
   const getCurrentStepIndex = () => STEP_ORDER.indexOf(currentStep);
   const canGoBack = getCurrentStepIndex() > 0;
 
@@ -191,6 +230,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         if (result.authToken) {
           setPlexToken(result.authToken);
           setPlexTokenFromOAuth(true);
+          const suggestedBaseUrl = String(result.suggestedBaseUrl ?? '').trim();
+          if (suggestedBaseUrl) {
+            setPlexBaseUrl(suggestedBaseUrl);
+          }
           setIsPollingPlex(false);
           setPlexOAuthPinId(null);
 
@@ -202,7 +245,11 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
             // Ignore localStorage errors
           }
 
-          toast.success('Connected to Plex.');
+          toast.success(
+            suggestedBaseUrl
+              ? `Connected to Plex. Server URL auto-detected: ${suggestedBaseUrl}`
+              : 'Connected to Plex.',
+          );
         }
       } catch {
         // Ignore polling errors; a later poll can still succeed.
@@ -303,15 +350,16 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const saveAndValidatePlex = useMutation({
     mutationFn: async () => {
       // Save Plex credentials
+      const secretsEnvelope = await buildSettingsSecretsEnvelope({
+        plex: { token: plexToken.trim() },
+      });
       await putSettings({
         settings: {
           plex: {
             baseUrl: plexBaseUrl.trim(),
           },
         },
-        secrets: {
-          plex: { token: plexToken.trim() },
-        },
+        secretsEnvelope,
       });
 
       // Validate
@@ -324,14 +372,21 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       handleNext();
     },
-    onError: () => {
+    onError: (error: Error) => {
+      const message = String(error?.message ?? '').trim();
+      if (error instanceof ApiError && error.status === 401) {
+        toast.error('Session expired. Please sign in again, then retry Plex setup.');
+        return;
+      }
       if (plexTokenFromOAuth) {
         toast.error(
-          'Plex token was created, but authentication failed. Check the Plex Server URL in the wizard and make sure it matches your local Plex server.'
+          message
+            ? `Plex token was created, but authentication failed: ${message}`
+            : 'Plex token was created, but authentication failed. Check the Plex Server URL in the wizard and make sure it matches your local Plex server.'
         );
         return;
       }
-      toast.error('Plex credentials are incorrect.');
+      toast.error(message || 'Plex credentials are incorrect.');
     },
   });
 
@@ -405,10 +460,11 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const saveAndValidateTmdb = useMutation({
     mutationFn: async () => {
       // Save TMDB credentials
+      const secretsEnvelope = await buildSettingsSecretsEnvelope({
+        tmdb: { apiKey: tmdbApiKey.trim() },
+      });
       await putSettings({
-        secrets: {
-          tmdb: { apiKey: tmdbApiKey.trim() },
-        },
+        secretsEnvelope,
       });
 
       // Validate
@@ -433,21 +489,26 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const saveOptionalService = useMutation({
     mutationFn: async (service: 'radarr' | 'sonarr' | 'google' | 'openai') => {
       const updates: Parameters<typeof putSettings>[0] = {};
+      const secretsPatch: Record<string, unknown> = {};
 
       if (service === 'radarr' && radarrBaseUrl && radarrApiKey) {
         updates.settings = { radarr: { baseUrl: radarrBaseUrl.trim() } };
-        updates.secrets = { radarr: { apiKey: radarrApiKey.trim() } };
+        secretsPatch['radarr'] = { apiKey: radarrApiKey.trim() };
       } else if (service === 'sonarr' && sonarrBaseUrl && sonarrApiKey) {
         updates.settings = { sonarr: { baseUrl: sonarrBaseUrl.trim() } };
-        updates.secrets = { sonarr: { apiKey: sonarrApiKey.trim() } };
+        secretsPatch['sonarr'] = { apiKey: sonarrApiKey.trim() };
       } else if (service === 'google' && googleSearchEngineId && googleApiKey) {
         updates.settings = { google: { searchEngineId: googleSearchEngineId.trim() } };
-        updates.secrets = { google: { apiKey: googleApiKey.trim() } };
+        secretsPatch['google'] = { apiKey: googleApiKey.trim() };
       } else if (service === 'openai' && openAiApiKey) {
-        updates.secrets = { openai: { apiKey: openAiApiKey.trim() } };
+        secretsPatch['openai'] = { apiKey: openAiApiKey.trim() };
       }
 
-      if (updates.settings || updates.secrets) {
+      if (updates.settings || Object.keys(secretsPatch).length > 0) {
+        const secretsEnvelope = Object.keys(secretsPatch).length
+          ? await buildSettingsSecretsEnvelope(secretsPatch)
+          : undefined;
+        updates.secretsEnvelope = secretsEnvelope;
         await putSettings(updates);
         toast.success(`${service} configured successfully!`);
       }
@@ -467,11 +528,19 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
       toast.info('Validating Overseerr credentials...');
       try {
-        await testOverseerrConnection({ baseUrl, apiKey });
+        const apiKeyEnvelope = await buildIntegrationSecretEnvelope({
+          service: 'overseerr',
+          secretField: 'apiKey',
+          value: apiKey,
+        });
+        await testSavedIntegration('overseerr', { baseUrl, apiKeyEnvelope });
       } catch {
         throw new Error('Overseerr credentials are incorrect.');
       }
 
+      const secretsEnvelope = await buildSettingsSecretsEnvelope({
+        overseerr: { apiKey },
+      });
       await putSettings({
         settings: {
           overseerr: {
@@ -479,11 +548,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
             baseUrl,
           },
         },
-        secrets: {
-          overseerr: {
-            apiKey,
-          },
-        },
+        secretsEnvelope,
       });
       toast.success('Connected to Overseerr.');
     },

@@ -8,7 +8,7 @@ import {
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
 
-export function FaqPage() {
+export const FaqPage = () => {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
 
@@ -202,12 +202,10 @@ export function FaqPage() {
           id: 'automation-collection-threshold',
           question: 'When does Collection task trigger?',
           answer: (
-            <>
-              <p>
-                By default, it triggers when Plex polling detects you’ve watched roughly{' '}
-                <span className="font-semibold text-white/85">70%</span> of the item.
-              </p>
-            </>
+            <p>
+              By default, it triggers when Plex polling detects you’ve watched roughly{' '}
+              <span className="font-semibold text-white/85">70%</span> of the item.
+            </p>
           ),
         },
         {
@@ -551,13 +549,11 @@ export function FaqPage() {
           id: 'observatory-what-is',
           question: 'What is the Observatory page?',
           answer: (
-            <>
-              <p>
-                Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you
-                approve download requests (optional), and curate your suggestions before/while they
-                land in Plex collections.
-              </p>
-            </>
+            <p>
+              Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you
+              approve download requests (optional), and curate your suggestions before/while they
+              land in Plex collections.
+            </p>
           ),
         },
         {
@@ -1183,4 +1179,4 @@ export function FaqPage() {
       </section>
     </div>
   );
-}
+};

@@ -269,7 +269,7 @@ function formatTimeDisplay(timeStr: string) {
   return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function calculateNextRuns(draft: ScheduleDraft, count: number = 5): Date[] {
+function calculateNextRuns(draft: ScheduleDraft, count = 5): Date[] {
   const t = parseTimeHHMM(draft.time);
   if (!t) return [];
 

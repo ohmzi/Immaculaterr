@@ -208,7 +208,7 @@ function MaskedSecretInput(props: {
 }
 
 // skipcq: JS-R1005 - This page coordinates many independent integration flows by design.
-export function SettingsPage({
+export const SettingsPage = ({
   pageTitle,
   headerIcon,
   subtitle,
@@ -224,7 +224,7 @@ export function SettingsPage({
   backgroundGradientClass?: string;
   extraContent?: ReactNode;
   showCards?: boolean;
-}) {
+}) => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
@@ -596,10 +596,20 @@ export function SettingsPage({
           setPlexTouched(true);
           setPlexTestOk(null);
           setPlexToken(checkData.authToken);
-          completePolling(pollIntervalId, 'Connected to Plex.', {
+          const suggestedBaseUrl = String(checkData.suggestedBaseUrl ?? '').trim();
+          if (suggestedBaseUrl) {
+            setPlexBaseUrl(suggestedBaseUrl);
+          }
+          completePolling(
+            pollIntervalId,
+            suggestedBaseUrl
+              ? `Connected to Plex. Server URL auto-detected: ${suggestedBaseUrl}`
+              : 'Connected to Plex.',
+            {
             closePopup: true,
             success: true,
-          });
+            },
+          );
         } catch {
           // Continue polling on transient errors.
         }
@@ -1533,6 +1543,7 @@ export function SettingsPage({
     const runLandingHealthChecks = async () => {
       // --- TMDB: avoid false \"Active -> Inactive\" flips on transient failures ---
       // Policy: if TMDB fails once, wait a cooldown and retry; only then mark inactive + toast.
+      // skipcq: SCT-A000 - Internal health-state key, not a secret.
       const TMDB_HEALTH_KEY = 'tcp_health_tmdb';
       const TMDB_COOLDOWN_MS = 5 * 60_000;
       const TMDB_FAILS_TO_ALERT = 2;
@@ -3100,7 +3111,7 @@ export function SettingsPage({
       </section>
     </div>
   );
-}
+};
 
 export function VaultPage() {
   return (

@@ -54,6 +54,7 @@ describe('IntegrationsController plex libraries', () => {
     };
     const plex = {
       listSharedUsersForServer: jest.fn(),
+      suggestPreferredServerBaseUrl: jest.fn(),
     };
     const plexServer = {
       getSections: jest.fn(),
@@ -288,6 +289,126 @@ describe('IntegrationsController plex libraries', () => {
       apiKey: 'secret',
     });
     expect(res).toEqual({ ok: true, result: { ok: true } });
+  });
+
+  it('POST /test/plex falls back to suggested server URL and persists the working baseUrl', async () => {
+    const { controller, settingsService, plex, plexServer } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl:
+            'https://172-17-0-1.a40ab448ab3f4e13b0c8d896cbdb7909.plex.direct:32400',
+        },
+      },
+      secrets: {
+        plex: { token: 'token' },
+      },
+    });
+    plexServer.getMachineIdentifier
+      .mockRejectedValueOnce(new Error('connect failed'))
+      .mockResolvedValueOnce('machine-1');
+    plex.suggestPreferredServerBaseUrl.mockResolvedValue({
+      suggestedBaseUrl: 'http://192.168.1.50:32400',
+      suggestedBaseUrls: [
+        'https://172-17-0-1.a40ab448ab3f4e13b0c8d896cbdb7909.plex.direct:32400',
+        'http://192.168.1.50:32400',
+      ],
+    });
+
+    const res = await controller.testSaved(
+      { user: { id: 'u1' } } as never,
+      'plex',
+      {},
+    );
+
+    expect(plex.suggestPreferredServerBaseUrl).toHaveBeenCalledWith({
+      plexToken: 'token',
+    });
+    expect(plexServer.getMachineIdentifier).toHaveBeenNthCalledWith(1, {
+      baseUrl:
+        'https://172-17-0-1.a40ab448ab3f4e13b0c8d896cbdb7909.plex.direct:32400',
+      token: 'token',
+    });
+    expect(plexServer.getMachineIdentifier).toHaveBeenNthCalledWith(2, {
+      baseUrl: 'http://172.17.0.1:32400',
+      token: 'token',
+    });
+    expect(settingsService.updateSettings).toHaveBeenCalledWith('u1', {
+      plex: { baseUrl: 'http://172.17.0.1:32400' },
+    });
+    expect(res).toEqual({ ok: true, summary: { machineIdentifier: 'machine-1' } });
+  });
+
+  it('POST /test/plex derives decoded-IP fallback from plex.direct URL when suggestions are unusable', async () => {
+    const { controller, settingsService, plex, plexServer } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl:
+            'https://172-17-0-1.a40ab448ab3f4e13b0c8d896cbdb7909.plex.direct:32400',
+        },
+      },
+      secrets: {
+        plex: { token: 'token' },
+      },
+    });
+    plexServer.getMachineIdentifier
+      .mockRejectedValueOnce(new Error('plex.direct failed'))
+      .mockResolvedValueOnce('machine-from-decoded-ip');
+    plex.suggestPreferredServerBaseUrl.mockResolvedValue({
+      suggestedBaseUrl: null,
+      suggestedBaseUrls: [],
+    });
+
+    const res = await controller.testSaved(
+      { user: { id: 'u1' } } as never,
+      'plex',
+      {},
+    );
+
+    expect(plexServer.getMachineIdentifier).toHaveBeenNthCalledWith(1, {
+      baseUrl:
+        'https://172-17-0-1.a40ab448ab3f4e13b0c8d896cbdb7909.plex.direct:32400',
+      token: 'token',
+    });
+    expect(plexServer.getMachineIdentifier).toHaveBeenNthCalledWith(2, {
+      baseUrl: 'http://172.17.0.1:32400',
+      token: 'token',
+    });
+    expect(settingsService.updateSettings).toHaveBeenCalledWith('u1', {
+      plex: { baseUrl: 'http://172.17.0.1:32400' },
+    });
+    expect(res).toEqual({
+      ok: true,
+      summary: { machineIdentifier: 'machine-from-decoded-ip' },
+    });
+  });
+
+  it('POST /test/plex respects explicitly provided baseUrl and does not auto-fallback', async () => {
+    const { controller, settingsService, plex, plexServer } = makeController();
+    const explicitError = new Error('manual baseUrl failed');
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl: 'http://saved-base:32400',
+        },
+      },
+      secrets: {
+        plex: { token: 'token' },
+      },
+    });
+    plexServer.getMachineIdentifier.mockRejectedValue(explicitError);
+
+    await expect(
+      controller.testSaved(
+        { user: { id: 'u1' } } as never,
+        'plex',
+        { baseUrl: 'http://manual-base:32400' },
+      ),
+    ).rejects.toBe(explicitError);
+
+    expect(plex.suggestPreferredServerBaseUrl).not.toHaveBeenCalled();
+    expect(settingsService.updateSettings).not.toHaveBeenCalled();
   });
 
   it('GET /plex/monitoring-users returns selected state', async () => {

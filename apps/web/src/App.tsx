@@ -16,17 +16,18 @@ import { FaqPage } from '@/pages/FaqPage';
 import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
 import { DebuggerPage } from '@/pages/DebuggerPage';
 
+// skipcq: SCT-A000 - Legacy localStorage cleanup key, not a credential.
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
 
-function ProtectedAppShell() {
+const ProtectedAppShell = () => {
   return (
     <AuthGate>
       <AppShell />
     </AuthGate>
   );
-}
+};
 
-export default function App() {
+const App = () => {
   useEffect(() => {
     // One-time cleanup: stop using legacy localStorage onboarding/secrets.
     // Note: we only remove the legacy key; we never store secrets in browser storage.
@@ -70,4 +71,6 @@ export default function App() {
       </Routes>
     </BrowserRouter>
   );
-}
+};
+
+export default App;
