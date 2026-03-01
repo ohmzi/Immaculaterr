@@ -45,12 +45,28 @@ function toStringSafe(value: unknown): string {
 }
 
 function toIntSafe(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'number' && Number.isFinite(value))
+    return Math.trunc(value);
   if (typeof value === 'string' && value.trim()) {
     const n = Number.parseInt(value.trim(), 10);
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function toBoolSafe(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized === '1' ||
+      normalized === 'true' ||
+      normalized === 'yes' ||
+      normalized === 'on'
+    );
+  }
+  return false;
 }
 
 function hasUserLikeKey(obj: Record<string, unknown>): boolean {
@@ -69,13 +85,9 @@ function hasUserLikeKey(obj: Record<string, unknown>): boolean {
 }
 
 function hasHomeUserLikeKey(obj: Record<string, unknown>): boolean {
-  const hasIdentity = [
-    'userID',
-    'userId',
-    'accountId',
-    'accountID',
-    'id',
-  ].some((k) => k in obj);
+  const hasIdentity = ['userID', 'userId', 'accountId', 'accountID', 'id'].some(
+    (k) => k in obj,
+  );
   const hasDisplay = [
     'friendlyName',
     'title',
@@ -215,6 +227,147 @@ function parseHomeUsersPayload(payload: unknown): PlexSharedServerUser[] {
   return dedupeSharedServerUsers(normalized);
 }
 
+type PlexServerConnectionCandidate = {
+  uri: string;
+  local: boolean;
+  relay: boolean;
+  owned: boolean;
+  publicAddressMatches: boolean;
+};
+
+function hasServerProvides(value: unknown): boolean {
+  const raw = toStringSafe(value).toLowerCase();
+  if (!raw) return false;
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .includes('server');
+}
+
+function collectServerResourceObjects(
+  value: unknown,
+  out: Record<string, unknown>[],
+  depth = 0,
+) {
+  if (depth > 8) return;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectServerResourceObjects(item, out, depth + 1);
+    }
+    return;
+  }
+  if (!isPlainObject(value)) return;
+
+  if (hasServerProvides(value['provides'])) {
+    out.push(value);
+  }
+
+  for (const next of Object.values(value)) {
+    collectServerResourceObjects(next, out, depth + 1);
+  }
+}
+
+function appendConnectionObjects(
+  source: unknown,
+  out: Record<string, unknown>[],
+): void {
+  if (Array.isArray(source)) {
+    for (const entry of source) {
+      if (isPlainObject(entry)) out.push(entry);
+    }
+    return;
+  }
+  if (!isPlainObject(source)) return;
+
+  const nested = source['Connection'] ?? source['connection'];
+  if (nested !== undefined) {
+    appendConnectionObjects(nested, out);
+    return;
+  }
+
+  out.push(source);
+}
+
+function parseServerConnectionCandidates(
+  payload: unknown,
+): PlexServerConnectionCandidate[] {
+  const resources: Record<string, unknown>[] = [];
+  collectServerResourceObjects(payload, resources, 0);
+
+  const out: PlexServerConnectionCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const resource of resources) {
+    const connections: Record<string, unknown>[] = [];
+    appendConnectionObjects(resource['Connection'], connections);
+    appendConnectionObjects(resource['connection'], connections);
+    appendConnectionObjects(resource['connections'], connections);
+    appendConnectionObjects(resource['Connections'], connections);
+
+    const owned = toBoolSafe(resource['owned']);
+    const publicAddressMatches = toBoolSafe(resource['publicAddressMatches']);
+
+    for (const connection of connections) {
+      const uri = toStringSafe(connection['uri'] ?? connection['URI']);
+      if (!uri) continue;
+
+      try {
+        const parsed = new URL(uri);
+        if (!/^https?:$/i.test(parsed.protocol)) continue;
+      } catch {
+        continue;
+      }
+
+      const dedupeKey = uri.toLowerCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      out.push({
+        uri,
+        local: toBoolSafe(connection['local'] ?? connection['isLocal']),
+        relay: toBoolSafe(connection['relay']),
+        owned,
+        publicAddressMatches,
+      });
+    }
+  }
+
+  return out;
+}
+
+function isLikelyLocalOrPrivateHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase();
+  if (!host) return false;
+  if (host === 'localhost' || host.endsWith('.local')) return true;
+  if (host === 'host.docker.internal') return true;
+  if (host === '127.0.0.1' || host === '::1') return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true;
+  return false;
+}
+
+function scoreServerConnectionCandidate(
+  candidate: PlexServerConnectionCandidate,
+): number {
+  let score = 0;
+  if (candidate.local) score += 100;
+  if (!candidate.relay) score += 40;
+  if (candidate.owned) score += 20;
+  if (candidate.publicAddressMatches) score += 10;
+
+  try {
+    const parsed = new URL(candidate.uri);
+    if (parsed.protocol === 'http:') score += 5;
+    if (isLikelyLocalOrPrivateHost(parsed.hostname)) score += 8;
+  } catch {
+    // Ignore malformed URL scoring; parser already validated shape.
+  }
+
+  return score;
+}
+
 @Injectable()
 export class PlexService {
   private readonly logger = new Logger(PlexService.name);
@@ -296,10 +449,66 @@ export class PlexService {
     if (data.authToken) {
       this.logger.log(`Plex PIN authorized id=${data.id}`);
     }
+    let suggestedBaseUrl: string | null = null;
+    let suggestedBaseUrls: string[] = [];
+    if (data.authToken) {
+      try {
+        const suggested = await this.suggestPreferredServerBaseUrl({
+          plexToken: data.authToken,
+        });
+        suggestedBaseUrl = suggested.suggestedBaseUrl;
+        suggestedBaseUrls = suggested.suggestedBaseUrls;
+      } catch (err) {
+        const message = (err as Error)?.message ?? String(err);
+        this.logger.warn(
+          `Unable to detect Plex server URL for authorized pin id=${data.id}: ${message}`,
+        );
+      }
+    }
     return {
       id: data.id,
       authToken: data.authToken ?? null,
       expiresAt: data.expiresAt ?? null,
+      suggestedBaseUrl,
+      suggestedBaseUrls,
+    };
+  }
+
+  async suggestPreferredServerBaseUrl(params: { plexToken: string }): Promise<{
+    suggestedBaseUrl: string | null;
+    suggestedBaseUrls: string[];
+  }> {
+    const plexToken = params.plexToken.trim();
+    if (!plexToken) {
+      return { suggestedBaseUrl: null, suggestedBaseUrls: [] };
+    }
+
+    const lookup = await this.fetchServerConnectionsFromEndpoints({
+      plexToken,
+      endpoints: [
+        'https://plex.tv/api/resources?includeHttps=1&includeRelay=1',
+        'https://plex.tv/pms/resources?includeHttps=1&includeRelay=1',
+      ],
+    });
+
+    if (!lookup.ok || !lookup.candidates.length) {
+      return { suggestedBaseUrl: null, suggestedBaseUrls: [] };
+    }
+
+    const sorted = lookup.candidates
+      .slice()
+      .sort((left, right) => {
+        const scoreDelta =
+          scoreServerConnectionCandidate(right) -
+          scoreServerConnectionCandidate(left);
+        if (scoreDelta !== 0) return scoreDelta;
+        return left.uri.localeCompare(right.uri);
+      })
+      .map((candidate) => candidate.uri);
+
+    return {
+      suggestedBaseUrl: sorted[0] ?? null,
+      suggestedBaseUrls: sorted,
     };
   }
 
@@ -372,7 +581,8 @@ export class PlexService {
     if (mergedUsers.length) return mergedUsers;
     if (sharedLookup.ok || homeLookup.ok) return [];
 
-    const reason = [...sharedLookup.errors, ...homeLookup.errors].join(' | ') || 'unknown';
+    const reason =
+      [...sharedLookup.errors, ...homeLookup.errors].join(' | ') || 'unknown';
     throw new BadGatewayException(
       `Plex shared users lookup failed for machineIdentifier=${machineIdentifier}: ${reason}`,
     );
@@ -382,7 +592,11 @@ export class PlexService {
     plexToken: string;
     endpoints: string[];
     parser: (payload: unknown) => PlexSharedServerUser[];
-  }): Promise<{ ok: boolean; users: PlexSharedServerUser[]; errors: string[] }> {
+  }): Promise<{
+    ok: boolean;
+    users: PlexSharedServerUser[];
+    errors: string[];
+  }> {
     const errors: string[] = [];
     for (const url of params.endpoints) {
       const safeUrl = sanitizeUrlForLogs(url);
@@ -408,7 +622,9 @@ export class PlexService {
           continue;
         }
 
-        this.logger.log(`Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`);
+        this.logger.log(
+          `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
 
         const body = raw.trim();
         if (!body) return { ok: true, users: [], errors };
@@ -459,6 +675,96 @@ export class PlexService {
     }
 
     return { ok: false, users: [], errors };
+  }
+
+  private async fetchServerConnectionsFromEndpoints(params: {
+    plexToken: string;
+    endpoints: string[];
+  }): Promise<{
+    ok: boolean;
+    candidates: PlexServerConnectionCandidate[];
+    errors: string[];
+  }> {
+    const errors: string[] = [];
+    for (const url of params.endpoints) {
+      const safeUrl = sanitizeUrlForLogs(url);
+      const startedAt = Date.now();
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            ...this.getPlexHeaders(),
+            Accept: 'application/json, text/xml;q=0.9, application/xml;q=0.8',
+            'X-Plex-Token': params.plexToken,
+          },
+        });
+
+        const raw = await res.text().catch(() => '');
+        const ms = Date.now() - startedAt;
+
+        if (!res.ok) {
+          this.logger.warn(
+            `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${raw}`.trim(),
+          );
+          errors.push(`HTTP ${res.status} ${safeUrl}`);
+          continue;
+        }
+
+        this.logger.log(
+          `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+
+        const body = raw.trim();
+        if (!body) return { ok: true, candidates: [], errors };
+
+        const contentType = res.headers.get('content-type') ?? '';
+        const looksJson = body.startsWith('{') || body.startsWith('[');
+        const looksXml = body.startsWith('<');
+
+        let parsed: unknown = null;
+        if (contentType.includes('json') || looksJson) {
+          try {
+            parsed = JSON.parse(body) as unknown;
+          } catch {
+            parsed = null;
+          }
+        }
+        if ((contentType.includes('xml') || looksXml) && parsed === null) {
+          try {
+            parsed = xmlParser.parse(body) as unknown;
+          } catch {
+            parsed = null;
+          }
+        }
+        if (parsed === null) {
+          try {
+            parsed = xmlParser.parse(body) as unknown;
+          } catch {
+            try {
+              parsed = JSON.parse(body) as unknown;
+            } catch {
+              parsed = null;
+            }
+          }
+        }
+
+        if (parsed === null) {
+          errors.push(`unparseable payload ${safeUrl}`);
+          continue;
+        }
+
+        return {
+          ok: true,
+          candidates: parseServerConnectionCandidates(parsed),
+          errors,
+        };
+      } catch (err) {
+        const message = (err as Error)?.message ?? String(err);
+        errors.push(`${safeUrl}: ${message}`);
+      }
+    }
+
+    return { ok: false, candidates: [], errors };
   }
 
   private getPlexHeaders(): Record<string, string> {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -49,6 +49,7 @@ const shouldShowWhatsNewModal = (params: {
 
 export const AppShell = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [sessionDismissedVersion, setSessionDismissedVersion] = useState<string | null>(null);
@@ -202,6 +203,15 @@ export const AppShell = () => {
     setWizardOpen(false);
   }, []);
 
+  const handleWizardFinished = useCallback(() => {
+    const wasRequiredOnboarding = onboardingCompleted === false;
+    setWizardOpen(false);
+
+    if (wasRequiredOnboarding && location.pathname !== '/') {
+      navigate('/', { replace: true });
+    }
+  }, [location.pathname, navigate, onboardingCompleted]);
+
   const isHomePage = location.pathname === '/';
 
   return (
@@ -236,7 +246,7 @@ export const AppShell = () => {
         open={wizardOpen || onboardingCompleted === false}
         required={onboardingCompleted === false}
         onClose={closeWizard}
-        onFinished={closeWizard}
+        onFinished={handleWizardFinished}
       />
     </div>
   );

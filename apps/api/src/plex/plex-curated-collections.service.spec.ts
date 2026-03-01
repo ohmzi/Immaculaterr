@@ -99,7 +99,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
     });
   });
 
-  it('pins friends target to shared home and matches by base when suffix differs', async () => {
+  it('pins friends target to recommended+shared home and matches by base when suffix differs', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
         { ratingKey: '31', title: 'Inspired by your Immaculate Taste in Shows (Bob)' },
@@ -139,7 +139,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
     expect(plexServer.setCollectionHubVisibility).toHaveBeenCalledTimes(3);
     for (const call of plexServer.setCollectionHubVisibility.mock.calls) {
       expect(call[0]).toMatchObject({
-        promotedToRecommended: 0,
+        promotedToRecommended: 1,
         promotedToOwnHome: 0,
         promotedToSharedHome: 1,
       });
@@ -271,7 +271,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
         collectionRatingKey: '63',
         promotedToSharedHome: 1,
         promotedToOwnHome: 0,
-        promotedToRecommended: 0,
+        promotedToRecommended: 1,
       }),
     );
     expect(plexServer.moveHubRow).toHaveBeenCalledTimes(3);

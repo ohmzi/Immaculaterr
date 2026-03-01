@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Param,
   Post,
   Put,
@@ -78,6 +79,77 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
+function trimSingleTrailingSlash(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function normalizeHttpUrlOrEmpty(raw: string): string {
+  if (!raw.trim()) return '';
+  try {
+    return trimSingleTrailingSlash(normalizeHttpUrl(raw));
+  } catch {
+    return '';
+  }
+}
+
+function dedupeHttpUrls(urls: string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    const normalized = normalizeHttpUrlOrEmpty(raw);
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+  return output;
+}
+
+function parsePlexDirectIpv4(hostname: string): string | null {
+  const host = hostname.trim().toLowerCase();
+  const match = /^(\d{1,3}(?:-\d{1,3}){3})\./.exec(host);
+  if (!match) return null;
+  const ip = match[1]
+    .split('-')
+    .map((part) => Number.parseInt(part, 10))
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 255);
+  if (ip.length !== 4) return null;
+  return `${ip[0]}.${ip[1]}.${ip[2]}.${ip[3]}`;
+}
+
+function buildUrl(protocol: 'http' | 'https', host: string, port: string): string {
+  return normalizeHttpUrlOrEmpty(`${protocol}://${host}:${port}`);
+}
+
+function derivePlexBaseUrlVariants(raw: string): string[] {
+  const normalized = normalizeHttpUrlOrEmpty(raw);
+  if (!normalized) return [];
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    return [];
+  }
+
+  const port = parsed.port || '32400';
+  const variants: string[] = [normalized];
+  const decodedPlexDirectIp = parsePlexDirectIpv4(parsed.hostname);
+  if (decodedPlexDirectIp) {
+    variants.push(buildUrl('http', decodedPlexDirectIp, port));
+    variants.push(buildUrl('https', decodedPlexDirectIp, port));
+  }
+  variants.push(buildUrl('http', parsed.hostname, port));
+  variants.push(buildUrl('https', parsed.hostname, port));
+  variants.push(buildUrl('http', 'localhost', port));
+  variants.push(buildUrl('http', '127.0.0.1', port));
+  variants.push(buildUrl('http', 'host.docker.internal', port));
+  variants.push(buildUrl('http', '172.17.0.1', port));
+
+  return dedupeHttpUrls(variants);
+}
+
 type UpdatePlexLibrariesBody = {
   selectedSectionKeys?: unknown;
 };
@@ -112,6 +184,8 @@ type SavedIntegrationTestResult = {
 @Controller('integrations')
 @ApiTags('integrations')
 export class IntegrationsController {
+  private readonly logger = new Logger(IntegrationsController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
@@ -727,13 +801,65 @@ export class IntegrationsController {
   private async testSavedPlex(
     context: SavedIntegrationTestContext,
   ): Promise<SavedIntegrationTestResult> {
+    const requestBaseUrl = pickString(context.bodyObj, 'baseUrl');
     const baseUrl = this.requireSavedBaseUrl(context, 'plex.baseUrl', 'Plex');
     const token = await this.resolveSavedIntegrationSecret(context, 'plex');
-    const machineIdentifier = await this.plexServer.getMachineIdentifier({
-      baseUrl,
-      token,
-    });
-    return { ok: true, summary: { machineIdentifier } };
+    try {
+      const machineIdentifier = await this.plexServer.getMachineIdentifier({
+        baseUrl,
+        token,
+      });
+      return { ok: true, summary: { machineIdentifier } };
+    } catch (primaryError) {
+      const primaryMessage =
+        (primaryError as Error)?.message ?? String(primaryError);
+      this.logger.warn(
+        `Plex integration test failed for baseUrl=${baseUrl} userId=${context.userId} reason=${JSON.stringify(primaryMessage)}`,
+      );
+      // If caller explicitly provided a baseUrl in this request, respect that path.
+      if (requestBaseUrl) throw primaryError;
+
+      const suggestions = await this.plex
+        .suggestPreferredServerBaseUrl({ plexToken: token })
+        .catch(() => ({
+          suggestedBaseUrl: null,
+          suggestedBaseUrls: [] as string[],
+        }));
+      const baseCandidates = dedupeHttpUrls([
+        ...(suggestions.suggestedBaseUrls ?? []),
+        String(suggestions.suggestedBaseUrl ?? ''),
+      ]);
+      const fallbackBaseUrls = dedupeHttpUrls(
+        [
+          ...baseCandidates.flatMap((candidate) => derivePlexBaseUrlVariants(candidate)),
+          ...derivePlexBaseUrlVariants(baseUrl),
+        ].filter(Boolean),
+      ).filter((url) => url.toLowerCase() !== baseUrl.toLowerCase());
+
+      for (const fallbackBaseUrl of fallbackBaseUrls) {
+        try {
+          const machineIdentifier = await this.plexServer.getMachineIdentifier({
+            baseUrl: fallbackBaseUrl,
+            token,
+          });
+          await this.settingsService.updateSettings(context.userId, {
+            plex: { baseUrl: fallbackBaseUrl },
+          });
+          this.logger.log(
+            `Plex integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
+          );
+          return { ok: true, summary: { machineIdentifier } };
+        } catch {
+          // Try next candidate URL.
+        }
+      }
+
+      this.logger.warn(
+        `Plex integration fallback exhausted userId=${context.userId} attempted=${fallbackBaseUrls.length}`,
+      );
+
+      throw primaryError;
+    }
   }
 
   private async testSavedRadarr(

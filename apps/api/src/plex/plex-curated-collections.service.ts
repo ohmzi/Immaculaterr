@@ -864,11 +864,13 @@ export class PlexCuratedCollectionsService {
     const targetVisibility =
       pinTarget === 'friends'
         ? {
-            promotedToRecommended: 0,
+            // Non-admin users: pin to Friends' Home + Library Recommended.
+            promotedToRecommended: 1,
             promotedToOwnHome: 0,
             promotedToSharedHome: 1,
           }
         : {
+            // Admin users: pin to Home + Library Recommended.
             promotedToRecommended: 1,
             promotedToOwnHome: 1,
             promotedToSharedHome: 0,

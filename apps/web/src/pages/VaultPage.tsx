@@ -596,10 +596,20 @@ export const SettingsPage = ({
           setPlexTouched(true);
           setPlexTestOk(null);
           setPlexToken(checkData.authToken);
-          completePolling(pollIntervalId, 'Connected to Plex.', {
+          const suggestedBaseUrl = String(checkData.suggestedBaseUrl ?? '').trim();
+          if (suggestedBaseUrl) {
+            setPlexBaseUrl(suggestedBaseUrl);
+          }
+          completePolling(
+            pollIntervalId,
+            suggestedBaseUrl
+              ? `Connected to Plex. Server URL auto-detected: ${suggestedBaseUrl}`
+              : 'Connected to Plex.',
+            {
             closePopup: true,
             success: true,
-          });
+            },
+          );
         } catch {
           // Continue polling on transient errors.
         }
