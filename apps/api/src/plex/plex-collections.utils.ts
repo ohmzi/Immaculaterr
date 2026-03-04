@@ -37,6 +37,13 @@ export const CURATED_TV_COLLECTION_HUB_ORDER = [
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
 ] as const;
 
+const IMMACULATE_TASTE_DEFAULT_BASE_NAME_SET = new Set(
+  [
+    IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+    IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+  ].map((name) => normalizeCollectionTitle(name)),
+);
+
 type CuratedMediaType = 'movie' | 'tv';
 
 const CURATED_BASE_HINTS = {
@@ -78,6 +85,25 @@ export function buildUserCollectionName(
   if (!title) return base;
   // New format: "Collection Name (username)"
   return `${base} (${title})`;
+}
+
+export function isImmaculateTasteDefaultCollectionBaseName(baseName: string): boolean {
+  return IMMACULATE_TASTE_DEFAULT_BASE_NAME_SET.has(
+    normalizeCollectionTitle(baseName),
+  );
+}
+
+export function buildImmaculateCollectionName(
+  baseName: string,
+  plexUserTitle?: string | null,
+): string {
+  const base = String(baseName ?? '').trim();
+  if (!base) return buildUserCollectionName(base, plexUserTitle);
+  if (!isImmaculateTasteDefaultCollectionBaseName(base)) {
+    // Custom names should be used as-is (no automatic user/profile suffix).
+    return base;
+  }
+  return buildUserCollectionName(base, plexUserTitle);
 }
 
 export function stripUserCollectionSuffix(collectionName: string): string {
@@ -209,18 +235,22 @@ export function sortCollectionNamesByCuratedBaseOrder(params: {
   collectionNames: string[];
   mediaType: CuratedMediaType;
 }): string[] {
-  return params.collectionNames.slice().sort((a, b) => {
-    const ai = curatedCollectionOrderIndex({
-      collectionName: a,
-      mediaType: params.mediaType,
-    });
-    const bi = curatedCollectionOrderIndex({
-      collectionName: b,
-      mediaType: params.mediaType,
-    });
-    if (ai !== bi) return ai - bi;
-    return normalizeCollectionTitle(a).localeCompare(normalizeCollectionTitle(b));
-  });
+  return params.collectionNames
+    .map((collectionName, originalIndex) => ({ collectionName, originalIndex }))
+    .sort((a, b) => {
+      const ai = curatedCollectionOrderIndex({
+        collectionName: a.collectionName,
+        mediaType: params.mediaType,
+      });
+      const bi = curatedCollectionOrderIndex({
+        collectionName: b.collectionName,
+        mediaType: params.mediaType,
+      });
+      if (ai !== bi) return ai - bi;
+      // Preserve caller-provided order among same-rank entries (e.g. custom profile collections).
+      return a.originalIndex - b.originalIndex;
+    })
+    .map((item) => item.collectionName);
 }
 
 export function buildUserCollectionHubOrder(

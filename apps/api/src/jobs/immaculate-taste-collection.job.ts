@@ -17,6 +17,8 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import { withJobRetry, withJobRetryOrNull } from './job-retry';
+import { ArrInstanceService } from '../arr-instances/arr-instance.service';
+import { ImmaculateTasteProfileService } from '../immaculate-taste-profiles/immaculate-taste-profile.service';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -149,6 +151,8 @@ export class ImmaculateTasteCollectionJob {
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
     private readonly immaculateTasteRefresher: ImmaculateTasteRefresherJob,
+    private readonly arrInstances: ArrInstanceService,
+    private readonly immaculateTasteProfiles: ImmaculateTasteProfileService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
@@ -313,20 +317,25 @@ export class ImmaculateTasteCollectionJob {
     let movieSectionKey = seedLibrarySectionIdRaw || '';
     let movieLibraryName = seedLibrarySectionTitle || '';
 
-    if (!movieSectionKey && seedRatingKey) {
-      const meta = await withJobRetryOrNull(
-        () =>
-          this.plexServer.getMetadataDetails({
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            ratingKey: seedRatingKey,
-          }),
-        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
-      );
-      if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
-      if (meta?.librarySectionTitle)
-        movieLibraryName = meta.librarySectionTitle;
+    const seedMeta = seedRatingKey
+      ? await withJobRetryOrNull(
+          () =>
+            this.plexServer.getMetadataDetails({
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              ratingKey: seedRatingKey,
+            }),
+          { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+        )
+      : null;
+    if (!movieSectionKey && seedMeta?.librarySectionId) {
+      movieSectionKey = seedMeta.librarySectionId;
     }
+    if (!movieLibraryName && seedMeta?.librarySectionTitle) {
+      movieLibraryName = seedMeta.librarySectionTitle;
+    }
+    const seedGenres = seedMeta?.genres ?? [];
+    const seedAudioLanguages = seedMeta?.audioLanguages ?? [];
     if (movieSectionKey && excludedSectionKeySet.has(movieSectionKey)) {
       await ctx.warn(
         'immaculateTastePoints: skipped (resolved seed library excluded)',
@@ -431,6 +440,8 @@ export class ImmaculateTasteCollectionJob {
     await ctx.info('immaculateTastePoints: config', {
       movieLibraryName,
       movieSectionKey,
+      seedGenres,
+      seedAudioLanguages,
       openAiEnabled,
       googleEnabled,
       suggestionsPerRun,
@@ -445,11 +456,40 @@ export class ImmaculateTasteCollectionJob {
       approvalRequiredFromObservatory,
       webContextFraction,
     });
+    const matchedProfile =
+      await this.immaculateTasteProfiles.resolveProfileForSeed(ctx.userId, {
+        plexUserId,
+        seedGenres,
+        seedAudioLanguages,
+        seedMediaType: 'movie',
+      });
+    if (!matchedProfile) {
+      const skippedSummary: JsonObject = {
+        mediaType: 'movie',
+        plexUserId,
+        plexUserTitle,
+        seedTitle,
+        seedYear,
+        skipped: true,
+        reason: 'no_matching_profile',
+      };
+      await ctx.warn('immaculateTastePoints: skipped (no matching profile)', {
+        seedGenres,
+        seedAudioLanguages,
+      });
+      const report = buildImmaculateTastePointsReport({
+        ctx,
+        raw: skippedSummary,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
+    const profileId = matchedProfile.datasetId;
 
     await this.immaculateTaste.ensureLegacyImported({
       ctx,
       plexUserId,
       librarySectionKey: movieSectionKey,
+      profileId,
       maxPoints,
     });
 
@@ -776,20 +816,27 @@ export class ImmaculateTasteCollectionJob {
     }
 
     // --- Optional Radarr: add missing titles (best-effort) ---
-    const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
-    const radarrApiKey = pickString(secrets, 'radarr.apiKey');
     const fetchMissingRadarrSaved =
       pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ??
       true;
     const fetchMissingRadarr = fetchMissingRadarrSaved && !overseerrModeSelected;
-    // Back-compat: if radarr.enabled isn't set, treat "secret present" as enabled.
+    const resolvedRadarrInstance = fetchMissingRadarr
+      ? await this.arrInstances
+          .resolveInstance(ctx.userId, 'radarr', matchedProfile.radarrInstanceId, {
+            requireConfigured: false,
+          })
+          .catch(() => null)
+      : null;
     const radarrEnabled =
       fetchMissingRadarr &&
-      (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
-      Boolean(radarrBaseUrlRaw) &&
-      Boolean(radarrApiKey);
+      Boolean(resolvedRadarrInstance?.enabled) &&
+      Boolean(resolvedRadarrInstance?.baseUrl) &&
+      Boolean(resolvedRadarrInstance?.apiKey);
     const radarrBaseUrl = radarrEnabled
-      ? normalizeHttpUrl(radarrBaseUrlRaw)
+      ? String(resolvedRadarrInstance?.baseUrl ?? '')
+      : '';
+    const radarrApiKey = radarrEnabled
+      ? String(resolvedRadarrInstance?.apiKey ?? '')
       : '';
 
     const radarrStats = {
@@ -832,18 +879,23 @@ export class ImmaculateTasteCollectionJob {
               baseUrl: radarrBaseUrl,
               apiKey: radarrApiKey,
               preferredRootFolderPath:
+                resolvedRadarrInstance?.rootFolderPath ||
                 pickString(settings, 'radarr.defaultRootFolderPath') ||
                 pickString(settings, 'radarr.rootFolderPath'),
               preferredQualityProfileId:
-                Math.max(
+                resolvedRadarrInstance?.qualityProfileId ??
+                (Math.max(
                   1,
                   Math.trunc(
                     pickNumber(settings, 'radarr.defaultQualityProfileId') ??
                       pickNumber(settings, 'radarr.qualityProfileId') ??
                       1,
                   ),
-                ) || 1,
+                ) || 1),
               preferredTagId: (() => {
+                if (resolvedRadarrInstance?.tagId) {
+                  return Math.trunc(resolvedRadarrInstance.tagId);
+                }
                 const v =
                   pickNumber(settings, 'radarr.defaultTagId') ??
                   pickNumber(settings, 'radarr.tagId');
@@ -990,6 +1042,7 @@ export class ImmaculateTasteCollectionJob {
           ctx,
           plexUserId,
           librarySectionKey: movieSectionKey,
+          profileId,
           suggested: suggestedForPoints,
           maxPoints,
         });
@@ -1010,6 +1063,7 @@ export class ImmaculateTasteCollectionJob {
             where: {
               plexUserId,
               librarySectionKey: movieSectionKey,
+              profileId,
               tmdbId: { in: activeTmdbIds },
             },
             data: { downloadApproval: 'none' },
@@ -1024,6 +1078,7 @@ export class ImmaculateTasteCollectionJob {
               where: {
                 plexUserId,
                 librarySectionKey: movieSectionKey,
+                profileId,
                 status: 'pending',
                 tmdbId: { in: missingTmdbIds },
                 downloadApproval: 'none',
@@ -1038,6 +1093,7 @@ export class ImmaculateTasteCollectionJob {
               where: {
                 plexUserId,
                 librarySectionKey: movieSectionKey,
+                profileId,
                 status: 'pending',
                 tmdbId: { in: missingTmdbIds },
                 downloadApproval: 'pending',
@@ -1054,6 +1110,7 @@ export class ImmaculateTasteCollectionJob {
             where: {
               plexUserId,
               librarySectionKey: movieSectionKey,
+              profileId,
               tmdbId: { in: radarrSentTmdbIds },
               sentToRadarrAt: null,
             },
@@ -1101,6 +1158,9 @@ export class ImmaculateTasteCollectionJob {
             includeTv: false,
             movieSectionKey,
             movieLibraryName,
+            profileId,
+            movieCollectionBaseName:
+              matchedProfile.movieCollectionBaseName ?? null,
           },
         });
         refresherSummary = refresherResult.summary ?? null;
@@ -1122,6 +1182,13 @@ export class ImmaculateTasteCollectionJob {
       plexUserTitle,
       seedTitle,
       seedYear,
+      profile: {
+        id: matchedProfile.id,
+        datasetId: matchedProfile.datasetId,
+        name: matchedProfile.name,
+        radarrInstanceId: matchedProfile.radarrInstanceId ?? null,
+        movieCollectionBaseName: matchedProfile.movieCollectionBaseName ?? null,
+      },
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
       generated: generatedTitles.length,
@@ -1258,19 +1325,25 @@ export class ImmaculateTasteCollectionJob {
     let tvSectionKey = seedLibrarySectionIdRaw || '';
     let tvLibraryName = seedLibrarySectionTitle || '';
 
-    if (!tvSectionKey && seedRatingKey) {
-      const meta = await withJobRetryOrNull(
-        () =>
-          this.plexServer.getMetadataDetails({
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            ratingKey: seedRatingKey,
-          }),
-        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
-      );
-      if (meta?.librarySectionId) tvSectionKey = meta.librarySectionId;
-      if (meta?.librarySectionTitle) tvLibraryName = meta.librarySectionTitle;
+    const seedMeta = seedRatingKey
+      ? await withJobRetryOrNull(
+          () =>
+            this.plexServer.getMetadataDetails({
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              ratingKey: seedRatingKey,
+            }),
+          { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+        )
+      : null;
+    if (!tvSectionKey && seedMeta?.librarySectionId) {
+      tvSectionKey = seedMeta.librarySectionId;
     }
+    if (!tvLibraryName && seedMeta?.librarySectionTitle) {
+      tvLibraryName = seedMeta.librarySectionTitle;
+    }
+    const seedGenres = seedMeta?.genres ?? [];
+    const seedAudioLanguages = seedMeta?.audioLanguages ?? [];
     if (tvSectionKey && excludedSectionKeySet.has(tvSectionKey)) {
       await ctx.warn(
         'immaculateTastePoints(tv): skipped (resolved seed library excluded)',
@@ -1386,6 +1459,8 @@ export class ImmaculateTasteCollectionJob {
     await ctx.info('immaculateTastePoints(tv): config', {
       tvLibraryName,
       tvSectionKey,
+      seedGenres,
+      seedAudioLanguages,
       openAiEnabled,
       googleEnabled,
       suggestionsPerRun,
@@ -1400,10 +1475,39 @@ export class ImmaculateTasteCollectionJob {
       approvalRequiredFromObservatory,
       webContextFraction,
     });
+    const matchedProfile =
+      await this.immaculateTasteProfiles.resolveProfileForSeed(ctx.userId, {
+        plexUserId,
+        seedGenres,
+        seedAudioLanguages,
+        seedMediaType: 'show',
+      });
+    if (!matchedProfile) {
+      const skippedSummary: JsonObject = {
+        mediaType: 'tv',
+        plexUserId,
+        plexUserTitle,
+        seedTitle,
+        seedYear,
+        skipped: true,
+        reason: 'no_matching_profile',
+      };
+      await ctx.warn('immaculateTastePoints(tv): skipped (no matching profile)', {
+        seedGenres,
+        seedAudioLanguages,
+      });
+      const report = buildImmaculateTastePointsReport({
+        ctx,
+        raw: skippedSummary,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
+    const profileId = matchedProfile.datasetId;
 
     await this.immaculateTasteTv.ensureLegacyImported({
       ctx,
       plexUserId,
+      profileId,
       maxPoints,
     });
 
@@ -1690,19 +1794,27 @@ export class ImmaculateTasteCollectionJob {
     }
 
     // --- Sonarr add missing series (best-effort)
-    const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
-    const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
     const fetchMissingSonarrSaved =
       pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ??
       true;
     const fetchMissingSonarr = fetchMissingSonarrSaved && !overseerrModeSelected;
+    const resolvedSonarrInstance = fetchMissingSonarr
+      ? await this.arrInstances
+          .resolveInstance(ctx.userId, 'sonarr', matchedProfile.sonarrInstanceId, {
+            requireConfigured: false,
+          })
+          .catch(() => null)
+      : null;
     const sonarrEnabled =
       fetchMissingSonarr &&
-      (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
-      Boolean(sonarrBaseUrlRaw) &&
-      Boolean(sonarrApiKey);
+      Boolean(resolvedSonarrInstance?.enabled) &&
+      Boolean(resolvedSonarrInstance?.baseUrl) &&
+      Boolean(resolvedSonarrInstance?.apiKey);
     const sonarrBaseUrl = sonarrEnabled
-      ? normalizeHttpUrl(sonarrBaseUrlRaw)
+      ? String(resolvedSonarrInstance?.baseUrl ?? '')
+      : '';
+    const sonarrApiKey = sonarrEnabled
+      ? String(resolvedSonarrInstance?.apiKey ?? '')
       : '';
 
     const sonarrStats = {
@@ -1740,18 +1852,23 @@ export class ImmaculateTasteCollectionJob {
               baseUrl: sonarrBaseUrl,
               apiKey: sonarrApiKey,
               preferredRootFolderPath:
+                resolvedSonarrInstance?.rootFolderPath ||
                 pickString(settings, 'sonarr.defaultRootFolderPath') ||
                 pickString(settings, 'sonarr.rootFolderPath'),
               preferredQualityProfileId:
-                Math.max(
+                resolvedSonarrInstance?.qualityProfileId ??
+                (Math.max(
                   1,
                   Math.trunc(
                     pickNumber(settings, 'sonarr.defaultQualityProfileId') ??
                       pickNumber(settings, 'sonarr.qualityProfileId') ??
                       1,
                   ),
-                ) || 1,
+                ) || 1),
               preferredTagId: (() => {
+                if (resolvedSonarrInstance?.tagId) {
+                  return Math.trunc(resolvedSonarrInstance.tagId);
+                }
                 const v =
                   pickNumber(settings, 'sonarr.defaultTagId') ??
                   pickNumber(settings, 'sonarr.tagId');
@@ -1894,6 +2011,7 @@ export class ImmaculateTasteCollectionJob {
           ctx,
           plexUserId,
           librarySectionKey: tvSectionKey,
+          profileId,
           suggested: suggestedForPoints,
           maxPoints,
         });
@@ -1914,6 +2032,7 @@ export class ImmaculateTasteCollectionJob {
             where: {
               plexUserId,
               librarySectionKey: tvSectionKey,
+              profileId,
               tvdbId: { in: activeTvdbIds },
             },
             data: { downloadApproval: 'none' },
@@ -1928,6 +2047,7 @@ export class ImmaculateTasteCollectionJob {
               where: {
                 plexUserId,
                 librarySectionKey: tvSectionKey,
+                profileId,
                 status: 'pending',
                 tvdbId: { in: missingTvdbIds },
                 downloadApproval: 'none',
@@ -1941,6 +2061,7 @@ export class ImmaculateTasteCollectionJob {
               where: {
                 plexUserId,
                 librarySectionKey: tvSectionKey,
+                profileId,
                 status: 'pending',
                 tvdbId: { in: missingTvdbIds },
                 downloadApproval: 'pending',
@@ -1957,6 +2078,7 @@ export class ImmaculateTasteCollectionJob {
             where: {
               plexUserId,
               librarySectionKey: tvSectionKey,
+              profileId,
               tvdbId: { in: sonarrSentTvdbIds },
               sentToSonarrAt: null,
             },
@@ -2004,6 +2126,9 @@ export class ImmaculateTasteCollectionJob {
             includeTv: true,
             tvSectionKey,
             tvLibraryName,
+            profileId,
+            tvCollectionBaseName:
+              matchedProfile.showCollectionBaseName ?? null,
           },
         });
         refresherSummary = refresherResult.summary ?? null;
@@ -2025,6 +2150,13 @@ export class ImmaculateTasteCollectionJob {
       plexUserTitle,
       seedTitle,
       seedYear,
+      profile: {
+        id: matchedProfile.id,
+        datasetId: matchedProfile.datasetId,
+        name: matchedProfile.name,
+        sonarrInstanceId: matchedProfile.sonarrInstanceId ?? null,
+        showCollectionBaseName: matchedProfile.showCollectionBaseName ?? null,
+      },
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
       generated: generatedTitles.length,

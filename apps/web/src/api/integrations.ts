@@ -47,6 +47,22 @@ export function getSonarrOptions() {
   return fetchJson<SonarrOptionsResponse>(apiPath('/integrations/sonarr/options'));
 }
 
+export type PlexLibraryFiltersResponse = {
+  ok: true;
+  sectionKey: string | null;
+  genres: string[];
+  audioLanguages: string[];
+};
+
+export function getPlexLibraryFilters(sectionKey?: string) {
+  const query = sectionKey
+    ? `?sectionKey=${encodeURIComponent(sectionKey)}`
+    : '';
+  return fetchJson<PlexLibraryFiltersResponse>(
+    apiPath(`/integrations/plex/library-filters${query}`),
+  );
+}
+
 export type PlexLibraryItem = {
   key: string;
   title: string;

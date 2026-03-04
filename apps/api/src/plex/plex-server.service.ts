@@ -51,6 +51,8 @@ export type PlexMetadataDetails = {
   index: number | null;
   tmdbIds: number[];
   tvdbIds: number[];
+  genres: string[];
+  audioLanguages: string[];
   media: PlexMediaVersion[];
 };
 
@@ -934,6 +936,34 @@ export class PlexServerService {
 
     const tmdbIds = extractIdsFromGuids(item.Guid, 'tmdb');
     const tvdbIds = extractIdsFromGuids(item.Guid, 'tvdb');
+    const genres: string[] = asUnknownArray(
+      (item as Record<string, unknown>)['Genre'],
+    )
+      .map((genreNode) => {
+        if (genreNode && typeof genreNode === 'object') {
+          return toStringSafe((genreNode as Record<string, unknown>)['tag']).trim();
+        }
+        return toStringSafe(genreNode).trim();
+      })
+      .filter(Boolean);
+    const audioLanguages: string[] = [];
+    const audioLanguageSet = new Set<string>();
+    for (const m of asPlexMediaArray(item.Media)) {
+      for (const p of asPlexPartArray(m['Part'])) {
+        for (const s of asUnknownArray(p['Stream'])) {
+          if (!s || typeof s !== 'object') continue;
+          const stream = s as Record<string, unknown>;
+          const streamType = toStringSafe(stream['streamType']).trim();
+          if (streamType !== '2') continue;
+          const language = toStringSafe(stream['language']).trim();
+          if (!language) continue;
+          const key = language.toLowerCase();
+          if (audioLanguageSet.has(key)) continue;
+          audioLanguageSet.add(key);
+          audioLanguages.push(language);
+        }
+      }
+    }
 
     const media = asPlexMediaArray(item.Media).map((m) => {
       const mediaId = toStringSafe(m['id']).trim() || null;
@@ -969,6 +999,8 @@ export class PlexServerService {
       index,
       tmdbIds,
       tvdbIds,
+      genres,
+      audioLanguages,
       media,
     };
 
@@ -1154,6 +1186,78 @@ export class PlexServerService {
       .filter((d) => d.key && d.title);
   }
 
+  async listLibraryGenres(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<string[]> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const key = librarySectionKey.trim();
+    if (!key) return [];
+    const url = new URL(
+      `library/sections/${encodeURIComponent(key)}/genre`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
+    const container = xml.MediaContainer;
+    const nodes = asUnknownArray(
+      container?.Directory ?? container?.Genre ?? container?.Metadata ?? [],
+    ).filter(
+      (node): node is Record<string, unknown> =>
+        Boolean(node) && typeof node === 'object',
+    );
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const node of nodes) {
+      const value = (
+        toStringSafe(node['title']) ||
+        toStringSafe(node['tag']) ||
+        toStringSafe(node['key'])
+      ).trim();
+      if (!value) continue;
+      const k = value.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(value);
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }
+
+  async listLibraryAudioLanguages(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey?: string;
+  }): Promise<string[]> {
+    const { baseUrl, token } = params;
+    const key = (params.librarySectionKey ?? '').trim();
+    if (key) {
+      return this.listSectionLanguages({ baseUrl, token, librarySectionKey: key });
+    }
+    const sections = await this.getSections({ baseUrl, token });
+    const eligibleSections = sections.filter((section) => {
+      const type = (section.type ?? '').toLowerCase();
+      return type === 'movie' || type === 'show';
+    });
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const section of eligibleSections) {
+      const langs = await this.listSectionLanguages({
+        baseUrl,
+        token,
+        librarySectionKey: section.key,
+      }).catch(() => []);
+      for (const lang of langs) {
+        const normalized = lang.trim();
+        if (!normalized) continue;
+        const k = normalized.toLowerCase();
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(normalized);
+      }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }
+
   async findSectionKeyByTitle(params: {
     baseUrl: string;
     token: string;
@@ -1168,6 +1272,43 @@ export class PlexServerService {
       throw new BadGatewayException(`Plex library section not found: ${title}`);
     }
     return found.key;
+  }
+
+  private async listSectionLanguages(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<string[]> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const key = librarySectionKey.trim();
+    if (!key) return [];
+    const url = new URL(
+      `library/sections/${encodeURIComponent(key)}/language`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
+    const container = xml.MediaContainer;
+    const nodes = asUnknownArray(
+      container?.Directory ?? container?.Language ?? container?.Metadata ?? [],
+    ).filter(
+      (node): node is Record<string, unknown> =>
+        Boolean(node) && typeof node === 'object',
+    );
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const node of nodes) {
+      const value = (
+        toStringSafe(node['title']) ||
+        toStringSafe(node['tag']) ||
+        toStringSafe(node['language'])
+      ).trim();
+      if (!value) continue;
+      const normalized = value.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      out.push(value);
+    }
+    return out.sort((a, b) => a.localeCompare(b));
   }
 
   async listMoviesWithTmdbIds(params: {
@@ -2020,6 +2161,47 @@ export class PlexServerService {
     );
     url.searchParams.set('collectionSort', String(sortValue));
     await this.fetchNoContent(url.toString(), token, 'PUT', 20000);
+  }
+
+  async renameCollection(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    collectionRatingKey: string;
+    collectionName: string;
+  }): Promise<void> {
+    const {
+      baseUrl,
+      token,
+      librarySectionKey,
+      collectionRatingKey,
+      collectionName,
+    } = params;
+    const nextName = collectionName.trim();
+    if (!nextName) return;
+
+    const sectionUrl = new URL(
+      `library/sections/${encodeURIComponent(librarySectionKey)}/all`,
+      normalizeBaseUrl(baseUrl),
+    );
+    sectionUrl.searchParams.set('type', '18');
+    sectionUrl.searchParams.set('id', collectionRatingKey);
+    sectionUrl.searchParams.set('title.value', nextName);
+    sectionUrl.searchParams.set('title.locked', '1');
+
+    try {
+      await this.fetchNoContent(sectionUrl.toString(), token, 'PUT', 20000);
+      return;
+    } catch {
+      // Fallback: some servers accept metadata-level title update.
+      const metadataUrl = new URL(
+        `library/metadata/${encodeURIComponent(collectionRatingKey)}`,
+        normalizeBaseUrl(baseUrl),
+      );
+      metadataUrl.searchParams.set('title.value', nextName);
+      metadataUrl.searchParams.set('title.locked', '1');
+      await this.fetchNoContent(metadataUrl.toString(), token, 'PUT', 20000);
+    }
   }
 
   async moveCollectionItem(params: {

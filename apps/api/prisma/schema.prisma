@@ -30,6 +30,8 @@ model User {
   settings            UserSettings?
   secrets             UserSecrets?
   rejectedSuggestions RejectedSuggestion[]
+  arrInstances        ArrInstance[]
+  immaculateTasteProfiles ImmaculateTasteProfile[]
 }
 
 model Session {
@@ -75,12 +77,92 @@ model PlexUser {
 
   immaculateTasteMovieLibraries      ImmaculateTasteMovieLibrary[]
   immaculateTasteShowLibraries       ImmaculateTasteShowLibrary[]
+  immaculateTasteProfileOverrides    ImmaculateTasteProfileUserOverride[]
   watchedMovieRecommendationLibraries WatchedMovieRecommendationLibrary[]
   watchedShowRecommendationLibraries  WatchedShowRecommendationLibrary[]
 
   @@unique([plexAccountId])
   @@index([plexAccountTitle])
   @@index([isAdmin])
+}
+
+model ArrInstance {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  name      String
+  baseUrl   String
+  apiKey    String
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+
+  rootFolderPath   String?
+  qualityProfileId Int?
+  tagId            Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, name])
+  @@index([userId, type])
+}
+
+model ImmaculateTasteProfile {
+  id        String  @id @default(cuid())
+  userId    String
+  name      String
+  isDefault Boolean @default(false)
+  enabled   Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  mediaType      String @default("both")
+  matchMode      String @default("all")
+  genres         String @default("[]")
+  audioLanguages String @default("[]")
+
+  radarrInstanceId String?
+  sonarrInstanceId String?
+
+  movieCollectionBaseName String?
+  showCollectionBaseName  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userOverrides ImmaculateTasteProfileUserOverride[]
+
+  @@unique([userId, name])
+  @@index([userId, enabled, sortOrder])
+}
+
+model ImmaculateTasteProfileUserOverride {
+  id         String @id @default(cuid())
+  profileId  String
+  plexUserId String
+
+  mediaType      String @default("both")
+  matchMode      String @default("all")
+  genres         String @default("[]")
+  audioLanguages String @default("[]")
+
+  radarrInstanceId String?
+  sonarrInstanceId String?
+
+  movieCollectionBaseName String?
+  showCollectionBaseName  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile  ImmaculateTasteProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  plexUser PlexUser               @relation(fields: [plexUserId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, plexUserId])
+  @@index([profileId])
+  @@index([plexUserId])
 }
 
 enum JobRunStatus {
@@ -248,6 +330,7 @@ model WatchedMovieRecommendation {
 model ImmaculateTasteMovieLibrary {
   plexUserId        String
   librarySectionKey String
+  profileId         String   @default("default")
   tmdbId            Int
   title             String?
 
@@ -270,9 +353,10 @@ model ImmaculateTasteMovieLibrary {
 
   plexUser PlexUser @relation(fields: [plexUserId], references: [id], onDelete: Cascade)
 
-  @@id([plexUserId, librarySectionKey, tmdbId])
+  @@id([plexUserId, librarySectionKey, profileId, tmdbId])
   @@index([plexUserId])
   @@index([plexUserId, librarySectionKey])
+  @@index([profileId])
   @@index([plexUserId, librarySectionKey, status])
   @@index([plexUserId, librarySectionKey, points])
   @@index([plexUserId, librarySectionKey, tmdbVoteAvg])
@@ -338,6 +422,7 @@ model ImmaculateTasteShow {
 model ImmaculateTasteShowLibrary {
   plexUserId        String
   librarySectionKey String
+  profileId         String   @default("default")
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
   tvdbId            Int
   tmdbId            Int?
@@ -362,9 +447,10 @@ model ImmaculateTasteShowLibrary {
 
   plexUser PlexUser @relation(fields: [plexUserId], references: [id], onDelete: Cascade)
 
-  @@id([plexUserId, librarySectionKey, tvdbId])
+  @@id([plexUserId, librarySectionKey, profileId, tvdbId])
   @@index([plexUserId])
   @@index([plexUserId, librarySectionKey])
+  @@index([profileId])
   @@index([plexUserId, tmdbId])
   @@index([plexUserId, librarySectionKey, status])
   @@index([plexUserId, librarySectionKey, points])

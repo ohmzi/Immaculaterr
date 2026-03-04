@@ -21,18 +21,31 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent,
   type MouseEvent,
 } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   getPlexLibraries,
+  getPlexLibraryFilters,
   getPlexMonitoringUsers,
   getRadarrOptions,
   savePlexMonitoringUsers,
   getSonarrOptions,
   savePlexLibrarySelection,
+  type PlexMonitoringUserItem,
 } from '@/api/integrations';
+import { listArrInstances } from '@/api/arr-instances';
+import {
+  createImmaculateTasteProfile,
+  deleteImmaculateTasteProfile,
+  listImmaculateTasteProfiles,
+  updateImmaculateTasteProfile,
+  type ImmaculateTasteProfile,
+  type ImmaculateTasteProfileMatchMode,
+  type ImmaculateTasteProfileMediaType,
+} from '@/api/immaculate-taste-profiles';
 import {
   getImmaculateTasteCollections,
   getImmaculateTasteUserSummary,
@@ -47,6 +60,7 @@ import {
 } from '@/api/observatory';
 import { resetOverseerrRequests } from '@/api/overseerr';
 import { getPublicSettings, putSettings } from '@/api/settings';
+import { ApiError } from '@/api/http';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { FunCountSlider } from '@/components/FunCountSlider';
 import { SavingPill } from '@/components/SavingPill';
@@ -100,6 +114,155 @@ function readNumber(obj: unknown, path: string): number | null {
   return null;
 }
 
+function readNonEmptyStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0,
+  );
+}
+
+function readErrorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return fallback;
+  const message = (data as Record<string, unknown>).message;
+  if (typeof message === 'string') {
+    const trimmed = message.trim();
+    return trimmed || fallback;
+  }
+  const parts = readNonEmptyStrings(message);
+  return parts.length ? parts.join(', ') : fallback;
+}
+
+function normalizeCsvStringList(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(',')) {
+    const value = raw.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+const PRIMARY_INSTANCE_SENTINEL = '__primary__';
+const TOP_10_POPULAR_AUDIO_LANGUAGES = [
+  'English',
+  'Mandarin Chinese',
+  'Hindi',
+  'Spanish',
+  'French',
+  'Arabic',
+  'Bengali',
+  'Portuguese',
+  'Russian',
+  'Japanese',
+];
+const DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME =
+  'Inspired by your Immaculate Taste in Movies';
+const DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME =
+  'Inspired by your Immaculate Taste in Shows';
+
+function dedupeCaseInsensitive(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = raw.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+type ImmaculateTasteProfileDraft = {
+  name: string;
+  enabled: boolean;
+  mediaType: ImmaculateTasteProfileMediaType;
+  matchMode: ImmaculateTasteProfileMatchMode;
+  genresText: string;
+  audioLanguagesText: string;
+  radarrInstanceId: string;
+  sonarrInstanceId: string;
+  movieCollectionBaseName: string;
+  showCollectionBaseName: string;
+};
+
+function toProfileDraft(
+  profile: ImmaculateTasteProfile,
+  override: ImmaculateTasteProfile['userOverrides'][number] | null = null,
+): ImmaculateTasteProfileDraft {
+  return {
+    name: profile.name,
+    enabled: profile.enabled,
+    mediaType: override?.mediaType ?? profile.mediaType,
+    matchMode: override?.matchMode ?? profile.matchMode,
+    genresText: (override?.genres ?? profile.genres).join(', '),
+    audioLanguagesText: (override?.audioLanguages ?? profile.audioLanguages).join(', '),
+    radarrInstanceId:
+      (override?.radarrInstanceId ?? profile.radarrInstanceId) ??
+      PRIMARY_INSTANCE_SENTINEL,
+    sonarrInstanceId:
+      (override?.sonarrInstanceId ?? profile.sonarrInstanceId) ??
+      PRIMARY_INSTANCE_SENTINEL,
+    movieCollectionBaseName:
+      override?.movieCollectionBaseName ?? profile.movieCollectionBaseName ?? '',
+    showCollectionBaseName:
+      override?.showCollectionBaseName ?? profile.showCollectionBaseName ?? '',
+  };
+}
+
+function findProfileUserOverride(
+  profile: ImmaculateTasteProfile | null,
+  plexUserId: string | null,
+): ImmaculateTasteProfile['userOverrides'][number] | null {
+  if (!profile || !plexUserId) return null;
+  return profile.userOverrides.find((override) => override.plexUserId === plexUserId) ?? null;
+}
+
+function createNewProfileDraft(): ImmaculateTasteProfileDraft {
+  return {
+    name: '',
+    enabled: true,
+    mediaType: 'both',
+    matchMode: 'all',
+    genresText: '',
+    audioLanguagesText: '',
+    radarrInstanceId: PRIMARY_INSTANCE_SENTINEL,
+    sonarrInstanceId: PRIMARY_INSTANCE_SENTINEL,
+    movieCollectionBaseName: '',
+    showCollectionBaseName: '',
+  };
+}
+
+function createNetZeroDefaultProfileDraft(profileName: string): ImmaculateTasteProfileDraft {
+  return {
+    ...createNewProfileDraft(),
+    name: profileName,
+  };
+}
+
+function isNetZeroDefaultProfileDraft(
+  draft: ImmaculateTasteProfileDraft,
+  profileName: string,
+): boolean {
+  return (
+    draft.name.trim() === profileName.trim() &&
+    draft.enabled &&
+    draft.mediaType === 'both' &&
+    draft.matchMode === 'all' &&
+    normalizeCsvStringList(draft.genresText).length === 0 &&
+    normalizeCsvStringList(draft.audioLanguagesText).length === 0 &&
+    draft.radarrInstanceId === PRIMARY_INSTANCE_SENTINEL &&
+    draft.sonarrInstanceId === PRIMARY_INSTANCE_SENTINEL &&
+    draft.movieCollectionBaseName.trim() === '' &&
+    draft.showCollectionBaseName.trim() === ''
+  );
+}
+
 export function CommandCenterPage() {
   const queryClient = useQueryClient();
   const [immaculateResetTarget, setImmaculateResetTarget] = useState<{
@@ -129,10 +292,48 @@ export function CommandCenterPage() {
   const [rejectedKind, setRejectedKind] = useState<
     'all' | 'immaculateTaste' | 'recentlyWatched' | 'changeOfTaste'
   >('all');
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [activeProfileScopePlexUserId, setActiveProfileScopePlexUserId] = useState<
+    string | null
+  >(null);
+  const [profileScopeSearch, setProfileScopeSearch] = useState('');
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
+  const [isAddProfileFormOpen, setIsAddProfileFormOpen] = useState(false);
+  const [newProfileDraft, setNewProfileDraft] =
+    useState<ImmaculateTasteProfileDraft | null>(null);
+  const [newProfileGenreSearch, setNewProfileGenreSearch] = useState('');
+  const [newProfileAudioLanguageSearch, setNewProfileAudioLanguageSearch] = useState('');
+  const [genreSearch, setGenreSearch] = useState('');
+  const [audioLanguageSearch, setAudioLanguageSearch] = useState('');
+  const [profileDraft, setProfileDraft] = useState<ImmaculateTasteProfileDraft | null>(
+    null,
+  );
+  const profileEditorCardRef = useRef<HTMLDivElement | null>(null);
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: getPublicSettings,
     staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const arrInstancesQuery = useQuery({
+    queryKey: ['arr-instances'],
+    queryFn: () => listArrInstances(),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const immaculateProfilesQuery = useQuery({
+    queryKey: ['immaculateTaste', 'profiles'],
+    queryFn: listImmaculateTasteProfiles,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const plexLibraryFiltersQuery = useQuery({
+    queryKey: ['integrations', 'plex', 'library-filters'],
+    queryFn: () => getPlexLibraryFilters(),
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
     retry: 1,
   });
@@ -259,6 +460,998 @@ export function CommandCenterPage() {
     if (k === 'changeOfTaste') return 'Change of Taste';
     return 'Recently Watched';
   };
+
+  const immaculateProfiles = immaculateProfilesQuery.data?.profiles ?? [];
+  const profileScopeUsers = useMemo<PlexMonitoringUserItem[]>(() => {
+    const users = plexMonitoringUsersQuery.data?.users ?? [];
+    return users
+      .slice()
+      .sort((left, right) => {
+        if (left.isAdmin !== right.isAdmin) return left.isAdmin ? -1 : 1;
+        return left.plexAccountTitle.localeCompare(right.plexAccountTitle);
+      });
+  }, [plexMonitoringUsersQuery.data?.users]);
+  const activeProfile = useMemo(
+    () =>
+      activeProfileId
+        ? immaculateProfiles.find((profile) => profile.id === activeProfileId) ?? null
+        : null,
+    [activeProfileId, immaculateProfiles],
+  );
+  const activeProfileScopeOverride = useMemo(
+    () => findProfileUserOverride(activeProfile, activeProfileScopePlexUserId),
+    [activeProfile, activeProfileScopePlexUserId],
+  );
+  const activeProfileOverrideUserIds = useMemo(
+    () => new Set((activeProfile?.userOverrides ?? []).map((override) => override.plexUserId)),
+    [activeProfile],
+  );
+  const profileScopePinnedUsers = useMemo(
+    () =>
+      profileScopeUsers.filter((user) =>
+        activeProfileOverrideUserIds.has(user.id),
+      ),
+    [activeProfileOverrideUserIds, profileScopeUsers],
+  );
+  const activeProfileScopeUser = useMemo(
+    () =>
+      activeProfileScopePlexUserId
+        ? profileScopeUsers.find((user) => user.id === activeProfileScopePlexUserId) ?? null
+        : null,
+    [activeProfileScopePlexUserId, profileScopeUsers],
+  );
+  const trimmedProfileScopeSearch = profileScopeSearch.trim().toLowerCase();
+  const profileScopeSearchResults = useMemo(() => {
+    const nonPinnedUsers = profileScopeUsers.filter(
+      (user) => !activeProfileOverrideUserIds.has(user.id),
+    );
+    const matchingUsers = (trimmedProfileScopeSearch
+      ? nonPinnedUsers.filter((user) =>
+          user.plexAccountTitle.toLowerCase().includes(trimmedProfileScopeSearch),
+        )
+      : nonPinnedUsers
+    ).slice();
+    matchingUsers.sort((left, right) =>
+      left.plexAccountTitle.localeCompare(right.plexAccountTitle),
+    );
+    return matchingUsers.slice(0, trimmedProfileScopeSearch ? 12 : 10);
+  }, [activeProfileOverrideUserIds, profileScopeUsers, trimmedProfileScopeSearch]);
+  const radarrInstanceOptions = useMemo(
+    () =>
+      (arrInstancesQuery.data?.instances ?? [])
+        .filter((instance) => instance.type === 'radarr')
+        .slice()
+        .sort((a, b) => {
+          if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+          if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+          return a.name.localeCompare(b.name);
+        }),
+    [arrInstancesQuery.data?.instances],
+  );
+  const sonarrInstanceOptions = useMemo(
+    () =>
+      (arrInstancesQuery.data?.instances ?? [])
+        .filter((instance) => instance.type === 'sonarr')
+        .slice()
+        .sort((a, b) => {
+          if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+          if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+          return a.name.localeCompare(b.name);
+        }),
+    [arrInstancesQuery.data?.instances],
+  );
+  const activeRadarrInstanceOptions = useMemo(
+    () => radarrInstanceOptions.filter((instance) => instance.enabled),
+    [radarrInstanceOptions],
+  );
+  const activeSonarrInstanceOptions = useMemo(
+    () => sonarrInstanceOptions.filter((instance) => instance.enabled),
+    [sonarrInstanceOptions],
+  );
+  const hasMultipleActiveRadarrServices = activeRadarrInstanceOptions.length >= 2;
+  const hasMultipleActiveSonarrServices = activeSonarrInstanceOptions.length >= 2;
+  const recommendedGenres = plexLibraryFiltersQuery.data?.genres ?? [];
+  const trimmedGenreSearch = genreSearch.trim();
+  const genreSearchIsActive = trimmedGenreSearch.length > 0;
+  const rankedGenreOptions = useMemo(
+    () => dedupeCaseInsensitive(recommendedGenres),
+    [recommendedGenres],
+  );
+  const selectedGenres = useMemo(
+    () => normalizeCsvStringList(profileDraft?.genresText ?? ''),
+    [profileDraft?.genresText],
+  );
+  const selectedGenreSet = useMemo(
+    () => new Set(selectedGenres.map((item) => item.toLowerCase())),
+    [selectedGenres],
+  );
+  const defaultGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !selectedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, selectedGenreSet],
+  );
+  const filteredGenreOptions = useMemo(() => {
+    const query = trimmedGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !selectedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedGenreOptions, selectedGenreSet, trimmedGenreSearch]);
+  const trimmedNewProfileGenreSearch = newProfileGenreSearch.trim();
+  const newProfileGenreSearchIsActive = trimmedNewProfileGenreSearch.length > 0;
+  const newProfileSelectedGenres = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.genresText ?? ''),
+    [newProfileDraft?.genresText],
+  );
+  const newProfileSelectedGenreSet = useMemo(
+    () => new Set(newProfileSelectedGenres.map((item) => item.toLowerCase())),
+    [newProfileSelectedGenres],
+  );
+  const newProfileDefaultGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !newProfileSelectedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, newProfileSelectedGenreSet],
+  );
+  const newProfileFilteredGenreOptions = useMemo(() => {
+    const query = trimmedNewProfileGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !newProfileSelectedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedGenreOptions, newProfileSelectedGenreSet, trimmedNewProfileGenreSearch]);
+  const recommendedAudioLanguages = plexLibraryFiltersQuery.data?.audioLanguages ?? [];
+  const trimmedAudioLanguageSearch = audioLanguageSearch.trim();
+  const audioLanguageSearchIsActive = trimmedAudioLanguageSearch.length > 0;
+  const rankedAudioLanguageOptions = useMemo(
+    () =>
+      dedupeCaseInsensitive([
+        ...TOP_10_POPULAR_AUDIO_LANGUAGES,
+        ...recommendedAudioLanguages,
+      ]),
+    [recommendedAudioLanguages],
+  );
+  const selectedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(profileDraft?.audioLanguagesText ?? ''),
+    [profileDraft?.audioLanguagesText],
+  );
+  const selectedAudioLanguageSet = useMemo(
+    () =>
+      new Set(selectedAudioLanguages.map((item) => item.toLowerCase())),
+    [selectedAudioLanguages],
+  );
+  const defaultAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) => !selectedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [selectedAudioLanguageSet],
+  );
+  const filteredAudioLanguageOptions = useMemo(() => {
+    const query = trimmedAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) => !selectedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedAudioLanguageOptions, selectedAudioLanguageSet, trimmedAudioLanguageSearch]);
+  const trimmedNewProfileAudioLanguageSearch = newProfileAudioLanguageSearch.trim();
+  const newProfileAudioLanguageSearchIsActive =
+    trimmedNewProfileAudioLanguageSearch.length > 0;
+  const newProfileSelectedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.audioLanguagesText ?? ''),
+    [newProfileDraft?.audioLanguagesText],
+  );
+  const newProfileSelectedAudioLanguageSet = useMemo(
+    () => new Set(newProfileSelectedAudioLanguages.map((item) => item.toLowerCase())),
+    [newProfileSelectedAudioLanguages],
+  );
+  const newProfileDefaultAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) => !newProfileSelectedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [newProfileSelectedAudioLanguageSet],
+  );
+  const newProfileFilteredAudioLanguageOptions = useMemo(() => {
+    const query = trimmedNewProfileAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) => !newProfileSelectedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedAudioLanguageOptions,
+    newProfileSelectedAudioLanguageSet,
+    trimmedNewProfileAudioLanguageSearch,
+  ]);
+  const profileWantsMovies =
+    profileDraft?.mediaType === 'movie' || profileDraft?.mediaType === 'both';
+  const profileWantsShows =
+    profileDraft?.mediaType === 'show' || profileDraft?.mediaType === 'both';
+  const showRadarrServiceSelector =
+    profileWantsMovies && hasMultipleActiveRadarrServices;
+  const showSonarrServiceSelector =
+    profileWantsShows && hasMultipleActiveSonarrServices;
+  const newProfileWantsMovies =
+    newProfileDraft?.mediaType === 'movie' || newProfileDraft?.mediaType === 'both';
+  const newProfileWantsShows =
+    newProfileDraft?.mediaType === 'show' || newProfileDraft?.mediaType === 'both';
+  const showNewProfileRadarrServiceSelector =
+    newProfileWantsMovies && hasMultipleActiveRadarrServices;
+  const showNewProfileSonarrServiceSelector =
+    newProfileWantsShows && hasMultipleActiveSonarrServices;
+
+  useEffect(() => {
+    if (!immaculateProfiles.length) {
+      setActiveProfileId(null);
+      setActiveProfileScopePlexUserId(null);
+      setProfileScopeSearch('');
+      setProfileDraft(null);
+      setIsProfileEditorOpen(false);
+      return;
+    }
+    if (!activeProfileId) {
+      const first = immaculateProfiles[0];
+      setActiveProfileId(first.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileDraft(toProfileDraft(first));
+      return;
+    }
+    const existing = immaculateProfiles.find((profile) => profile.id === activeProfileId);
+    if (!existing) {
+      const first = immaculateProfiles[0];
+      setActiveProfileId(first.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileDraft(toProfileDraft(first));
+      return;
+    }
+    if (!profileDraft) {
+      const activeOverride = findProfileUserOverride(existing, activeProfileScopePlexUserId);
+      setProfileDraft(toProfileDraft(existing, activeOverride));
+    }
+  }, [activeProfileId, activeProfileScopePlexUserId, immaculateProfiles, profileDraft]);
+
+  const normalizeProfileServiceSelection = useCallback(
+    (draft: ImmaculateTasteProfileDraft) => {
+      const wantsMovies = draft.mediaType === 'movie' || draft.mediaType === 'both';
+      const wantsShows = draft.mediaType === 'show' || draft.mediaType === 'both';
+      const selectedRadarrInstanceId =
+        draft.radarrInstanceId === PRIMARY_INSTANCE_SENTINEL
+          ? null
+          : draft.radarrInstanceId || null;
+      const selectedSonarrInstanceId =
+        draft.sonarrInstanceId === PRIMARY_INSTANCE_SENTINEL
+          ? null
+          : draft.sonarrInstanceId || null;
+      return {
+        radarrInstanceId:
+          wantsMovies && hasMultipleActiveRadarrServices
+            ? selectedRadarrInstanceId
+            : null,
+        sonarrInstanceId:
+          wantsShows && hasMultipleActiveSonarrServices
+            ? selectedSonarrInstanceId
+            : null,
+      };
+    },
+    [hasMultipleActiveRadarrServices, hasMultipleActiveSonarrServices],
+  );
+
+  const createImmaculateProfileMutation = useMutation({
+    mutationFn: async (draft: ImmaculateTasteProfileDraft) => {
+      const normalizedServiceSelection = normalizeProfileServiceSelection(draft);
+      const payload = {
+        name: draft.name.trim(),
+        enabled: draft.enabled,
+        mediaType: draft.mediaType,
+        matchMode: draft.matchMode,
+        genres: normalizeCsvStringList(draft.genresText),
+        audioLanguages: normalizeCsvStringList(draft.audioLanguagesText),
+        radarrInstanceId: normalizedServiceSelection.radarrInstanceId,
+        sonarrInstanceId: normalizedServiceSelection.sonarrInstanceId,
+        movieCollectionBaseName: draft.movieCollectionBaseName.trim() || null,
+        showCollectionBaseName: draft.showCollectionBaseName.trim() || null,
+      };
+      return await createImmaculateTasteProfile(payload);
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      setNewProfileDraft(null);
+      setNewProfileGenreSearch('');
+      setNewProfileAudioLanguageSearch('');
+      setActiveProfileId(data.profile.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileScopeSearch('');
+      setProfileDraft(toProfileDraft(data.profile));
+      setIsAddProfileFormOpen(false);
+      setIsProfileEditorOpen(true);
+      toast.success(`Profile "${data.profile.name}" created.`);
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to create profile'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to create profile');
+    },
+  });
+
+  const saveImmaculateProfileMutation = useMutation({
+    mutationFn: async (params: {
+      id: string;
+      draft: ImmaculateTasteProfileDraft;
+      scopePlexUserId: string | null;
+      resetScopeToDefaultNaming?: boolean;
+    }) => {
+      const normalizedServiceSelection = normalizeProfileServiceSelection(params.draft);
+      const payload: Parameters<typeof updateImmaculateTasteProfile>[1] = {
+        ...(params.scopePlexUserId
+          ? { scopePlexUserId: params.scopePlexUserId }
+          : {
+              name: params.draft.name.trim(),
+              enabled: params.draft.enabled,
+            }),
+        ...(params.resetScopeToDefaultNaming
+          ? { resetScopeToDefaultNaming: true }
+          : {}),
+        mediaType: params.draft.mediaType,
+        matchMode: params.draft.matchMode,
+        genres: normalizeCsvStringList(params.draft.genresText),
+        audioLanguages: normalizeCsvStringList(params.draft.audioLanguagesText),
+        radarrInstanceId: normalizedServiceSelection.radarrInstanceId,
+        sonarrInstanceId: normalizedServiceSelection.sonarrInstanceId,
+        movieCollectionBaseName: params.draft.movieCollectionBaseName.trim() || null,
+        showCollectionBaseName: params.draft.showCollectionBaseName.trim() || null,
+      };
+      return await updateImmaculateTasteProfile(params.id, payload);
+    },
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      const scopedOverride = findProfileUserOverride(
+        data.profile,
+        variables.scopePlexUserId,
+      );
+      setProfileDraft(toProfileDraft(data.profile, scopedOverride));
+      toast.success(`Profile "${data.profile.name}" saved.`);
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to save profile'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to save profile');
+    },
+  });
+
+  const toggleImmaculateProfileEnabledMutation = useMutation({
+    mutationFn: async (params: { id: string; enabled: boolean }) => {
+      return await updateImmaculateTasteProfile(params.id, {
+        enabled: params.enabled,
+      });
+    },
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      if (activeProfileId === variables.id && !activeProfileScopePlexUserId) {
+        setProfileDraft((current) =>
+          current ? { ...current, enabled: data.profile.enabled } : current,
+        );
+      }
+      toast.success(
+        `Profile "${data.profile.name}" ${data.profile.enabled ? 'enabled' : 'disabled'}.`,
+      );
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to update profile status'),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update profile status',
+      );
+    },
+  });
+
+  const deleteImmaculateProfileMutation = useMutation({
+    mutationFn: async (profile: ImmaculateTasteProfile) => {
+      await deleteImmaculateTasteProfile(profile.id);
+      return profile;
+    },
+    onSuccess: async (profile) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      if (activeProfileId === profile.id) {
+        setActiveProfileId(null);
+        setActiveProfileScopePlexUserId(null);
+        setProfileScopeSearch('');
+        setProfileDraft(null);
+        setIsProfileEditorOpen(false);
+      }
+      toast.success(`Profile "${profile.name}" deleted.`);
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to delete profile'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to delete profile');
+    },
+  });
+
+  const profileDirty = useMemo(() => {
+    if (!activeProfile || !profileDraft) return false;
+    const draftGenres = normalizeCsvStringList(profileDraft.genresText);
+    const draftAudioLanguages = normalizeCsvStringList(profileDraft.audioLanguagesText);
+    const normalizedServiceSelection = normalizeProfileServiceSelection(profileDraft);
+    const scopedOverride = findProfileUserOverride(activeProfile, activeProfileScopePlexUserId);
+    const sourceMediaType = scopedOverride?.mediaType ?? activeProfile.mediaType;
+    const sourceMatchMode = scopedOverride?.matchMode ?? activeProfile.matchMode;
+    const sourceMovieCollectionBaseName =
+      scopedOverride?.movieCollectionBaseName ?? activeProfile.movieCollectionBaseName;
+    const sourceShowCollectionBaseName =
+      scopedOverride?.showCollectionBaseName ?? activeProfile.showCollectionBaseName;
+    const sourceRadarrInstanceId =
+      scopedOverride?.radarrInstanceId ?? activeProfile.radarrInstanceId;
+    const sourceSonarrInstanceId =
+      scopedOverride?.sonarrInstanceId ?? activeProfile.sonarrInstanceId;
+    const sourceGenres = scopedOverride?.genres ?? activeProfile.genres;
+    const sourceAudioLanguages = scopedOverride?.audioLanguages ?? activeProfile.audioLanguages;
+    return (
+      (!activeProfileScopePlexUserId && activeProfile.name !== profileDraft.name.trim()) ||
+      (!activeProfileScopePlexUserId && activeProfile.enabled !== profileDraft.enabled) ||
+      sourceMediaType !== profileDraft.mediaType ||
+      sourceMatchMode !== profileDraft.matchMode ||
+      sourceMovieCollectionBaseName !==
+        (profileDraft.movieCollectionBaseName.trim() || null) ||
+      sourceShowCollectionBaseName !==
+        (profileDraft.showCollectionBaseName.trim() || null) ||
+      sourceRadarrInstanceId !== normalizedServiceSelection.radarrInstanceId ||
+      sourceSonarrInstanceId !== normalizedServiceSelection.sonarrInstanceId ||
+      JSON.stringify(sourceGenres) !== JSON.stringify(draftGenres) ||
+      JSON.stringify(sourceAudioLanguages) !== JSON.stringify(draftAudioLanguages)
+    );
+  }, [
+    activeProfile,
+    activeProfileScopePlexUserId,
+    normalizeProfileServiceSelection,
+    profileDraft,
+  ]);
+
+  const scopedProfileAtBase = useMemo(() => {
+    if (!activeProfile || !profileDraft || !activeProfileScopePlexUserId) return false;
+    const baseDraft = toProfileDraft(activeProfile);
+    const normalizedCurrent = normalizeProfileServiceSelection(profileDraft);
+    const normalizedBase = normalizeProfileServiceSelection(baseDraft);
+    return (
+      profileDraft.mediaType === baseDraft.mediaType &&
+      profileDraft.matchMode === baseDraft.matchMode &&
+      JSON.stringify(normalizeCsvStringList(profileDraft.genresText)) ===
+        JSON.stringify(normalizeCsvStringList(baseDraft.genresText)) &&
+      JSON.stringify(normalizeCsvStringList(profileDraft.audioLanguagesText)) ===
+        JSON.stringify(normalizeCsvStringList(baseDraft.audioLanguagesText)) &&
+      normalizedCurrent.radarrInstanceId === normalizedBase.radarrInstanceId &&
+      normalizedCurrent.sonarrInstanceId === normalizedBase.sonarrInstanceId &&
+      (profileDraft.movieCollectionBaseName.trim() || null) ===
+        (baseDraft.movieCollectionBaseName.trim() || null) &&
+      (profileDraft.showCollectionBaseName.trim() || null) ===
+        (baseDraft.showCollectionBaseName.trim() || null)
+    );
+  }, [
+    activeProfile,
+    activeProfileScopePlexUserId,
+    normalizeProfileServiceSelection,
+    profileDraft,
+  ]);
+
+  const defaultProfileAtNetZero = useMemo(() => {
+    if (!activeProfile?.isDefault || !profileDraft || activeProfileScopePlexUserId) return false;
+    const takenNames = new Set(
+      immaculateProfiles
+        .filter((profile) => profile.id !== activeProfile.id)
+        .map((profile) => profile.name.trim().toLowerCase()),
+    );
+    const targetDefaultName =
+      ['Default', 'Default profile'].find(
+        (candidate) =>
+          candidate.toLowerCase() === activeProfile.name.trim().toLowerCase() ||
+          !takenNames.has(candidate.toLowerCase()),
+      ) ?? activeProfile.name;
+    return isNetZeroDefaultProfileDraft(profileDraft, targetDefaultName);
+  }, [activeProfile, activeProfileScopePlexUserId, immaculateProfiles, profileDraft]);
+
+  const selectImmaculateProfile = useCallback(
+    (profile: ImmaculateTasteProfile) => {
+      const isSameProfile = profile.id === activeProfileId;
+      setActiveProfileId(profile.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileScopeSearch('');
+      setProfileDraft(toProfileDraft(profile));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+      setIsAddProfileFormOpen(false);
+      setNewProfileDraft(null);
+      setNewProfileGenreSearch('');
+      setNewProfileAudioLanguageSearch('');
+      setIsProfileEditorOpen((open) => (isSameProfile ? !open : true));
+    },
+    [activeProfileId],
+  );
+
+  const handleProfileEnabledToggle = useCallback(
+    (profile: ImmaculateTasteProfile) => {
+      const hasAnyOtherProfile = immaculateProfiles.some(
+        (candidate) => candidate.id !== profile.id,
+      );
+      if (profile.isDefault && !hasAnyOtherProfile) return;
+
+      const isEditingThisProfile =
+        activeProfileId === profile.id && isProfileEditorOpen && Boolean(profileDraft);
+      const currentEnabled =
+        isEditingThisProfile && profileDraft ? profileDraft.enabled : profile.enabled;
+      const hasEnabledFallback = immaculateProfiles.some(
+        (candidate) => candidate.id !== profile.id && candidate.enabled,
+      );
+      if (profile.isDefault && currentEnabled && !hasEnabledFallback) return;
+      const nextEnabled = !currentEnabled;
+      const previousDraftEnabled =
+        isEditingThisProfile && profileDraft ? profileDraft.enabled : null;
+
+      if (isEditingThisProfile) {
+        setProfileDraft((current) =>
+          current ? { ...current, enabled: nextEnabled } : current,
+        );
+      }
+
+      const profilesQueryKey = ['immaculateTaste', 'profiles'] as const;
+      const previousProfilesResponse = queryClient.getQueryData<{
+        ok: true;
+        profiles: ImmaculateTasteProfile[];
+      }>(profilesQueryKey);
+      if (previousProfilesResponse) {
+        const nextProfiles = previousProfilesResponse.profiles.map((candidate) =>
+          candidate.id === profile.id ? { ...candidate, enabled: nextEnabled } : candidate,
+        );
+        const shouldEnableDefaultFallback =
+          !nextEnabled &&
+          !profile.isDefault &&
+          !previousProfilesResponse.profiles.some(
+            (candidate) => candidate.id !== profile.id && candidate.enabled,
+          );
+        const optimisticProfiles = shouldEnableDefaultFallback
+          ? nextProfiles.map((candidate) =>
+              candidate.isDefault ? { ...candidate, enabled: true } : candidate,
+            )
+          : nextProfiles;
+        queryClient.setQueryData(profilesQueryKey, {
+          ...previousProfilesResponse,
+          profiles: optimisticProfiles,
+        });
+      }
+
+      toggleImmaculateProfileEnabledMutation.mutate(
+        { id: profile.id, enabled: nextEnabled },
+        {
+          onError: () => {
+            if (previousDraftEnabled !== null) {
+              setProfileDraft((current) =>
+                current ? { ...current, enabled: previousDraftEnabled } : current,
+              );
+            }
+            if (previousProfilesResponse) {
+              queryClient.setQueryData(profilesQueryKey, previousProfilesResponse);
+              return;
+            }
+            void queryClient.invalidateQueries({ queryKey: profilesQueryKey });
+          },
+        },
+      );
+    },
+    [
+      activeProfileId,
+      immaculateProfiles,
+      isProfileEditorOpen,
+      profileDraft,
+      queryClient,
+      toggleImmaculateProfileEnabledMutation,
+    ],
+  );
+
+  const resetProfileDraft = useCallback(() => {
+    if (!activeProfile) return;
+    if (activeProfileScopePlexUserId) {
+      setProfileDraft(toProfileDraft(activeProfile));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+      return;
+    }
+    if (activeProfile.isDefault) {
+      const takenNames = new Set(
+        immaculateProfiles
+          .filter((profile) => profile.id !== activeProfile.id)
+          .map((profile) => profile.name.trim().toLowerCase()),
+      );
+      const targetDefaultName =
+        ['Default', 'Default profile'].find(
+          (candidate) =>
+            candidate.toLowerCase() === activeProfile.name.trim().toLowerCase() ||
+            !takenNames.has(candidate.toLowerCase()),
+        ) ?? activeProfile.name;
+      setProfileDraft(createNetZeroDefaultProfileDraft(targetDefaultName));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+      return;
+    }
+    setProfileDraft(toProfileDraft(activeProfile));
+    setGenreSearch('');
+    setAudioLanguageSearch('');
+  }, [activeProfile, activeProfileScopePlexUserId, immaculateProfiles]);
+
+  const closeProfileEditor = useCallback(() => {
+    if (activeProfile) {
+      setProfileDraft(toProfileDraft(activeProfile, activeProfileScopeOverride));
+    }
+    setGenreSearch('');
+    setAudioLanguageSearch('');
+    setIsProfileEditorOpen(false);
+  }, [activeProfile, activeProfileScopeOverride]);
+
+  const applyProfileScopeSelection = useCallback(
+    (plexUserId: string | null) => {
+      setActiveProfileScopePlexUserId(plexUserId);
+      setProfileScopeSearch('');
+      if (!activeProfile) return;
+      const override = findProfileUserOverride(activeProfile, plexUserId);
+      setProfileDraft(toProfileDraft(activeProfile, override));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+    },
+    [activeProfile],
+  );
+
+  useEffect(() => {
+    if (!isProfileEditorOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (target instanceof Element) {
+        const withinRadixPopup = target.closest(
+          '[data-radix-popper-content-wrapper], [data-radix-select-content]',
+        );
+        if (withinRadixPopup) return;
+      }
+      const editor = profileEditorCardRef.current;
+      if (!editor) return;
+      if (editor.contains(target)) return;
+      closeProfileEditor();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [closeProfileEditor, isProfileEditorOpen]);
+
+  const addGenreTag = useCallback((genre: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.genresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        genresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setGenreSearch('');
+  }, []);
+
+  const removeGenreTag = useCallback((genre: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.genresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        genresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredGenreOptions[0];
+        addGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (event.key === 'Backspace' && !trimmedGenreSearch && selectedGenres.length) {
+        event.preventDefault();
+        removeGenreTag(selectedGenres[selectedGenres.length - 1]);
+      }
+    },
+    [
+      addGenreTag,
+      filteredGenreOptions,
+      rankedGenreOptions,
+      removeGenreTag,
+      selectedGenres,
+      trimmedGenreSearch,
+    ],
+  );
+
+  const addSuggestedGenre = useCallback((genre: string) => {
+    addGenreTag(genre);
+  }, [addGenreTag]);
+
+  const addNewProfileGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.genresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        genresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setNewProfileGenreSearch('');
+  }, []);
+
+  const removeNewProfileGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.genresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        genresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleNewProfileGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredGenreOptions[0];
+        addNewProfileGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileGenreSearch &&
+        newProfileSelectedGenres.length
+      ) {
+        event.preventDefault();
+        removeNewProfileGenreTag(
+          newProfileSelectedGenres[newProfileSelectedGenres.length - 1],
+        );
+      }
+    },
+    [
+      addNewProfileGenreTag,
+      newProfileFilteredGenreOptions,
+      newProfileSelectedGenres,
+      rankedGenreOptions,
+      removeNewProfileGenreTag,
+      trimmedNewProfileGenreSearch,
+    ],
+  );
+
+  const addAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        audioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setAudioLanguageSearch('');
+  }, []);
+
+  const removeAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        audioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const addNewProfileAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        audioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setNewProfileAudioLanguageSearch('');
+  }, []);
+
+  const removeNewProfileAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        audioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredAudioLanguageOptions[0];
+        addAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedAudioLanguageSearch &&
+        selectedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeAudioLanguageTag(selectedAudioLanguages[selectedAudioLanguages.length - 1]);
+      }
+    },
+    [
+      addAudioLanguageTag,
+      filteredAudioLanguageOptions,
+      rankedAudioLanguageOptions,
+      removeAudioLanguageTag,
+      selectedAudioLanguages,
+      trimmedAudioLanguageSearch,
+    ],
+  );
+
+  const handleNewProfileAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredAudioLanguageOptions[0];
+        addNewProfileAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileAudioLanguageSearch &&
+        newProfileSelectedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeNewProfileAudioLanguageTag(
+          newProfileSelectedAudioLanguages[newProfileSelectedAudioLanguages.length - 1],
+        );
+      }
+    },
+    [
+      addNewProfileAudioLanguageTag,
+      newProfileFilteredAudioLanguageOptions,
+      newProfileSelectedAudioLanguages,
+      rankedAudioLanguageOptions,
+      removeNewProfileAudioLanguageTag,
+      trimmedNewProfileAudioLanguageSearch,
+    ],
+  );
+
+  const handleCreateProfile = useCallback(() => {
+    if (!newProfileDraft) return;
+    const name = newProfileDraft.name.trim();
+    if (!name) {
+      toast.error('Enter a profile name first.');
+      return;
+    }
+    createImmaculateProfileMutation.mutate(newProfileDraft);
+  }, [createImmaculateProfileMutation, newProfileDraft]);
+
+  const handleSaveActiveProfile = useCallback(() => {
+    if (!activeProfile || !profileDraft) return;
+    if (!activeProfileScopePlexUserId && !profileDraft.name.trim()) {
+      toast.error('Profile name cannot be empty.');
+      return;
+    }
+    saveImmaculateProfileMutation.mutate({
+      id: activeProfile.id,
+      draft: profileDraft,
+      scopePlexUserId: activeProfileScopePlexUserId,
+    });
+  }, [
+    activeProfile,
+    activeProfileScopePlexUserId,
+    profileDraft,
+    saveImmaculateProfileMutation,
+  ]);
+
+  const handleResetActiveProfileScope = useCallback(() => {
+    if (!activeProfile || !activeProfileScopePlexUserId) return;
+    const resetDraft = toProfileDraft(activeProfile);
+    setProfileDraft(resetDraft);
+    setGenreSearch('');
+    setAudioLanguageSearch('');
+    saveImmaculateProfileMutation.mutate({
+      id: activeProfile.id,
+      draft: resetDraft,
+      scopePlexUserId: activeProfileScopePlexUserId,
+      resetScopeToDefaultNaming: true,
+    });
+  }, [
+    activeProfile,
+    activeProfileScopePlexUserId,
+    saveImmaculateProfileMutation,
+  ]);
+
+  const handleDeleteActiveProfile = useCallback(() => {
+    if (!activeProfile) return;
+    if (activeProfile.isDefault) {
+      toast.error('Default profile cannot be deleted.');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete "${activeProfile.name}"? Collections and profile-specific dataset entries will be moved to default.`,
+    );
+    if (!confirmed) return;
+    deleteImmaculateProfileMutation.mutate(activeProfile);
+  }, [activeProfile, deleteImmaculateProfileMutation]);
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
   const overseerrEnabledFlag = readBool(
@@ -629,7 +1822,7 @@ export function CommandCenterPage() {
         return (
           <div
             key={`${c.mediaType}:${c.librarySectionKey}`}
-            className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+            className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition hover:bg-white/10"
           >
             <div className="min-w-0">
               <div className="flex items-center gap-2 min-w-0">
@@ -640,9 +1833,19 @@ export function CommandCenterPage() {
                   {c.libraryTitle}
                 </div>
               </div>
-              <div className="mt-1 text-xs text-white/60">
-                Plex: {plexLabel} • Dataset: {c.dataset.total} tracked (
-                {c.dataset.active} active, {c.dataset.pending} pending)
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                  Plex {plexLabel}
+                </span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                  {c.dataset.total} tracked
+                </span>
+                <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-emerald-100">
+                  {c.dataset.active} active
+                </span>
+                <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-amber-100">
+                  {c.dataset.pending} pending
+                </span>
               </div>
             </div>
 
@@ -661,7 +1864,7 @@ export function CommandCenterPage() {
                 typeof c.plex.itemCount === 'number' ? String(c.plex.itemCount) : ''
               }
               onClick={openImmaculateResetTarget}
-              className="inline-flex items-center gap-2 shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+              className="inline-flex items-center gap-2 shrink-0 rounded-xl border border-amber-300/25 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-400/20 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
               {resetImmaculateMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -677,7 +1880,9 @@ export function CommandCenterPage() {
       {!immaculateCollectionsQuery.isLoading &&
       !immaculateCollectionsQuery.isError &&
       (immaculateCollectionsQuery.data?.collections ?? []).length === 0 ? (
-        <div className="text-sm text-white/60">No Plex libraries found.</div>
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+          No Plex libraries found.
+        </div>
       ) : null}
     </div>
   );
@@ -1424,6 +2629,1141 @@ export function CommandCenterPage() {
             ) : null}
           </div>
 
+          {/* Immaculate Taste Profiles */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-fuchsia-400/10 focus-within:border-white/15 focus-within:shadow-fuchsia-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-fuchsia-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-fuchsia-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <Film className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Immaculate Taste Profiles
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {immaculateProfilesQuery.isLoading ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}>
+                    Loading…
+                  </span>
+                ) : immaculateProfilesQuery.isError ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
+                    Error
+                  </span>
+                ) : (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}>
+                    {immaculateProfiles.length} profile{immaculateProfiles.length === 1 ? '' : 's'}
+                  </span>
+                )}
+                <SavingPill
+                  active={
+                    createImmaculateProfileMutation.isPending ||
+                    saveImmaculateProfileMutation.isPending ||
+                    deleteImmaculateProfileMutation.isPending
+                  }
+                  className="static"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Manage matching filters, ARR service routing, and collection naming per taste profile.
+            </p>
+
+            {immaculateProfilesQuery.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{(immaculateProfilesQuery.error as Error).message}</span>
+              </div>
+            ) : null}
+
+            {!immaculateProfilesQuery.isError ? (
+              <div className="mt-5 space-y-5">
+                <div className="space-y-3">
+                  {immaculateProfiles.map((profile) => {
+                    const isActive = activeProfileId === profile.id;
+                    const isEditingThisProfile =
+                      isActive && isProfileEditorOpen && activeProfile && profileDraft;
+                    const isProfileEnabled =
+                      isEditingThisProfile && profileDraft
+                        ? profileDraft.enabled
+                        : profile.enabled;
+                    const hasOtherProfile = immaculateProfiles.some(
+                      (candidate) => candidate.id !== profile.id,
+                    );
+                    const hasEnabledFallback = immaculateProfiles.some(
+                      (candidate) => candidate.id !== profile.id && candidate.enabled,
+                    );
+                    const defaultDisableLocked =
+                      profile.isDefault && isProfileEnabled && !hasEnabledFallback;
+                    const lockedToggleReason = defaultDisableLocked
+                      ? hasOtherProfile
+                        ? 'Default profile cannot be disabled until another profile is enabled.'
+                        : 'Default profile cannot be disabled because no other profile exists.'
+                      : undefined;
+                    const toggleDisabled =
+                      saveImmaculateProfileMutation.isPending ||
+                      deleteImmaculateProfileMutation.isPending ||
+                      Boolean(isEditingThisProfile && activeProfileScopePlexUserId) ||
+                      defaultDisableLocked;
+                    return (
+                      <div
+                        key={profile.id}
+                        ref={isEditingThisProfile ? profileEditorCardRef : undefined}
+                        className={`rounded-2xl border px-4 py-3 transition ${
+                          isEditingThisProfile
+                            ? 'border-white/20 bg-white/10'
+                            : 'border-white/10 bg-white/5 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="w-full flex items-start justify-between gap-4">
+                          <button
+                            type="button"
+                            onClick={() => selectImmaculateProfile(profile)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-semibold text-white truncate">
+                                {profile.name}
+                              </div>
+                              {!profile.enabled ? (
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-white/10 text-white/70 border border-white/20">
+                                  Disabled
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-xs text-white/60">
+                              {profile.mediaType === 'both'
+                                ? 'Movies + TV'
+                                : profile.mediaType === 'movie'
+                                  ? 'Movies only'
+                                  : 'TV only'}{' '}
+                              •{' '}
+                              {profile.matchMode === 'all'
+                                ? 'Match all filters'
+                                : 'Match any filter'}
+                            </div>
+                          </button>
+                          {(!profile.isDefault || immaculateProfiles.length > 1) && (
+                            <span
+                              className="inline-flex"
+                              title={lockedToggleReason}
+                              aria-label={lockedToggleReason}
+                            >
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isProfileEnabled}
+                                disabled={toggleDisabled}
+                                onClick={() => handleProfileEnabledToggle(profile)}
+                                className={[
+                                  'relative inline-flex h-7 w-12 shrink-0 rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                                  isProfileEnabled
+                                    ? 'border-emerald-400/40 bg-emerald-400/20'
+                                    : 'border-white/20 bg-white/10',
+                                ].join(' ')}
+                                aria-label={`Toggle ${profile.name} enabled`}
+                              >
+                                <span
+                                  className={[
+                                    'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+                                    isProfileEnabled
+                                      ? 'translate-x-6'
+                                      : 'translate-x-0.5',
+                                  ].join(' ')}
+                                />
+                              </button>
+                            </span>
+                          )}
+                        </div>
+
+                        {isActive && isProfileEditorOpen && activeProfile && profileDraft ? (
+                          <div className="mt-4 border-t border-white/10 pt-4 space-y-4">
+                            <div className="space-y-2">
+                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                User scope
+                              </div>
+                              <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => applyProfileScopeSelection(null)}
+                                    className={[
+                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                                      !activeProfileScopePlexUserId
+                                        ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-100'
+                                        : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
+                                    ].join(' ')}
+                                  >
+                                    All users
+                                  </button>
+                                  {profileScopePinnedUsers.map((user) => (
+                                    <button
+                                      key={user.id}
+                                      type="button"
+                                      onClick={() => applyProfileScopeSelection(user.id)}
+                                      className={[
+                                        'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                                        activeProfileScopePlexUserId === user.id
+                                          ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
+                                          : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
+                                      ].join(' ')}
+                                    >
+                                      {user.plexAccountTitle}
+                                    </button>
+                                  ))}
+                                  {activeProfileScopeUser &&
+                                  !activeProfileOverrideUserIds.has(
+                                    activeProfileScopeUser.id,
+                                  ) ? (
+                                    <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100">
+                                      {activeProfileScopeUser.plexAccountTitle}
+                                    </span>
+                                  ) : null}
+                                  <input
+                                    type="text"
+                                    value={profileScopeSearch}
+                                    onChange={(event) => setProfileScopeSearch(event.target.value)}
+                                    placeholder="Search users to customize"
+                                    className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {profileScopeSearchResults.map((user) => (
+                                  <button
+                                    key={user.id}
+                                    type="button"
+                                    onClick={() => applyProfileScopeSelection(user.id)}
+                                    className={[
+                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                                      activeProfileScopePlexUserId === user.id
+                                        ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
+                                        : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
+                                    ].join(' ')}
+                                  >
+                                    {user.plexAccountTitle}
+                                  </button>
+                                ))}
+                                {trimmedProfileScopeSearch && !profileScopeSearchResults.length ? (
+                                  <span className="text-[11px] text-white/45">
+                                    No users match "{profileScopeSearch.trim()}"
+                                  </span>
+                                ) : null}
+                              </div>
+                              {activeProfileScopePlexUserId ? (
+                                <div className="text-[11px] text-white/50">
+                                  Editing a per-user override. Profile name and enabled status
+                                  remain global.
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Profile name
+                                </div>
+                                <input
+                                  type="text"
+                                  value={profileDraft.name}
+                                  onChange={(event) =>
+                                    setProfileDraft((current) =>
+                                      current ? { ...current, name: event.target.value } : current,
+                                    )
+                                  }
+                                  disabled={Boolean(activeProfileScopePlexUserId)}
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                />
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Media type
+                                  </div>
+                                  <Select
+                                    value={profileDraft.mediaType}
+                                    onValueChange={(value) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              mediaType:
+                                                value === 'movie' ||
+                                                value === 'show' ||
+                                                value === 'both'
+                                                  ? value
+                                                  : current.mediaType,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select media type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="both">Movies + TV</SelectItem>
+                                      <SelectItem value="movie">Movies only</SelectItem>
+                                      <SelectItem value="show">TV only</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Match mode
+                                  </div>
+                                  <Select
+                                    value={profileDraft.matchMode}
+                                    onValueChange={(value) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              matchMode:
+                                                value === 'all' || value === 'any'
+                                                  ? value
+                                                  : current.matchMode,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select match mode" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">Match all filters</SelectItem>
+                                      <SelectItem value="any">Match any filter</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Genres (comma separated)
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {selectedGenres.map((genre) => (
+                                        <span
+                                          key={genre}
+                                          className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                        >
+                                          {genre}
+                                          <button
+                                            type="button"
+                                            onClick={() => removeGenreTag(genre)}
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${genre}`}
+                                            title={`Remove ${genre}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={genreSearch}
+                                        onChange={(event) => setGenreSearch(event.target.value)}
+                                        onKeyDown={handleGenreSearchKeyDown}
+                                        placeholder="Search and add genre"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {genreSearchIsActive || defaultGenreOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {genreSearchIsActive
+                                        ? 'Genre search results'
+                                        : 'Recommended genres'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(genreSearchIsActive
+                                      ? filteredGenreOptions
+                                      : defaultGenreOptions
+                                    ).map((genre) => (
+                                      <button
+                                        key={genre}
+                                        type="button"
+                                        onClick={() => addSuggestedGenre(genre)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {genre}
+                                      </button>
+                                    ))}
+                                    {genreSearchIsActive &&
+                                    !filteredGenreOptions.length &&
+                                    trimmedGenreSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => addSuggestedGenre(trimmedGenreSearch)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedGenreSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Audio languages
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {selectedAudioLanguages.map((language) => (
+                                        <span
+                                          key={language}
+                                          className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
+                                        >
+                                          {language}
+                                          <button
+                                            type="button"
+                                            onClick={() => removeAudioLanguageTag(language)}
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${language}`}
+                                            title={`Remove ${language}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={audioLanguageSearch}
+                                        onChange={(event) =>
+                                          setAudioLanguageSearch(event.target.value)
+                                        }
+                                        onKeyDown={handleAudioLanguageSearchKeyDown}
+                                        placeholder="Search and add language"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {audioLanguageSearchIsActive ||
+                                  defaultAudioLanguageOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {audioLanguageSearchIsActive
+                                        ? 'Language search results'
+                                        : 'Top 10 popular languages'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(audioLanguageSearchIsActive
+                                      ? filteredAudioLanguageOptions
+                                      : defaultAudioLanguageOptions
+                                    ).map((language) => (
+                                      <button
+                                        key={language}
+                                        type="button"
+                                        onClick={() => addAudioLanguageTag(language)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {language}
+                                      </button>
+                                    ))}
+                                    {audioLanguageSearchIsActive &&
+                                    !filteredAudioLanguageOptions.length &&
+                                    trimmedAudioLanguageSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addAudioLanguageTag(trimmedAudioLanguageSearch)
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedAudioLanguageSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {showRadarrServiceSelector || showSonarrServiceSelector ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {showRadarrServiceSelector ? (
+                                  <div>
+                                    <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                      Radarr service
+                                    </div>
+                                    <Select
+                                      value={profileDraft.radarrInstanceId}
+                                      onValueChange={(value) =>
+                                        setProfileDraft((current) =>
+                                          current
+                                            ? { ...current, radarrInstanceId: value }
+                                            : current,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select Radarr service" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                          Primary Radarr
+                                        </SelectItem>
+                                        {activeRadarrInstanceOptions
+                                          .filter((instance) => !instance.isPrimary)
+                                          .map((instance) => (
+                                            <SelectItem key={instance.id} value={instance.id}>
+                                              {instance.name}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ) : null}
+                                {showSonarrServiceSelector ? (
+                                  <div>
+                                    <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                      Sonarr service
+                                    </div>
+                                    <Select
+                                      value={profileDraft.sonarrInstanceId}
+                                      onValueChange={(value) =>
+                                        setProfileDraft((current) =>
+                                          current
+                                            ? { ...current, sonarrInstanceId: value }
+                                            : current,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select Sonarr service" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                          Primary Sonarr
+                                        </SelectItem>
+                                        {activeSonarrInstanceOptions
+                                          .filter((instance) => !instance.isPrimary)
+                                          .map((instance) => (
+                                            <SelectItem key={instance.id} value={instance.id}>
+                                              {instance.name}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            <div
+                              className={`grid grid-cols-1 gap-4 ${
+                                profileDraft.mediaType === 'both' ? 'md:grid-cols-2' : ''
+                              }`}
+                            >
+                              {profileDraft.mediaType !== 'show' ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Movie collection base name
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={profileDraft.movieCollectionBaseName}
+                                    onChange={(event) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              movieCollectionBaseName: event.target.value,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    placeholder={DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME}
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                  />
+                                </div>
+                              ) : null}
+                              {profileDraft.mediaType !== 'movie' ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    TV collection base name
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={profileDraft.showCollectionBaseName}
+                                    onChange={(event) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              showCollectionBaseName: event.target.value,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    placeholder={DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME}
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {(saveImmaculateProfileMutation.isError ||
+                              deleteImmaculateProfileMutation.isError) && (
+                              <div className="text-sm text-red-200/90">
+                                {(saveImmaculateProfileMutation.error as Error)?.message ||
+                                  (deleteImmaculateProfileMutation.error as Error)?.message}
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={closeProfileEditor}
+                                disabled={
+                                  saveImmaculateProfileMutation.isPending ||
+                                  deleteImmaculateProfileMutation.isPending
+                                }
+                                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                Cancel
+                              </button>
+                              {activeProfileScopePlexUserId ? (
+                                <button
+                                  type="button"
+                                  onClick={handleResetActiveProfileScope}
+                                  disabled={
+                                    scopedProfileAtBase ||
+                                    saveImmaculateProfileMutation.isPending ||
+                                    deleteImmaculateProfileMutation.isPending
+                                  }
+                                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  Reset user scope
+                                </button>
+                              ) : null}
+                              {activeProfile.isDefault && !activeProfileScopePlexUserId ? (
+                                <button
+                                  type="button"
+                                  onClick={resetProfileDraft}
+                                  disabled={
+                                    (activeProfileScopePlexUserId
+                                      ? scopedProfileAtBase
+                                      : defaultProfileAtNetZero) ||
+                                    saveImmaculateProfileMutation.isPending ||
+                                    deleteImmaculateProfileMutation.isPending
+                                  }
+                                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  Reset default profile
+                                </button>
+                              ) : null}
+                              {!activeProfile.isDefault && !activeProfileScopePlexUserId ? (
+                                <button
+                                  type="button"
+                                  onClick={handleDeleteActiveProfile}
+                                  disabled={
+                                    saveImmaculateProfileMutation.isPending ||
+                                    deleteImmaculateProfileMutation.isPending
+                                  }
+                                  className="rounded-xl border border-rose-500/35 bg-rose-500/20 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/30 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  {deleteImmaculateProfileMutation.isPending
+                                    ? 'Deleting…'
+                                    : 'Delete'}
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={handleSaveActiveProfile}
+                                disabled={
+                                  !profileDirty ||
+                                  saveImmaculateProfileMutation.isPending ||
+                                  deleteImmaculateProfileMutation.isPending
+                                }
+                                className="rounded-xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                              >
+                                {saveImmaculateProfileMutation.isPending
+                                  ? 'Saving…'
+                                  : 'Save profile'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="space-y-3">
+                  <AnimatePresence initial={false}>
+                    {isAddProfileFormOpen && newProfileDraft ? (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-white">New profile</div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={newProfileDraft.enabled}
+                              onClick={() =>
+                                setNewProfileDraft((current) =>
+                                  current ? { ...current, enabled: !current.enabled } : current,
+                                )
+                              }
+                              className={[
+                                'relative inline-flex h-7 w-12 rounded-full border transition-colors',
+                                newProfileDraft.enabled
+                                  ? 'border-emerald-400/40 bg-emerald-400/20'
+                                  : 'border-white/20 bg-white/10',
+                              ].join(' ')}
+                              aria-label="Toggle new profile enabled"
+                            >
+                              <span
+                                className={[
+                                  'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+                                  newProfileDraft.enabled ? 'translate-x-6' : 'translate-x-0.5',
+                                ].join(' ')}
+                              />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                Profile name
+                              </div>
+                              <input
+                                type="text"
+                                value={newProfileDraft.name}
+                                onChange={(event) =>
+                                  setNewProfileDraft((current) =>
+                                    current ? { ...current, name: event.target.value } : current,
+                                  )
+                                }
+                                placeholder="e.g. Action + English"
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Media type
+                                </div>
+                                <Select
+                                  value={newProfileDraft.mediaType}
+                                  onValueChange={(value) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            mediaType:
+                                              value === 'movie' ||
+                                              value === 'show' ||
+                                              value === 'both'
+                                                ? value
+                                                : current.mediaType,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select media type" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="both">Movies + TV</SelectItem>
+                                    <SelectItem value="movie">Movies only</SelectItem>
+                                    <SelectItem value="show">TV only</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Match mode
+                                </div>
+                                <Select
+                                  value={newProfileDraft.matchMode}
+                                  onValueChange={(value) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            matchMode:
+                                              value === 'all' || value === 'any'
+                                                ? value
+                                                : current.matchMode,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select match mode" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="all">Match all filters</SelectItem>
+                                    <SelectItem value="any">Match any filter</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                Genres (comma separated)
+                              </div>
+                              <div className="space-y-2">
+                                <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {newProfileSelectedGenres.map((genre) => (
+                                      <span
+                                        key={genre}
+                                        className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                      >
+                                        {genre}
+                                        <button
+                                          type="button"
+                                          onClick={() => removeNewProfileGenreTag(genre)}
+                                          className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
+                                          aria-label={`Remove ${genre}`}
+                                          title={`Remove ${genre}`}
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </span>
+                                    ))}
+                                    <input
+                                      type="text"
+                                      value={newProfileGenreSearch}
+                                      onChange={(event) =>
+                                        setNewProfileGenreSearch(event.target.value)
+                                      }
+                                      onKeyDown={handleNewProfileGenreSearchKeyDown}
+                                      placeholder="Search and add genre"
+                                      className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+                                {newProfileGenreSearchIsActive ||
+                                newProfileDefaultGenreOptions.length ? (
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                    {newProfileGenreSearchIsActive
+                                      ? 'Genre search results'
+                                      : 'Recommended genres'}
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(newProfileGenreSearchIsActive
+                                    ? newProfileFilteredGenreOptions
+                                    : newProfileDefaultGenreOptions
+                                  ).map((genre) => (
+                                    <button
+                                      key={genre}
+                                      type="button"
+                                      onClick={() => addNewProfileGenreTag(genre)}
+                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                    >
+                                      + {genre}
+                                    </button>
+                                  ))}
+                                  {newProfileGenreSearchIsActive &&
+                                  !newProfileFilteredGenreOptions.length &&
+                                  trimmedNewProfileGenreSearch ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        addNewProfileGenreTag(trimmedNewProfileGenreSearch)
+                                      }
+                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                    >
+                                      + Add "{trimmedNewProfileGenreSearch}"
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                Audio languages
+                              </div>
+                              <div className="space-y-2">
+                                <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {newProfileSelectedAudioLanguages.map((language) => (
+                                      <span
+                                        key={language}
+                                        className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
+                                      >
+                                        {language}
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            removeNewProfileAudioLanguageTag(language)
+                                          }
+                                          className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
+                                          aria-label={`Remove ${language}`}
+                                          title={`Remove ${language}`}
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </span>
+                                    ))}
+                                    <input
+                                      type="text"
+                                      value={newProfileAudioLanguageSearch}
+                                      onChange={(event) =>
+                                        setNewProfileAudioLanguageSearch(event.target.value)
+                                      }
+                                      onKeyDown={
+                                        handleNewProfileAudioLanguageSearchKeyDown
+                                      }
+                                      placeholder="Search and add language"
+                                      className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+                                {newProfileAudioLanguageSearchIsActive ||
+                                newProfileDefaultAudioLanguageOptions.length ? (
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                    {newProfileAudioLanguageSearchIsActive
+                                      ? 'Language search results'
+                                      : 'Top 10 popular languages'}
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(newProfileAudioLanguageSearchIsActive
+                                    ? newProfileFilteredAudioLanguageOptions
+                                    : newProfileDefaultAudioLanguageOptions
+                                  ).map((language) => (
+                                    <button
+                                      key={language}
+                                      type="button"
+                                      onClick={() => addNewProfileAudioLanguageTag(language)}
+                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                    >
+                                      + {language}
+                                    </button>
+                                  ))}
+                                  {newProfileAudioLanguageSearchIsActive &&
+                                  !newProfileFilteredAudioLanguageOptions.length &&
+                                  trimmedNewProfileAudioLanguageSearch ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        addNewProfileAudioLanguageTag(
+                                          trimmedNewProfileAudioLanguageSearch,
+                                        )
+                                      }
+                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                    >
+                                      + Add "{trimmedNewProfileAudioLanguageSearch}"
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {showNewProfileRadarrServiceSelector ||
+                          showNewProfileSonarrServiceSelector ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {showNewProfileRadarrServiceSelector ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Radarr service
+                                  </div>
+                                  <Select
+                                    value={newProfileDraft.radarrInstanceId}
+                                    onValueChange={(value) =>
+                                      setNewProfileDraft((current) =>
+                                        current
+                                          ? { ...current, radarrInstanceId: value }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select Radarr service" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                        Primary Radarr
+                                      </SelectItem>
+                                      {activeRadarrInstanceOptions
+                                        .filter((instance) => !instance.isPrimary)
+                                        .map((instance) => (
+                                          <SelectItem key={instance.id} value={instance.id}>
+                                            {instance.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              ) : null}
+                              {showNewProfileSonarrServiceSelector ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Sonarr service
+                                  </div>
+                                  <Select
+                                    value={newProfileDraft.sonarrInstanceId}
+                                    onValueChange={(value) =>
+                                      setNewProfileDraft((current) =>
+                                        current
+                                          ? { ...current, sonarrInstanceId: value }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select Sonarr service" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                        Primary Sonarr
+                                      </SelectItem>
+                                      {activeSonarrInstanceOptions
+                                        .filter((instance) => !instance.isPrimary)
+                                        .map((instance) => (
+                                          <SelectItem key={instance.id} value={instance.id}>
+                                            {instance.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          <div
+                            className={`grid grid-cols-1 gap-4 ${
+                              newProfileDraft.mediaType === 'both' ? 'md:grid-cols-2' : ''
+                            }`}
+                          >
+                            {newProfileDraft.mediaType !== 'show' ? (
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Movie collection base name
+                                </div>
+                                <input
+                                  type="text"
+                                  value={newProfileDraft.movieCollectionBaseName}
+                                  onChange={(event) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            movieCollectionBaseName: event.target.value,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  placeholder={DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME}
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                />
+                              </div>
+                            ) : null}
+                            {newProfileDraft.mediaType !== 'movie' ? (
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  TV collection base name
+                                </div>
+                                <input
+                                  type="text"
+                                  value={newProfileDraft.showCollectionBaseName}
+                                  onChange={(event) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            showCollectionBaseName: event.target.value,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  placeholder={DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME}
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {createImmaculateProfileMutation.isError ? (
+                            <div className="text-sm text-red-200/90">
+                              {(createImmaculateProfileMutation.error as Error)?.message}
+                            </div>
+                          ) : null}
+
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddProfileFormOpen(false);
+                                setNewProfileDraft(null);
+                                setNewProfileGenreSearch('');
+                                setNewProfileAudioLanguageSearch('');
+                                createImmaculateProfileMutation.reset();
+                              }}
+                              disabled={createImmaculateProfileMutation.isPending}
+                              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCreateProfile}
+                              disabled={createImmaculateProfileMutation.isPending}
+                              className="rounded-xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.2)] hover:shadow-[0_0_28px_rgba(250,204,21,0.3)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                            >
+                              {createImmaculateProfileMutation.isPending
+                                ? 'Creating…'
+                                : 'Save profile'}
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+
+                  {!isAddProfileFormOpen ? (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileEditorOpen(false);
+                          setActiveProfileScopePlexUserId(null);
+                          setProfileScopeSearch('');
+                          setIsAddProfileFormOpen(true);
+                          setNewProfileDraft(createNewProfileDraft());
+                          setNewProfileGenreSearch('');
+                          setNewProfileAudioLanguageSearch('');
+                          createImmaculateProfileMutation.reset();
+                        }}
+                        className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15 transition-colors"
+                      >
+                        Add profile
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           {/* Reset Immaculate Taste */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
@@ -1469,12 +3809,18 @@ export function CommandCenterPage() {
             {hasMultipleImmaculateUsers ? (
               <div className="mt-5 space-y-3">
                 {adminImmaculateUser ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div
+                    className={`rounded-2xl border px-4 py-3 transition ${
+                      activeImmaculateUserId === adminImmaculateUser.id
+                        ? 'border-white/20 bg-white/10'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
                     <button
                       type="button"
                       data-plex-user-id={adminImmaculateUser.id}
                       onClick={toggleActiveImmaculateUser}
-                      className="w-full flex items-center justify-between gap-4 text-left"
+                      className="group w-full flex items-center justify-between gap-4 text-left"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -1485,17 +3831,30 @@ export function CommandCenterPage() {
                             {adminImmaculateUser.plexAccountTitle || 'Admin'}
                           </div>
                         </div>
-                        <div className="mt-1 text-xs text-white/60">
-                          Movie: {adminImmaculateUser.movieCount} • TV: {adminImmaculateUser.tvCount}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                            Movie {adminImmaculateUser.movieCount}
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                            TV {adminImmaculateUser.tvCount}
+                          </span>
                         </div>
                       </div>
-                      <span className="text-xs font-semibold text-white/60">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                          activeImmaculateUserId === adminImmaculateUser.id
+                            ? 'border-white/20 bg-white/15 text-white/85'
+                            : 'border-white/10 bg-white/5 text-white/65 group-hover:bg-white/10'
+                        }`}
+                      >
                         {activeImmaculateUserId === adminImmaculateUser.id ? 'Hide' : 'View'}
                       </span>
                     </button>
 
                     {activeImmaculateUserId === adminImmaculateUser.id ? (
-                      <div className="mt-4">{renderAdminCollectionList()}</div>
+                      <div className="mt-4 border-t border-white/10 pt-4">
+                        {renderAdminCollectionList()}
+                      </div>
                     ) : null}
                   </div>
                 ) : null}
@@ -1507,39 +3866,54 @@ export function CommandCenterPage() {
                   return (
                     <div
                       key={user.id}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                      className={`rounded-2xl border px-4 py-3 transition ${
+                        isActive
+                          ? 'border-white/20 bg-white/10'
+                          : 'border-white/10 bg-white/5 hover:bg-white/10'
+                      }`}
                     >
                       <button
                         type="button"
                         data-plex-user-id={user.id}
                         onClick={toggleActiveImmaculateUser}
-                        className="w-full flex items-center justify-between gap-4 text-left"
+                        className="group w-full flex items-center justify-between gap-4 text-left"
                       >
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-white truncate">
                             {user.plexAccountTitle || 'Plex User'}
                           </div>
-                          <div className="mt-1 text-xs text-white/60">
-                            Movie: {movieCount} • TV: {tvCount}
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                              Movie {movieCount}
+                            </span>
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                              TV {tvCount}
+                            </span>
                           </div>
                         </div>
-                        <span className="text-xs font-semibold text-white/60">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                            isActive
+                              ? 'border-white/20 bg-white/15 text-white/85'
+                              : 'border-white/10 bg-white/5 text-white/65 group-hover:bg-white/10'
+                          }`}
+                        >
                           {isActive ? 'Hide' : 'View'}
                         </span>
                       </button>
 
                       {isActive ? (
-                        <div className="mt-4 overflow-x-auto">
-                          <table className="min-w-[420px] w-full text-sm text-white/80 border border-white/10 rounded-2xl overflow-hidden bg-white/5">
-                            <thead className="text-[11px] uppercase tracking-wider text-white/50">
-                              <tr className="bg-white/5">
+                        <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-black/20">
+                          <table className="min-w-[420px] w-full text-sm text-white/80">
+                            <thead className="text-[11px] uppercase tracking-wider text-white/55 bg-white/5">
+                              <tr>
                                 <th className="px-4 py-3 text-left font-semibold">User</th>
                                 <th className="px-4 py-3 text-left font-semibold">Movie</th>
                                 <th className="px-4 py-3 text-left font-semibold">TV Shows</th>
                               </tr>
                             </thead>
-                            <tbody>
-                              <tr className="border-t border-white/10">
+                            <tbody className="divide-y divide-white/10">
+                              <tr>
                                 <td className="px-4 py-3 font-semibold text-white">
                                   {user.plexAccountTitle || 'Plex User'}
                                 </td>
@@ -1556,7 +3930,7 @@ export function CommandCenterPage() {
                                       data-media-type="movie"
                                       data-total={String(movieCount)}
                                       onClick={openImmaculateUserResetTarget}
-                                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                      className="inline-flex items-center gap-2 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-400/20 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
                                       Reset
@@ -1574,7 +3948,7 @@ export function CommandCenterPage() {
                                       data-media-type="tv"
                                       data-total={String(tvCount)}
                                       onClick={openImmaculateUserResetTarget}
-                                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                      className="inline-flex items-center gap-2 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-400/20 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
                                       Reset

@@ -82,6 +82,12 @@ const clampMaxPoints = (value: unknown): number => {
   return Math.max(1, Math.min(100, n));
 };
 
+const normalizeProfileId = (value: unknown): string => {
+  if (typeof value !== 'string') return 'default';
+  const trimmed = value.trim();
+  return trimmed || 'default';
+};
+
 const shuffleInPlace = <T>(arr: T[]) => {
   for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -174,6 +180,7 @@ export class ImmaculateTasteCollectionService {
     ctx: JobContext;
     plexUserId: string;
     librarySectionKey: string;
+    profileId?: string;
     maxPoints?: number;
   }): Promise<{
     imported: boolean;
@@ -189,6 +196,7 @@ export class ImmaculateTasteCollectionService {
     if (!librarySectionKey) {
       throw new Error('librarySectionKey is required');
     }
+    const profileId = normalizeProfileId(params.profileId);
     const maxPoints = clampMaxPoints(params.maxPoints);
 
     const resetMarkerKey = immaculateTasteResetMarkerKey({
@@ -207,7 +215,7 @@ export class ImmaculateTasteCollectionService {
     }
 
     const existingCount = await this.prisma.immaculateTasteMovieLibrary.count({
-      where: { plexUserId, librarySectionKey },
+      where: { plexUserId, librarySectionKey, profileId },
     });
     if (existingCount > 0) {
       await ctx.debug(
@@ -301,6 +309,7 @@ export class ImmaculateTasteCollectionService {
         byTmdbId.set(tmdbId, {
           plexUserId,
           librarySectionKey,
+          profileId,
           tmdbId,
           title: title || undefined,
           status: 'active',
@@ -339,6 +348,7 @@ export class ImmaculateTasteCollectionService {
     ctx: JobContext;
     plexUserId: string;
     librarySectionKey: string;
+    profileId?: string;
     suggested: Array<{
       tmdbId: number;
       title?: string | null;
@@ -353,6 +363,7 @@ export class ImmaculateTasteCollectionService {
     if (!plexUserId) throw new Error('plexUserId is required');
     const librarySectionKey = params.librarySectionKey.trim();
     if (!librarySectionKey) throw new Error('librarySectionKey is required');
+    const profileId = normalizeProfileId(params.profileId);
     const maxPoints = clampMaxPoints(params.maxPoints);
 
     const suggestedByTmdbId = new Map<
@@ -418,13 +429,13 @@ export class ImmaculateTasteCollectionService {
     const [totalBefore, totalActiveBefore, totalPendingBefore] = await Promise.all(
       [
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey },
+          where: { plexUserId, librarySectionKey, profileId },
         }),
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey, status: 'active' },
+          where: { plexUserId, librarySectionKey, profileId, status: 'active' },
         }),
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey, status: 'pending' },
+          where: { plexUserId, librarySectionKey, profileId, status: 'pending' },
         }),
       ],
     );
@@ -434,6 +445,7 @@ export class ImmaculateTasteCollectionService {
           where: {
             plexUserId,
             librarySectionKey,
+            profileId,
             tmdbId: { in: suggestedTmdbIds },
           },
           select: { tmdbId: true, status: true },
@@ -461,6 +473,7 @@ export class ImmaculateTasteCollectionService {
           data: {
             plexUserId,
             librarySectionKey,
+            profileId,
             tmdbId: s.tmdbId,
             title,
             status,
@@ -477,9 +490,10 @@ export class ImmaculateTasteCollectionService {
       if (prev === 'active') {
         await this.prisma.immaculateTasteMovieLibrary.update({
           where: {
-            plexUserId_librarySectionKey_tmdbId: {
+            plexUserId_librarySectionKey_profileId_tmdbId: {
               plexUserId,
               librarySectionKey,
+              profileId,
               tmdbId: s.tmdbId,
             },
           },
@@ -498,9 +512,10 @@ export class ImmaculateTasteCollectionService {
       if (s.inPlex) {
         await this.prisma.immaculateTasteMovieLibrary.update({
           where: {
-            plexUserId_librarySectionKey_tmdbId: {
+            plexUserId_librarySectionKey_profileId_tmdbId: {
               plexUserId,
               librarySectionKey,
+              profileId,
               tmdbId: s.tmdbId,
             },
           },
@@ -516,9 +531,10 @@ export class ImmaculateTasteCollectionService {
       } else {
         await this.prisma.immaculateTasteMovieLibrary.update({
           where: {
-            plexUserId_librarySectionKey_tmdbId: {
+            plexUserId_librarySectionKey_profileId_tmdbId: {
               plexUserId,
               librarySectionKey,
+              profileId,
               tmdbId: s.tmdbId,
             },
           },
@@ -537,6 +553,7 @@ export class ImmaculateTasteCollectionService {
       where: {
         plexUserId,
         librarySectionKey,
+        profileId,
         status: 'active',
         points: { gt: 0 },
         ...(suggestedTmdbIds.length
@@ -548,25 +565,32 @@ export class ImmaculateTasteCollectionService {
 
     // 3) Remove active items that hit 0 or below. Pending items are preserved.
     const removed = await this.prisma.immaculateTasteMovieLibrary.deleteMany({
-      where: { plexUserId, librarySectionKey, status: 'active', points: { lte: 0 } },
+      where: {
+        plexUserId,
+        librarySectionKey,
+        profileId,
+        status: 'active',
+        points: { lte: 0 },
+      },
     });
 
     const [totalAfter, totalActiveAfter, totalPendingAfter] = await Promise.all(
       [
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey },
+          where: { plexUserId, librarySectionKey, profileId },
         }),
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey, status: 'active' },
+          where: { plexUserId, librarySectionKey, profileId, status: 'active' },
         }),
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey, status: 'pending' },
+          where: { plexUserId, librarySectionKey, profileId, status: 'pending' },
         }),
       ],
     );
 
     const summary: JsonObject = {
       librarySectionKey,
+      profileId,
       maxPoints,
       suggestedNow: suggestedTmdbIds.length,
       totalBefore,
@@ -592,6 +616,7 @@ export class ImmaculateTasteCollectionService {
     ctx: JobContext;
     plexUserId: string;
     librarySectionKey: string;
+    profileId?: string;
     tmdbIds: number[];
     pointsOnActivation?: number;
     tmdbApiKey?: string | null;
@@ -601,6 +626,7 @@ export class ImmaculateTasteCollectionService {
     if (!plexUserId) throw new Error('plexUserId is required');
     const librarySectionKey = params.librarySectionKey.trim();
     if (!librarySectionKey) throw new Error('librarySectionKey is required');
+    const profileId = normalizeProfileId(params.profileId);
     const tmdbApiKey = (params.tmdbApiKey ?? '').trim();
     const tmdbIds = Array.from(
       new Set(
@@ -625,6 +651,7 @@ export class ImmaculateTasteCollectionService {
       where: {
         plexUserId,
         librarySectionKey,
+        profileId,
         status: 'pending',
         tmdbId: { in: tmdbIds },
       },
@@ -637,6 +664,7 @@ export class ImmaculateTasteCollectionService {
       where: {
         plexUserId,
         librarySectionKey,
+        profileId,
         status: 'pending',
         tmdbId: { in: pendingIds },
       },
@@ -666,9 +694,10 @@ export class ImmaculateTasteCollectionService {
 
             await this.prisma.immaculateTasteMovieLibrary.update({
               where: {
-                plexUserId_librarySectionKey_tmdbId: {
+                plexUserId_librarySectionKey_profileId_tmdbId: {
                   plexUserId,
                   librarySectionKey,
+                  profileId,
                   tmdbId,
                 },
               },
@@ -699,6 +728,7 @@ export class ImmaculateTasteCollectionService {
   async getActiveMovies(params: {
     plexUserId: string;
     librarySectionKey: string;
+    profileId?: string;
     minPoints?: number;
     take?: number;
   }) {
@@ -706,6 +736,7 @@ export class ImmaculateTasteCollectionService {
     if (!librarySectionKey) throw new Error('librarySectionKey is required');
     const plexUserId = params.plexUserId.trim();
     if (!plexUserId) throw new Error('plexUserId is required');
+    const profileId = normalizeProfileId(params.profileId);
     const minPoints = Math.max(1, Math.trunc(params.minPoints ?? 1));
     const take = params.take ? Math.max(1, Math.trunc(params.take)) : undefined;
 
@@ -713,6 +744,7 @@ export class ImmaculateTasteCollectionService {
       where: {
         plexUserId,
         librarySectionKey,
+        profileId,
         status: 'active',
         points: { gte: minPoints },
       },

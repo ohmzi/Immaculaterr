@@ -6,8 +6,10 @@ import {
   CURATED_TV_COLLECTION_HUB_ORDER,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
-  buildUserCollectionHubOrder,
+  buildImmaculateCollectionName,
   buildUserCollectionName,
+  isImmaculateTasteDefaultCollectionBaseName,
+  normalizeCollectionTitle,
 } from '../plex/plex-collections.utils';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
@@ -25,6 +27,10 @@ import {
   hasExplicitRefresherScopeInput,
   sortSweepUsers,
 } from './refresher-sweep.utils';
+import {
+  ImmaculateTasteProfileService,
+  type ImmaculateTasteProfileView,
+} from '../immaculate-taste-profiles/immaculate-taste-profile.service';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -71,6 +77,87 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+function normalizeProfileId(value: unknown): string {
+  if (typeof value !== 'string') return 'default';
+  const trimmed = value.trim();
+  return trimmed || 'default';
+}
+
+function includesMovies(mediaType: string): boolean {
+  return mediaType === 'movie' || mediaType === 'both';
+}
+
+function includesShows(mediaType: string): boolean {
+  return mediaType === 'show' || mediaType === 'both';
+}
+
+function dedupeCollectionNames(collectionNames: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const collectionName of collectionNames) {
+    const normalized = normalizeCollectionTitle(collectionName);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(collectionName);
+  }
+  return out;
+}
+
+function sortProfilesForHubOrder(
+  profiles: ImmaculateTasteProfileView[],
+): ImmaculateTasteProfileView[] {
+  return profiles.slice().sort((a, b) => {
+    if (a.isDefault && !b.isDefault) return -1;
+    if (b.isDefault && !a.isDefault) return 1;
+    const aCreatedAt = Date.parse(a.createdAt);
+    const bCreatedAt = Date.parse(b.createdAt);
+    const aHasDate = Number.isFinite(aCreatedAt);
+    const bHasDate = Number.isFinite(bCreatedAt);
+    if (aHasDate && bHasDate && aCreatedAt !== bCreatedAt) {
+      return aCreatedAt - bCreatedAt;
+    }
+    if (aHasDate !== bHasDate) return aHasDate ? -1 : 1;
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function buildProfileHubOrder(params: {
+  profiles: ImmaculateTasteProfileView[];
+  plexUserId: string;
+  plexUserTitle: string;
+  mediaType: 'movie' | 'tv';
+}): string[] {
+  const { profiles, plexUserId, plexUserTitle, mediaType } = params;
+  const enabledProfiles = sortProfilesForHubOrder(
+    profiles.filter((profile) => profile.enabled),
+  );
+
+  const orderedNames: string[] = [];
+  for (const profile of enabledProfiles) {
+    const override =
+      profile.userOverrides.find((item) => item.plexUserId === plexUserId) ?? null;
+    const scopedMediaType = override?.mediaType ?? profile.mediaType;
+    const scopedMovieBaseName =
+      override?.movieCollectionBaseName ?? profile.movieCollectionBaseName;
+    const scopedShowBaseName =
+      override?.showCollectionBaseName ?? profile.showCollectionBaseName;
+
+    if (mediaType === 'movie' && !includesMovies(scopedMediaType)) continue;
+    if (mediaType === 'tv' && !includesShows(scopedMediaType)) continue;
+
+    const baseName =
+      mediaType === 'movie'
+        ? scopedMovieBaseName || IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME
+        : scopedShowBaseName || IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME;
+    const collectionName = buildImmaculateCollectionName(baseName, plexUserTitle);
+    if (!collectionName.trim()) continue;
+    orderedNames.push(collectionName);
+  }
+
+  return dedupeCollectionNames(orderedNames);
+}
+
 @Injectable()
 export class ImmaculateTasteRefresherJob {
   private static readonly MOVIE_COLLECTION_NAME =
@@ -88,6 +175,7 @@ export class ImmaculateTasteRefresherJob {
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
     private readonly tmdb: TmdbService,
+    private readonly immaculateTasteProfiles: ImmaculateTasteProfileService,
   ) {}
 
   async run(ctx: JobContext): Promise<JobRunResult> {
@@ -118,6 +206,17 @@ export class ImmaculateTasteRefresherJob {
       typeof input['movieSectionKey'] === 'string' ? input['movieSectionKey'].trim() : '';
     const inputTvSectionKey =
       typeof input['tvSectionKey'] === 'string' ? input['tvSectionKey'].trim() : '';
+    const profileId = normalizeProfileId(input['profileId']);
+    const inputMovieCollectionBaseName =
+      typeof input['movieCollectionBaseName'] === 'string'
+        ? input['movieCollectionBaseName'].trim()
+        : '';
+    const inputTvCollectionBaseName =
+      typeof input['tvCollectionBaseName'] === 'string'
+        ? input['tvCollectionBaseName'].trim()
+        : typeof input['showCollectionBaseName'] === 'string'
+          ? input['showCollectionBaseName'].trim()
+          : '';
     const seedLibrarySectionId =
       typeof input['seedLibrarySectionId'] === 'number' &&
       Number.isFinite(input['seedLibrarySectionId'])
@@ -128,6 +227,31 @@ export class ImmaculateTasteRefresherJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    const profiles: ImmaculateTasteProfileView[] =
+      await this.immaculateTasteProfiles.list(ctx.userId).catch(() => []);
+    const selectedProfile = profiles.find((profile) => profile.datasetId === profileId) ?? null;
+    if (selectedProfile && selectedProfile.enabled === false) {
+      const summary: JsonObject = {
+        mode,
+        profileId,
+        skipped: true,
+        reason: 'profile_disabled',
+      };
+      await ctx.info('immaculateTasteRefresher: skipped (profile disabled)', {
+        profileId,
+        profileName: selectedProfile.name,
+      });
+      const report = buildImmaculateTasteRefresherReport({ ctx, raw: summary });
+      return { summary: report as unknown as JsonObject };
+    }
+    const movieCollectionBaseName =
+      inputMovieCollectionBaseName ||
+      selectedProfile?.movieCollectionBaseName ||
+      ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME;
+    const tvCollectionBaseName =
+      inputTvCollectionBaseName ||
+      selectedProfile?.showCollectionBaseName ||
+      ImmaculateTasteRefresherJob.TV_COLLECTION_NAME;
 
     // Progress (UI): only when this is the primary job (not when chained from another job)
     if (ctx.jobId === 'immaculateTasteRefresher') {
@@ -254,7 +378,7 @@ export class ImmaculateTasteRefresherJob {
 
     if (forceAllLibraries && includeMovies) {
       const movieRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
-        where: { plexUserId },
+        where: { plexUserId, profileId },
         select: { librarySectionKey: true },
         distinct: ['librarySectionKey'],
       });
@@ -268,7 +392,7 @@ export class ImmaculateTasteRefresherJob {
 
     if (forceAllLibraries && includeTv) {
       const tvRows = await this.prisma.immaculateTasteShowLibrary.findMany({
-        where: { plexUserId },
+        where: { plexUserId, profileId },
         select: { librarySectionKey: true },
         distinct: ['librarySectionKey'],
       });
@@ -290,6 +414,7 @@ export class ImmaculateTasteRefresherJob {
       const recentMovieLibraries = await this.prisma.immaculateTasteMovieLibrary.findMany({
         where: {
           plexUserId,
+          profileId,
           librarySectionKey: { in: scopedMovieSections.map((s) => s.key) },
         },
         select: { librarySectionKey: true, updatedAt: true },
@@ -323,6 +448,7 @@ export class ImmaculateTasteRefresherJob {
       const recentTvLibraries = await this.prisma.immaculateTasteShowLibrary.findMany({
         where: {
           plexUserId,
+          profileId,
           librarySectionKey: { in: scopedTvSections.map((s) => s.key) },
         },
         select: { librarySectionKey: true, updatedAt: true },
@@ -363,22 +489,42 @@ export class ImmaculateTasteRefresherJob {
 
     const maxPoints =
       Math.trunc(pickNumber(settings, 'immaculateTaste.maxPoints') ?? 50) || 50;
-    const plexMovieCollectionName = buildUserCollectionName(
-      ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
+    const isCustomMovieCollectionBaseName =
+      !isImmaculateTasteDefaultCollectionBaseName(movieCollectionBaseName);
+    const curatedMovieSnapshotName =
+      profileId === 'default' || isCustomMovieCollectionBaseName
+        ? movieCollectionBaseName
+        : `${movieCollectionBaseName} [${profileId}]`;
+    const plexMovieCollectionName = buildImmaculateCollectionName(
+      movieCollectionBaseName,
       plexUserTitle,
     );
-    const plexTvCollectionName = buildUserCollectionName(
-      ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
+    const plexTvCollectionName = buildImmaculateCollectionName(
+      tvCollectionBaseName,
       plexUserTitle,
     );
-    const movieCollectionHubOrder = buildUserCollectionHubOrder(
-      CURATED_MOVIE_COLLECTION_HUB_ORDER,
+    const movieProfileHubOrder = buildProfileHubOrder({
+      profiles,
+      plexUserId,
       plexUserTitle,
-    );
-    const tvCollectionHubOrder = buildUserCollectionHubOrder(
-      CURATED_TV_COLLECTION_HUB_ORDER,
+      mediaType: 'movie',
+    });
+    const tvProfileHubOrder = buildProfileHubOrder({
+      profiles,
+      plexUserId,
       plexUserTitle,
-    );
+      mediaType: 'tv',
+    });
+    const movieCollectionHubOrder = dedupeCollectionNames([
+      buildUserCollectionName(CURATED_MOVIE_COLLECTION_HUB_ORDER[0], plexUserTitle),
+      buildUserCollectionName(CURATED_MOVIE_COLLECTION_HUB_ORDER[1], plexUserTitle),
+      ...(movieProfileHubOrder.length ? movieProfileHubOrder : [plexMovieCollectionName]),
+    ]);
+    const tvCollectionHubOrder = dedupeCollectionNames([
+      buildUserCollectionName(CURATED_TV_COLLECTION_HUB_ORDER[0], plexUserTitle),
+      buildUserCollectionName(CURATED_TV_COLLECTION_HUB_ORDER[1], plexUserTitle),
+      ...(tvProfileHubOrder.length ? tvProfileHubOrder : [plexTvCollectionName]),
+    ]);
 
     await ctx.info('immaculateTasteRefresher: start', {
       mode,
@@ -392,10 +538,11 @@ export class ImmaculateTasteRefresherJob {
       includeTv,
       movieLibraries: includeMovies ? orderedMovieSections.map((s) => s.title) : [],
       tvLibraries: includeTv ? scopedTvSections.map((s) => s.title) : [],
+      profileId,
       movieScopeSource,
       tvScopeSource,
-      collectionName: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
-      tvCollectionName: ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
+      collectionName: movieCollectionBaseName,
+      tvCollectionName: tvCollectionBaseName,
       plexMovieCollectionName,
       plexTvCollectionName,
       maxPoints,
@@ -509,7 +656,7 @@ export class ImmaculateTasteRefresherJob {
           }
 
           const existing = await this.prisma.immaculateTasteMovieLibrary.count({
-            where: { plexUserId, librarySectionKey: sec.key },
+            where: { plexUserId, librarySectionKey: sec.key, profileId },
           });
           if (existing > 0) continue;
 
@@ -519,6 +666,7 @@ export class ImmaculateTasteRefresherJob {
               data: batch.map((r) => ({
                 plexUserId,
                 librarySectionKey: sec.key,
+                profileId,
                 tmdbId: r.tmdbId,
                 title: r.title ?? undefined,
                 status: r.status,
@@ -546,6 +694,7 @@ export class ImmaculateTasteRefresherJob {
       ctx,
       plexUserId,
       librarySectionKey: seedLibrarySectionKey,
+      profileId,
       maxPoints,
     });
 
@@ -562,7 +711,12 @@ export class ImmaculateTasteRefresherJob {
 
       // Activate pending suggestions that now exist in THIS library.
       const pendingRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
-        where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
+        where: {
+          plexUserId,
+          librarySectionKey: sec.key,
+          profileId,
+          status: 'pending',
+        },
         select: { tmdbId: true },
       });
       const toActivate = pendingRows
@@ -577,6 +731,7 @@ export class ImmaculateTasteRefresherJob {
               ctx,
               plexUserId,
               librarySectionKey: sec.key,
+              profileId,
               tmdbIds: toActivate,
               pointsOnActivation: ImmaculateTasteRefresherJob.ACTIVATION_POINTS,
               tmdbApiKey,
@@ -601,6 +756,7 @@ export class ImmaculateTasteRefresherJob {
         where: {
           plexUserId,
           librarySectionKey: sec.key,
+          profileId,
           status: 'active',
           points: { gt: 0 },
         },
@@ -629,9 +785,9 @@ export class ImmaculateTasteRefresherJob {
       // Best-effort: backfill TMDB ratings for active items missing vote_average (per library).
       let tmdbBackfilled = 0;
       const backfillLimit = 200;
-      const backfillIds = activeRows
-        .filter((m) => m.tmdbVoteAvg === null)
-        .map((m) => m.tmdbId)
+      const backfillIds: number[] = activeRows
+        .filter((m) => m.tmdbVoteAvg === null && typeof m.tmdbId === 'number')
+        .map((m) => Math.trunc(m.tmdbId))
         .slice(0, backfillLimit);
 
       if (!ctx.dryRun && backfillIds.length && tmdbApiKey) {
@@ -649,9 +805,10 @@ export class ImmaculateTasteRefresherJob {
               await this.prisma.immaculateTasteMovieLibrary
                 .update({
                   where: {
-                    plexUserId_librarySectionKey_tmdbId: {
+                    plexUserId_librarySectionKey_profileId_tmdbId: {
                       plexUserId,
                       librarySectionKey: sec.key,
+                      profileId,
                       tmdbId,
                     },
                   },
@@ -778,9 +935,9 @@ export class ImmaculateTasteRefresherJob {
     let curatedCollectionId: string | null = null;
     if (!ctx.dryRun) {
       const col = await this.prisma.curatedCollection.upsert({
-        where: { name: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME },
+        where: { name: curatedMovieSnapshotName },
         update: {},
-        create: { name: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME },
+        create: { name: curatedMovieSnapshotName },
         select: { id: true },
       });
       curatedCollectionId = col.id;
@@ -817,7 +974,7 @@ export class ImmaculateTasteRefresherJob {
     }
 
     movieSummary = {
-      collectionName: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
+      collectionName: movieCollectionBaseName,
       totalLibraries: orderedMovieSections.length,
       dbSaved,
       curatedCollectionId,
@@ -926,7 +1083,7 @@ export class ImmaculateTasteRefresherJob {
           }
 
             const existing = await this.prisma.immaculateTasteShowLibrary.count({
-              where: { plexUserId, librarySectionKey: sec.key },
+              where: { plexUserId, librarySectionKey: sec.key, profileId },
             });
             if (existing > 0) continue;
 
@@ -936,6 +1093,7 @@ export class ImmaculateTasteRefresherJob {
                 data: batch.map((r) => ({
                   plexUserId,
                   librarySectionKey: sec.key,
+                  profileId,
                   tvdbId: r.tvdbId,
                   tmdbId: r.tmdbId ?? undefined,
                   title: r.title ?? undefined,
@@ -970,7 +1128,12 @@ export class ImmaculateTasteRefresherJob {
 
         // Activate pending suggestions that now exist in THIS library.
         const pendingRows = await this.prisma.immaculateTasteShowLibrary.findMany({
-          where: { plexUserId, librarySectionKey: sec.key, status: 'pending' },
+          where: {
+            plexUserId,
+            librarySectionKey: sec.key,
+            profileId,
+            status: 'pending',
+          },
           select: { tvdbId: true },
         });
         const toActivate = pendingRows
@@ -985,6 +1148,7 @@ export class ImmaculateTasteRefresherJob {
                 ctx,
                 plexUserId,
                 librarySectionKey: sec.key,
+                profileId,
                 tvdbIds: toActivate,
                 pointsOnActivation: ImmaculateTasteRefresherJob.ACTIVATION_POINTS,
                 tmdbApiKey,
@@ -1008,6 +1172,7 @@ export class ImmaculateTasteRefresherJob {
           where: {
             plexUserId,
             librarySectionKey: sec.key,
+            profileId,
             status: 'active',
             points: { gt: 0 },
           },
@@ -1037,13 +1202,15 @@ export class ImmaculateTasteRefresherJob {
         // Best-effort: backfill TMDB ratings for active items missing vote_average (per library).
         let tmdbBackfilled = 0;
         const backfillLimit = 200;
-        const backfillIds = Array.from(
-          new Set(
+        const backfillIds: number[] = Array.from(
+          new Set<number>(
             activeRows
-              .filter(
-                (m) => m.tmdbVoteAvg === null && typeof m.tmdbId === 'number',
+              .map((m) =>
+                m.tmdbVoteAvg === null && typeof m.tmdbId === 'number'
+                  ? Math.trunc(m.tmdbId)
+                  : null,
               )
-              .map((m) => Math.trunc(m.tmdbId as number)),
+              .filter((tmdbId): tmdbId is number => tmdbId !== null),
           ),
         ).slice(0, backfillLimit);
 
@@ -1061,7 +1228,7 @@ export class ImmaculateTasteRefresherJob {
 
                 await this.prisma.immaculateTasteShowLibrary
                   .updateMany({
-                    where: { plexUserId, librarySectionKey: sec.key, tmdbId },
+                    where: { plexUserId, librarySectionKey: sec.key, profileId, tmdbId },
                     data: {
                       ...(voteAvg !== null ? { tmdbVoteAvg: voteAvg } : {}),
                       ...(voteCount !== null ? { tmdbVoteCount: voteCount } : {}),
@@ -1183,7 +1350,7 @@ export class ImmaculateTasteRefresherJob {
       }
 
       tvSummary = {
-        collectionName: ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
+        collectionName: tvCollectionBaseName,
         totalLibraries: orderedTvSections.length,
         activatedNow: activatedNowTotal,
         tmdbBackfilled: tmdbBackfilledTotal,
@@ -1205,8 +1372,10 @@ export class ImmaculateTasteRefresherJob {
       plexUserId,
       plexUserTitle,
       pinTarget,
-      collectionName: ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME,
-      tvCollectionName: ImmaculateTasteRefresherJob.TV_COLLECTION_NAME,
+      profileId,
+      profileName: selectedProfile?.name ?? null,
+      collectionName: movieCollectionBaseName,
+      tvCollectionName: tvCollectionBaseName,
       movie: movieSummary,
       tv: tvSummary,
     };
@@ -1220,6 +1389,11 @@ export class ImmaculateTasteRefresherJob {
     ctx: JobContext,
     input: JsonObject,
   ): Promise<JobRunResult> {
+    const requestedProfileIdRaw =
+      typeof input['profileId'] === 'string' ? input['profileId'].trim() : '';
+    const requestedProfileId = requestedProfileIdRaw
+      ? normalizeProfileId(requestedProfileIdRaw)
+      : null;
     const includeMovies =
       typeof input['includeMovies'] === 'boolean' ? input['includeMovies'] : true;
     const includeTv = typeof input['includeTv'] === 'boolean' ? input['includeTv'] : true;
@@ -1232,6 +1406,7 @@ export class ImmaculateTasteRefresherJob {
     const userIds = new Set<string>();
     if (includeMovies) {
       const movieRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
+        where: requestedProfileId ? { profileId: requestedProfileId } : undefined,
         select: { plexUserId: true },
         distinct: ['plexUserId'],
       });
@@ -1239,6 +1414,7 @@ export class ImmaculateTasteRefresherJob {
     }
     if (includeTv) {
       const tvRows = await this.prisma.immaculateTasteShowLibrary.findMany({
+        where: requestedProfileId ? { profileId: requestedProfileId } : undefined,
         select: { plexUserId: true },
         distinct: ['plexUserId'],
       });
@@ -1283,6 +1459,7 @@ export class ImmaculateTasteRefresherJob {
 
     await ctx.info('immaculateTasteRefresher: sweep start', {
       mode: 'sweep',
+      profileId: requestedProfileId,
       includeMovies,
       includeTv,
       limit,
@@ -1308,6 +1485,7 @@ export class ImmaculateTasteRefresherJob {
           includeMovies,
           includeTv,
           __forceAllLibraries: true,
+          ...(requestedProfileId ? { profileId: requestedProfileId } : {}),
           ...(limit !== null ? { limit } : {}),
         };
         const childRun = await this.run({
@@ -1358,6 +1536,7 @@ export class ImmaculateTasteRefresherJob {
     const summary: JsonObject = {
       mode: 'sweep',
       sweepOrder: SWEEP_ORDER,
+      profileId: requestedProfileId,
       includeMovies,
       includeTv,
       ...(limit !== null ? { limit } : {}),

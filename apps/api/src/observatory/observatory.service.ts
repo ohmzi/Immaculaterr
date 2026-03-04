@@ -28,6 +28,7 @@ import { WatchedCollectionsRefresherService } from '../watched-movie-recommendat
 
 type ListMode = 'pendingApproval' | 'review';
 type WatchedCollectionKind = 'recentlyWatched' | 'changeOfTaste';
+const DEFAULT_PROFILE_ID = 'default';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -312,12 +313,14 @@ export class ObservatoryService {
           ? {
               plexUserId,
               librarySectionKey: params.librarySectionKey,
+              profileId: DEFAULT_PROFILE_ID,
               status: 'pending',
               downloadApproval: 'pending',
             }
           : {
               plexUserId,
               librarySectionKey: params.librarySectionKey,
+              profileId: DEFAULT_PROFILE_ID,
               downloadApproval: { not: 'rejected' },
             },
       orderBy:
@@ -340,9 +343,10 @@ export class ObservatoryService {
           await this.prisma.immaculateTasteMovieLibrary
             .update({
               where: {
-                plexUserId_librarySectionKey_tmdbId: {
+                plexUserId_librarySectionKey_profileId_tmdbId: {
                   plexUserId,
                   librarySectionKey: params.librarySectionKey,
+                  profileId: DEFAULT_PROFILE_ID,
                   tmdbId: r.tmdbId,
                 },
               },
@@ -358,6 +362,7 @@ export class ObservatoryService {
       where: {
         plexUserId,
         librarySectionKey: params.librarySectionKey,
+        profileId: DEFAULT_PROFILE_ID,
         tmdbId: { in: rows.map((r) => r.tmdbId) },
         ...(params.mode === 'pendingApproval'
           ? { status: 'pending', downloadApproval: 'pending' }
@@ -421,12 +426,14 @@ export class ObservatoryService {
           ? {
               plexUserId,
               librarySectionKey: params.librarySectionKey,
+              profileId: DEFAULT_PROFILE_ID,
               status: 'pending',
               downloadApproval: 'pending',
             }
           : {
               plexUserId,
               librarySectionKey: params.librarySectionKey,
+              profileId: DEFAULT_PROFILE_ID,
               downloadApproval: { not: 'rejected' },
             },
       orderBy:
@@ -450,9 +457,10 @@ export class ObservatoryService {
           await this.prisma.immaculateTasteShowLibrary
             .update({
               where: {
-                plexUserId_librarySectionKey_tvdbId: {
+                plexUserId_librarySectionKey_profileId_tvdbId: {
                   plexUserId,
                   librarySectionKey: params.librarySectionKey,
+                  profileId: DEFAULT_PROFILE_ID,
                   tvdbId: r.tvdbId,
                 },
               },
@@ -467,6 +475,7 @@ export class ObservatoryService {
       where: {
         plexUserId,
         librarySectionKey: params.librarySectionKey,
+        profileId: DEFAULT_PROFILE_ID,
         tvdbId: { in: rows.map((r) => r.tvdbId) },
         ...(params.mode === 'pendingApproval'
           ? { status: 'pending', downloadApproval: 'pending' }
@@ -813,9 +822,10 @@ export class ObservatoryService {
             const row = await this.prisma.immaculateTasteMovieLibrary
               .findUnique({
                 where: {
-                  plexUserId_librarySectionKey_tmdbId: {
+                  plexUserId_librarySectionKey_profileId_tmdbId: {
                     plexUserId,
                     librarySectionKey: params.librarySectionKey,
+                    profileId: DEFAULT_PROFILE_ID,
                     tmdbId: a.id,
                   },
                 },
@@ -830,9 +840,10 @@ export class ObservatoryService {
               row.status === 'pending' ? 'pending' : 'none';
             await this.prisma.immaculateTasteMovieLibrary.update({
               where: {
-                plexUserId_librarySectionKey_tmdbId: {
+                plexUserId_librarySectionKey_profileId_tmdbId: {
                   plexUserId,
                   librarySectionKey: params.librarySectionKey,
+                  profileId: DEFAULT_PROFILE_ID,
                   tmdbId: a.id,
                 },
               },
@@ -862,9 +873,10 @@ export class ObservatoryService {
           }
           await this.prisma.immaculateTasteMovieLibrary.update({
             where: {
-              plexUserId_librarySectionKey_tmdbId: {
+              plexUserId_librarySectionKey_profileId_tmdbId: {
                 plexUserId,
                 librarySectionKey: params.librarySectionKey,
+                profileId: DEFAULT_PROFILE_ID,
                 tmdbId: a.id,
               },
             },
@@ -919,9 +931,10 @@ export class ObservatoryService {
             const row = await this.prisma.immaculateTasteShowLibrary
               .findUnique({
                 where: {
-                  plexUserId_librarySectionKey_tvdbId: {
+                  plexUserId_librarySectionKey_profileId_tvdbId: {
                     plexUserId,
                     librarySectionKey: params.librarySectionKey,
+                    profileId: DEFAULT_PROFILE_ID,
                     tvdbId: a.id,
                   },
                 },
@@ -936,9 +949,10 @@ export class ObservatoryService {
               row.status === 'pending' ? 'pending' : 'none';
             await this.prisma.immaculateTasteShowLibrary.update({
               where: {
-                plexUserId_librarySectionKey_tvdbId: {
+                plexUserId_librarySectionKey_profileId_tvdbId: {
                   plexUserId,
                   librarySectionKey: params.librarySectionKey,
+                  profileId: DEFAULT_PROFILE_ID,
                   tvdbId: a.id,
                 },
               },
@@ -968,9 +982,10 @@ export class ObservatoryService {
           }
           await this.prisma.immaculateTasteShowLibrary.update({
             where: {
-              plexUserId_librarySectionKey_tvdbId: {
+              plexUserId_librarySectionKey_profileId_tvdbId: {
                 plexUserId,
                 librarySectionKey: params.librarySectionKey,
+                profileId: DEFAULT_PROFILE_ID,
                 tvdbId: a.id,
               },
             },
@@ -1831,6 +1846,7 @@ export class ObservatoryService {
       where: {
         plexUserId: params.plexUserId,
         librarySectionKey: params.librarySectionKey,
+        profileId: DEFAULT_PROFILE_ID,
         downloadApproval: 'rejected',
       },
       select: { tmdbId: true, sentToRadarrAt: true },
@@ -1842,6 +1858,7 @@ export class ObservatoryService {
           where: {
             plexUserId: params.plexUserId,
             librarySectionKey: params.librarySectionKey,
+            profileId: DEFAULT_PROFILE_ID,
             status: 'pending',
             downloadApproval: 'approved',
           },
@@ -1931,9 +1948,10 @@ export class ObservatoryService {
         await this.prisma.immaculateTasteMovieLibrary
           .update({
             where: {
-              plexUserId_librarySectionKey_tmdbId: {
+              plexUserId_librarySectionKey_profileId_tmdbId: {
                 plexUserId: params.plexUserId,
                 librarySectionKey: params.librarySectionKey,
+                profileId: DEFAULT_PROFILE_ID,
                 tmdbId: r.tmdbId,
               },
             },
@@ -1951,6 +1969,7 @@ export class ObservatoryService {
         where: {
           plexUserId: params.plexUserId,
           librarySectionKey: params.librarySectionKey,
+          profileId: DEFAULT_PROFILE_ID,
           tmdbId: { in: rejectedIds },
         },
       });
@@ -1972,6 +1991,7 @@ export class ObservatoryService {
     const activeRows = await this.immaculateMovies.getActiveMovies({
       plexUserId: params.plexUserId,
       librarySectionKey: params.librarySectionKey,
+      profileId: DEFAULT_PROFILE_ID,
       minPoints: 1,
     });
     const orderedIds = this.immaculateMovies.buildThreeTierTmdbRatingShuffleOrder({
@@ -2059,6 +2079,7 @@ export class ObservatoryService {
       where: {
         plexUserId: params.plexUserId,
         librarySectionKey: params.librarySectionKey,
+        profileId: DEFAULT_PROFILE_ID,
         downloadApproval: 'rejected',
       },
       select: { tvdbId: true, sentToSonarrAt: true },
@@ -2069,6 +2090,7 @@ export class ObservatoryService {
       where: {
         plexUserId: params.plexUserId,
         librarySectionKey: params.librarySectionKey,
+        profileId: DEFAULT_PROFILE_ID,
         status: 'pending',
         downloadApproval: 'approved',
         ...(params.approvalRequired ? {} : { tvdbId: { equals: -1 } }),
@@ -2154,9 +2176,10 @@ export class ObservatoryService {
         await this.prisma.immaculateTasteShowLibrary
           .update({
             where: {
-              plexUserId_librarySectionKey_tvdbId: {
+              plexUserId_librarySectionKey_profileId_tvdbId: {
                 plexUserId: params.plexUserId,
                 librarySectionKey: params.librarySectionKey,
+                profileId: DEFAULT_PROFILE_ID,
                 tvdbId: r.tvdbId,
               },
             },
@@ -2173,6 +2196,7 @@ export class ObservatoryService {
         where: {
           plexUserId: params.plexUserId,
           librarySectionKey: params.librarySectionKey,
+          profileId: DEFAULT_PROFILE_ID,
           tvdbId: { in: rejectedIds },
         },
       });
@@ -2194,6 +2218,7 @@ export class ObservatoryService {
     const activeRows = await this.immaculateTv.getActiveShows({
       plexUserId: params.plexUserId,
       librarySectionKey: params.librarySectionKey,
+      profileId: DEFAULT_PROFILE_ID,
       minPoints: 1,
     });
     const orderedIds = this.immaculateTv.buildThreeTierTmdbRatingShuffleOrder({

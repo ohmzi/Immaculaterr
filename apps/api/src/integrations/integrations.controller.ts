@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -38,6 +39,7 @@ import {
 } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
+import { ArrInstanceService } from '../arr-instances/arr-instance.service';
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -198,6 +200,7 @@ export class IntegrationsController {
     private readonly google: GoogleService,
     private readonly openai: OpenAiService,
     private readonly overseerr: OverseerrService,
+    private readonly arrInstances: ArrInstanceService,
   ) {}
 
   private asServiceSecretId(integrationId: string): ServiceSecretId | null {
@@ -448,23 +451,41 @@ export class IntegrationsController {
   }
 
   @Get('radarr/options')
-  async radarrOptions(@Req() req: AuthenticatedRequest) {
+  async radarrOptions(
+    @Req() req: AuthenticatedRequest,
+    @Query('instanceId') instanceIdRaw?: string,
+  ) {
     const userId = req.user.id;
-    const { settings, secrets } =
-      await this.settingsService.getInternalSettings(userId);
-
-    const radarrEnabledFlag = pickBool(settings, 'radarr.enabled');
-    const baseUrlRaw = pickString(settings, 'radarr.baseUrl');
-    const apiKey = pickString(secrets, 'radarr.apiKey');
-    // Back-compat: if radarr.enabled is not set, treat "secret present" as enabled.
-    const enabledFlag = radarrEnabledFlag ?? Boolean(apiKey);
-    const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
-
-    if (!enabled) {
-      throw new BadRequestException('Radarr is not enabled or not configured');
+    const instanceId = (instanceIdRaw ?? '').trim();
+    let baseUrl = '';
+    let apiKey = '';
+    if (instanceId) {
+      const resolved = await this.arrInstances.resolveInstance(
+        userId,
+        'radarr',
+        instanceId,
+        {
+          requireConfigured: true,
+        },
+      );
+      if (!resolved.enabled) {
+        throw new BadRequestException('Selected Radarr instance is disabled');
+      }
+      baseUrl = resolved.baseUrl;
+      apiKey = resolved.apiKey;
+    } else {
+      const { settings, secrets } =
+        await this.settingsService.getInternalSettings(userId);
+      const radarrEnabledFlag = pickBool(settings, 'radarr.enabled');
+      const baseUrlRaw = pickString(settings, 'radarr.baseUrl');
+      apiKey = pickString(secrets, 'radarr.apiKey');
+      const enabledFlag = radarrEnabledFlag ?? Boolean(apiKey);
+      const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
+      if (!enabled) {
+        throw new BadRequestException('Radarr is not enabled or not configured');
+      }
+      baseUrl = normalizeHttpUrl(baseUrlRaw);
     }
-
-    const baseUrl = normalizeHttpUrl(baseUrlRaw);
 
     const [rootFolders, qualityProfiles, tags] = await Promise.all([
       this.radarr.listRootFolders({ baseUrl, apiKey }),
@@ -481,23 +502,41 @@ export class IntegrationsController {
   }
 
   @Get('sonarr/options')
-  async sonarrOptions(@Req() req: AuthenticatedRequest) {
+  async sonarrOptions(
+    @Req() req: AuthenticatedRequest,
+    @Query('instanceId') instanceIdRaw?: string,
+  ) {
     const userId = req.user.id;
-    const { settings, secrets } =
-      await this.settingsService.getInternalSettings(userId);
-
-    const sonarrEnabledFlag = pickBool(settings, 'sonarr.enabled');
-    const baseUrlRaw = pickString(settings, 'sonarr.baseUrl');
-    const apiKey = pickString(secrets, 'sonarr.apiKey');
-    // Back-compat: if sonarr.enabled is not set, treat "secret present" as enabled.
-    const enabledFlag = sonarrEnabledFlag ?? Boolean(apiKey);
-    const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
-
-    if (!enabled) {
-      throw new BadRequestException('Sonarr is not enabled or not configured');
+    const instanceId = (instanceIdRaw ?? '').trim();
+    let baseUrl = '';
+    let apiKey = '';
+    if (instanceId) {
+      const resolved = await this.arrInstances.resolveInstance(
+        userId,
+        'sonarr',
+        instanceId,
+        {
+          requireConfigured: true,
+        },
+      );
+      if (!resolved.enabled) {
+        throw new BadRequestException('Selected Sonarr instance is disabled');
+      }
+      baseUrl = resolved.baseUrl;
+      apiKey = resolved.apiKey;
+    } else {
+      const { settings, secrets } =
+        await this.settingsService.getInternalSettings(userId);
+      const sonarrEnabledFlag = pickBool(settings, 'sonarr.enabled');
+      const baseUrlRaw = pickString(settings, 'sonarr.baseUrl');
+      apiKey = pickString(secrets, 'sonarr.apiKey');
+      const enabledFlag = sonarrEnabledFlag ?? Boolean(apiKey);
+      const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
+      if (!enabled) {
+        throw new BadRequestException('Sonarr is not enabled or not configured');
+      }
+      baseUrl = normalizeHttpUrl(baseUrlRaw);
     }
-
-    const baseUrl = normalizeHttpUrl(baseUrlRaw);
 
     const [rootFolders, qualityProfiles, tags] = await Promise.all([
       this.sonarr.listRootFolders({ baseUrl, apiKey }),
@@ -511,6 +550,96 @@ export class IntegrationsController {
     tags.sort((a, b) => a.label.localeCompare(b.label));
 
     return { ok: true, rootFolders, qualityProfiles, tags };
+  }
+
+  @Get('plex/library-filters')
+  async plexLibraryFilters(
+    @Req() req: AuthenticatedRequest,
+    @Query('sectionKey') sectionKeyRaw?: string,
+  ) {
+    const userId = req.user.id;
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+    const baseUrlRaw =
+      pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
+    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    if (!baseUrlRaw || !token) {
+      throw new BadRequestException('Plex is not configured');
+    }
+    const baseUrl = normalizeHttpUrl(baseUrlRaw);
+    const sectionKey = (sectionKeyRaw ?? '').trim();
+    const genres: string[] = [];
+    const audioLanguages: string[] = [];
+    const genreSet = new Set<string>();
+    const languageSet = new Set<string>();
+
+    const appendUnique = (
+      values: string[],
+      target: string[],
+      seen: Set<string>,
+    ) => {
+      for (const value of values) {
+        const normalized = value.trim();
+        if (!normalized) continue;
+        const key = normalized.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        target.push(normalized);
+      }
+    };
+
+    if (sectionKey) {
+      const [sectionGenres, sectionLanguages] = await Promise.all([
+        this.plexServer.listLibraryGenres({
+          baseUrl,
+          token,
+          librarySectionKey: sectionKey,
+        }),
+        this.plexServer.listLibraryAudioLanguages({
+          baseUrl,
+          token,
+          librarySectionKey: sectionKey,
+        }),
+      ]);
+      appendUnique(sectionGenres, genres, genreSet);
+      appendUnique(sectionLanguages, audioLanguages, languageSet);
+    } else {
+      const sections = await this.plexServer.getSections({ baseUrl, token });
+      const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+      const selectedKeys = new Set(librarySelection.selectedSectionKeys);
+      const selectedEligible = librarySelection.eligibleLibraries.filter((library) =>
+        selectedKeys.has(library.key),
+      );
+      for (const library of selectedEligible) {
+        const [sectionGenres, sectionLanguages] = await Promise.all([
+          this.plexServer
+            .listLibraryGenres({
+              baseUrl,
+              token,
+              librarySectionKey: library.key,
+            })
+            .catch(() => []),
+          this.plexServer
+            .listLibraryAudioLanguages({
+              baseUrl,
+              token,
+              librarySectionKey: library.key,
+            })
+            .catch(() => []),
+        ]);
+        appendUnique(sectionGenres, genres, genreSet);
+        appendUnique(sectionLanguages, audioLanguages, languageSet);
+      }
+    }
+
+    genres.sort((a, b) => a.localeCompare(b));
+    audioLanguages.sort((a, b) => a.localeCompare(b));
+    return {
+      ok: true,
+      sectionKey: sectionKey || null,
+      genres,
+      audioLanguages,
+    };
   }
 
   @Get('plex/libraries')

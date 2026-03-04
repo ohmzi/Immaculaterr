@@ -25,6 +25,13 @@ import {
   getSecretsEnvelopeKey,
   putSettings,
 } from '@/api/settings';
+import {
+  createArrInstance,
+  deleteArrInstance,
+  listArrInstances,
+  type ArrInstance,
+  updateArrInstance,
+} from '@/api/arr-instances';
 import { ApiError } from '@/api/http';
 import { testSavedIntegration } from '@/api/integrations';
 import { checkPlexPin, createPlexPin } from '@/api/plex';
@@ -176,7 +183,7 @@ function MaskedSecretInput(props: {
   const metricClass = 'font-mono';
 
   return (
-    <div className="relative">
+    <div className="relative flex-1 min-w-0">
       <input
         type="text"
         value={value}
@@ -246,6 +253,13 @@ export const SettingsPage = ({
     enabled: showCards,
   });
 
+  const arrInstancesQuery = useQuery({
+    queryKey: ['arr-instances'],
+    queryFn: () => listArrInstances(),
+    staleTime: 5_000,
+    enabled: showCards,
+  });
+
   const secretsPresent = useMemo(
     () => settingsQuery.data?.secretsPresent ?? {},
     [settingsQuery.data],
@@ -254,6 +268,28 @@ export const SettingsPage = ({
     () => settingsQuery.data?.secretRefs ?? {},
     [settingsQuery.data],
   );
+  const additionalRadarrInstances = useMemo(
+    () =>
+      (arrInstancesQuery.data?.instances ?? []).filter(
+        (instance) => instance.type === 'radarr' && !instance.isPrimary,
+      ),
+    [arrInstancesQuery.data?.instances],
+  );
+  const additionalRadarrHeadingLabel =
+    additionalRadarrInstances.length === 1
+      ? 'Additional Radarr server:'
+      : 'Additional Radarr servers:';
+  const additionalSonarrInstances = useMemo(
+    () =>
+      (arrInstancesQuery.data?.instances ?? []).filter(
+        (instance) => instance.type === 'sonarr' && !instance.isPrimary,
+      ),
+    [arrInstancesQuery.data?.instances],
+  );
+  const additionalSonarrHeadingLabel =
+    additionalSonarrInstances.length === 1
+      ? 'Additional Sonarr server:'
+      : 'Additional Sonarr servers:';
 
   // Service setup state
   const [plexBaseUrl, setPlexBaseUrl] = useState('http://localhost:32400');
@@ -362,9 +398,30 @@ export const SettingsPage = ({
 
   const [radarrBaseUrl, setRadarrBaseUrl] = useState('http://localhost:7878');
   const [radarrApiKey, setRadarrApiKey] = useState('');
+  const [showAddRadarrInstance, setShowAddRadarrInstance] = useState(false);
+  const [newRadarrInstanceName, setNewRadarrInstanceName] = useState('');
+  const [newRadarrInstanceBaseUrl, setNewRadarrInstanceBaseUrl] =
+    useState('http://localhost:7878');
+  const [newRadarrInstanceApiKey, setNewRadarrInstanceApiKey] = useState('');
 
   const [sonarrBaseUrl, setSonarrBaseUrl] = useState('http://localhost:8989');
   const [sonarrApiKey, setSonarrApiKey] = useState('');
+  const [showAddSonarrInstance, setShowAddSonarrInstance] = useState(false);
+  const [newSonarrInstanceName, setNewSonarrInstanceName] = useState('');
+  const [newSonarrInstanceBaseUrl, setNewSonarrInstanceBaseUrl] =
+    useState('http://localhost:8989');
+  const [newSonarrInstanceApiKey, setNewSonarrInstanceApiKey] = useState('');
+  const [editingArrInstanceId, setEditingArrInstanceId] = useState<string | null>(
+    null,
+  );
+  const [editingArrInstanceType, setEditingArrInstanceType] = useState<
+    'radarr' | 'sonarr' | null
+  >(null);
+  const [editingArrInstanceName, setEditingArrInstanceName] = useState('');
+  const [editingArrInstanceBaseUrl, setEditingArrInstanceBaseUrl] = useState('');
+  const [editingArrInstanceApiKey, setEditingArrInstanceApiKey] = useState('');
+  const [editingArrInstanceEnabled, setEditingArrInstanceEnabled] = useState(true);
+  const editingArrInstanceCardRef = useRef<HTMLDivElement | null>(null);
 
   const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
   const [overseerrApiKey, setOverseerrApiKey] = useState('');
@@ -406,6 +463,22 @@ export const SettingsPage = ({
       purpose: 'settings.secrets',
       payload: {
         secrets: secretsPatch,
+      },
+    });
+  };
+
+  const buildArrInstanceApiKeyEnvelope = async (params: {
+    service: 'radarr' | 'sonarr';
+    operation?: 'create' | 'update';
+    value: string;
+  }) => {
+    const key = await loadSecretsEnvelopeKey();
+    return await createPayloadEnvelope({
+      key,
+      purpose: `arrInstances.${params.service}.${params.operation ?? 'create'}`,
+      service: params.service,
+      payload: {
+        apiKey: params.value,
       },
     });
   };
@@ -920,6 +993,119 @@ export const SettingsPage = ({
       );
     },
   });
+
+  const createArrInstanceMutation = useMutation({
+    mutationFn: createArrInstance,
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['arr-instances'] });
+      const label = variables.type === 'radarr' ? 'Radarr' : 'Sonarr';
+      toast.success(`${label} instance "${data.instance.name}" added.`);
+      if (variables.type === 'radarr') {
+        setShowAddRadarrInstance(false);
+        setNewRadarrInstanceName('');
+        setNewRadarrInstanceBaseUrl('http://localhost:7878');
+        setNewRadarrInstanceApiKey('');
+      } else {
+        setShowAddSonarrInstance(false);
+        setNewSonarrInstanceName('');
+        setNewSonarrInstanceBaseUrl('http://localhost:8989');
+        setNewSonarrInstanceApiKey('');
+      }
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(readErrorMessage(error.body, error.message || 'Failed to add ARR instance'));
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to add ARR instance');
+    },
+  });
+
+  const updateArrInstanceMutation = useMutation({
+    mutationFn: async (params: {
+      id: string;
+      type: 'radarr' | 'sonarr';
+      name: string;
+      baseUrl: string;
+      enabled: boolean;
+      apiKey?: string;
+    }) => {
+      const patch: Parameters<typeof updateArrInstance>[1] = {
+        name: params.name,
+        baseUrl: params.baseUrl,
+        enabled: params.enabled,
+      };
+      const apiKey = (params.apiKey ?? '').trim();
+      if (apiKey) {
+        patch.apiKeyEnvelope = await buildArrInstanceApiKeyEnvelope({
+          service: params.type,
+          operation: 'update',
+          value: apiKey,
+        });
+      }
+      return await updateArrInstance(params.id, patch);
+    },
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['arr-instances'] });
+      const label = variables.type === 'radarr' ? 'Radarr' : 'Sonarr';
+      toast.success(`${label} instance "${data.instance.name}" updated.`);
+      setEditingArrInstanceApiKey('');
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to update ARR instance'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to update ARR instance');
+    },
+  });
+
+  const deleteArrInstanceMutation = useMutation({
+    mutationFn: async (params: {
+      id: string;
+      type: 'radarr' | 'sonarr';
+      name: string;
+    }) => {
+      await deleteArrInstance(params.id);
+      return params;
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ['arr-instances'] });
+      const label = data.type === 'radarr' ? 'Radarr' : 'Sonarr';
+      toast.success(`${label} instance "${data.name}" deleted.`);
+      if (editingArrInstanceId === data.id) {
+        setEditingArrInstanceId(null);
+        setEditingArrInstanceType(null);
+        setEditingArrInstanceName('');
+        setEditingArrInstanceBaseUrl('');
+        setEditingArrInstanceApiKey('');
+      }
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to delete ARR instance'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to delete ARR instance');
+    },
+  });
+
+  const isCreatingRadarrInstance =
+    createArrInstanceMutation.isPending &&
+    createArrInstanceMutation.variables?.type === 'radarr';
+  const isCreatingSonarrInstance =
+    createArrInstanceMutation.isPending &&
+    createArrInstanceMutation.variables?.type === 'sonarr';
+  const isUpdatingEditingArrInstance =
+    updateArrInstanceMutation.isPending &&
+    updateArrInstanceMutation.variables?.id === editingArrInstanceId;
+  const isDeletingEditingArrInstance =
+    deleteArrInstanceMutation.isPending &&
+    deleteArrInstanceMutation.variables?.id === editingArrInstanceId;
 
   const integrationEnabledMutation = useMutation({
     mutationFn: async (params: {
@@ -1757,7 +1943,7 @@ export const SettingsPage = ({
   const inputBaseClass =
     'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
   const inputClass = `w-full ${inputBaseClass}`;
-  const inputFlexClass = `flex-1 min-w-0 ${inputBaseClass}`;
+  const inputFlexClass = `w-full ${inputBaseClass}`;
   const toggleTrackClass = (enabled: boolean) =>
     `relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95 ${
       enabled ? 'bg-yellow-400' : 'bg-white/15'
@@ -1968,6 +2154,167 @@ export const SettingsPage = ({
     },
     [markSonarrEdited],
   );
+
+  const cancelEditingArrInstance = useCallback(() => {
+    setEditingArrInstanceId(null);
+    setEditingArrInstanceType(null);
+    setEditingArrInstanceName('');
+    setEditingArrInstanceBaseUrl('');
+    setEditingArrInstanceApiKey('');
+    setEditingArrInstanceEnabled(true);
+  }, []);
+
+  useEffect(() => {
+    if (!editingArrInstanceId) {
+      editingArrInstanceCardRef.current = null;
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const card = editingArrInstanceCardRef.current;
+      const target = event.target;
+      if (!card || !(target instanceof Node)) return;
+      if (card.contains(target)) return;
+      cancelEditingArrInstance();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [cancelEditingArrInstance, editingArrInstanceId]);
+
+  const startEditingArrInstance = useCallback(
+    (instance: ArrInstance) => {
+      if (editingArrInstanceId === instance.id) {
+        cancelEditingArrInstance();
+        return;
+      }
+      setShowAddRadarrInstance(false);
+      setShowAddSonarrInstance(false);
+      setEditingArrInstanceId(instance.id);
+      setEditingArrInstanceType(instance.type);
+      setEditingArrInstanceName(instance.name);
+      setEditingArrInstanceBaseUrl(instance.baseUrl);
+      setEditingArrInstanceApiKey('');
+      setEditingArrInstanceEnabled(instance.enabled);
+    },
+    [cancelEditingArrInstance, editingArrInstanceId],
+  );
+
+  const handleSaveEditingArrInstance = useCallback(() => {
+    if (!editingArrInstanceId || !editingArrInstanceType) return;
+    const name = editingArrInstanceName.trim();
+    const baseUrl = editingArrInstanceBaseUrl.trim();
+    if (!name) {
+      toast.error('Please enter a name for this server.');
+      return;
+    }
+    if (!baseUrl) {
+      toast.error('Please enter a base URL for this server.');
+      return;
+    }
+    updateArrInstanceMutation.mutate({
+      id: editingArrInstanceId,
+      type: editingArrInstanceType,
+      name,
+      baseUrl,
+      enabled: editingArrInstanceEnabled,
+      apiKey: editingArrInstanceApiKey,
+    });
+  }, [
+    editingArrInstanceApiKey,
+    editingArrInstanceBaseUrl,
+    editingArrInstanceEnabled,
+    editingArrInstanceId,
+    editingArrInstanceName,
+    editingArrInstanceType,
+    updateArrInstanceMutation,
+  ]);
+
+  const handleDeleteEditingArrInstance = useCallback(() => {
+    if (!editingArrInstanceId || !editingArrInstanceType) return;
+    const confirmed = window.confirm(
+      `Delete "${editingArrInstanceName || 'this server'}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    deleteArrInstanceMutation.mutate({
+      id: editingArrInstanceId,
+      type: editingArrInstanceType,
+      name: editingArrInstanceName || 'server',
+    });
+  }, [
+    deleteArrInstanceMutation,
+    editingArrInstanceId,
+    editingArrInstanceName,
+    editingArrInstanceType,
+  ]);
+
+  const handleCreateRadarrInstance = useCallback(() => {
+    const baseUrl = newRadarrInstanceBaseUrl.trim();
+    const apiKey = newRadarrInstanceApiKey.trim();
+    if (!baseUrl) {
+      toast.error('Please enter a base URL for the new Radarr server.');
+      return;
+    }
+    if (!apiKey) {
+      toast.error('Please enter an API key for the new Radarr server.');
+      return;
+    }
+    runAsyncTask(
+      (async () => {
+        const apiKeyEnvelope = await buildArrInstanceApiKeyEnvelope({
+          service: 'radarr',
+          value: apiKey,
+        });
+        createArrInstanceMutation.mutate({
+          type: 'radarr',
+          name: newRadarrInstanceName.trim() || undefined,
+          baseUrl,
+          apiKeyEnvelope,
+          enabled: true,
+        });
+      })(),
+    );
+  }, [
+    buildArrInstanceApiKeyEnvelope,
+    createArrInstanceMutation,
+    newRadarrInstanceApiKey,
+    newRadarrInstanceBaseUrl,
+    newRadarrInstanceName,
+  ]);
+
+  const handleCreateSonarrInstance = useCallback(() => {
+    const baseUrl = newSonarrInstanceBaseUrl.trim();
+    const apiKey = newSonarrInstanceApiKey.trim();
+    if (!baseUrl) {
+      toast.error('Please enter a base URL for the new Sonarr server.');
+      return;
+    }
+    if (!apiKey) {
+      toast.error('Please enter an API key for the new Sonarr server.');
+      return;
+    }
+    runAsyncTask(
+      (async () => {
+        const apiKeyEnvelope = await buildArrInstanceApiKeyEnvelope({
+          service: 'sonarr',
+          value: apiKey,
+        });
+        createArrInstanceMutation.mutate({
+          type: 'sonarr',
+          name: newSonarrInstanceName.trim() || undefined,
+          baseUrl,
+          apiKeyEnvelope,
+          enabled: true,
+        });
+      })(),
+    );
+  }, [
+    buildArrInstanceApiKeyEnvelope,
+    createArrInstanceMutation,
+    newSonarrInstanceApiKey,
+    newSonarrInstanceBaseUrl,
+    newSonarrInstanceName,
+  ]);
 
   const handleOverseerrBaseUrlChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -2314,10 +2661,6 @@ export const SettingsPage = ({
                       placeholder="http://localhost:32400"
                       className={inputClass}
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Tip: in Docker host networking (recommended), localhost works. In Docker bridge
-                      networking, use your Plex server’s LAN IP.
-                    </p>
                   </div>
                   <div>
                     <div className={labelClass}>Token</div>
@@ -2556,6 +2899,239 @@ export const SettingsPage = ({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                <div className="mt-6 pt-4 space-y-3">
+                  {additionalRadarrInstances.length ? (
+                    <div className="text-sm text-white/70">{additionalRadarrHeadingLabel}</div>
+                  ) : null}
+
+                  {arrInstancesQuery.isLoading ? (
+                    <div className="text-xs text-white/50">Loading additional Radarr servers…</div>
+                  ) : null}
+
+                  {arrInstancesQuery.isError ? (
+                    <div className="text-xs text-rose-300">
+                      Couldn’t load additional ARR instances right now.
+                    </div>
+                  ) : null}
+
+                  {additionalRadarrInstances.length ? (
+                    <div className="space-y-2">
+                      {additionalRadarrInstances.map((instance) => {
+                        const isEditing =
+                          editingArrInstanceId === instance.id &&
+                          editingArrInstanceType === 'radarr';
+                        const displayEnabled = isEditing
+                          ? editingArrInstanceEnabled
+                          : instance.enabled;
+                        return (
+                          <div
+                            key={instance.id}
+                            ref={isEditing ? editingArrInstanceCardRef : null}
+                            className={`w-full rounded-xl border px-3 py-2 transition ${
+                              isEditing
+                                ? 'border-white/20 bg-white/10'
+                                : 'border-white/10 bg-white/5 hover:bg-white/10'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => startEditingArrInstance(instance)}
+                              className="w-full flex items-center justify-between gap-3 text-left"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm text-white truncate">{instance.name}</div>
+                              </div>
+                              <span
+                                className={`text-[11px] px-2 py-1 rounded-full border ${
+                                  displayEnabled
+                                    ? 'bg-emerald-500/20 text-emerald-200 border-emerald-300/30'
+                                    : 'bg-white/10 text-white/70 border-white/20'
+                                }`}
+                              >
+                                {displayEnabled ? 'Active' : 'Disabled'}
+                              </span>
+                            </button>
+                            <AnimatePresence initial={false}>
+                              {isEditing ? (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                                  className="overflow-hidden w-full"
+                                >
+                                  <div className="mt-3 pt-3 space-y-3">
+                                    <div className="flex justify-end">
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={editingArrInstanceEnabled}
+                                        onClick={() =>
+                                          setEditingArrInstanceEnabled((current) => !current)
+                                        }
+                                        className={toggleTrackClass(editingArrInstanceEnabled)}
+                                        aria-label="Toggle ARR instance enabled"
+                                      >
+                                        <span
+                                          className={toggleThumbClass(editingArrInstanceEnabled)}
+                                        />
+                                      </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                      <input
+                                        type="text"
+                                        value={editingArrInstanceName}
+                                        onChange={(event) =>
+                                          setEditingArrInstanceName(event.target.value)
+                                        }
+                                        placeholder="Server name"
+                                        className={inputClass}
+                                      />
+                                      <input
+                                        type="text"
+                                        value={editingArrInstanceBaseUrl}
+                                        onChange={(event) =>
+                                          setEditingArrInstanceBaseUrl(event.target.value)
+                                        }
+                                        placeholder="http://localhost:7878"
+                                        className={inputClass}
+                                      />
+                                      <input
+                                        type="password"
+                                        value={editingArrInstanceApiKey}
+                                        onChange={(event) =>
+                                          setEditingArrInstanceApiKey(event.target.value)
+                                        }
+                                        placeholder="New API key (optional)"
+                                        className={inputClass}
+                                      />
+                                    </div>
+                                    {updateArrInstanceMutation.isError &&
+                                    updateArrInstanceMutation.variables?.id ===
+                                      editingArrInstanceId ? (
+                                      <div className="text-xs text-rose-300">
+                                        {(updateArrInstanceMutation.error as Error).message}
+                                      </div>
+                                    ) : null}
+                                    {deleteArrInstanceMutation.isError &&
+                                    deleteArrInstanceMutation.variables?.id ===
+                                      editingArrInstanceId ? (
+                                      <div className="text-xs text-rose-300">
+                                        {(deleteArrInstanceMutation.error as Error).message}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={cancelEditingArrInstance}
+                                        disabled={
+                                          isUpdatingEditingArrInstance ||
+                                          isDeletingEditingArrInstance
+                                        }
+                                        className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/15 transition-colors disabled:opacity-60"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleDeleteEditingArrInstance}
+                                        disabled={
+                                          isUpdatingEditingArrInstance ||
+                                          isDeletingEditingArrInstance
+                                        }
+                                        className="rounded-lg border border-rose-500/40 bg-rose-500/20 px-3 py-2 text-xs font-medium text-rose-100 hover:bg-rose-500/30 transition-colors disabled:opacity-60"
+                                      >
+                                        {isDeletingEditingArrInstance ? 'Deleting…' : 'Delete'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleSaveEditingArrInstance}
+                                        disabled={
+                                          isUpdatingEditingArrInstance ||
+                                          isDeletingEditingArrInstance
+                                        }
+                                        className="rounded-lg bg-yellow-400 text-black font-medium px-4 py-2 text-xs hover:bg-yellow-300 disabled:opacity-60"
+                                      >
+                                        {isUpdatingEditingArrInstance
+                                          ? 'Saving…'
+                                          : 'Save changes'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              ) : null}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <AnimatePresence initial={false}>
+                    {showAddRadarrInstance ? (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                              type="text"
+                              value={newRadarrInstanceName}
+                              onChange={(event) => setNewRadarrInstanceName(event.target.value)}
+                              placeholder="Name (optional)"
+                              className={inputClass}
+                            />
+                            <input
+                              type="text"
+                              value={newRadarrInstanceBaseUrl}
+                              onChange={(event) =>
+                                setNewRadarrInstanceBaseUrl(event.target.value)
+                              }
+                              placeholder="http://localhost:7878"
+                              className={inputClass}
+                            />
+                            <input
+                              type="password"
+                              value={newRadarrInstanceApiKey}
+                              onChange={(event) =>
+                                setNewRadarrInstanceApiKey(event.target.value)
+                              }
+                              placeholder="API key"
+                              className={inputClass}
+                            />
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={handleCreateRadarrInstance}
+                              disabled={isCreatingRadarrInstance}
+                              className="rounded-lg bg-yellow-400 text-black font-medium px-4 py-2 text-sm hover:bg-yellow-300 disabled:opacity-60"
+                            >
+                              {isCreatingRadarrInstance ? 'Adding…' : 'Add Radarr Server'}
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        cancelEditingArrInstance();
+                        setShowAddRadarrInstance((value) => !value);
+                      }}
+                      className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15 transition-colors"
+                    >
+                      {showAddRadarrInstance ? 'Cancel' : 'Add additional server'}
+                    </button>
+                  </div>
+                </div>
                 </div>
               </div>
 
@@ -2701,6 +3277,239 @@ export const SettingsPage = ({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                <div className="mt-6 pt-4 space-y-3">
+                  {additionalSonarrInstances.length ? (
+                    <div className="text-sm text-white/70">{additionalSonarrHeadingLabel}</div>
+                  ) : null}
+
+                  {arrInstancesQuery.isLoading ? (
+                    <div className="text-xs text-white/50">Loading additional Sonarr servers…</div>
+                  ) : null}
+
+                  {arrInstancesQuery.isError ? (
+                    <div className="text-xs text-rose-300">
+                      Couldn’t load additional ARR instances right now.
+                    </div>
+                  ) : null}
+
+                  {additionalSonarrInstances.length ? (
+                    <div className="space-y-2">
+                      {additionalSonarrInstances.map((instance) => {
+                        const isEditing =
+                          editingArrInstanceId === instance.id &&
+                          editingArrInstanceType === 'sonarr';
+                        const displayEnabled = isEditing
+                          ? editingArrInstanceEnabled
+                          : instance.enabled;
+                        return (
+                          <div
+                            key={instance.id}
+                            ref={isEditing ? editingArrInstanceCardRef : null}
+                            className={`w-full rounded-xl border px-3 py-2 transition ${
+                              isEditing
+                                ? 'border-white/20 bg-white/10'
+                                : 'border-white/10 bg-white/5 hover:bg-white/10'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => startEditingArrInstance(instance)}
+                              className="w-full flex items-center justify-between gap-3 text-left"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm text-white truncate">{instance.name}</div>
+                              </div>
+                              <span
+                                className={`text-[11px] px-2 py-1 rounded-full border ${
+                                  displayEnabled
+                                    ? 'bg-emerald-500/20 text-emerald-200 border-emerald-300/30'
+                                    : 'bg-white/10 text-white/70 border-white/20'
+                                }`}
+                              >
+                                {displayEnabled ? 'Active' : 'Disabled'}
+                              </span>
+                            </button>
+                            <AnimatePresence initial={false}>
+                              {isEditing ? (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                                  className="overflow-hidden w-full"
+                                >
+                                  <div className="mt-3 pt-3 space-y-3">
+                                    <div className="flex justify-end">
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={editingArrInstanceEnabled}
+                                        onClick={() =>
+                                          setEditingArrInstanceEnabled((current) => !current)
+                                        }
+                                        className={toggleTrackClass(editingArrInstanceEnabled)}
+                                        aria-label="Toggle ARR instance enabled"
+                                      >
+                                        <span
+                                          className={toggleThumbClass(editingArrInstanceEnabled)}
+                                        />
+                                      </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                      <input
+                                        type="text"
+                                        value={editingArrInstanceName}
+                                        onChange={(event) =>
+                                          setEditingArrInstanceName(event.target.value)
+                                        }
+                                        placeholder="Server name"
+                                        className={inputClass}
+                                      />
+                                      <input
+                                        type="text"
+                                        value={editingArrInstanceBaseUrl}
+                                        onChange={(event) =>
+                                          setEditingArrInstanceBaseUrl(event.target.value)
+                                        }
+                                        placeholder="http://localhost:8989"
+                                        className={inputClass}
+                                      />
+                                      <input
+                                        type="password"
+                                        value={editingArrInstanceApiKey}
+                                        onChange={(event) =>
+                                          setEditingArrInstanceApiKey(event.target.value)
+                                        }
+                                        placeholder="New API key (optional)"
+                                        className={inputClass}
+                                      />
+                                    </div>
+                                    {updateArrInstanceMutation.isError &&
+                                    updateArrInstanceMutation.variables?.id ===
+                                      editingArrInstanceId ? (
+                                      <div className="text-xs text-rose-300">
+                                        {(updateArrInstanceMutation.error as Error).message}
+                                      </div>
+                                    ) : null}
+                                    {deleteArrInstanceMutation.isError &&
+                                    deleteArrInstanceMutation.variables?.id ===
+                                      editingArrInstanceId ? (
+                                      <div className="text-xs text-rose-300">
+                                        {(deleteArrInstanceMutation.error as Error).message}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={cancelEditingArrInstance}
+                                        disabled={
+                                          isUpdatingEditingArrInstance ||
+                                          isDeletingEditingArrInstance
+                                        }
+                                        className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/15 transition-colors disabled:opacity-60"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleDeleteEditingArrInstance}
+                                        disabled={
+                                          isUpdatingEditingArrInstance ||
+                                          isDeletingEditingArrInstance
+                                        }
+                                        className="rounded-lg border border-rose-500/40 bg-rose-500/20 px-3 py-2 text-xs font-medium text-rose-100 hover:bg-rose-500/30 transition-colors disabled:opacity-60"
+                                      >
+                                        {isDeletingEditingArrInstance ? 'Deleting…' : 'Delete'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleSaveEditingArrInstance}
+                                        disabled={
+                                          isUpdatingEditingArrInstance ||
+                                          isDeletingEditingArrInstance
+                                        }
+                                        className="rounded-lg bg-yellow-400 text-black font-medium px-4 py-2 text-xs hover:bg-yellow-300 disabled:opacity-60"
+                                      >
+                                        {isUpdatingEditingArrInstance
+                                          ? 'Saving…'
+                                          : 'Save changes'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              ) : null}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <AnimatePresence initial={false}>
+                    {showAddSonarrInstance ? (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                              type="text"
+                              value={newSonarrInstanceName}
+                              onChange={(event) => setNewSonarrInstanceName(event.target.value)}
+                              placeholder="Name (optional)"
+                              className={inputClass}
+                            />
+                            <input
+                              type="text"
+                              value={newSonarrInstanceBaseUrl}
+                              onChange={(event) =>
+                                setNewSonarrInstanceBaseUrl(event.target.value)
+                              }
+                              placeholder="http://localhost:8989"
+                              className={inputClass}
+                            />
+                            <input
+                              type="password"
+                              value={newSonarrInstanceApiKey}
+                              onChange={(event) =>
+                                setNewSonarrInstanceApiKey(event.target.value)
+                              }
+                              placeholder="API key"
+                              className={inputClass}
+                            />
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={handleCreateSonarrInstance}
+                              disabled={isCreatingSonarrInstance}
+                              className="rounded-lg bg-yellow-400 text-black font-medium px-4 py-2 text-sm hover:bg-yellow-300 disabled:opacity-60"
+                            >
+                              {isCreatingSonarrInstance ? 'Adding…' : 'Add Sonarr Server'}
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        cancelEditingArrInstance();
+                        setShowAddSonarrInstance((value) => !value);
+                      }}
+                      className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15 transition-colors"
+                    >
+                      {showAddSonarrInstance ? 'Cancel' : 'Add additional server'}
+                    </button>
+                  </div>
+                </div>
                 </div>
               </div>
 

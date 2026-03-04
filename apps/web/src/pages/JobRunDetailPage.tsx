@@ -394,6 +394,11 @@ export function JobRunDetailPage() {
     const def = jobs.find((j) => j.id === jobId) ?? null;
     return def?.name ?? null;
   }, [jobsQuery.data?.jobs, run?.jobId]);
+  const reportHeadline = useMemo(() => {
+    const headline = reportV1 ? pickString(reportV1, 'headline') : null;
+    if (!headline) return null;
+    return decodeHtmlEntities(headline);
+  }, [reportV1]);
   const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs]);
   const visibleLogs = logs;
   const logStats = useMemo(() => {
@@ -500,7 +505,7 @@ export function JobRunDetailPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-3">
                         <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
-                          `${jobName ?? run?.jobId ?? 'Rewind'} Report`
+                          {reportHeadline ?? `${jobName ?? run?.jobId ?? 'Rewind'} Report`}
                         </h1>
                       </div>
                     </div>

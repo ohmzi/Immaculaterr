@@ -131,6 +131,24 @@ const issueSummary = (run: JobRun): string => {
   return decodeHtmlEntities(msgs[0] ?? '');
 };
 
+const getReportHeadline = (run: JobRun): string => {
+  const s = run.summary;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return '';
+  const obj = s as Record<string, unknown>;
+  if (obj.template !== 'jobReportV1' || Number(obj.version) !== 1) return '';
+  const headline = typeof obj.headline === 'string' ? obj.headline.trim() : '';
+  return headline ? decodeHtmlEntities(headline) : '';
+};
+
+const getRunDisplayTitle = (
+  run: JobRun,
+  jobNameById: Map<string, string>,
+): string => {
+  const headline = getReportHeadline(run);
+  if (headline) return headline;
+  return jobNameById.get(run.jobId) ?? run.jobId;
+};
+
 const getPlexUserContext = (
   run: JobRun,
 ): { plexUserId: string; plexUserTitle: string } => {
@@ -284,7 +302,9 @@ export const RewindPage = () => {
       const media = getMediaTypeContext(r);
       if (mediaTypeFilter && media.key !== mediaTypeFilter) return false;
       if (!query) return true;
-      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle} ${media.label}`.toLowerCase();
+      const headline = getReportHeadline(r);
+      const hay =
+        `${r.jobId} ${headline} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle} ${media.label}`.toLowerCase();
       return hay.includes(query);
     });
   }, [historyQuery.data?.runs, jobId, status, plexUserFilter, mediaTypeFilter, q]);
@@ -645,7 +665,7 @@ export const RewindPage = () => {
                       {/* Mobile: stacked run cards */}
                       <div className="sm:hidden space-y-3">
                         {filtered.map((run) => {
-                          const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                          const displayTitle = getRunDisplayTitle(run, jobNameById);
                           const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                           const userLabel = plexUserTitle || plexUserId;
                           const media = getMediaTypeContext(run);
@@ -668,7 +688,7 @@ export const RewindPage = () => {
                               <div className="flex items-start justify-between gap-4">
                                 <div className="min-w-0">
                                   <div className="text-sm font-semibold text-white/90 leading-snug break-words">
-                                    {jobName}
+                                    {displayTitle}
                                   </div>
                                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60 font-mono">
                                     <span className="whitespace-nowrap">
@@ -735,7 +755,7 @@ export const RewindPage = () => {
                           </thead>
                           <tbody>
                             {filtered.map((run) => {
-                              const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                              const displayTitle = getRunDisplayTitle(run, jobNameById);
                               const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                               const userLabel = plexUserTitle || plexUserId || '—';
                               const media = getMediaTypeContext(run);
@@ -756,7 +776,7 @@ export const RewindPage = () => {
                                       {new Date(run.startedAt).toLocaleString()}
                                     </Link>
                                   </td>
-                                  <td className="px-3 py-3 text-white/85">{jobName}</td>
+                                  <td className="px-3 py-3 text-white/85">{displayTitle}</td>
                                   <td className="px-3 py-3 text-white/70">{userLabel}</td>
                                   <td className="px-3 py-3 text-white/70">{media.label}</td>
                                   <td className="px-3 py-3">
