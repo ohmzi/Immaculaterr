@@ -39,6 +39,8 @@ type ProfilePatch = {
   matchMode?: MatchMode;
   genres?: string[];
   audioLanguages?: string[];
+  excludedGenres?: string[];
+  excludedAudioLanguages?: string[];
   radarrInstanceId?: string | null;
   sonarrInstanceId?: string | null;
   movieCollectionBaseName?: string | null;
@@ -51,6 +53,8 @@ type ProfileCreate = {
   matchMode?: MatchMode;
   genres?: string[];
   audioLanguages?: string[];
+  excludedGenres?: string[];
+  excludedAudioLanguages?: string[];
   radarrInstanceId?: string | null;
   sonarrInstanceId?: string | null;
   movieCollectionBaseName?: string | null;
@@ -69,6 +73,8 @@ export type ImmaculateTasteProfileView = {
   matchMode: MatchMode;
   genres: string[];
   audioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
   radarrInstanceId: string | null;
   sonarrInstanceId: string | null;
   movieCollectionBaseName: string | null;
@@ -84,6 +90,8 @@ export type ImmaculateTasteProfileUserOverrideView = {
   matchMode: MatchMode;
   genres: string[];
   audioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
   radarrInstanceId: string | null;
   sonarrInstanceId: string | null;
   movieCollectionBaseName: string | null;
@@ -103,6 +111,8 @@ export type ResolvedProfileForSeed = {
   matchMode: MatchMode;
   genres: string[];
   audioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
   radarrInstanceId: string | null;
   sonarrInstanceId: string | null;
   movieCollectionBaseName: string | null;
@@ -114,6 +124,8 @@ type ProfileSettingsView = {
   matchMode: MatchMode;
   genres: string[];
   audioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
   radarrInstanceId: string | null;
   sonarrInstanceId: string | null;
   movieCollectionBaseName: string | null;
@@ -354,6 +366,12 @@ export class ImmaculateTasteProfileService {
         audioLanguages: JSON.stringify(
           normalizeStringList(input.audioLanguages ?? []),
         ),
+        excludedGenres: JSON.stringify(
+          normalizeStringList(input.excludedGenres ?? []),
+        ),
+        excludedAudioLanguages: JSON.stringify(
+          normalizeStringList(input.excludedAudioLanguages ?? []),
+        ),
         radarrInstanceId: (input.radarrInstanceId ?? '').trim() || null,
         sonarrInstanceId: (input.sonarrInstanceId ?? '').trim() || null,
         movieCollectionBaseName:
@@ -452,6 +470,16 @@ export class ImmaculateTasteProfileService {
     if (patch.audioLanguages !== undefined) {
       data.audioLanguages = JSON.stringify(
         normalizeStringList(patch.audioLanguages),
+      );
+    }
+    if (patch.excludedGenres !== undefined) {
+      data.excludedGenres = JSON.stringify(
+        normalizeStringList(patch.excludedGenres),
+      );
+    }
+    if (patch.excludedAudioLanguages !== undefined) {
+      data.excludedAudioLanguages = JSON.stringify(
+        normalizeStringList(patch.excludedAudioLanguages),
       );
     }
     if (patch.radarrInstanceId !== undefined) {
@@ -672,6 +700,8 @@ export class ImmaculateTasteProfileService {
           ...baseSettings,
           genres: baseSettings.genres.slice(),
           audioLanguages: baseSettings.audioLanguages.slice(),
+          excludedGenres: baseSettings.excludedGenres.slice(),
+          excludedAudioLanguages: baseSettings.excludedAudioLanguages.slice(),
         }
       : this.applySettingsPatch(previousSettings, patch);
 
@@ -765,6 +795,10 @@ export class ImmaculateTasteProfileService {
           matchMode: nextSettings.matchMode,
           genres: JSON.stringify(nextSettings.genres),
           audioLanguages: JSON.stringify(nextSettings.audioLanguages),
+          excludedGenres: JSON.stringify(nextSettings.excludedGenres),
+          excludedAudioLanguages: JSON.stringify(
+            nextSettings.excludedAudioLanguages,
+          ),
           radarrInstanceId: nextSettings.radarrInstanceId,
           sonarrInstanceId: nextSettings.sonarrInstanceId,
           movieCollectionBaseName: nextSettings.movieCollectionBaseName,
@@ -789,6 +823,10 @@ export class ImmaculateTasteProfileService {
           matchMode: nextSettings.matchMode,
           genres: JSON.stringify(nextSettings.genres),
           audioLanguages: JSON.stringify(nextSettings.audioLanguages),
+          excludedGenres: JSON.stringify(nextSettings.excludedGenres),
+          excludedAudioLanguages: JSON.stringify(
+            nextSettings.excludedAudioLanguages,
+          ),
           radarrInstanceId: nextSettings.radarrInstanceId,
           sonarrInstanceId: nextSettings.sonarrInstanceId,
           movieCollectionBaseName: nextSettings.movieCollectionBaseName,
@@ -1004,6 +1042,7 @@ export class ImmaculateTasteProfileService {
     const seedAudioLanguages = normalizeStringList(
       params.seedAudioLanguages ?? [],
     );
+    let defaultCatchAllMatch: ResolvedProfileForSeed | null = null;
 
     for (const profile of enabled) {
       const scopedProfile = this.toScopedProfile(profile, params.plexUserId);
@@ -1014,31 +1053,48 @@ export class ImmaculateTasteProfileService {
         continue;
       }
 
-      const isDefaultCatchAll =
-        scopedProfile.isDefault &&
-        scopedProfile.genres.length === 0 &&
-        scopedProfile.audioLanguages.length === 0;
+      const hasGenreInclude = scopedProfile.genres.length > 0;
+      const hasAudioLanguageInclude = scopedProfile.audioLanguages.length > 0;
+      const hasAnyInclude = hasGenreInclude || hasAudioLanguageInclude;
+      const isDefaultCatchAll = scopedProfile.isDefault && !hasAnyInclude;
+      const excludedByGenre = intersectCaseInsensitive(
+        seedGenres,
+        scopedProfile.excludedGenres,
+      );
+      const excludedByAudioLanguage = intersectCaseInsensitive(
+        seedAudioLanguages,
+        scopedProfile.excludedAudioLanguages,
+      );
+      if (excludedByGenre || excludedByAudioLanguage) {
+        continue;
+      }
       if (isDefaultCatchAll) {
-        return this.toResolved(scopedProfile);
+        defaultCatchAllMatch = this.toResolved(scopedProfile);
+        continue;
+      }
+
+      if (!hasAnyInclude) {
+        continue;
       }
 
       const genreMatch =
-        scopedProfile.genres.length === 0 ||
+        hasGenreInclude &&
         intersectCaseInsensitive(seedGenres, scopedProfile.genres);
       const langMatch =
-        scopedProfile.audioLanguages.length === 0 ||
+        hasAudioLanguageInclude &&
         intersectCaseInsensitive(
           seedAudioLanguages,
           scopedProfile.audioLanguages,
         );
       const matched =
         scopedProfile.matchMode === 'all'
-          ? genreMatch && langMatch
+          ? (!hasGenreInclude || genreMatch) &&
+            (!hasAudioLanguageInclude || langMatch)
           : genreMatch || langMatch;
       if (!matched) continue;
       return this.toResolved(scopedProfile);
     }
-    return null;
+    return defaultCatchAllMatch;
   }
 
   private async ensureDefaultProfile(userId: string): Promise<void> {
@@ -1058,6 +1114,8 @@ export class ImmaculateTasteProfileService {
           matchMode: 'all',
           genres: '[]',
           audioLanguages: '[]',
+          excludedGenres: '[]',
+          excludedAudioLanguages: '[]',
         },
       });
       return;
@@ -1085,6 +1143,8 @@ export class ImmaculateTasteProfileService {
           matchMode: 'all',
           genres: '[]',
           audioLanguages: '[]',
+          excludedGenres: '[]',
+          excludedAudioLanguages: '[]',
         },
       }),
     ]);
@@ -1131,6 +1191,8 @@ export class ImmaculateTasteProfileService {
       matchMode: override.matchMode,
       genres: override.genres,
       audioLanguages: override.audioLanguages,
+      excludedGenres: override.excludedGenres,
+      excludedAudioLanguages: override.excludedAudioLanguages,
       radarrInstanceId: override.radarrInstanceId,
       sonarrInstanceId: override.sonarrInstanceId,
       movieCollectionBaseName: override.movieCollectionBaseName,
@@ -1152,6 +1214,8 @@ export class ImmaculateTasteProfileService {
       matchMode: profile.matchMode,
       genres: profile.genres,
       audioLanguages: profile.audioLanguages,
+      excludedGenres: profile.excludedGenres,
+      excludedAudioLanguages: profile.excludedAudioLanguages,
       radarrInstanceId: profile.radarrInstanceId,
       sonarrInstanceId: profile.sonarrInstanceId,
       movieCollectionBaseName: profile.movieCollectionBaseName,
@@ -1182,6 +1246,10 @@ export class ImmaculateTasteProfileService {
       matchMode: normalizeMatchMode(profile.matchMode),
       genres: parseJsonStringArray(profile.genres),
       audioLanguages: parseJsonStringArray(profile.audioLanguages),
+      excludedGenres: parseJsonStringArray(profile.excludedGenres),
+      excludedAudioLanguages: parseJsonStringArray(
+        profile.excludedAudioLanguages,
+      ),
       radarrInstanceId: profile.radarrInstanceId,
       sonarrInstanceId: profile.sonarrInstanceId,
       movieCollectionBaseName: profile.movieCollectionBaseName,
@@ -1197,6 +1265,10 @@ export class ImmaculateTasteProfileService {
       matchMode: normalizeMatchMode(override.matchMode),
       genres: parseJsonStringArray(override.genres),
       audioLanguages: parseJsonStringArray(override.audioLanguages),
+      excludedGenres: parseJsonStringArray(override.excludedGenres),
+      excludedAudioLanguages: parseJsonStringArray(
+        override.excludedAudioLanguages,
+      ),
       radarrInstanceId: override.radarrInstanceId,
       sonarrInstanceId: override.sonarrInstanceId,
       movieCollectionBaseName: override.movieCollectionBaseName,
@@ -1219,6 +1291,14 @@ export class ImmaculateTasteProfileService {
         patch.audioLanguages !== undefined
           ? normalizeStringList(patch.audioLanguages)
           : base.audioLanguages.slice(),
+      excludedGenres:
+        patch.excludedGenres !== undefined
+          ? normalizeStringList(patch.excludedGenres)
+          : base.excludedGenres.slice(),
+      excludedAudioLanguages:
+        patch.excludedAudioLanguages !== undefined
+          ? normalizeStringList(patch.excludedAudioLanguages)
+          : base.excludedAudioLanguages.slice(),
       radarrInstanceId:
         patch.radarrInstanceId !== undefined
           ? (patch.radarrInstanceId ?? '').trim() || null
@@ -1253,7 +1333,11 @@ export class ImmaculateTasteProfileService {
         (right.showCollectionBaseName ?? null) &&
       JSON.stringify(left.genres) === JSON.stringify(right.genres) &&
       JSON.stringify(left.audioLanguages) ===
-        JSON.stringify(right.audioLanguages)
+        JSON.stringify(right.audioLanguages) &&
+      JSON.stringify(left.excludedGenres) ===
+        JSON.stringify(right.excludedGenres) &&
+      JSON.stringify(left.excludedAudioLanguages) ===
+        JSON.stringify(right.excludedAudioLanguages)
     );
   }
 
@@ -1266,6 +1350,8 @@ export class ImmaculateTasteProfileService {
       matchMode: normalizeMatchMode(row.matchMode),
       genres: parseJsonStringArray(row.genres),
       audioLanguages: parseJsonStringArray(row.audioLanguages),
+      excludedGenres: parseJsonStringArray(row.excludedGenres),
+      excludedAudioLanguages: parseJsonStringArray(row.excludedAudioLanguages),
       radarrInstanceId: row.radarrInstanceId,
       sonarrInstanceId: row.sonarrInstanceId,
       movieCollectionBaseName: row.movieCollectionBaseName,
@@ -1292,6 +1378,8 @@ export class ImmaculateTasteProfileService {
       matchMode,
       genres: parseJsonStringArray(row.genres),
       audioLanguages: parseJsonStringArray(row.audioLanguages),
+      excludedGenres: parseJsonStringArray(row.excludedGenres),
+      excludedAudioLanguages: parseJsonStringArray(row.excludedAudioLanguages),
       radarrInstanceId: row.radarrInstanceId,
       sonarrInstanceId: row.sonarrInstanceId,
       movieCollectionBaseName: row.movieCollectionBaseName,

@@ -100,7 +100,8 @@ export class ImmaculateTasteProfileController {
     @Req() req: AuthenticatedRequest,
     @Body() body: unknown,
   ): Promise<{ ok: true; profile: ImmaculateTasteProfileView }> {
-    if (!isPlainObject(body)) throw new BadRequestException('body must be an object');
+    if (!isPlainObject(body))
+      throw new BadRequestException('body must be an object');
     const name = asString(body['name']);
     if (!name) throw new BadRequestException('name is required');
     const profile = await this.profiles.create(req.user.id, {
@@ -109,9 +110,13 @@ export class ImmaculateTasteProfileController {
       matchMode: asMatchMode(body['matchMode']),
       genres: asStringList(body['genres']),
       audioLanguages: asStringList(body['audioLanguages']),
+      excludedGenres: asStringList(body['excludedGenres']),
+      excludedAudioLanguages: asStringList(body['excludedAudioLanguages']),
       radarrInstanceId: asNullableString(body['radarrInstanceId']),
       sonarrInstanceId: asNullableString(body['sonarrInstanceId']),
-      movieCollectionBaseName: asNullableString(body['movieCollectionBaseName']),
+      movieCollectionBaseName: asNullableString(
+        body['movieCollectionBaseName'],
+      ),
       showCollectionBaseName: asNullableString(body['showCollectionBaseName']),
       enabled: asOptionalBool(body['enabled']),
     });
@@ -124,7 +129,8 @@ export class ImmaculateTasteProfileController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<{ ok: true; profile: ImmaculateTasteProfileView }> {
-    if (!isPlainObject(body)) throw new BadRequestException('body must be an object');
+    if (!isPlainObject(body))
+      throw new BadRequestException('body must be an object');
     const profile = await this.profiles.update(req.user.id, id, {
       ...(Object.prototype.hasOwnProperty.call(body, 'name')
         ? { name: asString(body['name']) }
@@ -138,8 +144,15 @@ export class ImmaculateTasteProfileController {
       ...(Object.prototype.hasOwnProperty.call(body, 'scopePlexUserId')
         ? { scopePlexUserId: asNullableString(body['scopePlexUserId']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'resetScopeToDefaultNaming')
-        ? { resetScopeToDefaultNaming: asOptionalBool(body['resetScopeToDefaultNaming']) }
+      ...(Object.prototype.hasOwnProperty.call(
+        body,
+        'resetScopeToDefaultNaming',
+      )
+        ? {
+            resetScopeToDefaultNaming: asOptionalBool(
+              body['resetScopeToDefaultNaming'],
+            ),
+          }
         : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'mediaType')
         ? { mediaType: asMediaType(body['mediaType']) }
@@ -153,6 +166,16 @@ export class ImmaculateTasteProfileController {
       ...(Object.prototype.hasOwnProperty.call(body, 'audioLanguages')
         ? { audioLanguages: asStringList(body['audioLanguages']) }
         : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'excludedGenres')
+        ? { excludedGenres: asStringList(body['excludedGenres']) }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'excludedAudioLanguages')
+        ? {
+            excludedAudioLanguages: asStringList(
+              body['excludedAudioLanguages'],
+            ),
+          }
+        : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'radarrInstanceId')
         ? { radarrInstanceId: asNullableString(body['radarrInstanceId']) }
         : {}),
@@ -160,10 +183,18 @@ export class ImmaculateTasteProfileController {
         ? { sonarrInstanceId: asNullableString(body['sonarrInstanceId']) }
         : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'movieCollectionBaseName')
-        ? { movieCollectionBaseName: asNullableString(body['movieCollectionBaseName']) }
+        ? {
+            movieCollectionBaseName: asNullableString(
+              body['movieCollectionBaseName'],
+            ),
+          }
         : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'showCollectionBaseName')
-        ? { showCollectionBaseName: asNullableString(body['showCollectionBaseName']) }
+        ? {
+            showCollectionBaseName: asNullableString(
+              body['showCollectionBaseName'],
+            ),
+          }
         : {}),
     });
     return { ok: true, profile };
@@ -183,7 +214,8 @@ export class ImmaculateTasteProfileController {
     @Req() req: AuthenticatedRequest,
     @Body() body: unknown,
   ): Promise<{ ok: true; profiles: ImmaculateTasteProfileView[] }> {
-    if (!isPlainObject(body)) throw new BadRequestException('body must be an object');
+    if (!isPlainObject(body))
+      throw new BadRequestException('body must be an object');
     const ids = asStringList(body['ids']);
     if (!ids || !ids.length) {
       throw new BadRequestException('ids must be a non-empty array');

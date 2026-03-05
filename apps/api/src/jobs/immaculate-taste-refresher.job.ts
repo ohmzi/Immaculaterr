@@ -1505,6 +1505,14 @@ export class ImmaculateTasteRefresherJob {
           plexUserTitle: user.plexAccountTitle,
           isAdmin: userIsAdmin,
           pinTarget,
+          profileId:
+            childRaw && typeof childRaw.profileId === 'string'
+              ? childRaw.profileId
+              : requestedProfileId,
+          profileName:
+            childRaw && typeof childRaw.profileName === 'string'
+              ? childRaw.profileName
+              : null,
           movie:
             childRaw && isPlainObject(childRaw['movie'])
               ? (childRaw['movie'] as JsonObject)
@@ -1667,6 +1675,8 @@ function buildImmaculateTasteRefresherReport(params: {
     }
     return out;
   };
+  const asTrimmedString = (v: unknown): string =>
+    typeof v === 'string' ? v.trim() : '';
 
   const addLibraryTasks = (params: {
     prefix: string;
@@ -1792,8 +1802,9 @@ function buildImmaculateTasteRefresherReport(params: {
     });
 
     for (const user of users) {
-      const userId = String(user.plexUserId ?? '').trim() || 'unknown';
-      const userTitle = String(user.plexUserTitle ?? '').trim() || 'Unknown';
+      const userId = asTrimmedString(user.plexUserId) || 'unknown';
+      const userTitle = asTrimmedString(user.plexUserTitle) || 'Unknown';
+      const pinTarget = asTrimmedString(user.pinTarget);
       const userError =
         typeof user.error === 'string' && user.error.trim() ? user.error.trim() : null;
 
@@ -1804,7 +1815,18 @@ function buildImmaculateTasteRefresherReport(params: {
         facts: [
           { label: 'Plex user', value: userTitle },
           { label: 'Plex user id', value: userId },
-          { label: 'Pin target', value: String(user.pinTarget ?? '') },
+          { label: 'Pin target', value: pinTarget },
+          ...(typeof user.profileName === 'string' && user.profileName.trim()
+            ? [
+                {
+                  label: 'Matched Immaculate Taste profile',
+                  value: user.profileName.trim(),
+                },
+              ]
+            : []),
+          ...(typeof user.profileId === 'string' && user.profileId.trim()
+            ? [{ label: 'Profile dataset id', value: user.profileId.trim() }]
+            : []),
         ],
       });
 
@@ -1841,14 +1863,24 @@ function buildImmaculateTasteRefresherReport(params: {
   } else {
     const movie = isPlainObject(raw.movie) ? raw.movie : null;
     const tv = isPlainObject(raw.tv) ? raw.tv : null;
-
-    const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
-    const plexUserTitle = String(
-      (raw as Record<string, unknown>).plexUserTitle ?? '',
-    ).trim();
+    const rawRecord = raw as Record<string, unknown>;
+    const plexUserId = asTrimmedString(rawRecord.plexUserId);
+    const plexUserTitle = asTrimmedString(rawRecord.plexUserTitle);
+    const profileName = asTrimmedString(rawRecord.profileName);
+    const profileId = asTrimmedString(rawRecord.profileId);
+    const matchedProfileLabel = profileName || profileId;
     const contextFacts: Array<{ label: string; value: JsonValue }> = [];
     if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
     if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+    if (matchedProfileLabel) {
+      contextFacts.push({
+        label: 'Matched Immaculate Taste profile',
+        value: matchedProfileLabel,
+      });
+    }
+    if (profileId) {
+      contextFacts.push({ label: 'Profile dataset id', value: profileId });
+    }
     if (contextFacts.length) {
       tasks.push({
         id: 'context',
@@ -1881,13 +1913,21 @@ function buildImmaculateTasteRefresherReport(params: {
     }
   }
 
+  const rawRecord = raw as Record<string, unknown>;
+  const reportProfileName = asTrimmedString(rawRecord.profileName);
+  const reportProfileId = asTrimmedString(rawRecord.profileId);
+  const reportProfileLabel = reportProfileName || reportProfileId;
+
   return {
     template: 'jobReportV1',
     version: 1,
     jobId: ctx.jobId,
     dryRun: ctx.dryRun,
     trigger: ctx.trigger,
-    headline: 'Refresher complete.',
+    headline:
+      mode !== 'sweep' && reportProfileLabel
+        ? `Refresher complete using profile "${reportProfileLabel}".`
+        : 'Refresher complete.',
     // Keep Summary card clean; the per-library breakdown is shown in the step-by-step tasks.
     sections: [],
     tasks,

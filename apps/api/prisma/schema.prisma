@@ -121,6 +121,8 @@ model ImmaculateTasteProfile {
   matchMode      String @default("all")
   genres         String @default("[]")
   audioLanguages String @default("[]")
+  excludedGenres String @default("[]")
+  excludedAudioLanguages String @default("[]")
 
   radarrInstanceId String?
   sonarrInstanceId String?
@@ -147,6 +149,8 @@ model ImmaculateTasteProfileUserOverride {
   matchMode      String @default("all")
   genres         String @default("[]")
   audioLanguages String @default("[]")
+  excludedGenres String @default("[]")
+  excludedAudioLanguages String @default("[]")
 
   radarrInstanceId String?
   sonarrInstanceId String?

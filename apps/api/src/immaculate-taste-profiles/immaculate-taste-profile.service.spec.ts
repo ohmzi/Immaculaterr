@@ -84,6 +84,8 @@ function makeProfile(
     matchMode: 'all',
     genres: '[]',
     audioLanguages: '[]',
+    excludedGenres: '[]',
+    excludedAudioLanguages: '[]',
     radarrInstanceId: null,
     sonarrInstanceId: null,
     movieCollectionBaseName: null,
@@ -1071,6 +1073,8 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       matchMode: 'all',
       genres: '[]',
       audioLanguages: '[]',
+      excludedGenres: '[]',
+      excludedAudioLanguages: '[]',
       radarrInstanceId: null,
       sonarrInstanceId: null,
       movieCollectionBaseName: 'Movie Night Picks',
@@ -1176,5 +1180,180 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       where: { userId: 'user-1', isDefault: true },
       data: { enabled: true },
     });
+  });
+});
+
+describe('ImmaculateTasteProfileService resolveProfileForSeed exclusion filters', () => {
+  it('treats default catch-all as fallback when a later profile matches', async () => {
+    const { service, prisma } = createService();
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      sortOrder: 0,
+    });
+    const kidsProfile = makeProfile({
+      id: 'kids-profile',
+      name: 'Kids',
+      isDefault: false,
+      sortOrder: 1,
+      mediaType: 'show',
+      genres: JSON.stringify(['Animation']),
+    });
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      { ...defaultProfile, userOverrides: [] },
+      { ...kidsProfile, userOverrides: [] },
+    ]);
+
+    const matchedKids = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Animation'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'show',
+    });
+    expect(matchedKids?.id).toBe('kids-profile');
+
+    const fallbackDefault = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Documentary'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'show',
+    });
+    expect(fallbackDefault?.id).toBe('default-profile');
+  });
+
+  it('skips a matching include profile when seed matches excluded genre', async () => {
+    const { service, prisma } = createService();
+    const includeProfile = makeProfile({
+      id: 'profile-include',
+      name: 'Action English',
+      isDefault: false,
+      sortOrder: 0,
+      genres: JSON.stringify(['Action']),
+      audioLanguages: JSON.stringify(['English']),
+      excludedGenres: JSON.stringify(['Horror']),
+    });
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      sortOrder: 1,
+    });
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      { ...includeProfile, userOverrides: [] },
+      { ...defaultProfile, userOverrides: [] },
+    ]);
+
+    const resolved = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Action', 'Horror'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'movie',
+    });
+
+    expect(resolved?.id).toBe('default-profile');
+  });
+
+  it('applies excluded audio language filter for seed matching', async () => {
+    const { service, prisma } = createService();
+    const includeProfile = makeProfile({
+      id: 'profile-include',
+      name: 'English only',
+      isDefault: false,
+      sortOrder: 0,
+      genres: JSON.stringify(['Action']),
+      audioLanguages: JSON.stringify(['English']),
+      excludedAudioLanguages: JSON.stringify(['Japanese']),
+    });
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      sortOrder: 1,
+    });
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      { ...includeProfile, userOverrides: [] },
+      { ...defaultProfile, userOverrides: [] },
+    ]);
+
+    const excludedMatch = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Action'],
+      seedAudioLanguages: ['English', 'Japanese'],
+      seedMediaType: 'movie',
+    });
+    expect(excludedMatch?.id).toBe('default-profile');
+
+    const allowedMatch = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Action'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'movie',
+    });
+    expect(allowedMatch?.id).toBe('profile-include');
+  });
+
+  it('does not match an any-mode include profile unless an include criterion actually matches', async () => {
+    const { service, prisma } = createService();
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      sortOrder: 0,
+      excludedGenres: JSON.stringify(['Animation']),
+    });
+    const crimeProfile = makeProfile({
+      id: 'crime-profile',
+      name: 'Crime',
+      isDefault: false,
+      sortOrder: 1,
+      matchMode: 'any',
+      genres: JSON.stringify(['Crime']),
+      audioLanguages: JSON.stringify([]),
+    });
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      { ...defaultProfile, userOverrides: [] },
+      { ...crimeProfile, userOverrides: [] },
+    ]);
+
+    const unmatched = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Animation', 'Comedy'],
+      seedAudioLanguages: ['Japanese'],
+      seedMediaType: 'show',
+    });
+    expect(unmatched).toBeNull();
+
+    const matched = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Crime', 'Drama'],
+      seedAudioLanguages: ['Japanese'],
+      seedMediaType: 'show',
+    });
+    expect(matched?.id).toBe('crime-profile');
+  });
+
+  it('does not treat non-default empty-include profiles as catch-all', async () => {
+    const { service, prisma } = createService();
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      sortOrder: 0,
+      excludedGenres: JSON.stringify(['Animation']),
+    });
+    const customEmptyProfile = makeProfile({
+      id: 'custom-empty',
+      name: 'Custom Empty',
+      isDefault: false,
+      sortOrder: 1,
+      genres: JSON.stringify([]),
+      audioLanguages: JSON.stringify([]),
+    });
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      { ...defaultProfile, userOverrides: [] },
+      { ...customEmptyProfile, userOverrides: [] },
+    ]);
+
+    const resolved = await service.resolveProfileForSeed('user-1', {
+      seedGenres: ['Animation'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'show',
+    });
+
+    expect(resolved).toBeNull();
   });
 });

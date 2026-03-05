@@ -178,30 +178,80 @@ function dedupeCaseInsensitive(values: string[]): string[] {
   return out;
 }
 
+function normalizeStringListForComparison(values: string[]): string[] {
+  return dedupeCaseInsensitive(values).map((value) => value.toLowerCase());
+}
+
+function areCaseInsensitiveListsEqual(left: string[], right: string[]): boolean {
+  return (
+    JSON.stringify(normalizeStringListForComparison(left)) ===
+    JSON.stringify(normalizeStringListForComparison(right))
+  );
+}
+
 type ImmaculateTasteProfileDraft = {
   name: string;
   enabled: boolean;
   mediaType: ImmaculateTasteProfileMediaType;
   matchMode: ImmaculateTasteProfileMatchMode;
-  genresText: string;
-  audioLanguagesText: string;
+  includeGenreFilterEnabled: boolean;
+  includeGenresText: string;
+  includeAudioLanguageFilterEnabled: boolean;
+  includeAudioLanguagesText: string;
+  excludeGenreFilterEnabled: boolean;
+  excludeGenresText: string;
+  excludeAudioLanguageFilterEnabled: boolean;
+  excludeAudioLanguagesText: string;
   radarrInstanceId: string;
   sonarrInstanceId: string;
   movieCollectionBaseName: string;
   showCollectionBaseName: string;
 };
 
+function resolveProfileDraftFilters(draft: ImmaculateTasteProfileDraft): {
+  includedGenres: string[];
+  includedAudioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
+} {
+  return {
+    includedGenres: draft.includeGenreFilterEnabled
+      ? normalizeCsvStringList(draft.includeGenresText)
+      : [],
+    includedAudioLanguages: draft.includeAudioLanguageFilterEnabled
+      ? normalizeCsvStringList(draft.includeAudioLanguagesText)
+      : [],
+    excludedGenres: draft.excludeGenreFilterEnabled
+      ? normalizeCsvStringList(draft.excludeGenresText)
+      : [],
+    excludedAudioLanguages: draft.excludeAudioLanguageFilterEnabled
+      ? normalizeCsvStringList(draft.excludeAudioLanguagesText)
+      : [],
+  };
+}
+
 function toProfileDraft(
   profile: ImmaculateTasteProfile,
   override: ImmaculateTasteProfile['userOverrides'][number] | null = null,
 ): ImmaculateTasteProfileDraft {
+  const genres = override?.genres ?? profile.genres ?? [];
+  const audioLanguages = override?.audioLanguages ?? profile.audioLanguages ?? [];
+  const excludedGenres = override?.excludedGenres ?? profile.excludedGenres ?? [];
+  const excludedAudioLanguages =
+    override?.excludedAudioLanguages ?? profile.excludedAudioLanguages ?? [];
   return {
     name: profile.name,
     enabled: profile.enabled,
     mediaType: override?.mediaType ?? profile.mediaType,
     matchMode: override?.matchMode ?? profile.matchMode,
-    genresText: (override?.genres ?? profile.genres).join(', '),
-    audioLanguagesText: (override?.audioLanguages ?? profile.audioLanguages).join(', '),
+    includeGenreFilterEnabled: genres.length > 0,
+    includeGenresText: genres.join(', '),
+    includeAudioLanguageFilterEnabled: audioLanguages.length > 0,
+    includeAudioLanguagesText: audioLanguages.join(', '),
+    excludeGenreFilterEnabled: excludedGenres.length > 0,
+    excludeGenresText: excludedGenres.join(', '),
+    excludeAudioLanguageFilterEnabled: excludedAudioLanguages.length > 0,
+    excludeAudioLanguagesText: excludedAudioLanguages.join(', '),
     radarrInstanceId:
       (override?.radarrInstanceId ?? profile.radarrInstanceId) ??
       PRIMARY_INSTANCE_SENTINEL,
@@ -229,8 +279,14 @@ function createNewProfileDraft(): ImmaculateTasteProfileDraft {
     enabled: true,
     mediaType: 'both',
     matchMode: 'all',
-    genresText: '',
-    audioLanguagesText: '',
+    includeGenreFilterEnabled: false,
+    includeGenresText: '',
+    includeAudioLanguageFilterEnabled: false,
+    includeAudioLanguagesText: '',
+    excludeGenreFilterEnabled: false,
+    excludeGenresText: '',
+    excludeAudioLanguageFilterEnabled: false,
+    excludeAudioLanguagesText: '',
     radarrInstanceId: PRIMARY_INSTANCE_SENTINEL,
     sonarrInstanceId: PRIMARY_INSTANCE_SENTINEL,
     movieCollectionBaseName: '',
@@ -249,13 +305,16 @@ function isNetZeroDefaultProfileDraft(
   draft: ImmaculateTasteProfileDraft,
   profileName: string,
 ): boolean {
+  const filters = resolveProfileDraftFilters(draft);
   return (
     draft.name.trim() === profileName.trim() &&
     draft.enabled &&
     draft.mediaType === 'both' &&
     draft.matchMode === 'all' &&
-    normalizeCsvStringList(draft.genresText).length === 0 &&
-    normalizeCsvStringList(draft.audioLanguagesText).length === 0 &&
+    filters.includedGenres.length === 0 &&
+    filters.includedAudioLanguages.length === 0 &&
+    filters.excludedGenres.length === 0 &&
+    filters.excludedAudioLanguages.length === 0 &&
     draft.radarrInstanceId === PRIMARY_INSTANCE_SENTINEL &&
     draft.sonarrInstanceId === PRIMARY_INSTANCE_SENTINEL &&
     draft.movieCollectionBaseName.trim() === '' &&
@@ -301,10 +360,19 @@ export function CommandCenterPage() {
   const [isAddProfileFormOpen, setIsAddProfileFormOpen] = useState(false);
   const [newProfileDraft, setNewProfileDraft] =
     useState<ImmaculateTasteProfileDraft | null>(null);
+  const [newProfileScopePlexUserId, setNewProfileScopePlexUserId] = useState<
+    string | null
+  >(null);
+  const [newProfileScopeSearch, setNewProfileScopeSearch] = useState('');
   const [newProfileGenreSearch, setNewProfileGenreSearch] = useState('');
   const [newProfileAudioLanguageSearch, setNewProfileAudioLanguageSearch] = useState('');
+  const [newProfileExcludeGenreSearch, setNewProfileExcludeGenreSearch] = useState('');
+  const [newProfileExcludeAudioLanguageSearch, setNewProfileExcludeAudioLanguageSearch] =
+    useState('');
   const [genreSearch, setGenreSearch] = useState('');
   const [audioLanguageSearch, setAudioLanguageSearch] = useState('');
+  const [excludeGenreSearch, setExcludeGenreSearch] = useState('');
+  const [excludeAudioLanguageSearch, setExcludeAudioLanguageSearch] = useState('');
   const [profileDraft, setProfileDraft] = useState<ImmaculateTasteProfileDraft | null>(
     null,
   );
@@ -516,6 +584,37 @@ export function CommandCenterPage() {
     );
     return matchingUsers.slice(0, trimmedProfileScopeSearch ? 12 : 10);
   }, [activeProfileOverrideUserIds, profileScopeUsers, trimmedProfileScopeSearch]);
+  const trimmedNewProfileScopeSearch = newProfileScopeSearch.trim().toLowerCase();
+  const newProfileScopePinnedUsers = useMemo(
+    () => profileScopeUsers.slice(0, 4),
+    [profileScopeUsers],
+  );
+  const newProfileScopePinnedUserIds = useMemo(
+    () => new Set(newProfileScopePinnedUsers.map((user) => user.id)),
+    [newProfileScopePinnedUsers],
+  );
+  const newProfileScopeSearchResults = useMemo(() => {
+    const nonPinnedUsers = profileScopeUsers.filter(
+      (user) => !newProfileScopePinnedUserIds.has(user.id),
+    );
+    const matchingUsers = (trimmedNewProfileScopeSearch
+      ? nonPinnedUsers.filter((user) =>
+          user.plexAccountTitle.toLowerCase().includes(trimmedNewProfileScopeSearch),
+        )
+      : nonPinnedUsers
+    ).slice();
+    matchingUsers.sort((left, right) =>
+      left.plexAccountTitle.localeCompare(right.plexAccountTitle),
+    );
+    return matchingUsers.slice(0, trimmedNewProfileScopeSearch ? 12 : 10);
+  }, [newProfileScopePinnedUserIds, profileScopeUsers, trimmedNewProfileScopeSearch]);
+  const newProfileScopeUser = useMemo(
+    () =>
+      newProfileScopePlexUserId
+        ? profileScopeUsers.find((user) => user.id === newProfileScopePlexUserId) ?? null
+        : null,
+    [newProfileScopePlexUserId, profileScopeUsers],
+  );
   const radarrInstanceOptions = useMemo(
     () =>
       (arrInstancesQuery.data?.instances ?? [])
@@ -558,8 +657,8 @@ export function CommandCenterPage() {
     [recommendedGenres],
   );
   const selectedGenres = useMemo(
-    () => normalizeCsvStringList(profileDraft?.genresText ?? ''),
-    [profileDraft?.genresText],
+    () => normalizeCsvStringList(profileDraft?.includeGenresText ?? ''),
+    [profileDraft?.includeGenresText],
   );
   const selectedGenreSet = useMemo(
     () => new Set(selectedGenres.map((item) => item.toLowerCase())),
@@ -580,11 +679,36 @@ export function CommandCenterPage() {
       .filter((genre) => genre.toLowerCase().includes(query))
       .slice(0, 12);
   }, [rankedGenreOptions, selectedGenreSet, trimmedGenreSearch]);
+  const trimmedExcludeGenreSearch = excludeGenreSearch.trim();
+  const excludeGenreSearchIsActive = trimmedExcludeGenreSearch.length > 0;
+  const selectedExcludedGenres = useMemo(
+    () => normalizeCsvStringList(profileDraft?.excludeGenresText ?? ''),
+    [profileDraft?.excludeGenresText],
+  );
+  const selectedExcludedGenreSet = useMemo(
+    () => new Set(selectedExcludedGenres.map((item) => item.toLowerCase())),
+    [selectedExcludedGenres],
+  );
+  const defaultExcludedGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !selectedExcludedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, selectedExcludedGenreSet],
+  );
+  const filteredExcludedGenreOptions = useMemo(() => {
+    const query = trimmedExcludeGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !selectedExcludedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedGenreOptions, selectedExcludedGenreSet, trimmedExcludeGenreSearch]);
   const trimmedNewProfileGenreSearch = newProfileGenreSearch.trim();
   const newProfileGenreSearchIsActive = trimmedNewProfileGenreSearch.length > 0;
   const newProfileSelectedGenres = useMemo(
-    () => normalizeCsvStringList(newProfileDraft?.genresText ?? ''),
-    [newProfileDraft?.genresText],
+    () => normalizeCsvStringList(newProfileDraft?.includeGenresText ?? ''),
+    [newProfileDraft?.includeGenresText],
   );
   const newProfileSelectedGenreSet = useMemo(
     () => new Set(newProfileSelectedGenres.map((item) => item.toLowerCase())),
@@ -605,6 +729,36 @@ export function CommandCenterPage() {
       .filter((genre) => genre.toLowerCase().includes(query))
       .slice(0, 12);
   }, [rankedGenreOptions, newProfileSelectedGenreSet, trimmedNewProfileGenreSearch]);
+  const trimmedNewProfileExcludeGenreSearch = newProfileExcludeGenreSearch.trim();
+  const newProfileExcludeGenreSearchIsActive =
+    trimmedNewProfileExcludeGenreSearch.length > 0;
+  const newProfileSelectedExcludedGenres = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.excludeGenresText ?? ''),
+    [newProfileDraft?.excludeGenresText],
+  );
+  const newProfileSelectedExcludedGenreSet = useMemo(
+    () => new Set(newProfileSelectedExcludedGenres.map((item) => item.toLowerCase())),
+    [newProfileSelectedExcludedGenres],
+  );
+  const newProfileDefaultExcludedGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !newProfileSelectedExcludedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, newProfileSelectedExcludedGenreSet],
+  );
+  const newProfileFilteredExcludedGenreOptions = useMemo(() => {
+    const query = trimmedNewProfileExcludeGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !newProfileSelectedExcludedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedGenreOptions,
+    newProfileSelectedExcludedGenreSet,
+    trimmedNewProfileExcludeGenreSearch,
+  ]);
   const recommendedAudioLanguages = plexLibraryFiltersQuery.data?.audioLanguages ?? [];
   const trimmedAudioLanguageSearch = audioLanguageSearch.trim();
   const audioLanguageSearchIsActive = trimmedAudioLanguageSearch.length > 0;
@@ -617,8 +771,8 @@ export function CommandCenterPage() {
     [recommendedAudioLanguages],
   );
   const selectedAudioLanguages = useMemo(
-    () => normalizeCsvStringList(profileDraft?.audioLanguagesText ?? ''),
-    [profileDraft?.audioLanguagesText],
+    () => normalizeCsvStringList(profileDraft?.includeAudioLanguagesText ?? ''),
+    [profileDraft?.includeAudioLanguagesText],
   );
   const selectedAudioLanguageSet = useMemo(
     () =>
@@ -642,12 +796,44 @@ export function CommandCenterPage() {
       .filter((language) => language.toLowerCase().includes(query))
       .slice(0, 12);
   }, [rankedAudioLanguageOptions, selectedAudioLanguageSet, trimmedAudioLanguageSearch]);
+  const trimmedExcludeAudioLanguageSearch = excludeAudioLanguageSearch.trim();
+  const excludeAudioLanguageSearchIsActive =
+    trimmedExcludeAudioLanguageSearch.length > 0;
+  const selectedExcludedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(profileDraft?.excludeAudioLanguagesText ?? ''),
+    [profileDraft?.excludeAudioLanguagesText],
+  );
+  const selectedExcludedAudioLanguageSet = useMemo(
+    () => new Set(selectedExcludedAudioLanguages.map((item) => item.toLowerCase())),
+    [selectedExcludedAudioLanguages],
+  );
+  const defaultExcludedAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) => !selectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [selectedExcludedAudioLanguageSet],
+  );
+  const filteredExcludedAudioLanguageOptions = useMemo(() => {
+    const query = trimmedExcludeAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) => !selectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedAudioLanguageOptions,
+    selectedExcludedAudioLanguageSet,
+    trimmedExcludeAudioLanguageSearch,
+  ]);
   const trimmedNewProfileAudioLanguageSearch = newProfileAudioLanguageSearch.trim();
   const newProfileAudioLanguageSearchIsActive =
     trimmedNewProfileAudioLanguageSearch.length > 0;
   const newProfileSelectedAudioLanguages = useMemo(
-    () => normalizeCsvStringList(newProfileDraft?.audioLanguagesText ?? ''),
-    [newProfileDraft?.audioLanguagesText],
+    () => normalizeCsvStringList(newProfileDraft?.includeAudioLanguagesText ?? ''),
+    [newProfileDraft?.includeAudioLanguagesText],
   );
   const newProfileSelectedAudioLanguageSet = useMemo(
     () => new Set(newProfileSelectedAudioLanguages.map((item) => item.toLowerCase())),
@@ -673,6 +859,42 @@ export function CommandCenterPage() {
     rankedAudioLanguageOptions,
     newProfileSelectedAudioLanguageSet,
     trimmedNewProfileAudioLanguageSearch,
+  ]);
+  const trimmedNewProfileExcludeAudioLanguageSearch =
+    newProfileExcludeAudioLanguageSearch.trim();
+  const newProfileExcludeAudioLanguageSearchIsActive =
+    trimmedNewProfileExcludeAudioLanguageSearch.length > 0;
+  const newProfileSelectedExcludedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.excludeAudioLanguagesText ?? ''),
+    [newProfileDraft?.excludeAudioLanguagesText],
+  );
+  const newProfileSelectedExcludedAudioLanguageSet = useMemo(
+    () =>
+      new Set(newProfileSelectedExcludedAudioLanguages.map((item) => item.toLowerCase())),
+    [newProfileSelectedExcludedAudioLanguages],
+  );
+  const newProfileDefaultExcludedAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) =>
+          !newProfileSelectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [newProfileSelectedExcludedAudioLanguageSet],
+  );
+  const newProfileFilteredExcludedAudioLanguageOptions = useMemo(() => {
+    const query = trimmedNewProfileExcludeAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) =>
+        !newProfileSelectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedAudioLanguageOptions,
+    newProfileSelectedExcludedAudioLanguageSet,
+    trimmedNewProfileExcludeAudioLanguageSearch,
   ]);
   const profileWantsMovies =
     profileDraft?.mediaType === 'movie' || profileDraft?.mediaType === 'both';
@@ -748,31 +970,46 @@ export function CommandCenterPage() {
   );
 
   const createImmaculateProfileMutation = useMutation({
-    mutationFn: async (draft: ImmaculateTasteProfileDraft) => {
-      const normalizedServiceSelection = normalizeProfileServiceSelection(draft);
+    mutationFn: async (params: {
+      draft: ImmaculateTasteProfileDraft;
+      scopePlexUserId: string | null;
+    }) => {
+      const normalizedServiceSelection = normalizeProfileServiceSelection(params.draft);
+      const normalizedFilters = resolveProfileDraftFilters(params.draft);
       const payload = {
-        name: draft.name.trim(),
-        enabled: draft.enabled,
-        mediaType: draft.mediaType,
-        matchMode: draft.matchMode,
-        genres: normalizeCsvStringList(draft.genresText),
-        audioLanguages: normalizeCsvStringList(draft.audioLanguagesText),
+        name: params.draft.name.trim(),
+        enabled: params.draft.enabled,
+        mediaType: params.draft.mediaType,
+        matchMode: params.draft.matchMode,
+        genres: normalizedFilters.includedGenres,
+        audioLanguages: normalizedFilters.includedAudioLanguages,
+        excludedGenres: normalizedFilters.excludedGenres,
+        excludedAudioLanguages: normalizedFilters.excludedAudioLanguages,
         radarrInstanceId: normalizedServiceSelection.radarrInstanceId,
         sonarrInstanceId: normalizedServiceSelection.sonarrInstanceId,
-        movieCollectionBaseName: draft.movieCollectionBaseName.trim() || null,
-        showCollectionBaseName: draft.showCollectionBaseName.trim() || null,
+        movieCollectionBaseName: params.draft.movieCollectionBaseName.trim() || null,
+        showCollectionBaseName: params.draft.showCollectionBaseName.trim() || null,
       };
       return await createImmaculateTasteProfile(payload);
     },
-    onSuccess: async (data) => {
+    onSuccess: async (data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
       setNewProfileDraft(null);
+      setNewProfileScopePlexUserId(null);
+      setNewProfileScopeSearch('');
       setNewProfileGenreSearch('');
       setNewProfileAudioLanguageSearch('');
+      setNewProfileExcludeGenreSearch('');
+      setNewProfileExcludeAudioLanguageSearch('');
       setActiveProfileId(data.profile.id);
-      setActiveProfileScopePlexUserId(null);
+      setActiveProfileScopePlexUserId(variables.scopePlexUserId);
       setProfileScopeSearch('');
-      setProfileDraft(toProfileDraft(data.profile));
+      setProfileDraft(
+        toProfileDraft(
+          data.profile,
+          findProfileUserOverride(data.profile, variables.scopePlexUserId),
+        ),
+      );
       setIsAddProfileFormOpen(false);
       setIsProfileEditorOpen(true);
       toast.success(`Profile "${data.profile.name}" created.`);
@@ -796,6 +1033,7 @@ export function CommandCenterPage() {
       resetScopeToDefaultNaming?: boolean;
     }) => {
       const normalizedServiceSelection = normalizeProfileServiceSelection(params.draft);
+      const normalizedFilters = resolveProfileDraftFilters(params.draft);
       const payload: Parameters<typeof updateImmaculateTasteProfile>[1] = {
         ...(params.scopePlexUserId
           ? { scopePlexUserId: params.scopePlexUserId }
@@ -808,8 +1046,10 @@ export function CommandCenterPage() {
           : {}),
         mediaType: params.draft.mediaType,
         matchMode: params.draft.matchMode,
-        genres: normalizeCsvStringList(params.draft.genresText),
-        audioLanguages: normalizeCsvStringList(params.draft.audioLanguagesText),
+        genres: normalizedFilters.includedGenres,
+        audioLanguages: normalizedFilters.includedAudioLanguages,
+        excludedGenres: normalizedFilters.excludedGenres,
+        excludedAudioLanguages: normalizedFilters.excludedAudioLanguages,
         radarrInstanceId: normalizedServiceSelection.radarrInstanceId,
         sonarrInstanceId: normalizedServiceSelection.sonarrInstanceId,
         movieCollectionBaseName: params.draft.movieCollectionBaseName.trim() || null,
@@ -823,7 +1063,34 @@ export function CommandCenterPage() {
         data.profile,
         variables.scopePlexUserId,
       );
-      setProfileDraft(toProfileDraft(data.profile, scopedOverride));
+      const submittedFilters = resolveProfileDraftFilters(variables.draft);
+      const nextDraft = toProfileDraft(data.profile, scopedOverride);
+      const persistedFilters = resolveProfileDraftFilters(nextDraft);
+      const filtersPersisted =
+        areCaseInsensitiveListsEqual(
+          submittedFilters.includedGenres,
+          persistedFilters.includedGenres,
+        ) &&
+        areCaseInsensitiveListsEqual(
+          submittedFilters.includedAudioLanguages,
+          persistedFilters.includedAudioLanguages,
+        ) &&
+        areCaseInsensitiveListsEqual(
+          submittedFilters.excludedGenres,
+          persistedFilters.excludedGenres,
+        ) &&
+        areCaseInsensitiveListsEqual(
+          submittedFilters.excludedAudioLanguages,
+          persistedFilters.excludedAudioLanguages,
+        );
+      if (!filtersPersisted) {
+        setProfileDraft(variables.draft);
+        toast.error(
+          'Profile save did not persist the latest include/exclude filters. Restart API and apply the latest DB migration, then save again.',
+        );
+        return;
+      }
+      setProfileDraft(nextDraft);
       toast.success(`Profile "${data.profile.name}" saved.`);
     },
     onError: (error) => {
@@ -896,8 +1163,11 @@ export function CommandCenterPage() {
 
   const profileDirty = useMemo(() => {
     if (!activeProfile || !profileDraft) return false;
-    const draftGenres = normalizeCsvStringList(profileDraft.genresText);
-    const draftAudioLanguages = normalizeCsvStringList(profileDraft.audioLanguagesText);
+    const draftFilters = resolveProfileDraftFilters(profileDraft);
+    const draftIncludedGenres = draftFilters.includedGenres;
+    const draftIncludedAudioLanguages = draftFilters.includedAudioLanguages;
+    const draftExcludedGenres = draftFilters.excludedGenres;
+    const draftExcludedAudioLanguages = draftFilters.excludedAudioLanguages;
     const normalizedServiceSelection = normalizeProfileServiceSelection(profileDraft);
     const scopedOverride = findProfileUserOverride(activeProfile, activeProfileScopePlexUserId);
     const sourceMediaType = scopedOverride?.mediaType ?? activeProfile.mediaType;
@@ -910,8 +1180,13 @@ export function CommandCenterPage() {
       scopedOverride?.radarrInstanceId ?? activeProfile.radarrInstanceId;
     const sourceSonarrInstanceId =
       scopedOverride?.sonarrInstanceId ?? activeProfile.sonarrInstanceId;
-    const sourceGenres = scopedOverride?.genres ?? activeProfile.genres;
-    const sourceAudioLanguages = scopedOverride?.audioLanguages ?? activeProfile.audioLanguages;
+    const sourceGenres = scopedOverride?.genres ?? activeProfile.genres ?? [];
+    const sourceAudioLanguages =
+      scopedOverride?.audioLanguages ?? activeProfile.audioLanguages ?? [];
+    const sourceExcludedGenres =
+      scopedOverride?.excludedGenres ?? activeProfile.excludedGenres ?? [];
+    const sourceExcludedAudioLanguages =
+      scopedOverride?.excludedAudioLanguages ?? activeProfile.excludedAudioLanguages ?? [];
     return (
       (!activeProfileScopePlexUserId && activeProfile.name !== profileDraft.name.trim()) ||
       (!activeProfileScopePlexUserId && activeProfile.enabled !== profileDraft.enabled) ||
@@ -923,8 +1198,12 @@ export function CommandCenterPage() {
         (profileDraft.showCollectionBaseName.trim() || null) ||
       sourceRadarrInstanceId !== normalizedServiceSelection.radarrInstanceId ||
       sourceSonarrInstanceId !== normalizedServiceSelection.sonarrInstanceId ||
-      JSON.stringify(sourceGenres) !== JSON.stringify(draftGenres) ||
-      JSON.stringify(sourceAudioLanguages) !== JSON.stringify(draftAudioLanguages)
+      JSON.stringify(sourceGenres) !== JSON.stringify(draftIncludedGenres) ||
+      JSON.stringify(sourceAudioLanguages) !==
+        JSON.stringify(draftIncludedAudioLanguages) ||
+      JSON.stringify(sourceExcludedGenres) !== JSON.stringify(draftExcludedGenres) ||
+      JSON.stringify(sourceExcludedAudioLanguages) !==
+        JSON.stringify(draftExcludedAudioLanguages)
     );
   }, [
     activeProfile,
@@ -936,15 +1215,21 @@ export function CommandCenterPage() {
   const scopedProfileAtBase = useMemo(() => {
     if (!activeProfile || !profileDraft || !activeProfileScopePlexUserId) return false;
     const baseDraft = toProfileDraft(activeProfile);
+    const profileDraftFilters = resolveProfileDraftFilters(profileDraft);
+    const baseDraftFilters = resolveProfileDraftFilters(baseDraft);
     const normalizedCurrent = normalizeProfileServiceSelection(profileDraft);
     const normalizedBase = normalizeProfileServiceSelection(baseDraft);
     return (
       profileDraft.mediaType === baseDraft.mediaType &&
       profileDraft.matchMode === baseDraft.matchMode &&
-      JSON.stringify(normalizeCsvStringList(profileDraft.genresText)) ===
-        JSON.stringify(normalizeCsvStringList(baseDraft.genresText)) &&
-      JSON.stringify(normalizeCsvStringList(profileDraft.audioLanguagesText)) ===
-        JSON.stringify(normalizeCsvStringList(baseDraft.audioLanguagesText)) &&
+      JSON.stringify(profileDraftFilters.includedGenres) ===
+        JSON.stringify(baseDraftFilters.includedGenres) &&
+      JSON.stringify(profileDraftFilters.includedAudioLanguages) ===
+        JSON.stringify(baseDraftFilters.includedAudioLanguages) &&
+      JSON.stringify(profileDraftFilters.excludedGenres) ===
+        JSON.stringify(baseDraftFilters.excludedGenres) &&
+      JSON.stringify(profileDraftFilters.excludedAudioLanguages) ===
+        JSON.stringify(baseDraftFilters.excludedAudioLanguages) &&
       normalizedCurrent.radarrInstanceId === normalizedBase.radarrInstanceId &&
       normalizedCurrent.sonarrInstanceId === normalizedBase.sonarrInstanceId &&
       (profileDraft.movieCollectionBaseName.trim() || null) ===
@@ -984,10 +1269,14 @@ export function CommandCenterPage() {
       setProfileDraft(toProfileDraft(profile));
       setGenreSearch('');
       setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
       setIsAddProfileFormOpen(false);
       setNewProfileDraft(null);
       setNewProfileGenreSearch('');
       setNewProfileAudioLanguageSearch('');
+      setNewProfileExcludeGenreSearch('');
+      setNewProfileExcludeAudioLanguageSearch('');
       setIsProfileEditorOpen((open) => (isSameProfile ? !open : true));
     },
     [activeProfileId],
@@ -1078,6 +1367,8 @@ export function CommandCenterPage() {
       setProfileDraft(toProfileDraft(activeProfile));
       setGenreSearch('');
       setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
       return;
     }
     if (activeProfile.isDefault) {
@@ -1095,11 +1386,15 @@ export function CommandCenterPage() {
       setProfileDraft(createNetZeroDefaultProfileDraft(targetDefaultName));
       setGenreSearch('');
       setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
       return;
     }
     setProfileDraft(toProfileDraft(activeProfile));
     setGenreSearch('');
     setAudioLanguageSearch('');
+    setExcludeGenreSearch('');
+    setExcludeAudioLanguageSearch('');
   }, [activeProfile, activeProfileScopePlexUserId, immaculateProfiles]);
 
   const closeProfileEditor = useCallback(() => {
@@ -1108,6 +1403,8 @@ export function CommandCenterPage() {
     }
     setGenreSearch('');
     setAudioLanguageSearch('');
+    setExcludeGenreSearch('');
+    setExcludeAudioLanguageSearch('');
     setIsProfileEditorOpen(false);
   }, [activeProfile, activeProfileScopeOverride]);
 
@@ -1120,6 +1417,8 @@ export function CommandCenterPage() {
       setProfileDraft(toProfileDraft(activeProfile, override));
       setGenreSearch('');
       setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
     },
     [activeProfile],
   );
@@ -1146,35 +1445,35 @@ export function CommandCenterPage() {
     };
   }, [closeProfileEditor, isProfileEditorOpen]);
 
-  const addGenreTag = useCallback((genre: string) => {
+  const addIncludedGenreTag = useCallback((genre: string) => {
     setProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.genresText);
+      const existing = normalizeCsvStringList(current.includeGenresText);
       const has = existing.some(
         (item) => item.toLowerCase() === genre.trim().toLowerCase(),
       );
       if (has) return current;
       return {
         ...current,
-        genresText: [...existing, genre.trim()].join(', '),
+        includeGenresText: [...existing, genre.trim()].join(', '),
       };
     });
     setGenreSearch('');
   }, []);
 
-  const removeGenreTag = useCallback((genre: string) => {
+  const removeIncludedGenreTag = useCallback((genre: string) => {
     setProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.genresText);
+      const existing = normalizeCsvStringList(current.includeGenresText);
       const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
       return {
         ...current,
-        genresText: next.join(', '),
+        includeGenresText: next.join(', '),
       };
     });
   }, []);
 
-  const handleGenreSearchKeyDown = useCallback(
+  const handleIncludedGenreSearchKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -1184,57 +1483,57 @@ export function CommandCenterPage() {
           (genre) => genre.toLowerCase() === query.toLowerCase(),
         );
         const firstSearchResult = filteredGenreOptions[0];
-        addGenreTag(exactMatch ?? firstSearchResult ?? query);
+        addIncludedGenreTag(exactMatch ?? firstSearchResult ?? query);
         return;
       }
       if (event.key === 'Backspace' && !trimmedGenreSearch && selectedGenres.length) {
         event.preventDefault();
-        removeGenreTag(selectedGenres[selectedGenres.length - 1]);
+        removeIncludedGenreTag(selectedGenres[selectedGenres.length - 1]);
       }
     },
     [
-      addGenreTag,
+      addIncludedGenreTag,
       filteredGenreOptions,
       rankedGenreOptions,
-      removeGenreTag,
+      removeIncludedGenreTag,
       selectedGenres,
       trimmedGenreSearch,
     ],
   );
 
-  const addSuggestedGenre = useCallback((genre: string) => {
-    addGenreTag(genre);
-  }, [addGenreTag]);
+  const addSuggestedIncludedGenre = useCallback((genre: string) => {
+    addIncludedGenreTag(genre);
+  }, [addIncludedGenreTag]);
 
-  const addNewProfileGenreTag = useCallback((genre: string) => {
+  const addNewProfileIncludedGenreTag = useCallback((genre: string) => {
     setNewProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.genresText);
+      const existing = normalizeCsvStringList(current.includeGenresText);
       const has = existing.some(
         (item) => item.toLowerCase() === genre.trim().toLowerCase(),
       );
       if (has) return current;
       return {
         ...current,
-        genresText: [...existing, genre.trim()].join(', '),
+        includeGenresText: [...existing, genre.trim()].join(', '),
       };
     });
     setNewProfileGenreSearch('');
   }, []);
 
-  const removeNewProfileGenreTag = useCallback((genre: string) => {
+  const removeNewProfileIncludedGenreTag = useCallback((genre: string) => {
     setNewProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.genresText);
+      const existing = normalizeCsvStringList(current.includeGenresText);
       const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
       return {
         ...current,
-        genresText: next.join(', '),
+        includeGenresText: next.join(', '),
       };
     });
   }, []);
 
-  const handleNewProfileGenreSearchKeyDown = useCallback(
+  const handleNewProfileIncludedGenreSearchKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -1244,7 +1543,7 @@ export function CommandCenterPage() {
           (genre) => genre.toLowerCase() === query.toLowerCase(),
         );
         const firstSearchResult = newProfileFilteredGenreOptions[0];
-        addNewProfileGenreTag(exactMatch ?? firstSearchResult ?? query);
+        addNewProfileIncludedGenreTag(exactMatch ?? firstSearchResult ?? query);
         return;
       }
       if (
@@ -1253,82 +1552,208 @@ export function CommandCenterPage() {
         newProfileSelectedGenres.length
       ) {
         event.preventDefault();
-        removeNewProfileGenreTag(
+        removeNewProfileIncludedGenreTag(
           newProfileSelectedGenres[newProfileSelectedGenres.length - 1],
         );
       }
     },
     [
-      addNewProfileGenreTag,
+      addNewProfileIncludedGenreTag,
       newProfileFilteredGenreOptions,
       newProfileSelectedGenres,
       rankedGenreOptions,
-      removeNewProfileGenreTag,
+      removeNewProfileIncludedGenreTag,
       trimmedNewProfileGenreSearch,
     ],
   );
 
-  const addAudioLanguageTag = useCallback((language: string) => {
+  const addExcludedGenreTag = useCallback((genre: string) => {
     setProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeGenresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setExcludeGenreSearch('');
+  }, []);
+
+  const removeExcludedGenreTag = useCallback((genre: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        excludeGenresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleExcludedGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedExcludeGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredExcludedGenreOptions[0];
+        addExcludedGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedExcludeGenreSearch &&
+        selectedExcludedGenres.length
+      ) {
+        event.preventDefault();
+        removeExcludedGenreTag(selectedExcludedGenres[selectedExcludedGenres.length - 1]);
+      }
+    },
+    [
+      addExcludedGenreTag,
+      filteredExcludedGenreOptions,
+      rankedGenreOptions,
+      removeExcludedGenreTag,
+      selectedExcludedGenres,
+      trimmedExcludeGenreSearch,
+    ],
+  );
+
+  const addSuggestedExcludedGenre = useCallback((genre: string) => {
+    addExcludedGenreTag(genre);
+  }, [addExcludedGenreTag]);
+
+  const addNewProfileExcludedGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeGenresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setNewProfileExcludeGenreSearch('');
+  }, []);
+
+  const removeNewProfileExcludedGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        excludeGenresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleNewProfileExcludedGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileExcludeGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredExcludedGenreOptions[0];
+        addNewProfileExcludedGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileExcludeGenreSearch &&
+        newProfileSelectedExcludedGenres.length
+      ) {
+        event.preventDefault();
+        removeNewProfileExcludedGenreTag(
+          newProfileSelectedExcludedGenres[newProfileSelectedExcludedGenres.length - 1],
+        );
+      }
+    },
+    [
+      addNewProfileExcludedGenreTag,
+      newProfileFilteredExcludedGenreOptions,
+      newProfileSelectedExcludedGenres,
+      rankedGenreOptions,
+      removeNewProfileExcludedGenreTag,
+      trimmedNewProfileExcludeGenreSearch,
+    ],
+  );
+
+  const addIncludedAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
       const has = existing.some(
         (item) => item.toLowerCase() === language.trim().toLowerCase(),
       );
       if (has) return current;
       return {
         ...current,
-        audioLanguagesText: [...existing, language.trim()].join(', '),
+        includeAudioLanguagesText: [...existing, language.trim()].join(', '),
       };
     });
     setAudioLanguageSearch('');
   }, []);
 
-  const removeAudioLanguageTag = useCallback((language: string) => {
+  const removeIncludedAudioLanguageTag = useCallback((language: string) => {
     setProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
       const next = existing.filter(
         (item) => item.toLowerCase() !== language.trim().toLowerCase(),
       );
       return {
         ...current,
-        audioLanguagesText: next.join(', '),
+        includeAudioLanguagesText: next.join(', '),
       };
     });
   }, []);
 
-  const addNewProfileAudioLanguageTag = useCallback((language: string) => {
+  const addNewProfileIncludedAudioLanguageTag = useCallback((language: string) => {
     setNewProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
       const has = existing.some(
         (item) => item.toLowerCase() === language.trim().toLowerCase(),
       );
       if (has) return current;
       return {
         ...current,
-        audioLanguagesText: [...existing, language.trim()].join(', '),
+        includeAudioLanguagesText: [...existing, language.trim()].join(', '),
       };
     });
     setNewProfileAudioLanguageSearch('');
   }, []);
 
-  const removeNewProfileAudioLanguageTag = useCallback((language: string) => {
+  const removeNewProfileIncludedAudioLanguageTag = useCallback((language: string) => {
     setNewProfileDraft((current) => {
       if (!current) return current;
-      const existing = normalizeCsvStringList(current.audioLanguagesText);
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
       const next = existing.filter(
         (item) => item.toLowerCase() !== language.trim().toLowerCase(),
       );
       return {
         ...current,
-        audioLanguagesText: next.join(', '),
+        includeAudioLanguagesText: next.join(', '),
       };
     });
   }, []);
 
-  const handleAudioLanguageSearchKeyDown = useCallback(
+  const handleIncludedAudioLanguageSearchKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -1338,7 +1763,7 @@ export function CommandCenterPage() {
           (language) => language.toLowerCase() === query.toLowerCase(),
         );
         const firstSearchResult = filteredAudioLanguageOptions[0];
-        addAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        addIncludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
         return;
       }
       if (
@@ -1347,20 +1772,20 @@ export function CommandCenterPage() {
         selectedAudioLanguages.length
       ) {
         event.preventDefault();
-        removeAudioLanguageTag(selectedAudioLanguages[selectedAudioLanguages.length - 1]);
+        removeIncludedAudioLanguageTag(selectedAudioLanguages[selectedAudioLanguages.length - 1]);
       }
     },
     [
-      addAudioLanguageTag,
+      addIncludedAudioLanguageTag,
       filteredAudioLanguageOptions,
       rankedAudioLanguageOptions,
-      removeAudioLanguageTag,
+      removeIncludedAudioLanguageTag,
       selectedAudioLanguages,
       trimmedAudioLanguageSearch,
     ],
   );
 
-  const handleNewProfileAudioLanguageSearchKeyDown = useCallback(
+  const handleNewProfileIncludedAudioLanguageSearchKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -1370,7 +1795,7 @@ export function CommandCenterPage() {
           (language) => language.toLowerCase() === query.toLowerCase(),
         );
         const firstSearchResult = newProfileFilteredAudioLanguageOptions[0];
-        addNewProfileAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        addNewProfileIncludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
         return;
       }
       if (
@@ -1379,18 +1804,152 @@ export function CommandCenterPage() {
         newProfileSelectedAudioLanguages.length
       ) {
         event.preventDefault();
-        removeNewProfileAudioLanguageTag(
+        removeNewProfileIncludedAudioLanguageTag(
           newProfileSelectedAudioLanguages[newProfileSelectedAudioLanguages.length - 1],
         );
       }
     },
     [
-      addNewProfileAudioLanguageTag,
+      addNewProfileIncludedAudioLanguageTag,
       newProfileFilteredAudioLanguageOptions,
       newProfileSelectedAudioLanguages,
       rankedAudioLanguageOptions,
-      removeNewProfileAudioLanguageTag,
+      removeNewProfileIncludedAudioLanguageTag,
       trimmedNewProfileAudioLanguageSearch,
+    ],
+  );
+
+  const addExcludedAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeAudioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setExcludeAudioLanguageSearch('');
+  }, []);
+
+  const removeExcludedAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        excludeAudioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleExcludedAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedExcludeAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredExcludedAudioLanguageOptions[0];
+        addExcludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedExcludeAudioLanguageSearch &&
+        selectedExcludedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeExcludedAudioLanguageTag(
+          selectedExcludedAudioLanguages[selectedExcludedAudioLanguages.length - 1],
+        );
+      }
+    },
+    [
+      addExcludedAudioLanguageTag,
+      filteredExcludedAudioLanguageOptions,
+      rankedAudioLanguageOptions,
+      removeExcludedAudioLanguageTag,
+      selectedExcludedAudioLanguages,
+      trimmedExcludeAudioLanguageSearch,
+    ],
+  );
+
+  const addSuggestedExcludedAudioLanguage = useCallback((language: string) => {
+    addExcludedAudioLanguageTag(language);
+  }, [addExcludedAudioLanguageTag]);
+
+  const addNewProfileExcludedAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeAudioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setNewProfileExcludeAudioLanguageSearch('');
+  }, []);
+
+  const removeNewProfileExcludedAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        excludeAudioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleNewProfileExcludedAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileExcludeAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredExcludedAudioLanguageOptions[0];
+        addNewProfileExcludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileExcludeAudioLanguageSearch &&
+        newProfileSelectedExcludedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeNewProfileExcludedAudioLanguageTag(
+          newProfileSelectedExcludedAudioLanguages[
+            newProfileSelectedExcludedAudioLanguages.length - 1
+          ],
+        );
+      }
+    },
+    [
+      addNewProfileExcludedAudioLanguageTag,
+      newProfileFilteredExcludedAudioLanguageOptions,
+      newProfileSelectedExcludedAudioLanguages,
+      rankedAudioLanguageOptions,
+      removeNewProfileExcludedAudioLanguageTag,
+      trimmedNewProfileExcludeAudioLanguageSearch,
     ],
   );
 
@@ -1401,8 +1960,11 @@ export function CommandCenterPage() {
       toast.error('Enter a profile name first.');
       return;
     }
-    createImmaculateProfileMutation.mutate(newProfileDraft);
-  }, [createImmaculateProfileMutation, newProfileDraft]);
+    createImmaculateProfileMutation.mutate({
+      draft: newProfileDraft,
+      scopePlexUserId: newProfileScopePlexUserId,
+    });
+  }, [createImmaculateProfileMutation, newProfileDraft, newProfileScopePlexUserId]);
 
   const handleSaveActiveProfile = useCallback(() => {
     if (!activeProfile || !profileDraft) return;
@@ -1428,6 +1990,8 @@ export function CommandCenterPage() {
     setProfileDraft(resetDraft);
     setGenreSearch('');
     setAudioLanguageSearch('');
+    setExcludeGenreSearch('');
+    setExcludeAudioLanguageSearch('');
     saveImmaculateProfileMutation.mutate({
       id: activeProfile.id,
       draft: resetDraft,
@@ -1439,6 +2003,11 @@ export function CommandCenterPage() {
     activeProfileScopePlexUserId,
     saveImmaculateProfileMutation,
   ]);
+
+  const applyNewProfileScopeSelection = useCallback((plexUserId: string | null) => {
+    setNewProfileScopePlexUserId(plexUserId);
+    setNewProfileScopeSearch('');
+  }, []);
 
   const handleDeleteActiveProfile = useCallback(() => {
     if (!activeProfile) return;
@@ -2945,147 +3514,445 @@ export function CommandCenterPage() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
-                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
-                                  Genres (comma separated)
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Included genres
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.includeGenreFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              includeGenreFilterEnabled: !current.includeGenreFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.includeGenreFilterEnabled
+                                        ? 'border-sky-400/40 bg-sky-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle included genre filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.includeGenreFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
                                 </div>
-                                <div className="space-y-2">
-                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      {selectedGenres.map((genre) => (
-                                        <span
-                                          key={genre}
-                                          className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
-                                        >
-                                          {genre}
-                                          <button
-                                            type="button"
-                                            onClick={() => removeGenreTag(genre)}
-                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
-                                            aria-label={`Remove ${genre}`}
-                                            title={`Remove ${genre}`}
+                                {profileDraft.includeGenreFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedGenres.map((genre) => (
+                                          <span
+                                            key={genre}
+                                            className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
                                           >
-                                            <X className="w-3 h-3" />
-                                          </button>
-                                        </span>
-                                      ))}
-                                      <input
-                                        type="text"
-                                        value={genreSearch}
-                                        onChange={(event) => setGenreSearch(event.target.value)}
-                                        onKeyDown={handleGenreSearchKeyDown}
-                                        placeholder="Search and add genre"
-                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
-                                      />
+                                            {genre}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeIncludedGenreTag(genre)}
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${genre}`}
+                                              title={`Remove ${genre}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={genreSearch}
+                                          onChange={(event) => setGenreSearch(event.target.value)}
+                                          onKeyDown={handleIncludedGenreSearchKeyDown}
+                                          placeholder="Search and add genre"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
                                     </div>
-                                  </div>
-                                  {genreSearchIsActive || defaultGenreOptions.length ? (
-                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-                                      {genreSearchIsActive
-                                        ? 'Genre search results'
-                                        : 'Recommended genres'}
-                                    </div>
-                                  ) : null}
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {(genreSearchIsActive
-                                      ? filteredGenreOptions
-                                      : defaultGenreOptions
-                                    ).map((genre) => (
-                                      <button
-                                        key={genre}
-                                        type="button"
-                                        onClick={() => addSuggestedGenre(genre)}
-                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                      >
-                                        + {genre}
-                                      </button>
-                                    ))}
-                                    {genreSearchIsActive &&
-                                    !filteredGenreOptions.length &&
-                                    trimmedGenreSearch ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => addSuggestedGenre(trimmedGenreSearch)}
-                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                      >
-                                        + Add "{trimmedGenreSearch}"
-                                      </button>
+                                    {genreSearchIsActive || defaultGenreOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {genreSearchIsActive
+                                          ? 'Genre search results'
+                                          : 'Recommended genres to include'}
+                                      </div>
                                     ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(genreSearchIsActive
+                                        ? filteredGenreOptions
+                                        : defaultGenreOptions
+                                      ).map((genre) => (
+                                        <button
+                                          key={genre}
+                                          type="button"
+                                          onClick={() => addSuggestedIncludedGenre(genre)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {genre}
+                                        </button>
+                                      ))}
+                                      {genreSearchIsActive &&
+                                      !filteredGenreOptions.length &&
+                                      trimmedGenreSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => addSuggestedIncludedGenre(trimmedGenreSearch)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedGenreSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
                                   </div>
-                                </div>
+                                ) : null}
                               </div>
                               <div>
-                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
-                                  Audio languages
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Included audio languages
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.includeAudioLanguageFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              includeAudioLanguageFilterEnabled:
+                                                !current.includeAudioLanguageFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.includeAudioLanguageFilterEnabled
+                                        ? 'border-fuchsia-400/40 bg-fuchsia-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle included audio language filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.includeAudioLanguageFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
                                 </div>
-                                <div className="space-y-2">
-                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      {selectedAudioLanguages.map((language) => (
-                                        <span
-                                          key={language}
-                                          className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
-                                        >
-                                          {language}
-                                          <button
-                                            type="button"
-                                            onClick={() => removeAudioLanguageTag(language)}
-                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
-                                            aria-label={`Remove ${language}`}
-                                            title={`Remove ${language}`}
+                                {profileDraft.includeAudioLanguageFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedAudioLanguages.map((language) => (
+                                          <span
+                                            key={language}
+                                            className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
                                           >
-                                            <X className="w-3 h-3" />
-                                          </button>
-                                        </span>
-                                      ))}
-                                      <input
-                                        type="text"
-                                        value={audioLanguageSearch}
-                                        onChange={(event) =>
-                                          setAudioLanguageSearch(event.target.value)
-                                        }
-                                        onKeyDown={handleAudioLanguageSearchKeyDown}
-                                        placeholder="Search and add language"
-                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
-                                      />
+                                            {language}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeIncludedAudioLanguageTag(language)}
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${language}`}
+                                              title={`Remove ${language}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={audioLanguageSearch}
+                                          onChange={(event) =>
+                                            setAudioLanguageSearch(event.target.value)
+                                          }
+                                          onKeyDown={handleIncludedAudioLanguageSearchKeyDown}
+                                          placeholder="Search and add language"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
                                     </div>
-                                  </div>
-                                  {audioLanguageSearchIsActive ||
-                                  defaultAudioLanguageOptions.length ? (
-                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-                                      {audioLanguageSearchIsActive
-                                        ? 'Language search results'
-                                        : 'Top 10 popular languages'}
-                                    </div>
-                                  ) : null}
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {(audioLanguageSearchIsActive
-                                      ? filteredAudioLanguageOptions
-                                      : defaultAudioLanguageOptions
-                                    ).map((language) => (
-                                      <button
-                                        key={language}
-                                        type="button"
-                                        onClick={() => addAudioLanguageTag(language)}
-                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                      >
-                                        + {language}
-                                      </button>
-                                    ))}
-                                    {audioLanguageSearchIsActive &&
-                                    !filteredAudioLanguageOptions.length &&
-                                    trimmedAudioLanguageSearch ? (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          addAudioLanguageTag(trimmedAudioLanguageSearch)
-                                        }
-                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                      >
-                                        + Add "{trimmedAudioLanguageSearch}"
-                                      </button>
+                                    {audioLanguageSearchIsActive ||
+                                    defaultAudioLanguageOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {audioLanguageSearchIsActive
+                                          ? 'Language search results'
+                                          : 'Top 10 popular languages to include'}
+                                      </div>
                                     ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(audioLanguageSearchIsActive
+                                        ? filteredAudioLanguageOptions
+                                        : defaultAudioLanguageOptions
+                                      ).map((language) => (
+                                        <button
+                                          key={language}
+                                          type="button"
+                                          onClick={() => addIncludedAudioLanguageTag(language)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {language}
+                                        </button>
+                                      ))}
+                                      {audioLanguageSearchIsActive &&
+                                      !filteredAudioLanguageOptions.length &&
+                                      trimmedAudioLanguageSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            addIncludedAudioLanguageTag(trimmedAudioLanguageSearch)
+                                          }
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedAudioLanguageSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
                                   </div>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Excluded genres
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.excludeGenreFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              excludeGenreFilterEnabled:
+                                                !current.excludeGenreFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.excludeGenreFilterEnabled
+                                        ? 'border-rose-400/40 bg-rose-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle excluded genre filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.excludeGenreFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
                                 </div>
+                                {profileDraft.excludeGenreFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedExcludedGenres.map((genre) => (
+                                          <span
+                                            key={genre}
+                                            className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-1 text-[11px] text-rose-100"
+                                          >
+                                            {genre}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeExcludedGenreTag(genre)}
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-rose-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${genre}`}
+                                              title={`Remove ${genre}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={excludeGenreSearch}
+                                          onChange={(event) =>
+                                            setExcludeGenreSearch(event.target.value)
+                                          }
+                                          onKeyDown={handleExcludedGenreSearchKeyDown}
+                                          placeholder="Search and add excluded genre"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                    {excludeGenreSearchIsActive ||
+                                    defaultExcludedGenreOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {excludeGenreSearchIsActive
+                                          ? 'Genre search results'
+                                          : 'Recommended genres to exclude'}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(excludeGenreSearchIsActive
+                                        ? filteredExcludedGenreOptions
+                                        : defaultExcludedGenreOptions
+                                      ).map((genre) => (
+                                        <button
+                                          key={genre}
+                                          type="button"
+                                          onClick={() => addSuggestedExcludedGenre(genre)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {genre}
+                                        </button>
+                                      ))}
+                                      {excludeGenreSearchIsActive &&
+                                      !filteredExcludedGenreOptions.length &&
+                                      trimmedExcludeGenreSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            addSuggestedExcludedGenre(trimmedExcludeGenreSearch)
+                                          }
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedExcludeGenreSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Excluded audio languages
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.excludeAudioLanguageFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              excludeAudioLanguageFilterEnabled:
+                                                !current.excludeAudioLanguageFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.excludeAudioLanguageFilterEnabled
+                                        ? 'border-amber-400/40 bg-amber-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle excluded audio language filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.excludeAudioLanguageFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
+                                </div>
+                                {profileDraft.excludeAudioLanguageFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedExcludedAudioLanguages.map((language) => (
+                                          <span
+                                            key={language}
+                                            className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] text-amber-100"
+                                          >
+                                            {language}
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                removeExcludedAudioLanguageTag(language)
+                                              }
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-amber-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${language}`}
+                                              title={`Remove ${language}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={excludeAudioLanguageSearch}
+                                          onChange={(event) =>
+                                            setExcludeAudioLanguageSearch(event.target.value)
+                                          }
+                                          onKeyDown={handleExcludedAudioLanguageSearchKeyDown}
+                                          placeholder="Search and add excluded language"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                    {excludeAudioLanguageSearchIsActive ||
+                                    defaultExcludedAudioLanguageOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {excludeAudioLanguageSearchIsActive
+                                          ? 'Language search results'
+                                          : 'Top 10 popular languages to exclude'}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(excludeAudioLanguageSearchIsActive
+                                        ? filteredExcludedAudioLanguageOptions
+                                        : defaultExcludedAudioLanguageOptions
+                                      ).map((language) => (
+                                        <button
+                                          key={language}
+                                          type="button"
+                                          onClick={() => addSuggestedExcludedAudioLanguage(language)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {language}
+                                        </button>
+                                      ))}
+                                      {excludeAudioLanguageSearchIsActive &&
+                                      !filteredExcludedAudioLanguageOptions.length &&
+                                      trimmedExcludeAudioLanguageSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            addSuggestedExcludedAudioLanguage(
+                                              trimmedExcludeAudioLanguageSearch,
+                                            )
+                                          }
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedExcludeAudioLanguageSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
 
@@ -3338,6 +4205,81 @@ export function CommandCenterPage() {
                             </button>
                           </div>
 
+                          <div className="space-y-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                              User scope
+                            </div>
+                            <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => applyNewProfileScopeSelection(null)}
+                                  className={[
+                                    'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                                    !newProfileScopePlexUserId
+                                      ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-100'
+                                      : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
+                                  ].join(' ')}
+                                >
+                                  All users
+                                </button>
+                                {newProfileScopePinnedUsers.map((user) => (
+                                  <button
+                                    key={user.id}
+                                    type="button"
+                                    onClick={() => applyNewProfileScopeSelection(user.id)}
+                                    className={[
+                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                                      newProfileScopePlexUserId === user.id
+                                        ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
+                                        : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
+                                    ].join(' ')}
+                                  >
+                                    {user.plexAccountTitle}
+                                  </button>
+                                ))}
+                                {newProfileScopeUser &&
+                                !newProfileScopePinnedUserIds.has(newProfileScopeUser.id) ? (
+                                  <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100">
+                                    {newProfileScopeUser.plexAccountTitle}
+                                  </span>
+                                ) : null}
+                                <input
+                                  type="text"
+                                  value={newProfileScopeSearch}
+                                  onChange={(event) =>
+                                    setNewProfileScopeSearch(event.target.value)
+                                  }
+                                  placeholder="Search users to customize"
+                                  className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {newProfileScopeSearchResults.map((user) => (
+                                <button
+                                  key={user.id}
+                                  type="button"
+                                  onClick={() => applyNewProfileScopeSelection(user.id)}
+                                  className={[
+                                    'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                                    newProfileScopePlexUserId === user.id
+                                      ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
+                                      : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
+                                  ].join(' ')}
+                                >
+                                  {user.plexAccountTitle}
+                                </button>
+                              ))}
+                              {trimmedNewProfileScopeSearch &&
+                              !newProfileScopeSearchResults.length ? (
+                                <span className="text-[11px] text-white/45">
+                                  No users match "{newProfileScopeSearch.trim()}"
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
@@ -3422,158 +4364,466 @@ export function CommandCenterPage() {
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
-                                Genres (comma separated)
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Included genres
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.includeGenreFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            includeGenreFilterEnabled: !current.includeGenreFilterEnabled,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.includeGenreFilterEnabled
+                                      ? 'border-sky-400/40 bg-sky-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile included genre filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.includeGenreFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
                               </div>
-                              <div className="space-y-2">
-                                <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    {newProfileSelectedGenres.map((genre) => (
-                                      <span
-                                        key={genre}
-                                        className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
-                                      >
-                                        {genre}
-                                        <button
-                                          type="button"
-                                          onClick={() => removeNewProfileGenreTag(genre)}
-                                          className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
-                                          aria-label={`Remove ${genre}`}
-                                          title={`Remove ${genre}`}
+                              {newProfileDraft.includeGenreFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedGenres.map((genre) => (
+                                        <span
+                                          key={genre}
+                                          className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
                                         >
-                                          <X className="w-3 h-3" />
-                                        </button>
-                                      </span>
-                                    ))}
-                                    <input
-                                      type="text"
-                                      value={newProfileGenreSearch}
-                                      onChange={(event) =>
-                                        setNewProfileGenreSearch(event.target.value)
-                                      }
-                                      onKeyDown={handleNewProfileGenreSearchKeyDown}
-                                      placeholder="Search and add genre"
-                                      className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
-                                    />
+                                          {genre}
+                                          <button
+                                            type="button"
+                                            onClick={() => removeNewProfileIncludedGenreTag(genre)}
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${genre}`}
+                                            title={`Remove ${genre}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileGenreSearch}
+                                        onChange={(event) =>
+                                          setNewProfileGenreSearch(event.target.value)
+                                        }
+                                        onKeyDown={handleNewProfileIncludedGenreSearchKeyDown}
+                                        placeholder="Search and add genre"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
                                   </div>
-                                </div>
-                                {newProfileGenreSearchIsActive ||
-                                newProfileDefaultGenreOptions.length ? (
-                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-                                    {newProfileGenreSearchIsActive
-                                      ? 'Genre search results'
-                                      : 'Recommended genres'}
-                                  </div>
-                                ) : null}
-                                <div className="flex flex-wrap gap-1.5">
-                                  {(newProfileGenreSearchIsActive
-                                    ? newProfileFilteredGenreOptions
-                                    : newProfileDefaultGenreOptions
-                                  ).map((genre) => (
-                                    <button
-                                      key={genre}
-                                      type="button"
-                                      onClick={() => addNewProfileGenreTag(genre)}
-                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                    >
-                                      + {genre}
-                                    </button>
-                                  ))}
-                                  {newProfileGenreSearchIsActive &&
-                                  !newProfileFilteredGenreOptions.length &&
-                                  trimmedNewProfileGenreSearch ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        addNewProfileGenreTag(trimmedNewProfileGenreSearch)
-                                      }
-                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                    >
-                                      + Add "{trimmedNewProfileGenreSearch}"
-                                    </button>
+                                  {newProfileGenreSearchIsActive ||
+                                  newProfileDefaultGenreOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileGenreSearchIsActive
+                                        ? 'Genre search results'
+                                        : 'Recommended genres to include'}
+                                    </div>
                                   ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileGenreSearchIsActive
+                                      ? newProfileFilteredGenreOptions
+                                      : newProfileDefaultGenreOptions
+                                    ).map((genre) => (
+                                      <button
+                                        key={genre}
+                                        type="button"
+                                        onClick={() => addNewProfileIncludedGenreTag(genre)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {genre}
+                                      </button>
+                                    ))}
+                                    {newProfileGenreSearchIsActive &&
+                                    !newProfileFilteredGenreOptions.length &&
+                                    trimmedNewProfileGenreSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileIncludedGenreTag(trimmedNewProfileGenreSearch)
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileGenreSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 </div>
-                              </div>
+                              ) : null}
                             </div>
                             <div>
-                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
-                                Audio languages
-                              </div>
-                              <div className="space-y-2">
-                                <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    {newProfileSelectedAudioLanguages.map((language) => (
-                                      <span
-                                        key={language}
-                                        className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
-                                      >
-                                        {language}
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            removeNewProfileAudioLanguageTag(language)
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Included audio languages
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.includeAudioLanguageFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            includeAudioLanguageFilterEnabled:
+                                              !current.includeAudioLanguageFilterEnabled,
                                           }
-                                          className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
-                                          aria-label={`Remove ${language}`}
-                                          title={`Remove ${language}`}
-                                        >
-                                          <X className="w-3 h-3" />
-                                        </button>
-                                      </span>
-                                    ))}
-                                    <input
-                                      type="text"
-                                      value={newProfileAudioLanguageSearch}
-                                      onChange={(event) =>
-                                        setNewProfileAudioLanguageSearch(event.target.value)
-                                      }
-                                      onKeyDown={
-                                        handleNewProfileAudioLanguageSearchKeyDown
-                                      }
-                                      placeholder="Search and add language"
-                                      className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
-                                    />
-                                  </div>
-                                </div>
-                                {newProfileAudioLanguageSearchIsActive ||
-                                newProfileDefaultAudioLanguageOptions.length ? (
-                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-                                    {newProfileAudioLanguageSearchIsActive
-                                      ? 'Language search results'
-                                      : 'Top 10 popular languages'}
-                                  </div>
-                                ) : null}
-                                <div className="flex flex-wrap gap-1.5">
-                                  {(newProfileAudioLanguageSearchIsActive
-                                    ? newProfileFilteredAudioLanguageOptions
-                                    : newProfileDefaultAudioLanguageOptions
-                                  ).map((language) => (
-                                    <button
-                                      key={language}
-                                      type="button"
-                                      onClick={() => addNewProfileAudioLanguageTag(language)}
-                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                    >
-                                      + {language}
-                                    </button>
-                                  ))}
-                                  {newProfileAudioLanguageSearchIsActive &&
-                                  !newProfileFilteredAudioLanguageOptions.length &&
-                                  trimmedNewProfileAudioLanguageSearch ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        addNewProfileAudioLanguageTag(
-                                          trimmedNewProfileAudioLanguageSearch,
-                                        )
-                                      }
-                                      className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
-                                    >
-                                      + Add "{trimmedNewProfileAudioLanguageSearch}"
-                                    </button>
-                                  ) : null}
-                                </div>
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.includeAudioLanguageFilterEnabled
+                                      ? 'border-fuchsia-400/40 bg-fuchsia-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile included audio language filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.includeAudioLanguageFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
                               </div>
+                              {newProfileDraft.includeAudioLanguageFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedAudioLanguages.map((language) => (
+                                        <span
+                                          key={language}
+                                          className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
+                                        >
+                                          {language}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeNewProfileIncludedAudioLanguageTag(language)
+                                            }
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${language}`}
+                                            title={`Remove ${language}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileAudioLanguageSearch}
+                                        onChange={(event) =>
+                                          setNewProfileAudioLanguageSearch(event.target.value)
+                                        }
+                                        onKeyDown={
+                                          handleNewProfileIncludedAudioLanguageSearchKeyDown
+                                        }
+                                        placeholder="Search and add language"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {newProfileAudioLanguageSearchIsActive ||
+                                  newProfileDefaultAudioLanguageOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileAudioLanguageSearchIsActive
+                                        ? 'Language search results'
+                                        : 'Top 10 popular languages to include'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileAudioLanguageSearchIsActive
+                                      ? newProfileFilteredAudioLanguageOptions
+                                      : newProfileDefaultAudioLanguageOptions
+                                    ).map((language) => (
+                                      <button
+                                        key={language}
+                                        type="button"
+                                        onClick={() => addNewProfileIncludedAudioLanguageTag(language)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {language}
+                                      </button>
+                                    ))}
+                                    {newProfileAudioLanguageSearchIsActive &&
+                                    !newProfileFilteredAudioLanguageOptions.length &&
+                                    trimmedNewProfileAudioLanguageSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileIncludedAudioLanguageTag(
+                                            trimmedNewProfileAudioLanguageSearch,
+                                          )
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileAudioLanguageSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Excluded genres
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.excludeGenreFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            excludeGenreFilterEnabled:
+                                              !current.excludeGenreFilterEnabled,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.excludeGenreFilterEnabled
+                                      ? 'border-rose-400/40 bg-rose-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile excluded genre filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.excludeGenreFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
+                              </div>
+                              {newProfileDraft.excludeGenreFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedExcludedGenres.map((genre) => (
+                                        <span
+                                          key={genre}
+                                          className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-1 text-[11px] text-rose-100"
+                                        >
+                                          {genre}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeNewProfileExcludedGenreTag(genre)
+                                            }
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-rose-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${genre}`}
+                                            title={`Remove ${genre}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileExcludeGenreSearch}
+                                        onChange={(event) =>
+                                          setNewProfileExcludeGenreSearch(event.target.value)
+                                        }
+                                        onKeyDown={handleNewProfileExcludedGenreSearchKeyDown}
+                                        placeholder="Search and add excluded genre"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {newProfileExcludeGenreSearchIsActive ||
+                                  newProfileDefaultExcludedGenreOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileExcludeGenreSearchIsActive
+                                        ? 'Genre search results'
+                                        : 'Recommended genres to exclude'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileExcludeGenreSearchIsActive
+                                      ? newProfileFilteredExcludedGenreOptions
+                                      : newProfileDefaultExcludedGenreOptions
+                                    ).map((genre) => (
+                                      <button
+                                        key={genre}
+                                        type="button"
+                                        onClick={() => addNewProfileExcludedGenreTag(genre)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {genre}
+                                      </button>
+                                    ))}
+                                    {newProfileExcludeGenreSearchIsActive &&
+                                    !newProfileFilteredExcludedGenreOptions.length &&
+                                    trimmedNewProfileExcludeGenreSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileExcludedGenreTag(
+                                            trimmedNewProfileExcludeGenreSearch,
+                                          )
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileExcludeGenreSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Excluded audio languages
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.excludeAudioLanguageFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            excludeAudioLanguageFilterEnabled:
+                                              !current.excludeAudioLanguageFilterEnabled,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.excludeAudioLanguageFilterEnabled
+                                      ? 'border-amber-400/40 bg-amber-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile excluded audio language filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.excludeAudioLanguageFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
+                              </div>
+                              {newProfileDraft.excludeAudioLanguageFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedExcludedAudioLanguages.map((language) => (
+                                        <span
+                                          key={language}
+                                          className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] text-amber-100"
+                                        >
+                                          {language}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeNewProfileExcludedAudioLanguageTag(language)
+                                            }
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-amber-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${language}`}
+                                            title={`Remove ${language}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileExcludeAudioLanguageSearch}
+                                        onChange={(event) =>
+                                          setNewProfileExcludeAudioLanguageSearch(
+                                            event.target.value,
+                                          )
+                                        }
+                                        onKeyDown={
+                                          handleNewProfileExcludedAudioLanguageSearchKeyDown
+                                        }
+                                        placeholder="Search and add excluded language"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {newProfileExcludeAudioLanguageSearchIsActive ||
+                                  newProfileDefaultExcludedAudioLanguageOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileExcludeAudioLanguageSearchIsActive
+                                        ? 'Language search results'
+                                        : 'Top 10 popular languages to exclude'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileExcludeAudioLanguageSearchIsActive
+                                      ? newProfileFilteredExcludedAudioLanguageOptions
+                                      : newProfileDefaultExcludedAudioLanguageOptions
+                                    ).map((language) => (
+                                      <button
+                                        key={language}
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileExcludedAudioLanguageTag(language)
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {language}
+                                      </button>
+                                    ))}
+                                    {newProfileExcludeAudioLanguageSearchIsActive &&
+                                    !newProfileFilteredExcludedAudioLanguageOptions.length &&
+                                    trimmedNewProfileExcludeAudioLanguageSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileExcludedAudioLanguageTag(
+                                            trimmedNewProfileExcludeAudioLanguageSearch,
+                                          )
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileExcludeAudioLanguageSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
 
@@ -3714,8 +4964,12 @@ export function CommandCenterPage() {
                               onClick={() => {
                                 setIsAddProfileFormOpen(false);
                                 setNewProfileDraft(null);
+                                setNewProfileScopePlexUserId(null);
+                                setNewProfileScopeSearch('');
                                 setNewProfileGenreSearch('');
                                 setNewProfileAudioLanguageSearch('');
+                                setNewProfileExcludeGenreSearch('');
+                                setNewProfileExcludeAudioLanguageSearch('');
                                 createImmaculateProfileMutation.reset();
                               }}
                               disabled={createImmaculateProfileMutation.isPending}
@@ -3749,8 +5003,12 @@ export function CommandCenterPage() {
                           setProfileScopeSearch('');
                           setIsAddProfileFormOpen(true);
                           setNewProfileDraft(createNewProfileDraft());
+                          setNewProfileScopePlexUserId(null);
+                          setNewProfileScopeSearch('');
                           setNewProfileGenreSearch('');
                           setNewProfileAudioLanguageSearch('');
+                          setNewProfileExcludeGenreSearch('');
+                          setNewProfileExcludeAudioLanguageSearch('');
                           createImmaculateProfileMutation.reset();
                         }}
                         className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15 transition-colors"

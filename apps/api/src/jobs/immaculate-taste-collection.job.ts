@@ -74,6 +74,58 @@ function normalizeAndCapTitles(rawTitles: string[], max: number): string[] {
   return out;
 }
 
+function normalizeStringArray(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = String(raw ?? '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function extractGenresFromSeedMetadata(value: unknown): string[] {
+  if (!isPlainObject(value)) return [];
+  const rawGenres = value['genres'];
+  if (!Array.isArray(rawGenres)) return [];
+  return normalizeStringArray(
+    rawGenres
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean),
+  );
+}
+
+function extractGenresFromTmdbDetails(value: unknown): string[] {
+  if (!isPlainObject(value)) return [];
+  const rawGenres = value['genres'];
+  if (!Array.isArray(rawGenres)) return [];
+  return normalizeStringArray(
+    rawGenres
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return '';
+        const name = (entry as Record<string, unknown>)['name'];
+        return typeof name === 'string' ? name.trim() : '';
+      })
+      .filter(Boolean),
+  );
+}
+
+function toPositiveInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const n = Math.trunc(value);
+    return n > 0 ? n : null;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number.parseInt(value.trim(), 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
+
 function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
@@ -334,8 +386,8 @@ export class ImmaculateTasteCollectionJob {
     if (!movieLibraryName && seedMeta?.librarySectionTitle) {
       movieLibraryName = seedMeta.librarySectionTitle;
     }
-    const seedGenres = seedMeta?.genres ?? [];
-    const seedAudioLanguages = seedMeta?.audioLanguages ?? [];
+    let seedGenres = normalizeStringArray(seedMeta?.genres ?? []);
+    const seedAudioLanguages = normalizeStringArray(seedMeta?.audioLanguages ?? []);
     if (movieSectionKey && excludedSectionKeySet.has(movieSectionKey)) {
       await ctx.warn(
         'immaculateTastePoints: skipped (resolved seed library excluded)',
@@ -378,6 +430,81 @@ export class ImmaculateTasteCollectionJob {
       pickString(secrets, 'tmdbApiKey') ||
       pickString(secrets, 'tmdb.api_key');
     if (!tmdbApiKey) throw new Error('TMDB apiKey is not set');
+    if (!seedGenres.length) {
+      const tmdbSeedMetadata = await withJobRetryOrNull(
+        () =>
+          this.tmdb.getSeedMetadata({
+            apiKey: tmdbApiKey,
+            seedTitle,
+            seedYear,
+          }),
+        { ctx, label: 'tmdb: get seed metadata', meta: { seedTitle, seedYear } },
+      );
+      const tmdbSeedGenres = extractGenresFromSeedMetadata(tmdbSeedMetadata);
+      if (tmdbSeedGenres.length) {
+        seedGenres = normalizeStringArray([...seedGenres, ...tmdbSeedGenres]);
+      }
+      if (!seedGenres.length) {
+        const tmdbSeedId = toPositiveInt(
+          isPlainObject(tmdbSeedMetadata) ? tmdbSeedMetadata['tmdb_id'] : null,
+        );
+        if (tmdbSeedId) {
+          const tmdbSeedDetails = await withJobRetryOrNull(
+            () =>
+              this.tmdb.getTv({
+                apiKey: tmdbApiKey,
+                tmdbId: tmdbSeedId,
+              }),
+            {
+              ctx,
+              label: 'tmdb: get seed tv details by id',
+              meta: { tmdbId: tmdbSeedId },
+            },
+          );
+          const tmdbDetailGenres = extractGenresFromTmdbDetails(tmdbSeedDetails);
+          if (tmdbDetailGenres.length) {
+            seedGenres = normalizeStringArray([...seedGenres, ...tmdbDetailGenres]);
+          }
+        }
+      }
+      if (!seedGenres.length) {
+        const splitPools = await withJobRetryOrNull(
+          () =>
+            this.tmdb.getSplitTvRecommendationCandidatePools({
+              apiKey: tmdbApiKey,
+              seedTitle,
+              seedYear,
+              includeAdult: false,
+              timezone: null,
+              upcomingWindowMonths: 24,
+            }),
+          {
+            ctx,
+            label: 'tmdb: get split tv pools for seed genres',
+            meta: { seedTitle, seedYear },
+          },
+        );
+        const splitSeedId = toPositiveInt(splitPools?.seed?.tmdbId);
+        if (splitSeedId) {
+          const splitSeedDetails = await withJobRetryOrNull(
+            () =>
+              this.tmdb.getTv({
+                apiKey: tmdbApiKey,
+                tmdbId: splitSeedId,
+              }),
+            {
+              ctx,
+              label: 'tmdb: get split seed tv details by id',
+              meta: { tmdbId: splitSeedId },
+            },
+          );
+          const splitSeedGenres = extractGenresFromTmdbDetails(splitSeedDetails);
+          if (splitSeedGenres.length) {
+            seedGenres = normalizeStringArray([...seedGenres, ...splitSeedGenres]);
+          }
+        }
+      }
+    }
 
     const openAiEnabledFlag = pickBool(settings, 'openai.enabled') ?? false;
     const openAiApiKey = pickString(secrets, 'openai.apiKey');
@@ -464,18 +591,36 @@ export class ImmaculateTasteCollectionJob {
         seedMediaType: 'movie',
       });
     if (!matchedProfile) {
+      const skippedStages = [
+        'recommendations',
+        'plex_resolve',
+        'points_update',
+        'refresher',
+      ];
       const skippedSummary: JsonObject = {
         mediaType: 'movie',
         plexUserId,
         plexUserTitle,
         seedTitle,
         seedYear,
-        skipped: true,
-        reason: 'no_matching_profile',
-      };
-      await ctx.warn('immaculateTastePoints: skipped (no matching profile)', {
         seedGenres,
         seedAudioLanguages,
+        skipped: true,
+        reason: 'no_matching_profile',
+        profileMatch: {
+          matched: false,
+          reason: 'no_matching_profile',
+          seedMediaType: 'movie',
+          skippedStages,
+        },
+      };
+      await ctx.warn('immaculateTastePoints: skipped (no matching profile)', {
+        reason:
+          'No enabled profile include criteria matched and default catch-all was unavailable for this seed',
+        seedGenres,
+        seedAudioLanguages,
+        seedMediaType: 'movie',
+        skippedStages,
       });
       const report = buildImmaculateTastePointsReport({
         ctx,
@@ -483,6 +628,17 @@ export class ImmaculateTasteCollectionJob {
       });
       return { summary: report as unknown as JsonObject };
     }
+    await ctx.info('immaculateTastePoints: profile matched', {
+      profileId: matchedProfile.id,
+      profileDatasetId: matchedProfile.datasetId,
+      profileName: matchedProfile.name,
+      mediaType: matchedProfile.mediaType,
+      matchMode: matchedProfile.matchMode,
+      includeGenres: matchedProfile.genres,
+      includeAudioLanguages: matchedProfile.audioLanguages,
+      excludedGenres: matchedProfile.excludedGenres,
+      excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
+    });
     const profileId = matchedProfile.datasetId;
 
     await this.immaculateTaste.ensureLegacyImported({
@@ -1182,12 +1338,28 @@ export class ImmaculateTasteCollectionJob {
       plexUserTitle,
       seedTitle,
       seedYear,
+      seedGenres,
+      seedAudioLanguages,
       profile: {
         id: matchedProfile.id,
         datasetId: matchedProfile.datasetId,
         name: matchedProfile.name,
         radarrInstanceId: matchedProfile.radarrInstanceId ?? null,
         movieCollectionBaseName: matchedProfile.movieCollectionBaseName ?? null,
+      },
+      profileMatch: {
+        matched: true,
+        reason: 'matched_profile',
+        seedMediaType: 'movie',
+        profileId: matchedProfile.id,
+        profileDatasetId: matchedProfile.datasetId,
+        profileName: matchedProfile.name,
+        profileMediaType: matchedProfile.mediaType,
+        profileMatchMode: matchedProfile.matchMode,
+        includeGenres: matchedProfile.genres,
+        includeAudioLanguages: matchedProfile.audioLanguages,
+        excludedGenres: matchedProfile.excludedGenres,
+        excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
       },
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
@@ -1342,8 +1514,8 @@ export class ImmaculateTasteCollectionJob {
     if (!tvLibraryName && seedMeta?.librarySectionTitle) {
       tvLibraryName = seedMeta.librarySectionTitle;
     }
-    const seedGenres = seedMeta?.genres ?? [];
-    const seedAudioLanguages = seedMeta?.audioLanguages ?? [];
+    let seedGenres = normalizeStringArray(seedMeta?.genres ?? []);
+    const seedAudioLanguages = normalizeStringArray(seedMeta?.audioLanguages ?? []);
     if (tvSectionKey && excludedSectionKeySet.has(tvSectionKey)) {
       await ctx.warn(
         'immaculateTastePoints(tv): skipped (resolved seed library excluded)',
@@ -1397,6 +1569,43 @@ export class ImmaculateTasteCollectionJob {
       pickString(secrets, 'tmdbApiKey') ||
       pickString(secrets, 'tmdb.api_key');
     if (!tmdbApiKey) throw new Error('TMDB apiKey is not set');
+    if (!seedGenres.length && seedMeta?.grandparentRatingKey) {
+      const showSeedMeta = await withJobRetryOrNull(
+        () =>
+          this.plexServer.getMetadataDetails({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: seedMeta.grandparentRatingKey ?? '',
+          }),
+        {
+          ctx,
+          label: 'plex: get seed show metadata',
+          meta: { ratingKey: seedMeta.grandparentRatingKey },
+        },
+      );
+      if (showSeedMeta?.genres?.length) {
+        seedGenres = normalizeStringArray([...seedGenres, ...showSeedMeta.genres]);
+      }
+    }
+    if (!seedGenres.length) {
+      const tmdbSeedMetadata = await withJobRetryOrNull(
+        () =>
+          this.tmdb.getTvSeedMetadata({
+            apiKey: tmdbApiKey,
+            seedTitle,
+            seedYear,
+          }),
+        {
+          ctx,
+          label: 'tmdb: get seed tv metadata',
+          meta: { seedTitle, seedYear },
+        },
+      );
+      const tmdbSeedGenres = extractGenresFromSeedMetadata(tmdbSeedMetadata);
+      if (tmdbSeedGenres.length) {
+        seedGenres = normalizeStringArray([...seedGenres, ...tmdbSeedGenres]);
+      }
+    }
 
     const openAiEnabledFlag = pickBool(settings, 'openai.enabled') ?? false;
     const openAiApiKey = pickString(secrets, 'openai.apiKey');
@@ -1483,18 +1692,36 @@ export class ImmaculateTasteCollectionJob {
         seedMediaType: 'show',
       });
     if (!matchedProfile) {
+      const skippedStages = [
+        'recommendations',
+        'plex_resolve',
+        'points_update',
+        'refresher',
+      ];
       const skippedSummary: JsonObject = {
         mediaType: 'tv',
         plexUserId,
         plexUserTitle,
         seedTitle,
         seedYear,
-        skipped: true,
-        reason: 'no_matching_profile',
-      };
-      await ctx.warn('immaculateTastePoints(tv): skipped (no matching profile)', {
         seedGenres,
         seedAudioLanguages,
+        skipped: true,
+        reason: 'no_matching_profile',
+        profileMatch: {
+          matched: false,
+          reason: 'no_matching_profile',
+          seedMediaType: 'show',
+          skippedStages,
+        },
+      };
+      await ctx.warn('immaculateTastePoints(tv): skipped (no matching profile)', {
+        reason:
+          'No enabled profile include criteria matched and default catch-all was unavailable for this seed',
+        seedGenres,
+        seedAudioLanguages,
+        seedMediaType: 'show',
+        skippedStages,
       });
       const report = buildImmaculateTastePointsReport({
         ctx,
@@ -1502,6 +1729,17 @@ export class ImmaculateTasteCollectionJob {
       });
       return { summary: report as unknown as JsonObject };
     }
+    await ctx.info('immaculateTastePoints(tv): profile matched', {
+      profileId: matchedProfile.id,
+      profileDatasetId: matchedProfile.datasetId,
+      profileName: matchedProfile.name,
+      mediaType: matchedProfile.mediaType,
+      matchMode: matchedProfile.matchMode,
+      includeGenres: matchedProfile.genres,
+      includeAudioLanguages: matchedProfile.audioLanguages,
+      excludedGenres: matchedProfile.excludedGenres,
+      excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
+    });
     const profileId = matchedProfile.datasetId;
 
     await this.immaculateTasteTv.ensureLegacyImported({
@@ -2150,12 +2388,28 @@ export class ImmaculateTasteCollectionJob {
       plexUserTitle,
       seedTitle,
       seedYear,
+      seedGenres,
+      seedAudioLanguages,
       profile: {
         id: matchedProfile.id,
         datasetId: matchedProfile.datasetId,
         name: matchedProfile.name,
         sonarrInstanceId: matchedProfile.sonarrInstanceId ?? null,
         showCollectionBaseName: matchedProfile.showCollectionBaseName ?? null,
+      },
+      profileMatch: {
+        matched: true,
+        reason: 'matched_profile',
+        seedMediaType: 'show',
+        profileId: matchedProfile.id,
+        profileDatasetId: matchedProfile.datasetId,
+        profileName: matchedProfile.name,
+        profileMediaType: matchedProfile.mediaType,
+        profileMatchMode: matchedProfile.matchMode,
+        includeGenres: matchedProfile.genres,
+        includeAudioLanguages: matchedProfile.audioLanguages,
+        excludedGenres: matchedProfile.excludedGenres,
+        excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
       },
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
@@ -2633,6 +2887,8 @@ function buildImmaculateTastePointsReport(params: {
       .map((x) => String(x ?? '').trim())
       .filter(Boolean);
   };
+  const asTrimmedString = (v: unknown): string =>
+    typeof v === 'string' ? v.trim() : '';
   const uniqueStrings = (arr: string[]) => {
     const out: string[] = [];
     const seen = new Set<string>();
@@ -2756,6 +3012,8 @@ function buildImmaculateTastePointsReport(params: {
   const mode: 'tv' | 'movie' =
     (normalizedMediaType || (sonarr ? 'tv' : 'movie')) === 'tv' ? 'tv' : 'movie';
   const rawWithMediaType = { ...raw, mediaType: mode } as JsonObject;
+  const skipped = raw.skipped === true;
+  const skipReason = asTrimmedString(raw.reason);
   const normalizeTitle = (value: string) => String(value ?? '').trim().toLowerCase();
   const generatedTitles = sortTitles(
     uniqueStrings(asStringArray(raw.generatedTitles)),
@@ -2770,9 +3028,179 @@ function buildImmaculateTastePointsReport(params: {
   const seedTitle = String(raw.seedTitle ?? '').trim();
   const plexUserId = String(raw.plexUserId ?? '').trim();
   const plexUserTitle = String(raw.plexUserTitle ?? '').trim();
+  const seedGenres = sortTitles(uniqueStrings(asStringArray(raw.seedGenres)));
+  const seedAudioLanguages = sortTitles(
+    uniqueStrings(asStringArray(raw.seedAudioLanguages)),
+  );
+  const profile = isPlainObject(raw.profile)
+    ? (raw.profile as Record<string, unknown>)
+    : null;
+  const profileName = profile ? asTrimmedString(profile.name) : '';
+  const profileDatasetId = profile ? asTrimmedString(profile.datasetId) : '';
+  const profileInternalId = profile ? asTrimmedString(profile.id) : '';
+  const matchedProfileLabel =
+    profileName || profileDatasetId || profileInternalId;
+  const profileMatchRaw = isPlainObject(raw.profileMatch)
+    ? (raw.profileMatch as Record<string, unknown>)
+    : null;
+  const profileMatchMatched =
+    profileMatchRaw && typeof profileMatchRaw.matched === 'boolean'
+      ? profileMatchRaw.matched
+      : Boolean(matchedProfileLabel);
+  const profileMatchReason = profileMatchRaw
+    ? asTrimmedString(profileMatchRaw.reason)
+    : profileMatchMatched
+      ? 'matched_profile'
+      : '';
+  const profileMatchSeedMediaType = profileMatchRaw
+    ? asTrimmedString(profileMatchRaw.seedMediaType)
+    : mode === 'tv'
+      ? 'show'
+      : 'movie';
+  const profileMatchSkippedStages = sortTitles(
+    uniqueStrings(asStringArray(profileMatchRaw?.skippedStages)),
+  );
+  const profileMatchMode = profileMatchRaw
+    ? asTrimmedString(profileMatchRaw.profileMatchMode)
+    : '';
+  const profileMatchMediaType = profileMatchRaw
+    ? asTrimmedString(profileMatchRaw.profileMediaType)
+    : '';
+  const profileMatchIncludeGenres = sortTitles(
+    uniqueStrings(asStringArray(profileMatchRaw?.includeGenres)),
+  );
+  const profileMatchIncludeAudioLanguages = sortTitles(
+    uniqueStrings(asStringArray(profileMatchRaw?.includeAudioLanguages)),
+  );
+  const profileMatchExcludedGenres = sortTitles(
+    uniqueStrings(asStringArray(profileMatchRaw?.excludedGenres)),
+  );
+  const profileMatchExcludedAudioLanguages = sortTitles(
+    uniqueStrings(asStringArray(profileMatchRaw?.excludedAudioLanguages)),
+  );
   const contextFacts: Array<{ label: string; value: JsonValue }> = [];
   if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
   if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+  if (matchedProfileLabel) {
+    contextFacts.push({
+      label: 'Matched Immaculate Taste profile',
+      value: matchedProfileLabel,
+    });
+  }
+  if (profileDatasetId) {
+    contextFacts.push({ label: 'Profile dataset id', value: profileDatasetId });
+  }
+  if (profileInternalId) {
+    contextFacts.push({ label: 'Profile id', value: profileInternalId });
+  }
+  contextFacts.push({
+    label: 'Profile match result',
+    value: profileMatchMatched ? 'matched' : 'no_match',
+  });
+  if (profileMatchReason) {
+    contextFacts.push({ label: 'Profile match reason', value: profileMatchReason });
+  }
+  contextFacts.push({
+    label: 'Seed genres',
+    value: {
+      count: seedGenres.length,
+      unit: 'genres',
+      items: seedGenres,
+    },
+  });
+  contextFacts.push({
+    label: 'Seed audio languages',
+    value: {
+      count: seedAudioLanguages.length,
+      unit: 'languages',
+      items: seedAudioLanguages,
+    },
+  });
+  const profileMatchingFacts: Array<{ label: string; value: JsonValue }> = [
+    { label: 'Matched', value: profileMatchMatched },
+    {
+      label: 'Seed media type',
+      value: profileMatchSeedMediaType || (mode === 'tv' ? 'show' : 'movie'),
+    },
+    { label: 'Reason', value: profileMatchReason || null },
+    {
+      label: 'Seed genres',
+      value: {
+        count: seedGenres.length,
+        unit: 'genres',
+        items: seedGenres,
+      },
+    },
+    {
+      label: 'Seed audio languages',
+      value: {
+        count: seedAudioLanguages.length,
+        unit: 'languages',
+        items: seedAudioLanguages,
+      },
+    },
+    {
+      label: 'Skipped stages',
+      value: {
+        count: profileMatchSkippedStages.length,
+        unit: 'stages',
+        items: profileMatchSkippedStages,
+      },
+    },
+  ];
+  if (profileMatchMatched) {
+    profileMatchingFacts.push(
+      { label: 'Profile match mode', value: profileMatchMode || null },
+      { label: 'Profile media type', value: profileMatchMediaType || null },
+      {
+        label: 'Profile include genres',
+        value: {
+          count: profileMatchIncludeGenres.length,
+          unit: 'genres',
+          items: profileMatchIncludeGenres,
+        },
+      },
+      {
+        label: 'Profile include audio languages',
+        value: {
+          count: profileMatchIncludeAudioLanguages.length,
+          unit: 'languages',
+          items: profileMatchIncludeAudioLanguages,
+        },
+      },
+      {
+        label: 'Profile excluded genres',
+        value: {
+          count: profileMatchExcludedGenres.length,
+          unit: 'genres',
+          items: profileMatchExcludedGenres,
+        },
+      },
+      {
+        label: 'Profile excluded audio languages',
+        value: {
+          count: profileMatchExcludedAudioLanguages.length,
+          unit: 'languages',
+          items: profileMatchExcludedAudioLanguages,
+        },
+      },
+    );
+  }
+  const profileMatchingTask = {
+    id: 'profile_matching',
+    title: 'Profile matching',
+    status: profileMatchMatched ? ('success' as const) : ('skipped' as const),
+    facts: profileMatchingFacts,
+    issues:
+      profileMatchMatched || !profileMatchReason
+        ? undefined
+        : [
+            issue(
+              'warn',
+              `Profile matching skipped downstream pipeline: ${profileMatchReason}`,
+            ),
+          ],
+  };
 
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
   const sonarrLists = isPlainObject(raw.sonarrLists) ? raw.sonarrLists : null;
@@ -2891,6 +3319,89 @@ function buildImmaculateTastePointsReport(params: {
         'Chained refresher order snapshot used desired fallback for at least one library.',
       ),
     );
+  }
+
+  if (skipped && skipReason === 'no_matching_profile') {
+    const noMatchingProfileMessage =
+      'No matching Immaculate Taste profile for the detected seed traits. The run was ignored.';
+    const skippedStages = profileMatchSkippedStages.length
+      ? profileMatchSkippedStages
+      : ['recommendations', 'plex_resolve', 'points_update', 'refresher'];
+    const stageTitleMap: Record<string, string> = {
+      recommendations: 'Generate recommendations',
+      plex_resolve: 'Resolve titles in Plex',
+      points_update: 'Update points dataset',
+      refresher: 'Refresh Plex collection (chained)',
+    };
+    const skipTasks: JobReportV1['tasks'] = skippedStages.map((stageId) => ({
+      id: stageId,
+      title: stageTitleMap[stageId] ?? stageId,
+      status: 'skipped',
+      facts: [
+        { label: 'Reason', value: skipReason },
+        { label: 'Profile matching passed', value: false },
+      ],
+    }));
+    if (contextFacts.length) {
+      skipTasks.unshift({
+        id: 'context',
+        title: 'Context',
+        status: 'success',
+        facts: contextFacts,
+      });
+    }
+    skipTasks.splice(contextFacts.length ? 1 : 0, 0, profileMatchingTask);
+    return {
+      template: 'jobReportV1',
+      version: 1,
+      jobId: ctx.jobId,
+      dryRun: ctx.dryRun,
+      trigger: ctx.trigger,
+      headline:
+        mode === 'tv'
+          ? seedTitle
+            ? `Immaculate Taste (TV) ignored for ${seedTitle} (no matching profile).`
+            : 'Immaculate Taste (TV) ignored (no matching profile).'
+          : seedTitle
+            ? `Immaculate Taste ignored for ${seedTitle} (no matching profile).`
+            : 'Immaculate Taste ignored (no matching profile).',
+      sections: [
+        {
+          id: 'totals',
+          title: 'Totals',
+          rows: [
+            metricRow({
+              label: 'Recommendations generated',
+              end: 0,
+              unit: 'titles',
+            }),
+            metricRow({ label: 'Resolved in Plex', end: 0, unit: 'items' }),
+            metricRow({ label: 'Missing in Plex', end: 0, unit: 'titles' }),
+          ],
+        },
+        {
+          id: 'points',
+          title: 'Points dataset',
+          rows: [
+            metricRow({ label: 'Rows (total)', end: null, unit: 'rows' }),
+            metricRow({ label: 'Rows (active)', end: null, unit: 'rows' }),
+            metricRow({ label: 'Rows (pending)', end: null, unit: 'rows' }),
+            metricRow({ label: 'Created active', end: null, unit: 'rows' }),
+            metricRow({ label: 'Created pending', end: null, unit: 'rows' }),
+            metricRow({
+              label: 'Activated from pending',
+              end: null,
+              unit: 'rows',
+            }),
+            metricRow({ label: 'Decayed', end: null, unit: 'rows' }),
+            metricRow({ label: 'Removed', end: null, unit: 'rows' }),
+          ],
+        },
+      ],
+      tasks: skipTasks,
+      issues: [...issues, issue('warn', noMatchingProfileMessage)],
+      raw: rawWithMediaType,
+    };
   }
 
   const tasks: JobReportV1['tasks'] = [
@@ -3239,6 +3750,8 @@ function buildImmaculateTastePointsReport(params: {
       },
     ];
 
+  tasks.unshift(profileMatchingTask);
+
   if (contextFacts.length) {
     tasks.unshift({
       id: 'context',
@@ -3247,6 +3760,11 @@ function buildImmaculateTastePointsReport(params: {
       facts: contextFacts,
     });
   }
+
+  const withProfileHeadline = (base: string) =>
+    matchedProfileLabel
+      ? `${base} using profile "${matchedProfileLabel}".`
+      : `${base}.`;
 
   return {
     template: 'jobReportV1',
@@ -3257,11 +3775,11 @@ function buildImmaculateTastePointsReport(params: {
     headline:
       mode === 'tv'
         ? seedTitle
-          ? `Immaculate Taste (TV) updated by ${seedTitle}.`
-          : 'Immaculate Taste (TV) updated.'
+          ? withProfileHeadline(`Immaculate Taste (TV) updated by ${seedTitle}`)
+          : withProfileHeadline('Immaculate Taste (TV) updated')
         : seedTitle
-          ? `Immaculate Taste updated by ${seedTitle}.`
-          : 'Immaculate Taste updated.',
+          ? withProfileHeadline(`Immaculate Taste updated by ${seedTitle}`)
+          : withProfileHeadline('Immaculate Taste updated'),
     sections: [
       {
         id: 'totals',

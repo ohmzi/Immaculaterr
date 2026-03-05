@@ -10,6 +10,8 @@ export type ImmaculateTasteProfileUserOverride = {
   matchMode: ImmaculateTasteProfileMatchMode;
   genres: string[];
   audioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
   radarrInstanceId: string | null;
   sonarrInstanceId: string | null;
   movieCollectionBaseName: string | null;
@@ -29,6 +31,8 @@ export type ImmaculateTasteProfile = {
   matchMode: ImmaculateTasteProfileMatchMode;
   genres: string[];
   audioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
   radarrInstanceId: string | null;
   sonarrInstanceId: string | null;
   movieCollectionBaseName: string | null;
@@ -51,6 +55,8 @@ export function createImmaculateTasteProfile(body: {
   matchMode?: ImmaculateTasteProfileMatchMode;
   genres?: string[];
   audioLanguages?: string[];
+  excludedGenres?: string[];
+  excludedAudioLanguages?: string[];
   radarrInstanceId?: string | null;
   sonarrInstanceId?: string | null;
   movieCollectionBaseName?: string | null;
@@ -77,6 +83,8 @@ export function updateImmaculateTasteProfile(
     matchMode?: ImmaculateTasteProfileMatchMode;
     genres?: string[];
     audioLanguages?: string[];
+    excludedGenres?: string[];
+    excludedAudioLanguages?: string[];
     radarrInstanceId?: string | null;
     sonarrInstanceId?: string | null;
     movieCollectionBaseName?: string | null;
