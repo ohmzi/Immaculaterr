@@ -55,7 +55,15 @@ async function encryptJsonEnvelope(params: {
   payload: Record<string, unknown>;
 }): Promise<CredentialEnvelope> {
   const subtle = globalThis.crypto?.subtle;
-  if (!subtle) throw new Error('WebCrypto is not available in this browser');
+  if (!subtle) {
+    const secureContextHint =
+      typeof window !== 'undefined' && !window.isSecureContext
+        ? 'Open Immaculaterr via HTTPS (or localhost on the same machine).'
+        : 'Use a modern browser that supports WebCrypto.';
+    throw new Error(
+      `WebCrypto is not available in this browser. ${secureContextHint}`,
+    );
+  }
 
   const publicKey = await subtle.importKey(
     'spki',
