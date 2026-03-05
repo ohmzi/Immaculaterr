@@ -361,7 +361,7 @@ export class ImmaculateTasteProfileService {
         enabled: input.enabled ?? true,
         sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
         mediaType: input.mediaType ?? 'both',
-        matchMode: input.matchMode ?? 'all',
+        matchMode: input.matchMode ?? 'any',
         genres: JSON.stringify(normalizeStringList(input.genres ?? [])),
         audioLanguages: JSON.stringify(
           normalizeStringList(input.audioLanguages ?? []),
@@ -1111,7 +1111,7 @@ export class ImmaculateTasteProfileService {
           enabled: true,
           sortOrder: 0,
           mediaType: 'both',
-          matchMode: 'all',
+          matchMode: 'any',
           genres: '[]',
           audioLanguages: '[]',
           excludedGenres: '[]',
@@ -1121,7 +1121,10 @@ export class ImmaculateTasteProfileService {
       return;
     }
     const defaultRow = rows.find((row) => row.isDefault);
-    if (defaultRow) return;
+    if (defaultRow) {
+      await this.normalizeLegacyDefaultMatchMode(rows);
+      return;
+    }
     const existingNames = new Set(rows.map((row) => row.name.toLowerCase()));
     let defaultName = 'Default';
     if (existingNames.has(defaultName.toLowerCase())) {
@@ -1140,12 +1143,52 @@ export class ImmaculateTasteProfileService {
           enabled: true,
           sortOrder: 0,
           mediaType: 'both',
+          matchMode: 'any',
+          genres: '[]',
+          audioLanguages: '[]',
+          excludedGenres: '[]',
+          excludedAudioLanguages: '[]',
+        },
+      }),
+    ]);
+  }
+
+  private async normalizeLegacyDefaultMatchMode(
+    rows: ImmaculateTasteProfile[],
+  ): Promise<void> {
+    const defaultIdsToNormalize = rows
+      .filter((row) => {
+        if (!row.isDefault) return false;
+        if (row.matchMode.trim().toLowerCase() !== 'all') return false;
+        return (
+          parseJsonStringArray(row.genres).length === 0 &&
+          parseJsonStringArray(row.audioLanguages).length === 0 &&
+          parseJsonStringArray(row.excludedGenres).length === 0 &&
+          parseJsonStringArray(row.excludedAudioLanguages).length === 0
+        );
+      })
+      .map((row) => row.id);
+
+    if (!defaultIdsToNormalize.length) return;
+
+    await this.prisma.$transaction([
+      this.prisma.immaculateTasteProfile.updateMany({
+        where: {
+          id: { in: defaultIdsToNormalize },
+          matchMode: 'all',
+        },
+        data: { matchMode: 'any' },
+      }),
+      this.prisma.immaculateTasteProfileUserOverride.updateMany({
+        where: {
+          profileId: { in: defaultIdsToNormalize },
           matchMode: 'all',
           genres: '[]',
           audioLanguages: '[]',
           excludedGenres: '[]',
           excludedAudioLanguages: '[]',
         },
+        data: { matchMode: 'any' },
       }),
     ]);
   }

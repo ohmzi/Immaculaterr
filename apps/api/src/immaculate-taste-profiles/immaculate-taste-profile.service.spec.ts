@@ -23,6 +23,7 @@ type PrismaMock = {
     findUnique: jest.Mock;
     delete: jest.Mock;
     update: jest.Mock;
+    updateMany: jest.Mock;
     create: jest.Mock;
   };
   plexUser: {
@@ -112,6 +113,7 @@ function createService() {
       findUnique: jest.fn(),
       delete: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       create: jest.fn(),
     },
     plexUser: {
@@ -173,6 +175,9 @@ function createService() {
 
   prisma.jobRun.create.mockResolvedValue({ id: 'run-1' });
   prisma.jobLogLine.createMany.mockResolvedValue({ count: 0 });
+  prisma.immaculateTasteProfileUserOverride.updateMany.mockResolvedValue({
+    count: 0,
+  });
   prisma.immaculateTasteMovieLibrary.findMany.mockResolvedValue([]);
   prisma.immaculateTasteShowLibrary.findMany.mockResolvedValue([]);
   plexServer.listCollectionsForSectionKey.mockResolvedValue([]);

@@ -278,7 +278,7 @@ function createNewProfileDraft(): ImmaculateTasteProfileDraft {
     name: '',
     enabled: true,
     mediaType: 'both',
-    matchMode: 'all',
+    matchMode: 'any',
     includeGenreFilterEnabled: false,
     includeGenresText: '',
     includeAudioLanguageFilterEnabled: false,
@@ -310,7 +310,7 @@ function isNetZeroDefaultProfileDraft(
     draft.name.trim() === profileName.trim() &&
     draft.enabled &&
     draft.mediaType === 'both' &&
-    draft.matchMode === 'all' &&
+    draft.matchMode === 'any' &&
     filters.includedGenres.length === 0 &&
     filters.includedAudioLanguages.length === 0 &&
     filters.excludedGenres.length === 0 &&
