@@ -29,6 +29,7 @@ import {
   createArrInstance,
   deleteArrInstance,
   listArrInstances,
+  testArrInstance,
   type ArrInstance,
   updateArrInstance,
 } from '@/api/arr-instances';
@@ -558,6 +559,12 @@ export const SettingsPage = ({
   const [overseerrIsTesting, setOverseerrIsTesting] = useState(false);
   const [googleIsTesting, setGoogleIsTesting] = useState(false);
   const [openAiIsTesting, setOpenAiIsTesting] = useState(false);
+  const [arrInstanceIsTestingById, setArrInstanceIsTestingById] = useState<
+    Record<string, boolean>
+  >({});
+  const [arrInstanceTestOkById, setArrInstanceTestOkById] = useState<
+    Record<string, boolean | null>
+  >({});
 
   const plexTestRunId = useRef(0);
   const tmdbTestRunId = useRef(0);
@@ -994,10 +1001,66 @@ export const SettingsPage = ({
     },
   });
 
+  const validateArrInstanceApiKey = useCallback(
+    async (params: {
+      type: 'radarr' | 'sonarr';
+      baseUrl: string;
+      apiKey?: string;
+    }) => {
+      const apiKey = (params.apiKey ?? '').trim();
+      if (!apiKey) return;
+
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: params.type,
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: '',
+      });
+
+      try {
+        await callIntegrationTest(params.type, {
+          baseUrl: params.baseUrl.trim(),
+          ...secretPayload,
+        });
+      } catch (error) {
+        const serviceLabel = params.type === 'radarr' ? 'Radarr' : 'Sonarr';
+        const message = error instanceof Error ? error.message : String(error);
+        const lower = message.toLowerCase();
+        const looksLikeAuthError =
+          lower.includes('401') ||
+          lower.includes('403') ||
+          lower.includes('unauthorized') ||
+          lower.includes('api key') ||
+          lower.includes('apikey');
+        if (looksLikeAuthError) {
+          throw new Error(`Invalid API key for ${serviceLabel}.`);
+        }
+        throw new Error(message || `Failed to validate ${serviceLabel} API key.`);
+      }
+    },
+    [buildIntegrationSecretPayload, callIntegrationTest],
+  );
+
   const createArrInstanceMutation = useMutation({
-    mutationFn: createArrInstance,
+    mutationFn: async (
+      params: Parameters<typeof createArrInstance>[0] & {
+        apiKeyForValidation?: string;
+      },
+    ) => {
+      await validateArrInstanceApiKey({
+        type: params.type,
+        baseUrl: params.baseUrl,
+        apiKey: params.apiKeyForValidation,
+      });
+      const { apiKeyForValidation: _ignore, ...payload } = params;
+      return await createArrInstance(payload);
+    },
     onSuccess: async (data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['arr-instances'] });
+      setArrInstanceTestOkById((current) => ({
+        ...current,
+        [data.instance.id]: true,
+      }));
       const label = variables.type === 'radarr' ? 'Radarr' : 'Sonarr';
       toast.success(`${label} instance "${data.instance.name}" added.`);
       if (variables.type === 'radarr') {
@@ -1037,6 +1100,11 @@ export const SettingsPage = ({
       };
       const apiKey = (params.apiKey ?? '').trim();
       if (apiKey) {
+        await validateArrInstanceApiKey({
+          type: params.type,
+          baseUrl: params.baseUrl,
+          apiKey,
+        });
         patch.apiKeyEnvelope = await buildArrInstanceApiKeyEnvelope({
           service: params.type,
           operation: 'update',
@@ -1047,6 +1115,12 @@ export const SettingsPage = ({
     },
     onSuccess: async (data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['arr-instances'] });
+      if ((variables.apiKey ?? '').trim()) {
+        setArrInstanceTestOkById((current) => ({
+          ...current,
+          [data.instance.id]: true,
+        }));
+      }
       const label = variables.type === 'radarr' ? 'Radarr' : 'Sonarr';
       toast.success(`${label} instance "${data.instance.name}" updated.`);
       setEditingArrInstanceApiKey('');
@@ -1715,6 +1789,90 @@ export const SettingsPage = ({
     return typeof result === 'boolean' ? result : null;
   };
 
+  const additionalArrInstanceStatus = useCallback(
+    (instanceId: string, enabled: boolean): StatusPillVariant => {
+      if (!enabled) return 'inactive';
+      if (arrInstanceIsTestingById[instanceId]) return 'testing';
+      const ok = arrInstanceTestOkById[instanceId];
+      if (ok === true) return 'active';
+      if (ok === false) return 'inactive';
+      return 'test';
+    },
+    [arrInstanceIsTestingById, arrInstanceTestOkById],
+  );
+
+  const handleAdditionalArrInstanceManualTest = useCallback(
+    (instance: ArrInstance, enabledOverride?: boolean) => {
+      const enabled = enabledOverride ?? instance.enabled;
+      if (!enabled) return;
+
+      runAsyncTask(
+        (async () => {
+          const serviceLabel = instance.type === 'radarr' ? 'Radarr' : 'Sonarr';
+          const toastId = toast.loading(`Testing ${serviceLabel} server…`);
+          const startedAt = Date.now();
+
+          setArrInstanceIsTestingById((current) => ({
+            ...current,
+            [instance.id]: true,
+          }));
+
+          try {
+            await testArrInstance(instance.id, instance.type);
+
+            const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+            if (remaining) {
+              await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+            }
+
+            setArrInstanceTestOkById((current) => ({
+              ...current,
+              [instance.id]: true,
+            }));
+            toast.success(`${serviceLabel} server "${instance.name}" is reachable.`, {
+              id: toastId,
+            });
+          } catch (error) {
+            const fallback = `Failed to test ${serviceLabel} server.`;
+            const message =
+              error instanceof ApiError
+                ? readErrorMessage(error.body, error.message || fallback)
+                : error instanceof Error
+                  ? error.message
+                  : fallback;
+            const lower = message.toLowerCase();
+            const invalidApiKey =
+              lower.includes('401') ||
+              lower.includes('403') ||
+              lower.includes('unauthorized') ||
+              lower.includes('api key') ||
+              lower.includes('apikey');
+            const userMessage = invalidApiKey
+              ? `Invalid API key for ${serviceLabel} server "${instance.name}".`
+              : message || fallback;
+
+            const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+            if (remaining) {
+              await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+            }
+
+            setArrInstanceTestOkById((current) => ({
+              ...current,
+              [instance.id]: false,
+            }));
+            toast.error(userMessage, { id: toastId });
+          } finally {
+            setArrInstanceIsTestingById((current) => ({
+              ...current,
+              [instance.id]: false,
+            }));
+          }
+        })(),
+      );
+    },
+    [],
+  );
+
   // On landing, verify any "active" integrations in the persisted app data and
   // update UI + persisted enabled flags if something is no longer reachable.
   useEffect(() => {
@@ -2269,6 +2427,7 @@ export const SettingsPage = ({
           type: 'radarr',
           name: newRadarrInstanceName.trim() || undefined,
           baseUrl,
+          apiKeyForValidation: apiKey,
           apiKeyEnvelope,
           enabled: true,
         });
@@ -2303,6 +2462,7 @@ export const SettingsPage = ({
           type: 'sonarr',
           name: newSonarrInstanceName.trim() || undefined,
           baseUrl,
+          apiKeyForValidation: apiKey,
           apiKeyEnvelope,
           enabled: true,
         });
@@ -2923,6 +3083,10 @@ export const SettingsPage = ({
                         const displayEnabled = isEditing
                           ? editingArrInstanceEnabled
                           : instance.enabled;
+                        const instanceStatus = additionalArrInstanceStatus(
+                          instance.id,
+                          displayEnabled,
+                        );
                         return (
                           <div
                             key={instance.id}
@@ -2933,24 +3097,33 @@ export const SettingsPage = ({
                                 : 'border-white/10 bg-white/5 hover:bg-white/10'
                             }`}
                           >
-                            <button
-                              type="button"
-                              onClick={() => startEditingArrInstance(instance)}
-                              className="w-full flex items-center justify-between gap-3 text-left"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-sm text-white truncate">{instance.name}</div>
-                              </div>
-                              <span
-                                className={`text-[11px] px-2 py-1 rounded-full border ${
-                                  displayEnabled
-                                    ? 'bg-emerald-500/20 text-emerald-200 border-emerald-300/30'
-                                    : 'bg-white/10 text-white/70 border-white/20'
-                                }`}
+                            <div className="w-full flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() => startEditingArrInstance(instance)}
+                                className="min-w-0 flex-1 text-left"
                               >
-                                {displayEnabled ? 'Active' : 'Disabled'}
-                              </span>
-                            </button>
+                                <div className="text-sm text-white truncate">{instance.name}</div>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!displayEnabled || instanceStatus === 'testing'}
+                                onClick={() =>
+                                  handleAdditionalArrInstanceManualTest(instance, displayEnabled)
+                                }
+                                className={statusPillClass(instanceStatus)}
+                                aria-label={`${instance.name} status: ${statusLabel(instanceStatus)}`}
+                              >
+                                {instanceStatus === 'testing' ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <span
+                                    className={`h-2 w-2 rounded-full ${statusDotClass(instanceStatus)}`}
+                                  />
+                                )}
+                                {statusLabel(instanceStatus)}
+                              </button>
+                            </div>
                             <AnimatePresence initial={false}>
                               {isEditing ? (
                                 <motion.div
@@ -3301,6 +3474,10 @@ export const SettingsPage = ({
                         const displayEnabled = isEditing
                           ? editingArrInstanceEnabled
                           : instance.enabled;
+                        const instanceStatus = additionalArrInstanceStatus(
+                          instance.id,
+                          displayEnabled,
+                        );
                         return (
                           <div
                             key={instance.id}
@@ -3311,24 +3488,33 @@ export const SettingsPage = ({
                                 : 'border-white/10 bg-white/5 hover:bg-white/10'
                             }`}
                           >
-                            <button
-                              type="button"
-                              onClick={() => startEditingArrInstance(instance)}
-                              className="w-full flex items-center justify-between gap-3 text-left"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-sm text-white truncate">{instance.name}</div>
-                              </div>
-                              <span
-                                className={`text-[11px] px-2 py-1 rounded-full border ${
-                                  displayEnabled
-                                    ? 'bg-emerald-500/20 text-emerald-200 border-emerald-300/30'
-                                    : 'bg-white/10 text-white/70 border-white/20'
-                                }`}
+                            <div className="w-full flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() => startEditingArrInstance(instance)}
+                                className="min-w-0 flex-1 text-left"
                               >
-                                {displayEnabled ? 'Active' : 'Disabled'}
-                              </span>
-                            </button>
+                                <div className="text-sm text-white truncate">{instance.name}</div>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!displayEnabled || instanceStatus === 'testing'}
+                                onClick={() =>
+                                  handleAdditionalArrInstanceManualTest(instance, displayEnabled)
+                                }
+                                className={statusPillClass(instanceStatus)}
+                                aria-label={`${instance.name} status: ${statusLabel(instanceStatus)}`}
+                              >
+                                {instanceStatus === 'testing' ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <span
+                                    className={`h-2 w-2 rounded-full ${statusDotClass(instanceStatus)}`}
+                                  />
+                                )}
+                                {statusLabel(instanceStatus)}
+                              </button>
+                            </div>
                             <AnimatePresence initial={false}>
                               {isEditing ? (
                                 <motion.div

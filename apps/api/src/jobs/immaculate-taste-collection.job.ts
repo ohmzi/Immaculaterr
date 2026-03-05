@@ -1347,6 +1347,15 @@ export class ImmaculateTasteCollectionJob {
         radarrInstanceId: matchedProfile.radarrInstanceId ?? null,
         movieCollectionBaseName: matchedProfile.movieCollectionBaseName ?? null,
       },
+      radarrInstance: resolvedRadarrInstance
+        ? {
+            id: resolvedRadarrInstance.id,
+            name: resolvedRadarrInstance.name,
+            isPrimary: resolvedRadarrInstance.isPrimary,
+            enabled: resolvedRadarrInstance.enabled,
+            baseUrl: resolvedRadarrInstance.baseUrl || null,
+          }
+        : null,
       profileMatch: {
         matched: true,
         reason: 'matched_profile',
@@ -2397,6 +2406,15 @@ export class ImmaculateTasteCollectionJob {
         sonarrInstanceId: matchedProfile.sonarrInstanceId ?? null,
         showCollectionBaseName: matchedProfile.showCollectionBaseName ?? null,
       },
+      sonarrInstance: resolvedSonarrInstance
+        ? {
+            id: resolvedSonarrInstance.id,
+            name: resolvedSonarrInstance.name,
+            isPrimary: resolvedSonarrInstance.isPrimary,
+            enabled: resolvedSonarrInstance.enabled,
+            baseUrl: resolvedSonarrInstance.baseUrl || null,
+          }
+        : null,
       profileMatch: {
         matched: true,
         reason: 'matched_profile',
@@ -3038,8 +3056,57 @@ function buildImmaculateTastePointsReport(params: {
   const profileName = profile ? asTrimmedString(profile.name) : '';
   const profileDatasetId = profile ? asTrimmedString(profile.datasetId) : '';
   const profileInternalId = profile ? asTrimmedString(profile.id) : '';
+  const profileRadarrInstanceId = profile
+    ? asTrimmedString(profile.radarrInstanceId)
+    : '';
+  const profileSonarrInstanceId = profile
+    ? asTrimmedString(profile.sonarrInstanceId)
+    : '';
   const matchedProfileLabel =
     profileName || profileDatasetId || profileInternalId;
+  const radarrInstanceRaw = isPlainObject(raw.radarrInstance)
+    ? (raw.radarrInstance as Record<string, unknown>)
+    : null;
+  const sonarrInstanceRaw = isPlainObject(raw.sonarrInstance)
+    ? (raw.sonarrInstance as Record<string, unknown>)
+    : null;
+  const formatArrInstanceValue = (
+    instance: Record<string, unknown> | null,
+    fallbackId: string,
+  ): string => {
+    if (!instance && !fallbackId) return '';
+    const name = instance ? asTrimmedString(instance.name) : '';
+    const id = instance ? asTrimmedString(instance.id) : fallbackId;
+    const baseUrl = instance ? asTrimmedString(instance.baseUrl) : '';
+    const isPrimary =
+      instance && typeof instance['isPrimary'] === 'boolean'
+        ? (instance['isPrimary'] as boolean)
+        : null;
+    const enabled =
+      instance && typeof instance['enabled'] === 'boolean'
+        ? (instance['enabled'] as boolean)
+        : null;
+
+    const title = name || id || fallbackId;
+    if (!title) return '';
+
+    const attrs: string[] = [];
+    if (id && name && id !== name) attrs.push(`id: ${id}`);
+    if (isPrimary === true) attrs.push('primary');
+    if (isPrimary === false) attrs.push('additional');
+    if (enabled === true) attrs.push('enabled');
+    if (enabled === false) attrs.push('disabled');
+    if (baseUrl) attrs.push(baseUrl);
+    return attrs.length ? `${title} (${attrs.join(', ')})` : title;
+  };
+  const radarrContextValue =
+    radarrInstanceRaw || Boolean(radarr?.enabled)
+      ? formatArrInstanceValue(radarrInstanceRaw, profileRadarrInstanceId)
+      : '';
+  const sonarrContextValue =
+    sonarrInstanceRaw || Boolean(sonarr?.enabled)
+      ? formatArrInstanceValue(sonarrInstanceRaw, profileSonarrInstanceId)
+      : '';
   const profileMatchRaw = isPlainObject(raw.profileMatch)
     ? (raw.profileMatch as Record<string, unknown>)
     : null;
@@ -3092,6 +3159,18 @@ function buildImmaculateTastePointsReport(params: {
   }
   if (profileInternalId) {
     contextFacts.push({ label: 'Profile id', value: profileInternalId });
+  }
+  if (radarrContextValue) {
+    contextFacts.push({
+      label: 'Radarr instance used',
+      value: radarrContextValue,
+    });
+  }
+  if (sonarrContextValue) {
+    contextFacts.push({
+      label: 'Sonarr instance used',
+      value: sonarrContextValue,
+    });
   }
   contextFacts.push({
     label: 'Profile match result',

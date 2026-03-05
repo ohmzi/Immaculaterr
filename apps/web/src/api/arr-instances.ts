@@ -76,3 +76,19 @@ export function deleteArrInstance(id: string) {
     method: 'DELETE',
   });
 }
+
+export function testArrInstance(id: string, type: ArrInstanceType) {
+  const query = `?type=${encodeURIComponent(type)}`;
+  return fetchJson<{
+    ok: true;
+    instance: {
+      id: string;
+      name: string;
+      type: ArrInstanceType;
+      isPrimary: boolean;
+    };
+    result: unknown;
+  }>(apiPath(`/arr-instances/${encodeURIComponent(id)}/test${query}`), {
+    method: 'POST',
+  });
+}
