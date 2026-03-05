@@ -136,6 +136,21 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
+function resolveCollectionProfileDatasetId(params: {
+  matchedDatasetId: string;
+  matchedIsDefault: boolean;
+  collectionBaseName: string | null | undefined;
+}): { profileId: string; fallbackToDefault: boolean } {
+  const explicitCollectionBaseName = String(params.collectionBaseName ?? '').trim();
+  if (!params.matchedIsDefault && !explicitCollectionBaseName) {
+    return { profileId: 'default', fallbackToDefault: true };
+  }
+  return {
+    profileId: params.matchedDatasetId,
+    fallbackToDefault: false,
+  };
+}
+
 function buildLibrarySelectionSkippedReport(params: {
   ctx: JobContext;
   mediaType: 'movie' | 'tv';
@@ -639,7 +654,24 @@ export class ImmaculateTasteCollectionJob {
       excludedGenres: matchedProfile.excludedGenres,
       excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
     });
-    const profileId = matchedProfile.datasetId;
+    const movieCollectionProfile = resolveCollectionProfileDatasetId({
+      matchedDatasetId: matchedProfile.datasetId,
+      matchedIsDefault: matchedProfile.isDefault,
+      collectionBaseName: matchedProfile.movieCollectionBaseName,
+    });
+    const profileId = movieCollectionProfile.profileId;
+    if (movieCollectionProfile.fallbackToDefault) {
+      await ctx.info(
+        'immaculateTastePoints: using default collection dataset profile',
+        {
+          matchedProfileId: matchedProfile.id,
+          matchedProfileName: matchedProfile.name,
+          matchedProfileDatasetId: matchedProfile.datasetId,
+          reason: 'matched profile has no movie collection base name',
+          effectiveCollectionProfileId: profileId,
+        },
+      );
+    }
 
     await this.immaculateTaste.ensureLegacyImported({
       ctx,
@@ -1347,6 +1379,12 @@ export class ImmaculateTasteCollectionJob {
         radarrInstanceId: matchedProfile.radarrInstanceId ?? null,
         movieCollectionBaseName: matchedProfile.movieCollectionBaseName ?? null,
       },
+      collectionProfile: {
+        datasetId: profileId,
+        source: movieCollectionProfile.fallbackToDefault
+          ? 'default_collection_fallback'
+          : 'matched_profile',
+      },
       radarrInstance: resolvedRadarrInstance
         ? {
             id: resolvedRadarrInstance.id,
@@ -1749,7 +1787,24 @@ export class ImmaculateTasteCollectionJob {
       excludedGenres: matchedProfile.excludedGenres,
       excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
     });
-    const profileId = matchedProfile.datasetId;
+    const showCollectionProfile = resolveCollectionProfileDatasetId({
+      matchedDatasetId: matchedProfile.datasetId,
+      matchedIsDefault: matchedProfile.isDefault,
+      collectionBaseName: matchedProfile.showCollectionBaseName,
+    });
+    const profileId = showCollectionProfile.profileId;
+    if (showCollectionProfile.fallbackToDefault) {
+      await ctx.info(
+        'immaculateTastePoints(tv): using default collection dataset profile',
+        {
+          matchedProfileId: matchedProfile.id,
+          matchedProfileName: matchedProfile.name,
+          matchedProfileDatasetId: matchedProfile.datasetId,
+          reason: 'matched profile has no TV collection base name',
+          effectiveCollectionProfileId: profileId,
+        },
+      );
+    }
 
     await this.immaculateTasteTv.ensureLegacyImported({
       ctx,
@@ -2405,6 +2460,12 @@ export class ImmaculateTasteCollectionJob {
         name: matchedProfile.name,
         sonarrInstanceId: matchedProfile.sonarrInstanceId ?? null,
         showCollectionBaseName: matchedProfile.showCollectionBaseName ?? null,
+      },
+      collectionProfile: {
+        datasetId: profileId,
+        source: showCollectionProfile.fallbackToDefault
+          ? 'default_collection_fallback'
+          : 'matched_profile',
       },
       sonarrInstance: resolvedSonarrInstance
         ? {
@@ -3062,6 +3123,15 @@ function buildImmaculateTastePointsReport(params: {
   const profileSonarrInstanceId = profile
     ? asTrimmedString(profile.sonarrInstanceId)
     : '';
+  const collectionProfileRaw = isPlainObject(raw.collectionProfile)
+    ? (raw.collectionProfile as Record<string, unknown>)
+    : null;
+  const collectionProfileDatasetId = collectionProfileRaw
+    ? asTrimmedString(collectionProfileRaw.datasetId)
+    : '';
+  const collectionProfileSource = collectionProfileRaw
+    ? asTrimmedString(collectionProfileRaw.source)
+    : '';
   const matchedProfileLabel =
     profileName || profileDatasetId || profileInternalId;
   const radarrInstanceRaw = isPlainObject(raw.radarrInstance)
@@ -3159,6 +3229,18 @@ function buildImmaculateTastePointsReport(params: {
   }
   if (profileInternalId) {
     contextFacts.push({ label: 'Profile id', value: profileInternalId });
+  }
+  if (collectionProfileDatasetId) {
+    contextFacts.push({
+      label: 'Collection dataset profile id',
+      value: collectionProfileDatasetId,
+    });
+  }
+  if (collectionProfileSource) {
+    contextFacts.push({
+      label: 'Collection dataset source',
+      value: collectionProfileSource,
+    });
   }
   if (radarrContextValue) {
     contextFacts.push({

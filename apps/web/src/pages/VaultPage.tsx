@@ -240,6 +240,7 @@ export const SettingsPage = ({
   const didInitServiceStatus = useRef(false);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const didRunLandingHealthCheck = useRef(false);
+  const didRunAdditionalArrLandingCheck = useRef(false);
   const tmdbLandingRetryTimeoutRef = useRef<number | null>(null);
   const allowCardExpandAnimations = useRef(false);
   const [flashCard, setFlashCard] = useState<{ id: string; nonce: number } | null>(
@@ -1801,76 +1802,101 @@ export const SettingsPage = ({
     [arrInstanceIsTestingById, arrInstanceTestOkById],
   );
 
-  const handleAdditionalArrInstanceManualTest = useCallback(
-    (instance: ArrInstance, enabledOverride?: boolean) => {
+  const runAdditionalArrInstanceTest = useCallback(
+    async (
+      instance: ArrInstance,
+      mode: TestMode = 'manual',
+      enabledOverride?: boolean,
+    ): Promise<boolean | null> => {
       const enabled = enabledOverride ?? instance.enabled;
-      if (!enabled) return;
+      if (!enabled) return null;
 
-      runAsyncTask(
-        (async () => {
-          const serviceLabel = instance.type === 'radarr' ? 'Radarr' : 'Sonarr';
-          const toastId = toast.loading(`Testing ${serviceLabel} server…`);
-          const startedAt = Date.now();
+      const serviceLabel = instance.type === 'radarr' ? 'Radarr' : 'Sonarr';
+      const toastId =
+        mode === 'manual' ? toast.loading(`Testing ${serviceLabel} server…`) : undefined;
+      const startedAt = Date.now();
+      const showToastSuccess = (message: string) => {
+        if (mode !== 'manual') return;
+        if (toastId) toast.success(message, { id: toastId });
+        else toast.success(message);
+      };
+      const showToastError = (message: string) => {
+        if (mode !== 'manual') return;
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
 
-          setArrInstanceIsTestingById((current) => ({
-            ...current,
-            [instance.id]: true,
-          }));
+      setArrInstanceIsTestingById((current) => ({
+        ...current,
+        [instance.id]: true,
+      }));
 
-          try {
-            await testArrInstance(instance.id, instance.type);
+      try {
+        await testArrInstance(instance.id, instance.type);
 
-            const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
-            if (remaining) {
-              await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-            }
+        const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+        if (remaining) {
+          await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+        }
 
-            setArrInstanceTestOkById((current) => ({
-              ...current,
-              [instance.id]: true,
-            }));
-            toast.success(`${serviceLabel} server "${instance.name}" is reachable.`, {
-              id: toastId,
-            });
-          } catch (error) {
-            const fallback = `Failed to test ${serviceLabel} server.`;
-            const message =
-              error instanceof ApiError
-                ? readErrorMessage(error.body, error.message || fallback)
-                : error instanceof Error
-                  ? error.message
-                  : fallback;
-            const lower = message.toLowerCase();
-            const invalidApiKey =
-              lower.includes('401') ||
-              lower.includes('403') ||
-              lower.includes('unauthorized') ||
-              lower.includes('api key') ||
-              lower.includes('apikey');
-            const userMessage = invalidApiKey
-              ? `Invalid API key for ${serviceLabel} server "${instance.name}".`
-              : message || fallback;
+        setArrInstanceTestOkById((current) => ({
+          ...current,
+          [instance.id]: true,
+        }));
 
-            const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
-            if (remaining) {
-              await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-            }
+        const successMessage =
+          mode === 'manual'
+            ? `${serviceLabel} server "${instance.name}" is reachable.`
+            : `${serviceLabel} server "${instance.name}" is active.`;
+        showToastSuccess(successMessage);
+        return true;
+      } catch (error) {
+        const fallback = `Failed to test ${serviceLabel} server.`;
+        const message =
+          error instanceof ApiError
+            ? readErrorMessage(error.body, error.message || fallback)
+            : error instanceof Error
+              ? error.message
+              : fallback;
+        const lower = message.toLowerCase();
+        const invalidApiKey =
+          lower.includes('401') ||
+          lower.includes('403') ||
+          lower.includes('unauthorized') ||
+          lower.includes('api key') ||
+          lower.includes('apikey');
+        const userMessage = invalidApiKey
+          ? `Invalid API key for ${serviceLabel} server "${instance.name}".`
+          : mode === 'manual'
+            ? message || fallback
+            : `${serviceLabel} server "${instance.name}" is inactive.`;
 
-            setArrInstanceTestOkById((current) => ({
-              ...current,
-              [instance.id]: false,
-            }));
-            toast.error(userMessage, { id: toastId });
-          } finally {
-            setArrInstanceIsTestingById((current) => ({
-              ...current,
-              [instance.id]: false,
-            }));
-          }
-        })(),
-      );
+        const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+        if (remaining) {
+          await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+        }
+
+        setArrInstanceTestOkById((current) => ({
+          ...current,
+          [instance.id]: false,
+        }));
+        showToastError(userMessage);
+        return false;
+      } finally {
+        setArrInstanceIsTestingById((current) => ({
+          ...current,
+          [instance.id]: false,
+        }));
+      }
     },
     [],
+  );
+
+  const handleAdditionalArrInstanceManualTest = useCallback(
+    (instance: ArrInstance, enabledOverride?: boolean) => {
+      runAsyncTask(runAdditionalArrInstanceTest(instance, 'manual', enabledOverride));
+    },
+    [runAdditionalArrInstanceTest],
   );
 
   // On landing, verify any "active" integrations in the persisted app data and
@@ -2090,6 +2116,35 @@ export const SettingsPage = ({
     googleEnabled,
     openAiEnabled,
     queryClient,
+  ]);
+
+  useEffect(() => {
+    if (!settingsHydrated) return;
+    if (arrInstancesQuery.isLoading) return;
+    if (!arrInstancesQuery.data?.instances) return;
+    if (didRunAdditionalArrLandingCheck.current) return;
+    didRunAdditionalArrLandingCheck.current = true;
+
+    const enabledAdditionalInstances = arrInstancesQuery.data.instances.filter(
+      (instance) => !instance.isPrimary && instance.enabled,
+    );
+    if (!enabledAdditionalInstances.length) return;
+
+    runAsyncTask(
+      (async () => {
+        for (const [index, instance] of enabledAdditionalInstances.entries()) {
+          if (index > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 120));
+          }
+          await runAdditionalArrInstanceTest(instance, 'background');
+        }
+      })(),
+    );
+  }, [
+    arrInstancesQuery.data?.instances,
+    arrInstancesQuery.isLoading,
+    runAdditionalArrInstanceTest,
+    settingsHydrated,
   ]);
 
   const cardClass =
