@@ -66,6 +66,21 @@ const STEP_ORDER: WizardStep[] = [
   'complete',
 ];
 
+function isWebCryptoUnavailableError(error: unknown): boolean {
+  const message = String((error as Error)?.message ?? '').toLowerCase();
+  return message.includes('webcrypto is not available');
+}
+
+function buildWebCryptoCompatibilityHint(): string {
+  if (typeof window === 'undefined') {
+    return 'Use a modern browser that supports WebCrypto.';
+  }
+  if (!window.isSecureContext) {
+    return 'Open Immaculaterr via HTTPS (recommended) or via localhost on the same machine.';
+  }
+  return 'Use a modern browser (or non-embedded WebView) that supports WebCrypto.';
+}
+
 export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const queryClient = useQueryClient();
   const CORE_STEPS: WizardStep[] = [
@@ -178,6 +193,58 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       });
     },
     [loadSecretsEnvelopeKey],
+  );
+
+  const putSettingsWithSecretsCompatibility = useCallback(
+    async (params: {
+      settings?: Record<string, unknown>;
+      secretsPatch?: Record<string, unknown>;
+    }) => {
+      const hasSecrets =
+        Boolean(params.secretsPatch) &&
+        Object.keys(params.secretsPatch ?? {}).length > 0;
+      if (!hasSecrets) {
+        return await putSettings({
+          ...(params.settings ? { settings: params.settings } : {}),
+        });
+      }
+
+      const webCryptoFallbackError =
+        'WebCrypto is not available in this browser.';
+      const compatibilityHint = buildWebCryptoCompatibilityHint();
+
+      try {
+        const secretsEnvelope = await buildSettingsSecretsEnvelope(
+          params.secretsPatch ?? {},
+        );
+        return await putSettings({
+          ...(params.settings ? { settings: params.settings } : {}),
+          secretsEnvelope,
+        });
+      } catch (error) {
+        if (!isWebCryptoUnavailableError(error)) throw error;
+
+        try {
+          return await putSettings({
+            ...(params.settings ? { settings: params.settings } : {}),
+            secrets: params.secretsPatch,
+          });
+        } catch (fallbackError) {
+          if (
+            fallbackError instanceof ApiError &&
+            String(fallbackError.message ?? '')
+              .toLowerCase()
+              .includes('plaintext secret transport is disabled')
+          ) {
+            throw new Error(
+              `${webCryptoFallbackError} ${compatibilityHint} If needed, set SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true on the API as a compatibility fallback.`,
+            );
+          }
+          throw fallbackError;
+        }
+      }
+    },
+    [buildSettingsSecretsEnvelope],
   );
 
   const getCurrentStepIndex = () => STEP_ORDER.indexOf(currentStep);
@@ -350,16 +417,13 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const saveAndValidatePlex = useMutation({
     mutationFn: async () => {
       // Save Plex credentials
-      const secretsEnvelope = await buildSettingsSecretsEnvelope({
-        plex: { token: plexToken.trim() },
-      });
-      await putSettings({
+      await putSettingsWithSecretsCompatibility({
         settings: {
-          plex: {
-            baseUrl: plexBaseUrl.trim(),
-          },
+          plex: { baseUrl: plexBaseUrl.trim() },
         },
-        secretsEnvelope,
+        secretsPatch: {
+          plex: { token: plexToken.trim() },
+        },
       });
 
       // Validate
@@ -460,11 +524,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const saveAndValidateTmdb = useMutation({
     mutationFn: async () => {
       // Save TMDB credentials
-      const secretsEnvelope = await buildSettingsSecretsEnvelope({
-        tmdb: { apiKey: tmdbApiKey.trim() },
-      });
-      await putSettings({
-        secretsEnvelope,
+      await putSettingsWithSecretsCompatibility({
+        secretsPatch: {
+          tmdb: { apiKey: tmdbApiKey.trim() },
+        },
       });
 
       // Validate
@@ -505,11 +568,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       }
 
       if (updates.settings || Object.keys(secretsPatch).length > 0) {
-        const secretsEnvelope = Object.keys(secretsPatch).length
-          ? await buildSettingsSecretsEnvelope(secretsPatch)
-          : undefined;
-        updates.secretsEnvelope = secretsEnvelope;
-        await putSettings(updates);
+        await putSettingsWithSecretsCompatibility({
+          settings: updates.settings,
+          secretsPatch,
+        });
         toast.success(`${service} configured successfully!`);
       }
     },
@@ -538,17 +600,13 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         throw new Error('Overseerr credentials are incorrect.');
       }
 
-      const secretsEnvelope = await buildSettingsSecretsEnvelope({
-        overseerr: { apiKey },
-      });
-      await putSettings({
+      await putSettingsWithSecretsCompatibility({
         settings: {
-          overseerr: {
-            enabled: true,
-            baseUrl,
-          },
+          overseerr: { enabled: true, baseUrl },
         },
-        secretsEnvelope,
+        secretsPatch: {
+          overseerr: { apiKey },
+        },
       });
       toast.success('Connected to Overseerr.');
     },
