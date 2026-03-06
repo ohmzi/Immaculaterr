@@ -268,7 +268,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   useEffect(() => {
     if (currentStep !== 'plexLibraries') return;
     if (!plexLibrariesQuery.data) return;
-    setWizardSelectedLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
+    const timeoutId = window.setTimeout(() => {
+      setWizardSelectedLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [currentStep, plexLibrariesQuery.data]);
 
   const plexMonitoringUsersQuery = useQuery({
@@ -283,9 +286,12 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   useEffect(() => {
     if (currentStep !== 'plexUsers') return;
     if (!plexMonitoringUsersQuery.data) return;
-    setWizardSelectedPlexUserIds(
-      plexMonitoringUsersQuery.data.selectedPlexUserIds,
-    );
+    const timeoutId = window.setTimeout(() => {
+      setWizardSelectedPlexUserIds(
+        plexMonitoringUsersQuery.data.selectedPlexUserIds,
+      );
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [currentStep, plexMonitoringUsersQuery.data]);
 
   // Poll for Plex OAuth token

@@ -29,6 +29,7 @@
     "concurrently": "^9.1.2"
   },
   "overrides": {
-    "diff": "4.0.4"
+    "diff": "4.0.4",
+    "multer": "2.1.1"
   }
 }
