@@ -913,20 +913,25 @@ export class ImmaculateTasteRefresherJob {
       let plex: JsonObject | null = null;
       if (!ctx.dryRun) {
         try {
-          plex = await this.plexCurated.rebuildMovieCollection({
-            ctx,
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            machineIdentifier,
-            movieSectionKey: sec.key,
-            collectionName: plexMovieCollectionName,
-            desiredItems: desiredLimited,
-            randomizeOrder: false,
-            artworkFallback: 'immaculate',
-            pinCollections: true,
-            pinTarget,
-            collectionHubOrder: movieCollectionHubOrder,
-          });
+            plex = await this.plexCurated.rebuildMovieCollection({
+              ctx,
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              machineIdentifier,
+              movieSectionKey: sec.key,
+              collectionName: plexMovieCollectionName,
+              plexUserId,
+              desiredItems: desiredLimited,
+              randomizeOrder: false,
+              artworkFallback: 'immaculate',
+              artworkTarget: {
+                kind: 'immaculate_profile',
+                id: profileId,
+              },
+              pinCollections: true,
+              pinTarget,
+              collectionHubOrder: movieCollectionHubOrder,
+            });
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
           await ctx.warn('immaculateTasteRefresher: rebuild failed (movie)', {
@@ -1340,9 +1345,14 @@ export class ImmaculateTasteRefresherJob {
               movieSectionKey: sec.key,
               itemType: 2,
               collectionName: plexTvCollectionName,
+              plexUserId,
               desiredItems: desiredLimited,
               randomizeOrder: false,
               artworkFallback: 'immaculate',
+              artworkTarget: {
+                kind: 'immaculate_profile',
+                id: profileId,
+              },
               pinCollections: true,
               pinTarget,
               collectionHubOrder: tvCollectionHubOrder,

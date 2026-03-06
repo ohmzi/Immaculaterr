@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { CollectionArtworkService } from './collection-artwork.service';
 import { PlexCuratedCollectionsService } from './plex-curated-collections.service';
 
 function createTestCtx() {
@@ -34,6 +35,15 @@ async function callPinCuratedCollectionHubs(
   await internal.pinCuratedCollectionHubs(params);
 }
 
+function createCollectionArtworkStub() {
+  return {
+    resolveArtworkPaths: jest.fn(async () => ({
+      poster: null,
+      background: null,
+    })),
+  };
+}
+
 describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins admin target to recommended+home and reorders as 1,2,3', async () => {
     const plexServer = {
@@ -57,6 +67,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       plexServer as unknown as ConstructorParameters<
         typeof PlexCuratedCollectionsService
       >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
     );
     const ctx = createTestCtx();
 
@@ -118,6 +131,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       plexServer as unknown as ConstructorParameters<
         typeof PlexCuratedCollectionsService
       >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
     );
     const ctx = createTestCtx();
 
@@ -190,6 +206,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       plexServer as unknown as ConstructorParameters<
         typeof PlexCuratedCollectionsService
       >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
     );
     const ctx = createTestCtx();
 
@@ -241,6 +260,9 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       plexServer as unknown as ConstructorParameters<
         typeof PlexCuratedCollectionsService
       >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
     );
     const ctx = createTestCtx();
 
@@ -316,6 +338,9 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
       plexServer as unknown as ConstructorParameters<
         typeof PlexCuratedCollectionsService
       >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
     );
     const ctx = createTestCtx();
 
@@ -365,22 +390,12 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
 
 describe('PlexCuratedCollectionsService artwork mapping', () => {
   it('maps canonical curated names to the expected poster assets', () => {
-    const service = new PlexCuratedCollectionsService(
-      {} as unknown as ConstructorParameters<
-        typeof PlexCuratedCollectionsService
-      >[0],
+    const artworkService = new CollectionArtworkService(
+      {} as ConstructorParameters<typeof CollectionArtworkService>[0],
+      {} as ConstructorParameters<typeof CollectionArtworkService>[1],
+      {} as ConstructorParameters<typeof CollectionArtworkService>[2],
+      {} as ConstructorParameters<typeof CollectionArtworkService>[3],
     );
-    const getArtworkPaths = (
-      service as unknown as {
-        getArtworkPaths: (
-          collectionName: string,
-          artworkFallback?: 'none' | 'immaculate',
-        ) => {
-          poster: string | null;
-          background: string | null;
-        };
-      }
-    ).getArtworkPaths.bind(service);
 
     const cases: Array<{ collectionName: string; expectedPosterBasename: string }> =
       [
@@ -403,14 +418,19 @@ describe('PlexCuratedCollectionsService artwork mapping', () => {
       ];
 
     for (const testCase of cases) {
-      const artwork = getArtworkPaths(testCase.collectionName);
+      const artwork = artworkService.resolveDefaultArtworkPaths({
+        collectionName: testCase.collectionName,
+      });
       expect(artwork.poster).toBeTruthy();
       expect(basename(String(artwork.poster))).toBe(
         testCase.expectedPosterBasename,
       );
     }
 
-    const fallbackArtwork = getArtworkPaths('actions123', 'immaculate');
+    const fallbackArtwork = artworkService.resolveDefaultArtworkPaths({
+      collectionName: 'actions123',
+      artworkFallback: 'immaculate',
+    });
     expect(fallbackArtwork.poster).toBeTruthy();
     expect(basename(String(fallbackArtwork.poster))).toBe(
       'immaculate_taste_collection.png',

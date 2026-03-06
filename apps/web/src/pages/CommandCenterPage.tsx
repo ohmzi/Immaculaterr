@@ -5,6 +5,7 @@ import {
   CircleAlert,
   ExternalLink,
   Film,
+  Upload,
   Info,
   Loader2,
   RotateCcw,
@@ -52,6 +53,12 @@ import {
   resetImmaculateTasteCollection,
   resetImmaculateTasteUserCollection,
 } from '@/api/immaculate';
+import {
+  deleteCollectionArtworkOverride,
+  getManagedCollectionArtworkTargets,
+  uploadCollectionArtworkOverride,
+  type CollectionArtworkTarget,
+} from '@/api/collection-artwork';
 import {
   resetRejectedSuggestions,
   listRejectedSuggestions,
@@ -163,6 +170,19 @@ const DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME =
   'Inspired by your Immaculate Taste in Movies';
 const DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME =
   'Inspired by your Immaculate Taste in Shows';
+
+function getCollectionArtworkTargetKey(
+  target: Pick<CollectionArtworkTarget, 'mediaType' | 'targetKind' | 'targetId'>,
+): string {
+  return `${target.mediaType}::${target.targetKind}::${target.targetId}`;
+}
+
+function formatFileSize(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return '0 B';
+  if (size < 1024) return `${Math.trunc(size)} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 function dedupeCaseInsensitive(values: string[]): string[] {
   const out: string[] = [];
@@ -376,6 +396,14 @@ export function CommandCenterPage() {
   const [profileDraft, setProfileDraft] = useState<ImmaculateTasteProfileDraft | null>(
     null,
   );
+  const [collectionArtworkUserSearch, setCollectionArtworkUserSearch] = useState('');
+  const [selectedCollectionArtworkUserId, setSelectedCollectionArtworkUserId] = useState<
+    string | null
+  >(null);
+  const [selectedCollectionArtworkTargetKey, setSelectedCollectionArtworkTargetKey] =
+    useState('');
+  const [collectionArtworkFile, setCollectionArtworkFile] = useState<File | null>(null);
+  const collectionArtworkFileInputRef = useRef<HTMLInputElement | null>(null);
   const profileEditorCardRef = useRef<HTMLDivElement | null>(null);
   const settingsQuery = useQuery({
     queryKey: ['settings'],
@@ -539,6 +567,122 @@ export function CommandCenterPage() {
         return left.plexAccountTitle.localeCompare(right.plexAccountTitle);
       });
   }, [plexMonitoringUsersQuery.data?.users]);
+  const selectedCollectionArtworkUser = useMemo(
+    () =>
+      selectedCollectionArtworkUserId
+        ? profileScopeUsers.find((user) => user.id === selectedCollectionArtworkUserId) ??
+          null
+        : null,
+    [profileScopeUsers, selectedCollectionArtworkUserId],
+  );
+  const trimmedCollectionArtworkUserSearch = collectionArtworkUserSearch
+    .trim()
+    .toLowerCase();
+  const collectionArtworkUserSearchResults = useMemo(() => {
+    if (!trimmedCollectionArtworkUserSearch) {
+      return profileScopeUsers.slice(0, 10);
+    }
+    return profileScopeUsers
+      .filter((user) =>
+        user.plexAccountTitle.toLowerCase().includes(trimmedCollectionArtworkUserSearch),
+      )
+      .slice(0, 12);
+  }, [profileScopeUsers, trimmedCollectionArtworkUserSearch]);
+  const collectionArtworkManagedTargetsQuery = useQuery({
+    queryKey: ['collection-artwork', 'managed-collections', selectedCollectionArtworkUserId],
+    queryFn: async () =>
+      await getManagedCollectionArtworkTargets(selectedCollectionArtworkUserId ?? ''),
+    enabled: Boolean(selectedCollectionArtworkUserId),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const collectionArtworkTargets = collectionArtworkManagedTargetsQuery.data?.collections ?? [];
+  const selectedCollectionArtworkTarget = useMemo(
+    () =>
+      collectionArtworkTargets.find(
+        (target) =>
+          getCollectionArtworkTargetKey(target) === selectedCollectionArtworkTargetKey,
+      ) ?? null,
+    [collectionArtworkTargets, selectedCollectionArtworkTargetKey],
+  );
+  const saveCollectionArtworkOverrideMutation = useMutation({
+    mutationFn: async () => {
+      const plexUserId = selectedCollectionArtworkUserId ?? '';
+      const target = selectedCollectionArtworkTarget;
+      const file = collectionArtworkFile;
+      if (!plexUserId || !target || !file) {
+        throw new Error('Choose user, collection target, and poster file first.');
+      }
+      return await uploadCollectionArtworkOverride({
+        plexUserId,
+        mediaType: target.mediaType,
+        targetKind: target.targetKind,
+        targetId: target.targetId,
+        file,
+      });
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['collection-artwork', 'managed-collections', selectedCollectionArtworkUserId],
+      });
+      setCollectionArtworkFile(null);
+      if (collectionArtworkFileInputRef.current) {
+        collectionArtworkFileInputRef.current.value = '';
+      }
+      if (data.appliedNow) {
+        toast.success('Poster override saved and applied.');
+      } else {
+        toast.success('Poster override saved.');
+      }
+      if (data.warnings?.length) {
+        toast.warning(data.warnings.join(' '));
+      }
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to save poster override'),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save poster override',
+      );
+    },
+  });
+  const resetCollectionArtworkOverrideMutation = useMutation({
+    mutationFn: async () => {
+      const plexUserId = selectedCollectionArtworkUserId ?? '';
+      const target = selectedCollectionArtworkTarget;
+      if (!plexUserId || !target) {
+        throw new Error('Choose user and collection target first.');
+      }
+      return await deleteCollectionArtworkOverride({
+        plexUserId,
+        mediaType: target.mediaType,
+        targetKind: target.targetKind,
+        targetId: target.targetId,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['collection-artwork', 'managed-collections', selectedCollectionArtworkUserId],
+      });
+      toast.success('Custom poster reset. Default artwork will be used.');
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to reset poster override'),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to reset poster override',
+      );
+    },
+  });
   const activeProfile = useMemo(
     () =>
       activeProfileId
@@ -942,7 +1086,6 @@ export function CommandCenterPage() {
       setProfileDraft(toProfileDraft(existing, activeOverride));
     }
   }, [activeProfileId, activeProfileScopePlexUserId, immaculateProfiles, profileDraft]);
-
   const normalizeProfileServiceSelection = useCallback(
     (draft: ImmaculateTasteProfileDraft) => {
       const wantsMovies = draft.mediaType === 'movie' || draft.mediaType === 'both';
@@ -2376,6 +2519,56 @@ export function CommandCenterPage() {
       toast.success('Plex user monitoring updated.');
     },
   });
+  const selectCollectionArtworkUser = useCallback((plexUserId: string) => {
+    setSelectedCollectionArtworkUserId(plexUserId);
+    setSelectedCollectionArtworkTargetKey('');
+    setCollectionArtworkFile(null);
+    if (collectionArtworkFileInputRef.current) {
+      collectionArtworkFileInputRef.current.value = '';
+    }
+    setCollectionArtworkUserSearch('');
+  }, []);
+  const handleCollectionArtworkTargetChange = useCallback((value: string) => {
+    setSelectedCollectionArtworkTargetKey(value);
+    setCollectionArtworkFile(null);
+    if (collectionArtworkFileInputRef.current) {
+      collectionArtworkFileInputRef.current.value = '';
+    }
+  }, []);
+  const handleCollectionArtworkFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextFile = event.currentTarget.files?.[0] ?? null;
+      setCollectionArtworkFile(nextFile);
+    },
+    [],
+  );
+  const saveCollectionArtworkOverride = useCallback(() => {
+    if (!selectedCollectionArtworkUserId) {
+      toast.error('Select a Plex user first.');
+      return;
+    }
+    if (!selectedCollectionArtworkTarget) {
+      toast.error('Select a collection target first.');
+      return;
+    }
+    if (!collectionArtworkFile) {
+      toast.error('Choose a poster image first.');
+      return;
+    }
+    saveCollectionArtworkOverrideMutation.mutate();
+  }, [
+    collectionArtworkFile,
+    saveCollectionArtworkOverrideMutation,
+    selectedCollectionArtworkTarget,
+    selectedCollectionArtworkUserId,
+  ]);
+  const resetCollectionArtworkOverride = useCallback(() => {
+    if (!selectedCollectionArtworkTarget?.hasCustomPoster) {
+      toast.error('No custom poster is set for this target.');
+      return;
+    }
+    resetCollectionArtworkOverrideMutation.mutate();
+  }, [resetCollectionArtworkOverrideMutation, selectedCollectionArtworkTarget]);
 
   const renderAdminCollectionList = () => (
     <div className="space-y-3">
@@ -6025,6 +6218,291 @@ export function CommandCenterPage() {
             cancelText="Close"
             variant="primary"
           />
+
+          {/* Collection Posters */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-amber-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <Upload className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Collection Posters
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {!selectedCollectionArtworkUserId ? (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
+                  >
+                    Select user
+                  </span>
+                ) : collectionArtworkManagedTargetsQuery.isLoading ? (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
+                  >
+                    Loading…
+                  </span>
+                ) : collectionArtworkManagedTargetsQuery.isError ? (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}
+                  >
+                    Error
+                  </span>
+                ) : (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
+                  >
+                    {collectionArtworkTargets.length} target
+                    {collectionArtworkTargets.length === 1 ? '' : 's'}
+                  </span>
+                )}
+                <SavingPill
+                  active={
+                    saveCollectionArtworkOverrideMutation.isPending ||
+                    resetCollectionArtworkOverrideMutation.isPending
+                  }
+                  className="static"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Override poster art per user and managed collection target. If no custom poster is
+              set, refresh/recreate jobs use the built-in default artwork.
+            </p>
+
+            <div className="mt-5 space-y-5">
+              <div className="space-y-2">
+                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                  Plex user
+                </div>
+                <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {selectedCollectionArtworkUser ? (
+                      <span className="inline-flex items-center rounded-full border border-sky-500/35 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100">
+                        {selectedCollectionArtworkUser.plexAccountTitle}
+                      </span>
+                    ) : null}
+                    <input
+                      type="text"
+                      value={collectionArtworkUserSearch}
+                      onChange={(event) => setCollectionArtworkUserSearch(event.target.value)}
+                      placeholder="Search and select a Plex user"
+                      className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {collectionArtworkUserSearchResults.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => selectCollectionArtworkUser(user.id)}
+                      className={[
+                        'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                        selectedCollectionArtworkUserId === user.id
+                          ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
+                          : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
+                      ].join(' ')}
+                    >
+                      {user.plexAccountTitle}
+                    </button>
+                  ))}
+                  {trimmedCollectionArtworkUserSearch &&
+                  !collectionArtworkUserSearchResults.length ? (
+                    <span className="text-[11px] text-white/45">
+                      No users match "{collectionArtworkUserSearch.trim()}"
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              {!selectedCollectionArtworkUserId ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+                  Select a user to load managed collection targets.
+                </div>
+              ) : collectionArtworkManagedTargetsQuery.isLoading ? (
+                <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading managed collections…
+                </div>
+              ) : collectionArtworkManagedTargetsQuery.isError ? (
+                <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
+                  <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>
+                    {(collectionArtworkManagedTargetsQuery.error as Error).message}
+                  </span>
+                </div>
+              ) : !collectionArtworkTargets.length ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+                  No data on this user yet.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                      Collection target
+                    </div>
+                    <Select
+                      value={
+                        selectedCollectionArtworkTarget
+                          ? selectedCollectionArtworkTargetKey
+                          : undefined
+                      }
+                      onValueChange={handleCollectionArtworkTargetChange}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select movie or TV collection target" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {collectionArtworkTargets.map((target) => {
+                          const key = getCollectionArtworkTargetKey(target);
+                          const mediaLabel = target.mediaType === 'movie' ? 'Movie' : 'TV';
+                          const sourceLabel =
+                            target.source === 'immaculate'
+                              ? 'Immaculate'
+                              : 'Recently watched';
+                          return (
+                            <SelectItem key={key} value={key}>
+                              {mediaLabel} • {target.collectionName} • {sourceLabel}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedCollectionArtworkTarget ? (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/70">
+                          {selectedCollectionArtworkTarget.mediaType === 'movie'
+                            ? 'Movie'
+                            : 'TV'}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/70">
+                          {selectedCollectionArtworkTarget.source === 'immaculate'
+                            ? 'Immaculate'
+                            : 'Recently watched'}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/70">
+                          {selectedCollectionArtworkTarget.datasetRows} rows
+                        </span>
+                        {selectedCollectionArtworkTarget.hasCustomPoster ? (
+                          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-emerald-100">
+                            Custom poster set
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-amber-100">
+                            Default poster
+                          </span>
+                        )}
+                      </div>
+
+                      {selectedCollectionArtworkTarget.hasCustomPoster &&
+                      selectedCollectionArtworkTarget.customPosterUpdatedAt ? (
+                        <div className="text-xs text-white/50">
+                          Custom poster updated:{' '}
+                          {new Date(
+                            selectedCollectionArtworkTarget.customPosterUpdatedAt,
+                          ).toLocaleString()}
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-2">
+                        <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                          Upload poster
+                        </div>
+                        <input
+                          ref={collectionArtworkFileInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={handleCollectionArtworkFileChange}
+                          className="block w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white file:mr-3 file:rounded-lg file:border-0 file:bg-[#facc15] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-black hover:file:brightness-95"
+                        />
+                        {collectionArtworkFile ? (
+                          <div className="text-xs text-white/60">
+                            Selected: {collectionArtworkFile.name} (
+                            {formatFileSize(collectionArtworkFile.size)})
+                          </div>
+                        ) : (
+                          <div className="text-xs text-white/45">
+                            PNG, JPG, or WEBP. Max 5 MB.
+                          </div>
+                        )}
+                      </div>
+
+                      {(saveCollectionArtworkOverrideMutation.isError ||
+                        resetCollectionArtworkOverrideMutation.isError) && (
+                        <div className="flex items-start gap-2 text-sm text-red-200/90">
+                          <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                          <span>
+                            {(saveCollectionArtworkOverrideMutation.error as Error)?.message ||
+                              (resetCollectionArtworkOverrideMutation.error as Error)?.message}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={saveCollectionArtworkOverride}
+                          disabled={
+                            saveCollectionArtworkOverrideMutation.isPending ||
+                            resetCollectionArtworkOverrideMutation.isPending ||
+                            !collectionArtworkFile
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                        >
+                          {saveCollectionArtworkOverrideMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Saving…
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4" />
+                              Save poster
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={resetCollectionArtworkOverride}
+                          disabled={
+                            saveCollectionArtworkOverrideMutation.isPending ||
+                            resetCollectionArtworkOverrideMutation.isPending ||
+                            !selectedCollectionArtworkTarget.hasCustomPoster
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                        >
+                          {resetCollectionArtworkOverrideMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Resetting…
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw className="w-4 h-4" />
+                              Reset to default
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+                      Select a collection target to upload or reset poster artwork.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Radarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">

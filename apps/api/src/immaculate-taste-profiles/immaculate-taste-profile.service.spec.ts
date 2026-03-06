@@ -4,6 +4,7 @@ import type {
   ImmaculateTasteProfileUserOverride,
 } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
+import { CollectionArtworkService } from '../plex/collection-artwork.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
@@ -73,6 +74,11 @@ type PlexServerMock = {
 
 type PlexUsersMock = {
   ensureAdminPlexUser: jest.Mock;
+};
+
+type CollectionArtworkMock = {
+  resolveArtworkPaths: jest.Mock;
+  resolveDefaultArtworkPaths: jest.Mock;
 };
 
 function makeProfile(
@@ -173,10 +179,15 @@ function createService() {
   const plexUsers: PlexUsersMock = {
     ensureAdminPlexUser: jest.fn(),
   };
+  const collectionArtwork: CollectionArtworkMock = {
+    resolveArtworkPaths: jest.fn(),
+    resolveDefaultArtworkPaths: jest.fn(),
+  };
   const service = new ImmaculateTasteProfileService(
     prisma as unknown as PrismaService,
     settings as unknown as SettingsService,
     plexServer as unknown as PlexServerService,
+    collectionArtwork as unknown as CollectionArtworkService,
     plexUsers as unknown as PlexUsersService,
   );
 
@@ -197,8 +208,23 @@ function createService() {
   plexServer.addItemToCollection.mockResolvedValue(undefined);
   plexServer.uploadCollectionPoster.mockResolvedValue(undefined);
   plexServer.uploadCollectionArt.mockResolvedValue(undefined);
+  collectionArtwork.resolveArtworkPaths.mockResolvedValue({
+    poster: null,
+    background: null,
+  });
+  collectionArtwork.resolveDefaultArtworkPaths.mockReturnValue({
+    poster: null,
+    background: null,
+  });
 
-  return { service, prisma, settings, plexServer, plexUsers };
+  return {
+    service,
+    prisma,
+    settings,
+    plexServer,
+    plexUsers,
+    collectionArtwork,
+  };
 }
 
 function getLastMockCallArg(mockFn: jest.Mock): unknown {
@@ -920,8 +946,14 @@ describe('ImmaculateTasteProfileService update rename task', () => {
   });
 
   it('reapplies curated poster artwork after recreate', async () => {
-    const { service, prisma, settings, plexServer, plexUsers } =
-      createService();
+    const {
+      service,
+      prisma,
+      settings,
+      plexServer,
+      plexUsers,
+      collectionArtwork,
+    } = createService();
     const current = makeProfile({
       id: 'profile-2',
       name: 'Kids',
@@ -936,15 +968,10 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       updatedAt: new Date('2026-01-01T00:13:00.000Z'),
     });
 
-    jest
-      .spyOn(
-        service as unknown as { resolveCollectionArtworkPaths: () => unknown },
-        'resolveCollectionArtworkPaths',
-      )
-      .mockReturnValue({
-        poster: '/tmp/fake-poster.png',
-        background: null,
-      });
+    collectionArtwork.resolveArtworkPaths.mockResolvedValue({
+      poster: '/tmp/fake-poster.png',
+      background: null,
+    });
 
     prisma.immaculateTasteProfile.findMany.mockResolvedValue([
       makeProfile({
@@ -1003,15 +1030,16 @@ describe('ImmaculateTasteProfileService update rename task', () => {
   });
 
   it('falls back to immaculate default artwork for custom profile collection names', () => {
-    const { service } = createService();
-    const artwork = (
-      service as unknown as {
-        resolveCollectionArtworkPaths: (collectionName: string) => {
-          poster: string | null;
-          background: string | null;
-        };
-      }
-    ).resolveCollectionArtworkPaths('kids special movies');
+    const collectionArtworkService = new CollectionArtworkService(
+      {} as ConstructorParameters<typeof CollectionArtworkService>[0],
+      {} as ConstructorParameters<typeof CollectionArtworkService>[1],
+      {} as ConstructorParameters<typeof CollectionArtworkService>[2],
+      {} as ConstructorParameters<typeof CollectionArtworkService>[3],
+    );
+    const artwork = collectionArtworkService.resolveDefaultArtworkPaths({
+      collectionName: 'kids special movies',
+      artworkFallback: 'immaculate',
+    });
 
     expect(artwork.poster).toBeTruthy();
     expect(basename(String(artwork.poster))).toBe(

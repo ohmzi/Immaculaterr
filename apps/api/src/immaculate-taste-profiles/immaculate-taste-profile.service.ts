@@ -4,8 +4,6 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import type {
   ImmaculateTasteProfile,
   ImmaculateTasteProfileUserOverride,
@@ -18,10 +16,10 @@ import {
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   buildUserCollectionName,
   normalizeCollectionTitle,
-  stripUserCollectionSuffix,
 } from '../plex/plex-collections.utils';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { resolvePlexUserMonitoringSelection } from '../plex/plex-user-selection.utils';
+import { CollectionArtworkService } from '../plex/collection-artwork.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
@@ -340,6 +338,7 @@ export class ImmaculateTasteProfileService {
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
+    private readonly collectionArtwork: CollectionArtworkService,
     private readonly plexUsers: PlexUsersService,
   ) {}
 
@@ -2400,6 +2399,12 @@ export class ImmaculateTasteProfileService {
           baseUrl,
           token: plexToken,
           collectionRatingKey: movieCollectionRatingKey,
+          plexUserId: user.id,
+          mediaType: 'movie',
+          artworkTarget: {
+            kind: 'immaculate_profile',
+            id: datasetProfileId,
+          },
           collectionName: preferredMovieName,
           failures: result.failures,
           failurePrefix: `Movie artwork apply failed for user=${user.id}, section=${section.key}, collection="${preferredMovieName}"`,
@@ -2511,6 +2516,12 @@ export class ImmaculateTasteProfileService {
           baseUrl,
           token: plexToken,
           collectionRatingKey: showCollectionRatingKey,
+          plexUserId: user.id,
+          mediaType: 'tv',
+          artworkTarget: {
+            kind: 'immaculate_profile',
+            id: datasetProfileId,
+          },
           collectionName: preferredShowName,
           failures: result.failures,
           failurePrefix: `TV artwork apply failed for user=${user.id}, section=${section.key}, collection="${preferredShowName}"`,
@@ -2688,13 +2699,24 @@ export class ImmaculateTasteProfileService {
     baseUrl: string;
     token: string;
     collectionRatingKey: string;
+    plexUserId: string;
+    mediaType: 'movie' | 'tv';
+    artworkTarget: {
+      kind: 'immaculate_profile';
+      id: string;
+    };
     collectionName: string;
     failures: string[];
     failurePrefix: string;
   }): Promise<void> {
-    const artworkPaths = this.resolveCollectionArtworkPaths(
-      params.collectionName,
-    );
+    const artworkPaths = await this.collectionArtwork.resolveArtworkPaths({
+      plexUserId: params.plexUserId,
+      mediaType: params.mediaType,
+      collectionName: params.collectionName,
+      targetKind: params.artworkTarget.kind,
+      targetId: params.artworkTarget.id,
+      artworkFallback: 'immaculate',
+    });
     if (!artworkPaths.poster && !artworkPaths.background) return;
     try {
       if (artworkPaths.poster) {
@@ -2716,80 +2738,6 @@ export class ImmaculateTasteProfileService {
     } catch (error) {
       params.failures.push(`${params.failurePrefix}: ${errToMessage(error)}`);
     }
-  }
-
-  private resolveCollectionArtworkPaths(collectionName: string): {
-    poster: string | null;
-    background: string | null;
-  } {
-    const normalizedName = normalizeCollectionTitle(
-      stripUserCollectionSuffix(collectionName),
-    );
-    const collectionArtworkMap: Record<string, string> = {
-      [normalizeCollectionTitle('Inspired by your Immaculate Taste')]:
-        'immaculate_taste_collection',
-      [normalizeCollectionTitle('Inspired by your Immaculate Taste in Movies')]:
-        'immaculate_taste_collection',
-      [normalizeCollectionTitle('Inspired by your Immaculate Taste in Shows')]:
-        'immaculate_taste_collection',
-      [normalizeCollectionTitle('Based on your recently watched Movie')]:
-        'recently_watched_collection',
-      [normalizeCollectionTitle('Based on your recently watched Show')]:
-        'recently_watched_collection',
-      [normalizeCollectionTitle('Change of Taste')]:
-        'change_of_taste_collection',
-      [normalizeCollectionTitle('Change of Movie Taste')]:
-        'change_of_taste_collection',
-      [normalizeCollectionTitle('Change of Show Taste')]:
-        'change_of_taste_collection',
-    };
-    // Immaculate Taste profile collections should always get the branded default
-    // artwork when no canonical curated-name mapping matches.
-    const artworkName =
-      collectionArtworkMap[normalizedName] ?? 'immaculate_taste_collection';
-
-    const cwd = process.cwd();
-    const roots = [
-      cwd,
-      join(cwd, '..'),
-      join(cwd, '..', '..'),
-      join(cwd, '..', '..', '..'),
-    ];
-    const rels = [
-      join('apps', 'web', 'src', 'assets', 'collection_artwork'),
-      join('assets', 'collection_artwork'),
-    ];
-    const candidates = roots.flatMap((root) =>
-      rels.map((rel) => join(root, rel)),
-    );
-    let assetsDir: string | null = null;
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) {
-        assetsDir = candidate;
-        break;
-      }
-    }
-    if (!assetsDir) {
-      return { poster: null, background: null };
-    }
-
-    const posterPng = join(assetsDir, 'posters', `${artworkName}.png`);
-    const posterJpg = join(assetsDir, 'posters', `${artworkName}.jpg`);
-    const backgroundPng = join(assetsDir, 'backgrounds', `${artworkName}.png`);
-    const backgroundJpg = join(assetsDir, 'backgrounds', `${artworkName}.jpg`);
-
-    return {
-      poster: existsSync(posterPng)
-        ? posterPng
-        : existsSync(posterJpg)
-          ? posterJpg
-          : null,
-      background: existsSync(backgroundPng)
-        ? backgroundPng
-        : existsSync(backgroundJpg)
-          ? backgroundJpg
-          : null,
-    };
   }
 
   private async resolveShowDesiredItems(params: {
