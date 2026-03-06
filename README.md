@@ -190,8 +190,8 @@ Full project README: [`doc/README.md`](doc/README.md)
 ##
 
 ## Security and Suggestions
-- Report Bug: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
-- Send Suggestion: [Immaculaterr Feedback Form](https://forms.gle/wMpsDu9jPEY14dua6)
+- Report Bug or issues: [GitHub Report Bug](https://github.com/ohmzi/Immaculaterr/issues)
+- Send Suggestion: [GitHub Feature Request](https://github.com/ohmzi/Immaculaterr/issues)
 ##
 
 ## License
