@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import type {
   ImmaculateTasteProfile,
   ImmaculateTasteProfileUserOverride,
@@ -999,6 +1000,23 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       collectionRatingKey: 'rk-created',
       filepath: '/tmp/fake-poster.png',
     });
+  });
+
+  it('falls back to immaculate default artwork for custom profile collection names', () => {
+    const { service } = createService();
+    const artwork = (
+      service as unknown as {
+        resolveCollectionArtworkPaths: (collectionName: string) => {
+          poster: string | null;
+          background: string | null;
+        };
+      }
+    ).resolveCollectionArtworkPaths('kids special movies');
+
+    expect(artwork.poster).toBeTruthy();
+    expect(basename(String(artwork.poster))).toBe(
+      'immaculate_taste_collection.png',
+    );
   });
 
   it('blocks disabling default profile when no other enabled profile exists', async () => {

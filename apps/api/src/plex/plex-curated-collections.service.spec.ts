@@ -372,7 +372,10 @@ describe('PlexCuratedCollectionsService artwork mapping', () => {
     );
     const getArtworkPaths = (
       service as unknown as {
-        getArtworkPaths: (collectionName: string) => {
+        getArtworkPaths: (
+          collectionName: string,
+          artworkFallback?: 'none' | 'immaculate',
+        ) => {
           poster: string | null;
           background: string | null;
         };
@@ -406,5 +409,11 @@ describe('PlexCuratedCollectionsService artwork mapping', () => {
         testCase.expectedPosterBasename,
       );
     }
+
+    const fallbackArtwork = getArtworkPaths('actions123', 'immaculate');
+    expect(fallbackArtwork.poster).toBeTruthy();
+    expect(basename(String(fallbackArtwork.poster))).toBe(
+      'immaculate_taste_collection.png',
+    );
   });
 });

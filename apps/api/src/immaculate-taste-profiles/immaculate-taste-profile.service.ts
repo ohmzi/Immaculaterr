@@ -2743,10 +2743,10 @@ export class ImmaculateTasteProfileService {
       [normalizeCollectionTitle('Change of Show Taste')]:
         'change_of_taste_collection',
     };
-    const artworkName = collectionArtworkMap[normalizedName];
-    if (!artworkName) {
-      return { poster: null, background: null };
-    }
+    // Immaculate Taste profile collections should always get the branded default
+    // artwork when no canonical curated-name mapping matches.
+    const artworkName =
+      collectionArtworkMap[normalizedName] ?? 'immaculate_taste_collection';
 
     const cwd = process.cwd();
     const roots = [

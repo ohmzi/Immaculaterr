@@ -40,6 +40,7 @@ export class PlexCuratedCollectionsService {
     itemType?: 1 | 2;
     desiredItems: Array<{ ratingKey: string; title: string }>;
     randomizeOrder?: boolean;
+    artworkFallback?: 'none' | 'immaculate';
     pinCollections?: boolean;
     pinTarget?: PinTarget;
     collectionHubOrder?: string[];
@@ -55,6 +56,7 @@ export class PlexCuratedCollectionsService {
       itemType = 1,
       desiredItems,
       randomizeOrder = false,
+      artworkFallback = 'none',
       pinCollections = true,
       pinTarget = 'admin',
       collectionHubOrder,
@@ -718,6 +720,7 @@ export class PlexCuratedCollectionsService {
           token,
           collectionRatingKey: plexCollectionKey,
           collectionName,
+          artworkFallback,
         });
       } catch (err) {
         await ctx.warn('collection: failed to set artwork (non-critical)', {
@@ -785,10 +788,18 @@ export class PlexCuratedCollectionsService {
     token: string;
     collectionRatingKey: string;
     collectionName: string;
+    artworkFallback: 'none' | 'immaculate';
   }): Promise<void> {
-    const { ctx, baseUrl, token, collectionRatingKey, collectionName } = params;
+    const {
+      ctx,
+      baseUrl,
+      token,
+      collectionRatingKey,
+      collectionName,
+      artworkFallback,
+    } = params;
 
-    const artworkPaths = this.getArtworkPaths(collectionName);
+    const artworkPaths = this.getArtworkPaths(collectionName, artworkFallback);
     if (!artworkPaths.poster && !artworkPaths.background) {
       await ctx.debug('collection: no artwork files found', { collectionName });
       return;
@@ -1153,7 +1164,10 @@ export class PlexCuratedCollectionsService {
     });
   }
 
-  private getArtworkPaths(collectionName: string): {
+  private getArtworkPaths(
+    collectionName: string,
+    artworkFallback: 'none' | 'immaculate' = 'none',
+  ): {
     poster: string | null;
     background: string | null;
   } {
@@ -1173,10 +1187,12 @@ export class PlexCuratedCollectionsService {
       'change of show taste': 'change_of_taste_collection',
     };
 
-    const artworkName = collectionArtworkMap[normalizedName];
-    if (!artworkName) {
-      return { poster: null, background: null };
-    }
+    const artworkName =
+      collectionArtworkMap[normalizedName] ??
+      (artworkFallback === 'immaculate'
+        ? 'immaculate_taste_collection'
+        : null);
+    if (!artworkName) return { poster: null, background: null };
 
     // Find curated artwork directory.
     // In-repo source of truth: apps/web/src/assets/collection_artwork
