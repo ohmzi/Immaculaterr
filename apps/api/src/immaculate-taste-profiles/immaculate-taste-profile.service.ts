@@ -371,62 +371,80 @@ export class ImmaculateTasteProfileService {
     if (existing) {
       throw new BadRequestException(`Profile "${name}" already exists`);
     }
+    const actionRunId = await this.beginActionRunSafe({
+      userId,
+      action: 'profile.create',
+      profileId: null,
+      profileName: name,
+      headline: `Creating Immaculate Taste profile "${name}"...`,
+      raw: { action: 'create' },
+    });
     const maxSort = await this.prisma.immaculateTasteProfile.aggregate({
       where: { userId },
       _max: { sortOrder: true },
     });
-    const row = await this.prisma.immaculateTasteProfile.create({
-      data: {
-        userId,
-        name,
-        enabled: input.enabled ?? true,
-        sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
-        mediaType: input.mediaType ?? 'both',
-        matchMode: input.matchMode ?? 'any',
-        genres: JSON.stringify(normalizeStringList(input.genres ?? [])),
-        audioLanguages: JSON.stringify(
-          normalizeStringList(input.audioLanguages ?? []),
-        ),
-        excludedGenres: JSON.stringify(
-          normalizeStringList(input.excludedGenres ?? []),
-        ),
-        excludedAudioLanguages: JSON.stringify(
-          normalizeStringList(input.excludedAudioLanguages ?? []),
-        ),
-        radarrInstanceId: (input.radarrInstanceId ?? '').trim() || null,
-        sonarrInstanceId: (input.sonarrInstanceId ?? '').trim() || null,
-        movieCollectionBaseName:
-          (input.movieCollectionBaseName ?? '').trim() || null,
-        showCollectionBaseName:
-          (input.showCollectionBaseName ?? '').trim() || null,
-      },
-    });
-    const view = this.toView(row);
-    await this.writeActionRunSafe({
-      userId,
-      action: 'profile.create',
-      profileId: view.id,
-      profileName: view.name,
-      headline: `Immaculate Taste profile "${view.name}" created.`,
-      tasks: [
-        {
-          id: 'persist_profile',
-          title: 'Persist profile settings',
-          status: 'success',
-          facts: [
-            { label: 'Profile id', value: view.id },
-            { label: 'Profile name', value: view.name },
-            { label: 'Enabled', value: view.enabled },
-            { label: 'Media type', value: view.mediaType },
-            { label: 'Match mode', value: view.matchMode },
-          ],
+    try {
+      const row = await this.prisma.immaculateTasteProfile.create({
+        data: {
+          userId,
+          name,
+          enabled: input.enabled ?? true,
+          sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
+          mediaType: input.mediaType ?? 'both',
+          matchMode: input.matchMode ?? 'any',
+          genres: JSON.stringify(normalizeStringList(input.genres ?? [])),
+          audioLanguages: JSON.stringify(
+            normalizeStringList(input.audioLanguages ?? []),
+          ),
+          excludedGenres: JSON.stringify(
+            normalizeStringList(input.excludedGenres ?? []),
+          ),
+          excludedAudioLanguages: JSON.stringify(
+            normalizeStringList(input.excludedAudioLanguages ?? []),
+          ),
+          radarrInstanceId: (input.radarrInstanceId ?? '').trim() || null,
+          sonarrInstanceId: (input.sonarrInstanceId ?? '').trim() || null,
+          movieCollectionBaseName:
+            (input.movieCollectionBaseName ?? '').trim() || null,
+          showCollectionBaseName:
+            (input.showCollectionBaseName ?? '').trim() || null,
         },
-      ],
-      raw: {
-        action: 'create',
-      },
-    });
-    return view;
+      });
+      const view = this.toView(row);
+      await this.writeActionRunSafe({
+        runId: actionRunId,
+        userId,
+        action: 'profile.create',
+        profileId: view.id,
+        profileName: view.name,
+        headline: `Immaculate Taste profile "${view.name}" created.`,
+        tasks: [
+          {
+            id: 'persist_profile',
+            title: 'Persist profile settings',
+            status: 'success',
+            facts: [
+              { label: 'Profile id', value: view.id },
+              { label: 'Profile name', value: view.name },
+              { label: 'Enabled', value: view.enabled },
+              { label: 'Media type', value: view.mediaType },
+              { label: 'Match mode', value: view.matchMode },
+            ],
+          },
+        ],
+        raw: {
+          action: 'create',
+        },
+      });
+      return view;
+    } catch (error) {
+      await this.failActionRunSafe({
+        runId: actionRunId,
+        action: 'profile.create',
+        error,
+      });
+      throw error;
+    }
   }
 
   async update(
@@ -436,6 +454,17 @@ export class ImmaculateTasteProfileService {
   ): Promise<ImmaculateTasteProfileView> {
     await this.ensureDefaultProfile(userId);
     const current = await this.requireOwnedProfile(userId, id);
+    const actionRunId = await this.beginActionRunSafe({
+      userId,
+      action: 'profile.update',
+      profileId: current.id,
+      profileName: current.name,
+      headline: `Updating Immaculate Taste profile "${current.name}"...`,
+      raw: {
+        action: 'update',
+      },
+    });
+    try {
     const scopePlexUserIdRaw =
       patch.scopePlexUserId === undefined ? undefined : patch.scopePlexUserId;
     const scopePlexUserId =
@@ -443,7 +472,13 @@ export class ImmaculateTasteProfileService {
         ? undefined
         : (scopePlexUserIdRaw ?? '').trim() || null;
     if (scopePlexUserId) {
-      return this.updateScoped(userId, current, scopePlexUserId, patch);
+      return this.updateScoped(
+        userId,
+        current,
+        scopePlexUserId,
+        patch,
+        actionRunId,
+      );
     }
     const data: Partial<ImmaculateTasteProfile> = {};
 
@@ -521,6 +556,7 @@ export class ImmaculateTasteProfileService {
     if (!Object.keys(data).length) {
       const view = await this.buildProfileView(userId, current.id);
       await this.writeActionRunSafe({
+        runId: actionRunId,
         userId,
         action: 'profile.update',
         profileId: current.id,
@@ -684,6 +720,7 @@ export class ImmaculateTasteProfileService {
       );
     }
     await this.writeActionRunSafe({
+      runId: actionRunId,
       userId,
       action: 'profile.update',
       profileId: updated.id,
@@ -704,6 +741,14 @@ export class ImmaculateTasteProfileService {
       },
     });
     return view;
+    } catch (error) {
+      await this.failActionRunSafe({
+        runId: actionRunId,
+        action: 'profile.update',
+        error,
+      });
+      throw error;
+    }
   }
 
   private async updateScoped(
@@ -711,6 +756,7 @@ export class ImmaculateTasteProfileService {
     current: ImmaculateTasteProfile,
     scopePlexUserId: string,
     patch: ProfilePatch,
+    actionRunId: string | null = null,
   ): Promise<ImmaculateTasteProfileView> {
     if (
       patch.name !== undefined ||
@@ -795,6 +841,7 @@ export class ImmaculateTasteProfileService {
     if (unchanged && !shouldInheritBase) {
       const view = await this.buildProfileView(userId, current.id);
       await this.writeActionRunSafe({
+        runId: actionRunId,
         userId,
         action: 'profile.updateScoped',
         profileId: current.id,
@@ -930,6 +977,7 @@ export class ImmaculateTasteProfileService {
       );
     }
     await this.writeActionRunSafe({
+      runId: actionRunId,
       userId,
       action: 'profile.updateScoped',
       profileId: current.id,
@@ -957,6 +1005,17 @@ export class ImmaculateTasteProfileService {
     if (current.isDefault) {
       throw new BadRequestException('Default profile cannot be deleted');
     }
+    const actionRunId = await this.beginActionRunSafe({
+      userId,
+      action: 'profile.delete',
+      profileId: current.id,
+      profileName: current.name,
+      headline: `Deleting Immaculate Taste profile "${current.name}"...`,
+      raw: {
+        action: 'delete',
+      },
+    });
+    try {
     const profileOverrides =
       await this.prisma.immaculateTasteProfileUserOverride.findMany({
         where: { profileId: current.id },
@@ -1001,6 +1060,7 @@ export class ImmaculateTasteProfileService {
         defaultAutoEnabled,
       });
     await this.writeActionRunSafe({
+      runId: actionRunId,
       userId,
       action: 'profile.delete',
       profileId: current.id,
@@ -1047,6 +1107,14 @@ export class ImmaculateTasteProfileService {
         defaultAutoEnableRecreated: Boolean(defaultAutoEnableRecreateResult),
       },
     });
+    } catch (error) {
+      await this.failActionRunSafe({
+        runId: actionRunId,
+        action: 'profile.delete',
+        error,
+      });
+      throw error;
+    }
   }
 
   async reorder(
@@ -1073,38 +1141,59 @@ export class ImmaculateTasteProfileService {
       ...normalizedIds,
       ...rows.map((row) => row.id).filter((id) => !normalizedIds.includes(id)),
     ];
-    await this.prisma.$transaction(
-      orderedIds.map((id, index) =>
-        this.prisma.immaculateTasteProfile.update({
-          where: { id },
-          data: { sortOrder: index },
-        }),
-      ),
-    );
-    const profiles = await this.list(userId);
-    await this.writeActionRunSafe({
+    const actionRunId = await this.beginActionRunSafe({
       userId,
       action: 'profile.reorder',
       profileId: null,
       profileName: null,
-      headline: 'Immaculate Taste profile order updated.',
-      tasks: [
-        {
-          id: 'reorder_profiles',
-          title: 'Persist profile order',
-          status: 'success',
-          facts: [
-            { label: 'Updated profiles', value: orderedIds.length },
-            { label: 'Ordered ids', value: orderedIds },
-          ],
-        },
-      ],
+      headline: 'Reordering Immaculate Taste profiles...',
       raw: {
         action: 'reorder',
         orderedIds,
       },
     });
-    return profiles;
+    try {
+      await this.prisma.$transaction(
+        orderedIds.map((id, index) =>
+          this.prisma.immaculateTasteProfile.update({
+            where: { id },
+            data: { sortOrder: index },
+          }),
+        ),
+      );
+      const profiles = await this.list(userId);
+      await this.writeActionRunSafe({
+        runId: actionRunId,
+        userId,
+        action: 'profile.reorder',
+        profileId: null,
+        profileName: null,
+        headline: 'Immaculate Taste profile order updated.',
+        tasks: [
+          {
+            id: 'reorder_profiles',
+            title: 'Persist profile order',
+            status: 'success',
+            facts: [
+              { label: 'Updated profiles', value: orderedIds.length },
+              { label: 'Ordered ids', value: orderedIds },
+            ],
+          },
+        ],
+        raw: {
+          action: 'reorder',
+          orderedIds,
+        },
+      });
+      return profiles;
+    } catch (error) {
+      await this.failActionRunSafe({
+        runId: actionRunId,
+        action: 'profile.reorder',
+        error,
+      });
+      throw error;
+    }
   }
 
   async resolveProfileForSeed(
@@ -2931,7 +3020,156 @@ export class ImmaculateTasteProfileService {
     };
   }
 
+  private async beginActionRunSafe(params: {
+    userId: string;
+    action: string;
+    profileId: string | null;
+    profileName: string | null;
+    headline: string;
+    raw: Record<string, Prisma.JsonValue>;
+  }): Promise<string | null> {
+    try {
+      const queuedAt = new Date();
+      const queuedSummary = {
+        template: 'jobReportV1' as const,
+        version: 1 as const,
+        jobId: IMMACULATE_TASTE_PROFILE_ACTION_JOB_ID,
+        dryRun: false,
+        trigger: 'manual' as const,
+        headline: params.headline,
+        sections: [],
+        tasks: [],
+        issues: [],
+        raw: {
+          action: params.action,
+          profileId: params.profileId,
+          profileName: params.profileName,
+          phase: 'queued',
+          ...params.raw,
+        },
+        progress: {
+          step: 'queued',
+          message: 'Queued…',
+          updatedAt: queuedAt.toISOString(),
+        },
+      };
+
+      const run = await this.prisma.jobRun.create({
+        data: {
+          jobId: IMMACULATE_TASTE_PROFILE_ACTION_JOB_ID,
+          userId: params.userId,
+          trigger: 'manual',
+          dryRun: false,
+          status: 'PENDING',
+          startedAt: queuedAt,
+          summary: queuedSummary as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      await this.prisma.jobLogLine
+        .create({
+          data: {
+            runId: run.id,
+            level: 'info',
+            message: 'run: queued',
+            context: {
+              action: params.action,
+              profileId: params.profileId,
+              profileName: params.profileName,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        })
+        .catch(() => undefined);
+
+      const startedAt = new Date();
+      const runningSummary = {
+        ...queuedSummary,
+        raw: {
+          ...(queuedSummary.raw as Record<string, Prisma.JsonValue>),
+          phase: 'running',
+        },
+        progress: {
+          step: 'running',
+          message: 'Running…',
+          updatedAt: startedAt.toISOString(),
+        },
+      };
+
+      await this.prisma.jobRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'RUNNING',
+          summary: runningSummary as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      await this.prisma.jobLogLine
+        .create({
+          data: {
+            runId: run.id,
+            level: 'info',
+            message: 'run: started',
+            context: {
+              action: params.action,
+              profileId: params.profileId,
+              profileName: params.profileName,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        })
+        .catch(() => undefined);
+
+      return run.id;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to start profile action run for ${params.action}: ${errToMessage(error)}`,
+      );
+      return null;
+    }
+  }
+
+  private async failActionRunSafe(params: {
+    runId: string | null;
+    action: string;
+    error: unknown;
+  }): Promise<void> {
+    const runId = (params.runId ?? '').trim();
+    if (!runId) return;
+    const errorMessage = errToMessage(params.error).trim() || 'Unknown error';
+    try {
+      const updated = await this.prisma.jobRun.updateMany({
+        where: {
+          id: runId,
+          status: { in: ['PENDING', 'RUNNING'] },
+        },
+        data: {
+          status: 'FAILED',
+          finishedAt: new Date(),
+          errorMessage,
+        },
+      });
+      if (!updated.count) return;
+      await this.prisma.jobLogLine
+        .create({
+          data: {
+            runId,
+            level: 'error',
+            message: 'run: failed',
+            context: {
+              action: params.action,
+              error: errorMessage,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        })
+        .catch(() => undefined);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to mark profile action run as failed for ${params.action}: ${errToMessage(error)}`,
+      );
+    }
+  }
+
   private async writeActionRunSafe(params: {
+    runId?: string | null;
     userId: string;
     action: string;
     profileId: string | null;
@@ -2950,6 +3188,7 @@ export class ImmaculateTasteProfileService {
   }
 
   private async writeActionRun(params: {
+    runId?: string | null;
     userId: string;
     action: string;
     profileId: string | null;
@@ -2978,41 +3217,72 @@ export class ImmaculateTasteProfileService {
         ...params.raw,
       },
     };
-    const run = await this.prisma.jobRun.create({
-      data: {
-        jobId: IMMACULATE_TASTE_PROFILE_ACTION_JOB_ID,
-        userId: params.userId,
-        trigger: 'manual',
-        dryRun: false,
-        status: hasFailure ? 'FAILED' : 'SUCCESS',
-        startedAt: now,
-        finishedAt: now,
-        summary: summary as unknown as Prisma.InputJsonValue,
-        errorMessage: hasFailure
-          ? (issues.find((issue) => issue.level === 'error')?.message ??
-            'One or more profile action tasks failed.')
-          : null,
-      },
-    });
+    const runId = (params.runId ?? '').trim();
+    const errorMessage = hasFailure
+      ? (issues.find((issue) => issue.level === 'error')?.message ??
+        'One or more profile action tasks failed.')
+      : null;
 
-    if (!params.tasks.length) return;
+    let persistedRunId = runId;
+    if (runId) {
+      await this.prisma.jobRun.update({
+        where: { id: runId },
+        data: {
+          status: hasFailure ? 'FAILED' : 'SUCCESS',
+          finishedAt: now,
+          summary: summary as unknown as Prisma.InputJsonValue,
+          errorMessage,
+        },
+      });
+    } else {
+      const run = await this.prisma.jobRun.create({
+        data: {
+          jobId: IMMACULATE_TASTE_PROFILE_ACTION_JOB_ID,
+          userId: params.userId,
+          trigger: 'manual',
+          dryRun: false,
+          status: hasFailure ? 'FAILED' : 'SUCCESS',
+          startedAt: now,
+          finishedAt: now,
+          summary: summary as unknown as Prisma.InputJsonValue,
+          errorMessage,
+        },
+      });
+      persistedRunId = run.id;
+    }
+
+    if (!persistedRunId) return;
+
+    const runLifecycleLine = {
+      runId: persistedRunId,
+      level: hasFailure ? 'error' : 'info',
+      message: hasFailure ? 'run: finished with errors' : 'run: finished',
+      context: {
+        action: params.action,
+        profileId: params.profileId,
+        profileName: params.profileName,
+      } as unknown as Prisma.InputJsonValue,
+    };
+
+    const taskLines = params.tasks.map((task) => ({
+      runId: persistedRunId,
+      level:
+        task.status === 'failed'
+          ? 'error'
+          : task.status === 'skipped'
+            ? 'warn'
+            : 'info',
+      message: `${params.action}.${task.id}: ${task.title}`,
+      context: {
+        taskId: task.id,
+        taskStatus: task.status,
+        facts: task.facts ?? [],
+        issues: task.issues ?? [],
+      } as unknown as Prisma.InputJsonValue,
+    }));
+
     await this.prisma.jobLogLine.createMany({
-      data: params.tasks.map((task) => ({
-        runId: run.id,
-        level:
-          task.status === 'failed'
-            ? 'error'
-            : task.status === 'skipped'
-              ? 'warn'
-              : 'info',
-        message: `${params.action}.${task.id}: ${task.title}`,
-        context: {
-          taskId: task.id,
-          taskStatus: task.status,
-          facts: task.facts ?? [],
-          issues: task.issues ?? [],
-        } as unknown as Prisma.InputJsonValue,
-      })),
+      data: [runLifecycleLine, ...taskLines],
     });
   }
 }

@@ -40,8 +40,11 @@ type PrismaMock = {
   };
   jobRun: {
     create: jest.Mock;
+    update: jest.Mock;
+    updateMany: jest.Mock;
   };
   jobLogLine: {
+    create: jest.Mock;
     createMany: jest.Mock;
   };
   $transaction: jest.Mock;
@@ -130,8 +133,11 @@ function createService() {
     },
     jobRun: {
       create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
     },
     jobLogLine: {
+      create: jest.fn(),
       createMany: jest.fn(),
     },
     $transaction: jest.fn(),
@@ -174,6 +180,9 @@ function createService() {
   );
 
   prisma.jobRun.create.mockResolvedValue({ id: 'run-1' });
+  prisma.jobRun.update.mockResolvedValue({ id: 'run-1' });
+  prisma.jobRun.updateMany.mockResolvedValue({ count: 1 });
+  prisma.jobLogLine.create.mockResolvedValue({ id: 1 });
   prisma.jobLogLine.createMany.mockResolvedValue({ count: 0 });
   prisma.immaculateTasteProfileUserOverride.updateMany.mockResolvedValue({
     count: 0,
@@ -257,18 +266,18 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       collectionRatingKey: 'rk-movie',
       collectionName: 'My Renamed Movies',
     });
-    const renameRunCreateArg = getLastMockCallArg(prisma.jobRun.create) as {
+    const renameRunUpdateArg = getLastMockCallArg(prisma.jobRun.update) as {
       data: {
-        jobId: string;
+        status: string;
         summary: {
           template: string;
           tasks: Array<{ id: string; status: string }>;
         };
       };
     };
-    expect(renameRunCreateArg.data.jobId).toBe('immaculateTasteProfileAction');
-    expect(renameRunCreateArg.data.summary.template).toBe('jobReportV1');
-    expect(renameRunCreateArg.data.summary.tasks).toEqual(
+    expect(renameRunUpdateArg.data.status).toBe('SUCCESS');
+    expect(renameRunUpdateArg.data.summary.template).toBe('jobReportV1');
+    expect(renameRunUpdateArg.data.summary.tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'rename_collections',
@@ -339,18 +348,18 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       token: 'plex-token',
       collectionRatingKey: 'rk-movie',
     });
-    const disableRunCreateArg = getLastMockCallArg(prisma.jobRun.create) as {
+    const disableRunUpdateArg = getLastMockCallArg(prisma.jobRun.update) as {
       data: {
-        jobId: string;
+        status: string;
         summary: {
           template: string;
           tasks: Array<{ id: string; status: string }>;
         };
       };
     };
-    expect(disableRunCreateArg.data.jobId).toBe('immaculateTasteProfileAction');
-    expect(disableRunCreateArg.data.summary.template).toBe('jobReportV1');
-    expect(disableRunCreateArg.data.summary.tasks).toEqual(
+    expect(disableRunUpdateArg.data.status).toBe('SUCCESS');
+    expect(disableRunUpdateArg.data.summary.template).toBe('jobReportV1');
+    expect(disableRunUpdateArg.data.summary.tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'cleanup_collections_on_disable',
@@ -468,18 +477,18 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       type: 1,
       initialItemRatingKey: 'rk-seed',
     });
-    const enableRunCreateArg = getLastMockCallArg(prisma.jobRun.create) as {
+    const enableRunUpdateArg = getLastMockCallArg(prisma.jobRun.update) as {
       data: {
-        jobId: string;
+        status: string;
         summary: {
           template: string;
           tasks: Array<{ id: string; status: string }>;
         };
       };
     };
-    expect(enableRunCreateArg.data.jobId).toBe('immaculateTasteProfileAction');
-    expect(enableRunCreateArg.data.summary.template).toBe('jobReportV1');
-    expect(enableRunCreateArg.data.summary.tasks).toEqual(
+    expect(enableRunUpdateArg.data.status).toBe('SUCCESS');
+    expect(enableRunUpdateArg.data.summary.template).toBe('jobReportV1');
+    expect(enableRunUpdateArg.data.summary.tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'recreate_collections_on_enable',
@@ -544,14 +553,14 @@ describe('ImmaculateTasteProfileService update rename task', () => {
     });
 
     expect(plexServer.createCollection).not.toHaveBeenCalled();
-    const enableRunCreateArg = getLastMockCallArg(prisma.jobRun.create) as {
+    const enableRunUpdateArg = getLastMockCallArg(prisma.jobRun.update) as {
       data: {
         summary: {
           tasks: Array<{ id: string; status: string }>;
         };
       };
     };
-    expect(enableRunCreateArg.data.summary.tasks).toEqual(
+    expect(enableRunUpdateArg.data.summary.tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'recreate_collections_on_enable',
@@ -1044,6 +1053,7 @@ describe('ImmaculateTasteProfileService update rename task', () => {
     prisma.immaculateTasteProfile.findFirst
       .mockResolvedValueOnce(secondaryProfile)
       .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...defaultProfile, enabled: true })
       .mockResolvedValueOnce({ ...updatedSecondaryProfile, userOverrides: [] });
     prisma.immaculateTasteProfileUserOverride.findMany.mockResolvedValue([]);
     prisma.immaculateTasteProfile.update.mockResolvedValue(
