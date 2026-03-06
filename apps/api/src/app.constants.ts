@@ -21,3 +21,6 @@ export const AUTH_RATE_LIMIT_ROUTES = {
 
 export const WEBHOOKS_PLEX_ALIAS_PREFIX = '/webhooks/plex';
 export const WEBHOOKS_PLEX_CANONICAL_PREFIX = `${API_PREFIX_PATH}/webhooks/plex`;
+
+export const PLEX_OAUTH_POLL_HEADER = 'x-immaculaterr-oauth-poll';
+export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';

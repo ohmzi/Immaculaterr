@@ -1,5 +1,5 @@
 import { fetchJson } from '@/api/http';
-import { apiPath } from '@/api/constants';
+import { apiPath, PLEX_OAUTH_POLL_HEADERS } from '@/api/constants';
 
 export type PlexPinResponse = {
   id: number;
@@ -11,6 +11,7 @@ export type PlexPinResponse = {
 export type PlexPinCheckResponse = {
   id: number;
   authToken: string | null;
+  authTokenStored?: boolean;
   expiresAt: string | null;
   suggestedBaseUrl?: string | null;
   suggestedBaseUrls?: string[];
@@ -44,7 +45,9 @@ export async function createPlexPin(): Promise<PlexPinResponse> {
 }
 
 export async function checkPlexPin(pinId: number): Promise<PlexPinCheckResponse> {
-  return fetchJson(apiPath(`/plex/pin/${pinId}`));
+  return fetchJson(apiPath(`/plex/pin/${pinId}`), {
+    headers: PLEX_OAUTH_POLL_HEADERS,
+  });
 }
 
 export async function getPlexLibraryGrowth(): Promise<PlexLibraryGrowthResponse> {

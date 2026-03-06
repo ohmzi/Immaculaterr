@@ -112,6 +112,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const [plexBaseUrl, setPlexBaseUrl] = useState('http://localhost:32400');
   const [plexToken, setPlexToken] = useState('');
   const [plexTokenFromOAuth, setPlexTokenFromOAuth] = useState(false);
+  const [plexOAuthTokenStored, setPlexOAuthTokenStored] = useState(false);
   const [plexOAuthPinId, setPlexOAuthPinId] = useState<number | null>(() => {
     try {
       const saved = localStorage.getItem('wizard_plex_pin_id');
@@ -297,6 +298,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
         if (result.authToken) {
           setPlexToken(result.authToken);
           setPlexTokenFromOAuth(true);
+          setPlexOAuthTokenStored(Boolean(result.authTokenStored));
           const suggestedBaseUrl = String(result.suggestedBaseUrl ?? '').trim();
           if (suggestedBaseUrl) {
             setPlexBaseUrl(suggestedBaseUrl);
@@ -367,6 +369,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     const popup = window.open('about:blank', 'PlexOAuth', features);
 
     try {
+      setPlexOAuthTokenStored(false);
       if (popup) {
         try {
           popup.document.title = 'Plex Login';
@@ -416,15 +419,25 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   const saveAndValidatePlex = useMutation({
     mutationFn: async () => {
+      const plexSettings = {
+        plex: { baseUrl: plexBaseUrl.trim() },
+      };
+      const shouldReuseOAuthTokenStoredByApi =
+        plexTokenFromOAuth && plexOAuthTokenStored;
+
       // Save Plex credentials
-      await putSettingsWithSecretsCompatibility({
-        settings: {
-          plex: { baseUrl: plexBaseUrl.trim() },
-        },
-        secretsPatch: {
-          plex: { token: plexToken.trim() },
-        },
-      });
+      if (shouldReuseOAuthTokenStoredByApi) {
+        await putSettingsWithSecretsCompatibility({
+          settings: plexSettings,
+        });
+      } else {
+        await putSettingsWithSecretsCompatibility({
+          settings: plexSettings,
+          secretsPatch: {
+            plex: { token: plexToken.trim() },
+          },
+        });
+      }
 
       // Validate
       toast.info('Validating Plex credentials...');
@@ -663,6 +676,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const handlePlexTokenChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setPlexToken(event.target.value);
     setPlexTokenFromOAuth(false);
+    setPlexOAuthTokenStored(false);
   }, []);
   const submitPlexLibrariesStep = useCallback(() => {
     savePlexLibrarySelectionStep.mutate();
