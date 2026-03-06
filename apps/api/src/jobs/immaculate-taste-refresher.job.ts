@@ -83,6 +83,25 @@ function normalizeProfileId(value: unknown): string {
   return trimmed || 'default';
 }
 
+function normalizeOptionalProfileId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function resolveDatasetProfileId(
+  requestedProfileId: string | null,
+  profiles: ImmaculateTasteProfileView[],
+): string | null {
+  if (!requestedProfileId) return null;
+  const normalized = normalizeProfileId(requestedProfileId);
+  const match = profiles.find(
+    (profile) =>
+      profile.datasetId === normalized || profile.id === normalized,
+  );
+  return match ? match.datasetId : normalized;
+}
+
 function includesMovies(mediaType: string): boolean {
   return mediaType === 'movie' || mediaType === 'both';
 }
@@ -206,7 +225,7 @@ export class ImmaculateTasteRefresherJob {
       typeof input['movieSectionKey'] === 'string' ? input['movieSectionKey'].trim() : '';
     const inputTvSectionKey =
       typeof input['tvSectionKey'] === 'string' ? input['tvSectionKey'].trim() : '';
-    const profileId = normalizeProfileId(input['profileId']);
+    const requestedProfileId = normalizeOptionalProfileId(input['profileId']);
     const inputMovieCollectionBaseName =
       typeof input['movieCollectionBaseName'] === 'string'
         ? input['movieCollectionBaseName'].trim()
@@ -229,6 +248,8 @@ export class ImmaculateTasteRefresherJob {
       await this.settingsService.getInternalSettings(ctx.userId);
     const profiles: ImmaculateTasteProfileView[] =
       await this.immaculateTasteProfiles.list(ctx.userId).catch(() => []);
+    const profileId =
+      resolveDatasetProfileId(requestedProfileId, profiles) ?? 'default';
     const selectedProfile = profiles.find((profile) => profile.datasetId === profileId) ?? null;
     if (selectedProfile && selectedProfile.enabled === false) {
       const summary: JsonObject = {
@@ -1390,10 +1411,13 @@ export class ImmaculateTasteRefresherJob {
     input: JsonObject,
   ): Promise<JobRunResult> {
     const requestedProfileIdRaw =
-      typeof input['profileId'] === 'string' ? input['profileId'].trim() : '';
-    const requestedProfileId = requestedProfileIdRaw
-      ? normalizeProfileId(requestedProfileIdRaw)
-      : null;
+      typeof input['profileId'] === 'string' ? input['profileId'].trim() : null;
+    const profiles: ImmaculateTasteProfileView[] =
+      await this.immaculateTasteProfiles.list(ctx.userId).catch(() => []);
+    const requestedProfileId = resolveDatasetProfileId(
+      requestedProfileIdRaw,
+      profiles,
+    );
     const includeMovies =
       typeof input['includeMovies'] === 'boolean' ? input['includeMovies'] : true;
     const includeTv = typeof input['includeTv'] === 'boolean' ? input['includeTv'] : true;

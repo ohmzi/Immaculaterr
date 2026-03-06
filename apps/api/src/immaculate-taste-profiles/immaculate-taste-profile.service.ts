@@ -255,6 +255,27 @@ function resolveShowCollectionBaseName(
   return (value ?? '').trim() || IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME;
 }
 
+function hasExplicitCollectionBaseName(
+  value: string | null | undefined,
+): boolean {
+  return Boolean((value ?? '').trim());
+}
+
+function shouldRenameCollectionBaseName(params: {
+  isDefaultProfile: boolean;
+  previousRaw: string | null | undefined;
+  nextRaw: string | null | undefined;
+  previousResolved: string;
+  nextResolved: string;
+}): boolean {
+  if (params.previousResolved === params.nextResolved) return false;
+  if (params.isDefaultProfile) return true;
+  return (
+    hasExplicitCollectionBaseName(params.previousRaw) &&
+    hasExplicitCollectionBaseName(params.nextRaw)
+  );
+}
+
 function buildImmaculateCollectionLookupNames(
   baseName: string,
   plexUserTitle?: string | null,
@@ -544,11 +565,25 @@ export class ImmaculateTasteProfileService {
     );
     const currentMediaType = normalizeMediaType(current.mediaType);
     const updatedMediaType = normalizeMediaType(updated.mediaType);
+    const shouldRenameMovieBaseName = shouldRenameCollectionBaseName({
+      isDefaultProfile: updated.isDefault,
+      previousRaw: current.movieCollectionBaseName,
+      nextRaw: updated.movieCollectionBaseName,
+      previousResolved: previousMovieBaseName,
+      nextResolved: nextMovieBaseName,
+    });
+    const shouldRenameShowBaseName = shouldRenameCollectionBaseName({
+      isDefaultProfile: updated.isDefault,
+      previousRaw: current.showCollectionBaseName,
+      nextRaw: updated.showCollectionBaseName,
+      previousResolved: previousShowBaseName,
+      nextResolved: nextShowBaseName,
+    });
     const renameMovies =
-      previousMovieBaseName !== nextMovieBaseName &&
+      shouldRenameMovieBaseName &&
       (includesMovies(currentMediaType) || includesMovies(updatedMediaType));
     const renameShows =
-      previousShowBaseName !== nextShowBaseName &&
+      shouldRenameShowBaseName &&
       (includesShows(currentMediaType) || includesShows(updatedMediaType));
 
     let defaultAutoEnabled = false;
@@ -585,6 +620,11 @@ export class ImmaculateTasteProfileService {
         profileOverrides,
       );
     }
+    const defaultAutoEnableRecreateResult =
+      await this.recreateDefaultCollectionsAfterAutoEnable({
+        userId,
+        defaultAutoEnabled,
+      });
     const view = await this.buildProfileView(userId, updated.id);
     const tasks: ProfileActionTask[] = [
       {
@@ -634,6 +674,15 @@ export class ImmaculateTasteProfileService {
         }),
       );
     }
+    if (defaultAutoEnableRecreateResult) {
+      tasks.push(
+        this.buildRecreateTask({
+          taskId: 'recreate_collections_on_default_auto_enable',
+          taskTitle: 'Recreate Plex collections for auto-enabled default profile',
+          result: defaultAutoEnableRecreateResult,
+        }),
+      );
+    }
     await this.writeActionRunSafe({
       userId,
       action: 'profile.update',
@@ -651,6 +700,7 @@ export class ImmaculateTasteProfileService {
         defaultAutoEnabled,
         renameMovies,
         renameShows,
+        defaultAutoEnableRecreated: Boolean(defaultAutoEnableRecreateResult),
       },
     });
     return view;
@@ -717,12 +767,26 @@ export class ImmaculateTasteProfileService {
     const nextShowBaseName = resolveShowCollectionBaseName(
       nextSettings.showCollectionBaseName,
     );
+    const shouldRenameMovieBaseName = shouldRenameCollectionBaseName({
+      isDefaultProfile: current.isDefault,
+      previousRaw: previousSettings.movieCollectionBaseName,
+      nextRaw: nextSettings.movieCollectionBaseName,
+      previousResolved: previousMovieBaseName,
+      nextResolved: nextMovieBaseName,
+    });
+    const shouldRenameShowBaseName = shouldRenameCollectionBaseName({
+      isDefaultProfile: current.isDefault,
+      previousRaw: previousSettings.showCollectionBaseName,
+      nextRaw: nextSettings.showCollectionBaseName,
+      previousResolved: previousShowBaseName,
+      nextResolved: nextShowBaseName,
+    });
     const renameMovies =
-      previousMovieBaseName !== nextMovieBaseName &&
+      shouldRenameMovieBaseName &&
       (includesMovies(previousSettings.mediaType) ||
         includesMovies(nextSettings.mediaType));
     const renameShows =
-      previousShowBaseName !== nextShowBaseName &&
+      shouldRenameShowBaseName &&
       (includesShows(previousSettings.mediaType) ||
         includesShows(nextSettings.mediaType));
 
@@ -931,6 +995,11 @@ export class ImmaculateTasteProfileService {
         defaultAutoEnabled = enableRes.count > 0;
       }
     });
+    const defaultAutoEnableRecreateResult =
+      await this.recreateDefaultCollectionsAfterAutoEnable({
+        userId,
+        defaultAutoEnabled,
+      });
     await this.writeActionRunSafe({
       userId,
       action: 'profile.delete',
@@ -959,12 +1028,23 @@ export class ImmaculateTasteProfileService {
           status: defaultAutoEnabled ? 'success' : 'skipped',
           facts: [{ label: 'Default auto-enabled', value: defaultAutoEnabled }],
         },
+        ...(defaultAutoEnableRecreateResult
+          ? [
+              this.buildRecreateTask({
+                taskId: 'recreate_collections_on_default_auto_enable',
+                taskTitle:
+                  'Recreate Plex collections for auto-enabled default profile',
+                result: defaultAutoEnableRecreateResult,
+              }),
+            ]
+          : []),
       ],
       raw: {
         action: 'delete',
         movedMovieRows,
         movedShowRows,
         defaultAutoEnabled,
+        defaultAutoEnableRecreated: Boolean(defaultAutoEnableRecreateResult),
       },
     });
   }
@@ -2759,7 +2839,30 @@ export class ImmaculateTasteProfileService {
     if (hasTask('rename_scoped_collections')) {
       return `Rename scoped Plex collections for profile "${params.profileName}".`;
     }
+    if (hasTask('recreate_collections_on_default_auto_enable')) {
+      return 'Recreate Plex collections for auto-enabled default profile.';
+    }
     return params.fallback;
+  }
+
+  private async recreateDefaultCollectionsAfterAutoEnable(params: {
+    userId: string;
+    defaultAutoEnabled: boolean;
+  }): Promise<CollectionRecreateResult | null> {
+    if (!params.defaultAutoEnabled) return null;
+    const defaultProfile = await this.prisma.immaculateTasteProfile.findFirst({
+      where: { userId: params.userId, isDefault: true, enabled: true },
+    });
+    if (!defaultProfile) return null;
+    const defaultOverrides =
+      await this.prisma.immaculateTasteProfileUserOverride.findMany({
+        where: { profileId: defaultProfile.id },
+      });
+    return this.recreateCollectionsForProfile(
+      params.userId,
+      defaultProfile,
+      defaultOverrides,
+    );
   }
 
   private buildCleanupTask(params: {
