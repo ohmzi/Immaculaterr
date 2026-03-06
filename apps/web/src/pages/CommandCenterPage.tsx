@@ -6479,23 +6479,13 @@ export function CommandCenterPage() {
                         </span>
                         {selectedCollectionArtworkTarget.hasCustomPoster ? (
                           <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-emerald-100">
-                            Custom poster set
+                            Custom poster
                           </span>
                         ) : (
                           <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-amber-100">
                             Default poster
                           </span>
                         )}
-                        {selectedCollectionArtworkTarget.hasCustomPoster ? (
-                          <button
-                            type="button"
-                            onClick={openCollectionArtworkPreview}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-emerald-100 hover:bg-emerald-400/15 transition"
-                          >
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            View
-                          </button>
-                        ) : null}
                       </div>
 
                       {selectedCollectionArtworkTarget.hasCustomPoster &&
@@ -6543,6 +6533,16 @@ export function CommandCenterPage() {
                       )}
 
                       <div className="flex flex-wrap items-center gap-3">
+                        {selectedCollectionArtworkTarget.hasCustomPoster ? (
+                          <button
+                            type="button"
+                            onClick={openCollectionArtworkPreview}
+                            className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-400/15 transition active:scale-95"
+                          >
+                            <ImageIcon className="w-4 h-4" />
+                            View custom poster
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={saveCollectionArtworkOverride}
