@@ -5,14 +5,18 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  NotFoundException,
   Post,
   Query,
   Req,
+  Res,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
+import type { Response } from 'express';
+import { readFile } from 'node:fs/promises';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { PrismaService } from '../db/prisma.service';
 import {
@@ -163,5 +167,39 @@ export class CollectionArtworkController {
     });
 
     return { ok: true as const };
+  }
+
+  @Get('override/preview')
+  async getOverridePreview(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+    @Query('plexUserId') plexUserIdRaw: string,
+    @Query('mediaType') mediaTypeRaw: string,
+    @Query('targetKind') targetKindRaw: string,
+    @Query('targetId') targetIdRaw: string,
+  ) {
+    await this.assertAdminSession(req.user.id);
+
+    const plexUserId = asString(plexUserIdRaw);
+    if (!plexUserId) throw new BadRequestException('plexUserId is required');
+
+    const mediaType = resolveMediaType(mediaTypeRaw);
+    const targetKind = resolveTargetKind(targetKindRaw);
+    const targetId = resolveTargetId(targetIdRaw);
+
+    const preview = await this.collectionArtwork.getOverridePreview({
+      plexUserId,
+      mediaType,
+      targetKind,
+      targetId,
+    });
+    if (!preview) {
+      throw new NotFoundException('Custom poster not found for this target');
+    }
+
+    const file = await readFile(preview.absolutePosterPath);
+    res.setHeader('Content-Type', preview.mimeType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+    return res.status(200).send(file);
   }
 }

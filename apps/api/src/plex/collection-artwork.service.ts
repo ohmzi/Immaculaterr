@@ -788,6 +788,40 @@ export class CollectionArtworkService {
     });
   }
 
+  async getOverridePreview(params: {
+    plexUserId: string;
+    mediaType: CollectionArtworkMediaType;
+    targetKind: CollectionArtworkTargetKind;
+    targetId: string;
+  }): Promise<{
+    absolutePosterPath: string;
+    mimeType: string;
+    updatedAt: string;
+  } | null> {
+    const plexUserId = params.plexUserId.trim();
+    if (!plexUserId) throw new BadRequestException('plexUserId is required');
+
+    const mediaType = normalizeMediaType(params.mediaType);
+    const targetKind = normalizeTargetKind(params.targetKind);
+    const targetId = normalizeTargetId(params.targetId);
+
+    const override = await this.getOverrideRecord({
+      plexUserId,
+      mediaType,
+      targetKind,
+      targetId,
+    });
+    if (!override || !existsSync(override.absolutePosterPath)) {
+      return null;
+    }
+
+    return {
+      absolutePosterPath: override.absolutePosterPath,
+      mimeType: override.mimeType,
+      updatedAt: override.updatedAt,
+    };
+  }
+
   resolveDefaultArtworkPaths(params: {
     collectionName: string;
     artworkFallback?: ArtworkFallback;

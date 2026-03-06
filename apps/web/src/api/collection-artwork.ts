@@ -84,3 +84,22 @@ export async function deleteCollectionArtworkOverride(params: {
     body: JSON.stringify(params),
   });
 }
+
+export function getCollectionArtworkPreviewUrl(params: {
+  plexUserId: string;
+  mediaType: 'movie' | 'tv';
+  targetKind: 'immaculate_profile' | 'watched_collection';
+  targetId: string;
+  updatedAt?: string | null;
+}): string {
+  const search = new URLSearchParams({
+    plexUserId: params.plexUserId.trim(),
+    mediaType: params.mediaType,
+    targetKind: params.targetKind,
+    targetId: params.targetId,
+  });
+  if (params.updatedAt?.trim()) {
+    search.set('updatedAt', params.updatedAt.trim());
+  }
+  return apiPath(`/collection-artwork/override/preview?${search.toString()}`);
+}
