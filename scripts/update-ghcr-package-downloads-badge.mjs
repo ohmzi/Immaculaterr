@@ -115,11 +115,34 @@ async function getGhcrDownloadsTotalFromHtml() {
 
   // Example snippet:
   // <span ...>Total downloads</span>
-  // <h3 title="314">314</h3>
-  const re = /Total downloads<\/span>\s*<h3[^>]*title="(\d+)"[^>]*>\s*\d+\s*<\/h3>/i;
-  const m = html.match(re);
-  if (!m?.[1]) throw new Error(`Could not parse total downloads from ${url}`);
-  return Number.parseInt(m[1], 10);
+  // <h3 title="1042">1.04K</h3>
+  // Prefer `title` because UI text may be abbreviated (K/M/B).
+  const titleRe = /Total downloads<\/span>[\s\S]{0,600}?<h3[^>]*title="([^"]+)"[^>]*>/i;
+  const titleMatch = html.match(titleRe);
+  const fromTitle = (titleMatch?.[1] ?? '').replace(/[^\d]/g, '');
+  if (fromTitle) {
+    const parsed = Number.parseInt(fromTitle, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  // Fallback: parse visible content (e.g. "1.04K").
+  const visibleRe = /Total downloads<\/span>[\s\S]{0,600}?<h3[^>]*>\s*([^<]+?)\s*<\/h3>/i;
+  const visibleMatch = html.match(visibleRe);
+  const visible = (visibleMatch?.[1] ?? '').trim();
+  if (visible) {
+    const compact = visible.replace(/,/g, '');
+    const m = compact.match(/^(\d+(?:\.\d+)?)\s*([kmb])?$/i);
+    if (m?.[1]) {
+      const n = Number.parseFloat(m[1]);
+      if (Number.isFinite(n)) {
+        const unit = (m[2] ?? '').toLowerCase();
+        const mult = unit === 'k' ? 1_000 : unit === 'm' ? 1_000_000 : unit === 'b' ? 1_000_000_000 : 1;
+        return Math.round(n * mult);
+      }
+    }
+  }
+
+  throw new Error(`Could not parse total downloads from ${url}`);
 }
 
 let apiTotal = null;
@@ -132,8 +155,27 @@ if (TOKEN) {
   }
 }
 
-const htmlTotal = await getGhcrDownloadsTotalFromHtml();
-const total = typeof apiTotal === 'number' ? Math.max(apiTotal, htmlTotal) : htmlTotal;
+let htmlTotal = null;
+try {
+  htmlTotal = await getGhcrDownloadsTotalFromHtml();
+} catch (err) {
+  // Do not fail if API already gave us a value.
+  console.warn(String(err));
+}
+
+let total = null;
+if (typeof apiTotal === 'number' && Number.isFinite(apiTotal)) {
+  total =
+    typeof htmlTotal === 'number' && Number.isFinite(htmlTotal)
+      ? Math.max(apiTotal, htmlTotal)
+      : apiTotal;
+} else if (typeof htmlTotal === 'number' && Number.isFinite(htmlTotal)) {
+  total = htmlTotal;
+}
+
+if (!Number.isFinite(total)) {
+  throw new Error('Unable to resolve GHCR downloads total from API or HTML');
+}
 
 const badgePath = 'doc/assets/badges/ghcr-package-downloads.json';
 await mkdir('doc/assets/badges', { recursive: true });
