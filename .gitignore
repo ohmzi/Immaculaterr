@@ -35,3 +35,4 @@ docker/immaculaterr/secrets/
 # Local-only config - do NOT commit
 config/config.local.yaml
 config/config.local.yml
+/data-backup
