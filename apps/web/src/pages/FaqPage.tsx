@@ -355,18 +355,41 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Immaculate Taste is a long-lived per-library suggestion set that evolves over time.
+                Immaculate Taste is a long-lived per-library suggestion system that now supports a
+                simple default mode and optional profile-based mode.
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>
-                  The collection job adds or refreshes suggestions when new seeds are processed.
+                  In default mode, behavior stays straightforward and works like before.
                 </li>
                 <li>
-                  Suggestions are tracked as active (already in Plex) or pending (not in Plex yet).
+                  In profile mode, each profile has its own filter rules and can have its own ARR route.
                 </li>
                 <li>
-                  Refresher jobs promote pending titles to active when they appear in Plex, then
-                  rebuild the collection.
+                  Suggestions are still tracked as active (already in Plex) or pending (not in Plex yet),
+                  and refresher runs still promote pending titles to active and rebuild collections.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'collections-profiles-smart-filters',
+          question: 'What are Immaculate Taste profiles and smart filters, and when should I use them?',
+          answer: (
+            <>
+              <p>
+                Profiles let you run multiple Immaculate Taste collection styles at the same time.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  Use default mode if you want the simplest setup and one general recommendation flow.
+                </li>
+                <li>
+                  Use profiles when you want separate lanes, like family-safe picks, niche genres, or language-specific rows.
+                </li>
+                <li>
+                  Smart filters (include/exclude genre and audio language) help keep each profile focused.
                 </li>
               </ul>
             </>
@@ -528,13 +551,12 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                When collections are created/recreated, the app applies shipped poster artwork by
-                matching collection name → poster file.
+                Yes. You can now upload custom poster artwork for Immaculaterr-managed collections
+                directly in Command Center.
               </p>
               <p>
-                Advanced: you can replace the poster files under{' '}
-                <code className="font-mono">apps/web/src/assets/collection_artwork/posters</code> (or
-                adjust the mapping in the backend) to customize.
+                Uploaded posters are saved in app data and stay in place after restarts. If you do
+                not set a custom poster, Immaculaterr uses its default artwork.
               </p>
             </>
           ),

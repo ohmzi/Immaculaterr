@@ -22,6 +22,7 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [How do per-viewer collections and Plex pin locations work?](#how-do-per-viewer-collections-and-plex-pin-locations-work)
   - [What’s the difference between Immaculate Taste and Based on Latest Watched?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched)
   - [How does the Immaculate Taste collection work?](#how-does-the-immaculate-taste-collection-work)
+  - [What are Immaculate Taste profiles and smart filters, and when should I use them?](#what-are-immaculate-taste-profiles-and-smart-filters-and-when-should-i-use-them)
   - [How do Immaculate Taste points work, and how do they decay?](#how-do-immaculate-taste-points-work-and-how-do-they-decay)
   - [What is Change of Taste and how is it chosen?](#what-is-change-of-taste-and-how-is-it-chosen)
   - [How are recommendation titles generated?](#how-are-recommendation-titles-generated)
@@ -218,15 +219,21 @@ Based on Latest Watched is more “right now”: it uses your recent watch as a 
 
 ### How does the Immaculate Taste collection work?
 
-Immaculate Taste is a **per-library** dataset that grows and evolves as you watch things:
+Immaculate Taste is a per-library suggestion system that supports both a simple default mode and optional profile mode.
 
-- When the **Immaculate Taste Collection** job runs (typically after you finish a movie/show if the automation toggle is enabled), it generates new “taste” suggestions and updates a stored dataset for that Plex library.
-- Each suggested title is tracked as either:
-  - **Active**: it exists in Plex right now (eligible to be placed into the Plex collection), or
-  - **Pending**: it’s not in Plex yet (tracked for later activation).
-- The **Immaculate Taste Refresher** job later revisits that dataset, activates pending titles that have appeared in Plex, and rebuilds the Plex collection.
+- In default mode, setup stays simple and behavior remains familiar.
+- In profile mode, each profile can use its own filter rules and its own ARR route.
+- Suggestions are still tracked as active (already in Plex) or pending (not in Plex yet).
+- Refresher runs still promote pending titles to active and rebuild collections.
 
-One important detail: the **ordering** inside the Plex collection is not “highest points first”. For variety, the refresher shuffles items using TMDB rating tiers (high/mid/low) so you don’t just get a monotonically sorted list every time.
+### What are Immaculate Taste profiles and smart filters, and when should I use them?
+
+Profiles let you run multiple Immaculate Taste collection styles at the same time.
+
+- Use default mode if you want the simplest setup and one general recommendation flow.
+- Use profiles when you want separate lanes (for example: family-safe picks, niche genres, or language-specific rows).
+- Smart filters (include/exclude genre and audio language) keep each profile focused.
+- Each profile can route missing items to its own Radarr/Sonarr target.
 
 ### How do Immaculate Taste points work, and how do they decay?
 
@@ -300,9 +307,10 @@ Plex can keep old ordering even after remove/re-add operations. Recreating the c
 
 ### How does poster artwork work for collections? Can I customize posters?
 
-When collections are created/recreated, the app applies shipped poster artwork by matching collection name → poster file.
+Yes. You can upload custom poster artwork for Immaculaterr-managed collections from Command Center.
 
-Advanced: you can replace the poster files under `apps/web/src/assets/collection_artwork/posters` (or adjust the mapping in the backend) to customize.
+- Uploaded posters are saved in app data and persist after restarts.
+- If no custom poster is set, Immaculaterr uses default shipped artwork.
 
 ## Observatory (swipe review)
 
