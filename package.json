@@ -30,6 +30,7 @@
   },
   "overrides": {
     "diff": "4.0.4",
-    "multer": "2.1.1"
+    "multer": "2.1.1",
+    "terser-webpack-plugin": "5.3.17"
   }
 }

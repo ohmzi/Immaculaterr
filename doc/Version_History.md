@@ -3,13 +3,17 @@ Version History
 
 This file tracks notable changes by version.
 
-1.6.0
+1.6.1
 ---
 
 - Stronger key security:
   - API keys are protected during save/test and unsafe key submissions are blocked by default.
   - After setup, the app uses secure references instead of resending raw keys.
   - Secret values stay hidden in Vault (`*******`) and are not returned in settings.
+- Dependency and container security hardening:
+  - Vulnerable dependency paths were upgraded/pinned for safer defaults (including `multer`, `terser-webpack-plugin`, and related transitive chains).
+  - Runtime container hardening was added for npm-bundled dependencies (including `tar` and `minimatch`).
+  - Runtime image now prunes dev-only dependency chains to reduce exposure.
 - Access options:
   - HTTP on `5454` for backward compatibility.
   - HTTPS on `5464` for encrypted local/LAN access (optional domain HTTPS on `443`).

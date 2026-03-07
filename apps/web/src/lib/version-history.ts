@@ -18,12 +18,13 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.6.0',
+    version: '1.6.1',
     popupHighlights: [
       'Security: API keys are now protected during setup and testing.',
       'Security: after setup, the app uses secure references instead of raw keys.',
       'Vault: secret fields always show as ******* with no reveal button.',
       'Access: HTTP stays on 5454 and HTTPS is available on 5464.',
+      'Security: dependency/runtime hardening added for known CVE paths (including multer, tar, and minimatch).',
       'Recommendations (Movies + TV): now personalized per Plex viewer.',
       'Plex pinning: row placement is smarter for admin and shared users.',
       'Plex user monitoring: toggle any user off so auto-triggered tasks skip them.',
@@ -65,6 +66,14 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         title: 'Security test coverage',
         bullets: [
           'Added tests for key handling and transport safety.',
+        ],
+      },
+      {
+        title: 'Dependency and container hardening',
+        bullets: [
+          'Patched vulnerable dependency paths with safer pinned/upgraded versions.',
+          'Hardened npm-bundled runtime dependencies used in the container image.',
+          'Pruned dev-only dependency chains from runtime image layers.',
         ],
       },
     ],

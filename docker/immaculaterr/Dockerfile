@@ -1,7 +1,15 @@
 # Keep to an LTS line; Node 25 has shown flaky Prisma getDMMF failures on arm64 QEMU builds.
-FROM node:24-trixie-slim AS builder
+FROM node:24-bookworm-slim AS builder
 
 WORKDIR /app
+
+# Mitigate GHSA-qffp-2rhf-9h96 and CVE-2026-27904 from npm's bundled dependencies.
+RUN npm i -g --no-audit --no-fund tar@7.5.10 minimatch@10.2.4 \
+  && rm -rf /usr/local/lib/node_modules/npm/node_modules/tar \
+  && rm -rf /usr/local/lib/node_modules/npm/node_modules/minimatch \
+  && cp -a /usr/local/lib/node_modules/tar /usr/local/lib/node_modules/npm/node_modules/tar \
+  && cp -a /usr/local/lib/node_modules/minimatch /usr/local/lib/node_modules/npm/node_modules/minimatch \
+  && npm cache clean --force
 
 # Keep builder image minimal; do not install distro OpenSSL packages.
 # Prisma may log OpenSSL detection warnings during generate, but generation works.
@@ -38,10 +46,11 @@ RUN if [ ! -x /app/apps/api/node_modules/.bin/prisma ] && [ ! -x /app/node_modul
 COPY apps/api apps/api
 COPY apps/web apps/web
 RUN npm run build \
+  && npm prune --omit=dev --workspaces --include-workspace-root \
   && npm cache clean --force
 
 
-FROM node:24-trixie-slim AS runner
+FROM node:24-bookworm-slim AS runner
 
 # Source of truth for the app's version is `apps/api/src/version.ts`.
 # (We do not inject APP_VERSION into the runtime container env; allowing APP_VERSION
@@ -59,6 +68,14 @@ ENV APP_BUILD_SHA=$APP_BUILD_SHA
 ENV APP_BUILD_TIME=$APP_BUILD_TIME
 
 WORKDIR /app
+
+# Mitigate GHSA-qffp-2rhf-9h96 and CVE-2026-27904 from npm's bundled dependencies.
+RUN npm i -g --no-audit --no-fund tar@7.5.10 minimatch@10.2.4 \
+  && rm -rf /usr/local/lib/node_modules/npm/node_modules/tar \
+  && rm -rf /usr/local/lib/node_modules/npm/node_modules/minimatch \
+  && cp -a /usr/local/lib/node_modules/tar /usr/local/lib/node_modules/npm/node_modules/tar \
+  && cp -a /usr/local/lib/node_modules/minimatch /usr/local/lib/node_modules/npm/node_modules/minimatch \
+  && npm cache clean --force
 
 # Drop privileges for the actual app process. We avoid `gosu` (it is frequently
 # flagged by image scanners due to the Go stdlib version used to build the
