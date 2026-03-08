@@ -2,8 +2,9 @@
 
 ## Reporting a Vulnerability
 
-Preferred: use GitHub’s private vulnerability reporting:
-[`security`](https://github.com/ohmzi/Immaculaterr/security)
+Reporting Vulnerability: use [GitHub’s issue reporting](https://github.com/ohmzi/Immaculaterr/issues), and I will priorize security concerns.
+Suggestion Security Improvements: use [Github issues](https://github.com/ohmzi/Immaculaterr/issues) for that as well, and i'll consider making those improvements.
 
-If GitHub reporting isn’t possible, please use:
-[`forum`](https://forms.gle/wMpsDu9jPEY14dua6)
+
+## Security Measures 
+Please check [Security documentation for full details](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/security.md)
