@@ -247,12 +247,22 @@ Immaculate Taste is a per-library suggestion system that supports both a simple 
 
 ### What are Immaculate Taste profiles and smart filters, and when should I use them?
 
-Profiles let you run multiple Immaculate Taste collection styles at the same time.
+Profiles let you run multiple Immaculate Taste collection lanes at the same time. Matching is deterministic and runs in profile order (top to bottom).
 
-- Use default mode if you want the simplest setup and one general recommendation flow.
-- Use profiles when you want separate lanes (for example: family-safe picks, niche genres, or language-specific rows).
-- Smart filters (include/exclude genre and audio language) keep each profile focused.
-- Each profile can route missing items to its own Radarr/Sonarr target.
+- **User scope:** if no users are selected, the profile applies to all monitored Plex users. If users are selected, only those users are in scope. Selected users appear as chips under the search bar, can be removed with **X**, and are hidden from search results until removed.
+- **Included filters are allowlists:** adding included genres or included audio languages makes the profile “only include” for those values.
+- **Match mode:** “Match any filter” means included genre OR included language can match. “Match all filters” means each enabled include group must match.
+- **Excluded filters win:** if a seed matches an excluded genre/language, that profile is skipped even if include matched.
+- **Default profile fallback:** default with no include filters acts as catch-all and can match alongside specific profiles. If default has include filters, it only matches those include values.
+- **No profile match:** if no enabled profile matches, the run is skipped and logged as ignored (no matching profile) in run history/Rewind.
+- **Shared profile settings:** all users in a profile scope share the same filters, ARR routing, and collection naming for that profile.
+
+Common outcomes:
+
+- Secondary includes Animation + default has no include filters: both can receive that seed.
+- Secondary includes Animation + default excludes Animation: only secondary receives it.
+- Secondary includes Animation + default includes Romance: Animation goes to secondary; Romance goes to default.
+- If a seed matches neither a specific profile nor default include rules, it is skipped and logged.
 
 ### How do Immaculate Taste points work, and how do they decay?
 
