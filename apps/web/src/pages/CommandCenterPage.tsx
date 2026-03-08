@@ -825,6 +825,131 @@ export function CommandCenterPage() {
         : null,
     [activeProfileId, immaculateProfiles],
   );
+  const monitoredProfileScopeUsers = useMemo(() => {
+    const selectedPlexUserIds = plexMonitoringUsersQuery.data?.selectedPlexUserIds ?? [];
+    if (!selectedPlexUserIds.length) return profileScopeUsers;
+    const selectedPlexUserIdSet = new Set(selectedPlexUserIds);
+    return profileScopeUsers.filter((user) => selectedPlexUserIdSet.has(user.id));
+  }, [plexMonitoringUsersQuery.data?.selectedPlexUserIds, profileScopeUsers]);
+  const activeProfileDeleteImpact = useMemo<ProfileDeleteImpactSummary | null>(() => {
+    if (!activeProfile || activeProfile.isDefault) return null;
+
+    const otherEnabledProfiles = immaculateProfiles.filter(
+      (profile) => profile.id !== activeProfile.id && profile.enabled,
+    );
+    const uniqueCollectionNames = new Set<string>();
+    const sharedCollectionNames = new Set<string>();
+
+    if (!monitoredProfileScopeUsers.length) {
+      const baseScope = resolveEffectiveProfileScopeForPlexUser({
+        profile: activeProfile,
+        plexUserId: null,
+      });
+      if (mediaTypeIncludesMovie(baseScope.mediaType)) {
+        const collectionName = baseScope.movieCollectionBaseName;
+        const isShared = otherEnabledProfiles.some((profile) =>
+          profileUsesCollectionBaseName({
+            profile,
+            mediaType: 'movie',
+            collectionBaseName: baseScope.movieCollectionBaseName,
+          }),
+        );
+        if (isShared) {
+          sharedCollectionNames.add(collectionName);
+        } else {
+          uniqueCollectionNames.add(collectionName);
+        }
+      }
+      if (mediaTypeIncludesShow(baseScope.mediaType)) {
+        const collectionName = baseScope.showCollectionBaseName;
+        const isShared = otherEnabledProfiles.some((profile) =>
+          profileUsesCollectionBaseName({
+            profile,
+            mediaType: 'show',
+            collectionBaseName: baseScope.showCollectionBaseName,
+          }),
+        );
+        if (isShared) {
+          sharedCollectionNames.add(collectionName);
+        } else {
+          uniqueCollectionNames.add(collectionName);
+        }
+      }
+    } else {
+      for (const user of monitoredProfileScopeUsers) {
+        const scope = resolveEffectiveProfileScopeForPlexUser({
+          profile: activeProfile,
+          plexUserId: user.id,
+        });
+        if (mediaTypeIncludesMovie(scope.mediaType)) {
+          const collectionName = buildImmaculateCollectionName(
+            scope.movieCollectionBaseName,
+            user.plexAccountTitle,
+          );
+          const targetMovieBaseKey = normalizeCollectionBaseName(
+            scope.movieCollectionBaseName,
+          );
+          const isShared = otherEnabledProfiles.some((profile) => {
+            const candidateScope = resolveEffectiveProfileScopeForPlexUser({
+              profile,
+              plexUserId: user.id,
+            });
+            if (!mediaTypeIncludesMovie(candidateScope.mediaType)) return false;
+            return (
+              normalizeCollectionBaseName(candidateScope.movieCollectionBaseName) ===
+              targetMovieBaseKey
+            );
+          });
+          if (isShared) {
+            sharedCollectionNames.add(collectionName);
+          } else {
+            uniqueCollectionNames.add(collectionName);
+          }
+        }
+        if (mediaTypeIncludesShow(scope.mediaType)) {
+          const collectionName = buildImmaculateCollectionName(
+            scope.showCollectionBaseName,
+            user.plexAccountTitle,
+          );
+          const targetShowBaseKey = normalizeCollectionBaseName(
+            scope.showCollectionBaseName,
+          );
+          const isShared = otherEnabledProfiles.some((profile) => {
+            const candidateScope = resolveEffectiveProfileScopeForPlexUser({
+              profile,
+              plexUserId: user.id,
+            });
+            if (!mediaTypeIncludesShow(candidateScope.mediaType)) return false;
+            return (
+              normalizeCollectionBaseName(candidateScope.showCollectionBaseName) ===
+              targetShowBaseKey
+            );
+          });
+          if (isShared) {
+            sharedCollectionNames.add(collectionName);
+          } else {
+            uniqueCollectionNames.add(collectionName);
+          }
+        }
+      }
+    }
+
+    const defaultWillAutoEnable =
+      activeProfile.enabled &&
+      !immaculateProfiles.some(
+        (profile) => profile.id !== activeProfile.id && profile.enabled,
+      );
+
+    return {
+      uniqueCollectionNames: Array.from(uniqueCollectionNames).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      sharedCollectionNames: Array.from(sharedCollectionNames).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      defaultWillAutoEnable,
+    };
+  }, [activeProfile, immaculateProfiles, monitoredProfileScopeUsers]);
   const activeProfileScopeOverride = useMemo(
     () => findProfileUserOverride(activeProfile, activeProfileScopePlexUserId),
     [activeProfile, activeProfileScopePlexUserId],

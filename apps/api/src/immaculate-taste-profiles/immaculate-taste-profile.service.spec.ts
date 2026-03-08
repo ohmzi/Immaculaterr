@@ -1250,7 +1250,8 @@ describe('ImmaculateTasteProfileService update rename task', () => {
   });
 
   it('keeps shared Plex collections and moves dataset rows to the shared profile on delete', async () => {
-    const { service, prisma, settings, plexServer, plexUsers } = createService();
+    const { service, prisma, settings, plexServer, plexUsers } =
+      createService();
     const defaultProfile = makeProfile({
       id: 'default-profile',
       name: 'Default',
@@ -1313,8 +1314,12 @@ describe('ImmaculateTasteProfileService update rename task', () => {
     prisma.immaculateTasteMovieLibrary.updateMany.mockResolvedValue({
       count: 3,
     });
-    prisma.immaculateTasteMovieLibrary.deleteMany.mockResolvedValue({ count: 0 });
-    prisma.immaculateTasteShowLibrary.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.immaculateTasteMovieLibrary.deleteMany.mockResolvedValue({
+      count: 0,
+    });
+    prisma.immaculateTasteShowLibrary.deleteMany.mockResolvedValue({
+      count: 0,
+    });
     prisma.immaculateTasteProfile.delete.mockResolvedValue(deletingProfile);
 
     await service.delete('user-1', 'profile-2');

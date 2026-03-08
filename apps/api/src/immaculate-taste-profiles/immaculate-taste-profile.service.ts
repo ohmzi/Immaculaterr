@@ -475,282 +475,283 @@ export class ImmaculateTasteProfileService {
       },
     });
     try {
-    const scopePlexUserIdRaw =
-      patch.scopePlexUserId === undefined ? undefined : patch.scopePlexUserId;
-    const scopePlexUserId =
-      scopePlexUserIdRaw === undefined
-        ? undefined
-        : (scopePlexUserIdRaw ?? '').trim() || null;
-    if (scopePlexUserId) {
-      return this.updateScoped(
-        userId,
-        current,
-        scopePlexUserId,
-        patch,
-        actionRunId,
-      );
-    }
-    const data: Partial<ImmaculateTasteProfile> = {};
-
-    if (patch.name !== undefined) {
-      const name = patch.name.trim();
-      if (!name) throw new BadRequestException('name cannot be empty');
-      const existing = await this.prisma.immaculateTasteProfile.findFirst({
-        where: { userId, name, id: { not: current.id } },
-        select: { id: true },
-      });
-      if (existing) {
-        throw new BadRequestException(`Profile "${name}" already exists`);
+      const scopePlexUserIdRaw =
+        patch.scopePlexUserId === undefined ? undefined : patch.scopePlexUserId;
+      const scopePlexUserId =
+        scopePlexUserIdRaw === undefined
+          ? undefined
+          : (scopePlexUserIdRaw ?? '').trim() || null;
+      if (scopePlexUserId) {
+        return this.updateScoped(
+          userId,
+          current,
+          scopePlexUserId,
+          patch,
+          actionRunId,
+        );
       }
-      data.name = name;
-    }
+      const data: Partial<ImmaculateTasteProfile> = {};
 
-    if (patch.enabled !== undefined) {
-      const nextEnabled = patch.enabled === true;
-      if (current.isDefault && !nextEnabled) {
-        const fallbackEnabledProfile =
-          await this.prisma.immaculateTasteProfile.findFirst({
-            where: {
-              userId,
-              id: { not: current.id },
-              enabled: true,
-            },
-            select: { id: true },
-          });
-        if (!fallbackEnabledProfile) {
-          throw new BadRequestException(
-            'Default profile can only be disabled when another enabled profile exists',
-          );
+      if (patch.name !== undefined) {
+        const name = patch.name.trim();
+        if (!name) throw new BadRequestException('name cannot be empty');
+        const existing = await this.prisma.immaculateTasteProfile.findFirst({
+          where: { userId, name, id: { not: current.id } },
+          select: { id: true },
+        });
+        if (existing) {
+          throw new BadRequestException(`Profile "${name}" already exists`);
         }
+        data.name = name;
       }
-      data.enabled = nextEnabled;
-    }
-    if (patch.sortOrder !== undefined) {
-      data.sortOrder = Math.max(0, Math.trunc(patch.sortOrder));
-    }
-    if (patch.mediaType !== undefined) data.mediaType = patch.mediaType;
-    if (patch.matchMode !== undefined) data.matchMode = patch.matchMode;
-    if (patch.genres !== undefined) {
-      data.genres = JSON.stringify(normalizeStringList(patch.genres));
-    }
-    if (patch.audioLanguages !== undefined) {
-      data.audioLanguages = JSON.stringify(
-        normalizeStringList(patch.audioLanguages),
-      );
-    }
-    if (patch.excludedGenres !== undefined) {
-      data.excludedGenres = JSON.stringify(
-        normalizeStringList(patch.excludedGenres),
-      );
-    }
-    if (patch.excludedAudioLanguages !== undefined) {
-      data.excludedAudioLanguages = JSON.stringify(
-        normalizeStringList(patch.excludedAudioLanguages),
-      );
-    }
-    if (patch.radarrInstanceId !== undefined) {
-      data.radarrInstanceId = (patch.radarrInstanceId ?? '').trim() || null;
-    }
-    if (patch.sonarrInstanceId !== undefined) {
-      data.sonarrInstanceId = (patch.sonarrInstanceId ?? '').trim() || null;
-    }
-    if (patch.movieCollectionBaseName !== undefined) {
-      data.movieCollectionBaseName =
-        (patch.movieCollectionBaseName ?? '').trim() || null;
-    }
-    if (patch.showCollectionBaseName !== undefined) {
-      data.showCollectionBaseName =
-        (patch.showCollectionBaseName ?? '').trim() || null;
-    }
 
-    if (!Object.keys(data).length) {
-      const view = await this.buildProfileView(userId, current.id);
+      if (patch.enabled !== undefined) {
+        const nextEnabled = patch.enabled === true;
+        if (current.isDefault && !nextEnabled) {
+          const fallbackEnabledProfile =
+            await this.prisma.immaculateTasteProfile.findFirst({
+              where: {
+                userId,
+                id: { not: current.id },
+                enabled: true,
+              },
+              select: { id: true },
+            });
+          if (!fallbackEnabledProfile) {
+            throw new BadRequestException(
+              'Default profile can only be disabled when another enabled profile exists',
+            );
+          }
+        }
+        data.enabled = nextEnabled;
+      }
+      if (patch.sortOrder !== undefined) {
+        data.sortOrder = Math.max(0, Math.trunc(patch.sortOrder));
+      }
+      if (patch.mediaType !== undefined) data.mediaType = patch.mediaType;
+      if (patch.matchMode !== undefined) data.matchMode = patch.matchMode;
+      if (patch.genres !== undefined) {
+        data.genres = JSON.stringify(normalizeStringList(patch.genres));
+      }
+      if (patch.audioLanguages !== undefined) {
+        data.audioLanguages = JSON.stringify(
+          normalizeStringList(patch.audioLanguages),
+        );
+      }
+      if (patch.excludedGenres !== undefined) {
+        data.excludedGenres = JSON.stringify(
+          normalizeStringList(patch.excludedGenres),
+        );
+      }
+      if (patch.excludedAudioLanguages !== undefined) {
+        data.excludedAudioLanguages = JSON.stringify(
+          normalizeStringList(patch.excludedAudioLanguages),
+        );
+      }
+      if (patch.radarrInstanceId !== undefined) {
+        data.radarrInstanceId = (patch.radarrInstanceId ?? '').trim() || null;
+      }
+      if (patch.sonarrInstanceId !== undefined) {
+        data.sonarrInstanceId = (patch.sonarrInstanceId ?? '').trim() || null;
+      }
+      if (patch.movieCollectionBaseName !== undefined) {
+        data.movieCollectionBaseName =
+          (patch.movieCollectionBaseName ?? '').trim() || null;
+      }
+      if (patch.showCollectionBaseName !== undefined) {
+        data.showCollectionBaseName =
+          (patch.showCollectionBaseName ?? '').trim() || null;
+      }
+
+      if (!Object.keys(data).length) {
+        const view = await this.buildProfileView(userId, current.id);
+        await this.writeActionRunSafe({
+          runId: actionRunId,
+          userId,
+          action: 'profile.update',
+          profileId: current.id,
+          profileName: current.name,
+          headline: `Immaculate Taste profile "${current.name}" update requested with no changes.`,
+          tasks: [
+            {
+              id: 'apply_profile_patch',
+              title: 'Apply profile changes',
+              status: 'skipped',
+              issues: [
+                { level: 'warn', message: 'No mutable fields were changed.' },
+              ],
+            },
+          ],
+          raw: {
+            action: 'update',
+            changedFields: [],
+          },
+        });
+        return view;
+      }
+      const profileOverrides =
+        await this.prisma.immaculateTasteProfileUserOverride.findMany({
+          where: { profileId: current.id },
+        });
+      const updated = await this.prisma.immaculateTasteProfile.update({
+        where: { id: current.id },
+        data,
+      });
+      const previousMovieBaseName = resolveMovieCollectionBaseName(
+        current.movieCollectionBaseName,
+      );
+      const previousShowBaseName = resolveShowCollectionBaseName(
+        current.showCollectionBaseName,
+      );
+      const nextMovieBaseName = resolveMovieCollectionBaseName(
+        updated.movieCollectionBaseName,
+      );
+      const nextShowBaseName = resolveShowCollectionBaseName(
+        updated.showCollectionBaseName,
+      );
+      const currentMediaType = normalizeMediaType(current.mediaType);
+      const updatedMediaType = normalizeMediaType(updated.mediaType);
+      const shouldRenameMovieBaseName = shouldRenameCollectionBaseName({
+        isDefaultProfile: updated.isDefault,
+        previousRaw: current.movieCollectionBaseName,
+        nextRaw: updated.movieCollectionBaseName,
+        previousResolved: previousMovieBaseName,
+        nextResolved: nextMovieBaseName,
+      });
+      const shouldRenameShowBaseName = shouldRenameCollectionBaseName({
+        isDefaultProfile: updated.isDefault,
+        previousRaw: current.showCollectionBaseName,
+        nextRaw: updated.showCollectionBaseName,
+        previousResolved: previousShowBaseName,
+        nextResolved: nextShowBaseName,
+      });
+      const renameMovies =
+        shouldRenameMovieBaseName &&
+        (includesMovies(currentMediaType) || includesMovies(updatedMediaType));
+      const renameShows =
+        shouldRenameShowBaseName &&
+        (includesShows(currentMediaType) || includesShows(updatedMediaType));
+
+      let defaultAutoEnabled = false;
+      if (current.enabled && updated.enabled === false && !updated.isDefault) {
+        defaultAutoEnabled = await this.ensureAtLeastOneEnabledProfile(userId);
+      }
+      let cleanupResult: CollectionCleanupResult | null = null;
+      if (current.enabled && updated.enabled === false) {
+        cleanupResult = await this.cleanupCollectionsForProfile(
+          userId,
+          updated,
+          profileOverrides,
+        );
+      }
+      let renameResult: CollectionRenameResult | null = null;
+      if (updated.enabled && (renameMovies || renameShows)) {
+        renameResult = await this.renameCollectionsForBaseNameChange(userId, {
+          renameMovies,
+          renameShows,
+          previousMovieBaseName,
+          nextMovieBaseName,
+          previousShowBaseName,
+          nextShowBaseName,
+          excludePlexUserIds: profileOverrides.map(
+            (override) => override.plexUserId,
+          ),
+        });
+      }
+      let recreateResult: CollectionRecreateResult | null = null;
+      if (!current.enabled && updated.enabled) {
+        recreateResult = await this.recreateCollectionsForProfile(
+          userId,
+          updated,
+          profileOverrides,
+        );
+      }
+      const defaultAutoEnableRecreateResult =
+        await this.recreateDefaultCollectionsAfterAutoEnable({
+          userId,
+          defaultAutoEnabled,
+        });
+      const view = await this.buildProfileView(userId, updated.id);
+      const tasks: ProfileActionTask[] = [
+        {
+          id: 'apply_profile_patch',
+          title: 'Apply profile changes',
+          status: 'success',
+          facts: [
+            { label: 'Profile id', value: updated.id },
+            { label: 'Profile name', value: updated.name },
+            { label: 'Changed fields', value: Object.keys(data) },
+            { label: 'Enabled', value: updated.enabled },
+          ],
+        },
+      ];
+      if (current.enabled && updated.enabled === false && !updated.isDefault) {
+        tasks.push({
+          id: 'ensure_enabled_fallback',
+          title: 'Ensure at least one enabled profile remains',
+          status: defaultAutoEnabled ? 'success' : 'skipped',
+          facts: [{ label: 'Default auto-enabled', value: defaultAutoEnabled }],
+        });
+      }
+      if (cleanupResult) {
+        tasks.push(
+          this.buildCleanupTask({
+            taskId: 'cleanup_collections_on_disable',
+            taskTitle: 'Delete Plex collections for disabled profile',
+            result: cleanupResult,
+          }),
+        );
+      }
+      if (renameResult) {
+        tasks.push(
+          this.buildRenameTask({
+            taskId: 'rename_collections',
+            taskTitle: 'Rename Plex collections',
+            result: renameResult,
+          }),
+        );
+      }
+      if (recreateResult) {
+        tasks.push(
+          this.buildRecreateTask({
+            taskId: 'recreate_collections_on_enable',
+            taskTitle: 'Recreate Plex collections for enabled profile',
+            result: recreateResult,
+          }),
+        );
+      }
+      if (defaultAutoEnableRecreateResult) {
+        tasks.push(
+          this.buildRecreateTask({
+            taskId: 'recreate_collections_on_default_auto_enable',
+            taskTitle:
+              'Recreate Plex collections for auto-enabled default profile',
+            result: defaultAutoEnableRecreateResult,
+          }),
+        );
+      }
       await this.writeActionRunSafe({
         runId: actionRunId,
         userId,
         action: 'profile.update',
-        profileId: current.id,
-        profileName: current.name,
-        headline: `Immaculate Taste profile "${current.name}" update requested with no changes.`,
-        tasks: [
-          {
-            id: 'apply_profile_patch',
-            title: 'Apply profile changes',
-            status: 'skipped',
-            issues: [
-              { level: 'warn', message: 'No mutable fields were changed.' },
-            ],
-          },
-        ],
+        profileId: updated.id,
+        profileName: updated.name,
+        headline: this.buildProfileActionHeadline({
+          profileName: updated.name,
+          tasks,
+          fallback: `Immaculate Taste profile "${updated.name}" updated.`,
+        }),
+        tasks,
         raw: {
           action: 'update',
-          changedFields: [],
+          changedFields: Object.keys(data),
+          defaultAutoEnabled,
+          renameMovies,
+          renameShows,
+          defaultAutoEnableRecreated: Boolean(defaultAutoEnableRecreateResult),
         },
       });
       return view;
-    }
-    const profileOverrides =
-      await this.prisma.immaculateTasteProfileUserOverride.findMany({
-        where: { profileId: current.id },
-      });
-    const updated = await this.prisma.immaculateTasteProfile.update({
-      where: { id: current.id },
-      data,
-    });
-    const previousMovieBaseName = resolveMovieCollectionBaseName(
-      current.movieCollectionBaseName,
-    );
-    const previousShowBaseName = resolveShowCollectionBaseName(
-      current.showCollectionBaseName,
-    );
-    const nextMovieBaseName = resolveMovieCollectionBaseName(
-      updated.movieCollectionBaseName,
-    );
-    const nextShowBaseName = resolveShowCollectionBaseName(
-      updated.showCollectionBaseName,
-    );
-    const currentMediaType = normalizeMediaType(current.mediaType);
-    const updatedMediaType = normalizeMediaType(updated.mediaType);
-    const shouldRenameMovieBaseName = shouldRenameCollectionBaseName({
-      isDefaultProfile: updated.isDefault,
-      previousRaw: current.movieCollectionBaseName,
-      nextRaw: updated.movieCollectionBaseName,
-      previousResolved: previousMovieBaseName,
-      nextResolved: nextMovieBaseName,
-    });
-    const shouldRenameShowBaseName = shouldRenameCollectionBaseName({
-      isDefaultProfile: updated.isDefault,
-      previousRaw: current.showCollectionBaseName,
-      nextRaw: updated.showCollectionBaseName,
-      previousResolved: previousShowBaseName,
-      nextResolved: nextShowBaseName,
-    });
-    const renameMovies =
-      shouldRenameMovieBaseName &&
-      (includesMovies(currentMediaType) || includesMovies(updatedMediaType));
-    const renameShows =
-      shouldRenameShowBaseName &&
-      (includesShows(currentMediaType) || includesShows(updatedMediaType));
-
-    let defaultAutoEnabled = false;
-    if (current.enabled && updated.enabled === false && !updated.isDefault) {
-      defaultAutoEnabled = await this.ensureAtLeastOneEnabledProfile(userId);
-    }
-    let cleanupResult: CollectionCleanupResult | null = null;
-    if (current.enabled && updated.enabled === false) {
-      cleanupResult = await this.cleanupCollectionsForProfile(
-        userId,
-        updated,
-        profileOverrides,
-      );
-    }
-    let renameResult: CollectionRenameResult | null = null;
-    if (updated.enabled && (renameMovies || renameShows)) {
-      renameResult = await this.renameCollectionsForBaseNameChange(userId, {
-        renameMovies,
-        renameShows,
-        previousMovieBaseName,
-        nextMovieBaseName,
-        previousShowBaseName,
-        nextShowBaseName,
-        excludePlexUserIds: profileOverrides.map(
-          (override) => override.plexUserId,
-        ),
-      });
-    }
-    let recreateResult: CollectionRecreateResult | null = null;
-    if (!current.enabled && updated.enabled) {
-      recreateResult = await this.recreateCollectionsForProfile(
-        userId,
-        updated,
-        profileOverrides,
-      );
-    }
-    const defaultAutoEnableRecreateResult =
-      await this.recreateDefaultCollectionsAfterAutoEnable({
-        userId,
-        defaultAutoEnabled,
-      });
-    const view = await this.buildProfileView(userId, updated.id);
-    const tasks: ProfileActionTask[] = [
-      {
-        id: 'apply_profile_patch',
-        title: 'Apply profile changes',
-        status: 'success',
-        facts: [
-          { label: 'Profile id', value: updated.id },
-          { label: 'Profile name', value: updated.name },
-          { label: 'Changed fields', value: Object.keys(data) },
-          { label: 'Enabled', value: updated.enabled },
-        ],
-      },
-    ];
-    if (current.enabled && updated.enabled === false && !updated.isDefault) {
-      tasks.push({
-        id: 'ensure_enabled_fallback',
-        title: 'Ensure at least one enabled profile remains',
-        status: defaultAutoEnabled ? 'success' : 'skipped',
-        facts: [{ label: 'Default auto-enabled', value: defaultAutoEnabled }],
-      });
-    }
-    if (cleanupResult) {
-      tasks.push(
-        this.buildCleanupTask({
-          taskId: 'cleanup_collections_on_disable',
-          taskTitle: 'Delete Plex collections for disabled profile',
-          result: cleanupResult,
-        }),
-      );
-    }
-    if (renameResult) {
-      tasks.push(
-        this.buildRenameTask({
-          taskId: 'rename_collections',
-          taskTitle: 'Rename Plex collections',
-          result: renameResult,
-        }),
-      );
-    }
-    if (recreateResult) {
-      tasks.push(
-        this.buildRecreateTask({
-          taskId: 'recreate_collections_on_enable',
-          taskTitle: 'Recreate Plex collections for enabled profile',
-          result: recreateResult,
-        }),
-      );
-    }
-    if (defaultAutoEnableRecreateResult) {
-      tasks.push(
-        this.buildRecreateTask({
-          taskId: 'recreate_collections_on_default_auto_enable',
-          taskTitle: 'Recreate Plex collections for auto-enabled default profile',
-          result: defaultAutoEnableRecreateResult,
-        }),
-      );
-    }
-    await this.writeActionRunSafe({
-      runId: actionRunId,
-      userId,
-      action: 'profile.update',
-      profileId: updated.id,
-      profileName: updated.name,
-      headline: this.buildProfileActionHeadline({
-        profileName: updated.name,
-        tasks,
-        fallback: `Immaculate Taste profile "${updated.name}" updated.`,
-      }),
-      tasks,
-      raw: {
-        action: 'update',
-        changedFields: Object.keys(data),
-        defaultAutoEnabled,
-        renameMovies,
-        renameShows,
-        defaultAutoEnableRecreated: Boolean(defaultAutoEnableRecreateResult),
-      },
-    });
-    return view;
     } catch (error) {
       await this.failActionRunSafe({
         runId: actionRunId,
@@ -1175,7 +1176,9 @@ export class ImmaculateTasteProfileService {
             id: 'ensure_enabled_fallback',
             title: 'Ensure at least one enabled profile remains',
             status: defaultAutoEnabled ? 'success' : 'skipped',
-            facts: [{ label: 'Default auto-enabled', value: defaultAutoEnabled }],
+            facts: [
+              { label: 'Default auto-enabled', value: defaultAutoEnabled },
+            ],
           },
           ...(defaultAutoEnableRecreateResult
             ? [
@@ -1708,10 +1711,12 @@ export class ImmaculateTasteProfileService {
     return {
       mediaType,
       movieBaseName: resolveMovieCollectionBaseName(
-        override?.movieCollectionBaseName ?? params.profile.movieCollectionBaseName,
+        override?.movieCollectionBaseName ??
+          params.profile.movieCollectionBaseName,
       ),
       showBaseName: resolveShowCollectionBaseName(
-        override?.showCollectionBaseName ?? params.profile.showCollectionBaseName,
+        override?.showCollectionBaseName ??
+          params.profile.showCollectionBaseName,
       ),
       datasetId: params.profile.isDefault ? 'default' : params.profile.id,
     };
