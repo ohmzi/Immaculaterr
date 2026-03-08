@@ -593,10 +593,24 @@ export class ImmaculateTasteProfileService {
         await this.prisma.immaculateTasteProfileUserOverride.findMany({
           where: { profileId: current.id },
         });
+      const scopedSettingsChanged = this.hasScopedSettingsPatch(patch);
       const updated = await this.prisma.immaculateTasteProfile.update({
         where: { id: current.id },
         data,
       });
+      if (scopedSettingsChanged && profileOverrides.length > 0) {
+        await this.prisma.immaculateTasteProfileUserOverride.updateMany({
+          where: { profileId: current.id },
+          data: this.toOverrideMutationDataFromProfile(updated),
+        });
+      }
+      const nextProfileOverrides =
+        scopedSettingsChanged && profileOverrides.length > 0
+          ? profileOverrides.map((override) => ({
+              ...override,
+              ...this.toOverrideMutationDataFromProfile(updated),
+            }))
+          : profileOverrides;
       const previousMovieBaseName = resolveMovieCollectionBaseName(
         current.movieCollectionBaseName,
       );
@@ -641,11 +655,14 @@ export class ImmaculateTasteProfileService {
         cleanupResult = await this.cleanupCollectionsForProfile(
           userId,
           updated,
-          profileOverrides,
+          nextProfileOverrides,
         );
       }
       let renameResult: CollectionRenameResult | null = null;
       if (updated.enabled && (renameMovies || renameShows)) {
+        const scopedPlexUserIds = nextProfileOverrides.map(
+          (override) => override.plexUserId,
+        );
         renameResult = await this.renameCollectionsForBaseNameChange(userId, {
           renameMovies,
           renameShows,
@@ -653,9 +670,9 @@ export class ImmaculateTasteProfileService {
           nextMovieBaseName,
           previousShowBaseName,
           nextShowBaseName,
-          excludePlexUserIds: profileOverrides.map(
-            (override) => override.plexUserId,
-          ),
+          ...(scopedPlexUserIds.length > 0
+            ? { targetPlexUserIds: scopedPlexUserIds }
+            : {}),
         });
       }
       let recreateResult: CollectionRecreateResult | null = null;
@@ -663,7 +680,7 @@ export class ImmaculateTasteProfileService {
         recreateResult = await this.recreateCollectionsForProfile(
           userId,
           updated,
-          profileOverrides,
+          nextProfileOverrides,
         );
       }
       const defaultAutoEnableRecreateResult =
@@ -798,6 +815,7 @@ export class ImmaculateTasteProfileService {
       });
 
     const resetScopeToDefaultNaming = patch.resetScopeToDefaultNaming === true;
+    const hasScopedSettingsPatch = this.hasScopedSettingsPatch(patch);
     const previousSettings = existingOverride
       ? this.toSettingsFromOverride(existingOverride)
       : this.toSettingsFromProfile(current);
@@ -846,6 +864,39 @@ export class ImmaculateTasteProfileService {
       shouldRenameShowBaseName &&
       (includesShows(previousSettings.mediaType) ||
         includesShows(nextSettings.mediaType));
+
+    if (
+      !hasScopedSettingsPatch &&
+      !resetScopeToDefaultNaming &&
+      existingOverride
+    ) {
+      const view = await this.buildProfileView(userId, current.id);
+      await this.writeActionRunSafe({
+        runId: actionRunId,
+        userId,
+        action: 'profile.updateScoped',
+        profileId: current.id,
+        profileName: current.name,
+        headline: `Immaculate Taste profile "${current.name}" scoped update requested with no changes.`,
+        tasks: [
+          {
+            id: 'apply_scoped_patch',
+            title: 'Apply user-scoped profile changes',
+            status: 'skipped',
+            facts: [{ label: 'Scoped Plex user id', value: scopePlexUserId }],
+            issues: [
+              { level: 'warn', message: 'No scoped fields were changed.' },
+            ],
+          },
+        ],
+        raw: {
+          action: 'updateScoped',
+          scopePlexUserId,
+          changedFields: [],
+        },
+      });
+      return view;
+    }
 
     const unchanged = this.areSettingsEqual(previousSettings, nextSettings);
     const shouldInheritBase = this.areSettingsEqual(baseSettings, nextSettings);
@@ -897,6 +948,31 @@ export class ImmaculateTasteProfileService {
             { label: 'Scoped Plex user id', value: scopePlexUserId },
             { label: 'Removed override id', value: existingOverride.id },
           ],
+        };
+      } else if (!hasScopedSettingsPatch && !resetScopeToDefaultNaming) {
+        await this.prisma.immaculateTasteProfileUserOverride.create({
+          data: {
+            profileId: current.id,
+            plexUserId: scopePlexUserId,
+            mediaType: baseSettings.mediaType,
+            matchMode: baseSettings.matchMode,
+            genres: JSON.stringify(baseSettings.genres),
+            audioLanguages: JSON.stringify(baseSettings.audioLanguages),
+            excludedGenres: JSON.stringify(baseSettings.excludedGenres),
+            excludedAudioLanguages: JSON.stringify(
+              baseSettings.excludedAudioLanguages,
+            ),
+            radarrInstanceId: baseSettings.radarrInstanceId,
+            sonarrInstanceId: baseSettings.sonarrInstanceId,
+            movieCollectionBaseName: baseSettings.movieCollectionBaseName,
+            showCollectionBaseName: baseSettings.showCollectionBaseName,
+          },
+        });
+        scopedOverrideTask = {
+          id: 'apply_scoped_patch',
+          title: 'Add user to profile scope',
+          status: 'success',
+          facts: [{ label: 'Scoped Plex user id', value: scopePlexUserId }],
         };
       } else {
         scopedOverrideTask = {
@@ -1076,7 +1152,9 @@ export class ImmaculateTasteProfileService {
             profile: currentProfile,
             plexUserId: row.plexUserId,
           });
-          if (!includesMovies(currentScope.mediaType)) continue;
+          if (!currentScope || !includesMovies(currentScope.mediaType)) {
+            continue;
+          }
           const sharedDatasetId =
             this.findSharedCollectionProfileDatasetIdForUser({
               otherProfiles,
@@ -1099,7 +1177,7 @@ export class ImmaculateTasteProfileService {
             profile: currentProfile,
             plexUserId: row.plexUserId,
           });
-          if (!includesShows(currentScope.mediaType)) continue;
+          if (!currentScope || !includesShows(currentScope.mediaType)) continue;
           const sharedDatasetId =
             this.findSharedCollectionProfileDatasetIdForUser({
               otherProfiles,
@@ -1309,6 +1387,7 @@ export class ImmaculateTasteProfileService {
 
     for (const profile of enabled) {
       const scopedProfile = this.toScopedProfile(profile, params.plexUserId);
+      if (!scopedProfile) continue;
       if (
         scopedProfile.mediaType !== 'both' &&
         scopedProfile.mediaType !== params.seedMediaType
@@ -1485,12 +1564,13 @@ export class ImmaculateTasteProfileService {
   private toScopedProfile(
     profile: ImmaculateTasteProfileView,
     plexUserId: string | undefined,
-  ): ImmaculateTasteProfileView {
-    if (!plexUserId) return profile;
+  ): ImmaculateTasteProfileView | null {
+    const profileOverrides = profile.userOverrides ?? [];
+    if (!profileOverrides.length) return profile;
+    if (!plexUserId) return null;
     const override =
-      profile.userOverrides.find((item) => item.plexUserId === plexUserId) ??
-      null;
-    if (!override) return profile;
+      profileOverrides.find((item) => item.plexUserId === plexUserId) ?? null;
+    if (!override) return null;
     return {
       ...profile,
       mediaType: override.mediaType,
@@ -1579,6 +1659,38 @@ export class ImmaculateTasteProfileService {
       sonarrInstanceId: override.sonarrInstanceId,
       movieCollectionBaseName: override.movieCollectionBaseName,
       showCollectionBaseName: override.showCollectionBaseName,
+    };
+  }
+
+  private hasScopedSettingsPatch(patch: ProfilePatch): boolean {
+    return (
+      patch.mediaType !== undefined ||
+      patch.matchMode !== undefined ||
+      patch.genres !== undefined ||
+      patch.audioLanguages !== undefined ||
+      patch.excludedGenres !== undefined ||
+      patch.excludedAudioLanguages !== undefined ||
+      patch.radarrInstanceId !== undefined ||
+      patch.sonarrInstanceId !== undefined ||
+      patch.movieCollectionBaseName !== undefined ||
+      patch.showCollectionBaseName !== undefined
+    );
+  }
+
+  private toOverrideMutationDataFromProfile(
+    profile: ImmaculateTasteProfile,
+  ): Prisma.ImmaculateTasteProfileUserOverrideUpdateManyMutationInput {
+    return {
+      mediaType: normalizeMediaType(profile.mediaType),
+      matchMode: normalizeMatchMode(profile.matchMode),
+      genres: profile.genres,
+      audioLanguages: profile.audioLanguages,
+      excludedGenres: profile.excludedGenres,
+      excludedAudioLanguages: profile.excludedAudioLanguages,
+      radarrInstanceId: profile.radarrInstanceId,
+      sonarrInstanceId: profile.sonarrInstanceId,
+      movieCollectionBaseName: profile.movieCollectionBaseName,
+      showCollectionBaseName: profile.showCollectionBaseName,
     };
   }
 
@@ -1699,12 +1811,13 @@ export class ImmaculateTasteProfileService {
   private resolveEffectiveCollectionScopeForPlexUser(params: {
     profile: ProfileWithOverridesRow;
     plexUserId: string;
-  }): EffectiveCollectionScope {
+  }): EffectiveCollectionScope | null {
     const profileOverrides = params.profile.userOverrides ?? [];
     const override =
       profileOverrides.find(
         (candidate) => candidate.plexUserId === params.plexUserId,
       ) ?? null;
+    if (profileOverrides.length > 0 && !override) return null;
     const mediaType = normalizeMediaType(
       override?.mediaType ?? params.profile.mediaType,
     );
@@ -1736,6 +1849,7 @@ export class ImmaculateTasteProfileService {
         profile,
         plexUserId: params.plexUserId,
       });
+      if (!scope) continue;
       if (
         params.mediaType === 'movie'
           ? !includesMovies(scope.mediaType)
@@ -2156,8 +2270,15 @@ export class ImmaculateTasteProfileService {
     const selectedUsers = normalizedUsers.filter((user) =>
       monitoringSelection.selectedPlexUserIds.includes(user.id),
     );
-    result.targetUsers = selectedUsers.length;
-    if (!selectedUsers.length) {
+    const scopedUserIds = new Set(
+      profileOverrides.map((override) => override.plexUserId),
+    );
+    const targetUsers =
+      scopedUserIds.size > 0
+        ? selectedUsers.filter((user) => scopedUserIds.has(user.id))
+        : selectedUsers;
+    result.targetUsers = targetUsers.length;
+    if (!targetUsers.length) {
       result.skippedReason = 'No monitored Plex users are selected.';
       return result;
     }
@@ -2169,11 +2290,12 @@ export class ImmaculateTasteProfileService {
     };
     const skipSharedCollections = options?.skipSharedCollections === true;
 
-    for (const user of selectedUsers) {
+    for (const user of targetUsers) {
       const userScope = this.resolveEffectiveCollectionScopeForPlexUser({
         profile: currentProfile,
         plexUserId: user.id,
       });
+      if (!userScope) continue;
       const userIncludeMovies = includesMovies(userScope.mediaType);
       const userIncludeShows = includesShows(userScope.mediaType);
       const movieBase = userScope.movieBaseName;
@@ -2439,8 +2561,15 @@ export class ImmaculateTasteProfileService {
     const selectedUsers = normalizedUsers.filter((user) =>
       monitoringSelection.selectedPlexUserIds.includes(user.id),
     );
-    result.targetUsers = selectedUsers.length;
-    if (!selectedUsers.length) {
+    const scopedUserIds = new Set(
+      profileOverrides.map((override) => override.plexUserId),
+    );
+    const targetUsers =
+      scopedUserIds.size > 0
+        ? selectedUsers.filter((user) => scopedUserIds.has(user.id))
+        : selectedUsers;
+    result.targetUsers = targetUsers.length;
+    if (!targetUsers.length) {
       result.skippedReason = 'No monitored Plex users are selected.';
       return result;
     }
@@ -2450,7 +2579,7 @@ export class ImmaculateTasteProfileService {
       profileOverrides.map((override) => [override.plexUserId, override]),
     );
 
-    for (const user of selectedUsers) {
+    for (const user of targetUsers) {
       const userOverride = overrideByPlexUserId.get(user.id);
       const movieBase = resolveMovieCollectionBaseName(
         userOverride?.movieCollectionBaseName ??

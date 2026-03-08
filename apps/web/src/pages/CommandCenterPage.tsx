@@ -208,7 +208,7 @@ function profileUsesCollectionBaseName(params: {
     params.mediaType === 'movie'
       ? mediaTypeIncludesMovie(params.profile.mediaType)
       : mediaTypeIncludesShow(params.profile.mediaType);
-  if (profileMediaIncludes) {
+  if (!params.profile.userOverrides.length && profileMediaIncludes) {
     const profileBase =
       params.mediaType === 'movie'
         ? resolveMovieCollectionBaseName(params.profile.movieCollectionBaseName)
@@ -243,13 +243,15 @@ function resolveEffectiveProfileScopeForPlexUser(params: {
   mediaType: ImmaculateTasteProfileMediaType;
   movieCollectionBaseName: string;
   showCollectionBaseName: string;
-} {
+} | null {
+  const profileOverrides = params.profile.userOverrides ?? [];
   const override =
     params.plexUserId
-      ? params.profile.userOverrides.find(
+      ? profileOverrides.find(
           (candidate) => candidate.plexUserId === params.plexUserId,
         ) ?? null
       : null;
+  if (profileOverrides.length > 0 && !override) return null;
   return {
     mediaType: override?.mediaType ?? params.profile.mediaType,
     movieCollectionBaseName: resolveMovieCollectionBaseName(
@@ -486,9 +488,9 @@ export function CommandCenterPage() {
   const [isAddProfileFormOpen, setIsAddProfileFormOpen] = useState(false);
   const [newProfileDraft, setNewProfileDraft] =
     useState<ImmaculateTasteProfileDraft | null>(null);
-  const [newProfileScopePlexUserId, setNewProfileScopePlexUserId] = useState<
-    string | null
-  >(null);
+  const [newProfileScopePlexUserIds, setNewProfileScopePlexUserIds] = useState<
+    string[]
+  >([]);
   const [newProfileScopeSearch, setNewProfileScopeSearch] = useState('');
   const [newProfileGenreSearch, setNewProfileGenreSearch] = useState('');
   const [newProfileAudioLanguageSearch, setNewProfileAudioLanguageSearch] = useState('');
@@ -845,7 +847,7 @@ export function CommandCenterPage() {
         profile: activeProfile,
         plexUserId: null,
       });
-      if (mediaTypeIncludesMovie(baseScope.mediaType)) {
+      if (baseScope && mediaTypeIncludesMovie(baseScope.mediaType)) {
         const collectionName = baseScope.movieCollectionBaseName;
         const isShared = otherEnabledProfiles.some((profile) =>
           profileUsesCollectionBaseName({
@@ -860,7 +862,7 @@ export function CommandCenterPage() {
           uniqueCollectionNames.add(collectionName);
         }
       }
-      if (mediaTypeIncludesShow(baseScope.mediaType)) {
+      if (baseScope && mediaTypeIncludesShow(baseScope.mediaType)) {
         const collectionName = baseScope.showCollectionBaseName;
         const isShared = otherEnabledProfiles.some((profile) =>
           profileUsesCollectionBaseName({
@@ -881,6 +883,7 @@ export function CommandCenterPage() {
           profile: activeProfile,
           plexUserId: user.id,
         });
+        if (!scope) continue;
         if (mediaTypeIncludesMovie(scope.mediaType)) {
           const collectionName = buildImmaculateCollectionName(
             scope.movieCollectionBaseName,
@@ -894,6 +897,7 @@ export function CommandCenterPage() {
               profile,
               plexUserId: user.id,
             });
+            if (!candidateScope) return false;
             if (!mediaTypeIncludesMovie(candidateScope.mediaType)) return false;
             return (
               normalizeCollectionBaseName(candidateScope.movieCollectionBaseName) ===
@@ -919,6 +923,7 @@ export function CommandCenterPage() {
               profile,
               plexUserId: user.id,
             });
+            if (!candidateScope) return false;
             if (!mediaTypeIncludesShow(candidateScope.mediaType)) return false;
             return (
               normalizeCollectionBaseName(candidateScope.showCollectionBaseName) ===
@@ -958,19 +963,12 @@ export function CommandCenterPage() {
     () => new Set((activeProfile?.userOverrides ?? []).map((override) => override.plexUserId)),
     [activeProfile],
   );
-  const profileScopePinnedUsers = useMemo(
+  const profileScopeSelectedUsers = useMemo(
     () =>
       profileScopeUsers.filter((user) =>
         activeProfileOverrideUserIds.has(user.id),
       ),
     [activeProfileOverrideUserIds, profileScopeUsers],
-  );
-  const activeProfileScopeUser = useMemo(
-    () =>
-      activeProfileScopePlexUserId
-        ? profileScopeUsers.find((user) => user.id === activeProfileScopePlexUserId) ?? null
-        : null,
-    [activeProfileScopePlexUserId, profileScopeUsers],
   );
   const trimmedProfileScopeSearch = profileScopeSearch.trim().toLowerCase();
   const profileScopeSearchResults = useMemo(() => {
@@ -989,36 +987,32 @@ export function CommandCenterPage() {
     return matchingUsers.slice(0, trimmedProfileScopeSearch ? 12 : 10);
   }, [activeProfileOverrideUserIds, profileScopeUsers, trimmedProfileScopeSearch]);
   const trimmedNewProfileScopeSearch = newProfileScopeSearch.trim().toLowerCase();
-  const newProfileScopePinnedUsers = useMemo(
-    () => profileScopeUsers.slice(0, 4),
-    [profileScopeUsers],
+  const newProfileScopeUserIdSet = useMemo(
+    () => new Set(newProfileScopePlexUserIds),
+    [newProfileScopePlexUserIds],
   );
-  const newProfileScopePinnedUserIds = useMemo(
-    () => new Set(newProfileScopePinnedUsers.map((user) => user.id)),
-    [newProfileScopePinnedUsers],
+  const newProfileScopeSelectedUsers = useMemo(
+    () =>
+      profileScopeUsers.filter((user) =>
+        newProfileScopeUserIdSet.has(user.id),
+      ),
+    [newProfileScopeUserIdSet, profileScopeUsers],
   );
   const newProfileScopeSearchResults = useMemo(() => {
-    const nonPinnedUsers = profileScopeUsers.filter(
-      (user) => !newProfileScopePinnedUserIds.has(user.id),
+    const availableUsers = profileScopeUsers.filter(
+      (user) => !newProfileScopeUserIdSet.has(user.id),
     );
     const matchingUsers = (trimmedNewProfileScopeSearch
-      ? nonPinnedUsers.filter((user) =>
+      ? availableUsers.filter((user) =>
           user.plexAccountTitle.toLowerCase().includes(trimmedNewProfileScopeSearch),
         )
-      : nonPinnedUsers
+      : availableUsers
     ).slice();
     matchingUsers.sort((left, right) =>
       left.plexAccountTitle.localeCompare(right.plexAccountTitle),
     );
     return matchingUsers.slice(0, trimmedNewProfileScopeSearch ? 12 : 10);
-  }, [newProfileScopePinnedUserIds, profileScopeUsers, trimmedNewProfileScopeSearch]);
-  const newProfileScopeUser = useMemo(
-    () =>
-      newProfileScopePlexUserId
-        ? profileScopeUsers.find((user) => user.id === newProfileScopePlexUserId) ?? null
-        : null,
-    [newProfileScopePlexUserId, profileScopeUsers],
-  );
+  }, [newProfileScopeUserIdSet, profileScopeUsers, trimmedNewProfileScopeSearch]);
   const radarrInstanceOptions = useMemo(
     () =>
       (arrInstancesQuery.data?.instances ?? [])
@@ -1375,7 +1369,7 @@ export function CommandCenterPage() {
   const createImmaculateProfileMutation = useMutation({
     mutationFn: async (params: {
       draft: ImmaculateTasteProfileDraft;
-      scopePlexUserId: string | null;
+      scopePlexUserIds: string[];
     }) => {
       const normalizedServiceSelection = normalizeProfileServiceSelection(params.draft);
       const normalizedFilters = resolveProfileDraftFilters(params.draft);
@@ -1393,29 +1387,58 @@ export function CommandCenterPage() {
         movieCollectionBaseName: params.draft.movieCollectionBaseName.trim() || null,
         showCollectionBaseName: params.draft.showCollectionBaseName.trim() || null,
       };
-      return await createImmaculateTasteProfile(payload);
+      const created = await createImmaculateTasteProfile(payload);
+      const scopePlexUserIds = Array.from(
+        new Set(
+          params.scopePlexUserIds
+            .map((plexUserId) => plexUserId.trim())
+            .filter((plexUserId) => Boolean(plexUserId)),
+        ),
+      );
+      if (!scopePlexUserIds.length) {
+        return {
+          profile: created.profile,
+          scopedUserFailures: [] as string[],
+        };
+      }
+      let latestProfile = created.profile;
+      const scopedUserFailures: string[] = [];
+      for (const scopePlexUserId of scopePlexUserIds) {
+        try {
+          const updated = await updateImmaculateTasteProfile(created.profile.id, {
+            scopePlexUserId,
+          });
+          latestProfile = updated.profile;
+        } catch {
+          scopedUserFailures.push(scopePlexUserId);
+        }
+      }
+      return {
+        profile: latestProfile,
+        scopedUserFailures,
+      };
     },
-    onSuccess: async (data, variables) => {
+    onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
       setNewProfileDraft(null);
-      setNewProfileScopePlexUserId(null);
+      setNewProfileScopePlexUserIds([]);
       setNewProfileScopeSearch('');
       setNewProfileGenreSearch('');
       setNewProfileAudioLanguageSearch('');
       setNewProfileExcludeGenreSearch('');
       setNewProfileExcludeAudioLanguageSearch('');
       setActiveProfileId(data.profile.id);
-      setActiveProfileScopePlexUserId(variables.scopePlexUserId);
+      setActiveProfileScopePlexUserId(null);
       setProfileScopeSearch('');
-      setProfileDraft(
-        toProfileDraft(
-          data.profile,
-          findProfileUserOverride(data.profile, variables.scopePlexUserId),
-        ),
-      );
+      setProfileDraft(toProfileDraft(data.profile));
       setIsAddProfileFormOpen(false);
       setIsProfileEditorOpen(true);
       toast.success(`Profile "${data.profile.name}" created.`);
+      if (data.scopedUserFailures.length > 0) {
+        toast.warning(
+          'Profile was created, but some selected users were not added to scope. Add them again from User scope.',
+        );
+      }
     },
     onError: (error) => {
       if (error instanceof ApiError) {
@@ -1504,6 +1527,50 @@ export function CommandCenterPage() {
         return;
       }
       toast.error(error instanceof Error ? error.message : 'Failed to save profile');
+    },
+  });
+
+  const updateProfileScopeMutation = useMutation({
+    mutationFn: async (params: {
+      profileId: string;
+      plexUserId: string;
+      action: 'add' | 'remove';
+    }) => {
+      const profileId = params.profileId.trim();
+      const plexUserId = params.plexUserId.trim();
+      if (!profileId || !plexUserId) {
+        throw new Error('Profile and Plex user are required to update user scope.');
+      }
+      if (params.action === 'remove') {
+        return await updateImmaculateTasteProfile(profileId, {
+          scopePlexUserId: plexUserId,
+          resetScopeToDefaultNaming: true,
+        });
+      }
+      return await updateImmaculateTasteProfile(profileId, {
+        scopePlexUserId: plexUserId,
+      });
+    },
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      if (activeProfileId === data.profile.id) {
+        setActiveProfileScopePlexUserId(null);
+        setProfileDraft(toProfileDraft(data.profile));
+      }
+      toast.success(
+        variables.action === 'add'
+          ? 'User added to profile scope.'
+          : 'User removed from profile scope.',
+      );
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to update user scope'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to update user scope');
     },
   });
 
@@ -1616,38 +1683,6 @@ export function CommandCenterPage() {
     profileDraft,
   ]);
 
-  const scopedProfileAtBase = useMemo(() => {
-    if (!activeProfile || !profileDraft || !activeProfileScopePlexUserId) return false;
-    const baseDraft = toProfileDraft(activeProfile);
-    const profileDraftFilters = resolveProfileDraftFilters(profileDraft);
-    const baseDraftFilters = resolveProfileDraftFilters(baseDraft);
-    const normalizedCurrent = normalizeProfileServiceSelection(profileDraft);
-    const normalizedBase = normalizeProfileServiceSelection(baseDraft);
-    return (
-      profileDraft.mediaType === baseDraft.mediaType &&
-      profileDraft.matchMode === baseDraft.matchMode &&
-      JSON.stringify(profileDraftFilters.includedGenres) ===
-        JSON.stringify(baseDraftFilters.includedGenres) &&
-      JSON.stringify(profileDraftFilters.includedAudioLanguages) ===
-        JSON.stringify(baseDraftFilters.includedAudioLanguages) &&
-      JSON.stringify(profileDraftFilters.excludedGenres) ===
-        JSON.stringify(baseDraftFilters.excludedGenres) &&
-      JSON.stringify(profileDraftFilters.excludedAudioLanguages) ===
-        JSON.stringify(baseDraftFilters.excludedAudioLanguages) &&
-      normalizedCurrent.radarrInstanceId === normalizedBase.radarrInstanceId &&
-      normalizedCurrent.sonarrInstanceId === normalizedBase.sonarrInstanceId &&
-      (profileDraft.movieCollectionBaseName.trim() || null) ===
-        (baseDraft.movieCollectionBaseName.trim() || null) &&
-      (profileDraft.showCollectionBaseName.trim() || null) ===
-        (baseDraft.showCollectionBaseName.trim() || null)
-    );
-  }, [
-    activeProfile,
-    activeProfileScopePlexUserId,
-    normalizeProfileServiceSelection,
-    profileDraft,
-  ]);
-
   const defaultProfileAtNetZero = useMemo(() => {
     if (!activeProfile?.isDefault || !profileDraft || activeProfileScopePlexUserId) return false;
     const takenNames = new Set(
@@ -1677,6 +1712,8 @@ export function CommandCenterPage() {
       setExcludeAudioLanguageSearch('');
       setIsAddProfileFormOpen(false);
       setNewProfileDraft(null);
+      setNewProfileScopePlexUserIds([]);
+      setNewProfileScopeSearch('');
       setNewProfileGenreSearch('');
       setNewProfileAudioLanguageSearch('');
       setNewProfileExcludeGenreSearch('');
@@ -1811,21 +1848,6 @@ export function CommandCenterPage() {
     setExcludeAudioLanguageSearch('');
     setIsProfileEditorOpen(false);
   }, [activeProfile, activeProfileScopeOverride]);
-
-  const applyProfileScopeSelection = useCallback(
-    (plexUserId: string | null) => {
-      setActiveProfileScopePlexUserId(plexUserId);
-      setProfileScopeSearch('');
-      if (!activeProfile) return;
-      const override = findProfileUserOverride(activeProfile, plexUserId);
-      setProfileDraft(toProfileDraft(activeProfile, override));
-      setGenreSearch('');
-      setAudioLanguageSearch('');
-      setExcludeGenreSearch('');
-      setExcludeAudioLanguageSearch('');
-    },
-    [activeProfile],
-  );
 
   useEffect(() => {
     if (!isProfileEditorOpen) return;
@@ -2366,9 +2388,9 @@ export function CommandCenterPage() {
     }
     createImmaculateProfileMutation.mutate({
       draft: newProfileDraft,
-      scopePlexUserId: newProfileScopePlexUserId,
+      scopePlexUserIds: newProfileScopePlexUserIds,
     });
-  }, [createImmaculateProfileMutation, newProfileDraft, newProfileScopePlexUserId]);
+  }, [createImmaculateProfileMutation, newProfileDraft, newProfileScopePlexUserIds]);
 
   const handleSaveActiveProfile = useCallback(() => {
     if (!activeProfile || !profileDraft) return;
@@ -2388,28 +2410,52 @@ export function CommandCenterPage() {
     saveImmaculateProfileMutation,
   ]);
 
-  const handleResetActiveProfileScope = useCallback(() => {
-    if (!activeProfile || !activeProfileScopePlexUserId) return;
-    const resetDraft = toProfileDraft(activeProfile);
-    setProfileDraft(resetDraft);
-    setGenreSearch('');
-    setAudioLanguageSearch('');
-    setExcludeGenreSearch('');
-    setExcludeAudioLanguageSearch('');
-    saveImmaculateProfileMutation.mutate({
-      id: activeProfile.id,
-      draft: resetDraft,
-      scopePlexUserId: activeProfileScopePlexUserId,
-      resetScopeToDefaultNaming: true,
-    });
-  }, [
-    activeProfile,
-    activeProfileScopePlexUserId,
-    saveImmaculateProfileMutation,
-  ]);
+  const addActiveProfileScopeUser = useCallback(
+    (plexUserId: string) => {
+      const trimmedPlexUserId = plexUserId.trim();
+      if (!activeProfile || !trimmedPlexUserId) return;
+      if (activeProfileOverrideUserIds.has(trimmedPlexUserId)) return;
+      updateProfileScopeMutation.mutate({
+        profileId: activeProfile.id,
+        plexUserId: trimmedPlexUserId,
+        action: 'add',
+      });
+      setProfileScopeSearch('');
+    },
+    [activeProfile, activeProfileOverrideUserIds, updateProfileScopeMutation],
+  );
 
-  const applyNewProfileScopeSelection = useCallback((plexUserId: string | null) => {
-    setNewProfileScopePlexUserId(plexUserId);
+  const removeActiveProfileScopeUser = useCallback(
+    (plexUserId: string) => {
+      const trimmedPlexUserId = plexUserId.trim();
+      if (!activeProfile || !trimmedPlexUserId) return;
+      if (!activeProfileOverrideUserIds.has(trimmedPlexUserId)) return;
+      updateProfileScopeMutation.mutate({
+        profileId: activeProfile.id,
+        plexUserId: trimmedPlexUserId,
+        action: 'remove',
+      });
+      setProfileScopeSearch('');
+    },
+    [activeProfile, activeProfileOverrideUserIds, updateProfileScopeMutation],
+  );
+
+  const addNewProfileScopeUser = useCallback((plexUserId: string) => {
+    const trimmedPlexUserId = plexUserId.trim();
+    if (!trimmedPlexUserId) return;
+    setNewProfileScopePlexUserIds((current) => {
+      if (current.includes(trimmedPlexUserId)) return current;
+      return [...current, trimmedPlexUserId];
+    });
+    setNewProfileScopeSearch('');
+  }, []);
+
+  const removeNewProfileScopeUser = useCallback((plexUserId: string) => {
+    const trimmedPlexUserId = plexUserId.trim();
+    if (!trimmedPlexUserId) return;
+    setNewProfileScopePlexUserIds((current) =>
+      current.filter((item) => item !== trimmedPlexUserId),
+    );
     setNewProfileScopeSearch('');
   }, []);
 
@@ -3913,46 +3959,37 @@ export function CommandCenterPage() {
                               </div>
                               <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => applyProfileScopeSelection(null)}
-                                    className={[
-                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
-                                      !activeProfileScopePlexUserId
-                                        ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-100'
-                                        : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
-                                    ].join(' ')}
-                                  >
-                                    All users
-                                  </button>
-                                  {profileScopePinnedUsers.map((user) => (
-                                    <button
-                                      key={user.id}
-                                      type="button"
-                                      onClick={() => applyProfileScopeSelection(user.id)}
-                                      className={[
-                                        'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
-                                        activeProfileScopePlexUserId === user.id
-                                          ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
-                                          : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
-                                      ].join(' ')}
-                                    >
-                                      {user.plexAccountTitle}
-                                    </button>
-                                  ))}
-                                  {activeProfileScopeUser &&
-                                  !activeProfileOverrideUserIds.has(
-                                    activeProfileScopeUser.id,
-                                  ) ? (
-                                    <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100">
-                                      {activeProfileScopeUser.plexAccountTitle}
+                                  {!activeProfileOverrideUserIds.size ? (
+                                    <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-100">
+                                      All users
                                     </span>
                                   ) : null}
+                                  {profileScopeSelectedUsers.map((user) => (
+                                    <span
+                                      key={user.id}
+                                      className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                    >
+                                      <span>{user.plexAccountTitle}</span>
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove ${user.plexAccountTitle} from profile scope`}
+                                        onClick={() => removeActiveProfileScopeUser(user.id)}
+                                        disabled={
+                                          updateProfileScopeMutation.isPending ||
+                                          saveImmaculateProfileMutation.isPending ||
+                                          deleteImmaculateProfileMutation.isPending
+                                        }
+                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </span>
+                                  ))}
                                   <input
                                     type="text"
                                     value={profileScopeSearch}
                                     onChange={(event) => setProfileScopeSearch(event.target.value)}
-                                    placeholder="Search users to customize"
+                                    placeholder="Search users to add to scope"
                                     className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
                                   />
                                 </div>
@@ -3962,13 +3999,13 @@ export function CommandCenterPage() {
                                   <button
                                     key={user.id}
                                     type="button"
-                                    onClick={() => applyProfileScopeSelection(user.id)}
-                                    className={[
-                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
-                                      activeProfileScopePlexUserId === user.id
-                                        ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
-                                        : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
-                                    ].join(' ')}
+                                    onClick={() => addActiveProfileScopeUser(user.id)}
+                                    disabled={
+                                      updateProfileScopeMutation.isPending ||
+                                      saveImmaculateProfileMutation.isPending ||
+                                      deleteImmaculateProfileMutation.isPending
+                                    }
+                                    className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 transition hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
                                     {user.plexAccountTitle}
                                   </button>
@@ -3979,12 +4016,6 @@ export function CommandCenterPage() {
                                   </span>
                                 ) : null}
                               </div>
-                              {activeProfileScopePlexUserId ? (
-                                <div className="text-[11px] text-white/50">
-                                  Editing a per-user override. Profile name and enabled status
-                                  remain global.
-                                </div>
-                              ) : null}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4000,7 +4031,6 @@ export function CommandCenterPage() {
                                       current ? { ...current, name: event.target.value } : current,
                                     )
                                   }
-                                  disabled={Boolean(activeProfileScopePlexUserId)}
                                   className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
                                 />
                               </div>
@@ -4657,28 +4687,12 @@ export function CommandCenterPage() {
                               >
                                 Cancel
                               </button>
-                              {activeProfileScopePlexUserId ? (
-                                <button
-                                  type="button"
-                                  onClick={handleResetActiveProfileScope}
-                                  disabled={
-                                    scopedProfileAtBase ||
-                                    saveImmaculateProfileMutation.isPending ||
-                                    deleteImmaculateProfileMutation.isPending
-                                  }
-                                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                  Reset user scope
-                                </button>
-                              ) : null}
-                              {activeProfile.isDefault && !activeProfileScopePlexUserId ? (
+                              {activeProfile.isDefault ? (
                                 <button
                                   type="button"
                                   onClick={resetProfileDraft}
                                   disabled={
-                                    (activeProfileScopePlexUserId
-                                      ? scopedProfileAtBase
-                                      : defaultProfileAtNetZero) ||
+                                    defaultProfileAtNetZero ||
                                     saveImmaculateProfileMutation.isPending ||
                                     deleteImmaculateProfileMutation.isPending
                                   }
@@ -4687,7 +4701,7 @@ export function CommandCenterPage() {
                                   Reset default profile
                                 </button>
                               ) : null}
-                              {!activeProfile.isDefault && !activeProfileScopePlexUserId ? (
+                              {!activeProfile.isDefault ? (
                                 <button
                                   type="button"
                                   onClick={handleDeleteActiveProfile}
@@ -4768,46 +4782,34 @@ export function CommandCenterPage() {
                             </div>
                             <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => applyNewProfileScopeSelection(null)}
-                                  className={[
-                                    'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
-                                    !newProfileScopePlexUserId
-                                      ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-100'
-                                      : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
-                                  ].join(' ')}
-                                >
-                                  All users
-                                </button>
-                                {newProfileScopePinnedUsers.map((user) => (
-                                  <button
-                                    key={user.id}
-                                    type="button"
-                                    onClick={() => applyNewProfileScopeSelection(user.id)}
-                                    className={[
-                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
-                                      newProfileScopePlexUserId === user.id
-                                        ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
-                                        : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
-                                    ].join(' ')}
-                                  >
-                                    {user.plexAccountTitle}
-                                  </button>
-                                ))}
-                                {newProfileScopeUser &&
-                                !newProfileScopePinnedUserIds.has(newProfileScopeUser.id) ? (
-                                  <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100">
-                                    {newProfileScopeUser.plexAccountTitle}
+                                {!newProfileScopeSelectedUsers.length ? (
+                                  <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-100">
+                                    All users
                                   </span>
                                 ) : null}
+                                {newProfileScopeSelectedUsers.map((user) => (
+                                  <span
+                                    key={user.id}
+                                    className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                  >
+                                    <span>{user.plexAccountTitle}</span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Remove ${user.plexAccountTitle} from profile scope`}
+                                      onClick={() => removeNewProfileScopeUser(user.id)}
+                                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                ))}
                                 <input
                                   type="text"
                                   value={newProfileScopeSearch}
                                   onChange={(event) =>
                                     setNewProfileScopeSearch(event.target.value)
                                   }
-                                  placeholder="Search users to customize"
+                                  placeholder="Search users to add to scope"
                                   className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
                                 />
                               </div>
@@ -4817,13 +4819,8 @@ export function CommandCenterPage() {
                                 <button
                                   key={user.id}
                                   type="button"
-                                  onClick={() => applyNewProfileScopeSelection(user.id)}
-                                  className={[
-                                    'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
-                                    newProfileScopePlexUserId === user.id
-                                      ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
-                                      : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
-                                  ].join(' ')}
+                                  onClick={() => addNewProfileScopeUser(user.id)}
+                                  className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 transition hover:bg-white/10"
                                 >
                                   {user.plexAccountTitle}
                                 </button>
@@ -5521,7 +5518,7 @@ export function CommandCenterPage() {
                               onClick={() => {
                                 setIsAddProfileFormOpen(false);
                                 setNewProfileDraft(null);
-                                setNewProfileScopePlexUserId(null);
+                                setNewProfileScopePlexUserIds([]);
                                 setNewProfileScopeSearch('');
                                 setNewProfileGenreSearch('');
                                 setNewProfileAudioLanguageSearch('');
@@ -5560,7 +5557,7 @@ export function CommandCenterPage() {
                           setProfileScopeSearch('');
                           setIsAddProfileFormOpen(true);
                           setNewProfileDraft(createNewProfileDraft());
-                          setNewProfileScopePlexUserId(null);
+                          setNewProfileScopePlexUserIds([]);
                           setNewProfileScopeSearch('');
                           setNewProfileGenreSearch('');
                           setNewProfileAudioLanguageSearch('');

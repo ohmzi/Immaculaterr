@@ -403,6 +403,140 @@ describe('ImmaculateTasteProfileService update rename task', () => {
     expect(prisma.jobLogLine.createMany).toHaveBeenCalled();
   });
 
+  it('adds user scope membership when scopePlexUserId is provided without scoped field changes', async () => {
+    const { service, prisma } = createService();
+    const current = makeProfile({
+      id: 'profile-1',
+      mediaType: 'movie',
+      matchMode: 'any',
+      genres: JSON.stringify(['Animation']),
+      movieCollectionBaseName: 'Kids Picks',
+    });
+    const createdOverride: ImmaculateTasteProfileUserOverride = {
+      id: 'override-1',
+      profileId: 'profile-1',
+      plexUserId: 'plex-user-2',
+      mediaType: 'movie',
+      matchMode: 'any',
+      genres: JSON.stringify(['Animation']),
+      audioLanguages: '[]',
+      excludedGenres: '[]',
+      excludedAudioLanguages: '[]',
+      radarrInstanceId: null,
+      sonarrInstanceId: null,
+      movieCollectionBaseName: 'Kids Picks',
+      showCollectionBaseName: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([current]);
+    prisma.immaculateTasteProfile.findFirst
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce({ ...current, userOverrides: [createdOverride] });
+    prisma.plexUser.findFirst.mockResolvedValue({ id: 'plex-user-2' });
+    prisma.immaculateTasteProfileUserOverride.findUnique.mockResolvedValue(
+      null,
+    );
+    prisma.immaculateTasteProfileUserOverride.create.mockResolvedValue(
+      createdOverride,
+    );
+
+    const result = await service.update('user-1', 'profile-1', {
+      scopePlexUserId: 'plex-user-2',
+    });
+
+    const createdScopeArg = getLastMockCallArg(
+      prisma.immaculateTasteProfileUserOverride.create,
+    ) as {
+      data: {
+        profileId: string;
+        plexUserId: string;
+        mediaType: string;
+        matchMode: string;
+        genres: string;
+      };
+    };
+    expect(createdScopeArg.data).toMatchObject({
+      profileId: 'profile-1',
+      plexUserId: 'plex-user-2',
+      mediaType: 'movie',
+      matchMode: 'any',
+      genres: JSON.stringify(['Animation']),
+    });
+    expect(result.userOverrides).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ plexUserId: 'plex-user-2' }),
+      ]),
+    );
+  });
+
+  it('synchronizes scoped override settings when profile filters are updated', async () => {
+    const { service, prisma } = createService();
+    const current = makeProfile({
+      id: 'profile-1',
+      mediaType: 'movie',
+      genres: JSON.stringify(['Action']),
+      matchMode: 'any',
+    });
+    const updated = makeProfile({
+      ...current,
+      genres: JSON.stringify(['Drama']),
+      updatedAt: new Date('2026-01-01T00:02:00.000Z'),
+    });
+    const existingOverride: ImmaculateTasteProfileUserOverride = {
+      id: 'override-1',
+      profileId: 'profile-1',
+      plexUserId: 'plex-user-2',
+      mediaType: 'movie',
+      matchMode: 'any',
+      genres: JSON.stringify(['Action']),
+      audioLanguages: '[]',
+      excludedGenres: '[]',
+      excludedAudioLanguages: '[]',
+      radarrInstanceId: null,
+      sonarrInstanceId: null,
+      movieCollectionBaseName: null,
+      showCollectionBaseName: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([current]);
+    prisma.immaculateTasteProfile.findFirst
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce({
+        ...updated,
+        userOverrides: [
+          { ...existingOverride, genres: JSON.stringify(['Drama']) },
+        ],
+      });
+    prisma.immaculateTasteProfileUserOverride.findMany.mockResolvedValue([
+      existingOverride,
+    ]);
+    prisma.immaculateTasteProfile.update.mockResolvedValue(updated);
+    prisma.immaculateTasteProfileUserOverride.updateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    await service.update('user-1', 'profile-1', {
+      genres: ['Drama'],
+    });
+
+    const syncedScopeArg = getLastMockCallArg(
+      prisma.immaculateTasteProfileUserOverride.updateMany,
+    ) as {
+      where: { profileId: string };
+      data: { mediaType: string; matchMode: string; genres: string };
+    };
+    expect(syncedScopeArg.where).toEqual({ profileId: 'profile-1' });
+    expect(syncedScopeArg.data).toMatchObject({
+      mediaType: 'movie',
+      matchMode: 'any',
+      genres: JSON.stringify(['Drama']),
+    });
+  });
+
   it('does not run rename task when collection base names are unchanged', async () => {
     const { service, prisma, settings, plexServer } = createService();
     const current = makeProfile({
@@ -1368,6 +1502,61 @@ describe('ImmaculateTasteProfileService resolveProfileForSeed exclusion filters'
       seedMediaType: 'show',
     });
     expect(fallbackDefault?.id).toBe('default-profile');
+  });
+
+  it('only evaluates scoped profiles for Plex users included in user scope', async () => {
+    const { service, prisma } = createService();
+    const scopedProfile = makeProfile({
+      id: 'scoped-profile',
+      name: 'Kids Scope',
+      isDefault: false,
+      sortOrder: 0,
+      mediaType: 'show',
+      genres: JSON.stringify(['Animation']),
+    });
+    const scopedOverride: ImmaculateTasteProfileUserOverride = {
+      id: 'override-1',
+      profileId: 'scoped-profile',
+      plexUserId: 'plex-user-2',
+      mediaType: 'show',
+      matchMode: 'all',
+      genres: JSON.stringify(['Animation']),
+      audioLanguages: '[]',
+      excludedGenres: '[]',
+      excludedAudioLanguages: '[]',
+      radarrInstanceId: null,
+      sonarrInstanceId: null,
+      movieCollectionBaseName: null,
+      showCollectionBaseName: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      sortOrder: 1,
+    });
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      { ...scopedProfile, userOverrides: [scopedOverride] },
+      { ...defaultProfile, userOverrides: [] },
+    ]);
+
+    const scopedMatch = await service.resolveProfileForSeed('user-1', {
+      plexUserId: 'plex-user-2',
+      seedGenres: ['Animation'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'show',
+    });
+    expect(scopedMatch?.id).toBe('scoped-profile');
+
+    const otherUserMatch = await service.resolveProfileForSeed('user-1', {
+      plexUserId: 'plex-user-3',
+      seedGenres: ['Animation'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'show',
+    });
+    expect(otherUserMatch?.id).toBe('default-profile');
   });
 
   it('skips a matching include profile when seed matches excluded genre', async () => {
