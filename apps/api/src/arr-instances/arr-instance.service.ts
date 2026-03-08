@@ -78,6 +78,7 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
   let cur: unknown = obj;
   for (const part of parts) {
     if (!isPlainObject(cur)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(cur, part)) return undefined;
     cur = cur[part];
   }
   return cur;
@@ -103,6 +104,15 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   return null;
 }
 
+function isDisallowedMetadataHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  return (
+    normalized === '169.254.169.254' ||
+    normalized === 'metadata.google.internal' ||
+    normalized === 'metadata.azure.internal'
+  );
+}
+
 function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) throw new BadRequestException('baseUrl is required');
@@ -115,6 +125,9 @@ function normalizeHttpUrl(raw: string): string {
   }
   if (!/^https?:$/i.test(parsed.protocol)) {
     throw new BadRequestException('baseUrl must be a valid http(s) URL');
+  }
+  if (isDisallowedMetadataHostname(parsed.hostname)) {
+    throw new BadRequestException('baseUrl host is not allowed');
   }
   const out = parsed.toString();
   return out.endsWith('/') ? out.slice(0, -1) : out;

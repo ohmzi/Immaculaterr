@@ -32,6 +32,7 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
   let cur: unknown = obj;
   for (const part of parts) {
     if (!isPlainObject(cur)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(cur, part)) return undefined;
     cur = cur[part];
   }
   return cur;

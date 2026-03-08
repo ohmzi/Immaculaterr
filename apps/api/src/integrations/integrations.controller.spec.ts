@@ -69,6 +69,7 @@ describe('IntegrationsController plex libraries', () => {
     const overseerr = {
       testConnection: jest.fn(),
     };
+    const arrInstances = {};
     const controller = new IntegrationsController(
       prisma as never,
       settingsService as never,
@@ -81,6 +82,7 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       {} as never,
       overseerr as never,
+      arrInstances as never,
     );
     return {
       controller,
@@ -90,6 +92,7 @@ describe('IntegrationsController plex libraries', () => {
       plexServer,
       plexUsers,
       overseerr,
+      arrInstances,
     };
   };
 
@@ -289,6 +292,52 @@ describe('IntegrationsController plex libraries', () => {
       apiKey: 'secret',
     });
     expect(res).toEqual({ ok: true, result: { ok: true } });
+  });
+
+  it('POST /test/overseerr rejects cloud metadata hosts', async () => {
+    const { controller, settingsService, overseerr } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        overseerr: { baseUrl: 'http://169.254.169.254' },
+      },
+      secrets: {
+        overseerr: { apiKey: 'secret' },
+      },
+    });
+
+    await expect(
+      controller.testSaved(
+        { user: { id: 'u1' } } as never,
+        'overseerr',
+        {},
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(overseerr.testConnection).not.toHaveBeenCalled();
+  });
+
+  it('POST /test/overseerr ignores prototype-inherited baseUrl fields', async () => {
+    const { controller, settingsService, overseerr } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        overseerr: {},
+      },
+      secrets: {
+        overseerr: { apiKey: 'secret' },
+      },
+    });
+
+    const body = Object.create({
+      baseUrl: 'http://169.254.169.254',
+    }) as Record<string, unknown>;
+
+    await expect(
+      controller.testSaved(
+        { user: { id: 'u1' } } as never,
+        'overseerr',
+        body,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(overseerr.testConnection).not.toHaveBeenCalled();
   });
 
   it('POST /test/plex falls back to suggested server URL and persists the working baseUrl', async () => {

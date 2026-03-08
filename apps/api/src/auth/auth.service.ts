@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -810,12 +811,15 @@ export class AuthService {
 
   private assertNotLocked(assessment: ThrottleAssessment): void {
     if (assessment.allowed) return;
-    throw new UnauthorizedException({
-      message: 'Too many authentication attempts',
-      retryAfterSeconds: assessment.retryAfterSeconds,
-      retryAt: assessment.retryAt,
-      captchaRequired: assessment.captchaRequired,
-    });
+    throw new HttpException(
+      {
+        message: 'Too many authentication attempts',
+        retryAfterSeconds: assessment.retryAfterSeconds,
+        retryAt: assessment.retryAt,
+        captchaRequired: assessment.captchaRequired,
+      },
+      429,
+    );
   }
 
   private async assertCaptchaIfRequired(params: {

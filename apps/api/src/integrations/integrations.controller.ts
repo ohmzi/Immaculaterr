@@ -54,6 +54,7 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
   let cur: unknown = obj;
   for (const part of parts) {
     if (!isPlainObject(cur)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(cur, part)) return undefined;
     cur = cur[part];
   }
   return cur;
@@ -68,15 +69,29 @@ function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
+function isDisallowedMetadataHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  return (
+    normalized === '169.254.169.254' ||
+    normalized === 'metadata.google.internal' ||
+    normalized === 'metadata.azure.internal'
+  );
+}
+
 function normalizeHttpUrl(raw: string): string {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  let parsed: URL;
   try {
-    const parsed = new URL(baseUrl);
-    if (!/^https?:$/i.test(parsed.protocol))
-      throw new Error('Unsupported protocol');
+    parsed = new URL(baseUrl);
   } catch {
     throw new BadRequestException('baseUrl must be a valid http(s) URL');
+  }
+  if (!/^https?:$/i.test(parsed.protocol)) {
+    throw new BadRequestException('baseUrl must be a valid http(s) URL');
+  }
+  if (isDisallowedMetadataHostname(parsed.hostname)) {
+    throw new BadRequestException('baseUrl host is not allowed');
   }
   return baseUrl;
 }

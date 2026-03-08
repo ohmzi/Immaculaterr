@@ -65,6 +65,47 @@ const ALLOWED_IMAGE_MIME_TO_EXT: Record<string, string> = {
   'image/webp': 'webp',
 };
 
+function hasExpectedImageSignature(params: {
+  mimeType: string;
+  buffer: Buffer;
+}): boolean {
+  const { mimeType, buffer } = params;
+  if (!Buffer.isBuffer(buffer)) return false;
+
+  if (mimeType === 'image/png') {
+    return (
+      buffer.length >= 8 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
+    );
+  }
+
+  if (mimeType === 'image/jpeg') {
+    return (
+      buffer.length >= 3 &&
+      buffer[0] === 0xff &&
+      buffer[1] === 0xd8 &&
+      buffer[2] === 0xff
+    );
+  }
+
+  if (mimeType === 'image/webp') {
+    return (
+      buffer.length >= 12 &&
+      buffer.toString('ascii', 0, 4) === 'RIFF' &&
+      buffer.toString('ascii', 8, 12) === 'WEBP'
+    );
+  }
+
+  return false;
+}
+
 const DEFAULT_COLLECTION_ARTWORK_MAP: Record<string, string> = {
   [normalizeCollectionTitle('Inspired by your Immaculate Taste')]:
     'immaculate_taste_collection',
@@ -90,6 +131,7 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
   let cur: unknown = obj;
   for (const part of parts) {
     if (!isPlainObject(cur)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(cur, part)) return undefined;
     cur = cur[part];
   }
   return cur;
@@ -98,6 +140,15 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
 function pickString(obj: Record<string, unknown>, path: string): string {
   const value = pick(obj, path);
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function isDisallowedMetadataHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  return (
+    normalized === '169.254.169.254' ||
+    normalized === 'metadata.google.internal' ||
+    normalized === 'metadata.azure.internal'
+  );
 }
 
 function normalizeHttpUrl(raw: string): string {
@@ -113,6 +164,9 @@ function normalizeHttpUrl(raw: string): string {
   }
   if (!/^https?:$/i.test(parsed.protocol)) {
     throw new BadRequestException('Plex baseUrl must be a valid http(s) URL');
+  }
+  if (isDisallowedMetadataHostname(parsed.hostname)) {
+    throw new BadRequestException('Plex baseUrl host is not allowed');
   }
   return normalized;
 }
@@ -481,6 +535,16 @@ export class CollectionArtworkService {
 
     if (!params.file.buffer || !Buffer.isBuffer(params.file.buffer)) {
       throw new BadRequestException('uploaded file payload is missing');
+    }
+    if (
+      !hasExpectedImageSignature({
+        mimeType,
+        buffer: params.file.buffer,
+      })
+    ) {
+      throw new BadRequestException(
+        'file content does not match declared image type',
+      );
     }
 
     const settingKey = this.buildSettingKey({
