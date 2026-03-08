@@ -5808,9 +5808,7 @@ export function CommandCenterPage() {
                     Error
                   </span>
                 ) : overseerrConfigured ? (
-                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}>
-                    Enabled
-                  </span>
+                  null
                 ) : (
                   <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}>
                     Not set up
@@ -7030,11 +7028,7 @@ export function CommandCenterPage() {
                         Error
                       </span>
                     ) : radarrEnabled ? (
-                      <span
-                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
-                      >
-                        Enabled
-                      </span>
+                      null
                     ) : (
                       <span
                         className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}
@@ -7227,11 +7221,7 @@ export function CommandCenterPage() {
                         Error
                       </span>
                     ) : sonarrEnabled ? (
-                      <span
-                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
-                      >
-                        Enabled
-                      </span>
+                      null
                     ) : (
                       <span
                         className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}
