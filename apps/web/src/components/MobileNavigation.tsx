@@ -529,12 +529,14 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
           <div className="space-y-2">
             <div>This will:</div>
             <ul className="list-disc pl-5 space-y-1">
-              <li>Delete all settings and setup data</li>
-              <li>Delete all secrets (API keys)</li>
-              <li>Force you through setup wizard again</li>
-              <li>Log you out</li>
+              <li>Erase all Immaculaterr user data (profiles, datasets, logs, settings, and secrets)</li>
+              <li>Delete collections created by Immaculaterr in Plex for all users</li>
+              <li>Also delete Plex collections containing: Immaculate Taste, Based on your recently watched, Change of Taste, and Change of Movie Taste</li>
+              <li>Force setup again and log you out</li>
             </ul>
-            <div className="text-xs text-white/55">This action cannot be undone.</div>
+            <div className="text-xs text-white/55">
+              This action is permanent and cannot be undone.
+            </div>
           </div>
         }
         confirmText="Reset account"

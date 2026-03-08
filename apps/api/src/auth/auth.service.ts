@@ -9,6 +9,18 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Request } from 'express';
 import { PrismaService } from '../db/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
+import {
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+  IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+  buildImmaculateCollectionName,
+  buildUserCollectionName,
+  normalizeCollectionTitle,
+} from '../plex/plex-collections.utils';
+import { PlexServerService } from '../plex/plex-server.service';
 import type { AuthUser } from './auth.types';
 import {
   AuthThrottleService,
@@ -39,6 +51,13 @@ const DEFAULT_SESSION_MAX_AGE_MS = 24 * 60 * 60_000;
 const DEFAULT_PASSWORD_PROOF_ITERATIONS = 210_000;
 const MIN_RECOVERY_ANSWER_LENGTH = 2;
 const MIN_PASSWORD_LENGTH = 10;
+const RESET_PLEX_COLLECTION_LOOKUP_TAKE = 1_200;
+const RESET_PLEX_COLLECTION_TITLE_KEYWORDS = [
+  'Immaculate Taste',
+  'Change of Movie Taste',
+  'Based on your recently watched',
+  'Change of Taste',
+] as const;
 
 function sha256Hex(input: string) {
   return createHash('sha256').update(input).digest('hex');
@@ -52,6 +71,46 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 function isoFromMs(ms: number | null): string | null {
   if (!ms || !Number.isFinite(ms) || ms <= 0) return null;
   return new Date(ms).toISOString();
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pick(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!isPlainObject(cur)) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function pickString(obj: Record<string, unknown>, path: string): string {
+  const value = pick(obj, path);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeHttpUrl(raw: string): string {
+  const trimmed = raw.trim();
+  const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  try {
+    const parsed = new URL(baseUrl);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      throw new Error('Unsupported protocol');
+    }
+  } catch {
+    throw new BadRequestException('Plex baseUrl must be a valid http(s) URL');
+  }
+  return baseUrl;
+}
+
+function errorToMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return String(error);
 }
 
 export type PasswordRecoveryQuestion = {
@@ -134,6 +193,18 @@ type AuthLookupUser = {
   passwordProofKeyEnc: string | null;
 };
 
+type ResetPlexConnection = {
+  baseUrl: string;
+  token: string;
+};
+
+type ResetCollectionMatch = {
+  sectionKey: string;
+  sectionTitle: string;
+  ratingKey: string;
+  title: string;
+};
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -177,6 +248,7 @@ export class AuthService {
     private readonly captcha: CaptchaService,
     private readonly credentialEnvelope: CredentialEnvelopeService,
     private readonly passwordProof: PasswordProofService,
+    private readonly plexServer: PlexServerService,
   ) {}
 
   getSessionCookieName() {
@@ -703,17 +775,361 @@ export class AuthService {
   }
 
   async resetAllData() {
+    await this.deletePlexCollectionsForFreshReset();
+
     await this.prisma.jobLogLine.deleteMany();
     await this.prisma.jobRun.deleteMany();
     await this.prisma.jobSchedule.deleteMany();
     await this.prisma.curatedCollectionItem.deleteMany();
     await this.prisma.curatedCollection.deleteMany();
+    await this.prisma.watchedMovieRecommendationLibrary.deleteMany();
+    await this.prisma.watchedShowRecommendationLibrary.deleteMany();
+    await this.prisma.immaculateTasteMovieLibrary.deleteMany();
+    await this.prisma.immaculateTasteShowLibrary.deleteMany();
+    await this.prisma.watchedMovieRecommendation.deleteMany();
+    await this.prisma.watchedShowRecommendation.deleteMany();
+    await this.prisma.immaculateTasteMovie.deleteMany();
+    await this.prisma.immaculateTasteShow.deleteMany();
+    await this.prisma.immaculateTasteProfileUserOverride.deleteMany();
+    await this.prisma.immaculateTasteProfile.deleteMany();
+    await this.prisma.rejectedSuggestion.deleteMany();
+    await this.prisma.arrInstance.deleteMany();
+    await this.prisma.plexUser.deleteMany();
     await this.prisma.session.deleteMany();
     await this.prisma.userRecovery.deleteMany();
     await this.prisma.userSecrets.deleteMany();
     await this.prisma.userSettings.deleteMany();
     await this.prisma.user.deleteMany();
     await this.prisma.setting.deleteMany();
+    this.passwordResetChallenges.clear();
+    this.passwordResetAttempts.clear();
+  }
+
+  private async deletePlexCollectionsForFreshReset(): Promise<void> {
+    const connection = await this.resolveResetPlexConnection();
+    if (!connection) {
+      this.logger.log(
+        'auth: reset-dev skipped Plex collection cleanup (Plex not configured)',
+      );
+      return;
+    }
+
+    const sections = await this.plexServer
+      .getSections({
+        baseUrl: connection.baseUrl,
+        token: connection.token,
+      })
+      .catch((error: unknown) => {
+        throw new BadRequestException(
+          `Could not connect to Plex during reset: ${errorToMessage(error)}`,
+        );
+      });
+    const targetSections = sections.filter((section) => {
+      const type = String(section.type ?? '')
+        .trim()
+        .toLowerCase();
+      return type === 'movie' || type === 'show';
+    });
+    if (!targetSections.length) {
+      this.logger.log(
+        'auth: reset-dev skipped Plex collection cleanup (no movie/show sections)',
+      );
+      return;
+    }
+
+    const normalizedCandidateTitles =
+      await this.collectResetCollectionCandidateTitles();
+    const normalizedKeywordSet = new Set(
+      RESET_PLEX_COLLECTION_TITLE_KEYWORDS.map((keyword) =>
+        normalizeCollectionTitle(keyword),
+      ).filter((keyword) => Boolean(keyword)),
+    );
+
+    const firstPassMatches = await this.findMatchingResetCollections({
+      connection,
+      sections: targetSections,
+      normalizedCandidateTitles,
+      normalizedKeywordSet,
+    });
+    const firstPassDeleted = await this.deleteMatchingResetCollections({
+      connection,
+      matches: firstPassMatches,
+    });
+
+    const secondPassMatches = await this.findMatchingResetCollections({
+      connection,
+      sections: targetSections,
+      normalizedCandidateTitles,
+      normalizedKeywordSet,
+    });
+    const secondPassDeleted = await this.deleteMatchingResetCollections({
+      connection,
+      matches: secondPassMatches,
+    });
+
+    const remainingMatches = await this.findMatchingResetCollections({
+      connection,
+      sections: targetSections,
+      normalizedCandidateTitles,
+      normalizedKeywordSet,
+    });
+    if (remainingMatches.length) {
+      const sample = remainingMatches
+        .slice(0, 5)
+        .map(
+          (item) =>
+            `${item.sectionTitle || item.sectionKey}: ${JSON.stringify(item.title)}`,
+        )
+        .join(', ');
+      this.logger.warn(
+        `auth: reset-dev failed to remove all Plex collections; remaining=${remainingMatches.length} sample=${sample}`,
+      );
+      throw new BadRequestException(
+        'Could not fully delete Immaculaterr Plex collections. Ensure Plex is reachable and retry reset.',
+      );
+    }
+
+    this.logger.log(
+      `auth: reset-dev Plex collection cleanup finished sections=${targetSections.length} deleted=${firstPassDeleted + secondPassDeleted}`,
+    );
+  }
+
+  private async resolveResetPlexConnection(): Promise<ResetPlexConnection | null> {
+    const users = await this.prisma.user.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    for (const user of users) {
+      const [settings, secrets] = await Promise.all([
+        this.readSettingsDocForReset(user.id),
+        this.readSecretsDocForReset(user.id),
+      ]);
+      const baseUrlRaw =
+        pickString(settings, 'plex.baseUrl') ||
+        pickString(settings, 'plex.url');
+      const token =
+        pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+      if (!baseUrlRaw || !token) continue;
+      return {
+        baseUrl: normalizeHttpUrl(baseUrlRaw),
+        token,
+      };
+    }
+    return null;
+  }
+
+  private async readSettingsDocForReset(
+    userId: string,
+  ): Promise<Record<string, unknown>> {
+    const row = await this.prisma.userSettings.findUnique({
+      where: { userId },
+    });
+    if (!row?.value) return {};
+    try {
+      const raw = this.crypto.isEncrypted(row.value)
+        ? this.crypto.decryptString(row.value)
+        : row.value;
+      const parsed = JSON.parse(raw) as unknown;
+      return isPlainObject(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private async readSecretsDocForReset(
+    userId: string,
+  ): Promise<Record<string, unknown>> {
+    const row = await this.prisma.userSecrets.findUnique({ where: { userId } });
+    if (!row?.value) return {};
+    try {
+      const raw = this.crypto.isEncrypted(row.value)
+        ? this.crypto.decryptString(row.value)
+        : row.value;
+      const parsed = JSON.parse(raw) as unknown;
+      return isPlainObject(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private async collectResetCollectionCandidateTitles(): Promise<Set<string>> {
+    const normalizedTitles = new Set<string>();
+    const baseNames = new Set<string>();
+    const addBaseName = (value: string | null | undefined) => {
+      const normalized = String(value ?? '').trim();
+      if (normalized) {
+        baseNames.add(normalized);
+      }
+    };
+    const addTitle = (value: string | null | undefined) => {
+      const normalized = normalizeCollectionTitle(String(value ?? '').trim());
+      if (normalized) {
+        normalizedTitles.add(normalized);
+      }
+    };
+
+    for (const baseName of [
+      IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+      IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+      RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+      RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+      CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+      CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+    ]) {
+      addBaseName(baseName);
+      addTitle(baseName);
+    }
+
+    const [
+      profiles,
+      movieCollections,
+      showCollections,
+      movieLibraryCollections,
+      showLibraryCollections,
+      plexUsers,
+    ] = await Promise.all([
+      this.prisma.immaculateTasteProfile.findMany({
+        select: {
+          movieCollectionBaseName: true,
+          showCollectionBaseName: true,
+          userOverrides: {
+            select: {
+              movieCollectionBaseName: true,
+              showCollectionBaseName: true,
+            },
+          },
+        },
+      }),
+      this.prisma.watchedMovieRecommendation.findMany({
+        distinct: ['collectionName'],
+        select: { collectionName: true },
+      }),
+      this.prisma.watchedShowRecommendation.findMany({
+        distinct: ['collectionName'],
+        select: { collectionName: true },
+      }),
+      this.prisma.watchedMovieRecommendationLibrary.findMany({
+        distinct: ['collectionName'],
+        select: { collectionName: true },
+      }),
+      this.prisma.watchedShowRecommendationLibrary.findMany({
+        distinct: ['collectionName'],
+        select: { collectionName: true },
+      }),
+      this.prisma.plexUser.findMany({
+        select: { plexAccountTitle: true },
+      }),
+    ]);
+
+    for (const profile of profiles) {
+      addBaseName(profile.movieCollectionBaseName);
+      addBaseName(profile.showCollectionBaseName);
+      for (const override of profile.userOverrides) {
+        addBaseName(override.movieCollectionBaseName);
+        addBaseName(override.showCollectionBaseName);
+      }
+    }
+
+    for (const row of [
+      ...movieCollections,
+      ...showCollections,
+      ...movieLibraryCollections,
+      ...showLibraryCollections,
+    ]) {
+      addTitle(row.collectionName);
+    }
+
+    const plexUserTitles = plexUsers
+      .map((user) => String(user.plexAccountTitle ?? '').trim())
+      .filter((title) => Boolean(title));
+    for (const baseName of baseNames) {
+      addTitle(baseName);
+      for (const plexUserTitle of plexUserTitles) {
+        addTitle(buildImmaculateCollectionName(baseName, plexUserTitle));
+        addTitle(buildUserCollectionName(baseName, plexUserTitle));
+      }
+    }
+
+    return normalizedTitles;
+  }
+
+  private isResetCollectionTitleMatch(params: {
+    title: string;
+    normalizedCandidateTitles: Set<string>;
+    normalizedKeywordSet: Set<string>;
+  }): boolean {
+    const normalizedTitle = normalizeCollectionTitle(params.title);
+    if (!normalizedTitle) return false;
+    if (params.normalizedCandidateTitles.has(normalizedTitle)) return true;
+    for (const keyword of params.normalizedKeywordSet) {
+      if (normalizedTitle.includes(keyword)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async findMatchingResetCollections(params: {
+    connection: ResetPlexConnection;
+    sections: Array<{ key: string; title: string; type?: string }>;
+    normalizedCandidateTitles: Set<string>;
+    normalizedKeywordSet: Set<string>;
+  }): Promise<ResetCollectionMatch[]> {
+    const matches: ResetCollectionMatch[] = [];
+    for (const section of params.sections) {
+      const collections = await this.plexServer
+        .listCollectionsForSectionKey({
+          baseUrl: params.connection.baseUrl,
+          token: params.connection.token,
+          librarySectionKey: section.key,
+          take: RESET_PLEX_COLLECTION_LOOKUP_TAKE,
+        })
+        .catch((error: unknown) => {
+          throw new BadRequestException(
+            `Could not read Plex collections for section ${section.key}: ${errorToMessage(error)}`,
+          );
+        });
+      for (const collection of collections) {
+        if (
+          !this.isResetCollectionTitleMatch({
+            title: collection.title,
+            normalizedCandidateTitles: params.normalizedCandidateTitles,
+            normalizedKeywordSet: params.normalizedKeywordSet,
+          })
+        ) {
+          continue;
+        }
+        matches.push({
+          sectionKey: section.key,
+          sectionTitle: section.title,
+          ratingKey: collection.ratingKey,
+          title: collection.title,
+        });
+      }
+    }
+    return matches;
+  }
+
+  private async deleteMatchingResetCollections(params: {
+    connection: ResetPlexConnection;
+    matches: ResetCollectionMatch[];
+  }): Promise<number> {
+    let deleted = 0;
+    for (const match of params.matches) {
+      try {
+        await this.plexServer.deleteCollection({
+          baseUrl: params.connection.baseUrl,
+          token: params.connection.token,
+          collectionRatingKey: match.ratingKey,
+        });
+        deleted += 1;
+      } catch (error) {
+        this.logger.warn(
+          `auth: reset-dev delete collection failed section=${match.sectionKey} title=${JSON.stringify(match.title)} ratingKey=${JSON.stringify(match.ratingKey)} error=${JSON.stringify(errorToMessage(error))}`,
+        );
+      }
+    }
+    return deleted;
   }
 
   private normalizeUsername(username: string): string {
