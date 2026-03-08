@@ -13,7 +13,9 @@ import { PrismaService } from '../db/prisma.service';
 import {
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+  buildImmaculateCollectionName,
   buildUserCollectionName,
+  normalizeCollectionTitle,
 } from '../plex/plex-collections.utils';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
@@ -58,6 +60,70 @@ function getImmaculateCollectionBaseName(mediaType: 'movie' | 'tv'): string {
   return mediaType === 'movie'
     ? IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME
     : IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME;
+}
+
+type ProfileCollectionResetRow = {
+  id: string;
+  isDefault: boolean;
+  mediaType: string;
+  movieCollectionBaseName: string | null;
+  showCollectionBaseName: string | null;
+  userOverrides: Array<{
+    movieCollectionBaseName: string | null;
+    showCollectionBaseName: string | null;
+  }>;
+};
+
+function profileSupportsMediaType(
+  profileMediaType: string,
+  mediaType: 'movie' | 'tv',
+): boolean {
+  const normalized = String(profileMediaType ?? '')
+    .trim()
+    .toLowerCase();
+  if (!normalized || normalized === 'both') return true;
+  if (normalized !== 'movie' && normalized !== 'show') return true;
+  if (mediaType === 'movie') return normalized === 'movie';
+  return normalized === 'show';
+}
+
+function resolveProfileDatasetIdForCollectionReset(
+  profile: ProfileCollectionResetRow,
+): string {
+  return profile.isDefault ? 'default' : profile.id;
+}
+
+function resolveProfileCollectionBaseNameForReset(params: {
+  mediaType: 'movie' | 'tv';
+  profile: ProfileCollectionResetRow;
+}): string {
+  const fallback = getImmaculateCollectionBaseName(params.mediaType);
+  const override = params.profile.userOverrides[0] ?? null;
+  const raw =
+    params.mediaType === 'movie'
+      ? (override?.movieCollectionBaseName ??
+        params.profile.movieCollectionBaseName)
+      : (override?.showCollectionBaseName ??
+        params.profile.showCollectionBaseName);
+  const normalized = String(raw ?? '').trim();
+  return normalized || fallback;
+}
+
+function buildImmaculateCollectionLookupNamesForReset(params: {
+  baseName: string;
+  plexUserTitle: string;
+}): string[] {
+  const preferred = buildImmaculateCollectionName(
+    params.baseName,
+    params.plexUserTitle,
+  ).trim();
+  const legacy = buildUserCollectionName(
+    params.baseName,
+    params.plexUserTitle,
+  ).trim();
+  return Array.from(
+    new Set([preferred, legacy].filter((name) => Boolean(name))),
+  );
 }
 
 type ResetBody = {
@@ -115,7 +181,10 @@ export class ImmaculateTasteController {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
-    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const librarySelection = resolvePlexLibrarySelection({
+      settings,
+      sections,
+    });
     const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const movieSections = sections.filter(
       (s) =>
@@ -477,26 +546,138 @@ export class ImmaculateTasteController {
       getImmaculateCollectionBaseName(resolvedMediaType),
       plexUser.plexAccountTitle,
     );
+    const profileRows = await this.prisma.immaculateTasteProfile.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        isDefault: true,
+        mediaType: true,
+        movieCollectionBaseName: true,
+        showCollectionBaseName: true,
+        userOverrides: {
+          where: { plexUserId: plexUser.id },
+          select: {
+            movieCollectionBaseName: true,
+            showCollectionBaseName: true,
+          },
+          take: 1,
+        },
+      },
+    });
+    const baseNameByProfileDatasetId = new Map<string, string>();
+    for (const profile of profileRows) {
+      if (!profileSupportsMediaType(profile.mediaType, resolvedMediaType)) {
+        continue;
+      }
+      baseNameByProfileDatasetId.set(
+        resolveProfileDatasetIdForCollectionReset(profile),
+        resolveProfileCollectionBaseNameForReset({
+          mediaType: resolvedMediaType,
+          profile,
+        }),
+      );
+    }
+
+    const profileGroups =
+      resolvedMediaType === 'movie'
+        ? await this.prisma.immaculateTasteMovieLibrary.groupBy({
+            by: ['profileId'],
+            where: { plexUserId: plexUser.id },
+          })
+        : await this.prisma.immaculateTasteShowLibrary.groupBy({
+            by: ['profileId'],
+            where: { plexUserId: plexUser.id },
+          });
+    for (const row of profileGroups) {
+      const profileId = String(row.profileId ?? '').trim();
+      if (!profileId) continue;
+      if (baseNameByProfileDatasetId.has(profileId)) continue;
+      baseNameByProfileDatasetId.set(
+        profileId,
+        getImmaculateCollectionBaseName(resolvedMediaType),
+      );
+    }
+    if (!baseNameByProfileDatasetId.size) {
+      baseNameByProfileDatasetId.set(
+        'default',
+        getImmaculateCollectionBaseName(resolvedMediaType),
+      );
+    }
+
+    const targetCollectionNameSet = new Set<string>();
+    for (const baseName of baseNameByProfileDatasetId.values()) {
+      for (const name of buildImmaculateCollectionLookupNamesForReset({
+        baseName,
+        plexUserTitle: plexUser.plexAccountTitle,
+      })) {
+        targetCollectionNameSet.add(name);
+      }
+    }
+    const normalizedTargetCollectionNameSet = new Set(
+      Array.from(targetCollectionNameSet)
+        .map((name) => normalizeCollectionTitle(name))
+        .filter((name) => Boolean(name)),
+    );
 
     let plexDeleted = 0;
     for (const sec of targetSections) {
+      let sectionCollections: Array<{
+        ratingKey: string;
+        title: string;
+      }> | null = null;
       try {
-        const collectionRatingKey =
-          await this.plexServer.findCollectionRatingKey({
+        sectionCollections = await this.plexServer.listCollectionsForSectionKey(
+          {
             baseUrl: plexBaseUrl,
             token: plexToken,
             librarySectionKey: sec.key,
-            collectionName,
-          });
-        if (!collectionRatingKey) continue;
-        await this.plexServer.deleteCollection({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          collectionRatingKey,
-        });
-        plexDeleted += 1;
+            take: 800,
+          },
+        );
       } catch {
-        // ignore Plex flakiness
+        sectionCollections = null;
+      }
+
+      if (sectionCollections) {
+        const matchingCollections = sectionCollections.filter((item) =>
+          normalizedTargetCollectionNameSet.has(
+            normalizeCollectionTitle(item.title),
+          ),
+        );
+        for (const collection of matchingCollections) {
+          try {
+            await this.plexServer.deleteCollection({
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              collectionRatingKey: collection.ratingKey,
+            });
+            plexDeleted += 1;
+          } catch {
+            // ignore per-collection Plex flakiness
+          }
+        }
+        continue;
+      }
+
+      for (const targetCollectionName of targetCollectionNameSet) {
+        try {
+          const collectionRatingKey =
+            await this.plexServer.findCollectionRatingKey({
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              librarySectionKey: sec.key,
+              collectionName: targetCollectionName,
+            });
+          if (!collectionRatingKey) continue;
+          await this.plexServer.deleteCollection({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            collectionRatingKey,
+          });
+          plexDeleted += 1;
+        } catch {
+          // ignore per-collection Plex flakiness
+        }
       }
     }
 

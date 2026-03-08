@@ -500,7 +500,7 @@ export function CommandCenterPage() {
       void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'collections'] });
       void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'users'] });
       toast.success(
-        `${data.plexUserTitle} ${data.mediaType === 'movie' ? 'movies' : 'TV'} reset (${data.dataset.deleted} removed).`,
+        `${data.plexUserTitle} ${data.mediaType === 'movie' ? 'movie' : 'TV'} collections reset (${data.dataset.deleted} entries removed).`,
       );
     },
   });
@@ -5310,7 +5310,7 @@ export function CommandCenterPage() {
 
             <p className="mt-3 text-sm text-white/70 leading-relaxed">
               {hasMultipleImmaculateUsers
-                ? 'Select a Plex user. Admin shows per-library resets, other users reset by media type.'
+                ? 'Select a Plex user. Admin shows per-library resets, other users reset all Immaculaterr collections by media type.'
                 : 'Pick a library to reset. This removes the Plex collection and clears its dataset.'}
             </p>
 
@@ -5797,11 +5797,14 @@ export function CommandCenterPage() {
                         <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-200" />
                         <div className="min-w-0">
                           <div className="text-white/85 font-semibold">
-                            This removes all {immaculateUserResetTarget.mediaType === 'movie' ? 'movie' : 'TV'} entries
-                            for this user across every Plex library.
+                            This will erase all{' '}
+                            {immaculateUserResetTarget.mediaType === 'movie' ? 'movie' : 'TV'} collections
+                            created by Immaculaterr for this user across every Plex library.
                           </div>
                           <div className="mt-2 text-xs text-white/55">
-                            Items: {immaculateUserResetTarget.total}
+                            This also clears every tracked{' '}
+                            {immaculateUserResetTarget.mediaType === 'movie' ? 'movie' : 'TV'} dataset
+                            entry for this user profile. Items: {immaculateUserResetTarget.total}
                           </div>
                         </div>
                       </div>
