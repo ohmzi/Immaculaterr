@@ -10,17 +10,45 @@ STATUS_FILE="$REPORT_DIR/testssl-status.txt"
 
 mkdir -p "$REPORT_DIR"
 
+extract_authority() {
+  printf '%s' "$1" | sed -E 's#^https?://([^/]+).*$#\1#'
+}
+
+extract_host() {
+  printf '%s' "$1" | sed -E 's#^https?://([^/:]+).*$#\1#'
+}
+
+is_tls_port_open() {
+  local host="$1"
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 2 "$host" 443 >/dev/null 2>&1
+    return $?
+  fi
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 2 bash -c 'exec 3<>/dev/tcp/"$1"/443' _ "$host" >/dev/null 2>&1
+    return $?
+  fi
+
+  return 1
+}
+
 TARGET="${SECURITY_TLS_TARGET:-}"
 if [[ -z "$TARGET" ]]; then
   if [[ "$BASE_URL" =~ ^https:// ]]; then
-    TARGET="$(printf '%s' "$BASE_URL" | sed -E 's#^https?://([^/]+).*$#\1#')"
+    TARGET="$(extract_authority "$BASE_URL")"
+  else
+    BASE_HOST="$(extract_host "$BASE_URL")"
+    if [[ -n "$BASE_HOST" ]] && is_tls_port_open "$BASE_HOST"; then
+      TARGET="$BASE_HOST:443"
+    fi
   fi
 fi
 
 if [[ -z "$TARGET" ]]; then
-  echo "SKIP http_target_or_missing_tls_target" >"$STATUS_FILE"
-  echo '{"tool":"testssl","status":"SKIP","reason":"HTTP target or missing SECURITY_TLS_TARGET"}' >"$OUT_FILE"
-  echo "[SKIP] testssl: HTTP base URL or missing SECURITY_TLS_TARGET"
+  echo "SKIP tls_target_not_detected_set_security_tls_target" >"$STATUS_FILE"
+  echo '{"tool":"testssl","status":"SKIP","reason":"TLS target not detected; set SECURITY_TLS_TARGET"}' >"$OUT_FILE"
+  echo "[SKIP] testssl: TLS target not detected (set SECURITY_TLS_TARGET)"
   exit 0
 fi
 
