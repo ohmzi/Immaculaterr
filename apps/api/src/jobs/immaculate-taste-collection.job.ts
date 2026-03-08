@@ -598,14 +598,14 @@ export class ImmaculateTasteCollectionJob {
       approvalRequiredFromObservatory,
       webContextFraction,
     });
-    const matchedProfile =
-      await this.immaculateTasteProfiles.resolveProfileForSeed(ctx.userId, {
+    const matchedProfiles =
+      await this.immaculateTasteProfiles.resolveProfilesForSeed(ctx.userId, {
         plexUserId,
         seedGenres,
         seedAudioLanguages,
         seedMediaType: 'movie',
       });
-    if (!matchedProfile) {
+    if (!matchedProfiles.length) {
       const skippedStages = [
         'recommendations',
         'plex_resolve',
@@ -643,43 +643,75 @@ export class ImmaculateTasteCollectionJob {
       });
       return { summary: report as unknown as JsonObject };
     }
-    await ctx.info('immaculateTastePoints: profile matched', {
-      profileId: matchedProfile.id,
-      profileDatasetId: matchedProfile.datasetId,
-      profileName: matchedProfile.name,
-      mediaType: matchedProfile.mediaType,
-      matchMode: matchedProfile.matchMode,
-      includeGenres: matchedProfile.genres,
-      includeAudioLanguages: matchedProfile.audioLanguages,
-      excludedGenres: matchedProfile.excludedGenres,
-      excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
-    });
-    const movieCollectionProfile = resolveCollectionProfileDatasetId({
-      matchedDatasetId: matchedProfile.datasetId,
-      matchedIsDefault: matchedProfile.isDefault,
-      collectionBaseName: matchedProfile.movieCollectionBaseName,
-    });
+    const matchedMovieProfiles = matchedProfiles.map((profile) => ({
+      profile,
+      collectionProfile: resolveCollectionProfileDatasetId({
+        matchedDatasetId: profile.datasetId,
+        matchedIsDefault: profile.isDefault,
+        collectionBaseName: profile.movieCollectionBaseName,
+      }),
+    }));
+    const uniqueMovieCollectionSelections = new Map<
+      string,
+      (typeof matchedMovieProfiles)[number]
+    >();
+    for (const selection of matchedMovieProfiles) {
+      if (!uniqueMovieCollectionSelections.has(selection.collectionProfile.profileId)) {
+        uniqueMovieCollectionSelections.set(
+          selection.collectionProfile.profileId,
+          selection,
+        );
+      }
+    }
+    const movieCollectionSelections = Array.from(
+      uniqueMovieCollectionSelections.values(),
+    );
+    const matchedProfile = matchedMovieProfiles[0].profile;
+    const movieCollectionProfile = matchedMovieProfiles[0].collectionProfile;
     const profileId = movieCollectionProfile.profileId;
-    if (movieCollectionProfile.fallbackToDefault) {
+
+    await ctx.info('immaculateTastePoints: profiles matched', {
+      matchedProfileCount: matchedMovieProfiles.length,
+      matchedProfiles: matchedMovieProfiles.map((selection) => ({
+        profileId: selection.profile.id,
+        profileDatasetId: selection.profile.datasetId,
+        profileName: selection.profile.name,
+        mediaType: selection.profile.mediaType,
+        matchMode: selection.profile.matchMode,
+        includeGenres: selection.profile.genres,
+        includeAudioLanguages: selection.profile.audioLanguages,
+        excludedGenres: selection.profile.excludedGenres,
+        excludedAudioLanguages: selection.profile.excludedAudioLanguages,
+        collectionProfileId: selection.collectionProfile.profileId,
+        collectionProfileSource: selection.collectionProfile.fallbackToDefault
+          ? 'default_collection_fallback'
+          : 'matched_profile',
+      })),
+    });
+
+    for (const selection of matchedMovieProfiles) {
+      if (!selection.collectionProfile.fallbackToDefault) continue;
       await ctx.info(
         'immaculateTastePoints: using default collection dataset profile',
         {
-          matchedProfileId: matchedProfile.id,
-          matchedProfileName: matchedProfile.name,
-          matchedProfileDatasetId: matchedProfile.datasetId,
+          matchedProfileId: selection.profile.id,
+          matchedProfileName: selection.profile.name,
+          matchedProfileDatasetId: selection.profile.datasetId,
           reason: 'matched profile has no movie collection base name',
-          effectiveCollectionProfileId: profileId,
+          effectiveCollectionProfileId: selection.collectionProfile.profileId,
         },
       );
     }
 
-    await this.immaculateTaste.ensureLegacyImported({
-      ctx,
-      plexUserId,
-      librarySectionKey: movieSectionKey,
-      profileId,
-      maxPoints,
-    });
+    for (const selection of movieCollectionSelections) {
+      await this.immaculateTaste.ensureLegacyImported({
+        ctx,
+        plexUserId,
+        librarySectionKey: movieSectionKey,
+        profileId: selection.collectionProfile.profileId,
+        maxPoints,
+      });
+    }
 
     const requestedCount = Math.min(
       100,
@@ -1224,16 +1256,43 @@ export class ImmaculateTasteCollectionJob {
     }
 
     // --- Update points dataset (DB) ---
-    const pointsSummary = ctx.dryRun
-      ? ({ dryRun: true } as JsonObject)
-      : await this.immaculateTaste.applyPointsUpdate({
+    const pointsByProfile: Array<{
+      profileId: string;
+      profileDatasetId: string;
+      profileName: string;
+      collectionProfileId: string;
+      points: JsonObject;
+    }> = [];
+    if (ctx.dryRun) {
+      for (const selection of movieCollectionSelections) {
+        pointsByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          points: { dryRun: true },
+        });
+      }
+    } else {
+      for (const selection of movieCollectionSelections) {
+        const points = await this.immaculateTaste.applyPointsUpdate({
           ctx,
           plexUserId,
           librarySectionKey: movieSectionKey,
-          profileId,
+          profileId: selection.collectionProfile.profileId,
           suggested: suggestedForPoints,
           maxPoints,
         });
+        pointsByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          points,
+        });
+      }
+    }
+    const pointsSummary = pointsByProfile[0]?.points ?? ({ dryRun: true } as JsonObject);
 
     // Observatory approvals: mark missing titles as pending approval when enabled.
     if (!ctx.dryRun) {
@@ -1246,45 +1305,14 @@ export class ImmaculateTasteCollectionJob {
       );
 
       if (activeTmdbIds.length) {
-        await this.prisma.immaculateTasteMovieLibrary
-          .updateMany({
-            where: {
-              plexUserId,
-              librarySectionKey: movieSectionKey,
-              profileId,
-              tmdbId: { in: activeTmdbIds },
-            },
-            data: { downloadApproval: 'none' },
-          })
-          .catch(() => undefined);
-      }
-
-      if (missingTmdbIds.length) {
-        if (approvalRequiredFromObservatory) {
+        for (const selection of movieCollectionSelections) {
           await this.prisma.immaculateTasteMovieLibrary
             .updateMany({
               where: {
                 plexUserId,
                 librarySectionKey: movieSectionKey,
-                profileId,
-                status: 'pending',
-                tmdbId: { in: missingTmdbIds },
-                downloadApproval: 'none',
-              },
-              data: { downloadApproval: 'pending' },
-            })
-            .catch(() => undefined);
-        } else {
-          // Keep legacy behavior: no approvals (ensure we don't leave items stuck in approval state).
-          await this.prisma.immaculateTasteMovieLibrary
-            .updateMany({
-              where: {
-                plexUserId,
-                librarySectionKey: movieSectionKey,
-                profileId,
-                status: 'pending',
-                tmdbId: { in: missingTmdbIds },
-                downloadApproval: 'pending',
+                profileId: selection.collectionProfile.profileId,
+                tmdbId: { in: activeTmdbIds },
               },
               data: { downloadApproval: 'none' },
             })
@@ -1292,37 +1320,108 @@ export class ImmaculateTasteCollectionJob {
         }
       }
 
+      if (missingTmdbIds.length) {
+        for (const selection of movieCollectionSelections) {
+          if (approvalRequiredFromObservatory) {
+            await this.prisma.immaculateTasteMovieLibrary
+              .updateMany({
+                where: {
+                  plexUserId,
+                  librarySectionKey: movieSectionKey,
+                  profileId: selection.collectionProfile.profileId,
+                  status: 'pending',
+                  tmdbId: { in: missingTmdbIds },
+                  downloadApproval: 'none',
+                },
+                data: { downloadApproval: 'pending' },
+              })
+              .catch(() => undefined);
+          } else {
+            // Keep legacy behavior: no approvals (ensure we don't leave items stuck in approval state).
+            await this.prisma.immaculateTasteMovieLibrary
+              .updateMany({
+                where: {
+                  plexUserId,
+                  librarySectionKey: movieSectionKey,
+                  profileId: selection.collectionProfile.profileId,
+                  status: 'pending',
+                  tmdbId: { in: missingTmdbIds },
+                  downloadApproval: 'pending',
+                },
+                data: { downloadApproval: 'none' },
+              })
+              .catch(() => undefined);
+          }
+        }
+      }
+
       if (radarrSentTmdbIds.length) {
-        await this.prisma.immaculateTasteMovieLibrary
-          .updateMany({
-            where: {
-              plexUserId,
-              librarySectionKey: movieSectionKey,
-              profileId,
-              tmdbId: { in: radarrSentTmdbIds },
-              sentToRadarrAt: null,
-            },
-            data: { sentToRadarrAt: now },
-          })
-          .catch(() => undefined);
+        for (const selection of movieCollectionSelections) {
+          await this.prisma.immaculateTasteMovieLibrary
+            .updateMany({
+              where: {
+                plexUserId,
+                librarySectionKey: movieSectionKey,
+                profileId: selection.collectionProfile.profileId,
+                tmdbId: { in: radarrSentTmdbIds },
+                sentToRadarrAt: null,
+              },
+              data: { sentToRadarrAt: now },
+            })
+            .catch(() => undefined);
+        }
       }
     }
 
     // --- Optional chained refresher (rebuild Plex collection from points DB) ---
+    const refresherByProfile: Array<{
+      profileId: string;
+      profileDatasetId: string;
+      profileName: string;
+      collectionProfileId: string;
+      refresher: JsonObject | null;
+    }> = [];
     let refresherSummary: JsonObject | null = null;
     if (!includeRefresherAfterUpdate) {
-      refresherSummary = { skipped: true, reason: 'disabled' };
+      const skippedRefresherSummary: JsonObject = {
+        skipped: true,
+        reason: 'disabled',
+      };
+      refresherSummary = skippedRefresherSummary;
       await ctx.info('immaculateTastePoints: refresher skipped (disabled)', {
         includeRefresherAfterUpdate,
       });
+      for (const selection of movieCollectionSelections) {
+        refresherByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          refresher: skippedRefresherSummary,
+        });
+      }
     } else if (ctx.dryRun) {
-      refresherSummary = { skipped: true, reason: 'dry_run' };
+      const skippedRefresherSummary: JsonObject = {
+        skipped: true,
+        reason: 'dry_run',
+      };
+      refresherSummary = skippedRefresherSummary;
       await ctx.info('immaculateTastePoints: refresher skipped (dryRun)', {
         includeRefresherAfterUpdate,
       });
+      for (const selection of movieCollectionSelections) {
+        refresherByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          refresher: skippedRefresherSummary,
+        });
+      }
     } else {
       await ctx.info('immaculateTastePoints: running refresher (chained)', {
         jobId: 'immaculateTasteRefresher',
+        targets: movieCollectionSelections.length,
       });
       void ctx
         .patchSummary({
@@ -1333,34 +1432,63 @@ export class ImmaculateTasteCollectionJob {
           },
         })
         .catch(() => undefined);
-      try {
-        const refresherResult = await this.immaculateTasteRefresher.run({
-          ...ctx,
-          input: {
-            ...(ctx.input ?? {}),
-            plexUserId,
-            plexUserTitle,
-            pinCollections: true,
-            pinTarget,
-            includeMovies: true,
-            includeTv: false,
-            movieSectionKey,
-            movieLibraryName,
-            profileId,
-            movieCollectionBaseName:
-              matchedProfile.movieCollectionBaseName ?? null,
-          },
-        });
-        refresherSummary = refresherResult.summary ?? null;
-        await ctx.info('immaculateTastePoints: refresher done (chained)', {
-          refresher: refresherSummary,
-        });
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        refresherSummary = { error: msg };
-        await ctx.warn('immaculateTastePoints: refresher failed (continuing)', {
-          error: msg,
-        });
+      for (const selection of movieCollectionSelections) {
+        try {
+          const refresherResult = await this.immaculateTasteRefresher.run({
+            ...ctx,
+            input: {
+              ...(ctx.input ?? {}),
+              plexUserId,
+              plexUserTitle,
+              pinCollections: true,
+              pinTarget,
+              includeMovies: true,
+              includeTv: false,
+              movieSectionKey,
+              movieLibraryName,
+              profileId: selection.collectionProfile.profileId,
+              movieCollectionBaseName:
+                selection.profile.movieCollectionBaseName ?? null,
+            },
+          });
+          const profileRefresherSummary =
+            (refresherResult.summary as JsonObject | null) ?? null;
+          refresherByProfile.push({
+            profileId: selection.profile.id,
+            profileDatasetId: selection.profile.datasetId,
+            profileName: selection.profile.name,
+            collectionProfileId: selection.collectionProfile.profileId,
+            refresher: profileRefresherSummary,
+          });
+          if (refresherSummary === null) {
+            refresherSummary = profileRefresherSummary;
+          }
+          await ctx.info('immaculateTastePoints: refresher done (chained)', {
+            profileId: selection.profile.id,
+            profileDatasetId: selection.profile.datasetId,
+            collectionProfileId: selection.collectionProfile.profileId,
+            refresher: profileRefresherSummary,
+          });
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          const failedRefresherSummary: JsonObject = { error: msg };
+          refresherByProfile.push({
+            profileId: selection.profile.id,
+            profileDatasetId: selection.profile.datasetId,
+            profileName: selection.profile.name,
+            collectionProfileId: selection.collectionProfile.profileId,
+            refresher: failedRefresherSummary,
+          });
+          if (refresherSummary === null) {
+            refresherSummary = failedRefresherSummary;
+          }
+          await ctx.warn('immaculateTastePoints: refresher failed (continuing)', {
+            profileId: selection.profile.id,
+            profileDatasetId: selection.profile.datasetId,
+            collectionProfileId: selection.collectionProfile.profileId,
+            error: msg,
+          });
+        }
       }
     }
 
@@ -1385,6 +1513,23 @@ export class ImmaculateTasteCollectionJob {
           ? 'default_collection_fallback'
           : 'matched_profile',
       },
+      matchedProfiles: matchedMovieProfiles.map((selection) => ({
+        id: selection.profile.id,
+        datasetId: selection.profile.datasetId,
+        name: selection.profile.name,
+        mediaType: selection.profile.mediaType,
+        matchMode: selection.profile.matchMode,
+        includeGenres: selection.profile.genres,
+        includeAudioLanguages: selection.profile.audioLanguages,
+        excludedGenres: selection.profile.excludedGenres,
+        excludedAudioLanguages: selection.profile.excludedAudioLanguages,
+        collectionProfile: {
+          datasetId: selection.collectionProfile.profileId,
+          source: selection.collectionProfile.fallbackToDefault
+            ? 'default_collection_fallback'
+            : 'matched_profile',
+        },
+      })),
       radarrInstance: resolvedRadarrInstance
         ? {
             id: resolvedRadarrInstance.id,
@@ -1407,6 +1552,13 @@ export class ImmaculateTasteCollectionJob {
         includeAudioLanguages: matchedProfile.audioLanguages,
         excludedGenres: matchedProfile.excludedGenres,
         excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
+        matchedProfileCount: matchedMovieProfiles.length,
+        matchedProfileIds: matchedMovieProfiles.map(
+          (selection) => selection.profile.id,
+        ),
+        matchedProfileDatasetIds: matchedMovieProfiles.map(
+          (selection) => selection.profile.datasetId,
+        ),
       },
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
@@ -1427,7 +1579,9 @@ export class ImmaculateTasteCollectionJob {
       radarrLists,
       startSearchImmediately,
       points: pointsSummary,
+      pointsByProfile,
       refresher: refresherSummary,
+      refresherByProfile,
       sampleMissing: missingTitles.slice(0, 10),
       sampleResolved: suggestedItems.slice(0, 10).map((d) => d.title),
     };
@@ -1731,14 +1885,14 @@ export class ImmaculateTasteCollectionJob {
       approvalRequiredFromObservatory,
       webContextFraction,
     });
-    const matchedProfile =
-      await this.immaculateTasteProfiles.resolveProfileForSeed(ctx.userId, {
+    const matchedProfiles =
+      await this.immaculateTasteProfiles.resolveProfilesForSeed(ctx.userId, {
         plexUserId,
         seedGenres,
         seedAudioLanguages,
         seedMediaType: 'show',
       });
-    if (!matchedProfile) {
+    if (!matchedProfiles.length) {
       const skippedStages = [
         'recommendations',
         'plex_resolve',
@@ -1776,42 +1930,74 @@ export class ImmaculateTasteCollectionJob {
       });
       return { summary: report as unknown as JsonObject };
     }
-    await ctx.info('immaculateTastePoints(tv): profile matched', {
-      profileId: matchedProfile.id,
-      profileDatasetId: matchedProfile.datasetId,
-      profileName: matchedProfile.name,
-      mediaType: matchedProfile.mediaType,
-      matchMode: matchedProfile.matchMode,
-      includeGenres: matchedProfile.genres,
-      includeAudioLanguages: matchedProfile.audioLanguages,
-      excludedGenres: matchedProfile.excludedGenres,
-      excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
-    });
-    const showCollectionProfile = resolveCollectionProfileDatasetId({
-      matchedDatasetId: matchedProfile.datasetId,
-      matchedIsDefault: matchedProfile.isDefault,
-      collectionBaseName: matchedProfile.showCollectionBaseName,
-    });
+    const matchedShowProfiles = matchedProfiles.map((profile) => ({
+      profile,
+      collectionProfile: resolveCollectionProfileDatasetId({
+        matchedDatasetId: profile.datasetId,
+        matchedIsDefault: profile.isDefault,
+        collectionBaseName: profile.showCollectionBaseName,
+      }),
+    }));
+    const uniqueShowCollectionSelections = new Map<
+      string,
+      (typeof matchedShowProfiles)[number]
+    >();
+    for (const selection of matchedShowProfiles) {
+      if (!uniqueShowCollectionSelections.has(selection.collectionProfile.profileId)) {
+        uniqueShowCollectionSelections.set(
+          selection.collectionProfile.profileId,
+          selection,
+        );
+      }
+    }
+    const showCollectionSelections = Array.from(
+      uniqueShowCollectionSelections.values(),
+    );
+    const matchedProfile = matchedShowProfiles[0].profile;
+    const showCollectionProfile = matchedShowProfiles[0].collectionProfile;
     const profileId = showCollectionProfile.profileId;
-    if (showCollectionProfile.fallbackToDefault) {
+
+    await ctx.info('immaculateTastePoints(tv): profiles matched', {
+      matchedProfileCount: matchedShowProfiles.length,
+      matchedProfiles: matchedShowProfiles.map((selection) => ({
+        profileId: selection.profile.id,
+        profileDatasetId: selection.profile.datasetId,
+        profileName: selection.profile.name,
+        mediaType: selection.profile.mediaType,
+        matchMode: selection.profile.matchMode,
+        includeGenres: selection.profile.genres,
+        includeAudioLanguages: selection.profile.audioLanguages,
+        excludedGenres: selection.profile.excludedGenres,
+        excludedAudioLanguages: selection.profile.excludedAudioLanguages,
+        collectionProfileId: selection.collectionProfile.profileId,
+        collectionProfileSource: selection.collectionProfile.fallbackToDefault
+          ? 'default_collection_fallback'
+          : 'matched_profile',
+      })),
+    });
+
+    for (const selection of matchedShowProfiles) {
+      if (!selection.collectionProfile.fallbackToDefault) continue;
       await ctx.info(
         'immaculateTastePoints(tv): using default collection dataset profile',
         {
-          matchedProfileId: matchedProfile.id,
-          matchedProfileName: matchedProfile.name,
-          matchedProfileDatasetId: matchedProfile.datasetId,
+          matchedProfileId: selection.profile.id,
+          matchedProfileName: selection.profile.name,
+          matchedProfileDatasetId: selection.profile.datasetId,
           reason: 'matched profile has no TV collection base name',
-          effectiveCollectionProfileId: profileId,
+          effectiveCollectionProfileId: selection.collectionProfile.profileId,
         },
       );
     }
 
-    await this.immaculateTasteTv.ensureLegacyImported({
-      ctx,
-      plexUserId,
-      profileId,
-      maxPoints,
-    });
+    for (const selection of showCollectionSelections) {
+      await this.immaculateTasteTv.ensureLegacyImported({
+        ctx,
+        plexUserId,
+        profileId: selection.collectionProfile.profileId,
+        maxPoints,
+      });
+    }
 
     const requestedCount = Math.min(
       100,
@@ -2307,16 +2493,43 @@ export class ImmaculateTasteCollectionJob {
     }
 
     // --- Update points dataset (DB) ---
-    const pointsSummary = ctx.dryRun
-      ? ({ dryRun: true } as JsonObject)
-      : await this.immaculateTasteTv.applyPointsUpdate({
+    const pointsByProfile: Array<{
+      profileId: string;
+      profileDatasetId: string;
+      profileName: string;
+      collectionProfileId: string;
+      points: JsonObject;
+    }> = [];
+    if (ctx.dryRun) {
+      for (const selection of showCollectionSelections) {
+        pointsByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          points: { dryRun: true },
+        });
+      }
+    } else {
+      for (const selection of showCollectionSelections) {
+        const points = await this.immaculateTasteTv.applyPointsUpdate({
           ctx,
           plexUserId,
           librarySectionKey: tvSectionKey,
-          profileId,
+          profileId: selection.collectionProfile.profileId,
           suggested: suggestedForPoints,
           maxPoints,
         });
+        pointsByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          points,
+        });
+      }
+    }
+    const pointsSummary = pointsByProfile[0]?.points ?? ({ dryRun: true } as JsonObject);
 
     // Observatory approvals: mark missing titles as pending approval when enabled.
     if (!ctx.dryRun) {
@@ -2329,44 +2542,14 @@ export class ImmaculateTasteCollectionJob {
       );
 
       if (activeTvdbIds.length) {
-        await this.prisma.immaculateTasteShowLibrary
-          .updateMany({
-            where: {
-              plexUserId,
-              librarySectionKey: tvSectionKey,
-              profileId,
-              tvdbId: { in: activeTvdbIds },
-            },
-            data: { downloadApproval: 'none' },
-          })
-          .catch(() => undefined);
-      }
-
-      if (missingTvdbIds.length) {
-        if (approvalRequiredFromObservatory) {
+        for (const selection of showCollectionSelections) {
           await this.prisma.immaculateTasteShowLibrary
             .updateMany({
               where: {
                 plexUserId,
                 librarySectionKey: tvSectionKey,
-                profileId,
-                status: 'pending',
-                tvdbId: { in: missingTvdbIds },
-                downloadApproval: 'none',
-              },
-              data: { downloadApproval: 'pending' },
-            })
-            .catch(() => undefined);
-        } else {
-          await this.prisma.immaculateTasteShowLibrary
-            .updateMany({
-              where: {
-                plexUserId,
-                librarySectionKey: tvSectionKey,
-                profileId,
-                status: 'pending',
-                tvdbId: { in: missingTvdbIds },
-                downloadApproval: 'pending',
+                profileId: selection.collectionProfile.profileId,
+                tvdbId: { in: activeTvdbIds },
               },
               data: { downloadApproval: 'none' },
             })
@@ -2374,37 +2557,107 @@ export class ImmaculateTasteCollectionJob {
         }
       }
 
+      if (missingTvdbIds.length) {
+        for (const selection of showCollectionSelections) {
+          if (approvalRequiredFromObservatory) {
+            await this.prisma.immaculateTasteShowLibrary
+              .updateMany({
+                where: {
+                  plexUserId,
+                  librarySectionKey: tvSectionKey,
+                  profileId: selection.collectionProfile.profileId,
+                  status: 'pending',
+                  tvdbId: { in: missingTvdbIds },
+                  downloadApproval: 'none',
+                },
+                data: { downloadApproval: 'pending' },
+              })
+              .catch(() => undefined);
+          } else {
+            await this.prisma.immaculateTasteShowLibrary
+              .updateMany({
+                where: {
+                  plexUserId,
+                  librarySectionKey: tvSectionKey,
+                  profileId: selection.collectionProfile.profileId,
+                  status: 'pending',
+                  tvdbId: { in: missingTvdbIds },
+                  downloadApproval: 'pending',
+                },
+                data: { downloadApproval: 'none' },
+              })
+              .catch(() => undefined);
+          }
+        }
+      }
+
       if (sonarrSentTvdbIds.length) {
-        await this.prisma.immaculateTasteShowLibrary
-          .updateMany({
-            where: {
-              plexUserId,
-              librarySectionKey: tvSectionKey,
-              profileId,
-              tvdbId: { in: sonarrSentTvdbIds },
-              sentToSonarrAt: null,
-            },
-            data: { sentToSonarrAt: now },
-          })
-          .catch(() => undefined);
+        for (const selection of showCollectionSelections) {
+          await this.prisma.immaculateTasteShowLibrary
+            .updateMany({
+              where: {
+                plexUserId,
+                librarySectionKey: tvSectionKey,
+                profileId: selection.collectionProfile.profileId,
+                tvdbId: { in: sonarrSentTvdbIds },
+                sentToSonarrAt: null,
+              },
+              data: { sentToSonarrAt: now },
+            })
+            .catch(() => undefined);
+        }
       }
     }
 
     // --- Optional chained refresher ---
+    const refresherByProfile: Array<{
+      profileId: string;
+      profileDatasetId: string;
+      profileName: string;
+      collectionProfileId: string;
+      refresher: JsonObject | null;
+    }> = [];
     let refresherSummary: JsonObject | null = null;
     if (!includeRefresherAfterUpdate) {
-      refresherSummary = { skipped: true, reason: 'disabled' };
+      const skippedRefresherSummary: JsonObject = {
+        skipped: true,
+        reason: 'disabled',
+      };
+      refresherSummary = skippedRefresherSummary;
       await ctx.info('immaculateTastePoints(tv): refresher skipped (disabled)', {
         includeRefresherAfterUpdate,
       });
+      for (const selection of showCollectionSelections) {
+        refresherByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          refresher: skippedRefresherSummary,
+        });
+      }
     } else if (ctx.dryRun) {
-      refresherSummary = { skipped: true, reason: 'dry_run' };
+      const skippedRefresherSummary: JsonObject = {
+        skipped: true,
+        reason: 'dry_run',
+      };
+      refresherSummary = skippedRefresherSummary;
       await ctx.info('immaculateTastePoints(tv): refresher skipped (dryRun)', {
         includeRefresherAfterUpdate,
       });
+      for (const selection of showCollectionSelections) {
+        refresherByProfile.push({
+          profileId: selection.profile.id,
+          profileDatasetId: selection.profile.datasetId,
+          profileName: selection.profile.name,
+          collectionProfileId: selection.collectionProfile.profileId,
+          refresher: skippedRefresherSummary,
+        });
+      }
     } else {
       await ctx.info('immaculateTastePoints(tv): running refresher (chained)', {
         jobId: 'immaculateTasteRefresher',
+        targets: showCollectionSelections.length,
       });
       void ctx
         .patchSummary({
@@ -2415,34 +2668,66 @@ export class ImmaculateTasteCollectionJob {
           },
         })
         .catch(() => undefined);
-      try {
-        const refresherResult = await this.immaculateTasteRefresher.run({
-          ...ctx,
-          input: {
-            ...(ctx.input ?? {}),
-            plexUserId,
-            plexUserTitle,
-            pinCollections: true,
-            pinTarget,
-            includeMovies: false,
-            includeTv: true,
-            tvSectionKey,
-            tvLibraryName,
-            profileId,
-            tvCollectionBaseName:
-              matchedProfile.showCollectionBaseName ?? null,
-          },
-        });
-        refresherSummary = refresherResult.summary ?? null;
-        await ctx.info('immaculateTastePoints(tv): refresher done (chained)', {
-          refresher: refresherSummary,
-        });
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        refresherSummary = { error: msg };
-        await ctx.warn('immaculateTastePoints(tv): refresher failed (continuing)', {
-          error: msg,
-        });
+      for (const selection of showCollectionSelections) {
+        try {
+          const refresherResult = await this.immaculateTasteRefresher.run({
+            ...ctx,
+            input: {
+              ...(ctx.input ?? {}),
+              plexUserId,
+              plexUserTitle,
+              pinCollections: true,
+              pinTarget,
+              includeMovies: false,
+              includeTv: true,
+              tvSectionKey,
+              tvLibraryName,
+              profileId: selection.collectionProfile.profileId,
+              tvCollectionBaseName:
+                selection.profile.showCollectionBaseName ?? null,
+            },
+          });
+          const profileRefresherSummary =
+            (refresherResult.summary as JsonObject | null) ?? null;
+          refresherByProfile.push({
+            profileId: selection.profile.id,
+            profileDatasetId: selection.profile.datasetId,
+            profileName: selection.profile.name,
+            collectionProfileId: selection.collectionProfile.profileId,
+            refresher: profileRefresherSummary,
+          });
+          if (refresherSummary === null) {
+            refresherSummary = profileRefresherSummary;
+          }
+          await ctx.info('immaculateTastePoints(tv): refresher done (chained)', {
+            profileId: selection.profile.id,
+            profileDatasetId: selection.profile.datasetId,
+            collectionProfileId: selection.collectionProfile.profileId,
+            refresher: profileRefresherSummary,
+          });
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          const failedRefresherSummary: JsonObject = { error: msg };
+          refresherByProfile.push({
+            profileId: selection.profile.id,
+            profileDatasetId: selection.profile.datasetId,
+            profileName: selection.profile.name,
+            collectionProfileId: selection.collectionProfile.profileId,
+            refresher: failedRefresherSummary,
+          });
+          if (refresherSummary === null) {
+            refresherSummary = failedRefresherSummary;
+          }
+          await ctx.warn(
+            'immaculateTastePoints(tv): refresher failed (continuing)',
+            {
+              profileId: selection.profile.id,
+              profileDatasetId: selection.profile.datasetId,
+              collectionProfileId: selection.collectionProfile.profileId,
+              error: msg,
+            },
+          );
+        }
       }
     }
 
@@ -2467,6 +2752,23 @@ export class ImmaculateTasteCollectionJob {
           ? 'default_collection_fallback'
           : 'matched_profile',
       },
+      matchedProfiles: matchedShowProfiles.map((selection) => ({
+        id: selection.profile.id,
+        datasetId: selection.profile.datasetId,
+        name: selection.profile.name,
+        mediaType: selection.profile.mediaType,
+        matchMode: selection.profile.matchMode,
+        includeGenres: selection.profile.genres,
+        includeAudioLanguages: selection.profile.audioLanguages,
+        excludedGenres: selection.profile.excludedGenres,
+        excludedAudioLanguages: selection.profile.excludedAudioLanguages,
+        collectionProfile: {
+          datasetId: selection.collectionProfile.profileId,
+          source: selection.collectionProfile.fallbackToDefault
+            ? 'default_collection_fallback'
+            : 'matched_profile',
+        },
+      })),
       sonarrInstance: resolvedSonarrInstance
         ? {
             id: resolvedSonarrInstance.id,
@@ -2489,6 +2791,13 @@ export class ImmaculateTasteCollectionJob {
         includeAudioLanguages: matchedProfile.audioLanguages,
         excludedGenres: matchedProfile.excludedGenres,
         excludedAudioLanguages: matchedProfile.excludedAudioLanguages,
+        matchedProfileCount: matchedShowProfiles.length,
+        matchedProfileIds: matchedShowProfiles.map(
+          (selection) => selection.profile.id,
+        ),
+        matchedProfileDatasetIds: matchedShowProfiles.map(
+          (selection) => selection.profile.datasetId,
+        ),
       },
       recommendationStrategy: recs.strategy,
       recommendationDebug: recs.debug,
@@ -2509,7 +2818,9 @@ export class ImmaculateTasteCollectionJob {
       sonarrLists,
       startSearchImmediately,
       points: pointsSummary,
+      pointsByProfile,
       refresher: refresherSummary,
+      refresherByProfile,
       sampleMissing: missingTitles.slice(0, 10),
       sampleResolved: suggestedItems.slice(0, 10).map((d) => d.title),
     };

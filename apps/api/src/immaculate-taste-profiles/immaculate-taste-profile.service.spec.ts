@@ -1504,6 +1504,43 @@ describe('ImmaculateTasteProfileService resolveProfileForSeed exclusion filters'
     expect(fallbackDefault?.id).toBe('default-profile');
   });
 
+  it('returns include matches and default catch-all together when both qualify', async () => {
+    const { service, prisma } = createService();
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      sortOrder: 0,
+      genres: JSON.stringify([]),
+      audioLanguages: JSON.stringify([]),
+      excludedGenres: JSON.stringify([]),
+      excludedAudioLanguages: JSON.stringify([]),
+    });
+    const animationProfile = makeProfile({
+      id: 'animation-profile',
+      name: 'Animation',
+      isDefault: false,
+      sortOrder: 1,
+      mediaType: 'show',
+      genres: JSON.stringify(['Animation']),
+    });
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      { ...defaultProfile, userOverrides: [] },
+      { ...animationProfile, userOverrides: [] },
+    ]);
+
+    const matches = await service.resolveProfilesForSeed('user-1', {
+      seedGenres: ['Animation'],
+      seedAudioLanguages: ['English'],
+      seedMediaType: 'show',
+    });
+
+    expect(matches.map((profile) => profile.id)).toEqual([
+      'animation-profile',
+      'default-profile',
+    ]);
+  });
+
   it('only evaluates scoped profiles for Plex users included in user scope', async () => {
     const { service, prisma } = createService();
     const scopedProfile = makeProfile({

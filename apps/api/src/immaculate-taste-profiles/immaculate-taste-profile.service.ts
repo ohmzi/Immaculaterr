@@ -608,7 +608,16 @@ export class ImmaculateTasteProfileService {
         scopedSettingsChanged && profileOverrides.length > 0
           ? profileOverrides.map((override) => ({
               ...override,
-              ...this.toOverrideMutationDataFromProfile(updated),
+              mediaType: updated.mediaType,
+              matchMode: updated.matchMode,
+              genres: updated.genres,
+              audioLanguages: updated.audioLanguages,
+              excludedGenres: updated.excludedGenres,
+              excludedAudioLanguages: updated.excludedAudioLanguages,
+              radarrInstanceId: updated.radarrInstanceId,
+              sonarrInstanceId: updated.sonarrInstanceId,
+              movieCollectionBaseName: updated.movieCollectionBaseName,
+              showCollectionBaseName: updated.showCollectionBaseName,
             }))
           : profileOverrides;
       const previousMovieBaseName = resolveMovieCollectionBaseName(
@@ -1368,7 +1377,7 @@ export class ImmaculateTasteProfileService {
     }
   }
 
-  async resolveProfileForSeed(
+  async resolveProfilesForSeed(
     userId: string,
     params: {
       plexUserId?: string;
@@ -1376,13 +1385,14 @@ export class ImmaculateTasteProfileService {
       seedAudioLanguages: string[];
       seedMediaType: 'movie' | 'show';
     },
-  ): Promise<ResolvedProfileForSeed | null> {
+  ): Promise<ResolvedProfileForSeed[]> {
     const all = await this.list(userId);
     const enabled = all.filter((profile) => profile.enabled);
     const seedGenres = normalizeStringList(params.seedGenres ?? []);
     const seedAudioLanguages = normalizeStringList(
       params.seedAudioLanguages ?? [],
     );
+    const matchedProfiles: ResolvedProfileForSeed[] = [];
     let defaultCatchAllMatch: ResolvedProfileForSeed | null = null;
 
     for (const profile of enabled) {
@@ -1411,7 +1421,9 @@ export class ImmaculateTasteProfileService {
         continue;
       }
       if (isDefaultCatchAll) {
-        defaultCatchAllMatch = this.toResolved(scopedProfile);
+        if (!defaultCatchAllMatch) {
+          defaultCatchAllMatch = this.toResolved(scopedProfile);
+        }
         continue;
       }
 
@@ -1434,9 +1446,23 @@ export class ImmaculateTasteProfileService {
             (!hasAudioLanguageInclude || langMatch)
           : genreMatch || langMatch;
       if (!matched) continue;
-      return this.toResolved(scopedProfile);
+      matchedProfiles.push(this.toResolved(scopedProfile));
     }
-    return defaultCatchAllMatch;
+    if (defaultCatchAllMatch) matchedProfiles.push(defaultCatchAllMatch);
+    return matchedProfiles;
+  }
+
+  async resolveProfileForSeed(
+    userId: string,
+    params: {
+      plexUserId?: string;
+      seedGenres: string[];
+      seedAudioLanguages: string[];
+      seedMediaType: 'movie' | 'show';
+    },
+  ): Promise<ResolvedProfileForSeed | null> {
+    const matchedProfiles = await this.resolveProfilesForSeed(userId, params);
+    return matchedProfiles[0] ?? null;
   }
 
   private async ensureDefaultProfile(userId: string): Promise<void> {
