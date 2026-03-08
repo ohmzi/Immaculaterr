@@ -2288,18 +2288,87 @@ export function CommandCenterPage() {
     setNewProfileScopeSearch('');
   }, []);
 
+  const profileDeleteDialogDescription = useMemo(() => {
+    if (!activeProfileDeleteImpact) {
+      return 'Deleting this profile removes profile-specific dataset entries.';
+    }
+    if (activeProfileDeleteImpact.uniqueCollectionNames.length > 0) {
+      const count = activeProfileDeleteImpact.uniqueCollectionNames.length;
+      return (
+        <>
+          This action will erase this profile&apos;s filters and delete{' '}
+          {count === 1 ? 'the Plex collection listed below' : 'the Plex collections listed below'}.
+          This cannot be undone.
+        </>
+      );
+    }
+    if (activeProfileDeleteImpact.sharedCollectionNames.length > 0) {
+      return 'Shared Plex collections are used by another enabled profile, so they will be kept. Are you sure you want to delete this profile?';
+    }
+    return 'Deleting this profile removes profile-specific filters and dataset entries.';
+  }, [activeProfileDeleteImpact]);
+  const profileDeleteDialogDetails = useMemo(() => {
+    if (!activeProfileDeleteImpact) return null;
+    return (
+      <div className="space-y-3">
+        {activeProfileDeleteImpact.uniqueCollectionNames.length > 0 ? (
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-rose-200/80">
+              Plex collections that will be deleted
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activeProfileDeleteImpact.uniqueCollectionNames.map((name) => (
+                <span
+                  key={`delete-unique-${name}`}
+                  className="inline-flex items-center rounded-full border border-rose-400/30 bg-rose-500/15 px-2.5 py-1 text-xs font-semibold text-rose-100"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {activeProfileDeleteImpact.sharedCollectionNames.length > 0 ? (
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-white/50">
+              Shared collections that will be kept
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activeProfileDeleteImpact.sharedCollectionNames.map((name) => (
+                <span
+                  key={`delete-shared-${name}`}
+                  className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/80"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {activeProfileDeleteImpact.defaultWillAutoEnable ? (
+          <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-100/90">
+            Deleting this profile will re-enable the default profile so at least one profile remains
+            enabled.
+          </div>
+        ) : null}
+      </div>
+    );
+  }, [activeProfileDeleteImpact]);
+  const closeProfileDeleteDialog = useCallback(() => {
+    setProfileDeleteDialogOpen(false);
+  }, []);
+  const confirmProfileDeleteDialog = useCallback(() => {
+    if (!activeProfile || activeProfile.isDefault) return;
+    deleteImmaculateProfileMutation.mutate(activeProfile);
+  }, [activeProfile, deleteImmaculateProfileMutation]);
   const handleDeleteActiveProfile = useCallback(() => {
     if (!activeProfile) return;
     if (activeProfile.isDefault) {
       toast.error('Default profile cannot be deleted.');
       return;
     }
-    const confirmed = window.confirm(
-      `Delete "${activeProfile.name}"? Collections and profile-specific dataset entries will be moved to default.`,
-    );
-    if (!confirmed) return;
-    deleteImmaculateProfileMutation.mutate(activeProfile);
-  }, [activeProfile, deleteImmaculateProfileMutation]);
+    setProfileDeleteDialogOpen(true);
+  }, [activeProfile]);
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
   const overseerrEnabledFlag = readBool(
@@ -6390,6 +6459,24 @@ export function CommandCenterPage() {
             confirmText="Got it"
             cancelText="Close"
             variant="primary"
+          />
+
+          <ConfirmDialog
+            open={profileDeleteDialogOpen}
+            onClose={closeProfileDeleteDialog}
+            onConfirm={confirmProfileDeleteDialog}
+            title={`Delete "${activeProfile?.name ?? 'Profile'}"?`}
+            description={profileDeleteDialogDescription}
+            details={profileDeleteDialogDetails}
+            confirmText="Delete profile"
+            cancelText="Keep profile"
+            variant="danger"
+            confirming={deleteImmaculateProfileMutation.isPending}
+            error={
+              deleteImmaculateProfileMutation.isError
+                ? (deleteImmaculateProfileMutation.error as Error).message
+                : null
+            }
           />
 
           {/* Collection Posters */}
