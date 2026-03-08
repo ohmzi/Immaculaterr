@@ -25,8 +25,17 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
       'Include/exclude genre and audio-language filters keep recommendations closer to each profile goal.',
       'Default behavior stays simple, and advanced profile controls appear only when needed.',
       'Custom poster upload makes Immaculaterr collections more personal and easier to recognize in Plex.',
+      'Forgot-password and password reset are now available with account security questions.',
     ],
     sections: [
+      {
+        title: 'Password recovery and reset',
+        bullets: [
+          'Added forgot-password and password reset using security-question verification.',
+          'Prompting pre-existing profile with Forced password recovery upon update.',
+          'New Profile Page for password recovery management and changing password.',
+        ],
+      },
       {
         title: 'Profile lanes for Immaculate Taste collections',
         bullets: [

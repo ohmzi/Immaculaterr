@@ -6,6 +6,10 @@ This file tracks notable changes by version.
 1.7.0
 ---
 
+- Password recovery and reset:
+  - Added forgot-password and password reset using security-question verification.
+  - Prompting pre-existing profile with Forced password recovery upon update.
+  - New Profile Page for password recovery management and changing password.
 - Profile lanes for Immaculate Taste collections:
   - Immaculate Taste profiles let each collection strategy run with its own rules.
   - Multiple collections can run at the same time with different smart filters.
