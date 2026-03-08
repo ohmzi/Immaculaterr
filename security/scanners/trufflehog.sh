@@ -7,6 +7,7 @@ REPORT_DIR="${SECURITY_REPORT_DIR:-$ROOT_DIR/security/reports}"
 OUT_FILE="$REPORT_DIR/trufflehog.jsonl"
 STATUS_FILE="$REPORT_DIR/trufflehog-status.txt"
 TIMEOUT_SECONDS="${SECURITY_TRUFFLEHOG_TIMEOUT_SECONDS:-90}"
+LOG_FILE="$REPORT_DIR/trufflehog.log"
 
 mkdir -p "$REPORT_DIR"
 
@@ -22,13 +23,13 @@ if command -v timeout >/dev/null 2>&1; then
   timeout "$TIMEOUT_SECONDS" docker run --rm \
     -v "$ROOT_DIR:/repo" \
     trufflesecurity/trufflehog:latest \
-    filesystem /repo --json >"$OUT_FILE"
+    filesystem /repo --json >"$OUT_FILE" 2>"$LOG_FILE"
   code=$?
 else
   docker run --rm \
     -v "$ROOT_DIR:/repo" \
     trufflesecurity/trufflehog:latest \
-    filesystem /repo --json >"$OUT_FILE"
+    filesystem /repo --json >"$OUT_FILE" 2>"$LOG_FILE"
   code=$?
 fi
 set -e
