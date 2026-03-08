@@ -7,4 +7,4 @@ Suggestion Security Improvements: use [Github issues](https://github.com/ohmzi/I
 
 
 ## Security Measures 
-Please check [Security documentation for full details](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/security.md)
+Please check [Security documentation](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/security.md) for full details
