@@ -34,10 +34,12 @@ type PrismaMock = {
   };
   immaculateTasteMovieLibrary: {
     updateMany: jest.Mock;
+    deleteMany: jest.Mock;
     findMany: jest.Mock;
   };
   immaculateTasteShowLibrary: {
     updateMany: jest.Mock;
+    deleteMany: jest.Mock;
     findMany: jest.Mock;
   };
   jobRun: {
@@ -132,10 +134,12 @@ function createService() {
     },
     immaculateTasteMovieLibrary: {
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
       findMany: jest.fn(),
     },
     immaculateTasteShowLibrary: {
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
       findMany: jest.fn(),
     },
     jobRun: {
@@ -201,6 +205,8 @@ function createService() {
   });
   prisma.immaculateTasteMovieLibrary.findMany.mockResolvedValue([]);
   prisma.immaculateTasteShowLibrary.findMany.mockResolvedValue([]);
+  prisma.immaculateTasteMovieLibrary.deleteMany.mockResolvedValue({ count: 0 });
+  prisma.immaculateTasteShowLibrary.deleteMany.mockResolvedValue({ count: 0 });
   plexServer.listCollectionsForSectionKey.mockResolvedValue([]);
   plexServer.getCollectionItems.mockResolvedValue([]);
   plexServer.listMoviesWithTmdbIdsForSectionKey.mockResolvedValue([]);
@@ -1223,12 +1229,6 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       .mockResolvedValueOnce(secondaryProfile)
       .mockResolvedValueOnce(null);
     prisma.immaculateTasteProfileUserOverride.findMany.mockResolvedValue([]);
-    prisma.immaculateTasteMovieLibrary.updateMany.mockResolvedValue({
-      count: 0,
-    });
-    prisma.immaculateTasteShowLibrary.updateMany.mockResolvedValue({
-      count: 0,
-    });
     prisma.immaculateTasteProfile.delete.mockResolvedValue(secondaryProfile);
     prisma.immaculateTasteProfile.updateMany.mockResolvedValue({ count: 1 });
 
@@ -1240,6 +1240,90 @@ describe('ImmaculateTasteProfileService update rename task', () => {
     expect(prisma.immaculateTasteProfile.updateMany).toHaveBeenCalledWith({
       where: { userId: 'user-1', isDefault: true },
       data: { enabled: true },
+    });
+    expect(prisma.immaculateTasteMovieLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { profileId: 'profile-2' },
+    });
+    expect(prisma.immaculateTasteShowLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { profileId: 'profile-2' },
+    });
+  });
+
+  it('keeps shared Plex collections and moves dataset rows to the shared profile on delete', async () => {
+    const { service, prisma, settings, plexServer, plexUsers } = createService();
+    const defaultProfile = makeProfile({
+      id: 'default-profile',
+      name: 'Default',
+      isDefault: true,
+      enabled: true,
+      sortOrder: 0,
+    });
+    const deletingProfile = makeProfile({
+      id: 'profile-2',
+      name: 'Kids',
+      isDefault: false,
+      enabled: true,
+      sortOrder: 1,
+      mediaType: 'movie',
+      movieCollectionBaseName: 'Shared Picks',
+    });
+    const sharedProfile = makeProfile({
+      id: 'profile-3',
+      name: 'Family',
+      isDefault: false,
+      enabled: true,
+      sortOrder: 2,
+      mediaType: 'movie',
+      movieCollectionBaseName: 'Shared Picks',
+    });
+
+    prisma.immaculateTasteProfile.findMany
+      .mockResolvedValueOnce([defaultProfile, deletingProfile, sharedProfile])
+      .mockResolvedValueOnce([
+        { ...defaultProfile, userOverrides: [] },
+        { ...sharedProfile, userOverrides: [] },
+      ]);
+    prisma.immaculateTasteProfile.findFirst
+      .mockResolvedValueOnce(deletingProfile)
+      .mockResolvedValueOnce({ id: 'profile-3' });
+    prisma.immaculateTasteProfileUserOverride.findMany.mockResolvedValue([]);
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex:32400' },
+      },
+      secrets: {
+        plex: { token: 'plex-token' },
+      },
+    });
+    plexUsers.ensureAdminPlexUser.mockResolvedValue({
+      id: 'user-1',
+      plexAccountTitle: 'admin',
+    });
+    prisma.plexUser.findMany.mockResolvedValue([
+      { id: 'user-1', plexAccountTitle: 'admin', isAdmin: true },
+      { id: 'plex-user-2', plexAccountTitle: 'ohmz_i', isAdmin: false },
+    ]);
+    plexServer.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+    ]);
+    prisma.immaculateTasteMovieLibrary.findMany.mockResolvedValue([
+      { plexUserId: 'plex-user-2' },
+    ]);
+    prisma.immaculateTasteShowLibrary.findMany.mockResolvedValue([]);
+    prisma.immaculateTasteMovieLibrary.updateMany.mockResolvedValue({
+      count: 3,
+    });
+    prisma.immaculateTasteMovieLibrary.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.immaculateTasteShowLibrary.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.immaculateTasteProfile.delete.mockResolvedValue(deletingProfile);
+
+    await service.delete('user-1', 'profile-2');
+
+    expect(plexServer.findCollectionRatingKey).not.toHaveBeenCalled();
+    expect(plexServer.deleteCollection).not.toHaveBeenCalled();
+    expect(prisma.immaculateTasteMovieLibrary.updateMany).toHaveBeenCalledWith({
+      where: { plexUserId: 'plex-user-2', profileId: 'profile-2' },
+      data: { profileId: 'profile-3' },
     });
   });
 });

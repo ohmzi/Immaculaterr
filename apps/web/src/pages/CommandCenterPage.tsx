@@ -173,6 +173,69 @@ const DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME =
 const DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME =
   'Inspired by your Immaculate Taste in Shows';
 
+function normalizeCollectionBaseName(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function mediaTypeIncludesMovie(mediaType: ImmaculateTasteProfileMediaType): boolean {
+  return mediaType === 'movie' || mediaType === 'both';
+}
+
+function mediaTypeIncludesShow(mediaType: ImmaculateTasteProfileMediaType): boolean {
+  return mediaType === 'show' || mediaType === 'both';
+}
+
+function resolveMovieCollectionBaseName(value: string | null | undefined): string {
+  return (value ?? '').trim() || DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME;
+}
+
+function resolveShowCollectionBaseName(value: string | null | undefined): string {
+  return (value ?? '').trim() || DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME;
+}
+
+function profileUsesCollectionBaseName(params: {
+  profile: ImmaculateTasteProfile;
+  mediaType: 'movie' | 'show';
+  collectionBaseName: string;
+}): boolean {
+  const target = normalizeCollectionBaseName(params.collectionBaseName);
+  if (!target) return false;
+
+  const profileMediaIncludes =
+    params.mediaType === 'movie'
+      ? mediaTypeIncludesMovie(params.profile.mediaType)
+      : mediaTypeIncludesShow(params.profile.mediaType);
+  if (profileMediaIncludes) {
+    const profileBase =
+      params.mediaType === 'movie'
+        ? resolveMovieCollectionBaseName(params.profile.movieCollectionBaseName)
+        : resolveShowCollectionBaseName(params.profile.showCollectionBaseName);
+    if (normalizeCollectionBaseName(profileBase) === target) return true;
+  }
+
+  for (const override of params.profile.userOverrides) {
+    const overrideMediaIncludes =
+      params.mediaType === 'movie'
+        ? mediaTypeIncludesMovie(override.mediaType)
+        : mediaTypeIncludesShow(override.mediaType);
+    if (!overrideMediaIncludes) continue;
+    const overrideBase =
+      params.mediaType === 'movie'
+        ? resolveMovieCollectionBaseName(
+            override.movieCollectionBaseName ?? params.profile.movieCollectionBaseName,
+          )
+        : resolveShowCollectionBaseName(
+            override.showCollectionBaseName ?? params.profile.showCollectionBaseName,
+          );
+    if (normalizeCollectionBaseName(overrideBase) === target) return true;
+  }
+
+  return false;
+}
+
 function getCollectionArtworkTargetKey(
   target: Pick<CollectionArtworkTarget, 'mediaType' | 'targetKind' | 'targetId'>,
 ): string {
