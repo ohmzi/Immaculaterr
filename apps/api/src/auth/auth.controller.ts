@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import type { AuthenticatedRequest } from './auth.types';
 import { Public } from './public.decorator';
+import { AUTH_CREDENTIAL_ENVELOPE_PURPOSES } from '../app.constants';
 
 type BootstrapResponse = {
   needsAdminSetup: boolean;
@@ -24,6 +25,7 @@ type LoginBody = {
   password?: unknown;
   credentialEnvelope?: unknown;
   captchaToken?: unknown;
+  recoveryAnswers?: unknown;
 };
 
 type LoginChallengeBody = {
@@ -42,6 +44,23 @@ type ChangePasswordBody = {
   captchaToken?: unknown;
 };
 
+type ConfigureRecoveryBody = {
+  currentPassword?: unknown;
+  recoveryAnswers?: unknown;
+  credentialEnvelope?: unknown;
+};
+
+type ResetQuestionsBody = {
+  username?: unknown;
+};
+
+type ResetPasswordBody = {
+  challengeId?: unknown;
+  newPassword?: unknown;
+  answers?: unknown;
+  credentialEnvelope?: unknown;
+};
+
 type RequestMeta = {
   ip: string | null;
   userAgent: string | null;
@@ -53,6 +72,48 @@ function readString(value: unknown): string {
 
 function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+function readRecoveryAnswers(
+  value: unknown,
+  fieldName: 'recoveryAnswers' | 'answers',
+): Array<{
+  questionKey: string;
+  answer: string;
+}> {
+  if (!Array.isArray(value)) {
+    throw new BadRequestException(`${fieldName} must be an array`);
+  }
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new BadRequestException(`${fieldName}[${index}] must be an object`);
+    }
+    const questionKey = readString(
+      (entry as Record<string, unknown>)['questionKey'],
+    );
+    const answer = readString((entry as Record<string, unknown>)['answer']);
+    return { questionKey, answer };
+  });
+}
+
+function readResetAnswers(
+  value: unknown,
+): Array<{ slot: number; answer: string }> {
+  if (!Array.isArray(value)) {
+    throw new BadRequestException('answers must be an array');
+  }
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new BadRequestException(`answers[${index}] must be an object`);
+    }
+    const slotRaw = (entry as Record<string, unknown>)['slot'];
+    const slot =
+      typeof slotRaw === 'number'
+        ? slotRaw
+        : Number.parseInt(readString(slotRaw), 10);
+    const answer = readString((entry as Record<string, unknown>)['answer']);
+    return { slot, answer };
+  });
 }
 
 @Controller('auth')
@@ -78,6 +139,12 @@ export class AuthController {
   @Get('login-key')
   getLoginKey() {
     return this.authService.getLoginKey();
+  }
+
+  @Public()
+  @Get('recovery/questions')
+  listRecoveryQuestions() {
+    return { questions: this.authService.listPasswordRecoveryQuestions() };
   }
 
   @Public()
@@ -126,8 +193,23 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { username, password, captchaToken } =
-      this.resolveCredentialBody(body);
+    const envelopePayload = this.resolveEnvelopePayload(
+      body?.credentialEnvelope,
+      [
+        AUTH_CREDENTIAL_ENVELOPE_PURPOSES.register,
+        AUTH_CREDENTIAL_ENVELOPE_PURPOSES.login,
+      ],
+    );
+    const { username, password, captchaToken } = this.resolveCredentialBody(
+      body,
+      envelopePayload,
+    );
+    const recoveryAnswers = readRecoveryAnswers(
+      envelopePayload
+        ? envelopePayload['recoveryAnswers']
+        : body?.recoveryAnswers,
+      'recoveryAnswers',
+    );
     const meta = this.getRequestMeta(req);
 
     this.logger.log(
@@ -136,6 +218,7 @@ export class AuthController {
     await this.authService.registerAdmin({
       username,
       password,
+      recoveryAnswers,
       ip: meta.ip,
       userAgent: meta.userAgent,
       captchaToken,
@@ -162,8 +245,14 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { username, password, captchaToken } =
-      this.resolveCredentialBody(body);
+    const envelopePayload = this.resolveEnvelopePayload(
+      body?.credentialEnvelope,
+      [AUTH_CREDENTIAL_ENVELOPE_PURPOSES.login],
+    );
+    const { username, password, captchaToken } = this.resolveCredentialBody(
+      body,
+      envelopePayload,
+    );
     const meta = this.getRequestMeta(req);
 
     this.logger.log(
@@ -241,6 +330,84 @@ export class AuthController {
     return { ok: true, requireReauth: true };
   }
 
+  @Get('recovery/status')
+  async recoveryStatus(@Req() req: AuthenticatedRequest) {
+    return await this.authService.getPasswordRecoveryStatus(req.user.id);
+  }
+
+  @Post('recovery/configure')
+  async configureRecovery(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: ConfigureRecoveryBody,
+  ) {
+    const envelopePayload = this.resolveEnvelopePayload(
+      body?.credentialEnvelope,
+      [AUTH_CREDENTIAL_ENVELOPE_PURPOSES.recoveryConfigure],
+    );
+    const currentPassword = readString(
+      envelopePayload
+        ? envelopePayload['currentPassword']
+        : body?.currentPassword,
+    );
+    const recoveryAnswers = readRecoveryAnswers(
+      envelopePayload
+        ? envelopePayload['recoveryAnswers']
+        : body?.recoveryAnswers,
+      'recoveryAnswers',
+    );
+    const meta = this.getRequestMeta(req);
+    return await this.authService.configurePasswordRecovery({
+      userId: req.user.id,
+      currentPassword,
+      answers: recoveryAnswers,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+  }
+
+  @Public()
+  @Post('recovery/reset-questions')
+  async createRecoveryResetQuestions(
+    @Body() body: ResetQuestionsBody,
+    @Req() req: Request,
+  ) {
+    const username = readString(body?.username);
+    const meta = this.getRequestMeta(req);
+    return await this.authService.createPasswordResetChallenge({
+      username,
+      ip: meta.ip,
+    });
+  }
+
+  @Public()
+  @Post('recovery/reset-password')
+  async resetPasswordWithRecovery(
+    @Body() body: ResetPasswordBody,
+    @Req() req: Request,
+  ) {
+    const envelopePayload = this.resolveEnvelopePayload(
+      body?.credentialEnvelope,
+      [AUTH_CREDENTIAL_ENVELOPE_PURPOSES.recoveryResetPassword],
+    );
+    const challengeId = readString(
+      envelopePayload ? envelopePayload['challengeId'] : body?.challengeId,
+    );
+    const newPassword = readString(
+      envelopePayload ? envelopePayload['newPassword'] : body?.newPassword,
+    );
+    const answers = readResetAnswers(
+      envelopePayload ? envelopePayload['answers'] : body?.answers,
+    );
+    const meta = this.getRequestMeta(req);
+    return await this.authService.resetPasswordWithRecovery({
+      challengeId,
+      newPassword,
+      answers,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+  }
+
   @Get('me')
   me(@Req() req: AuthenticatedRequest) {
     return { user: req.user };
@@ -258,13 +425,17 @@ export class AuthController {
     return { ok: true };
   }
 
-  private resolveCredentialBody(body: LoginBody): {
+  private resolveCredentialBody(
+    body: LoginBody,
+    envelopePayload: Record<string, unknown> | null = null,
+  ): {
     username: string;
     password: string;
     captchaToken: string | null;
   } {
     const captchaToken = readOptionalString(body?.captchaToken);
-    const envelopeCredentials = this.resolveEnvelopeCredentials(body);
+    const envelopeCredentials =
+      this.resolveEnvelopeCredentials(envelopePayload);
     if (envelopeCredentials) {
       return { ...envelopeCredentials, captchaToken };
     }
@@ -307,12 +478,35 @@ export class AuthController {
     };
   }
 
-  private resolveEnvelopeCredentials(body: LoginBody): {
+  private resolveEnvelopePayload(
+    credentialEnvelope: unknown,
+    expectedPurposes?: readonly string[],
+  ): Record<string, unknown> | null {
+    if (credentialEnvelope === undefined) return null;
+    const payload =
+      this.authService.decryptCredentialEnvelopePayload(credentialEnvelope);
+    if (!expectedPurposes?.length) return payload;
+
+    const purpose = readString(payload['purpose']).trim();
+    if (!purpose || !expectedPurposes.includes(purpose)) {
+      throw new BadRequestException('credentialEnvelope purpose is invalid');
+    }
+    return payload;
+  }
+
+  private resolveEnvelopeCredentials(payload: Record<string, unknown> | null): {
     username: string;
     password: string;
   } | null {
-    if (body?.credentialEnvelope === undefined) return null;
-    return this.authService.decryptCredentialEnvelope(body.credentialEnvelope);
+    if (!payload) return null;
+    const username = readString(payload['username']);
+    const password = readString(payload['password']);
+    if (!username.trim() || !password) {
+      throw new BadRequestException(
+        'credentialEnvelope payload must include username and password',
+      );
+    }
+    return { username, password };
   }
 
   private resolvePlainCredentials(body: LoginBody): {

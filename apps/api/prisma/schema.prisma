@@ -29,6 +29,7 @@ model User {
   sessions            Session[]
   settings            UserSettings?
   secrets             UserSecrets?
+  recovery            UserRecovery?
   rejectedSuggestions RejectedSuggestion[]
   arrInstances        ArrInstance[]
   immaculateTasteProfiles ImmaculateTasteProfile[]
@@ -60,6 +61,20 @@ model UserSettings {
 model UserSecrets {
   userId    String   @id
   value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserRecovery {
+  userId String @id
+  questionOneKey String
+  questionOneAnswerHash String
+  questionTwoKey String
+  questionTwoAnswerHash String
+  questionThreeKey String
+  questionThreeAnswerHash String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

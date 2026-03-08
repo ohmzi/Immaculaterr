@@ -15,6 +15,7 @@ import { CommandCenterPage } from '@/pages/CommandCenterPage';
 import { FaqPage } from '@/pages/FaqPage';
 import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
 import { DebuggerPage } from '@/pages/DebuggerPage';
+import { ProfilePage } from '@/pages/ProfilePage';
 
 // skipcq: SCT-A000 - Legacy localStorage cleanup key, not a credential.
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
@@ -50,6 +51,7 @@ const App = () => {
             <Route path="vault" element={<VaultPage />} />
             <Route path="command-center" element={<CommandCenterPage />} />
             <Route path="faq" element={<FaqPage />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="version-history" element={<VersionHistoryPage />} />
             <Route path="__debug/:token" element={<DebuggerPage />} />
             <Route path="task-manager" element={<TaskManagerPage />} />

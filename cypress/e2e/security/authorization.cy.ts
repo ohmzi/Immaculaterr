@@ -36,6 +36,7 @@ const AUTH_LOGIN_PATH = '/api/auth/login';
 const REPORT_FILE = 'authorization-cypress.md';
 const PROTECTED_ENDPOINTS: readonly EndpointCheck[] = [
   { method: 'GET', path: '/api/auth/me' },
+  { method: 'GET', path: '/api/auth/recovery/status' },
   { method: 'GET', path: '/api/settings' },
   { method: 'GET', path: '/api/jobs' },
   { method: 'GET', path: '/api/arr-instances' },

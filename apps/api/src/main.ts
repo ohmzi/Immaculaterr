@@ -200,6 +200,16 @@ async function bootstrap() {
       max: authLoginMax,
       keyPrefix: 'auth_login_proof',
     },
+    {
+      path: AUTH_RATE_LIMIT_ROUTES.passwordResetQuestions,
+      max: authLoginMax,
+      keyPrefix: 'auth_reset_questions',
+    },
+    {
+      path: AUTH_RATE_LIMIT_ROUTES.passwordReset,
+      max: authLoginMax,
+      keyPrefix: 'auth_reset_password',
+    },
   ] as const;
 
   for (const route of authRateLimitRoutes) {

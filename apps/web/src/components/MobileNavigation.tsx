@@ -220,6 +220,10 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     setIsHelpOpen(false);
     go('/faq');
   }, [go]);
+  const openProfileFromHelp = useCallback(() => {
+    setIsHelpOpen(false);
+    go('/profile');
+  }, [go]);
   const handleDebugPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -452,6 +456,14 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             >
               <div className="ml-auto w-full max-w-sm bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
                 <div className="p-4">
+                  <button
+                    type="button"
+                    onClick={openProfileFromHelp}
+                    className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                  >
+                    Profile
+                  </button>
+
                   <button
                     type="button"
                     onClick={openFaqFromHelp}

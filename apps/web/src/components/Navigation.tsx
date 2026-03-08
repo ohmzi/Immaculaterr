@@ -290,6 +290,10 @@ export function Navigation() {
     setIsHelpOpen(false);
     navigate('/faq');
   }, [navigate]);
+  const openProfile = useCallback(() => {
+    setIsHelpOpen(false);
+    navigate('/profile');
+  }, [navigate]);
   const handleDebugPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -456,6 +460,14 @@ export function Navigation() {
                         className="absolute top-full right-0 mt-2 w-64 bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden z-50"
                       >
                         <div className="p-4 space-y-2">
+                          <button
+                            type="button"
+                            onClick={openProfile}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                          >
+                            Profile
+                          </button>
+
                           <button
                             type="button"
                             onClick={openFaq}

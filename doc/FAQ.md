@@ -8,6 +8,8 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What is Immaculaterr?](#what-is-immaculaterr)
   - [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand)
   - [How do I do first-time setup?](#how-do-i-do-first-time-setup)
+  - [How does password recovery setup work?](#how-does-password-recovery-setup-work)
+  - [How do I reset my password?](#how-do-i-reset-my-password)
   - [What port does Immaculaterr use and how do I access it?](#what-port-does-immaculaterr-use-and-how-do-i-access-it)
   - [Why keep both HTTP and HTTPS enabled?](#why-keep-both-http-and-https-enabled)
 - [Automation & triggers](#automation--triggers)
@@ -95,6 +97,23 @@ It does not download media by itself—it can optionally send missing titles to 
 3. Optionally connect Radarr/Sonarr and/or Overseerr (only if you want “Fetch Missing items” behavior).
 4. In Task Manager, choose your missing-item route per task card: direct ARR route or Overseerr route.
 5. Go to Task Manager and enable Auto-Run for the jobs you want.
+
+### How does password recovery setup work?
+
+- New installs: account setup now has 2 steps:
+  - Step 1: username + password + password confirmation.
+  - Step 2: choose 3 security questions and answers.
+- Existing installs (upgraded): after acknowledging the What's New popup, you must complete password recovery setup before continuing.
+- You can update password recovery later in Help -> Profile.
+
+### How do I reset my password?
+
+1. On the sign-in screen, click Reset password.
+2. Enter your username.
+3. Answer 2 randomly selected security questions from your saved 3.
+4. Enter a new password and confirm it.
+
+If answers are wrong, question pairs rotate on retry. After 5 failed attempts, reset is locked for 15 minutes.
 
 ### What port does Immaculaterr use and how do I access it?
 
