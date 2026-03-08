@@ -178,6 +178,17 @@ type CollectionRecreateResult = {
   failures: string[];
 };
 
+type ProfileWithOverridesRow = ImmaculateTasteProfile & {
+  userOverrides: ImmaculateTasteProfileUserOverride[];
+};
+
+type EffectiveCollectionScope = {
+  mediaType: MediaType;
+  movieBaseName: string;
+  showBaseName: string;
+  datasetId: string;
+};
+
 function errToMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -1015,97 +1026,178 @@ export class ImmaculateTasteProfileService {
       },
     });
     try {
-    const profileOverrides =
-      await this.prisma.immaculateTasteProfileUserOverride.findMany({
-        where: { profileId: current.id },
-      });
-    const cleanupResult = await this.cleanupCollectionsForProfile(
-      userId,
-      current,
-      profileOverrides,
-    );
-    let movedMovieRows = 0;
-    let movedShowRows = 0;
-    let defaultAutoEnabled = false;
-    await this.prisma.$transaction(async (tx) => {
-      const movieRes = await tx.immaculateTasteMovieLibrary.updateMany({
-        where: { plexUserId: userId, profileId: current.id },
-        data: { profileId: 'default' },
-      });
-      const showRes = await tx.immaculateTasteShowLibrary.updateMany({
-        where: { plexUserId: userId, profileId: current.id },
-        data: { profileId: 'default' },
-      });
-      movedMovieRows = movieRes.count;
-      movedShowRows = showRes.count;
-      await tx.immaculateTasteProfile.delete({ where: { id: current.id } });
-
-      // Ensure at least one enabled profile always remains after deletion.
-      const enabledProfile = await tx.immaculateTasteProfile.findFirst({
-        where: { userId, enabled: true },
-        select: { id: true },
-      });
-      if (!enabledProfile) {
-        const enableRes = await tx.immaculateTasteProfile.updateMany({
-          where: { userId, isDefault: true },
-          data: { enabled: true },
+      const profileOverrides =
+        await this.prisma.immaculateTasteProfileUserOverride.findMany({
+          where: { profileId: current.id },
         });
-        defaultAutoEnabled = enableRes.count > 0;
-      }
-    });
-    const defaultAutoEnableRecreateResult =
-      await this.recreateDefaultCollectionsAfterAutoEnable({
-        userId,
-        defaultAutoEnabled,
+      const currentProfile: ProfileWithOverridesRow = {
+        ...current,
+        userOverrides: profileOverrides,
+      };
+      const otherProfiles = await this.prisma.immaculateTasteProfile.findMany({
+        where: { userId, id: { not: current.id } },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        include: {
+          userOverrides: {
+            orderBy: [{ createdAt: 'asc' }],
+          },
+        },
       });
-    await this.writeActionRunSafe({
-      runId: actionRunId,
-      userId,
-      action: 'profile.delete',
-      profileId: current.id,
-      profileName: current.name,
-      headline: `Immaculate Taste profile "${current.name}" deleted.`,
-      tasks: [
-        this.buildCleanupTask({
-          taskId: 'cleanup_collections_on_delete',
-          taskTitle: 'Delete Plex collections for deleted profile',
-          result: cleanupResult,
-        }),
+      const cleanupResult = await this.cleanupCollectionsForProfile(
+        userId,
+        current,
+        profileOverrides,
         {
-          id: 'delete_profile',
-          title: 'Delete profile and reassign linked libraries',
-          status: 'success',
-          facts: [
-            { label: 'Profile id', value: current.id },
-            { label: 'Movie libraries reassigned', value: movedMovieRows },
-            { label: 'TV libraries reassigned', value: movedShowRows },
-          ],
+          otherProfiles,
+          skipSharedCollections: true,
         },
-        {
-          id: 'ensure_enabled_fallback',
-          title: 'Ensure at least one enabled profile remains',
-          status: defaultAutoEnabled ? 'success' : 'skipped',
-          facts: [{ label: 'Default auto-enabled', value: defaultAutoEnabled }],
+      );
+      let movedMovieRows = 0;
+      let movedShowRows = 0;
+      let deletedMovieRows = 0;
+      let deletedShowRows = 0;
+      let defaultAutoEnabled = false;
+      await this.prisma.$transaction(async (tx) => {
+        const [movieUsersWithRows, showUsersWithRows] = await Promise.all([
+          tx.immaculateTasteMovieLibrary.findMany({
+            where: { profileId: current.id },
+            select: { plexUserId: true },
+            distinct: ['plexUserId'],
+          }),
+          tx.immaculateTasteShowLibrary.findMany({
+            where: { profileId: current.id },
+            select: { plexUserId: true },
+            distinct: ['plexUserId'],
+          }),
+        ]);
+        for (const row of movieUsersWithRows) {
+          const currentScope = this.resolveEffectiveCollectionScopeForPlexUser({
+            profile: currentProfile,
+            plexUserId: row.plexUserId,
+          });
+          if (!includesMovies(currentScope.mediaType)) continue;
+          const sharedDatasetId =
+            this.findSharedCollectionProfileDatasetIdForUser({
+              otherProfiles,
+              plexUserId: row.plexUserId,
+              mediaType: 'movie',
+              collectionBaseName: currentScope.movieBaseName,
+            });
+          if (!sharedDatasetId) continue;
+          const moveRes = await tx.immaculateTasteMovieLibrary.updateMany({
+            where: {
+              plexUserId: row.plexUserId,
+              profileId: current.id,
+            },
+            data: { profileId: sharedDatasetId },
+          });
+          movedMovieRows += moveRes.count;
+        }
+        for (const row of showUsersWithRows) {
+          const currentScope = this.resolveEffectiveCollectionScopeForPlexUser({
+            profile: currentProfile,
+            plexUserId: row.plexUserId,
+          });
+          if (!includesShows(currentScope.mediaType)) continue;
+          const sharedDatasetId =
+            this.findSharedCollectionProfileDatasetIdForUser({
+              otherProfiles,
+              plexUserId: row.plexUserId,
+              mediaType: 'show',
+              collectionBaseName: currentScope.showBaseName,
+            });
+          if (!sharedDatasetId) continue;
+          const moveRes = await tx.immaculateTasteShowLibrary.updateMany({
+            where: {
+              plexUserId: row.plexUserId,
+              profileId: current.id,
+            },
+            data: { profileId: sharedDatasetId },
+          });
+          movedShowRows += moveRes.count;
+        }
+
+        const movieDeleteRes = await tx.immaculateTasteMovieLibrary.deleteMany({
+          where: { profileId: current.id },
+        });
+        const showDeleteRes = await tx.immaculateTasteShowLibrary.deleteMany({
+          where: { profileId: current.id },
+        });
+        deletedMovieRows = movieDeleteRes.count;
+        deletedShowRows = showDeleteRes.count;
+
+        await tx.immaculateTasteProfile.delete({ where: { id: current.id } });
+
+        // Ensure at least one enabled profile always remains after deletion.
+        const enabledProfile = await tx.immaculateTasteProfile.findFirst({
+          where: { userId, enabled: true },
+          select: { id: true },
+        });
+        if (!enabledProfile) {
+          const enableRes = await tx.immaculateTasteProfile.updateMany({
+            where: { userId, isDefault: true },
+            data: { enabled: true },
+          });
+          defaultAutoEnabled = enableRes.count > 0;
+        }
+      });
+      const defaultAutoEnableRecreateResult =
+        await this.recreateDefaultCollectionsAfterAutoEnable({
+          userId,
+          defaultAutoEnabled,
+        });
+      await this.writeActionRunSafe({
+        runId: actionRunId,
+        userId,
+        action: 'profile.delete',
+        profileId: current.id,
+        profileName: current.name,
+        headline: `Immaculate Taste profile "${current.name}" deleted.`,
+        tasks: [
+          this.buildCleanupTask({
+            taskId: 'cleanup_collections_on_delete',
+            taskTitle: 'Delete Plex collections for deleted profile',
+            result: cleanupResult,
+          }),
+          {
+            id: 'delete_profile',
+            title: 'Delete profile and clean linked libraries',
+            status: 'success',
+            facts: [
+              { label: 'Profile id', value: current.id },
+              { label: 'Movie libraries moved', value: movedMovieRows },
+              { label: 'TV libraries moved', value: movedShowRows },
+              { label: 'Movie libraries deleted', value: deletedMovieRows },
+              { label: 'TV libraries deleted', value: deletedShowRows },
+            ],
+          },
+          {
+            id: 'ensure_enabled_fallback',
+            title: 'Ensure at least one enabled profile remains',
+            status: defaultAutoEnabled ? 'success' : 'skipped',
+            facts: [{ label: 'Default auto-enabled', value: defaultAutoEnabled }],
+          },
+          ...(defaultAutoEnableRecreateResult
+            ? [
+                this.buildRecreateTask({
+                  taskId: 'recreate_collections_on_default_auto_enable',
+                  taskTitle:
+                    'Recreate Plex collections for auto-enabled default profile',
+                  result: defaultAutoEnableRecreateResult,
+                }),
+              ]
+            : []),
+        ],
+        raw: {
+          action: 'delete',
+          movedMovieRows,
+          movedShowRows,
+          deletedMovieRows,
+          deletedShowRows,
+          defaultAutoEnabled,
+          defaultAutoEnableRecreated: Boolean(defaultAutoEnableRecreateResult),
         },
-        ...(defaultAutoEnableRecreateResult
-          ? [
-              this.buildRecreateTask({
-                taskId: 'recreate_collections_on_default_auto_enable',
-                taskTitle:
-                  'Recreate Plex collections for auto-enabled default profile',
-                result: defaultAutoEnableRecreateResult,
-              }),
-            ]
-          : []),
-      ],
-      raw: {
-        action: 'delete',
-        movedMovieRows,
-        movedShowRows,
-        defaultAutoEnabled,
-        defaultAutoEnableRecreated: Boolean(defaultAutoEnableRecreateResult),
-      },
-    });
+      });
     } catch (error) {
       await this.failActionRunSafe({
         runId: actionRunId,
@@ -1601,6 +1693,59 @@ export class ImmaculateTasteProfileService {
     };
   }
 
+  private resolveEffectiveCollectionScopeForPlexUser(params: {
+    profile: ProfileWithOverridesRow;
+    plexUserId: string;
+  }): EffectiveCollectionScope {
+    const profileOverrides = params.profile.userOverrides ?? [];
+    const override =
+      profileOverrides.find(
+        (candidate) => candidate.plexUserId === params.plexUserId,
+      ) ?? null;
+    const mediaType = normalizeMediaType(
+      override?.mediaType ?? params.profile.mediaType,
+    );
+    return {
+      mediaType,
+      movieBaseName: resolveMovieCollectionBaseName(
+        override?.movieCollectionBaseName ?? params.profile.movieCollectionBaseName,
+      ),
+      showBaseName: resolveShowCollectionBaseName(
+        override?.showCollectionBaseName ?? params.profile.showCollectionBaseName,
+      ),
+      datasetId: params.profile.isDefault ? 'default' : params.profile.id,
+    };
+  }
+
+  private findSharedCollectionProfileDatasetIdForUser(params: {
+    otherProfiles: ProfileWithOverridesRow[];
+    plexUserId: string;
+    mediaType: 'movie' | 'show';
+    collectionBaseName: string;
+  }): string | null {
+    const targetKey = normalizeCollectionTitle(params.collectionBaseName);
+    if (!targetKey) return null;
+    for (const profile of params.otherProfiles) {
+      if (!profile.enabled) continue;
+      const scope = this.resolveEffectiveCollectionScopeForPlexUser({
+        profile,
+        plexUserId: params.plexUserId,
+      });
+      if (
+        params.mediaType === 'movie'
+          ? !includesMovies(scope.mediaType)
+          : !includesShows(scope.mediaType)
+      ) {
+        continue;
+      }
+      const candidateBase =
+        params.mediaType === 'movie' ? scope.movieBaseName : scope.showBaseName;
+      if (normalizeCollectionTitle(candidateBase) !== targetKey) continue;
+      return scope.datasetId;
+    }
+    return null;
+  }
+
   private async renameCollectionsForBaseNameChange(
     userId: string,
     params: {
@@ -1880,6 +2025,10 @@ export class ImmaculateTasteProfileService {
     userId: string,
     profile: ImmaculateTasteProfile,
     profileOverrides: ImmaculateTasteProfileUserOverride[] = [],
+    options?: {
+      otherProfiles?: ProfileWithOverridesRow[];
+      skipSharedCollections?: boolean;
+    },
   ): Promise<CollectionCleanupResult> {
     const result: CollectionCleanupResult = {
       attempted: false,
@@ -2008,19 +2157,22 @@ export class ImmaculateTasteProfileService {
       return result;
     }
 
-    const overrideByPlexUserId = new Map(
-      profileOverrides.map((override) => [override.plexUserId, override]),
-    );
+    const otherProfiles = options?.otherProfiles ?? [];
+    const currentProfile: ProfileWithOverridesRow = {
+      ...profile,
+      userOverrides: profileOverrides,
+    };
+    const skipSharedCollections = options?.skipSharedCollections === true;
 
     for (const user of selectedUsers) {
-      const userOverride = overrideByPlexUserId.get(user.id);
-      const movieBase = resolveMovieCollectionBaseName(
-        userOverride?.movieCollectionBaseName ??
-          profile.movieCollectionBaseName,
-      );
-      const showBase = resolveShowCollectionBaseName(
-        userOverride?.showCollectionBaseName ?? profile.showCollectionBaseName,
-      );
+      const userScope = this.resolveEffectiveCollectionScopeForPlexUser({
+        profile: currentProfile,
+        plexUserId: user.id,
+      });
+      const userIncludeMovies = includesMovies(userScope.mediaType);
+      const userIncludeShows = includesShows(userScope.mediaType);
+      const movieBase = userScope.movieBaseName;
+      const showBase = userScope.showBaseName;
       const movieNames = buildImmaculateCollectionLookupNames(
         movieBase,
         user.plexAccountTitle,
@@ -2029,7 +2181,31 @@ export class ImmaculateTasteProfileService {
         showBase,
         user.plexAccountTitle,
       );
+      const skipMovieCollectionDelete =
+        skipSharedCollections &&
+        userIncludeMovies &&
+        Boolean(
+          this.findSharedCollectionProfileDatasetIdForUser({
+            otherProfiles,
+            plexUserId: user.id,
+            mediaType: 'movie',
+            collectionBaseName: movieBase,
+          }),
+        );
+      const skipShowCollectionDelete =
+        skipSharedCollections &&
+        userIncludeShows &&
+        Boolean(
+          this.findSharedCollectionProfileDatasetIdForUser({
+            otherProfiles,
+            plexUserId: user.id,
+            mediaType: 'show',
+            collectionBaseName: showBase,
+          }),
+        );
+
       for (const section of movieSections) {
+        if (!userIncludeMovies || skipMovieCollectionDelete) continue;
         await this.cleanupDuplicateEmptyCollections({
           baseUrl,
           token: plexToken,
@@ -2072,6 +2248,7 @@ export class ImmaculateTasteProfileService {
         }
       }
       for (const section of showSections) {
+        if (!userIncludeShows || skipShowCollectionDelete) continue;
         await this.cleanupDuplicateEmptyCollections({
           baseUrl,
           token: plexToken,
