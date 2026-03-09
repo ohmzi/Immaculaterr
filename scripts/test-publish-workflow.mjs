@@ -67,6 +67,14 @@ const requiredSnippets = [
     snippet: '          push: true',
   },
   {
+    name: 'merge publish computes beta marker from version',
+    snippet: 'echo "is_beta=${IS_BETA}"',
+  },
+  {
+    name: 'merge publish gates latest tags to non-beta versions',
+    snippet: 'if [[ "${IS_BETA}" != "true" ]]; then',
+  },
+  {
     name: 'beta publish job exists',
     snippet: '  build-and-push-beta:',
   },
@@ -93,6 +101,10 @@ const requiredSnippets = [
   {
     name: 'release job depends on build-and-push',
     snippet: '      - build-and-push',
+  },
+  {
+    name: 'release job runs only for non-beta versions',
+    snippet: withWorkflowExpression("needs.build-and-push.outputs.is_beta != 'true'"),
   },
   {
     name: "release notes include what's changed heading",
