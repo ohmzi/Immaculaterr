@@ -5,7 +5,7 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import type { Request } from 'express';
 import { PrismaService } from '../db/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
@@ -1669,9 +1669,9 @@ export class AuthService {
 
   private selectRandomPasswordResetSlots(): [1 | 2 | 3, 1 | 2 | 3] {
     const slots: Array<1 | 2 | 3> = [1, 2, 3];
-    const firstIndex = randomBytes(1)[0] % slots.length;
+    const firstIndex = randomInt(slots.length);
     const [first] = slots.splice(firstIndex, 1);
-    const secondIndex = randomBytes(1)[0] % slots.length;
+    const secondIndex = randomInt(slots.length);
     const second = slots[secondIndex] ?? 2;
     return [first, second];
   }
