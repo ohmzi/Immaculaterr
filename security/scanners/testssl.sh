@@ -26,7 +26,7 @@ is_tls_port_open() {
   fi
 
   if command -v timeout >/dev/null 2>&1; then
-    timeout 2 bash -c 'exec 3<>/dev/tcp/"$1"/443' _ "$host" >/dev/null 2>&1
+    timeout 2 bash -c "exec 3<>/dev/tcp/\$1/443" _ "$host" >/dev/null 2>&1
     return $?
   fi
 
