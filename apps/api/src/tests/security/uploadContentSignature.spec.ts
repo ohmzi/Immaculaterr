@@ -1,5 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import type { Express } from 'express';
+import { rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { CollectionArtworkService } from '../../plex/collection-artwork.service';
 
 describe('security/upload content signature validation', () => {
@@ -61,7 +63,10 @@ describe('security/upload content signature validation', () => {
 
   it('rejects svg content that pretends to be webp', async () => {
     const { service, prisma } = makeService();
-    const svgPayload = Buffer.from('<svg><script>alert(1)</script></svg>', 'utf8');
+    const svgPayload = Buffer.from(
+      '<svg><script>alert(1)</script></svg>',
+      'utf8',
+    );
 
     await expect(
       service.saveOverride({
@@ -78,5 +83,46 @@ describe('security/upload content signature validation', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.setting.findUnique).not.toHaveBeenCalled();
     expect(prisma.setting.upsert).not.toHaveBeenCalled();
+  });
+
+  it('stores custom poster paths under collection_artwork/custom with sanitized path segments', async () => {
+    const { service, prisma } = makeService();
+    const originalDataDir = process.env.APP_DATA_DIR;
+    const testDataDir = resolve('/tmp/immaculaterr-upload-signature-security');
+    process.env.APP_DATA_DIR = testDataDir;
+
+    prisma.setting.findUnique.mockResolvedValue(null);
+    prisma.setting.upsert.mockResolvedValue(undefined);
+
+    const pngPayload = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
+    ]);
+
+    try {
+      const saved = await service.saveOverride({
+        plexUserId: '../Admin User',
+        mediaType: 'movie',
+        targetKind: 'immaculate_profile',
+        targetId: '../../etc/passwd',
+        file: makeFile({
+          mimeType: 'image/png',
+          buffer: pngPayload,
+          originalName: 'poster.png',
+        }),
+      });
+
+      expect(saved.relativePosterPath).toContain(
+        join('collection_artwork', 'custom'),
+      );
+      expect(saved.relativePosterPath).not.toContain('..');
+      expect(saved.relativePosterPath).toContain('/admin-user/');
+      expect(saved.relativePosterPath).toContain('/etc-passwd-');
+      expect(prisma.setting.upsert).toHaveBeenCalled();
+    } finally {
+      process.env.APP_DATA_DIR = originalDataDir;
+      await rm(testDataDir, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+    }
   });
 });
