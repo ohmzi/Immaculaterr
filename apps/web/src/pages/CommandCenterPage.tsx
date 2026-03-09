@@ -1,5 +1,11 @@
 import { SettingsPage } from '@/pages/VaultPage';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CircleAlert,
@@ -33,12 +39,16 @@ import {
   getPlexLibraryFilters,
   getPlexMonitoringUsers,
   getRadarrOptions,
+  getRadarrOptionsForInstance,
   savePlexMonitoringUsers,
   getSonarrOptions,
+  getSonarrOptionsForInstance,
   savePlexLibrarySelection,
   type PlexMonitoringUserItem,
+  type RadarrOptionsResponse,
+  type SonarrOptionsResponse,
 } from '@/api/integrations';
-import { listArrInstances } from '@/api/arr-instances';
+import { listArrInstances, updateArrInstance } from '@/api/arr-instances';
 import {
   createImmaculateTasteProfile,
   deleteImmaculateTasteProfile,
@@ -1047,6 +1057,34 @@ export function CommandCenterPage() {
   );
   const hasMultipleActiveRadarrServices = activeRadarrInstanceOptions.length >= 2;
   const hasMultipleActiveSonarrServices = activeSonarrInstanceOptions.length >= 2;
+  const enabledSecondaryRadarrInstances = useMemo(
+    () => activeRadarrInstanceOptions.filter((instance) => !instance.isPrimary),
+    [activeRadarrInstanceOptions],
+  );
+  const enabledSecondarySonarrInstances = useMemo(
+    () => activeSonarrInstanceOptions.filter((instance) => !instance.isPrimary),
+    [activeSonarrInstanceOptions],
+  );
+  const showRadarrStackedDefaults = enabledSecondaryRadarrInstances.length > 0;
+  const showSonarrStackedDefaults = enabledSecondarySonarrInstances.length > 0;
+  const radarrSecondaryOptionsQueries = useQueries({
+    queries: enabledSecondaryRadarrInstances.map((instance) => ({
+      queryKey: ['integrations', 'radarr', 'options', instance.id] as const,
+      queryFn: () => getRadarrOptionsForInstance(instance.id),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    })),
+  }) as UseQueryResult<RadarrOptionsResponse, Error>[];
+  const sonarrSecondaryOptionsQueries = useQueries({
+    queries: enabledSecondarySonarrInstances.map((instance) => ({
+      queryKey: ['integrations', 'sonarr', 'options', instance.id] as const,
+      queryFn: () => getSonarrOptionsForInstance(instance.id),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    })),
+  }) as UseQueryResult<SonarrOptionsResponse, Error>[];
   const recommendedGenres = plexLibraryFiltersQuery.data?.genres ?? [];
   const trimmedGenreSearch = genreSearch.trim();
   const genreSearchIsActive = trimmedGenreSearch.length > 0;
@@ -2746,6 +2784,150 @@ export function CommandCenterPage() {
       queryClient.setQueryData(['settings'], data);
     },
   });
+  const saveRadarrInstanceDefaultsMutation = useMutation({
+    mutationFn: async (params: {
+      instanceId: string;
+      patch: {
+        rootFolderPath?: string | null;
+        qualityProfileId?: number | null;
+        tagId?: number | null;
+      };
+    }) => await updateArrInstance(params.instanceId, params.patch),
+    onMutate: (variables) => {
+      const queryKey = ['arr-instances'] as const;
+      const previous = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            if (String(instance.id ?? '') !== variables.instanceId) return item;
+            return {
+              ...instance,
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'rootFolderPath')
+                ? { rootFolderPath: variables.patch.rootFolderPath ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'qualityProfileId')
+                ? { qualityProfileId: variables.patch.qualityProfileId ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'tagId')
+                ? { tagId: variables.patch.tagId ?? null }
+                : {}),
+            };
+          }),
+        };
+      });
+      return { previous };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['arr-instances'], (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            return String(instance.id ?? '') === data.instance.id ? data.instance : item;
+          }),
+        };
+      });
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['arr-instances'], context.previous);
+      }
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(
+            error.body,
+            error.message || 'Failed to save Radarr server defaults',
+          ),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save Radarr server defaults',
+      );
+    },
+  });
+  const saveSonarrInstanceDefaultsMutation = useMutation({
+    mutationFn: async (params: {
+      instanceId: string;
+      patch: {
+        rootFolderPath?: string | null;
+        qualityProfileId?: number | null;
+        tagId?: number | null;
+      };
+    }) => await updateArrInstance(params.instanceId, params.patch),
+    onMutate: (variables) => {
+      const queryKey = ['arr-instances'] as const;
+      const previous = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            if (String(instance.id ?? '') !== variables.instanceId) return item;
+            return {
+              ...instance,
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'rootFolderPath')
+                ? { rootFolderPath: variables.patch.rootFolderPath ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'qualityProfileId')
+                ? { qualityProfileId: variables.patch.qualityProfileId ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'tagId')
+                ? { tagId: variables.patch.tagId ?? null }
+                : {}),
+            };
+          }),
+        };
+      });
+      return { previous };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['arr-instances'], (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            return String(instance.id ?? '') === data.instance.id ? data.instance : item;
+          }),
+        };
+      });
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['arr-instances'], context.previous);
+      }
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(
+            error.body,
+            error.message || 'Failed to save Sonarr server defaults',
+          ),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save Sonarr server defaults',
+      );
+    },
+  });
 
   const didInitRecommendations = useRef(false);
   const savedRecommendationCount =
@@ -3357,6 +3539,37 @@ export function CommandCenterPage() {
     },
     [saveRadarrDefaultsMutation],
   );
+  const handleRadarrSecondaryRootFolderChange = useCallback(
+    (instanceId: string, next: string) => {
+      saveRadarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { rootFolderPath: next || null },
+      });
+    },
+    [saveRadarrInstanceDefaultsMutation],
+  );
+  const handleRadarrSecondaryQualityProfileChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const next = Number.parseInt(raw, 10);
+      if (!Number.isFinite(next)) return;
+      saveRadarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { qualityProfileId: next },
+      });
+    },
+    [saveRadarrInstanceDefaultsMutation],
+  );
+  const handleRadarrSecondaryTagChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+      const next = Number.isFinite(parsed ?? NaN) ? (parsed as number) : null;
+      saveRadarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { tagId: next },
+      });
+    },
+    [saveRadarrInstanceDefaultsMutation],
+  );
   const handleSonarrRootFolderChange = useCallback(
     (next: string) => {
       setSonarrDraftRootFolderPath(next);
@@ -3365,6 +3578,37 @@ export function CommandCenterPage() {
       });
     },
     [saveSonarrDefaultsMutation],
+  );
+  const handleSonarrSecondaryRootFolderChange = useCallback(
+    (instanceId: string, next: string) => {
+      saveSonarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { rootFolderPath: next || null },
+      });
+    },
+    [saveSonarrInstanceDefaultsMutation],
+  );
+  const handleSonarrSecondaryQualityProfileChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const next = Number.parseInt(raw, 10);
+      if (!Number.isFinite(next)) return;
+      saveSonarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { qualityProfileId: next },
+      });
+    },
+    [saveSonarrInstanceDefaultsMutation],
+  );
+  const handleSonarrSecondaryTagChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+      const next = Number.isFinite(parsed ?? NaN) ? (parsed as number) : null;
+      saveSonarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { tagId: next },
+      });
+    },
+    [saveSonarrInstanceDefaultsMutation],
   );
   const handleSonarrQualityProfileChange = useCallback(
     (raw: string) => {
@@ -4103,7 +4347,7 @@ export function CommandCenterPage() {
                               <div>
                                 <div className="mb-2 flex items-center justify-between gap-3">
                                   <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
-                                    Included genres
+                                    Only Include Genres
                                   </div>
                                   <button
                                     type="button"
@@ -4207,7 +4451,7 @@ export function CommandCenterPage() {
                               <div>
                                 <div className="mb-2 flex items-center justify-between gap-3">
                                   <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
-                                    Included audio languages
+                                    Only Include Audio Languages
                                   </div>
                                   <button
                                     type="button"
@@ -4920,7 +5164,7 @@ export function CommandCenterPage() {
                             <div>
                               <div className="mb-2 flex items-center justify-between gap-3">
                                 <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
-                                  Included genres
+                                  Only Include Genres
                                 </div>
                                 <button
                                   type="button"
@@ -5029,7 +5273,7 @@ export function CommandCenterPage() {
                             <div>
                               <div className="mb-2 flex items-center justify-between gap-3">
                                 <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
-                                  Included audio languages
+                                  Only Include Audio Languages
                                 </div>
                                 <button
                                   type="button"
@@ -7035,7 +7279,10 @@ export function CommandCenterPage() {
                     )}
 
                     <SavingPill
-                      active={saveRadarrDefaultsMutation.isPending}
+                      active={
+                        saveRadarrDefaultsMutation.isPending ||
+                        saveRadarrInstanceDefaultsMutation.isPending
+                      }
                       className="static shrink-0"
                     />
                   </div>
@@ -7070,28 +7317,40 @@ export function CommandCenterPage() {
                     </p>
 
                     <div className="mt-5">
-                      {radarrOptionsQuery.isLoading ? (
-                        <div className="flex items-center gap-3 text-white/70 text-sm">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Loading Radarr options…
-                        </div>
-                      ) : radarrOptionsQuery.isError ? (
-                        <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
-                          <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                          <span>
-                            Couldn’t load Radarr folders/profiles/tags. Verify your Radarr
-                            connection in{' '}
-                            <Link
-                              to="/vault#vault-radarr"
-                              className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
-                            >
-                              Vault
-                            </Link>
-                            .
-                          </span>
-                </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div
+                        className={
+                          showRadarrStackedDefaults
+                            ? 'rounded-2xl border border-white/10 bg-white/5 p-4'
+                            : ''
+                        }
+                      >
+                        {showRadarrStackedDefaults ? (
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            Primary
+                          </div>
+                        ) : null}
+                        {radarrOptionsQuery.isLoading ? (
+                          <div className="flex items-center gap-3 text-white/70 text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading Radarr options…
+                          </div>
+                        ) : radarrOptionsQuery.isError ? (
+                          <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                            <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span>
+                              Couldn’t load Radarr folders/profiles/tags. Verify your Radarr
+                              connection in{' '}
+                              <Link
+                                to="/vault#vault-radarr"
+                                className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                              >
+                                Vault
+                              </Link>
+                              .
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                             <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
@@ -7166,9 +7425,10 @@ export function CommandCenterPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                          </div>
+                        )}
                       </div>
-                  )}
-              </div>
+                    </div>
 
                     {saveRadarrDefaultsMutation.isError ? (
                       <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
@@ -7189,6 +7449,150 @@ export function CommandCenterPage() {
                     .
                   </p>
                 )}
+                {showRadarrStackedDefaults ? (
+                  <div className="mt-5 space-y-4">
+                    {enabledSecondaryRadarrInstances.map((instance, index) => {
+                      const optionsQuery = radarrSecondaryOptionsQueries[index];
+                      const rootFolders = optionsQuery?.data?.rootFolders ?? [];
+                      const qualityProfiles = optionsQuery?.data?.qualityProfiles ?? [];
+                      const tags = optionsQuery?.data?.tags ?? [];
+                      const effectiveRootFolderPath =
+                        (instance.rootFolderPath &&
+                          rootFolders.some((folder) => folder.path === instance.rootFolderPath) &&
+                          instance.rootFolderPath) ||
+                        (rootFolders[0]?.path ?? '');
+                      const effectiveQualityProfileId = (() => {
+                        if (
+                          instance.qualityProfileId &&
+                          qualityProfiles.some(
+                            (profile) => profile.id === instance.qualityProfileId,
+                          )
+                        ) {
+                          return instance.qualityProfileId;
+                        }
+                        if (qualityProfiles.some((profile) => profile.id === 1)) return 1;
+                        return qualityProfiles[0]?.id ?? 1;
+                      })();
+                      const effectiveTagId =
+                        instance.tagId && tags.some((tag) => tag.id === instance.tagId)
+                          ? instance.tagId
+                          : null;
+
+                      return (
+                        <div
+                          key={instance.id}
+                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        >
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            {instance.name}
+                          </div>
+                          {optionsQuery?.isLoading ? (
+                            <div className="flex items-center gap-3 text-white/70 text-sm">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading {instance.name} options…
+                            </div>
+                          ) : optionsQuery?.isError ? (
+                            <div className="flex items-start gap-2 text-sm text-red-200/90">
+                              <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                              <span>
+                                Couldn’t load folders/profiles/tags for {instance.name}. Check this
+                                server in{' '}
+                                <Link
+                                  to="/vault#vault-radarr"
+                                  className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                                >
+                                  Vault
+                                </Link>
+                                .
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Root folder
+                                </div>
+                                <Select
+                                  value={effectiveRootFolderPath}
+                                  onValueChange={(next) =>
+                                    handleRadarrSecondaryRootFolderChange(instance.id, next)
+                                  }
+                                  disabled={
+                                    saveRadarrInstanceDefaultsMutation.isPending ||
+                                    !rootFolders.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select root folder" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {rootFolders.map((folder) => (
+                                      <SelectItem key={folder.id} value={folder.path}>
+                                        {folder.path}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Quality profile
+                                </div>
+                                <Select
+                                  value={String(effectiveQualityProfileId)}
+                                  onValueChange={(raw) =>
+                                    handleRadarrSecondaryQualityProfileChange(instance.id, raw)
+                                  }
+                                  disabled={
+                                    saveRadarrInstanceDefaultsMutation.isPending ||
+                                    !qualityProfiles.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select quality profile" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {qualityProfiles.map((profile) => (
+                                      <SelectItem key={profile.id} value={String(profile.id)}>
+                                        {profile.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Tag (optional)
+                                </div>
+                                <Select
+                                  value={effectiveTagId !== null ? String(effectiveTagId) : 'none'}
+                                  onValueChange={(raw) =>
+                                    handleRadarrSecondaryTagChange(instance.id, raw)
+                                  }
+                                  disabled={saveRadarrInstanceDefaultsMutation.isPending}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="No tag" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No tag</SelectItem>
+                                    {tags.map((tag) => (
+                                      <SelectItem key={tag.id} value={String(tag.id)}>
+                                        {tag.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                   </div>
                 </div>
               </div>
@@ -7228,7 +7632,10 @@ export function CommandCenterPage() {
                     )}
 
                     <SavingPill
-                      active={saveSonarrDefaultsMutation.isPending}
+                      active={
+                        saveSonarrDefaultsMutation.isPending ||
+                        saveSonarrInstanceDefaultsMutation.isPending
+                      }
                       className="static shrink-0"
                     />
                   </div>
@@ -7263,28 +7670,40 @@ export function CommandCenterPage() {
                     </p>
 
                     <div className="mt-5">
-                      {sonarrOptionsQuery.isLoading ? (
-                        <div className="flex items-center gap-3 text-white/70 text-sm">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Loading Sonarr options…
-                </div>
-                      ) : sonarrOptionsQuery.isError ? (
-                        <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
-                          <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                          <span>
-                            Couldn’t load Sonarr folders/profiles/tags. Verify your Sonarr
-                            connection in{' '}
-                            <Link
-                              to="/vault#vault-sonarr"
-                              className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
-                            >
-                              Vault
-                            </Link>
-                            .
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div
+                        className={
+                          showSonarrStackedDefaults
+                            ? 'rounded-2xl border border-white/10 bg-white/5 p-4'
+                            : ''
+                        }
+                      >
+                        {showSonarrStackedDefaults ? (
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            Primary
+                          </div>
+                        ) : null}
+                        {sonarrOptionsQuery.isLoading ? (
+                          <div className="flex items-center gap-3 text-white/70 text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading Sonarr options…
+                          </div>
+                        ) : sonarrOptionsQuery.isError ? (
+                          <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                            <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span>
+                              Couldn’t load Sonarr folders/profiles/tags. Verify your Sonarr
+                              connection in{' '}
+                              <Link
+                                to="/vault#vault-sonarr"
+                                className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                              >
+                                Vault
+                              </Link>
+                              .
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
@@ -7362,9 +7781,10 @@ export function CommandCenterPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                          </div>
+                        )}
                       </div>
-                  )}
-              </div>
+                    </div>
 
                     {saveSonarrDefaultsMutation.isError ? (
                       <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
@@ -7385,6 +7805,150 @@ export function CommandCenterPage() {
                     .
                   </p>
                 )}
+                {showSonarrStackedDefaults ? (
+                  <div className="mt-5 space-y-4">
+                    {enabledSecondarySonarrInstances.map((instance, index) => {
+                      const optionsQuery = sonarrSecondaryOptionsQueries[index];
+                      const rootFolders = optionsQuery?.data?.rootFolders ?? [];
+                      const qualityProfiles = optionsQuery?.data?.qualityProfiles ?? [];
+                      const tags = optionsQuery?.data?.tags ?? [];
+                      const effectiveRootFolderPath =
+                        (instance.rootFolderPath &&
+                          rootFolders.some((folder) => folder.path === instance.rootFolderPath) &&
+                          instance.rootFolderPath) ||
+                        (rootFolders[0]?.path ?? '');
+                      const effectiveQualityProfileId = (() => {
+                        if (
+                          instance.qualityProfileId &&
+                          qualityProfiles.some(
+                            (profile) => profile.id === instance.qualityProfileId,
+                          )
+                        ) {
+                          return instance.qualityProfileId;
+                        }
+                        if (qualityProfiles.some((profile) => profile.id === 1)) return 1;
+                        return qualityProfiles[0]?.id ?? 1;
+                      })();
+                      const effectiveTagId =
+                        instance.tagId && tags.some((tag) => tag.id === instance.tagId)
+                          ? instance.tagId
+                          : null;
+
+                      return (
+                        <div
+                          key={instance.id}
+                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        >
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            {instance.name}
+                          </div>
+                          {optionsQuery?.isLoading ? (
+                            <div className="flex items-center gap-3 text-white/70 text-sm">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading {instance.name} options…
+                            </div>
+                          ) : optionsQuery?.isError ? (
+                            <div className="flex items-start gap-2 text-sm text-red-200/90">
+                              <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                              <span>
+                                Couldn’t load folders/profiles/tags for {instance.name}. Check this
+                                server in{' '}
+                                <Link
+                                  to="/vault#vault-sonarr"
+                                  className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                                >
+                                  Vault
+                                </Link>
+                                .
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Root folder
+                                </div>
+                                <Select
+                                  value={effectiveRootFolderPath}
+                                  onValueChange={(next) =>
+                                    handleSonarrSecondaryRootFolderChange(instance.id, next)
+                                  }
+                                  disabled={
+                                    saveSonarrInstanceDefaultsMutation.isPending ||
+                                    !rootFolders.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select root folder" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {rootFolders.map((folder) => (
+                                      <SelectItem key={folder.id} value={folder.path}>
+                                        {folder.path}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Quality profile
+                                </div>
+                                <Select
+                                  value={String(effectiveQualityProfileId)}
+                                  onValueChange={(raw) =>
+                                    handleSonarrSecondaryQualityProfileChange(instance.id, raw)
+                                  }
+                                  disabled={
+                                    saveSonarrInstanceDefaultsMutation.isPending ||
+                                    !qualityProfiles.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select quality profile" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {qualityProfiles.map((profile) => (
+                                      <SelectItem key={profile.id} value={String(profile.id)}>
+                                        {profile.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Tag (optional)
+                                </div>
+                                <Select
+                                  value={effectiveTagId !== null ? String(effectiveTagId) : 'none'}
+                                  onValueChange={(raw) =>
+                                    handleSonarrSecondaryTagChange(instance.id, raw)
+                                  }
+                                  disabled={saveSonarrInstanceDefaultsMutation.isPending}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="No tag" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No tag</SelectItem>
+                                    {tags.map((tag) => (
+                                      <SelectItem key={tag.id} value={String(tag.id)}>
+                                        {tag.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

@@ -32,8 +32,18 @@ export type RadarrOptionsResponse = {
   tags: Array<{ id: number; label: string }>;
 };
 
+export function getRadarrOptionsForInstance(instanceId?: string) {
+  const normalizedInstanceId = instanceId?.trim() ?? '';
+  const query = normalizedInstanceId
+    ? `?instanceId=${encodeURIComponent(normalizedInstanceId)}`
+    : '';
+  return fetchJson<RadarrOptionsResponse>(
+    apiPath(`/integrations/radarr/options${query}`),
+  );
+}
+
 export function getRadarrOptions() {
-  return fetchJson<RadarrOptionsResponse>(apiPath('/integrations/radarr/options'));
+  return getRadarrOptionsForInstance();
 }
 
 export type SonarrOptionsResponse = {
@@ -43,8 +53,18 @@ export type SonarrOptionsResponse = {
   tags: Array<{ id: number; label: string }>;
 };
 
+export function getSonarrOptionsForInstance(instanceId?: string) {
+  const normalizedInstanceId = instanceId?.trim() ?? '';
+  const query = normalizedInstanceId
+    ? `?instanceId=${encodeURIComponent(normalizedInstanceId)}`
+    : '';
+  return fetchJson<SonarrOptionsResponse>(
+    apiPath(`/integrations/sonarr/options${query}`),
+  );
+}
+
 export function getSonarrOptions() {
-  return fetchJson<SonarrOptionsResponse>(apiPath('/integrations/sonarr/options'));
+  return getSonarrOptionsForInstance();
 }
 
 export type PlexLibraryFiltersResponse = {
