@@ -169,6 +169,7 @@ function derivePlexBaseUrlVariants(raw: string): string[] {
 
 type UpdatePlexLibrariesBody = {
   selectedSectionKeys?: unknown;
+  cleanupDeselectedLibraries?: unknown;
 };
 
 type UpdatePlexMonitoringUsersBody = {
@@ -703,6 +704,11 @@ export class IntegrationsController {
     const selectedSectionKeys = sanitizeSectionKeys(
       bodyObj['selectedSectionKeys'],
     );
+    const cleanupDeselectedLibrariesRaw = bodyObj['cleanupDeselectedLibraries'];
+    const cleanupDeselectedLibraries =
+      typeof cleanupDeselectedLibrariesRaw === 'boolean'
+        ? cleanupDeselectedLibrariesRaw
+        : true;
 
     const userId = req.user.id;
     const { settings, secrets } =
@@ -772,7 +778,7 @@ export class IntegrationsController {
     }));
 
     const cleanup =
-      deselectedLibraries.length > 0
+      cleanupDeselectedLibraries && deselectedLibraries.length > 0
         ? await this.cleanupDeselectedPlexLibraries({
             baseUrl,
             token,

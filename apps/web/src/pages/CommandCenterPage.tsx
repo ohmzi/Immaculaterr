@@ -3037,15 +3037,41 @@ export function CommandCenterPage() {
   }, []);
 
   const savePlexLibrarySelectionMutation = useMutation({
-    mutationFn: async (selectedSectionKeys: string[]) =>
-      await savePlexLibrarySelection({ selectedSectionKeys }),
-    onSuccess: async (data) => {
+    mutationFn: async (params: {
+      selectedSectionKeys: string[];
+      cleanupDeselectedLibraries?: boolean;
+    }) =>
+      await savePlexLibrarySelection({
+        selectedSectionKeys: params.selectedSectionKeys,
+        cleanupDeselectedLibraries: params.cleanupDeselectedLibraries,
+      }),
+    onSuccess: async (data, variables) => {
       queryClient.setQueryData(['integrations', 'plex', 'libraries'], data);
       setDraftSelectedPlexLibraryKeys(data.selectedSectionKeys);
       setPlexLibraryDeselectDialogOpen(false);
       await queryClient.invalidateQueries({
         queryKey: ['immaculateTasteCollections'],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ['immaculateTaste', 'collections'],
+      });
+
+      if (variables.cleanupDeselectedLibraries && data.cleanup) {
+        const totalDatasetDeleted = data.cleanup.db?.totalDeleted ?? 0;
+        const plexCollectionsDeleted = data.cleanup.plex?.collectionsDeleted ?? 0;
+        const cleanupErrors = data.cleanup.plex?.errors ?? 0;
+        if (data.cleanup.error || cleanupErrors > 0) {
+          toast.error(
+            `Plex library selection updated, but cleanup had issues. Removed ${totalDatasetDeleted} dataset entr${totalDatasetDeleted === 1 ? 'y' : 'ies'} and ${plexCollectionsDeleted} Plex collection${plexCollectionsDeleted === 1 ? '' : 's'}.`,
+          );
+          return;
+        }
+        toast.success(
+          `Plex library selection updated. Removed ${totalDatasetDeleted} dataset entr${totalDatasetDeleted === 1 ? 'y' : 'ies'} and ${plexCollectionsDeleted} Plex collection${plexCollectionsDeleted === 1 ? '' : 's'}.`,
+        );
+        return;
+      }
+
       toast.success('Plex library selection updated.');
     },
   });
@@ -3323,10 +3349,20 @@ export function CommandCenterPage() {
     </div>
   );
   const closePlexLibraryDeselectDialog = useCallback(() => {
+    if (savePlexLibrarySelectionMutation.isPending) return;
     setPlexLibraryDeselectDialogOpen(false);
-  }, []);
-  const confirmPlexLibraryDeselectDialog = useCallback(() => {
-    savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
+  }, [savePlexLibrarySelectionMutation.isPending]);
+  const confirmPlexLibraryKeepCollectionsDialog = useCallback(() => {
+    savePlexLibrarySelectionMutation.mutate({
+      selectedSectionKeys: draftSelectedPlexLibraryKeys,
+      cleanupDeselectedLibraries: false,
+    });
+  }, [draftSelectedPlexLibraryKeys, savePlexLibrarySelectionMutation]);
+  const confirmPlexLibraryDeleteCollectionsDialog = useCallback(() => {
+    savePlexLibrarySelectionMutation.mutate({
+      selectedSectionKeys: draftSelectedPlexLibraryKeys,
+      cleanupDeselectedLibraries: true,
+    });
   }, [draftSelectedPlexLibraryKeys, savePlexLibrarySelectionMutation]);
   const closePlexLibraryMinDialog = useCallback(() => {
     setPlexLibraryMinDialogOpen(false);
@@ -3387,13 +3423,16 @@ export function CommandCenterPage() {
   );
   const resetPlexLibrarySelectionDraft = useCallback(() => {
     setDraftSelectedPlexLibraryKeys(serverSelectedPlexLibraryKeys);
+    setPlexLibraryDeselectDialogOpen(false);
   }, [serverSelectedPlexLibraryKeys]);
   const savePlexLibrarySelectionDraft = useCallback(() => {
     if (deselectedPlexLibraries.length > 0) {
       setPlexLibraryDeselectDialogOpen(true);
       return;
     }
-    savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
+    savePlexLibrarySelectionMutation.mutate({
+      selectedSectionKeys: draftSelectedPlexLibraryKeys,
+    });
   }, [
     deselectedPlexLibraries.length,
     draftSelectedPlexLibraryKeys,
@@ -6932,17 +6971,17 @@ export function CommandCenterPage() {
           <ConfirmDialog
             open={plexLibraryDeselectDialogOpen}
             onClose={closePlexLibraryDeselectDialog}
-            onConfirm={confirmPlexLibraryDeselectDialog}
-            title="Remove Selected Libraries?"
+            onCancel={confirmPlexLibraryKeepCollectionsDialog}
+            onConfirm={confirmPlexLibraryDeleteCollectionsDialog}
+            title="Keep or Delete Deselected Libraries' Collections?"
             description={
               <div className="space-y-2">
                 <div className="text-white/85 font-semibold">
-                  De-selecting libraries will remove that library&apos;s
-                  suggestions database in Immaculaterr.
+                  You&apos;re de-selecting one or more Plex libraries.
                 </div>
                 <div className="text-xs text-white/55">
-                  Curated collections for deselected libraries will also be
-                  removed from Plex.
+                  Choose whether to keep existing curated collections or delete
+                  Immaculaterr data and remove curated collections from Plex.
                 </div>
               </div>
             }
@@ -6950,7 +6989,7 @@ export function CommandCenterPage() {
               deselectedPlexLibraries.length ? (
                 <div className="space-y-2">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-white/50">
-                    Libraries to remove
+                    Libraries being deselected
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {deselectedPlexLibraries.map((lib) => (
@@ -6965,8 +7004,8 @@ export function CommandCenterPage() {
                 </div>
               ) : null
             }
-            confirmText="Save and remove"
-            cancelText="Keep libraries"
+            confirmText="Save and delete collections"
+            cancelText="Save and keep collections"
             variant="danger"
             confirming={savePlexLibrarySelectionMutation.isPending}
             error={

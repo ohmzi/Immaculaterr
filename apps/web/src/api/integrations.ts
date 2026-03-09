@@ -97,6 +97,22 @@ export type PlexLibrariesResponse = {
   excludedSectionKeys: string[];
   minimumRequired: number;
   autoIncludeNewLibraries: true;
+  cleanup?: {
+    deselectedSectionKeys: string[];
+    db: {
+      immaculateMovieDeleted: number;
+      immaculateTvDeleted: number;
+      watchedMovieDeleted: number;
+      watchedTvDeleted: number;
+      totalDeleted: number;
+    } | null;
+    plex: {
+      librariesChecked: number;
+      collectionsDeleted: number;
+      errors: number;
+    } | null;
+    error?: string;
+  };
 };
 
 export type PlexMonitoringUserItem = {
@@ -121,7 +137,10 @@ export function getPlexLibraries() {
   return fetchJson<PlexLibrariesResponse>(apiPath('/integrations/plex/libraries'));
 }
 
-export function savePlexLibrarySelection(body: { selectedSectionKeys: string[] }) {
+export function savePlexLibrarySelection(body: {
+  selectedSectionKeys: string[];
+  cleanupDeselectedLibraries?: boolean;
+}) {
   return fetchJson<PlexLibrariesResponse>(apiPath('/integrations/plex/libraries'), {
     method: 'PUT',
     headers: JSON_HEADERS,

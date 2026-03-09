@@ -269,6 +269,47 @@ describe('IntegrationsController plex libraries', () => {
     expect((res as Record<string, unknown>)['cleanup']).toBeTruthy();
   });
 
+  it('PUT /plex/libraries can keep deselected library collections and data', async () => {
+    const { controller, prisma, settingsService, plexServer } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl: 'http://plex:32400',
+          librarySelection: { excludedSectionKeys: [] },
+        },
+      },
+      secrets: { plex: { token: 'token' } },
+    });
+    plexServer.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    settingsService.updateSettings.mockResolvedValue({
+      plex: {
+        baseUrl: 'http://plex:32400',
+        librarySelection: { excludedSectionKeys: ['2'] },
+      },
+    });
+
+    const res = await controller.savePlexLibraries(
+      { user: { id: 'u1' } } as never,
+      {
+        selectedSectionKeys: ['1'],
+        cleanupDeselectedLibraries: false,
+      },
+    );
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.immaculateTasteMovieLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.immaculateTasteShowLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.watchedMovieRecommendationLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.watchedShowRecommendationLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(plexServer.listCollectionsForSectionKey).not.toHaveBeenCalled();
+    expect(plexServer.deleteCollection).not.toHaveBeenCalled();
+    expect(res.selectedSectionKeys).toEqual(['1']);
+    expect((res as Record<string, unknown>)['cleanup']).toBeUndefined();
+  });
+
   it('POST /test/overseerr validates with saved credentials', async () => {
     const { controller, settingsService, overseerr } = makeController();
     settingsService.getInternalSettings.mockResolvedValue({
