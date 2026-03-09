@@ -13,4 +13,6 @@ import { ArrInstanceService } from './arr-instance.service';
   providers: [ArrInstanceService],
   exports: [ArrInstanceService],
 })
-export class ArrInstanceModule {}
+export class ArrInstanceModule {
+  static readonly moduleName = ArrInstanceModule.name;
+}

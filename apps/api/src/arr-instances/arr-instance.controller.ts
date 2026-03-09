@@ -14,43 +14,70 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 import { RadarrService } from '../radarr/radarr.service';
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
-import { ArrInstanceService, type ArrInstanceType } from './arr-instance.service';
+import {
+  ArrInstanceService,
+  type ArrInstanceType,
+} from './arr-instance.service';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+type ArrInstanceUpdatePatch = {
+  name?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  enabled?: boolean;
+  rootFolderPath?: string | null;
+  qualityProfileId?: number | null;
+  tagId?: number | null;
+  sortOrder?: number;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+};
 
-function asString(value: unknown): string {
+const asString = (value: unknown): string => {
   return typeof value === 'string' ? value.trim() : '';
-}
+};
 
-function asNullableString(value: unknown): string | null {
+const asNullableString = (value: unknown): string | null => {
   if (value === null) return null;
   return asString(value) || null;
-}
+};
 
-function asNullablePositiveInt(value: unknown): number | null {
-  if (value === null) return null;
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+const asPositiveInt = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
     return Math.trunc(value);
   }
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number.parseInt(value.trim(), 10);
-    if (Number.isFinite(parsed) && parsed > 0) return Math.trunc(parsed);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
   }
   return null;
-}
+};
 
-function asOptionalBool(value: unknown): boolean | undefined {
+const asNullablePositiveInt = (value: unknown): number | null => {
+  if (value === null) return null;
+  const parsed = asPositiveInt(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+};
+
+const asOptionalBool = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value;
   return undefined;
-}
+};
 
-function asArrType(value: string): ArrInstanceType {
+const asArrType = (value: string): ArrInstanceType => {
   const lowered = value.trim().toLowerCase();
   if (lowered === 'radarr' || lowered === 'sonarr') return lowered;
   throw new BadRequestException('type must be "radarr" or "sonarr"');
-}
+};
+
+const asBodyObject = (body: unknown): Record<string, unknown> => {
+  if (!isPlainObject(body))
+    throw new BadRequestException('body must be an object');
+  return body;
+};
 
 @Controller('arr-instances')
 export class ArrInstanceController {
@@ -73,33 +100,26 @@ export class ArrInstanceController {
 
   @Post()
   async create(@Req() req: AuthenticatedRequest, @Body() body: unknown) {
-    if (!isPlainObject(body)) throw new BadRequestException('body must be an object');
-    const type = asArrType(asString(body['type']));
-    const baseUrl = asString(body['baseUrl']);
+    const bodyObject = asBodyObject(body);
+    const type = asArrType(asString(bodyObject['type']));
+    const baseUrl = asString(bodyObject['baseUrl']);
     if (!baseUrl) throw new BadRequestException('baseUrl is required');
-    const { secrets } = await this.settingsService.getInternalSettings(req.user.id);
-    const resolvedApiKey = await this.settingsService.resolveServiceSecretInput({
+    const apiKey = await this.resolveApiKeyInput({
       userId: req.user.id,
-      service: type,
-      secretField: 'apiKey',
+      type,
+      body: bodyObject,
       expectedPurpose: `arrInstances.${type}.create`,
-      envelope: body['apiKeyEnvelope'] ?? body['secretEnvelope'],
-      secretRef: body['secretRef'],
-      plaintext: body['apiKey'],
-      currentSecrets: secrets,
+      emptyMessage: 'apiKey is required',
     });
-    if (!resolvedApiKey.value) {
-      throw new BadRequestException('apiKey is required');
-    }
     const instance = await this.arrInstances.create(req.user.id, {
       type,
-      name: asString(body['name']) || undefined,
+      name: asString(bodyObject['name']) || undefined,
       baseUrl,
-      apiKey: resolvedApiKey.value,
-      enabled: asOptionalBool(body['enabled']),
-      rootFolderPath: asNullableString(body['rootFolderPath']),
-      qualityProfileId: asNullablePositiveInt(body['qualityProfileId']),
-      tagId: asNullablePositiveInt(body['tagId']),
+      apiKey,
+      enabled: asOptionalBool(bodyObject['enabled']),
+      rootFolderPath: asNullableString(bodyObject['rootFolderPath']),
+      qualityProfileId: asNullablePositiveInt(bodyObject['qualityProfileId']),
+      tagId: asNullablePositiveInt(bodyObject['tagId']),
     });
     return { ok: true, instance };
   }
@@ -110,65 +130,20 @@ export class ArrInstanceController {
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
-    if (!isPlainObject(body)) throw new BadRequestException('body must be an object');
+    const bodyObject = asBodyObject(body);
     const userId = req.user.id;
     const current = await this.arrInstances.getOwnedDbInstance(userId, id);
     const type = asArrType(current.type);
-    const patch: {
-      name?: string;
-      baseUrl?: string;
-      apiKey?: string;
-      enabled?: boolean;
-      rootFolderPath?: string | null;
-      qualityProfileId?: number | null;
-      tagId?: number | null;
-      sortOrder?: number;
-    } = {};
+    const patch = this.buildUpdatePatch(bodyObject);
 
-    if ('name' in body) patch.name = asString(body['name']);
-    if ('baseUrl' in body) patch.baseUrl = asString(body['baseUrl']);
-    if ('enabled' in body) {
-      const enabled = asOptionalBool(body['enabled']);
-      if (enabled === undefined) {
-        throw new BadRequestException('enabled must be a boolean');
-      }
-      patch.enabled = enabled;
-    }
-    if ('rootFolderPath' in body) {
-      patch.rootFolderPath = asNullableString(body['rootFolderPath']);
-    }
-    if ('qualityProfileId' in body) {
-      patch.qualityProfileId = asNullablePositiveInt(body['qualityProfileId']);
-    }
-    if ('tagId' in body) {
-      patch.tagId = asNullablePositiveInt(body['tagId']);
-    }
-    if ('sortOrder' in body) {
-      const sortOrder = asNullablePositiveInt(body['sortOrder']);
-      patch.sortOrder = sortOrder === null ? 0 : sortOrder;
-    }
-
-    if (
-      'apiKey' in body ||
-      'apiKeyEnvelope' in body ||
-      'secretEnvelope' in body ||
-      'secretRef' in body
-    ) {
-      const { secrets } = await this.settingsService.getInternalSettings(userId);
-      const resolvedApiKey = await this.settingsService.resolveServiceSecretInput({
+    if (this.hasApiKeyPatch(bodyObject)) {
+      patch.apiKey = await this.resolveApiKeyInput({
         userId,
-        service: type,
-        secretField: 'apiKey',
+        type,
+        body: bodyObject,
         expectedPurpose: `arrInstances.${type}.update`,
-        envelope: body['apiKeyEnvelope'] ?? body['secretEnvelope'],
-        secretRef: body['secretRef'],
-        plaintext: body['apiKey'],
-        currentSecrets: secrets,
+        emptyMessage: 'apiKey cannot be empty',
       });
-      if (!resolvedApiKey.value) {
-        throw new BadRequestException('apiKey cannot be empty');
-      }
-      patch.apiKey = resolvedApiKey.value;
     }
 
     const instance = await this.arrInstances.update(userId, id, patch);
@@ -192,7 +167,9 @@ export class ArrInstanceController {
       ? asArrType(typeRaw)
       : await this.arrInstances.inferTypeForInstanceId(userId, id);
     if (!type) {
-      throw new BadRequestException('Could not infer instance type; provide ?type=');
+      throw new BadRequestException(
+        'Could not infer instance type; provide ?type=',
+      );
     }
     const resolved = await this.arrInstances.resolveInstance(userId, type, id, {
       requireConfigured: true,
@@ -221,7 +198,9 @@ export class ArrInstanceController {
       ? asArrType(typeRaw)
       : await this.arrInstances.inferTypeForInstanceId(userId, id);
     if (!type) {
-      throw new BadRequestException('Could not infer instance type; provide ?type=');
+      throw new BadRequestException(
+        'Could not infer instance type; provide ?type=',
+      );
     }
     const resolved = await this.arrInstances.resolveInstance(userId, type, id, {
       requireConfigured: true,
@@ -271,5 +250,119 @@ export class ArrInstanceController {
       qualityProfiles,
       tags,
     };
+  }
+
+  private buildUpdatePatch(
+    body: Record<string, unknown>,
+  ): ArrInstanceUpdatePatch {
+    const patch: ArrInstanceUpdatePatch = {};
+    this.applyNamePatch(patch, body);
+    this.applyBaseUrlPatch(patch, body);
+    this.applyEnabledPatch(patch, body);
+    this.applyRootFolderPatch(patch, body);
+    this.applyQualityProfilePatch(patch, body);
+    this.applyTagPatch(patch, body);
+    this.applySortOrderPatch(patch, body);
+    return patch;
+  }
+
+  private applyNamePatch(
+    patch: ArrInstanceUpdatePatch,
+    body: Record<string, unknown>,
+  ): void {
+    if ('name' in body) patch.name = asString(body['name']);
+  }
+
+  private applyBaseUrlPatch(
+    patch: ArrInstanceUpdatePatch,
+    body: Record<string, unknown>,
+  ): void {
+    if ('baseUrl' in body) patch.baseUrl = asString(body['baseUrl']);
+  }
+
+  private applyEnabledPatch(
+    patch: ArrInstanceUpdatePatch,
+    body: Record<string, unknown>,
+  ): void {
+    if (!('enabled' in body)) return;
+    const enabled = asOptionalBool(body['enabled']);
+    if (enabled === undefined) {
+      throw new BadRequestException('enabled must be a boolean');
+    }
+    patch.enabled = enabled;
+  }
+
+  private applyRootFolderPatch(
+    patch: ArrInstanceUpdatePatch,
+    body: Record<string, unknown>,
+  ): void {
+    if ('rootFolderPath' in body) {
+      patch.rootFolderPath = asNullableString(body['rootFolderPath']);
+    }
+  }
+
+  private applyQualityProfilePatch(
+    patch: ArrInstanceUpdatePatch,
+    body: Record<string, unknown>,
+  ): void {
+    if ('qualityProfileId' in body) {
+      patch.qualityProfileId = asNullablePositiveInt(body['qualityProfileId']);
+    }
+  }
+
+  private applyTagPatch(
+    patch: ArrInstanceUpdatePatch,
+    body: Record<string, unknown>,
+  ): void {
+    if ('tagId' in body) {
+      patch.tagId = asNullablePositiveInt(body['tagId']);
+    }
+  }
+
+  private applySortOrderPatch(
+    patch: ArrInstanceUpdatePatch,
+    body: Record<string, unknown>,
+  ): void {
+    if (!('sortOrder' in body)) return;
+    const sortOrder = asNullablePositiveInt(body['sortOrder']);
+    patch.sortOrder = sortOrder === null ? 0 : sortOrder;
+  }
+
+  private hasApiKeyPatch(body: Record<string, unknown>): boolean {
+    return (
+      'apiKey' in body ||
+      'apiKeyEnvelope' in body ||
+      'secretEnvelope' in body ||
+      'secretRef' in body
+    );
+  }
+
+  private async resolveApiKeyInput(params: {
+    userId: string;
+    type: ArrInstanceType;
+    body: Record<string, unknown>;
+    expectedPurpose: string;
+    emptyMessage: string;
+  }): Promise<string> {
+    const { secrets } = await this.settingsService.getInternalSettings(
+      params.userId,
+    );
+    const resolvedApiKey = await this.settingsService.resolveServiceSecretInput(
+      {
+        userId: params.userId,
+        service: params.type,
+        secretField: 'apiKey',
+        expectedPurpose: params.expectedPurpose,
+        envelope:
+          params.body['apiKeyEnvelope'] ?? params.body['secretEnvelope'],
+        secretRef: params.body['secretRef'],
+        plaintext: params.body['apiKey'],
+        currentSecrets: secrets,
+      },
+    );
+    if (!resolvedApiKey.value) {
+      throw new BadRequestException(params.emptyMessage);
+    }
+    return resolvedApiKey.value;
   }
 }

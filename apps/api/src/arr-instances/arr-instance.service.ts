@@ -69,11 +69,11 @@ type PrimaryInstanceSeed = {
   tagId: number | null;
 };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+};
 
-function pick(obj: Record<string, unknown>, path: string): unknown {
+const pick = (obj: Record<string, unknown>, path: string): unknown => {
   const parts = path.split('.');
   let cur: unknown = obj;
   for (const part of parts) {
@@ -82,41 +82,53 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
     cur = cur[part];
   }
   return cur;
-}
+};
 
-function pickString(obj: Record<string, unknown>, path: string): string {
+const pickString = (obj: Record<string, unknown>, path: string): string => {
   const value = pick(obj, path);
   return typeof value === 'string' ? value.trim() : '';
-}
+};
 
-function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
+const pickBool = (
+  obj: Record<string, unknown>,
+  path: string,
+): boolean | null => {
   const value = pick(obj, path);
   return typeof value === 'boolean' ? value : null;
-}
+};
 
-function pickNumber(obj: Record<string, unknown>, path: string): number | null {
-  const value = pick(obj, path);
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number.parseInt(value.trim(), 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
+const asFiniteInt = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value))
+    return Math.trunc(value);
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+};
 
-function isDisallowedMetadataHostname(hostname: string): boolean {
+const pickNumber = (
+  obj: Record<string, unknown>,
+  path: string,
+): number | null => {
+  return asFiniteInt(pick(obj, path));
+};
+
+const isDisallowedMetadataHostname = (hostname: string): boolean => {
   const normalized = hostname.trim().toLowerCase();
   return (
     normalized === '169.254.169.254' ||
     normalized === 'metadata.google.internal' ||
     normalized === 'metadata.azure.internal'
   );
-}
+};
 
-function normalizeHttpUrl(raw: string): string {
+const normalizeHttpUrl = (raw: string): string => {
   const trimmed = raw.trim();
   if (!trimmed) throw new BadRequestException('baseUrl is required');
-  const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const normalized = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
   let parsed: URL;
   try {
     parsed = new URL(normalized);
@@ -131,32 +143,26 @@ function normalizeHttpUrl(raw: string): string {
   }
   const out = parsed.toString();
   return out.endsWith('/') ? out.slice(0, -1) : out;
-}
+};
 
-function asOptionalString(value: unknown): string | null {
+const asOptionalString = (value: unknown): string | null => {
   if (value === null) return null;
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
-}
+};
 
-function asOptionalPositiveInt(value: unknown): number | null {
+const asOptionalPositiveInt = (value: unknown): number | null => {
   if (value === null) return null;
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return Math.trunc(value);
-  }
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number.parseInt(value.trim(), 10);
-    if (Number.isFinite(parsed) && parsed > 0) return Math.trunc(parsed);
-  }
-  return null;
-}
+  const parsed = asFiniteInt(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+};
 
-function asArrType(value: string): ArrInstanceType {
+const asArrType = (value: string): ArrInstanceType => {
   const lowered = value.trim().toLowerCase();
   if (lowered === 'radarr' || lowered === 'sonarr') return lowered;
   throw new BadRequestException('type must be "radarr" or "sonarr"');
-}
+};
 
 @Injectable()
 export class ArrInstanceService {
@@ -241,7 +247,10 @@ export class ArrInstanceService {
     return out;
   }
 
-  async create(userId: string, input: ArrCreateInput): Promise<ArrInstanceView> {
+  async create(
+    userId: string,
+    input: ArrCreateInput,
+  ): Promise<ArrInstanceView> {
     const type = asArrType(input.type);
     const baseUrl = normalizeHttpUrl(input.baseUrl);
     const apiKey = input.apiKey.trim();
@@ -261,7 +270,10 @@ export class ArrInstanceService {
         primary.name,
         ...existingRows.map((row) => row.name),
       ]);
-    this.assertUniqueName(name, [primary.name, ...existingRows.map((row) => row.name)]);
+    this.assertUniqueName(name, [
+      primary.name,
+      ...existingRows.map((row) => row.name),
+    ]);
     const maxSortOrder =
       existingRows.reduce((max, row) => Math.max(max, row.sortOrder), 0) || 0;
     const created = await this.prisma.arrInstance.create({
@@ -299,8 +311,15 @@ export class ArrInstanceService {
       });
       const { settings, secrets } =
         await this.settingsService.getInternalSettings(userId);
-      const primary = this.buildPrimaryInstanceSeed({ type, settings, secrets });
-      this.assertUniqueName(name, [primary.name, ...siblings.map((row) => row.name)]);
+      const primary = this.buildPrimaryInstanceSeed({
+        type,
+        settings,
+        secrets,
+      });
+      this.assertUniqueName(name, [
+        primary.name,
+        ...siblings.map((row) => row.name),
+      ]);
       data.name = name;
     }
 
@@ -373,7 +392,11 @@ export class ArrInstanceService {
     if (!normalizedId || this.isPrimaryIdForType(type, normalizedId)) {
       const { settings, secrets } =
         await this.settingsService.getInternalSettings(userId);
-      const primary = this.buildPrimaryInstanceSeed({ type, settings, secrets });
+      const primary = this.buildPrimaryInstanceSeed({
+        type,
+        settings,
+        secrets,
+      });
       const resolved: ArrResolvedInstance = {
         id: this.primaryIdFor(type),
         type,
@@ -411,11 +434,19 @@ export class ArrInstanceService {
       qualityProfileId: row.qualityProfileId,
       tagId: row.tagId,
     };
-    this.assertResolvedInstance(resolved, type, requireEnabled, requireConfigured);
+    this.assertResolvedInstance(
+      resolved,
+      type,
+      requireEnabled,
+      requireConfigured,
+    );
     return resolved;
   }
 
-  async getOwnedDbInstance(userId: string, id: string): Promise<ArrInstanceRow> {
+  async getOwnedDbInstance(
+    userId: string,
+    id: string,
+  ): Promise<ArrInstanceRow> {
     const normalizedId = id.trim();
     if (!normalizedId) throw new BadRequestException('id is required');
     if (
@@ -451,7 +482,9 @@ export class ArrInstanceService {
     const raw = value.trim();
     if (!raw) return '';
     try {
-      return this.crypto.isEncrypted(raw) ? this.crypto.decryptString(raw) : raw;
+      return this.crypto.isEncrypted(raw)
+        ? this.crypto.decryptString(raw)
+        : raw;
     } catch {
       return '';
     }
@@ -485,8 +518,10 @@ export class ArrInstanceService {
     const baseUrl = pickString(params.settings, `${type}.baseUrl`);
     const apiKey = this.settingsService.readServiceSecret(type, params.secrets);
     const enabledFlag = pickBool(params.settings, `${type}.enabled`);
-    const enabled = (enabledFlag ?? Boolean(apiKey)) && Boolean(baseUrl) && Boolean(apiKey);
-    const displayName = pickString(params.settings, `${type}.displayName`) || title;
+    const enabled =
+      (enabledFlag ?? Boolean(apiKey)) && Boolean(baseUrl) && Boolean(apiKey);
+    const displayName =
+      pickString(params.settings, `${type}.displayName`) || title;
     const rootFolderPath =
       pickString(params.settings, `${type}.defaultRootFolderPath`) ||
       pickString(params.settings, `${type}.rootFolderPath`) ||
@@ -527,7 +562,10 @@ export class ArrInstanceService {
     }
   }
 
-  private buildAutoName(type: ArrInstanceType, existingNames: string[]): string {
+  private buildAutoName(
+    type: ArrInstanceType,
+    existingNames: string[],
+  ): string {
     const base = type === 'radarr' ? 'Radarr' : 'Sonarr';
     const normalized = new Set(
       existingNames.map((value) => value.trim().toLowerCase()).filter(Boolean),
