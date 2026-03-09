@@ -11,6 +11,7 @@ import { OverseerrService } from '../overseerr/overseerr.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
+import { isPlexUserExcludedFromMonitoring } from '../plex/plex-user-selection.utils';
 import {
   CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
   CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
@@ -118,6 +119,47 @@ function buildLibrarySelectionSkippedReport(params: {
   };
 }
 
+function buildUserMonitoringSkippedReport(params: {
+  ctx: JobContext;
+  mediaType: 'movie' | 'tv';
+  plexUserId: string;
+  plexUserTitle: string;
+}): JobReportV1 {
+  const reasonMessage =
+    'Plex user monitoring is toggled off by admin for this user.';
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: params.ctx.jobId,
+    dryRun: params.ctx.dryRun,
+    trigger: params.ctx.trigger,
+    headline: `Run skipped (${params.mediaType}) because Plex user monitoring is disabled.`,
+    sections: [],
+    tasks: [
+      {
+        id: 'user_monitoring_gate',
+        title: 'Plex user monitoring',
+        status: 'skipped',
+        facts: [
+          { label: 'Reason', value: 'user_toggled_off_by_admin' },
+          { label: 'Plex user id', value: params.plexUserId || 'unknown' },
+          { label: 'Plex user', value: params.plexUserTitle || 'unknown' },
+        ],
+        issues: [issue('warn', reasonMessage)],
+      },
+    ],
+    issues: [issue('warn', reasonMessage)],
+    raw: {
+      skipped: true,
+      reason: 'user_toggled_off_by_admin',
+      mediaType: params.mediaType,
+      plexUserId: params.plexUserId || null,
+      plexUserTitle: params.plexUserTitle || null,
+    },
+  };
+}
+
 @Injectable()
 export class BasedonLatestWatchedCollectionJob {
   constructor(
@@ -208,6 +250,19 @@ export class BasedonLatestWatchedCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    if (isPlexUserExcludedFromMonitoring({ settings, plexUserId })) {
+      await ctx.warn('watchedMovieRecommendations: skipped (user monitoring disabled)', {
+        plexUserId,
+        plexUserTitle,
+      });
+      const report = buildUserMonitoringSkippedReport({
+        ctx,
+        mediaType: 'movie',
+        plexUserId,
+        plexUserTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
     const approvalRequiredFromObservatorySaved =
       (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
         false) === true;
@@ -1294,6 +1349,22 @@ export class BasedonLatestWatchedCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    if (isPlexUserExcludedFromMonitoring({ settings, plexUserId })) {
+      await ctx.warn(
+        'watchedMovieRecommendations(tv): skipped (user monitoring disabled)',
+        {
+          plexUserId,
+          plexUserTitle,
+        },
+      );
+      const report = buildUserMonitoringSkippedReport({
+        ctx,
+        mediaType: 'tv',
+        plexUserId,
+        plexUserTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
     const approvalRequiredFromObservatorySaved =
       (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
         false) === true;

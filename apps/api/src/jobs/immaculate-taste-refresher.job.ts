@@ -28,6 +28,10 @@ import {
   sortSweepUsers,
 } from './refresher-sweep.utils';
 import {
+  isPlexUserExcludedFromMonitoring,
+  resolvePlexUserMonitoringSelection,
+} from '../plex/plex-user-selection.utils';
+import {
   ImmaculateTasteProfileService,
   type ImmaculateTasteProfileView,
 } from '../immaculate-taste-profiles/immaculate-taste-profile.service';
@@ -246,6 +250,25 @@ export class ImmaculateTasteRefresherJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    if (isPlexUserExcludedFromMonitoring({ settings, plexUserId })) {
+      const summary: JsonObject = {
+        mode,
+        plexUserId,
+        plexUserTitle,
+        pinTarget,
+        skipped: true,
+        reason: 'user_toggled_off_by_admin',
+      };
+      await ctx.info(
+        'immaculateTasteRefresher: skipped (user monitoring disabled)',
+        {
+          plexUserId,
+          plexUserTitle,
+        },
+      );
+      const report = buildImmaculateTasteRefresherReport({ ctx, raw: summary });
+      return { summary: report as unknown as JsonObject };
+    }
     const profiles: ImmaculateTasteProfileView[] =
       await this.immaculateTasteProfiles.list(ctx.userId).catch(() => []);
     const profileId =
@@ -1422,6 +1445,7 @@ export class ImmaculateTasteRefresherJob {
     ctx: JobContext,
     input: JsonObject,
   ): Promise<JobRunResult> {
+    const { settings } = await this.settingsService.getInternalSettings(ctx.userId);
     const requestedProfileIdRaw =
       typeof input['profileId'] === 'string' ? input['profileId'].trim() : null;
     const profiles: ImmaculateTasteProfileView[] =
@@ -1469,7 +1493,39 @@ export class ImmaculateTasteRefresherJob {
           },
         })
       : [];
-    const orderedUsers = sortSweepUsers(users);
+    const monitoringSelection = resolvePlexUserMonitoringSelection({
+      settings,
+      users,
+    });
+    const monitoredUserIdSet = new Set(monitoringSelection.selectedPlexUserIds);
+    const usersExcludedByMonitoring = users.filter(
+      (user) => !monitoredUserIdSet.has(user.id),
+    );
+    const orderedUsers = sortSweepUsers(
+      users.filter((user) => monitoredUserIdSet.has(user.id)),
+    );
+    if (!orderedUsers.length) {
+      const summary: JsonObject = {
+        mode: 'sweep',
+        sweepOrder: SWEEP_ORDER,
+        profileId: requestedProfileId,
+        includeMovies,
+        includeTv,
+        ...(limit !== null ? { limit } : {}),
+        usersProcessed: 0,
+        usersSucceeded: 0,
+        usersFailed: 0,
+        usersSkippedByMonitoring: usersExcludedByMonitoring.length,
+        users: [],
+        skipped: true,
+        reason: 'no_monitored_users',
+      };
+      await ctx.info('immaculateTasteRefresher: sweep skipped (no monitored users)', {
+        excludedPlexUserIds: monitoringSelection.excludedPlexUserIds,
+      });
+      const report = buildImmaculateTasteRefresherReport({ ctx, raw: summary });
+      return { summary: report as unknown as JsonObject };
+    }
     const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
     const normalize = (value: string | null | undefined) =>
       String(value ?? '').trim().toLowerCase();
@@ -1504,6 +1560,10 @@ export class ImmaculateTasteRefresherJob {
         plexUserId: u.id,
         plexUserTitle: u.plexAccountTitle,
         isAdmin: isAdminUser(u),
+      })),
+      usersSkippedByMonitoring: usersExcludedByMonitoring.map((u) => ({
+        plexUserId: u.id,
+        plexUserTitle: u.plexAccountTitle,
       })),
     });
 
@@ -1587,6 +1647,7 @@ export class ImmaculateTasteRefresherJob {
       usersProcessed: orderedUsers.length,
       usersSucceeded,
       usersFailed,
+      usersSkippedByMonitoring: usersExcludedByMonitoring.length,
       users: usersSummary,
     };
 

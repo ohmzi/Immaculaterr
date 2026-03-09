@@ -12,6 +12,7 @@ import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
+import { isPlexUserExcludedFromMonitoring } from '../plex/plex-user-selection.utils';
 import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import type { JobReportV1 } from './job-report-v1';
@@ -203,6 +204,47 @@ function buildLibrarySelectionSkippedReport(params: {
   };
 }
 
+function buildUserMonitoringSkippedReport(params: {
+  ctx: JobContext;
+  mediaType: 'movie' | 'tv';
+  plexUserId: string;
+  plexUserTitle: string;
+}): JobReportV1 {
+  const reasonMessage =
+    'Plex user monitoring is toggled off by admin for this user.';
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: params.ctx.jobId,
+    dryRun: params.ctx.dryRun,
+    trigger: params.ctx.trigger,
+    headline: `Run skipped (${params.mediaType}) because Plex user monitoring is disabled.`,
+    sections: [],
+    tasks: [
+      {
+        id: 'user_monitoring_gate',
+        title: 'Plex user monitoring',
+        status: 'skipped',
+        facts: [
+          { label: 'Reason', value: 'user_toggled_off_by_admin' },
+          { label: 'Plex user id', value: params.plexUserId || 'unknown' },
+          { label: 'Plex user', value: params.plexUserTitle || 'unknown' },
+        ],
+        issues: [issue('warn', reasonMessage)],
+      },
+    ],
+    issues: [issue('warn', reasonMessage)],
+    raw: {
+      skipped: true,
+      reason: 'user_toggled_off_by_admin',
+      mediaType: params.mediaType,
+      plexUserId: params.plexUserId || null,
+      plexUserTitle: params.plexUserTitle || null,
+    },
+  };
+}
+
 @Injectable()
 export class ImmaculateTasteCollectionJob {
   constructor(
@@ -301,6 +343,19 @@ export class ImmaculateTasteCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    if (isPlexUserExcludedFromMonitoring({ settings, plexUserId })) {
+      await ctx.warn('immaculateTastePoints: skipped (user monitoring disabled)', {
+        plexUserId,
+        plexUserTitle,
+      });
+      const report = buildUserMonitoringSkippedReport({
+        ctx,
+        mediaType: 'movie',
+        plexUserId,
+        plexUserTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
 
     void ctx
       .patchSummary({
@@ -1616,6 +1671,22 @@ export class ImmaculateTasteCollectionJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    if (isPlexUserExcludedFromMonitoring({ settings, plexUserId })) {
+      await ctx.warn(
+        'immaculateTastePoints(tv): skipped (user monitoring disabled)',
+        {
+          plexUserId,
+          plexUserTitle,
+        },
+      );
+      const report = buildUserMonitoringSkippedReport({
+        ctx,
+        mediaType: 'tv',
+        plexUserId,
+        plexUserTitle,
+      });
+      return { summary: report as unknown as JsonObject };
+    }
 
     void ctx
       .patchSummary({
