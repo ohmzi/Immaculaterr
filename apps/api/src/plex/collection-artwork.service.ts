@@ -1,21 +1,20 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import type { ImmaculateTasteProfile, ImmaculateTasteProfileUserOverride } from '@prisma/client';
+import type {
+  ImmaculateTasteProfile,
+  ImmaculateTasteProfileUserOverride,
+} from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { PrismaService } from '../db/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import {
   buildImmaculateCollectionName,
   buildUserCollectionName,
-  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
-  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   normalizeCollectionTitle,
-  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
-  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
   resolveCuratedCollectionBaseName,
   stripUserCollectionSuffix,
 } from './plex-collections.utils';
@@ -23,7 +22,9 @@ import { PlexServerService } from './plex-server.service';
 import { PlexUsersService } from './plex-users.service';
 
 export type CollectionArtworkMediaType = 'movie' | 'tv';
-export type CollectionArtworkTargetKind = 'immaculate_profile' | 'watched_collection';
+export type CollectionArtworkTargetKind =
+  | 'immaculate_profile'
+  | 'watched_collection';
 
 export type CollectionArtworkManagedTarget = {
   mediaType: CollectionArtworkMediaType;
@@ -58,6 +59,11 @@ type ParsedOverride = CollectionArtworkOverrideMeta & {
 
 const COLLECTION_ARTWORK_SETTING_KEY_PREFIX = 'collectionArtwork.override.v1';
 const MAX_POSTER_BYTES = 5 * 1024 * 1024;
+const COLLECTION_ARTWORK_CUSTOM_ROOT_SEGMENTS = [
+  'collection_artwork',
+  'custom',
+] as const;
+const SAFE_PATH_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 const ALLOWED_IMAGE_MIME_TO_EXT: Record<string, string> = {
   'image/png': 'png',
@@ -118,8 +124,10 @@ const DEFAULT_COLLECTION_ARTWORK_MAP: Record<string, string> = {
   [normalizeCollectionTitle('Based on your recently watched Show')]:
     'recently_watched_collection',
   [normalizeCollectionTitle('Change of Taste')]: 'change_of_taste_collection',
-  [normalizeCollectionTitle('Change of Movie Taste')]: 'change_of_taste_collection',
-  [normalizeCollectionTitle('Change of Show Taste')]: 'change_of_taste_collection',
+  [normalizeCollectionTitle('Change of Movie Taste')]:
+    'change_of_taste_collection',
+  [normalizeCollectionTitle('Change of Show Taste')]:
+    'change_of_taste_collection',
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -203,14 +211,54 @@ function hashTargetId(targetId: string): string {
 }
 
 function safePathSegment(value: string): string {
-  const cleaned = value
+  const collapsed = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-');
+  let start = 0;
+  let end = collapsed.length;
+  while (start < end && collapsed[start] === '-') start += 1;
+  while (end > start && collapsed[end - 1] === '-') end -= 1;
+  const cleaned = collapsed.slice(start, end).slice(0, 80);
   return cleaned || 'target';
+}
+
+function normalizeRelativePosterPath(raw: string): string | null {
+  const normalizedSlashes = raw.trim().replace(/\\/g, '/');
+  if (!normalizedSlashes) return null;
+  if (normalizedSlashes.includes('\0')) return null;
+
+  const normalized = normalizedSlashes.replace(/^\/+/, '');
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length !== 7) return null;
+  if (
+    segments[0] !== COLLECTION_ARTWORK_CUSTOM_ROOT_SEGMENTS[0] ||
+    segments[1] !== COLLECTION_ARTWORK_CUSTOM_ROOT_SEGMENTS[1]
+  ) {
+    return null;
+  }
+
+  if (segments[2] === '.' || segments[2] === '..') return null;
+  if (segments[3] !== 'movie' && segments[3] !== 'tv') return null;
+  if (
+    segments[4] !== 'immaculate_profile' &&
+    segments[4] !== 'watched_collection'
+  ) {
+    return null;
+  }
+  if (segments[5] === '.' || segments[5] === '..') return null;
+  if (!/^poster\.(png|jpg|webp)$/.test(segments[6] ?? '')) return null;
+
+  const safeSegmentIndexes = [2, 5] as const;
+  for (const index of safeSegmentIndexes) {
+    const segment = segments[index] ?? '';
+    if (!segment || !SAFE_PATH_SEGMENT_PATTERN.test(segment)) {
+      return null;
+    }
+  }
+
+  return join(...segments);
 }
 
 function resolveMovieCollectionBaseName(
@@ -232,21 +280,29 @@ function parseOverrideValue(raw: string): CollectionArtworkOverrideMeta | null {
     if (!isPlainObject(parsed)) return null;
 
     const versionRaw = parsed['version'];
-    const version = typeof versionRaw === 'number' ? Math.trunc(versionRaw) : NaN;
+    const version =
+      typeof versionRaw === 'number' ? Math.trunc(versionRaw) : NaN;
     if (version !== 1) return null;
 
     const plexUserId =
-      typeof parsed['plexUserId'] === 'string' ? parsed['plexUserId'].trim() : '';
+      typeof parsed['plexUserId'] === 'string'
+        ? parsed['plexUserId'].trim()
+        : '';
     const mediaTypeRaw =
       typeof parsed['mediaType'] === 'string' ? parsed['mediaType'].trim() : '';
     const targetKindRaw =
-      typeof parsed['targetKind'] === 'string' ? parsed['targetKind'].trim() : '';
+      typeof parsed['targetKind'] === 'string'
+        ? parsed['targetKind'].trim()
+        : '';
     const targetId =
       typeof parsed['targetId'] === 'string' ? parsed['targetId'].trim() : '';
-    const relativePosterPath =
+    const relativePosterPathRaw =
       typeof parsed['relativePosterPath'] === 'string'
         ? parsed['relativePosterPath'].trim()
         : '';
+    const relativePosterPath = normalizeRelativePosterPath(
+      relativePosterPathRaw,
+    );
     const mimeType =
       typeof parsed['mimeType'] === 'string' ? parsed['mimeType'].trim() : '';
     const updatedAt =
@@ -258,7 +314,13 @@ function parseOverrideValue(raw: string): CollectionArtworkOverrideMeta | null {
         ? Math.max(0, Math.trunc(sizeRaw))
         : NaN;
 
-    if (!plexUserId || !targetId || !relativePosterPath || !mimeType || !updatedAt) {
+    if (
+      !plexUserId ||
+      !targetId ||
+      !relativePosterPath ||
+      !mimeType ||
+      !updatedAt
+    ) {
       return null;
     }
 
@@ -328,27 +390,31 @@ export class CollectionArtworkService {
     }
     const knownProfileDatasetIds = new Set(profileByDatasetId.keys());
 
-    const immaculateMovieGroups = await this.prisma.immaculateTasteMovieLibrary.groupBy({
-      by: ['profileId'],
-      where: { plexUserId },
-      _count: { _all: true },
-    });
-    const immaculateTvGroups = await this.prisma.immaculateTasteShowLibrary.groupBy({
-      by: ['profileId'],
-      where: { plexUserId },
-      _count: { _all: true },
-    });
+    const immaculateMovieGroups =
+      await this.prisma.immaculateTasteMovieLibrary.groupBy({
+        by: ['profileId'],
+        where: { plexUserId },
+        _count: { _all: true },
+      });
+    const immaculateTvGroups =
+      await this.prisma.immaculateTasteShowLibrary.groupBy({
+        by: ['profileId'],
+        where: { plexUserId },
+        _count: { _all: true },
+      });
 
-    const watchedMovieGroups = await this.prisma.watchedMovieRecommendationLibrary.groupBy({
-      by: ['collectionName'],
-      where: { plexUserId },
-      _count: { _all: true },
-    });
-    const watchedTvGroups = await this.prisma.watchedShowRecommendationLibrary.groupBy({
-      by: ['collectionName'],
-      where: { plexUserId },
-      _count: { _all: true },
-    });
+    const watchedMovieGroups =
+      await this.prisma.watchedMovieRecommendationLibrary.groupBy({
+        by: ['collectionName'],
+        where: { plexUserId },
+        _count: { _all: true },
+      });
+    const watchedTvGroups =
+      await this.prisma.watchedShowRecommendationLibrary.groupBy({
+        by: ['collectionName'],
+        where: { plexUserId },
+        _count: { _all: true },
+      });
 
     const watchedMovieByBase = new Map<string, number>();
     for (const row of watchedMovieGroups) {
@@ -357,7 +423,10 @@ export class CollectionArtworkService {
         mediaType: 'movie',
       });
       if (!base) continue;
-      watchedMovieByBase.set(base, (watchedMovieByBase.get(base) ?? 0) + row._count._all);
+      watchedMovieByBase.set(
+        base,
+        (watchedMovieByBase.get(base) ?? 0) + row._count._all,
+      );
     }
 
     const watchedTvByBase = new Map<string, number>();
@@ -367,7 +436,10 @@ export class CollectionArtworkService {
         mediaType: 'tv',
       });
       if (!base) continue;
-      watchedTvByBase.set(base, (watchedTvByBase.get(base) ?? 0) + row._count._all);
+      watchedTvByBase.set(
+        base,
+        (watchedTvByBase.get(base) ?? 0) + row._count._all,
+      );
     }
 
     const collections: CollectionArtworkManagedTarget[] = [];
@@ -433,7 +505,10 @@ export class CollectionArtworkService {
         targetId,
         source: 'watched',
         collectionBaseName: targetId,
-        collectionName: buildUserCollectionName(targetId, plexUser.plexAccountTitle),
+        collectionName: buildUserCollectionName(
+          targetId,
+          plexUser.plexAccountTitle,
+        ),
         datasetRows,
         hasCustomPoster: false,
         customPosterUpdatedAt: null,
@@ -447,7 +522,10 @@ export class CollectionArtworkService {
         targetId,
         source: 'watched',
         collectionBaseName: targetId,
-        collectionName: buildUserCollectionName(targetId, plexUser.plexAccountTitle),
+        collectionName: buildUserCollectionName(
+          targetId,
+          plexUser.plexAccountTitle,
+        ),
         datasetRows,
         hasCustomPoster: false,
         customPosterUpdatedAt: null,
@@ -466,7 +544,9 @@ export class CollectionArtworkService {
     const settings = keys.length
       ? await this.prisma.setting.findMany({ where: { key: { in: keys } } })
       : [];
-    const settingByKey = new Map(settings.map((setting) => [setting.key, setting.value]));
+    const settingByKey = new Map(
+      settings.map((setting) => [setting.key, setting.value]),
+    );
 
     for (const collection of collections) {
       const key = this.buildSettingKey({
@@ -477,7 +557,9 @@ export class CollectionArtworkService {
       });
       const parsed = parseOverrideValue(settingByKey.get(key) ?? '');
       if (!parsed) continue;
-      const absolute = this.resolveAbsolutePosterPath(parsed.relativePosterPath);
+      const absolute = this.resolveAbsolutePosterPath(
+        parsed.relativePosterPath,
+      );
       if (!absolute || !existsSync(absolute)) continue;
       collection.hasCustomPoster = true;
       collection.customPosterUpdatedAt = parsed.updatedAt;
@@ -520,7 +602,9 @@ export class CollectionArtworkService {
       throw new BadRequestException('file is required');
     }
 
-    const mimeType = String(params.file.mimetype ?? '').trim().toLowerCase();
+    const mimeType = String(params.file.mimetype ?? '')
+      .trim()
+      .toLowerCase();
     const ext = ALLOWED_IMAGE_MIME_TO_EXT[mimeType];
     if (!ext) {
       throw new BadRequestException('file must be png, jpg/jpeg, or webp');
@@ -560,15 +644,15 @@ export class CollectionArtworkService {
     const parsedExisting = existing ? parseOverrideValue(existing.value) : null;
 
     const relativePosterPath = join(
-      'collection_artwork',
-      'custom',
-      plexUserId,
+      ...COLLECTION_ARTWORK_CUSTOM_ROOT_SEGMENTS,
+      safePathSegment(plexUserId),
       mediaType,
       targetKind,
       `${safePathSegment(targetId)}-${hashTargetId(targetId)}`,
       `poster.${ext}`,
     );
-    const absolutePosterPath = this.resolveAbsolutePosterPath(relativePosterPath);
+    const absolutePosterPath =
+      this.resolveAbsolutePosterPath(relativePosterPath);
     if (!absolutePosterPath) {
       throw new BadRequestException('APP_DATA_DIR is not configured');
     }
@@ -606,7 +690,9 @@ export class CollectionArtworkService {
       parsedExisting.relativePosterPath &&
       parsedExisting.relativePosterPath !== override.relativePosterPath
     ) {
-      const oldAbsolute = this.resolveAbsolutePosterPath(parsedExisting.relativePosterPath);
+      const oldAbsolute = this.resolveAbsolutePosterPath(
+        parsedExisting.relativePosterPath,
+      );
       if (oldAbsolute && existsSync(oldAbsolute)) {
         await unlink(oldAbsolute).catch(() => undefined);
       }
@@ -649,7 +735,9 @@ export class CollectionArtworkService {
 
     await unlink(absolute).catch(() => undefined);
     const parentDir = dirname(absolute);
-    await rm(parentDir, { recursive: true, force: true }).catch(() => undefined);
+    await rm(parentDir, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
   }
 
   async applyOverrideNow(params: {
@@ -724,7 +812,10 @@ export class CollectionArtworkService {
     const collectionName =
       targetKind === 'watched_collection'
         ? buildUserCollectionName(collectionBaseName, plexUser.plexAccountTitle)
-        : buildImmaculateCollectionName(collectionBaseName, plexUser.plexAccountTitle);
+        : buildImmaculateCollectionName(
+            collectionBaseName,
+            plexUser.plexAccountTitle,
+          );
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(params.requestUserId);
@@ -734,7 +825,9 @@ export class CollectionArtworkService {
       pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
 
     if (!plexBaseUrlRaw || !plexToken) {
-      warnings.push('Plex is not configured; override is saved for future runs.');
+      warnings.push(
+        'Plex is not configured; override is saved for future runs.',
+      );
       return {
         appliedNow: false,
         appliedCount: 0,
@@ -752,7 +845,9 @@ export class CollectionArtworkService {
         token: plexToken,
       });
     } catch (error) {
-      warnings.push(`Failed to load Plex libraries: ${String((error as Error)?.message ?? error)}`);
+      warnings.push(
+        `Failed to load Plex libraries: ${String((error as Error)?.message ?? error)}`,
+      );
       return {
         appliedNow: false,
         appliedCount: 0,
@@ -897,7 +992,8 @@ export class CollectionArtworkService {
       stripUserCollectionSuffix(params.collectionName),
     );
 
-    const mapped = DEFAULT_COLLECTION_ARTWORK_MAP[normalizedCollectionName] ?? null;
+    const mapped =
+      DEFAULT_COLLECTION_ARTWORK_MAP[normalizedCollectionName] ?? null;
     const artworkName =
       mapped ??
       (params.artworkFallback === 'immaculate'
@@ -935,7 +1031,8 @@ export class CollectionArtworkService {
     plexUserId: string;
     mediaType: CollectionArtworkMediaType;
   }): string {
-    const profile = params.profileByDatasetId.get(params.profileDatasetId) ?? null;
+    const profile =
+      params.profileByDatasetId.get(params.profileDatasetId) ?? null;
     const override =
       profile?.userOverrides.find(
         (candidate) => candidate.plexUserId === params.plexUserId,
@@ -961,12 +1058,19 @@ export class CollectionArtworkService {
 
   private resolveAssetsDir(): string | null {
     const cwd = process.cwd();
-    const roots = [cwd, join(cwd, '..'), join(cwd, '..', '..'), join(cwd, '..', '..', '..')];
+    const roots = [
+      cwd,
+      join(cwd, '..'),
+      join(cwd, '..', '..'),
+      join(cwd, '..', '..', '..'),
+    ];
     const rels = [
       join('apps', 'web', 'src', 'assets', 'collection_artwork'),
       join('assets', 'collection_artwork'),
     ];
-    const candidates = roots.flatMap((root) => rels.map((rel) => join(root, rel)));
+    const candidates = roots.flatMap((root) =>
+      rels.map((rel) => join(root, rel)),
+    );
 
     for (const candidate of candidates) {
       if (existsSync(candidate)) return candidate;
@@ -994,7 +1098,17 @@ export class CollectionArtworkService {
   private resolveAbsolutePosterPath(relativePosterPath: string): string | null {
     const dataDir = process.env.APP_DATA_DIR?.trim();
     if (!dataDir) return null;
-    return resolve(dataDir, relativePosterPath);
+    const normalizedRelativePosterPath =
+      normalizeRelativePosterPath(relativePosterPath);
+    if (!normalizedRelativePosterPath) return null;
+
+    const baseDir = resolve(dataDir);
+    const absolutePath = resolve(baseDir, normalizedRelativePosterPath);
+    const baseDirWithSep = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
+    if (absolutePath !== baseDir && !absolutePath.startsWith(baseDirWithSep)) {
+      return null;
+    }
+    return absolutePath;
   }
 
   private async getOverrideRecord(params: {
@@ -1004,13 +1118,17 @@ export class CollectionArtworkService {
     targetId: string;
   }): Promise<ParsedOverride | null> {
     const settingKey = this.buildSettingKey(params);
-    const row = await this.prisma.setting.findUnique({ where: { key: settingKey } });
+    const row = await this.prisma.setting.findUnique({
+      where: { key: settingKey },
+    });
     if (!row) return null;
 
     const parsed = parseOverrideValue(row.value);
     if (!parsed) return null;
 
-    const absolutePosterPath = this.resolveAbsolutePosterPath(parsed.relativePosterPath);
+    const absolutePosterPath = this.resolveAbsolutePosterPath(
+      parsed.relativePosterPath,
+    );
     if (!absolutePosterPath) return null;
 
     return {
