@@ -18,7 +18,7 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.0',
+    version: '1.7.0-beta',
     popupHighlights: [
       'Immaculate Taste profiles now support separate collection strategies with their own rules.',
       'Multiple collections can run together, each with its own Radarr/Sonarr route.',

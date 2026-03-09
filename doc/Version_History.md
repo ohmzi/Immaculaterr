@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.0
+1.7.0-beta
 ---
 
 - Password recovery and reset:
