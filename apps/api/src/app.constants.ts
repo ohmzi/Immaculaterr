@@ -17,7 +17,52 @@ export const AUTH_RATE_LIMIT_ROUTES = {
   register: `${API_PREFIX_PATH}/auth/register`,
   loginChallenge: `${API_PREFIX_PATH}/auth/login-challenge`,
   loginProof: `${API_PREFIX_PATH}/auth/login-proof`,
+  passwordResetQuestions: `${API_PREFIX_PATH}/auth/recovery/reset-questions`,
+  passwordReset: `${API_PREFIX_PATH}/auth/recovery/reset-password`,
 } as const;
+
+export const AUTH_CREDENTIAL_ENVELOPE_PURPOSES = {
+  login: 'auth.login',
+  register: 'auth.register',
+  recoveryConfigure: 'auth.recovery.configure',
+  recoveryResetPassword: 'auth.recovery.reset-password',
+} as const;
+
+export const PASSWORD_RECOVERY_REQUIRED_QUESTION_COUNT = 3;
+export const PASSWORD_RECOVERY_RESET_QUESTION_COUNT = 2;
+export const PASSWORD_RECOVERY_MAX_FAILED_ATTEMPTS = 5;
+export const PASSWORD_RECOVERY_LOCKOUT_MS = 15 * 60_000;
+export const PASSWORD_RECOVERY_CHALLENGE_TTL_MS = 10 * 60_000;
+
+export const PASSWORD_RECOVERY_SECURITY_QUESTIONS = [
+  {
+    key: 'first_pet_name',
+    prompt: 'What was the name of your first pet?',
+  },
+  {
+    key: 'first_school',
+    prompt: 'What is the name of the first school you attended?',
+  },
+  {
+    key: 'birth_city',
+    prompt: 'In what city were you born?',
+  },
+  {
+    key: 'favorite_teacher_last_name',
+    prompt: "What was your favorite teacher's last name?",
+  },
+  {
+    key: 'childhood_nickname',
+    prompt: 'What was your childhood nickname?',
+  },
+  {
+    key: 'favorite_movie_childhood',
+    prompt: 'What was your favorite movie as a child?',
+  },
+] as const;
 
 export const WEBHOOKS_PLEX_ALIAS_PREFIX = '/webhooks/plex';
 export const WEBHOOKS_PLEX_CANONICAL_PREFIX = `${API_PREFIX_PATH}/webhooks/plex`;
+
+export const PLEX_OAUTH_POLL_HEADER = 'x-immaculaterr-oauth-poll';
+export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';

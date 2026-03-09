@@ -32,8 +32,18 @@ export type RadarrOptionsResponse = {
   tags: Array<{ id: number; label: string }>;
 };
 
+export function getRadarrOptionsForInstance(instanceId?: string) {
+  const normalizedInstanceId = instanceId?.trim() ?? '';
+  const query = normalizedInstanceId
+    ? `?instanceId=${encodeURIComponent(normalizedInstanceId)}`
+    : '';
+  return fetchJson<RadarrOptionsResponse>(
+    apiPath(`/integrations/radarr/options${query}`),
+  );
+}
+
 export function getRadarrOptions() {
-  return fetchJson<RadarrOptionsResponse>(apiPath('/integrations/radarr/options'));
+  return getRadarrOptionsForInstance();
 }
 
 export type SonarrOptionsResponse = {
@@ -43,8 +53,34 @@ export type SonarrOptionsResponse = {
   tags: Array<{ id: number; label: string }>;
 };
 
+export function getSonarrOptionsForInstance(instanceId?: string) {
+  const normalizedInstanceId = instanceId?.trim() ?? '';
+  const query = normalizedInstanceId
+    ? `?instanceId=${encodeURIComponent(normalizedInstanceId)}`
+    : '';
+  return fetchJson<SonarrOptionsResponse>(
+    apiPath(`/integrations/sonarr/options${query}`),
+  );
+}
+
 export function getSonarrOptions() {
-  return fetchJson<SonarrOptionsResponse>(apiPath('/integrations/sonarr/options'));
+  return getSonarrOptionsForInstance();
+}
+
+export type PlexLibraryFiltersResponse = {
+  ok: true;
+  sectionKey: string | null;
+  genres: string[];
+  audioLanguages: string[];
+};
+
+export function getPlexLibraryFilters(sectionKey?: string) {
+  const query = sectionKey
+    ? `?sectionKey=${encodeURIComponent(sectionKey)}`
+    : '';
+  return fetchJson<PlexLibraryFiltersResponse>(
+    apiPath(`/integrations/plex/library-filters${query}`),
+  );
 }
 
 export type PlexLibraryItem = {
@@ -61,6 +97,22 @@ export type PlexLibrariesResponse = {
   excludedSectionKeys: string[];
   minimumRequired: number;
   autoIncludeNewLibraries: true;
+  cleanup?: {
+    deselectedSectionKeys: string[];
+    db: {
+      immaculateMovieDeleted: number;
+      immaculateTvDeleted: number;
+      watchedMovieDeleted: number;
+      watchedTvDeleted: number;
+      totalDeleted: number;
+    } | null;
+    plex: {
+      librariesChecked: number;
+      collectionsDeleted: number;
+      errors: number;
+    } | null;
+    error?: string;
+  };
 };
 
 export type PlexMonitoringUserItem = {
@@ -85,7 +137,10 @@ export function getPlexLibraries() {
   return fetchJson<PlexLibrariesResponse>(apiPath('/integrations/plex/libraries'));
 }
 
-export function savePlexLibrarySelection(body: { selectedSectionKeys: string[] }) {
+export function savePlexLibrarySelection(body: {
+  selectedSectionKeys: string[];
+  cleanupDeselectedLibraries?: boolean;
+}) {
   return fetchJson<PlexLibrariesResponse>(apiPath('/integrations/plex/libraries'), {
     method: 'PUT',
     headers: JSON_HEADERS,

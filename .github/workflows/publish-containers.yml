@@ -3,6 +3,7 @@ name: Publish containers (GHCR + Docker Hub)
 on:
   pull_request:
     branches:
+      - develop
       - master
     types:
       - opened
@@ -85,6 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.vars.outputs.version }}
+      is_beta: ${{ steps.vars.outputs.is_beta }}
       ghcr_image: ${{ steps.vars.outputs.ghcr_image }}
       dockerhub_image: ${{ steps.vars.outputs.dockerhub_image }}
       build_time: ${{ steps.vars.outputs.build_time }}
@@ -138,19 +140,28 @@ jobs:
           GHCR_IMAGE="ghcr.io/${OWNER_LC}/immaculaterr"
           DOCKERHUB_IMAGE="docker.io/ohmzii/immaculaterr"
           BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          IS_BETA=false
+          if [[ "${VERSION,,}" == *beta* ]]; then
+            IS_BETA=true
+          fi
 
           {
             echo "version=${VERSION}"
+            echo "is_beta=${IS_BETA}"
             echo "ghcr_image=${GHCR_IMAGE}"
             echo "dockerhub_image=${DOCKERHUB_IMAGE}"
             echo "build_time=${BUILD_TIME}"
 
             echo "tags<<EOF"
-            echo "${GHCR_IMAGE}:latest"
+            if [[ "${IS_BETA}" != "true" ]]; then
+              echo "${GHCR_IMAGE}:latest"
+            fi
             echo "${GHCR_IMAGE}:${VERSION}"
             echo "${GHCR_IMAGE}:v${VERSION}"
             if [[ -n "${DOCKERHUB_TOKEN:-}" && -n "${DOCKERHUB_USERNAME:-}" ]]; then
-              echo "${DOCKERHUB_IMAGE}:latest"
+              if [[ "${IS_BETA}" != "true" ]]; then
+                echo "${DOCKERHUB_IMAGE}:latest"
+              fi
               echo "${DOCKERHUB_IMAGE}:v${VERSION}"
             fi
             echo "EOF"
@@ -179,10 +190,108 @@ jobs:
             APP_BUILD_SHA=${{ github.event.pull_request.merge_commit_sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
 
+  build-and-push-beta:
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop' && github.event.pull_request.head.ref != 'master' }}
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Validate Docker Hub HTTP+HTTPS stack compose file
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest \
+            docker compose -f docker/immaculaterr/docker-compose.dockerhub.yml config >/dev/null
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub (optional)
+        if: ${{ env.DOCKERHUB_TOKEN != '' && env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Compute beta tags
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(
+            node -e "const fs=require('fs');const s=fs.readFileSync('apps/api/src/version.ts','utf8');const m=s.match(/APP_VERSION\\s*=\\s*'([^']+)'/);process.stdout.write((m&&m[1]?m[1].trim():'')||'0.0.0.0')"
+          )"
+
+          OWNER_LC="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          GHCR_IMAGE="ghcr.io/${OWNER_LC}/immaculaterr"
+          DOCKERHUB_IMAGE="docker.io/ohmzii/immaculaterr"
+          BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-12)"
+
+          {
+            echo "version=${VERSION}"
+            echo "ghcr_image=${GHCR_IMAGE}"
+            echo "dockerhub_image=${DOCKERHUB_IMAGE}"
+            echo "build_time=${BUILD_TIME}"
+            echo "short_sha=${SHORT_SHA}"
+
+            echo "tags<<EOF"
+            echo "${GHCR_IMAGE}:beta"
+            echo "${GHCR_IMAGE}:beta-v${VERSION}"
+            echo "${GHCR_IMAGE}:beta-${SHORT_SHA}"
+            if [[ -n "${DOCKERHUB_TOKEN:-}" && -n "${DOCKERHUB_USERNAME:-}" ]]; then
+              echo "${DOCKERHUB_IMAGE}:beta"
+              echo "${DOCKERHUB_IMAGE}:beta-v${VERSION}"
+              echo "${DOCKERHUB_IMAGE}:beta-${SHORT_SHA}"
+            fi
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+        env:
+          DOCKERHUB_USERNAME: ${{ env.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Build and push beta (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/immaculaterr/Dockerfile
+          pull: true
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.vars.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=Immaculaterr
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.event.pull_request.merge_commit_sha }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.version }}-beta
+            org.opencontainers.image.created=${{ steps.vars.outputs.build_time }}
+          build-args: |
+            APP_VERSION=${{ steps.vars.outputs.version }}
+            APP_BUILD_SHA=${{ github.event.pull_request.merge_commit_sha }}
+            APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
+
   create-release:
     name: Create GitHub release
     needs:
       - build-and-push
+    if: ${{ needs.build-and-push.outputs.is_beta != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout merge commit (with tags)

@@ -60,6 +60,45 @@ const COPY_SESSION_ROWS_SQL = [
   'FROM "Session" s',
   'LEFT JOIN "User" u ON u."id" = s."userId"',
 ].join('\n');
+const CREATE_IMMACULATE_TASTE_PROFILE_USER_OVERRIDE_TABLE_SQL = [
+  'CREATE TABLE "ImmaculateTasteProfileUserOverride" (',
+  '  "id" TEXT NOT NULL PRIMARY KEY,',
+  '  "profileId" TEXT NOT NULL,',
+  '  "plexUserId" TEXT NOT NULL,',
+  '  "mediaType" TEXT NOT NULL DEFAULT \'both\',',
+  '  "matchMode" TEXT NOT NULL DEFAULT \'all\',',
+  '  "genres" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "audioLanguages" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "excludedGenres" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "excludedAudioLanguages" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "radarrInstanceId" TEXT,',
+  '  "sonarrInstanceId" TEXT,',
+  '  "movieCollectionBaseName" TEXT,',
+  '  "showCollectionBaseName" TEXT,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "updatedAt" DATETIME NOT NULL,',
+  '  CONSTRAINT "ImmaculateTasteProfileUserOverride_profileId_fkey"',
+  '    FOREIGN KEY ("profileId") REFERENCES "ImmaculateTasteProfile" ("id")',
+  '    ON DELETE CASCADE ON UPDATE CASCADE,',
+  '  CONSTRAINT "ImmaculateTasteProfileUserOverride_plexUserId_fkey"',
+  '    FOREIGN KEY ("plexUserId") REFERENCES "PlexUser" ("id")',
+  '    ON DELETE CASCADE ON UPDATE CASCADE',
+  ')',
+].join('\n');
+const ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_GENRES_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "excludedGenres" TEXT NOT NULL DEFAULT \'[]\'';
+const ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "excludedAudioLanguages" TEXT NOT NULL DEFAULT \'[]\'';
+const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_EXCLUDED_GENRES_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfileUserOverride" ADD COLUMN "excludedGenres" TEXT NOT NULL DEFAULT \'[]\'';
+const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfileUserOverride" ADD COLUMN "excludedAudioLanguages" TEXT NOT NULL DEFAULT \'[]\'';
+const CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_UNIQUE_INDEX_SQL =
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ImmaculateTasteProfileUserOverride_profileId_plexUserId_key" ON "ImmaculateTasteProfileUserOverride"("profileId", "plexUserId")';
+const CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_PROFILE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteProfileUserOverride_profileId_idx" ON "ImmaculateTasteProfileUserOverride"("profileId")';
+const CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_PLEX_USER_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteProfileUserOverride_plexUserId_idx" ON "ImmaculateTasteProfileUserOverride"("plexUserId")';
 
 type TableInfoRow = {
   name: string;
@@ -68,6 +107,9 @@ type TableInfoRow = {
 type MigrationStatusRow = {
   finished_at: number | null;
   rolled_back_at: number | null;
+};
+type SqliteMasterRow = {
+  name: string;
 };
 
 function isMissingMigrationsTableError(err: unknown): boolean {
@@ -114,6 +156,17 @@ async function tableInfo(
   return await prisma.$queryRawUnsafe<TableInfoRow[]>(
     `PRAGMA table_info("${table}")`,
   );
+}
+
+async function tableExists(
+  prisma: PrismaClient,
+  table: string,
+): Promise<boolean> {
+  const rows = await prisma.$queryRawUnsafe<SqliteMasterRow[]>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+    table,
+  );
+  return rows.length > 0;
 }
 
 async function hasFailedTargetMigration(
@@ -213,19 +266,78 @@ async function repairFailedMigrationIfNeeded(
   resolveTargetMigrationState(isSessionSchemaUpgraded(sessionInfo));
 }
 
+async function ensureImmaculateTasteProfileSchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const profileTableName = 'ImmaculateTasteProfile';
+  const profileOverrideTableName = 'ImmaculateTasteProfileUserOverride';
+  const profileExists = await tableExists(prisma, profileTableName);
+
+  if (!profileExists) return;
+
+  const profileColumns = await tableInfo(prisma, profileTableName);
+
+  if (!hasColumn(profileColumns, 'excludedGenres')) {
+    await prisma.$executeRawUnsafe(
+      ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_GENRES_COLUMN_SQL,
+    );
+  }
+
+  if (!hasColumn(profileColumns, 'excludedAudioLanguages')) {
+    await prisma.$executeRawUnsafe(
+      ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL,
+    );
+  }
+
+  const profileOverrideExists = await tableExists(
+    prisma,
+    profileOverrideTableName,
+  );
+
+  if (!profileOverrideExists) {
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_PROFILE_USER_OVERRIDE_TABLE_SQL,
+    );
+  } else {
+    const overrideColumns = await tableInfo(prisma, profileOverrideTableName);
+
+    if (!hasColumn(overrideColumns, 'excludedGenres')) {
+      await prisma.$executeRawUnsafe(
+        ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_EXCLUDED_GENRES_COLUMN_SQL,
+      );
+    }
+
+    if (!hasColumn(overrideColumns, 'excludedAudioLanguages')) {
+      await prisma.$executeRawUnsafe(
+        ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL,
+      );
+    }
+  }
+
+  await prisma.$executeRawUnsafe(
+    CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_UNIQUE_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_PROFILE_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_PLEX_USER_INDEX_SQL,
+  );
+}
+
 async function main() {
   const prisma = new PrismaClient();
   try {
     await repairFailedMigrationIfNeeded(prisma);
 
     runPrisma(['migrate', 'deploy'], 'prisma migrate deploy');
+    await ensureImmaculateTasteProfileSchema(prisma);
   } finally {
     await prisma.$disconnect();
   }
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error(
     `[migrate-with-repair] ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
   );

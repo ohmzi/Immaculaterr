@@ -355,18 +355,82 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Immaculate Taste is a long-lived per-library suggestion set that evolves over time.
+                Immaculate Taste is a long-lived per-library suggestion system that now supports a
+                simple default mode and optional profile-based mode.
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>
-                  The collection job adds or refreshes suggestions when new seeds are processed.
+                  In default mode, behavior stays straightforward and works like before.
                 </li>
                 <li>
-                  Suggestions are tracked as active (already in Plex) or pending (not in Plex yet).
+                  In profile mode, each profile has its own filter rules and can have its own ARR route.
                 </li>
                 <li>
-                  Refresher jobs promote pending titles to active when they appear in Plex, then
-                  rebuild the collection.
+                  Suggestions are still tracked as active (already in Plex) or pending (not in Plex yet),
+                  and refresher runs still promote pending titles to active and rebuild collections.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'collections-profiles-smart-filters',
+          question: 'What are Immaculate Taste profiles and smart filters, and when should I use them?',
+          answer: (
+            <>
+              <p>
+                Profiles let you run multiple Immaculate Taste collection lanes at the same time.
+                Matching is deterministic and runs in profile order (top to bottom).
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">User scope:</span> if no users are
+                  selected, the profile applies to all monitored Plex users. If users are selected,
+                  only those users are in scope. Selected users appear as chips under the search bar,
+                  are removed with the <span className="font-semibold text-white/85">X</span>, and
+                  are hidden from search results until removed.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Included filters are allowlists:</span>{' '}
+                  adding included genres or included audio languages makes the profile
+                  &ldquo;only include&rdquo; for those values.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Match mode:</span>{' '}
+                  &ldquo;Match any filter&rdquo; means included genre OR included language can match.
+                  &ldquo;Match all filters&rdquo; means each enabled include group must match.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Excluded filters win:</span> if a seed
+                  matches an excluded genre/language, that profile is skipped even if include matched.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Default profile fallback:</span> default
+                  with no include filters acts as catch-all and can match alongside specific profiles.
+                  If default has include filters, it only matches those include values.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">No profile match:</span> if no enabled
+                  profile matches, the run is skipped and logged as ignored (no matching profile) in
+                  run history/Rewind.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Shared profile settings:</span> all users
+                  in a profile scope share the same filters, ARR routing, and collection naming for that
+                  profile.
+                </li>
+              </ul>
+              <p>Common outcomes:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Secondary includes Animation + default has no include filters: both can receive that seed.</li>
+                <li>Secondary includes Animation + default excludes Animation: only secondary receives it.</li>
+                <li>
+                  Secondary includes Animation + default includes Romance: Animation goes to secondary;
+                  Romance goes to default.
+                </li>
+                <li>
+                  If a seed matches neither a specific profile nor default include rules, it is skipped
+                  and logged.
                 </li>
               </ul>
             </>
@@ -528,13 +592,12 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                When collections are created/recreated, the app applies shipped poster artwork by
-                matching collection name → poster file.
+                Yes. You can now upload custom poster artwork for Immaculaterr-managed collections
+                directly in Command Center.
               </p>
               <p>
-                Advanced: you can replace the poster files under{' '}
-                <code className="font-mono">apps/web/src/assets/collection_artwork/posters</code> (or
-                adjust the mapping in the backend) to customize.
+                Uploaded posters are saved in app data and stay in place after restarts. If you do
+                not set a custom poster, Immaculaterr uses its default artwork.
               </p>
             </>
           ),

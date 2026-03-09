@@ -604,7 +604,7 @@ export class TmdbService {
     seedTitle: string;
     seedYear?: number | null;
   }): Promise<Record<string, unknown>> {
-    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
+    const seedTitle = params.seedTitle.trim();
     const apiKey = params.apiKey.trim();
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) return { seed_title: '' };
@@ -613,12 +613,12 @@ export class TmdbService {
       const variants = buildTitleQueryVariants(seedTitle);
       let best: TmdbMovieSearchResult | null = null;
       for (const q of variants.length ? variants : [seedTitle]) {
-      const results = await this.searchMovie({
-        apiKey,
+        const results = await this.searchMovie({
+          apiKey,
           query: q,
-        year: params.seedYear ?? null,
-        includeAdult: false,
-      });
+          year: params.seedYear ?? null,
+          includeAdult: false,
+        });
         best = bestSeedResult(q, results, params.seedYear ?? null);
         if (best) break;
       }
@@ -655,7 +655,7 @@ export class TmdbService {
     seedTitle: string;
     seedYear?: number | null;
   }): Promise<Record<string, unknown>> {
-    const seedTitle = normalizeTitleForMatching(params.seedTitle.trim());
+    const seedTitle = params.seedTitle.trim();
     const apiKey = params.apiKey.trim();
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!seedTitle) return { seed_title: '' };
@@ -664,12 +664,12 @@ export class TmdbService {
       const variants = buildTitleQueryVariants(seedTitle);
       let best: TmdbTvSearchResult | null = null;
       for (const q of variants.length ? variants : [seedTitle]) {
-      const results = await this.searchTv({
-        apiKey,
+        const results = await this.searchTv({
+          apiKey,
           query: q,
-        firstAirDateYear: params.seedYear ?? null,
-        includeAdult: false,
-      });
+          firstAirDateYear: params.seedYear ?? null,
+          includeAdult: false,
+        });
         best = bestSeedTvResult(q, results, params.seedYear ?? null);
         if (best) break;
       }

@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import path from 'node:path';
+import { basename } from 'node:path';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
+import type {
+  CollectionArtworkMediaType,
+  CollectionArtworkTargetKind,
+} from './collection-artwork.service';
+import { CollectionArtworkService } from './collection-artwork.service';
 import { PlexServerService } from './plex-server.service';
 import {
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
@@ -10,7 +13,6 @@ import {
   normalizeCollectionTitle,
   resolveCuratedCollectionBaseName,
   sortCollectionNamesByCuratedBaseOrder,
-  stripUserCollectionPrefix,
 } from './plex-collections.utils';
 
 type PinTarget = 'admin' | 'friends';
@@ -21,7 +23,10 @@ type PreferredHubTarget = {
 
 @Injectable()
 export class PlexCuratedCollectionsService {
-  constructor(private readonly plexServer: PlexServerService) {}
+  constructor(
+    private readonly plexServer: PlexServerService,
+    private readonly collectionArtwork: CollectionArtworkService,
+  ) {}
 
   async rebuildMovieCollection(params: {
     ctx: JobContext;
@@ -30,6 +35,7 @@ export class PlexCuratedCollectionsService {
     machineIdentifier: string;
     movieSectionKey: string;
     collectionName: string;
+    plexUserId?: string;
     /**
      * Plex item type for the target library.
      * - 1 = movie
@@ -40,6 +46,11 @@ export class PlexCuratedCollectionsService {
     itemType?: 1 | 2;
     desiredItems: Array<{ ratingKey: string; title: string }>;
     randomizeOrder?: boolean;
+    artworkFallback?: 'none' | 'immaculate';
+    artworkTarget?: {
+      kind: CollectionArtworkTargetKind;
+      id: string;
+    };
     pinCollections?: boolean;
     pinTarget?: PinTarget;
     collectionHubOrder?: string[];
@@ -52,9 +63,12 @@ export class PlexCuratedCollectionsService {
       machineIdentifier,
       movieSectionKey,
       collectionName,
+      plexUserId = '',
       itemType = 1,
       desiredItems,
       randomizeOrder = false,
+      artworkFallback = 'none',
+      artworkTarget,
       pinCollections = true,
       pinTarget = 'admin',
       collectionHubOrder,
@@ -717,7 +731,11 @@ export class PlexCuratedCollectionsService {
           baseUrl,
           token,
           collectionRatingKey: plexCollectionKey,
+          plexUserId,
+          mediaType,
           collectionName,
+          artworkFallback,
+          artworkTarget,
         });
       } catch (err) {
         await ctx.warn('collection: failed to set artwork (non-critical)', {
@@ -784,11 +802,35 @@ export class PlexCuratedCollectionsService {
     baseUrl: string;
     token: string;
     collectionRatingKey: string;
+    plexUserId: string;
+    mediaType: CollectionArtworkMediaType;
     collectionName: string;
+    artworkFallback: 'none' | 'immaculate';
+    artworkTarget?: {
+      kind: CollectionArtworkTargetKind;
+      id: string;
+    };
   }): Promise<void> {
-    const { ctx, baseUrl, token, collectionRatingKey, collectionName } = params;
+    const {
+      ctx,
+      baseUrl,
+      token,
+      collectionRatingKey,
+      plexUserId,
+      mediaType,
+      collectionName,
+      artworkFallback,
+      artworkTarget,
+    } = params;
 
-    const artworkPaths = this.getArtworkPaths(collectionName);
+    const artworkPaths = await this.collectionArtwork.resolveArtworkPaths({
+      plexUserId,
+      mediaType,
+      collectionName,
+      targetKind: artworkTarget?.kind,
+      targetId: artworkTarget?.id,
+      artworkFallback,
+    });
     if (!artworkPaths.poster && !artworkPaths.background) {
       await ctx.debug('collection: no artwork files found', { collectionName });
       return;
@@ -804,7 +846,7 @@ export class PlexCuratedCollectionsService {
         });
         await ctx.info('collection: poster set', {
           collectionName,
-          poster: path.basename(artworkPaths.poster),
+          poster: basename(artworkPaths.poster),
         });
       } catch (err) {
         await ctx.warn('collection: failed to set poster', {
@@ -824,7 +866,7 @@ export class PlexCuratedCollectionsService {
         });
         await ctx.info('collection: background set', {
           collectionName,
-          background: path.basename(artworkPaths.background),
+          background: basename(artworkPaths.background),
         });
       } catch (err) {
         await ctx.warn('collection: failed to set background', {
@@ -1153,77 +1195,6 @@ export class PlexCuratedCollectionsService {
     });
   }
 
-  private getArtworkPaths(collectionName: string): {
-    poster: string | null;
-    background: string | null;
-  } {
-    const normalizedName = stripUserCollectionPrefix(collectionName)
-      .trim()
-      .toLowerCase();
-    const collectionArtworkMap: Record<string, string> = {
-      'inspired by your immaculate taste': 'immaculate_taste_collection',
-      'inspired by your immaculate taste in movies':
-        'immaculate_taste_collection',
-      'inspired by your immaculate taste in shows':
-        'immaculate_taste_collection',
-      'based on your recently watched movie': 'recently_watched_collection',
-      'based on your recently watched show': 'recently_watched_collection',
-      'change of taste': 'change_of_taste_collection',
-      'change of movie taste': 'change_of_taste_collection',
-      'change of show taste': 'change_of_taste_collection',
-    };
-
-    const artworkName = collectionArtworkMap[normalizedName];
-    if (!artworkName) {
-      return { poster: null, background: null };
-    }
-
-    // Find curated artwork directory.
-    // In-repo source of truth: apps/web/src/assets/collection_artwork
-    // Runtime (Docker) may copy it into either:
-    // - /app/apps/web/src/assets/collection_artwork (new canonical path)
-    // - /app/assets/collection_artwork (legacy path)
-    //
-    // Try common layouts relative to current working directory.
-    const cwd = process.cwd();
-    const roots = [cwd, join(cwd, '..'), join(cwd, '..', '..'), join(cwd, '..', '..', '..')];
-    const rels = [
-      join('apps', 'web', 'src', 'assets', 'collection_artwork'),
-      join('assets', 'collection_artwork'), // legacy
-    ];
-    const candidates = roots.flatMap((root) => rels.map((rel) => join(root, rel)));
-
-    let assetsDir: string | null = null;
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) {
-        assetsDir = candidate;
-        break;
-      }
-    }
-
-    if (!assetsDir) {
-      return { poster: null, background: null };
-    }
-
-    // Try .png first, then .jpg
-    const posterPng = join(assetsDir, 'posters', `${artworkName}.png`);
-    const posterJpg = join(assetsDir, 'posters', `${artworkName}.jpg`);
-    const poster = existsSync(posterPng)
-      ? posterPng
-      : existsSync(posterJpg)
-        ? posterJpg
-        : null;
-
-    const backgroundPng = join(assetsDir, 'backgrounds', `${artworkName}.png`);
-    const backgroundJpg = join(assetsDir, 'backgrounds', `${artworkName}.jpg`);
-    const background = existsSync(backgroundPng)
-      ? backgroundPng
-      : existsSync(backgroundJpg)
-        ? backgroundJpg
-        : null;
-
-    return { poster, background };
-  }
 }
 
 function shuffle<T>(items: T[]): T[] {

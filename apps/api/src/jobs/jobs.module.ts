@@ -24,6 +24,8 @@ import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job'
 import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
 import { CollectionResyncUpgradeService } from './collection-resync-upgrade.service';
+import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
+import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immaculate-taste-profile.module';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { CollectionResyncUpgradeService } from './collection-resync-upgrade.serv
     OverseerrModule,
     RecommendationsModule,
     TmdbModule,
+    ArrInstanceModule,
+    ImmaculateTasteProfileModule,
     ImmaculateTasteCollectionModule,
     WatchedMovieRecommendationsModule,
     ScheduleModule.forRoot(),

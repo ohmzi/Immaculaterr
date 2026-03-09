@@ -35,3 +35,10 @@ docker/immaculaterr/secrets/
 # Local-only config - do NOT commit
 config/config.local.yaml
 config/config.local.yml
+/data-backup
+
+# Local backup snapshots / generated runtime artifacts
+/data-backup-*/
+/data-backup-*/huntarr/config/backups/
+/data-backup-*/huntarr/config/logs/
+/data-backup-*/huntarr/config/tmdb_cache/

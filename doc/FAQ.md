@@ -8,6 +8,8 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [What is Immaculaterr?](#what-is-immaculaterr)
   - [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand)
   - [How do I do first-time setup?](#how-do-i-do-first-time-setup)
+  - [How does password recovery setup work?](#how-does-password-recovery-setup-work)
+  - [How do I reset my password?](#how-do-i-reset-my-password)
   - [What port does Immaculaterr use and how do I access it?](#what-port-does-immaculaterr-use-and-how-do-i-access-it)
   - [Why keep both HTTP and HTTPS enabled?](#why-keep-both-http-and-https-enabled)
 - [Automation & triggers](#automation--triggers)
@@ -22,6 +24,7 @@ This app can feel like a lot at first. This FAQ is designed to answer the “wha
   - [How do per-viewer collections and Plex pin locations work?](#how-do-per-viewer-collections-and-plex-pin-locations-work)
   - [What’s the difference between Immaculate Taste and Based on Latest Watched?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched)
   - [How does the Immaculate Taste collection work?](#how-does-the-immaculate-taste-collection-work)
+  - [What are Immaculate Taste profiles and smart filters, and when should I use them?](#what-are-immaculate-taste-profiles-and-smart-filters-and-when-should-i-use-them)
   - [How do Immaculate Taste points work, and how do they decay?](#how-do-immaculate-taste-points-work-and-how-do-they-decay)
   - [What is Change of Taste and how is it chosen?](#what-is-change-of-taste-and-how-is-it-chosen)
   - [How are recommendation titles generated?](#how-are-recommendation-titles-generated)
@@ -94,6 +97,23 @@ It does not download media by itself—it can optionally send missing titles to 
 3. Optionally connect Radarr/Sonarr and/or Overseerr (only if you want “Fetch Missing items” behavior).
 4. In Task Manager, choose your missing-item route per task card: direct ARR route or Overseerr route.
 5. Go to Task Manager and enable Auto-Run for the jobs you want.
+
+### How does password recovery setup work?
+
+- New installs: account setup now has 2 steps:
+  - Step 1: username + password + password confirmation.
+  - Step 2: choose 3 security questions and answers.
+- Existing installs (upgraded): after acknowledging the What's New popup, you must complete password recovery setup before continuing.
+- You can update password recovery later in Help -> Profile.
+
+### How do I reset my password?
+
+1. On the sign-in screen, click Reset password.
+2. Enter your username.
+3. Answer 2 randomly selected security questions from your saved 3.
+4. Enter a new password and confirm it.
+
+If answers are wrong, question pairs rotate on retry. After 5 failed attempts, reset is locked for 15 minutes.
 
 ### What port does Immaculaterr use and how do I access it?
 
@@ -218,15 +238,31 @@ Based on Latest Watched is more “right now”: it uses your recent watch as a 
 
 ### How does the Immaculate Taste collection work?
 
-Immaculate Taste is a **per-library** dataset that grows and evolves as you watch things:
+Immaculate Taste is a per-library suggestion system that supports both a simple default mode and optional profile mode.
 
-- When the **Immaculate Taste Collection** job runs (typically after you finish a movie/show if the automation toggle is enabled), it generates new “taste” suggestions and updates a stored dataset for that Plex library.
-- Each suggested title is tracked as either:
-  - **Active**: it exists in Plex right now (eligible to be placed into the Plex collection), or
-  - **Pending**: it’s not in Plex yet (tracked for later activation).
-- The **Immaculate Taste Refresher** job later revisits that dataset, activates pending titles that have appeared in Plex, and rebuilds the Plex collection.
+- In default mode, setup stays simple and behavior remains familiar.
+- In profile mode, each profile can use its own filter rules and its own ARR route.
+- Suggestions are still tracked as active (already in Plex) or pending (not in Plex yet).
+- Refresher runs still promote pending titles to active and rebuild collections.
 
-One important detail: the **ordering** inside the Plex collection is not “highest points first”. For variety, the refresher shuffles items using TMDB rating tiers (high/mid/low) so you don’t just get a monotonically sorted list every time.
+### What are Immaculate Taste profiles and smart filters, and when should I use them?
+
+Profiles let you run multiple Immaculate Taste collection lanes at the same time. Matching is deterministic and runs in profile order (top to bottom).
+
+- **User scope:** if no users are selected, the profile applies to all monitored Plex users. If users are selected, only those users are in scope. Selected users appear as chips under the search bar, can be removed with **X**, and are hidden from search results until removed.
+- **Included filters are allowlists:** adding included genres or included audio languages makes the profile “only include” for those values.
+- **Match mode:** “Match any filter” means included genre OR included language can match. “Match all filters” means each enabled include group must match.
+- **Excluded filters win:** if a seed matches an excluded genre/language, that profile is skipped even if include matched.
+- **Default profile fallback:** default with no include filters acts as catch-all and can match alongside specific profiles. If default has include filters, it only matches those include values.
+- **No profile match:** if no enabled profile matches, the run is skipped and logged as ignored (no matching profile) in run history/Rewind.
+- **Shared profile settings:** all users in a profile scope share the same filters, ARR routing, and collection naming for that profile.
+
+Common outcomes:
+
+- Secondary includes Animation + default has no include filters: both can receive that seed.
+- Secondary includes Animation + default excludes Animation: only secondary receives it.
+- Secondary includes Animation + default includes Romance: Animation goes to secondary; Romance goes to default.
+- If a seed matches neither a specific profile nor default include rules, it is skipped and logged.
 
 ### How do Immaculate Taste points work, and how do they decay?
 
@@ -300,9 +336,10 @@ Plex can keep old ordering even after remove/re-add operations. Recreating the c
 
 ### How does poster artwork work for collections? Can I customize posters?
 
-When collections are created/recreated, the app applies shipped poster artwork by matching collection name → poster file.
+Yes. You can upload custom poster artwork for Immaculaterr-managed collections from Command Center.
 
-Advanced: you can replace the poster files under `apps/web/src/assets/collection_artwork/posters` (or adjust the mapping in the backend) to customize.
+- Uploaded posters are saved in app data and persist after restarts.
+- If no custom poster is set, Immaculaterr uses default shipped artwork.
 
 ## Observatory (swipe review)
 

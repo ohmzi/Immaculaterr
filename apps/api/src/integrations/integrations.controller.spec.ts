@@ -69,6 +69,7 @@ describe('IntegrationsController plex libraries', () => {
     const overseerr = {
       testConnection: jest.fn(),
     };
+    const arrInstances = {};
     const controller = new IntegrationsController(
       prisma as never,
       settingsService as never,
@@ -81,6 +82,7 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       {} as never,
       overseerr as never,
+      arrInstances as never,
     );
     return {
       controller,
@@ -90,6 +92,7 @@ describe('IntegrationsController plex libraries', () => {
       plexServer,
       plexUsers,
       overseerr,
+      arrInstances,
     };
   };
 
@@ -266,6 +269,47 @@ describe('IntegrationsController plex libraries', () => {
     expect((res as Record<string, unknown>)['cleanup']).toBeTruthy();
   });
 
+  it('PUT /plex/libraries can keep deselected library collections and data', async () => {
+    const { controller, prisma, settingsService, plexServer } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl: 'http://plex:32400',
+          librarySelection: { excludedSectionKeys: [] },
+        },
+      },
+      secrets: { plex: { token: 'token' } },
+    });
+    plexServer.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    settingsService.updateSettings.mockResolvedValue({
+      plex: {
+        baseUrl: 'http://plex:32400',
+        librarySelection: { excludedSectionKeys: ['2'] },
+      },
+    });
+
+    const res = await controller.savePlexLibraries(
+      { user: { id: 'u1' } } as never,
+      {
+        selectedSectionKeys: ['1'],
+        cleanupDeselectedLibraries: false,
+      },
+    );
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.immaculateTasteMovieLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.immaculateTasteShowLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.watchedMovieRecommendationLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.watchedShowRecommendationLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(plexServer.listCollectionsForSectionKey).not.toHaveBeenCalled();
+    expect(plexServer.deleteCollection).not.toHaveBeenCalled();
+    expect(res.selectedSectionKeys).toEqual(['1']);
+    expect((res as Record<string, unknown>)['cleanup']).toBeUndefined();
+  });
+
   it('POST /test/overseerr validates with saved credentials', async () => {
     const { controller, settingsService, overseerr } = makeController();
     settingsService.getInternalSettings.mockResolvedValue({
@@ -289,6 +333,52 @@ describe('IntegrationsController plex libraries', () => {
       apiKey: 'secret',
     });
     expect(res).toEqual({ ok: true, result: { ok: true } });
+  });
+
+  it('POST /test/overseerr rejects cloud metadata hosts', async () => {
+    const { controller, settingsService, overseerr } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        overseerr: { baseUrl: 'http://169.254.169.254' },
+      },
+      secrets: {
+        overseerr: { apiKey: 'secret' },
+      },
+    });
+
+    await expect(
+      controller.testSaved(
+        { user: { id: 'u1' } } as never,
+        'overseerr',
+        {},
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(overseerr.testConnection).not.toHaveBeenCalled();
+  });
+
+  it('POST /test/overseerr ignores prototype-inherited baseUrl fields', async () => {
+    const { controller, settingsService, overseerr } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        overseerr: {},
+      },
+      secrets: {
+        overseerr: { apiKey: 'secret' },
+      },
+    });
+
+    const body = Object.create({
+      baseUrl: 'http://169.254.169.254',
+    }) as Record<string, unknown>;
+
+    await expect(
+      controller.testSaved(
+        { user: { id: 'u1' } } as never,
+        'overseerr',
+        body,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(overseerr.testConnection).not.toHaveBeenCalled();
   });
 
   it('POST /test/plex falls back to suggested server URL and persists the working baseUrl', async () => {

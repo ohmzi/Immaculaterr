@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { SettingsModule } from '../settings/settings.module';
+import { CollectionArtworkController } from './collection-artwork.controller';
+import { CollectionArtworkService } from './collection-artwork.service';
 import { PlexController } from './plex.controller';
 import { PlexAnalyticsService } from './plex-analytics.service';
 import { PlexCuratedCollectionsService } from './plex-curated-collections.service';
@@ -14,12 +16,13 @@ import { PlexUsersService } from './plex-users.service';
 
 @Module({
   imports: [DbModule, SettingsModule],
-  controllers: [PlexController],
+  controllers: [PlexController, CollectionArtworkController],
   providers: [
     PlexService,
     PlexServerService,
     PlexAnalyticsService,
     PlexCuratedCollectionsService,
+    CollectionArtworkService,
     PlexUsersService,
     PlexWatchlistService,
     PlexDuplicatesService,
@@ -31,6 +34,7 @@ import { PlexUsersService } from './plex-users.service';
     PlexServerService,
     PlexAnalyticsService,
     PlexCuratedCollectionsService,
+    CollectionArtworkService,
     PlexUsersService,
     PlexWatchlistService,
     PlexDuplicatesService,

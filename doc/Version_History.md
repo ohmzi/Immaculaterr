@@ -3,13 +3,38 @@ Version History
 
 This file tracks notable changes by version.
 
-1.6.0
+1.7.0-beta
 ---
 
-- Stronger key security:
+- Password recovery and reset:
+  - Added forgot-password and password reset using security-question verification.
+  - Prompting pre-existing profile with Forced password recovery upon update.
+  - New Profile Page for password recovery management and changing password.
+- Profile lanes for Immaculate Taste collections:
+  - Immaculate Taste profiles let each collection strategy run with its own rules.
+  - Multiple collections can run at the same time with different smart filters.
+  - Each profile can follow its own Radarr/Sonarr route so requests go to the right server.
+  - Default behavior stays simple, and advanced profile controls only appear when needed.
+- Smart filters for Immaculate Taste:
+  - Include/exclude filters for genre and audio language make profile tuning simple.
+  - Profile rules keep recommendations closer to each profile's goal.
+  - This keeps unwanted titles out and makes results feel more accurate.
+- Poster style control:
+  - Custom poster upload is available for all collections created by Immaculaterr.
+  - Poster files stay saved in app data so the look remains consistent after restarts.
+  - Collections are easier to recognize and feel more personalized in Plex.
+
+1.6.1
+---
+
+- Better API key protection:
   - API keys are protected during save/test and unsafe key submissions are blocked by default.
   - After setup, the app uses secure references instead of resending raw keys.
   - Secret values stay hidden in Vault (`*******`) and are not returned in settings.
+- Security updates behind the scenes:
+  - Updated vulnerable dependency paths to safer versions.
+  - Hardened runtime container dependencies.
+  - Runtime images prune dev-only dependency chains to reduce exposure.
 - Access options:
   - HTTP on `5454` for backward compatibility.
   - HTTPS on `5464` for encrypted local/LAN access (optional domain HTTPS on `443`).

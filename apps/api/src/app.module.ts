@@ -25,6 +25,8 @@ import { LogsModule } from './logs/logs.module';
 import { UpdatesModule } from './updates/updates.module';
 import { ObservatoryModule } from './observatory/observatory.module';
 import { API_STATIC_EXCLUDE_PATH } from './app.constants';
+import { ArrInstanceModule } from './arr-instances/arr-instance.module';
+import { ImmaculateTasteProfileModule } from './immaculate-taste-profiles/immaculate-taste-profile.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -48,6 +50,8 @@ const staticImports = existsSync(webDistPath)
     SettingsModule,
     IntegrationsModule,
     CollectionsModule,
+    ArrInstanceModule,
+    ImmaculateTasteProfileModule,
     LogsModule,
     UpdatesModule,
     ObservatoryModule,

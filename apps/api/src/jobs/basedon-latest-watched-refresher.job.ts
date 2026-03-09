@@ -19,6 +19,10 @@ import {
   hasExplicitRefresherScopeInput,
   sortSweepUsers,
 } from './refresher-sweep.utils';
+import {
+  isPlexUserExcludedFromMonitoring,
+  resolvePlexUserMonitoringSelection,
+} from '../plex/plex-user-selection.utils';
 
 const MOVIE_COLLECTIONS = [
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
@@ -148,6 +152,26 @@ export class BasedonLatestWatchedRefresherJob {
 
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
+    if (isPlexUserExcludedFromMonitoring({ settings, plexUserId })) {
+      const summary: JsonObject = {
+        mode,
+        dryRun: ctx.dryRun,
+        plexUserId,
+        plexUserTitle,
+        pinTarget,
+        skipped: true,
+        reason: 'user_toggled_off_by_admin',
+      };
+      await ctx.info(
+        'recentlyWatchedRefresher: skipped (user monitoring disabled)',
+        {
+          plexUserId,
+          plexUserTitle,
+        },
+      );
+      const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
+      return { summary: report as unknown as JsonObject };
+    }
 
     void ctx
       .patchSummary({
@@ -441,7 +465,43 @@ export class BasedonLatestWatchedRefresherJob {
         })
       : [];
 
-    const orderedUsers = sortSweepUsers(users);
+    const monitoringSelection = resolvePlexUserMonitoringSelection({
+      settings,
+      users,
+    });
+    const monitoredUserIdSet = new Set(monitoringSelection.selectedPlexUserIds);
+    const usersExcludedByMonitoring = users.filter(
+      (user) => !monitoredUserIdSet.has(user.id),
+    );
+    const orderedUsers = sortSweepUsers(
+      users.filter((user) => monitoredUserIdSet.has(user.id)),
+    );
+    if (!orderedUsers.length) {
+      const summary: JsonObject = {
+        mode: 'sweep',
+        dryRun: ctx.dryRun,
+        limit,
+        includeMovies,
+        includeTv,
+        sweepOrder: SWEEP_ORDER,
+        usersProcessed: 0,
+        usersSucceeded: 0,
+        usersFailed: 0,
+        usersSkipped: 0,
+        usersSkippedByMonitoring: usersExcludedByMonitoring.length,
+        users: [],
+        skipped: true,
+        reason: 'no_monitored_users',
+      };
+      await ctx.info(
+        'recentlyWatchedRefresher: sweep skipped (no monitored users)',
+        {
+          excludedPlexUserIds: monitoringSelection.excludedPlexUserIds,
+        },
+      );
+      const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
+      return { summary: report as unknown as JsonObject };
+    }
     const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
     const normalize = (value: string | null | undefined) =>
       String(value ?? '').trim().toLowerCase();
@@ -474,6 +534,10 @@ export class BasedonLatestWatchedRefresherJob {
         plexUserId: u.id,
         plexUserTitle: u.plexAccountTitle,
         isAdmin: isAdminUser(u),
+      })),
+      usersSkippedByMonitoring: usersExcludedByMonitoring.map((u) => ({
+        plexUserId: u.id,
+        plexUserTitle: u.plexAccountTitle,
       })),
       limit,
       inputLimit,
@@ -613,6 +677,7 @@ export class BasedonLatestWatchedRefresherJob {
       usersSucceeded,
       usersFailed,
       usersSkipped,
+      usersSkippedByMonitoring: usersExcludedByMonitoring.length,
       users: userSummaries,
     };
 

@@ -23,12 +23,24 @@
     "test": "npm --workspaces --if-present run test",
     "security:check:ajv": "bash -lc 'command -v rg >/dev/null 2>&1 || { echo \"rg is required for security:check:ajv\"; exit 2; }; ! rg -n \"\\\\$data[[:space:]]*:[[:space:]]*true\" apps scripts .github -g \"**/*.{js,cjs,mjs,ts,tsx,cts,mts,json,yml,yaml}\" -g \"!**/node_modules/**\" -g \"!**/dist/**\" -g \"!**/coverage/**\"'",
     "security:audit:prod": "npm audit --omit=dev --audit-level=high",
+    "security:scan:semgrep": "bash security/scanners/semgrep.sh",
+    "security:scan:trivy": "bash security/scanners/trivy-image.sh",
+    "security:scan:zap": "bash security/scanners/zap-baseline.sh",
+    "security:scan:nmap": "bash security/scanners/nmap.sh",
+    "security:scan:testssl": "bash security/scanners/testssl.sh",
+    "security:scan:openapi-fuzz": "bash security/scanners/run-openapi-fuzz.sh",
+    "security:scan:secrets": "bash security/scanners/trufflehog.sh",
+    "security:scan:audit": "bash security/scanners/dependency-audit.sh",
+    "security:scorecard": "node security/scorecard.mjs",
+    "security:all": "bash security/run-security-pipeline.sh",
     "security:ci": "npm run security:check:ajv && npm run security:audit:prod"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
   },
   "overrides": {
-    "diff": "4.0.4"
+    "diff": "4.0.4",
+    "multer": "2.1.1",
+    "terser-webpack-plugin": "5.3.17"
   }
 }

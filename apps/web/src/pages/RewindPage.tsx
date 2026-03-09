@@ -131,6 +131,63 @@ const issueSummary = (run: JobRun): string => {
   return decodeHtmlEntities(msgs[0] ?? '');
 };
 
+const getReportHeadline = (run: JobRun): string => {
+  const s = run.summary;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return '';
+  const obj = s as Record<string, unknown>;
+  if (obj.template !== 'jobReportV1' || Number(obj.version) !== 1) return '';
+  const headline = typeof obj.headline === 'string' ? obj.headline.trim() : '';
+  return headline ? decodeHtmlEntities(headline) : '';
+};
+
+const truncateTitle = (value: string, max: number): string => {
+  if (value.length <= max) return value;
+  return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+};
+
+const toConciseHeadline = (headline: string): string => {
+  const withoutProfile = headline
+    .replace(/\s+using profile\s+"[^"]+"\.?$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const normalized = withoutProfile.endsWith('.')
+    ? withoutProfile.slice(0, -1).trimEnd()
+    : withoutProfile;
+  return truncateTitle(normalized, 88);
+};
+
+const getRunDisplayTitle = (
+  run: JobRun,
+  jobNameById: Map<string, string>,
+): string => {
+  const headline = getReportHeadline(run);
+  if (run.jobId === 'immaculateTastePoints') {
+    const summary = run.summary;
+    const obj =
+      summary && typeof summary === 'object' && !Array.isArray(summary)
+        ? (summary as Record<string, unknown>)
+        : null;
+    const raw =
+      obj?.template === 'jobReportV1' && isPlainObject(obj.raw)
+        ? (obj.raw as Record<string, unknown>)
+        : obj;
+    const seedTitleRaw = raw ? raw.seedTitle : null;
+    const mediaTypeRaw = raw ? raw.mediaType : null;
+    const skipped = raw?.skipped === true;
+    const seedTitle =
+      typeof seedTitleRaw === 'string'
+        ? decodeHtmlEntities(seedTitleRaw.trim())
+        : '';
+    const mediaType =
+      typeof mediaTypeRaw === 'string' ? mediaTypeRaw.trim().toLowerCase() : '';
+    const prefix = mediaType === 'tv' ? 'Immaculate Taste (TV)' : 'Immaculate Taste';
+    if (seedTitle) return `${prefix}: ${seedTitle}${skipped ? ' (ignored)' : ''}`;
+    return skipped ? `${prefix} (ignored)` : prefix;
+  }
+  if (headline) return toConciseHeadline(headline);
+  return jobNameById.get(run.jobId) ?? run.jobId;
+};
+
 const getPlexUserContext = (
   run: JobRun,
 ): { plexUserId: string; plexUserTitle: string } => {
@@ -284,7 +341,9 @@ export const RewindPage = () => {
       const media = getMediaTypeContext(r);
       if (mediaTypeFilter && media.key !== mediaTypeFilter) return false;
       if (!query) return true;
-      const hay = `${r.jobId} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle} ${media.label}`.toLowerCase();
+      const headline = getReportHeadline(r);
+      const hay =
+        `${r.jobId} ${headline} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle} ${media.label}`.toLowerCase();
       return hay.includes(query);
     });
   }, [historyQuery.data?.runs, jobId, status, plexUserFilter, mediaTypeFilter, q]);
@@ -645,7 +704,7 @@ export const RewindPage = () => {
                       {/* Mobile: stacked run cards */}
                       <div className="sm:hidden space-y-3">
                         {filtered.map((run) => {
-                          const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                          const displayTitle = getRunDisplayTitle(run, jobNameById);
                           const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                           const userLabel = plexUserTitle || plexUserId;
                           const media = getMediaTypeContext(run);
@@ -668,7 +727,7 @@ export const RewindPage = () => {
                               <div className="flex items-start justify-between gap-4">
                                 <div className="min-w-0">
                                   <div className="text-sm font-semibold text-white/90 leading-snug break-words">
-                                    {jobName}
+                                    {displayTitle}
                                   </div>
                                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60 font-mono">
                                     <span className="whitespace-nowrap">
@@ -735,7 +794,7 @@ export const RewindPage = () => {
                           </thead>
                           <tbody>
                             {filtered.map((run) => {
-                              const jobName = jobNameById.get(run.jobId) ?? run.jobId;
+                              const displayTitle = getRunDisplayTitle(run, jobNameById);
                               const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                               const userLabel = plexUserTitle || plexUserId || '—';
                               const media = getMediaTypeContext(run);
@@ -756,7 +815,7 @@ export const RewindPage = () => {
                                       {new Date(run.startedAt).toLocaleString()}
                                     </Link>
                                   </td>
-                                  <td className="px-3 py-3 text-white/85">{jobName}</td>
+                                  <td className="px-3 py-3 text-white/85">{displayTitle}</td>
                                   <td className="px-3 py-3 text-white/70">{userLabel}</td>
                                   <td className="px-3 py-3 text-white/70">{media.label}</td>
                                   <td className="px-3 py-3">

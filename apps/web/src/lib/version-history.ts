@@ -18,53 +18,108 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.6.0',
+    version: '1.7.0-beta',
     popupHighlights: [
-      'Security: API keys are now protected during setup and testing.',
-      'Security: after setup, the app uses secure references instead of raw keys.',
-      'Vault: secret fields always show as ******* with no reveal button.',
-      'Access: HTTP stays on 5454 and HTTPS is available on 5464.',
-      'Recommendations (Movies + TV): now personalized per Plex viewer.',
-      'Plex pinning: row placement is smarter for admin and shared users.',
-      'Plex user monitoring: toggle any user off so auto-triggered tasks skip them.',
-      'Plex library selection: safer setup and easier ongoing management.',
-      'Overseerr integration: optional centralized missing-request routing.',
-      'Observatory: improved stability and easier reject-list workflow.',
-      'Task Manager > Cleanup After Adding New Content: independent action toggles.',
+      'Immaculate Taste profiles now support separate collection strategies with their own rules.',
+      'Multiple collections can run together, each with its own Radarr/Sonarr route.',
+      'Include/exclude genre and audio-language filters keep recommendations closer to each profile goal.',
+      'Default behavior stays simple, and advanced profile controls appear only when needed.',
+      'Custom poster upload makes Immaculaterr collections more personal and easier to recognize in Plex.',
+      'Forgot-password and password reset are now available with account security questions.',
     ],
     sections: [
       {
-        title: 'Safer API key handling',
+        title: 'Password recovery and reset',
         bullets: [
-          'API keys are protected during save and test flows.',
+          'Added forgot-password and password reset using security-question verification.',
+          'Prompting pre-existing profile with Forced password recovery upon update.',
+          'New Profile Page for password recovery management and changing password.',
+        ],
+      },
+      {
+        title: 'Profile lanes for Immaculate Taste collections',
+        bullets: [
+          'Immaculate Taste profiles let each collection strategy run with its own rules.',
+          'Multiple collections can run at the same time with different smart filters.',
+          'Each profile can follow its own Radarr/Sonarr route so requests go to the right server.',
+          'Default behavior stays simple, and advanced profile controls only appear when needed.',
+        ],
+      },
+      {
+        title: 'Smart filters for Immaculate Taste',
+        bullets: [
+          'Include/exclude filters for genre and audio language make profile tuning simple.',
+          "Profile rules keep recommendations closer to each profile's goal.",
+          'This keeps unwanted titles out and makes results feel more accurate.',
+        ],
+      },
+      {
+        title: 'Poster style control',
+        bullets: [
+          'Custom poster upload is available for all collections created by Immaculaterr.',
+          'Poster files stay saved in app data so the look remains consistent after restarts.',
+          'Collections are easier to recognize and feel more personalized in Plex.',
+        ],
+      },
+    ],
+  },
+  {
+    version: '1.6.1',
+    popupHighlights: [
+      'API keys are better protected during setup and connection tests.',
+      'After setup, the app avoids sending raw keys whenever possible.',
+      'Secret fields always stay hidden as ******* with no reveal option.',
+      'HTTP remains on 5454 and HTTPS is available on 5464.',
+      'Behind-the-scenes security updates improved runtime safety.',
+      'Recommendations are personalized for each Plex user.',
+      'Plex pinning behaves better for admin and shared users.',
+      'You can disable monitoring for any Plex user.',
+      'Plex library selection is safer and easier to manage.',
+      'Overseerr support is optional for missing requests.',
+      'Observatory is more stable with a simpler reject flow.',
+      'Cleanup task actions can be toggled independently.',
+    ],
+    sections: [
+      {
+        title: 'Better API key protection',
+        bullets: [
+          'API keys are protected when you save settings and run tests.',
           'Unsafe key submissions are blocked by default.',
         ],
       },
       {
         title: 'Less key exposure after setup',
         bullets: [
-          'Follow-up actions use secure references, not full keys.',
-          'Settings show key status only, not raw key values.',
+          'Follow-up actions use secure references instead of full raw keys.',
+          'Settings show key status only, not full key values.',
         ],
       },
       {
-        title: 'Vault privacy improvements',
+        title: 'Vault privacy',
         bullets: [
           'Secret fields always display as *******.',
-          'There is no reveal toggle for secret values.',
+          'Secret values cannot be revealed in the UI.',
         ],
       },
       {
         title: 'Access and compatibility',
         bullets: [
           'HTTP on 5454 remains available for compatibility.',
-          'HTTPS on 5464 is available for encrypted local/LAN access.',
+          'HTTPS on 5464 is available for encrypted local and LAN access.',
         ],
       },
       {
         title: 'Security test coverage',
         bullets: [
           'Added tests for key handling and transport safety.',
+        ],
+      },
+      {
+        title: 'Behind-the-scenes security updates',
+        bullets: [
+          'Updated vulnerable dependencies to safer versions.',
+          'Hardened runtime dependencies used by the container image.',
+          'Removed development-only dependency chains from runtime image layers.',
         ],
       },
     ],

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
+import { PlexServerService } from '../plex/plex-server.service';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
@@ -18,6 +19,7 @@ import { PasswordProofService } from './password-proof.service';
     CaptchaService,
     CredentialEnvelopeService,
     PasswordProofService,
+    PlexServerService,
   ],
   exports: [AuthService, AuthGuard, CredentialEnvelopeService],
 })

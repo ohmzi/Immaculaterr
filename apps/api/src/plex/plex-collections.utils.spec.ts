@@ -97,4 +97,22 @@ describe('plex-collections utils', () => {
       }),
     ).toBe(true);
   });
+
+  it('keeps caller order for custom/unknown base names', () => {
+    const sorted = sortCollectionNamesByCuratedBaseOrder({
+      mediaType: 'movie',
+      collectionNames: [
+        'Based on your recently watched Movie (Alice)',
+        'Kids Movie Picks',
+        'Anime Night',
+        'Change of Movie Taste (Alice)',
+      ],
+    });
+    expect(sorted).toEqual([
+      'Based on your recently watched Movie (Alice)',
+      'Change of Movie Taste (Alice)',
+      'Kids Movie Picks',
+      'Anime Night',
+    ]);
+  });
 });

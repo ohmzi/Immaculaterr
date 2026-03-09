@@ -10,6 +10,7 @@ import { SonarrModule } from '../sonarr/sonarr.module';
 import { TmdbModule } from '../tmdb/tmdb.module';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationsConnectivityMonitorService } from './integrations-connectivity-monitor.service';
+import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { IntegrationsConnectivityMonitorService } from './integrations-connectiv
     GoogleModule,
     OpenAiModule,
     OverseerrModule,
+    ArrInstanceModule,
   ],
   controllers: [IntegrationsController],
   providers: [IntegrationsConnectivityMonitorService],

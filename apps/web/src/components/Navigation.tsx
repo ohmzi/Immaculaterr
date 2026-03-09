@@ -290,6 +290,10 @@ export function Navigation() {
     setIsHelpOpen(false);
     navigate('/faq');
   }, [navigate]);
+  const openProfile = useCallback(() => {
+    setIsHelpOpen(false);
+    navigate('/profile');
+  }, [navigate]);
   const handleDebugPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -458,6 +462,14 @@ export function Navigation() {
                         <div className="p-4 space-y-2">
                           <button
                             type="button"
+                            onClick={openProfile}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                          >
+                            Profile
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={openFaq}
                             className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                           >
@@ -525,12 +537,14 @@ export function Navigation() {
           <div className="space-y-2">
             <div>This will:</div>
             <ul className="list-disc pl-5 space-y-1">
-              <li>Delete all settings and setup data</li>
-              <li>Delete all secrets (API keys)</li>
-              <li>Force you through setup wizard again</li>
-              <li>Log you out</li>
+              <li>Erase all Immaculaterr user data (profiles, datasets, logs, settings, and secrets)</li>
+              <li>Delete collections created by Immaculaterr in Plex for all users</li>
+              <li>Also delete Plex collections containing: Immaculate Taste, Based on your recently watched, Change of Taste, and Change of Movie Taste</li>
+              <li>Force setup again and log you out</li>
             </ul>
-            <div className="text-xs text-white/55">This action cannot be undone.</div>
+            <div className="text-xs text-white/55">
+              This action is permanent and cannot be undone.
+            </div>
           </div>
         }
         confirmText="Reset account"

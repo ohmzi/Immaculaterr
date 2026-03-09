@@ -63,6 +63,7 @@ export async function resetImmaculateTasteCollection(params: {
 export async function resetImmaculateTasteUserCollection(params: {
   plexUserId: string;
   mediaType: 'movie' | 'tv';
+  includeWatchedCollections?: boolean;
 }) {
   return await fetchJson<{
     ok: true;
@@ -74,12 +75,15 @@ export async function resetImmaculateTasteUserCollection(params: {
       deleted: number;
       libraries: number;
     };
-    dataset: { deleted: number };
+    dataset: {
+      deleted: number;
+      immaculateDeleted?: number;
+      watchedDeleted?: number;
+    };
   }>(apiPath('/immaculate-taste/collections/reset-user'), {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
 }
-
 

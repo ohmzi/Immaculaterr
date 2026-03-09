@@ -5,6 +5,7 @@ import {
   Controller,
   Get,
   Headers,
+  Logger,
   Param,
   Post,
   Req,
@@ -14,6 +15,10 @@ import { PlexServerService } from './plex-server.service';
 import { PlexAnalyticsService } from './plex-analytics.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
+import {
+  PLEX_OAUTH_POLL_HEADER,
+  PLEX_OAUTH_POLL_HEADER_VALUE,
+} from '../app.constants';
 
 type TestPlexServerBody = {
   baseUrl?: unknown;
@@ -40,7 +45,9 @@ function requireBaseUrl(raw: unknown): string {
 }
 
 function withDefaultHttpScheme(baseUrlRaw: string): string {
-  return HTTP_BASE_URL_PREFIX.test(baseUrlRaw) ? baseUrlRaw : `http://${baseUrlRaw}`;
+  return HTTP_BASE_URL_PREFIX.test(baseUrlRaw)
+    ? baseUrlRaw
+    : `http://${baseUrlRaw}`;
 }
 
 function assertHttpUrl(baseUrl: string): void {
@@ -68,7 +75,10 @@ function buildDockerLocalhostHint(baseUrlHost: string): string {
 }
 
 function isUnauthorizedPlexError(message: string): boolean {
-  return PLEX_UNAUTHORIZED_ERROR.test(message) || message.includes('401 Unauthorized');
+  return (
+    PLEX_UNAUTHORIZED_ERROR.test(message) ||
+    message.includes('401 Unauthorized')
+  );
 }
 
 function mapPlexConnectionError(
@@ -89,6 +99,8 @@ function mapPlexConnectionError(
 
 @Controller('plex')
 export class PlexController {
+  private readonly logger = new Logger(PlexController.name);
+
   constructor(
     private readonly plexService: PlexService,
     private readonly plexServerService: PlexServerService,
@@ -102,12 +114,28 @@ export class PlexController {
   }
 
   @Get('pin/:id')
-  checkPin(@Param('id') id: string) {
+  async checkPin(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Headers(PLEX_OAUTH_POLL_HEADER) oauthPollHeader?: string,
+  ) {
     const pinId = Number.parseInt(id, 10);
     if (!Number.isFinite(pinId) || pinId <= 0) {
       throw new BadRequestException('Invalid pin id');
     }
-    return this.plexService.checkPin(pinId);
+    const pinStatus = await this.plexService.checkPin(pinId);
+    const shouldPersistAuthToken =
+      oauthPollHeader === PLEX_OAUTH_POLL_HEADER_VALUE;
+    if (!pinStatus.authToken || !shouldPersistAuthToken) {
+      return { ...pinStatus, authTokenStored: false };
+    }
+
+    const authTokenStored = await this.persistAuthorizedPinToken({
+      userId: req.user.id,
+      pinId,
+      authToken: pinStatus.authToken,
+    });
+    return { ...pinStatus, authTokenStored };
   }
 
   @Get('whoami')
@@ -137,17 +165,22 @@ export class PlexController {
 
     if (!token) throw new BadRequestException('token is required');
 
-    const dockerLocalhostHint = buildDockerLocalhostHint(parseBaseUrlHost(baseUrl));
+    const dockerLocalhostHint = buildDockerLocalhostHint(
+      parseBaseUrlHost(baseUrl),
+    );
 
     // Validate:
     // - token works against the Plex server (library/sections requires auth)
     // - baseUrl is reachable from the API process (common Docker pitfall: localhost)
-    await this.assertPlexServerAccessible({ baseUrl, token, dockerLocalhostHint });
+    await this.assertPlexServerAccessible({
+      baseUrl,
+      token,
+      dockerLocalhostHint,
+    });
 
-    const machineIdentifier =
-      await this.plexServerService
-        .getMachineIdentifier({ baseUrl, token })
-        .catch(() => null);
+    const machineIdentifier = await this.plexServerService
+      .getMachineIdentifier({ baseUrl, token })
+      .catch(() => null);
 
     return { ok: true, machineIdentifier };
   }
@@ -186,6 +219,25 @@ export class PlexController {
       });
     } catch (err) {
       throw mapPlexConnectionError(err, params);
+    }
+  }
+
+  private async persistAuthorizedPinToken(params: {
+    userId: string;
+    pinId: number;
+    authToken: string;
+  }): Promise<boolean> {
+    try {
+      await this.settingsService.updateSecrets(params.userId, {
+        plex: { token: params.authToken },
+      });
+      return true;
+    } catch (error) {
+      const message = (error as Error)?.message ?? String(error);
+      this.logger.warn(
+        `Failed to persist OAuth Plex token for pin id=${params.pinId} userId=${params.userId}: ${message}`,
+      );
+      return false;
     }
   }
 }

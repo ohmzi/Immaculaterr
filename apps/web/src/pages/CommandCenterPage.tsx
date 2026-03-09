@@ -1,10 +1,18 @@
 import { SettingsPage } from '@/pages/VaultPage';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CircleAlert,
   ExternalLink,
   Film,
+  ImageIcon,
+  Upload,
   Info,
   Loader2,
   RotateCcw,
@@ -21,24 +29,48 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent,
   type MouseEvent,
 } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   getPlexLibraries,
+  getPlexLibraryFilters,
   getPlexMonitoringUsers,
   getRadarrOptions,
+  getRadarrOptionsForInstance,
   savePlexMonitoringUsers,
   getSonarrOptions,
+  getSonarrOptionsForInstance,
   savePlexLibrarySelection,
+  type PlexMonitoringUserItem,
+  type RadarrOptionsResponse,
+  type SonarrOptionsResponse,
 } from '@/api/integrations';
+import { listArrInstances, updateArrInstance } from '@/api/arr-instances';
+import {
+  createImmaculateTasteProfile,
+  deleteImmaculateTasteProfile,
+  listImmaculateTasteProfiles,
+  updateImmaculateTasteProfile,
+  type ImmaculateTasteProfile,
+  type ImmaculateTasteProfileMatchMode,
+  type ImmaculateTasteProfileMediaType,
+} from '@/api/immaculate-taste-profiles';
 import {
   getImmaculateTasteCollections,
   getImmaculateTasteUserSummary,
   resetImmaculateTasteCollection,
   resetImmaculateTasteUserCollection,
 } from '@/api/immaculate';
+import {
+  deleteCollectionArtworkOverride,
+  getCollectionArtworkPreviewUrl,
+  getManagedCollectionArtworkTargets,
+  uploadCollectionArtworkOverride,
+  type CollectionArtworkTarget,
+} from '@/api/collection-artwork';
 import {
   resetRejectedSuggestions,
   listRejectedSuggestions,
@@ -47,6 +79,7 @@ import {
 } from '@/api/observatory';
 import { resetOverseerrRequests } from '@/api/overseerr';
 import { getPublicSettings, putSettings } from '@/api/settings';
+import { ApiError } from '@/api/http';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { FunCountSlider } from '@/components/FunCountSlider';
 import { SavingPill } from '@/components/SavingPill';
@@ -100,6 +133,338 @@ function readNumber(obj: unknown, path: string): number | null {
   return null;
 }
 
+function readNonEmptyStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0,
+  );
+}
+
+function readErrorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return fallback;
+  const message = (data as Record<string, unknown>).message;
+  if (typeof message === 'string') {
+    const trimmed = message.trim();
+    return trimmed || fallback;
+  }
+  const parts = readNonEmptyStrings(message);
+  return parts.length ? parts.join(', ') : fallback;
+}
+
+function normalizeCsvStringList(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(',')) {
+    const value = raw.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+const PRIMARY_INSTANCE_SENTINEL = '__primary__';
+const TOP_10_POPULAR_AUDIO_LANGUAGES = [
+  'English',
+  'Mandarin Chinese',
+  'Hindi',
+  'Spanish',
+  'French',
+  'Arabic',
+  'Bengali',
+  'Portuguese',
+  'Russian',
+  'Japanese',
+];
+const DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME =
+  'Inspired by your Immaculate Taste in Movies';
+const DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME =
+  'Inspired by your Immaculate Taste in Shows';
+
+function normalizeCollectionBaseName(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function mediaTypeIncludesMovie(mediaType: ImmaculateTasteProfileMediaType): boolean {
+  return mediaType === 'movie' || mediaType === 'both';
+}
+
+function mediaTypeIncludesShow(mediaType: ImmaculateTasteProfileMediaType): boolean {
+  return mediaType === 'show' || mediaType === 'both';
+}
+
+function resolveMovieCollectionBaseName(value: string | null | undefined): string {
+  return (value ?? '').trim() || DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME;
+}
+
+function resolveShowCollectionBaseName(value: string | null | undefined): string {
+  return (value ?? '').trim() || DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME;
+}
+
+function profileUsesCollectionBaseName(params: {
+  profile: ImmaculateTasteProfile;
+  mediaType: 'movie' | 'show';
+  collectionBaseName: string;
+}): boolean {
+  const target = normalizeCollectionBaseName(params.collectionBaseName);
+  if (!target) return false;
+
+  const profileMediaIncludes =
+    params.mediaType === 'movie'
+      ? mediaTypeIncludesMovie(params.profile.mediaType)
+      : mediaTypeIncludesShow(params.profile.mediaType);
+  if (!params.profile.userOverrides.length && profileMediaIncludes) {
+    const profileBase =
+      params.mediaType === 'movie'
+        ? resolveMovieCollectionBaseName(params.profile.movieCollectionBaseName)
+        : resolveShowCollectionBaseName(params.profile.showCollectionBaseName);
+    if (normalizeCollectionBaseName(profileBase) === target) return true;
+  }
+
+  for (const override of params.profile.userOverrides) {
+    const overrideMediaIncludes =
+      params.mediaType === 'movie'
+        ? mediaTypeIncludesMovie(override.mediaType)
+        : mediaTypeIncludesShow(override.mediaType);
+    if (!overrideMediaIncludes) continue;
+    const overrideBase =
+      params.mediaType === 'movie'
+        ? resolveMovieCollectionBaseName(
+            override.movieCollectionBaseName ?? params.profile.movieCollectionBaseName,
+          )
+        : resolveShowCollectionBaseName(
+            override.showCollectionBaseName ?? params.profile.showCollectionBaseName,
+          );
+    if (normalizeCollectionBaseName(overrideBase) === target) return true;
+  }
+
+  return false;
+}
+
+function resolveEffectiveProfileScopeForPlexUser(params: {
+  profile: ImmaculateTasteProfile;
+  plexUserId: string | null;
+}): {
+  mediaType: ImmaculateTasteProfileMediaType;
+  movieCollectionBaseName: string;
+  showCollectionBaseName: string;
+} | null {
+  const profileOverrides = params.profile.userOverrides ?? [];
+  const override =
+    params.plexUserId
+      ? profileOverrides.find(
+          (candidate) => candidate.plexUserId === params.plexUserId,
+        ) ?? null
+      : null;
+  if (profileOverrides.length > 0 && !override) return null;
+  return {
+    mediaType: override?.mediaType ?? params.profile.mediaType,
+    movieCollectionBaseName: resolveMovieCollectionBaseName(
+      override?.movieCollectionBaseName ?? params.profile.movieCollectionBaseName,
+    ),
+    showCollectionBaseName: resolveShowCollectionBaseName(
+      override?.showCollectionBaseName ?? params.profile.showCollectionBaseName,
+    ),
+  };
+}
+
+function buildImmaculateCollectionName(
+  collectionBaseName: string,
+  plexAccountTitle: string,
+): string {
+  const normalizedBaseName = collectionBaseName.trim();
+  const normalizedUserTitle = plexAccountTitle.trim();
+  if (!normalizedUserTitle) return normalizedBaseName;
+  return `${normalizedBaseName} (${normalizedUserTitle})`;
+}
+
+function getCollectionArtworkTargetKey(
+  target: Pick<CollectionArtworkTarget, 'mediaType' | 'targetKind' | 'targetId'>,
+): string {
+  return `${target.mediaType}::${target.targetKind}::${target.targetId}`;
+}
+
+function formatFileSize(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return '0 B';
+  if (size < 1024) return `${Math.trunc(size)} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function dedupeCaseInsensitive(values: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = raw.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function normalizeStringListForComparison(values: string[]): string[] {
+  return dedupeCaseInsensitive(values).map((value) => value.toLowerCase());
+}
+
+function areCaseInsensitiveListsEqual(left: string[], right: string[]): boolean {
+  return (
+    JSON.stringify(normalizeStringListForComparison(left)) ===
+    JSON.stringify(normalizeStringListForComparison(right))
+  );
+}
+
+type ImmaculateTasteProfileDraft = {
+  name: string;
+  enabled: boolean;
+  mediaType: ImmaculateTasteProfileMediaType;
+  matchMode: ImmaculateTasteProfileMatchMode;
+  includeGenreFilterEnabled: boolean;
+  includeGenresText: string;
+  includeAudioLanguageFilterEnabled: boolean;
+  includeAudioLanguagesText: string;
+  excludeGenreFilterEnabled: boolean;
+  excludeGenresText: string;
+  excludeAudioLanguageFilterEnabled: boolean;
+  excludeAudioLanguagesText: string;
+  radarrInstanceId: string;
+  sonarrInstanceId: string;
+  movieCollectionBaseName: string;
+  showCollectionBaseName: string;
+};
+
+type ProfileDeleteImpactSummary = {
+  uniqueCollectionNames: string[];
+  sharedCollectionNames: string[];
+  defaultWillAutoEnable: boolean;
+};
+
+type PlexMonitoringDeselectedUser = {
+  id: string;
+  plexAccountTitle: string;
+};
+
+function resolveProfileDraftFilters(draft: ImmaculateTasteProfileDraft): {
+  includedGenres: string[];
+  includedAudioLanguages: string[];
+  excludedGenres: string[];
+  excludedAudioLanguages: string[];
+} {
+  return {
+    includedGenres: draft.includeGenreFilterEnabled
+      ? normalizeCsvStringList(draft.includeGenresText)
+      : [],
+    includedAudioLanguages: draft.includeAudioLanguageFilterEnabled
+      ? normalizeCsvStringList(draft.includeAudioLanguagesText)
+      : [],
+    excludedGenres: draft.excludeGenreFilterEnabled
+      ? normalizeCsvStringList(draft.excludeGenresText)
+      : [],
+    excludedAudioLanguages: draft.excludeAudioLanguageFilterEnabled
+      ? normalizeCsvStringList(draft.excludeAudioLanguagesText)
+      : [],
+  };
+}
+
+function toProfileDraft(
+  profile: ImmaculateTasteProfile,
+  override: ImmaculateTasteProfile['userOverrides'][number] | null = null,
+): ImmaculateTasteProfileDraft {
+  const genres = override?.genres ?? profile.genres ?? [];
+  const audioLanguages = override?.audioLanguages ?? profile.audioLanguages ?? [];
+  const excludedGenres = override?.excludedGenres ?? profile.excludedGenres ?? [];
+  const excludedAudioLanguages =
+    override?.excludedAudioLanguages ?? profile.excludedAudioLanguages ?? [];
+  return {
+    name: profile.name,
+    enabled: profile.enabled,
+    mediaType: override?.mediaType ?? profile.mediaType,
+    matchMode: override?.matchMode ?? profile.matchMode,
+    includeGenreFilterEnabled: genres.length > 0,
+    includeGenresText: genres.join(', '),
+    includeAudioLanguageFilterEnabled: audioLanguages.length > 0,
+    includeAudioLanguagesText: audioLanguages.join(', '),
+    excludeGenreFilterEnabled: excludedGenres.length > 0,
+    excludeGenresText: excludedGenres.join(', '),
+    excludeAudioLanguageFilterEnabled: excludedAudioLanguages.length > 0,
+    excludeAudioLanguagesText: excludedAudioLanguages.join(', '),
+    radarrInstanceId:
+      (override?.radarrInstanceId ?? profile.radarrInstanceId) ??
+      PRIMARY_INSTANCE_SENTINEL,
+    sonarrInstanceId:
+      (override?.sonarrInstanceId ?? profile.sonarrInstanceId) ??
+      PRIMARY_INSTANCE_SENTINEL,
+    movieCollectionBaseName:
+      override?.movieCollectionBaseName ?? profile.movieCollectionBaseName ?? '',
+    showCollectionBaseName:
+      override?.showCollectionBaseName ?? profile.showCollectionBaseName ?? '',
+  };
+}
+
+function findProfileUserOverride(
+  profile: ImmaculateTasteProfile | null,
+  plexUserId: string | null,
+): ImmaculateTasteProfile['userOverrides'][number] | null {
+  if (!profile || !plexUserId) return null;
+  return profile.userOverrides.find((override) => override.plexUserId === plexUserId) ?? null;
+}
+
+function createNewProfileDraft(): ImmaculateTasteProfileDraft {
+  return {
+    name: '',
+    enabled: true,
+    mediaType: 'both',
+    matchMode: 'any',
+    includeGenreFilterEnabled: false,
+    includeGenresText: '',
+    includeAudioLanguageFilterEnabled: false,
+    includeAudioLanguagesText: '',
+    excludeGenreFilterEnabled: false,
+    excludeGenresText: '',
+    excludeAudioLanguageFilterEnabled: false,
+    excludeAudioLanguagesText: '',
+    radarrInstanceId: PRIMARY_INSTANCE_SENTINEL,
+    sonarrInstanceId: PRIMARY_INSTANCE_SENTINEL,
+    movieCollectionBaseName: '',
+    showCollectionBaseName: '',
+  };
+}
+
+function createNetZeroDefaultProfileDraft(profileName: string): ImmaculateTasteProfileDraft {
+  return {
+    ...createNewProfileDraft(),
+    name: profileName,
+  };
+}
+
+function isNetZeroDefaultProfileDraft(
+  draft: ImmaculateTasteProfileDraft,
+  profileName: string,
+): boolean {
+  const filters = resolveProfileDraftFilters(draft);
+  return (
+    draft.name.trim() === profileName.trim() &&
+    draft.enabled &&
+    draft.mediaType === 'both' &&
+    draft.matchMode === 'any' &&
+    filters.includedGenres.length === 0 &&
+    filters.includedAudioLanguages.length === 0 &&
+    filters.excludedGenres.length === 0 &&
+    filters.excludedAudioLanguages.length === 0 &&
+    draft.radarrInstanceId === PRIMARY_INSTANCE_SENTINEL &&
+    draft.sonarrInstanceId === PRIMARY_INSTANCE_SENTINEL &&
+    draft.movieCollectionBaseName.trim() === '' &&
+    draft.showCollectionBaseName.trim() === ''
+  );
+}
+
 export function CommandCenterPage() {
   const queryClient = useQueryClient();
   const [immaculateResetTarget, setImmaculateResetTarget] = useState<{
@@ -129,6 +494,42 @@ export function CommandCenterPage() {
   const [rejectedKind, setRejectedKind] = useState<
     'all' | 'immaculateTaste' | 'recentlyWatched' | 'changeOfTaste'
   >('all');
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [activeProfileScopePlexUserId, setActiveProfileScopePlexUserId] = useState<
+    string | null
+  >(null);
+  const [profileScopeSearch, setProfileScopeSearch] = useState('');
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
+  const [isAddProfileFormOpen, setIsAddProfileFormOpen] = useState(false);
+  const [newProfileDraft, setNewProfileDraft] =
+    useState<ImmaculateTasteProfileDraft | null>(null);
+  const [newProfileScopePlexUserIds, setNewProfileScopePlexUserIds] = useState<
+    string[]
+  >([]);
+  const [newProfileScopeSearch, setNewProfileScopeSearch] = useState('');
+  const [newProfileGenreSearch, setNewProfileGenreSearch] = useState('');
+  const [newProfileAudioLanguageSearch, setNewProfileAudioLanguageSearch] = useState('');
+  const [newProfileExcludeGenreSearch, setNewProfileExcludeGenreSearch] = useState('');
+  const [newProfileExcludeAudioLanguageSearch, setNewProfileExcludeAudioLanguageSearch] =
+    useState('');
+  const [genreSearch, setGenreSearch] = useState('');
+  const [audioLanguageSearch, setAudioLanguageSearch] = useState('');
+  const [excludeGenreSearch, setExcludeGenreSearch] = useState('');
+  const [excludeAudioLanguageSearch, setExcludeAudioLanguageSearch] = useState('');
+  const [profileDraft, setProfileDraft] = useState<ImmaculateTasteProfileDraft | null>(
+    null,
+  );
+  const [collectionArtworkUserSearch, setCollectionArtworkUserSearch] = useState('');
+  const [selectedCollectionArtworkUserId, setSelectedCollectionArtworkUserId] = useState<
+    string | null
+  >(null);
+  const [selectedCollectionArtworkTargetKey, setSelectedCollectionArtworkTargetKey] =
+    useState('');
+  const [collectionArtworkFile, setCollectionArtworkFile] = useState<File | null>(null);
+  const [collectionArtworkPreviewOpen, setCollectionArtworkPreviewOpen] = useState(false);
+  const [collectionArtworkPreviewFailed, setCollectionArtworkPreviewFailed] = useState(false);
+  const collectionArtworkFileInputRef = useRef<HTMLInputElement | null>(null);
+  const profileEditorCardRef = useRef<HTMLDivElement | null>(null);
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: getPublicSettings,
@@ -136,10 +537,36 @@ export function CommandCenterPage() {
     refetchOnWindowFocus: false,
     retry: 1,
   });
+  const arrInstancesQuery = useQuery({
+    queryKey: ['arr-instances'],
+    queryFn: () => listArrInstances(),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const immaculateProfilesQuery = useQuery({
+    queryKey: ['immaculateTaste', 'profiles'],
+    queryFn: listImmaculateTasteProfiles,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const plexLibraryFiltersQuery = useQuery({
+    queryKey: ['integrations', 'plex', 'library-filters'],
+    queryFn: () => getPlexLibraryFilters(),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
   const [plexLibraryMinDialogOpen, setPlexLibraryMinDialogOpen] =
     useState(false);
   const [plexLibraryDeselectDialogOpen, setPlexLibraryDeselectDialogOpen] =
     useState(false);
+  const [plexUserDeselectDialogOpen, setPlexUserDeselectDialogOpen] =
+    useState(false);
+  const [pendingPlexUserDeselectUsers, setPendingPlexUserDeselectUsers] =
+    useState<PlexMonitoringDeselectedUser[]>([]);
+  const [profileDeleteDialogOpen, setProfileDeleteDialogOpen] = useState(false);
   const [draftSelectedPlexLibraryKeys, setDraftSelectedPlexLibraryKeys] =
     useState<string[]>([]);
   const [draftSelectedPlexUserIds, setDraftSelectedPlexUserIds] = useState<
@@ -199,7 +626,7 @@ export function CommandCenterPage() {
       void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'collections'] });
       void queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'users'] });
       toast.success(
-        `${data.plexUserTitle} ${data.mediaType === 'movie' ? 'movies' : 'TV'} reset (${data.dataset.deleted} removed).`,
+        `${data.plexUserTitle} ${data.mediaType === 'movie' ? 'movie' : 'TV'} collections reset (${data.dataset.deleted} entries removed).`,
       );
     },
   });
@@ -259,6 +686,1907 @@ export function CommandCenterPage() {
     if (k === 'changeOfTaste') return 'Change of Taste';
     return 'Recently Watched';
   };
+
+  const immaculateProfiles = immaculateProfilesQuery.data?.profiles ?? [];
+  const profileScopeUsers = useMemo<PlexMonitoringUserItem[]>(() => {
+    const users = plexMonitoringUsersQuery.data?.users ?? [];
+    return users
+      .slice()
+      .sort((left, right) => {
+        if (left.isAdmin !== right.isAdmin) return left.isAdmin ? -1 : 1;
+        return left.plexAccountTitle.localeCompare(right.plexAccountTitle);
+      });
+  }, [plexMonitoringUsersQuery.data?.users]);
+  const selectedCollectionArtworkUser = useMemo(
+    () =>
+      selectedCollectionArtworkUserId
+        ? profileScopeUsers.find((user) => user.id === selectedCollectionArtworkUserId) ??
+          null
+        : null,
+    [profileScopeUsers, selectedCollectionArtworkUserId],
+  );
+  const trimmedCollectionArtworkUserSearch = collectionArtworkUserSearch
+    .trim()
+    .toLowerCase();
+  const collectionArtworkUserSearchResults = useMemo(() => {
+    if (!trimmedCollectionArtworkUserSearch) {
+      return profileScopeUsers.slice(0, 10);
+    }
+    return profileScopeUsers
+      .filter((user) =>
+        user.plexAccountTitle.toLowerCase().includes(trimmedCollectionArtworkUserSearch),
+      )
+      .slice(0, 12);
+  }, [profileScopeUsers, trimmedCollectionArtworkUserSearch]);
+  const collectionArtworkManagedTargetsQuery = useQuery({
+    queryKey: ['collection-artwork', 'managed-collections', selectedCollectionArtworkUserId],
+    queryFn: async () =>
+      await getManagedCollectionArtworkTargets(selectedCollectionArtworkUserId ?? ''),
+    enabled: Boolean(selectedCollectionArtworkUserId),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const collectionArtworkTargets = collectionArtworkManagedTargetsQuery.data?.collections ?? [];
+  const selectedCollectionArtworkTarget = useMemo(
+    () =>
+      collectionArtworkTargets.find(
+        (target) =>
+          getCollectionArtworkTargetKey(target) === selectedCollectionArtworkTargetKey,
+      ) ?? null,
+    [collectionArtworkTargets, selectedCollectionArtworkTargetKey],
+  );
+  const collectionArtworkFlowActive = Boolean(
+    selectedCollectionArtworkUserId || selectedCollectionArtworkTargetKey || collectionArtworkFile,
+  );
+  const selectedCollectionArtworkPreviewUrl = useMemo(() => {
+    if (!selectedCollectionArtworkUserId || !selectedCollectionArtworkTarget?.hasCustomPoster) {
+      return null;
+    }
+    return getCollectionArtworkPreviewUrl({
+      plexUserId: selectedCollectionArtworkUserId,
+      mediaType: selectedCollectionArtworkTarget.mediaType,
+      targetKind: selectedCollectionArtworkTarget.targetKind,
+      targetId: selectedCollectionArtworkTarget.targetId,
+      updatedAt: selectedCollectionArtworkTarget.customPosterUpdatedAt,
+    });
+  }, [selectedCollectionArtworkTarget, selectedCollectionArtworkUserId]);
+  useEffect(() => {
+    if (!collectionArtworkPreviewOpen) return;
+    if (!selectedCollectionArtworkTarget?.hasCustomPoster || !selectedCollectionArtworkPreviewUrl) {
+      setCollectionArtworkPreviewOpen(false);
+      setCollectionArtworkPreviewFailed(false);
+    }
+  }, [
+    collectionArtworkPreviewOpen,
+    selectedCollectionArtworkPreviewUrl,
+    selectedCollectionArtworkTarget?.hasCustomPoster,
+  ]);
+  const saveCollectionArtworkOverrideMutation = useMutation({
+    mutationFn: async () => {
+      const plexUserId = selectedCollectionArtworkUserId ?? '';
+      const target = selectedCollectionArtworkTarget;
+      const file = collectionArtworkFile;
+      if (!plexUserId || !target || !file) {
+        throw new Error('Choose user, collection target, and poster file first.');
+      }
+      return await uploadCollectionArtworkOverride({
+        plexUserId,
+        mediaType: target.mediaType,
+        targetKind: target.targetKind,
+        targetId: target.targetId,
+        file,
+      });
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['collection-artwork', 'managed-collections', selectedCollectionArtworkUserId],
+      });
+      setCollectionArtworkFile(null);
+      if (collectionArtworkFileInputRef.current) {
+        collectionArtworkFileInputRef.current.value = '';
+      }
+      if (data.appliedNow) {
+        toast.success('Poster override saved and applied.');
+      } else {
+        toast.success('Poster override saved.');
+      }
+      if (data.warnings?.length) {
+        toast.warning(data.warnings.join(' '));
+      }
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to save poster override'),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save poster override',
+      );
+    },
+  });
+  const resetCollectionArtworkOverrideMutation = useMutation({
+    mutationFn: async () => {
+      const plexUserId = selectedCollectionArtworkUserId ?? '';
+      const target = selectedCollectionArtworkTarget;
+      if (!plexUserId || !target) {
+        throw new Error('Choose user and collection target first.');
+      }
+      return await deleteCollectionArtworkOverride({
+        plexUserId,
+        mediaType: target.mediaType,
+        targetKind: target.targetKind,
+        targetId: target.targetId,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['collection-artwork', 'managed-collections', selectedCollectionArtworkUserId],
+      });
+      toast.success('Custom poster reset. Default artwork will be used.');
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to reset poster override'),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to reset poster override',
+      );
+    },
+  });
+  const activeProfile = useMemo(
+    () =>
+      activeProfileId
+        ? immaculateProfiles.find((profile) => profile.id === activeProfileId) ?? null
+        : null,
+    [activeProfileId, immaculateProfiles],
+  );
+  const monitoredProfileScopeUsers = useMemo(() => {
+    const selectedPlexUserIds = plexMonitoringUsersQuery.data?.selectedPlexUserIds ?? [];
+    if (!selectedPlexUserIds.length) return profileScopeUsers;
+    const selectedPlexUserIdSet = new Set(selectedPlexUserIds);
+    return profileScopeUsers.filter((user) => selectedPlexUserIdSet.has(user.id));
+  }, [plexMonitoringUsersQuery.data?.selectedPlexUserIds, profileScopeUsers]);
+  const activeProfileDeleteImpact = useMemo<ProfileDeleteImpactSummary | null>(() => {
+    if (!activeProfile || activeProfile.isDefault) return null;
+
+    const otherEnabledProfiles = immaculateProfiles.filter(
+      (profile) => profile.id !== activeProfile.id && profile.enabled,
+    );
+    const uniqueCollectionNames = new Set<string>();
+    const sharedCollectionNames = new Set<string>();
+
+    if (!monitoredProfileScopeUsers.length) {
+      const baseScope = resolveEffectiveProfileScopeForPlexUser({
+        profile: activeProfile,
+        plexUserId: null,
+      });
+      if (baseScope && mediaTypeIncludesMovie(baseScope.mediaType)) {
+        const collectionName = baseScope.movieCollectionBaseName;
+        const isShared = otherEnabledProfiles.some((profile) =>
+          profileUsesCollectionBaseName({
+            profile,
+            mediaType: 'movie',
+            collectionBaseName: baseScope.movieCollectionBaseName,
+          }),
+        );
+        if (isShared) {
+          sharedCollectionNames.add(collectionName);
+        } else {
+          uniqueCollectionNames.add(collectionName);
+        }
+      }
+      if (baseScope && mediaTypeIncludesShow(baseScope.mediaType)) {
+        const collectionName = baseScope.showCollectionBaseName;
+        const isShared = otherEnabledProfiles.some((profile) =>
+          profileUsesCollectionBaseName({
+            profile,
+            mediaType: 'show',
+            collectionBaseName: baseScope.showCollectionBaseName,
+          }),
+        );
+        if (isShared) {
+          sharedCollectionNames.add(collectionName);
+        } else {
+          uniqueCollectionNames.add(collectionName);
+        }
+      }
+    } else {
+      for (const user of monitoredProfileScopeUsers) {
+        const scope = resolveEffectiveProfileScopeForPlexUser({
+          profile: activeProfile,
+          plexUserId: user.id,
+        });
+        if (!scope) continue;
+        if (mediaTypeIncludesMovie(scope.mediaType)) {
+          const collectionName = buildImmaculateCollectionName(
+            scope.movieCollectionBaseName,
+            user.plexAccountTitle,
+          );
+          const targetMovieBaseKey = normalizeCollectionBaseName(
+            scope.movieCollectionBaseName,
+          );
+          const isShared = otherEnabledProfiles.some((profile) => {
+            const candidateScope = resolveEffectiveProfileScopeForPlexUser({
+              profile,
+              plexUserId: user.id,
+            });
+            if (!candidateScope) return false;
+            if (!mediaTypeIncludesMovie(candidateScope.mediaType)) return false;
+            return (
+              normalizeCollectionBaseName(candidateScope.movieCollectionBaseName) ===
+              targetMovieBaseKey
+            );
+          });
+          if (isShared) {
+            sharedCollectionNames.add(collectionName);
+          } else {
+            uniqueCollectionNames.add(collectionName);
+          }
+        }
+        if (mediaTypeIncludesShow(scope.mediaType)) {
+          const collectionName = buildImmaculateCollectionName(
+            scope.showCollectionBaseName,
+            user.plexAccountTitle,
+          );
+          const targetShowBaseKey = normalizeCollectionBaseName(
+            scope.showCollectionBaseName,
+          );
+          const isShared = otherEnabledProfiles.some((profile) => {
+            const candidateScope = resolveEffectiveProfileScopeForPlexUser({
+              profile,
+              plexUserId: user.id,
+            });
+            if (!candidateScope) return false;
+            if (!mediaTypeIncludesShow(candidateScope.mediaType)) return false;
+            return (
+              normalizeCollectionBaseName(candidateScope.showCollectionBaseName) ===
+              targetShowBaseKey
+            );
+          });
+          if (isShared) {
+            sharedCollectionNames.add(collectionName);
+          } else {
+            uniqueCollectionNames.add(collectionName);
+          }
+        }
+      }
+    }
+
+    const defaultWillAutoEnable =
+      activeProfile.enabled &&
+      !immaculateProfiles.some(
+        (profile) => profile.id !== activeProfile.id && profile.enabled,
+      );
+
+    return {
+      uniqueCollectionNames: Array.from(uniqueCollectionNames).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      sharedCollectionNames: Array.from(sharedCollectionNames).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      defaultWillAutoEnable,
+    };
+  }, [activeProfile, immaculateProfiles, monitoredProfileScopeUsers]);
+  const activeProfileScopeOverride = useMemo(
+    () => findProfileUserOverride(activeProfile, activeProfileScopePlexUserId),
+    [activeProfile, activeProfileScopePlexUserId],
+  );
+  const activeProfileOverrideUserIds = useMemo(
+    () => new Set((activeProfile?.userOverrides ?? []).map((override) => override.plexUserId)),
+    [activeProfile],
+  );
+  const profileScopeSelectedUsers = useMemo(
+    () =>
+      profileScopeUsers.filter((user) =>
+        activeProfileOverrideUserIds.has(user.id),
+      ),
+    [activeProfileOverrideUserIds, profileScopeUsers],
+  );
+  const trimmedProfileScopeSearch = profileScopeSearch.trim().toLowerCase();
+  const profileScopeSearchResults = useMemo(() => {
+    const nonPinnedUsers = profileScopeUsers.filter(
+      (user) => !activeProfileOverrideUserIds.has(user.id),
+    );
+    const matchingUsers = (trimmedProfileScopeSearch
+      ? nonPinnedUsers.filter((user) =>
+          user.plexAccountTitle.toLowerCase().includes(trimmedProfileScopeSearch),
+        )
+      : nonPinnedUsers
+    ).slice();
+    matchingUsers.sort((left, right) =>
+      left.plexAccountTitle.localeCompare(right.plexAccountTitle),
+    );
+    return matchingUsers.slice(0, trimmedProfileScopeSearch ? 12 : 10);
+  }, [activeProfileOverrideUserIds, profileScopeUsers, trimmedProfileScopeSearch]);
+  const trimmedNewProfileScopeSearch = newProfileScopeSearch.trim().toLowerCase();
+  const newProfileScopeUserIdSet = useMemo(
+    () => new Set(newProfileScopePlexUserIds),
+    [newProfileScopePlexUserIds],
+  );
+  const newProfileScopeSelectedUsers = useMemo(
+    () =>
+      profileScopeUsers.filter((user) =>
+        newProfileScopeUserIdSet.has(user.id),
+      ),
+    [newProfileScopeUserIdSet, profileScopeUsers],
+  );
+  const newProfileScopeSearchResults = useMemo(() => {
+    const availableUsers = profileScopeUsers.filter(
+      (user) => !newProfileScopeUserIdSet.has(user.id),
+    );
+    const matchingUsers = (trimmedNewProfileScopeSearch
+      ? availableUsers.filter((user) =>
+          user.plexAccountTitle.toLowerCase().includes(trimmedNewProfileScopeSearch),
+        )
+      : availableUsers
+    ).slice();
+    matchingUsers.sort((left, right) =>
+      left.plexAccountTitle.localeCompare(right.plexAccountTitle),
+    );
+    return matchingUsers.slice(0, trimmedNewProfileScopeSearch ? 12 : 10);
+  }, [newProfileScopeUserIdSet, profileScopeUsers, trimmedNewProfileScopeSearch]);
+  const radarrInstanceOptions = useMemo(
+    () =>
+      (arrInstancesQuery.data?.instances ?? [])
+        .filter((instance) => instance.type === 'radarr')
+        .slice()
+        .sort((a, b) => {
+          if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+          if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+          return a.name.localeCompare(b.name);
+        }),
+    [arrInstancesQuery.data?.instances],
+  );
+  const sonarrInstanceOptions = useMemo(
+    () =>
+      (arrInstancesQuery.data?.instances ?? [])
+        .filter((instance) => instance.type === 'sonarr')
+        .slice()
+        .sort((a, b) => {
+          if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+          if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+          return a.name.localeCompare(b.name);
+        }),
+    [arrInstancesQuery.data?.instances],
+  );
+  const activeRadarrInstanceOptions = useMemo(
+    () => radarrInstanceOptions.filter((instance) => instance.enabled),
+    [radarrInstanceOptions],
+  );
+  const activeSonarrInstanceOptions = useMemo(
+    () => sonarrInstanceOptions.filter((instance) => instance.enabled),
+    [sonarrInstanceOptions],
+  );
+  const hasMultipleActiveRadarrServices = activeRadarrInstanceOptions.length >= 2;
+  const hasMultipleActiveSonarrServices = activeSonarrInstanceOptions.length >= 2;
+  const enabledSecondaryRadarrInstances = useMemo(
+    () => activeRadarrInstanceOptions.filter((instance) => !instance.isPrimary),
+    [activeRadarrInstanceOptions],
+  );
+  const enabledSecondarySonarrInstances = useMemo(
+    () => activeSonarrInstanceOptions.filter((instance) => !instance.isPrimary),
+    [activeSonarrInstanceOptions],
+  );
+  const showRadarrStackedDefaults = enabledSecondaryRadarrInstances.length > 0;
+  const showSonarrStackedDefaults = enabledSecondarySonarrInstances.length > 0;
+  const radarrSecondaryOptionsQueries = useQueries({
+    queries: enabledSecondaryRadarrInstances.map((instance) => ({
+      queryKey: ['integrations', 'radarr', 'options', instance.id] as const,
+      queryFn: () => getRadarrOptionsForInstance(instance.id),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    })),
+  }) as UseQueryResult<RadarrOptionsResponse, Error>[];
+  const sonarrSecondaryOptionsQueries = useQueries({
+    queries: enabledSecondarySonarrInstances.map((instance) => ({
+      queryKey: ['integrations', 'sonarr', 'options', instance.id] as const,
+      queryFn: () => getSonarrOptionsForInstance(instance.id),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    })),
+  }) as UseQueryResult<SonarrOptionsResponse, Error>[];
+  const recommendedGenres = plexLibraryFiltersQuery.data?.genres ?? [];
+  const trimmedGenreSearch = genreSearch.trim();
+  const genreSearchIsActive = trimmedGenreSearch.length > 0;
+  const rankedGenreOptions = useMemo(
+    () => dedupeCaseInsensitive(recommendedGenres),
+    [recommendedGenres],
+  );
+  const selectedGenres = useMemo(
+    () => normalizeCsvStringList(profileDraft?.includeGenresText ?? ''),
+    [profileDraft?.includeGenresText],
+  );
+  const selectedGenreSet = useMemo(
+    () => new Set(selectedGenres.map((item) => item.toLowerCase())),
+    [selectedGenres],
+  );
+  const defaultGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !selectedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, selectedGenreSet],
+  );
+  const filteredGenreOptions = useMemo(() => {
+    const query = trimmedGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !selectedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedGenreOptions, selectedGenreSet, trimmedGenreSearch]);
+  const trimmedExcludeGenreSearch = excludeGenreSearch.trim();
+  const excludeGenreSearchIsActive = trimmedExcludeGenreSearch.length > 0;
+  const selectedExcludedGenres = useMemo(
+    () => normalizeCsvStringList(profileDraft?.excludeGenresText ?? ''),
+    [profileDraft?.excludeGenresText],
+  );
+  const selectedExcludedGenreSet = useMemo(
+    () => new Set(selectedExcludedGenres.map((item) => item.toLowerCase())),
+    [selectedExcludedGenres],
+  );
+  const defaultExcludedGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !selectedExcludedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, selectedExcludedGenreSet],
+  );
+  const filteredExcludedGenreOptions = useMemo(() => {
+    const query = trimmedExcludeGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !selectedExcludedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedGenreOptions, selectedExcludedGenreSet, trimmedExcludeGenreSearch]);
+  const trimmedNewProfileGenreSearch = newProfileGenreSearch.trim();
+  const newProfileGenreSearchIsActive = trimmedNewProfileGenreSearch.length > 0;
+  const newProfileSelectedGenres = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.includeGenresText ?? ''),
+    [newProfileDraft?.includeGenresText],
+  );
+  const newProfileSelectedGenreSet = useMemo(
+    () => new Set(newProfileSelectedGenres.map((item) => item.toLowerCase())),
+    [newProfileSelectedGenres],
+  );
+  const newProfileDefaultGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !newProfileSelectedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, newProfileSelectedGenreSet],
+  );
+  const newProfileFilteredGenreOptions = useMemo(() => {
+    const query = trimmedNewProfileGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !newProfileSelectedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedGenreOptions, newProfileSelectedGenreSet, trimmedNewProfileGenreSearch]);
+  const trimmedNewProfileExcludeGenreSearch = newProfileExcludeGenreSearch.trim();
+  const newProfileExcludeGenreSearchIsActive =
+    trimmedNewProfileExcludeGenreSearch.length > 0;
+  const newProfileSelectedExcludedGenres = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.excludeGenresText ?? ''),
+    [newProfileDraft?.excludeGenresText],
+  );
+  const newProfileSelectedExcludedGenreSet = useMemo(
+    () => new Set(newProfileSelectedExcludedGenres.map((item) => item.toLowerCase())),
+    [newProfileSelectedExcludedGenres],
+  );
+  const newProfileDefaultExcludedGenreOptions = useMemo(
+    () =>
+      rankedGenreOptions
+        .filter((genre) => !newProfileSelectedExcludedGenreSet.has(genre.toLowerCase()))
+        .slice(0, 10),
+    [rankedGenreOptions, newProfileSelectedExcludedGenreSet],
+  );
+  const newProfileFilteredExcludedGenreOptions = useMemo(() => {
+    const query = trimmedNewProfileExcludeGenreSearch.toLowerCase();
+    if (!query) return [];
+    return rankedGenreOptions
+      .filter((genre) => !newProfileSelectedExcludedGenreSet.has(genre.toLowerCase()))
+      .filter((genre) => genre.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedGenreOptions,
+    newProfileSelectedExcludedGenreSet,
+    trimmedNewProfileExcludeGenreSearch,
+  ]);
+  const recommendedAudioLanguages = plexLibraryFiltersQuery.data?.audioLanguages ?? [];
+  const trimmedAudioLanguageSearch = audioLanguageSearch.trim();
+  const audioLanguageSearchIsActive = trimmedAudioLanguageSearch.length > 0;
+  const rankedAudioLanguageOptions = useMemo(
+    () =>
+      dedupeCaseInsensitive([
+        ...TOP_10_POPULAR_AUDIO_LANGUAGES,
+        ...recommendedAudioLanguages,
+      ]),
+    [recommendedAudioLanguages],
+  );
+  const selectedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(profileDraft?.includeAudioLanguagesText ?? ''),
+    [profileDraft?.includeAudioLanguagesText],
+  );
+  const selectedAudioLanguageSet = useMemo(
+    () =>
+      new Set(selectedAudioLanguages.map((item) => item.toLowerCase())),
+    [selectedAudioLanguages],
+  );
+  const defaultAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) => !selectedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [selectedAudioLanguageSet],
+  );
+  const filteredAudioLanguageOptions = useMemo(() => {
+    const query = trimmedAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) => !selectedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [rankedAudioLanguageOptions, selectedAudioLanguageSet, trimmedAudioLanguageSearch]);
+  const trimmedExcludeAudioLanguageSearch = excludeAudioLanguageSearch.trim();
+  const excludeAudioLanguageSearchIsActive =
+    trimmedExcludeAudioLanguageSearch.length > 0;
+  const selectedExcludedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(profileDraft?.excludeAudioLanguagesText ?? ''),
+    [profileDraft?.excludeAudioLanguagesText],
+  );
+  const selectedExcludedAudioLanguageSet = useMemo(
+    () => new Set(selectedExcludedAudioLanguages.map((item) => item.toLowerCase())),
+    [selectedExcludedAudioLanguages],
+  );
+  const defaultExcludedAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) => !selectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [selectedExcludedAudioLanguageSet],
+  );
+  const filteredExcludedAudioLanguageOptions = useMemo(() => {
+    const query = trimmedExcludeAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) => !selectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedAudioLanguageOptions,
+    selectedExcludedAudioLanguageSet,
+    trimmedExcludeAudioLanguageSearch,
+  ]);
+  const trimmedNewProfileAudioLanguageSearch = newProfileAudioLanguageSearch.trim();
+  const newProfileAudioLanguageSearchIsActive =
+    trimmedNewProfileAudioLanguageSearch.length > 0;
+  const newProfileSelectedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.includeAudioLanguagesText ?? ''),
+    [newProfileDraft?.includeAudioLanguagesText],
+  );
+  const newProfileSelectedAudioLanguageSet = useMemo(
+    () => new Set(newProfileSelectedAudioLanguages.map((item) => item.toLowerCase())),
+    [newProfileSelectedAudioLanguages],
+  );
+  const newProfileDefaultAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) => !newProfileSelectedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [newProfileSelectedAudioLanguageSet],
+  );
+  const newProfileFilteredAudioLanguageOptions = useMemo(() => {
+    const query = trimmedNewProfileAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) => !newProfileSelectedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedAudioLanguageOptions,
+    newProfileSelectedAudioLanguageSet,
+    trimmedNewProfileAudioLanguageSearch,
+  ]);
+  const trimmedNewProfileExcludeAudioLanguageSearch =
+    newProfileExcludeAudioLanguageSearch.trim();
+  const newProfileExcludeAudioLanguageSearchIsActive =
+    trimmedNewProfileExcludeAudioLanguageSearch.length > 0;
+  const newProfileSelectedExcludedAudioLanguages = useMemo(
+    () => normalizeCsvStringList(newProfileDraft?.excludeAudioLanguagesText ?? ''),
+    [newProfileDraft?.excludeAudioLanguagesText],
+  );
+  const newProfileSelectedExcludedAudioLanguageSet = useMemo(
+    () =>
+      new Set(newProfileSelectedExcludedAudioLanguages.map((item) => item.toLowerCase())),
+    [newProfileSelectedExcludedAudioLanguages],
+  );
+  const newProfileDefaultExcludedAudioLanguageOptions = useMemo(
+    () =>
+      TOP_10_POPULAR_AUDIO_LANGUAGES.filter(
+        (language) =>
+          !newProfileSelectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+      ),
+    [newProfileSelectedExcludedAudioLanguageSet],
+  );
+  const newProfileFilteredExcludedAudioLanguageOptions = useMemo(() => {
+    const query = trimmedNewProfileExcludeAudioLanguageSearch.toLowerCase();
+    if (!query) return [];
+    const available = rankedAudioLanguageOptions.filter(
+      (language) =>
+        !newProfileSelectedExcludedAudioLanguageSet.has(language.toLowerCase()),
+    );
+    return available
+      .filter((language) => language.toLowerCase().includes(query))
+      .slice(0, 12);
+  }, [
+    rankedAudioLanguageOptions,
+    newProfileSelectedExcludedAudioLanguageSet,
+    trimmedNewProfileExcludeAudioLanguageSearch,
+  ]);
+  const profileWantsMovies =
+    profileDraft?.mediaType === 'movie' || profileDraft?.mediaType === 'both';
+  const profileWantsShows =
+    profileDraft?.mediaType === 'show' || profileDraft?.mediaType === 'both';
+  const showRadarrServiceSelector =
+    profileWantsMovies && hasMultipleActiveRadarrServices;
+  const showSonarrServiceSelector =
+    profileWantsShows && hasMultipleActiveSonarrServices;
+  const newProfileWantsMovies =
+    newProfileDraft?.mediaType === 'movie' || newProfileDraft?.mediaType === 'both';
+  const newProfileWantsShows =
+    newProfileDraft?.mediaType === 'show' || newProfileDraft?.mediaType === 'both';
+  const showNewProfileRadarrServiceSelector =
+    newProfileWantsMovies && hasMultipleActiveRadarrServices;
+  const showNewProfileSonarrServiceSelector =
+    newProfileWantsShows && hasMultipleActiveSonarrServices;
+
+  useEffect(() => {
+    if (!immaculateProfiles.length) {
+      setActiveProfileId(null);
+      setActiveProfileScopePlexUserId(null);
+      setProfileScopeSearch('');
+      setProfileDraft(null);
+      setIsProfileEditorOpen(false);
+      return;
+    }
+    if (!activeProfileId) {
+      const first = immaculateProfiles[0];
+      setActiveProfileId(first.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileDraft(toProfileDraft(first));
+      return;
+    }
+    const existing = immaculateProfiles.find((profile) => profile.id === activeProfileId);
+    if (!existing) {
+      const first = immaculateProfiles[0];
+      setActiveProfileId(first.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileDraft(toProfileDraft(first));
+      return;
+    }
+    if (!profileDraft) {
+      const activeOverride = findProfileUserOverride(existing, activeProfileScopePlexUserId);
+      setProfileDraft(toProfileDraft(existing, activeOverride));
+    }
+  }, [activeProfileId, activeProfileScopePlexUserId, immaculateProfiles, profileDraft]);
+  const normalizeProfileServiceSelection = useCallback(
+    (draft: ImmaculateTasteProfileDraft) => {
+      const wantsMovies = draft.mediaType === 'movie' || draft.mediaType === 'both';
+      const wantsShows = draft.mediaType === 'show' || draft.mediaType === 'both';
+      const selectedRadarrInstanceId =
+        draft.radarrInstanceId === PRIMARY_INSTANCE_SENTINEL
+          ? null
+          : draft.radarrInstanceId || null;
+      const selectedSonarrInstanceId =
+        draft.sonarrInstanceId === PRIMARY_INSTANCE_SENTINEL
+          ? null
+          : draft.sonarrInstanceId || null;
+      return {
+        radarrInstanceId:
+          wantsMovies && hasMultipleActiveRadarrServices
+            ? selectedRadarrInstanceId
+            : null,
+        sonarrInstanceId:
+          wantsShows && hasMultipleActiveSonarrServices
+            ? selectedSonarrInstanceId
+            : null,
+      };
+    },
+    [hasMultipleActiveRadarrServices, hasMultipleActiveSonarrServices],
+  );
+
+  const createImmaculateProfileMutation = useMutation({
+    mutationFn: async (params: {
+      draft: ImmaculateTasteProfileDraft;
+      scopePlexUserIds: string[];
+    }) => {
+      const normalizedServiceSelection = normalizeProfileServiceSelection(params.draft);
+      const normalizedFilters = resolveProfileDraftFilters(params.draft);
+      const payload = {
+        name: params.draft.name.trim(),
+        enabled: params.draft.enabled,
+        mediaType: params.draft.mediaType,
+        matchMode: params.draft.matchMode,
+        genres: normalizedFilters.includedGenres,
+        audioLanguages: normalizedFilters.includedAudioLanguages,
+        excludedGenres: normalizedFilters.excludedGenres,
+        excludedAudioLanguages: normalizedFilters.excludedAudioLanguages,
+        radarrInstanceId: normalizedServiceSelection.radarrInstanceId,
+        sonarrInstanceId: normalizedServiceSelection.sonarrInstanceId,
+        movieCollectionBaseName: params.draft.movieCollectionBaseName.trim() || null,
+        showCollectionBaseName: params.draft.showCollectionBaseName.trim() || null,
+      };
+      const created = await createImmaculateTasteProfile(payload);
+      const scopePlexUserIds = Array.from(
+        new Set(
+          params.scopePlexUserIds
+            .map((plexUserId) => plexUserId.trim())
+            .filter((plexUserId) => Boolean(plexUserId)),
+        ),
+      );
+      if (!scopePlexUserIds.length) {
+        return {
+          profile: created.profile,
+          scopedUserFailures: [] as string[],
+        };
+      }
+      let latestProfile = created.profile;
+      const scopedUserFailures: string[] = [];
+      for (const scopePlexUserId of scopePlexUserIds) {
+        try {
+          const updated = await updateImmaculateTasteProfile(created.profile.id, {
+            scopePlexUserId,
+          });
+          latestProfile = updated.profile;
+        } catch {
+          scopedUserFailures.push(scopePlexUserId);
+        }
+      }
+      return {
+        profile: latestProfile,
+        scopedUserFailures,
+      };
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      setNewProfileDraft(null);
+      setNewProfileScopePlexUserIds([]);
+      setNewProfileScopeSearch('');
+      setNewProfileGenreSearch('');
+      setNewProfileAudioLanguageSearch('');
+      setNewProfileExcludeGenreSearch('');
+      setNewProfileExcludeAudioLanguageSearch('');
+      setActiveProfileId(data.profile.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileScopeSearch('');
+      setProfileDraft(toProfileDraft(data.profile));
+      setIsAddProfileFormOpen(false);
+      setIsProfileEditorOpen(true);
+      toast.success(`Profile "${data.profile.name}" created.`);
+      if (data.scopedUserFailures.length > 0) {
+        toast.warning(
+          'Profile was created, but some selected users were not added to scope. Add them again from User scope.',
+        );
+      }
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to create profile'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to create profile');
+    },
+  });
+
+  const saveImmaculateProfileMutation = useMutation({
+    mutationFn: async (params: {
+      id: string;
+      draft: ImmaculateTasteProfileDraft;
+      scopePlexUserId: string | null;
+      resetScopeToDefaultNaming?: boolean;
+    }) => {
+      const normalizedServiceSelection = normalizeProfileServiceSelection(params.draft);
+      const normalizedFilters = resolveProfileDraftFilters(params.draft);
+      const payload: Parameters<typeof updateImmaculateTasteProfile>[1] = {
+        ...(params.scopePlexUserId
+          ? { scopePlexUserId: params.scopePlexUserId }
+          : {
+              name: params.draft.name.trim(),
+              enabled: params.draft.enabled,
+            }),
+        ...(params.resetScopeToDefaultNaming
+          ? { resetScopeToDefaultNaming: true }
+          : {}),
+        mediaType: params.draft.mediaType,
+        matchMode: params.draft.matchMode,
+        genres: normalizedFilters.includedGenres,
+        audioLanguages: normalizedFilters.includedAudioLanguages,
+        excludedGenres: normalizedFilters.excludedGenres,
+        excludedAudioLanguages: normalizedFilters.excludedAudioLanguages,
+        radarrInstanceId: normalizedServiceSelection.radarrInstanceId,
+        sonarrInstanceId: normalizedServiceSelection.sonarrInstanceId,
+        movieCollectionBaseName: params.draft.movieCollectionBaseName.trim() || null,
+        showCollectionBaseName: params.draft.showCollectionBaseName.trim() || null,
+      };
+      return await updateImmaculateTasteProfile(params.id, payload);
+    },
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      const scopedOverride = findProfileUserOverride(
+        data.profile,
+        variables.scopePlexUserId,
+      );
+      const submittedFilters = resolveProfileDraftFilters(variables.draft);
+      const nextDraft = toProfileDraft(data.profile, scopedOverride);
+      const persistedFilters = resolveProfileDraftFilters(nextDraft);
+      const filtersPersisted =
+        areCaseInsensitiveListsEqual(
+          submittedFilters.includedGenres,
+          persistedFilters.includedGenres,
+        ) &&
+        areCaseInsensitiveListsEqual(
+          submittedFilters.includedAudioLanguages,
+          persistedFilters.includedAudioLanguages,
+        ) &&
+        areCaseInsensitiveListsEqual(
+          submittedFilters.excludedGenres,
+          persistedFilters.excludedGenres,
+        ) &&
+        areCaseInsensitiveListsEqual(
+          submittedFilters.excludedAudioLanguages,
+          persistedFilters.excludedAudioLanguages,
+        );
+      if (!filtersPersisted) {
+        setProfileDraft(variables.draft);
+        toast.error(
+          'Profile save did not persist the latest include/exclude filters. Restart API and apply the latest DB migration, then save again.',
+        );
+        return;
+      }
+      setProfileDraft(nextDraft);
+      toast.success(`Profile "${data.profile.name}" saved.`);
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to save profile'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to save profile');
+    },
+  });
+
+  const updateProfileScopeMutation = useMutation({
+    mutationFn: async (params: {
+      profileId: string;
+      plexUserId: string;
+      action: 'add' | 'remove';
+    }) => {
+      const profileId = params.profileId.trim();
+      const plexUserId = params.plexUserId.trim();
+      if (!profileId || !plexUserId) {
+        throw new Error('Profile and Plex user are required to update user scope.');
+      }
+      if (params.action === 'remove') {
+        return await updateImmaculateTasteProfile(profileId, {
+          scopePlexUserId: plexUserId,
+          resetScopeToDefaultNaming: true,
+        });
+      }
+      return await updateImmaculateTasteProfile(profileId, {
+        scopePlexUserId: plexUserId,
+      });
+    },
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      if (activeProfileId === data.profile.id) {
+        setActiveProfileScopePlexUserId(null);
+        setProfileDraft(toProfileDraft(data.profile));
+      }
+      toast.success(
+        variables.action === 'add'
+          ? 'User added to profile scope.'
+          : 'User removed from profile scope.',
+      );
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to update user scope'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to update user scope');
+    },
+  });
+
+  const toggleImmaculateProfileEnabledMutation = useMutation({
+    mutationFn: async (params: { id: string; enabled: boolean }) => {
+      return await updateImmaculateTasteProfile(params.id, {
+        enabled: params.enabled,
+      });
+    },
+    onSuccess: async (data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      if (activeProfileId === variables.id && !activeProfileScopePlexUserId) {
+        setProfileDraft((current) =>
+          current ? { ...current, enabled: data.profile.enabled } : current,
+        );
+      }
+      toast.success(
+        `Profile "${data.profile.name}" ${data.profile.enabled ? 'enabled' : 'disabled'}.`,
+      );
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to update profile status'),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update profile status',
+      );
+    },
+  });
+
+  const deleteImmaculateProfileMutation = useMutation({
+    mutationFn: async (profile: ImmaculateTasteProfile) => {
+      await deleteImmaculateTasteProfile(profile.id);
+      return profile;
+    },
+    onSuccess: async (profile) => {
+      await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
+      setProfileDeleteDialogOpen(false);
+      if (activeProfileId === profile.id) {
+        setActiveProfileId(null);
+        setActiveProfileScopePlexUserId(null);
+        setProfileScopeSearch('');
+        setProfileDraft(null);
+        setIsProfileEditorOpen(false);
+      }
+      toast.success(`Profile "${profile.name}" deleted.`);
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(error.body, error.message || 'Failed to delete profile'),
+        );
+        return;
+      }
+      toast.error(error instanceof Error ? error.message : 'Failed to delete profile');
+    },
+  });
+
+  const profileDirty = useMemo(() => {
+    if (!activeProfile || !profileDraft) return false;
+    const draftFilters = resolveProfileDraftFilters(profileDraft);
+    const draftIncludedGenres = draftFilters.includedGenres;
+    const draftIncludedAudioLanguages = draftFilters.includedAudioLanguages;
+    const draftExcludedGenres = draftFilters.excludedGenres;
+    const draftExcludedAudioLanguages = draftFilters.excludedAudioLanguages;
+    const normalizedServiceSelection = normalizeProfileServiceSelection(profileDraft);
+    const scopedOverride = findProfileUserOverride(activeProfile, activeProfileScopePlexUserId);
+    const sourceMediaType = scopedOverride?.mediaType ?? activeProfile.mediaType;
+    const sourceMatchMode = scopedOverride?.matchMode ?? activeProfile.matchMode;
+    const sourceMovieCollectionBaseName =
+      scopedOverride?.movieCollectionBaseName ?? activeProfile.movieCollectionBaseName;
+    const sourceShowCollectionBaseName =
+      scopedOverride?.showCollectionBaseName ?? activeProfile.showCollectionBaseName;
+    const sourceRadarrInstanceId =
+      scopedOverride?.radarrInstanceId ?? activeProfile.radarrInstanceId;
+    const sourceSonarrInstanceId =
+      scopedOverride?.sonarrInstanceId ?? activeProfile.sonarrInstanceId;
+    const sourceGenres = scopedOverride?.genres ?? activeProfile.genres ?? [];
+    const sourceAudioLanguages =
+      scopedOverride?.audioLanguages ?? activeProfile.audioLanguages ?? [];
+    const sourceExcludedGenres =
+      scopedOverride?.excludedGenres ?? activeProfile.excludedGenres ?? [];
+    const sourceExcludedAudioLanguages =
+      scopedOverride?.excludedAudioLanguages ?? activeProfile.excludedAudioLanguages ?? [];
+    return (
+      (!activeProfileScopePlexUserId && activeProfile.name !== profileDraft.name.trim()) ||
+      (!activeProfileScopePlexUserId && activeProfile.enabled !== profileDraft.enabled) ||
+      sourceMediaType !== profileDraft.mediaType ||
+      sourceMatchMode !== profileDraft.matchMode ||
+      sourceMovieCollectionBaseName !==
+        (profileDraft.movieCollectionBaseName.trim() || null) ||
+      sourceShowCollectionBaseName !==
+        (profileDraft.showCollectionBaseName.trim() || null) ||
+      sourceRadarrInstanceId !== normalizedServiceSelection.radarrInstanceId ||
+      sourceSonarrInstanceId !== normalizedServiceSelection.sonarrInstanceId ||
+      JSON.stringify(sourceGenres) !== JSON.stringify(draftIncludedGenres) ||
+      JSON.stringify(sourceAudioLanguages) !==
+        JSON.stringify(draftIncludedAudioLanguages) ||
+      JSON.stringify(sourceExcludedGenres) !== JSON.stringify(draftExcludedGenres) ||
+      JSON.stringify(sourceExcludedAudioLanguages) !==
+        JSON.stringify(draftExcludedAudioLanguages)
+    );
+  }, [
+    activeProfile,
+    activeProfileScopePlexUserId,
+    normalizeProfileServiceSelection,
+    profileDraft,
+  ]);
+
+  const defaultProfileAtNetZero = useMemo(() => {
+    if (!activeProfile?.isDefault || !profileDraft || activeProfileScopePlexUserId) return false;
+    const takenNames = new Set(
+      immaculateProfiles
+        .filter((profile) => profile.id !== activeProfile.id)
+        .map((profile) => profile.name.trim().toLowerCase()),
+    );
+    const targetDefaultName =
+      ['Default', 'Default profile'].find(
+        (candidate) =>
+          candidate.toLowerCase() === activeProfile.name.trim().toLowerCase() ||
+          !takenNames.has(candidate.toLowerCase()),
+      ) ?? activeProfile.name;
+    return isNetZeroDefaultProfileDraft(profileDraft, targetDefaultName);
+  }, [activeProfile, activeProfileScopePlexUserId, immaculateProfiles, profileDraft]);
+
+  const selectImmaculateProfile = useCallback(
+    (profile: ImmaculateTasteProfile) => {
+      const isSameProfile = profile.id === activeProfileId;
+      setActiveProfileId(profile.id);
+      setActiveProfileScopePlexUserId(null);
+      setProfileScopeSearch('');
+      setProfileDraft(toProfileDraft(profile));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
+      setIsAddProfileFormOpen(false);
+      setNewProfileDraft(null);
+      setNewProfileScopePlexUserIds([]);
+      setNewProfileScopeSearch('');
+      setNewProfileGenreSearch('');
+      setNewProfileAudioLanguageSearch('');
+      setNewProfileExcludeGenreSearch('');
+      setNewProfileExcludeAudioLanguageSearch('');
+      setIsProfileEditorOpen((open) => (isSameProfile ? !open : true));
+    },
+    [activeProfileId],
+  );
+
+  const handleProfileEnabledToggle = useCallback(
+    (profile: ImmaculateTasteProfile) => {
+      const hasAnyOtherProfile = immaculateProfiles.some(
+        (candidate) => candidate.id !== profile.id,
+      );
+      if (profile.isDefault && !hasAnyOtherProfile) return;
+
+      const isEditingThisProfile =
+        activeProfileId === profile.id && isProfileEditorOpen && Boolean(profileDraft);
+      const currentEnabled =
+        isEditingThisProfile && profileDraft ? profileDraft.enabled : profile.enabled;
+      const hasEnabledFallback = immaculateProfiles.some(
+        (candidate) => candidate.id !== profile.id && candidate.enabled,
+      );
+      if (profile.isDefault && currentEnabled && !hasEnabledFallback) return;
+      const nextEnabled = !currentEnabled;
+      const previousDraftEnabled =
+        isEditingThisProfile && profileDraft ? profileDraft.enabled : null;
+
+      if (isEditingThisProfile) {
+        setProfileDraft((current) =>
+          current ? { ...current, enabled: nextEnabled } : current,
+        );
+      }
+
+      const profilesQueryKey = ['immaculateTaste', 'profiles'] as const;
+      const previousProfilesResponse = queryClient.getQueryData<{
+        ok: true;
+        profiles: ImmaculateTasteProfile[];
+      }>(profilesQueryKey);
+      if (previousProfilesResponse) {
+        const nextProfiles = previousProfilesResponse.profiles.map((candidate) =>
+          candidate.id === profile.id ? { ...candidate, enabled: nextEnabled } : candidate,
+        );
+        const shouldEnableDefaultFallback =
+          !nextEnabled &&
+          !profile.isDefault &&
+          !previousProfilesResponse.profiles.some(
+            (candidate) => candidate.id !== profile.id && candidate.enabled,
+          );
+        const optimisticProfiles = shouldEnableDefaultFallback
+          ? nextProfiles.map((candidate) =>
+              candidate.isDefault ? { ...candidate, enabled: true } : candidate,
+            )
+          : nextProfiles;
+        queryClient.setQueryData(profilesQueryKey, {
+          ...previousProfilesResponse,
+          profiles: optimisticProfiles,
+        });
+      }
+
+      toggleImmaculateProfileEnabledMutation.mutate(
+        { id: profile.id, enabled: nextEnabled },
+        {
+          onError: () => {
+            if (previousDraftEnabled !== null) {
+              setProfileDraft((current) =>
+                current ? { ...current, enabled: previousDraftEnabled } : current,
+              );
+            }
+            if (previousProfilesResponse) {
+              queryClient.setQueryData(profilesQueryKey, previousProfilesResponse);
+              return;
+            }
+            void queryClient.invalidateQueries({ queryKey: profilesQueryKey });
+          },
+        },
+      );
+    },
+    [
+      activeProfileId,
+      immaculateProfiles,
+      isProfileEditorOpen,
+      profileDraft,
+      queryClient,
+      toggleImmaculateProfileEnabledMutation,
+    ],
+  );
+
+  const resetProfileDraft = useCallback(() => {
+    if (!activeProfile) return;
+    if (activeProfileScopePlexUserId) {
+      setProfileDraft(toProfileDraft(activeProfile));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
+      return;
+    }
+    if (activeProfile.isDefault) {
+      const takenNames = new Set(
+        immaculateProfiles
+          .filter((profile) => profile.id !== activeProfile.id)
+          .map((profile) => profile.name.trim().toLowerCase()),
+      );
+      const targetDefaultName =
+        ['Default', 'Default profile'].find(
+          (candidate) =>
+            candidate.toLowerCase() === activeProfile.name.trim().toLowerCase() ||
+            !takenNames.has(candidate.toLowerCase()),
+        ) ?? activeProfile.name;
+      setProfileDraft(createNetZeroDefaultProfileDraft(targetDefaultName));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
+      return;
+    }
+    setProfileDraft(toProfileDraft(activeProfile));
+    setGenreSearch('');
+    setAudioLanguageSearch('');
+    setExcludeGenreSearch('');
+    setExcludeAudioLanguageSearch('');
+  }, [activeProfile, activeProfileScopePlexUserId, immaculateProfiles]);
+
+  const closeProfileEditor = useCallback(() => {
+    if (activeProfile) {
+      setProfileDraft(toProfileDraft(activeProfile, activeProfileScopeOverride));
+    }
+    setGenreSearch('');
+    setAudioLanguageSearch('');
+    setExcludeGenreSearch('');
+    setExcludeAudioLanguageSearch('');
+    setIsProfileEditorOpen(false);
+  }, [activeProfile, activeProfileScopeOverride]);
+
+  useEffect(() => {
+    if (!isProfileEditorOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (target instanceof Element) {
+        const withinRadixPopup = target.closest(
+          '[data-radix-popper-content-wrapper], [data-radix-select-content]',
+        );
+        if (withinRadixPopup) return;
+      }
+      const editor = profileEditorCardRef.current;
+      if (!editor) return;
+      if (editor.contains(target)) return;
+      closeProfileEditor();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [closeProfileEditor, isProfileEditorOpen]);
+
+  const addIncludedGenreTag = useCallback((genre: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeGenresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        includeGenresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setGenreSearch('');
+  }, []);
+
+  const removeIncludedGenreTag = useCallback((genre: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeGenresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        includeGenresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleIncludedGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredGenreOptions[0];
+        addIncludedGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (event.key === 'Backspace' && !trimmedGenreSearch && selectedGenres.length) {
+        event.preventDefault();
+        removeIncludedGenreTag(selectedGenres[selectedGenres.length - 1]);
+      }
+    },
+    [
+      addIncludedGenreTag,
+      filteredGenreOptions,
+      rankedGenreOptions,
+      removeIncludedGenreTag,
+      selectedGenres,
+      trimmedGenreSearch,
+    ],
+  );
+
+  const addSuggestedIncludedGenre = useCallback((genre: string) => {
+    addIncludedGenreTag(genre);
+  }, [addIncludedGenreTag]);
+
+  const addNewProfileIncludedGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeGenresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        includeGenresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setNewProfileGenreSearch('');
+  }, []);
+
+  const removeNewProfileIncludedGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeGenresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        includeGenresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleNewProfileIncludedGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredGenreOptions[0];
+        addNewProfileIncludedGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileGenreSearch &&
+        newProfileSelectedGenres.length
+      ) {
+        event.preventDefault();
+        removeNewProfileIncludedGenreTag(
+          newProfileSelectedGenres[newProfileSelectedGenres.length - 1],
+        );
+      }
+    },
+    [
+      addNewProfileIncludedGenreTag,
+      newProfileFilteredGenreOptions,
+      newProfileSelectedGenres,
+      rankedGenreOptions,
+      removeNewProfileIncludedGenreTag,
+      trimmedNewProfileGenreSearch,
+    ],
+  );
+
+  const addExcludedGenreTag = useCallback((genre: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeGenresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setExcludeGenreSearch('');
+  }, []);
+
+  const removeExcludedGenreTag = useCallback((genre: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        excludeGenresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleExcludedGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedExcludeGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredExcludedGenreOptions[0];
+        addExcludedGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedExcludeGenreSearch &&
+        selectedExcludedGenres.length
+      ) {
+        event.preventDefault();
+        removeExcludedGenreTag(selectedExcludedGenres[selectedExcludedGenres.length - 1]);
+      }
+    },
+    [
+      addExcludedGenreTag,
+      filteredExcludedGenreOptions,
+      rankedGenreOptions,
+      removeExcludedGenreTag,
+      selectedExcludedGenres,
+      trimmedExcludeGenreSearch,
+    ],
+  );
+
+  const addSuggestedExcludedGenre = useCallback((genre: string) => {
+    addExcludedGenreTag(genre);
+  }, [addExcludedGenreTag]);
+
+  const addNewProfileExcludedGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === genre.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeGenresText: [...existing, genre.trim()].join(', '),
+      };
+    });
+    setNewProfileExcludeGenreSearch('');
+  }, []);
+
+  const removeNewProfileExcludedGenreTag = useCallback((genre: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeGenresText);
+      const next = existing.filter((item) => item.toLowerCase() !== genre.trim().toLowerCase());
+      return {
+        ...current,
+        excludeGenresText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleNewProfileExcludedGenreSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileExcludeGenreSearch;
+        if (!query) return;
+        const exactMatch = rankedGenreOptions.find(
+          (genre) => genre.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredExcludedGenreOptions[0];
+        addNewProfileExcludedGenreTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileExcludeGenreSearch &&
+        newProfileSelectedExcludedGenres.length
+      ) {
+        event.preventDefault();
+        removeNewProfileExcludedGenreTag(
+          newProfileSelectedExcludedGenres[newProfileSelectedExcludedGenres.length - 1],
+        );
+      }
+    },
+    [
+      addNewProfileExcludedGenreTag,
+      newProfileFilteredExcludedGenreOptions,
+      newProfileSelectedExcludedGenres,
+      rankedGenreOptions,
+      removeNewProfileExcludedGenreTag,
+      trimmedNewProfileExcludeGenreSearch,
+    ],
+  );
+
+  const addIncludedAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        includeAudioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setAudioLanguageSearch('');
+  }, []);
+
+  const removeIncludedAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        includeAudioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const addNewProfileIncludedAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        includeAudioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setNewProfileAudioLanguageSearch('');
+  }, []);
+
+  const removeNewProfileIncludedAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.includeAudioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        includeAudioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleIncludedAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredAudioLanguageOptions[0];
+        addIncludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedAudioLanguageSearch &&
+        selectedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeIncludedAudioLanguageTag(selectedAudioLanguages[selectedAudioLanguages.length - 1]);
+      }
+    },
+    [
+      addIncludedAudioLanguageTag,
+      filteredAudioLanguageOptions,
+      rankedAudioLanguageOptions,
+      removeIncludedAudioLanguageTag,
+      selectedAudioLanguages,
+      trimmedAudioLanguageSearch,
+    ],
+  );
+
+  const handleNewProfileIncludedAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredAudioLanguageOptions[0];
+        addNewProfileIncludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileAudioLanguageSearch &&
+        newProfileSelectedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeNewProfileIncludedAudioLanguageTag(
+          newProfileSelectedAudioLanguages[newProfileSelectedAudioLanguages.length - 1],
+        );
+      }
+    },
+    [
+      addNewProfileIncludedAudioLanguageTag,
+      newProfileFilteredAudioLanguageOptions,
+      newProfileSelectedAudioLanguages,
+      rankedAudioLanguageOptions,
+      removeNewProfileIncludedAudioLanguageTag,
+      trimmedNewProfileAudioLanguageSearch,
+    ],
+  );
+
+  const addExcludedAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeAudioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setExcludeAudioLanguageSearch('');
+  }, []);
+
+  const removeExcludedAudioLanguageTag = useCallback((language: string) => {
+    setProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        excludeAudioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleExcludedAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedExcludeAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = filteredExcludedAudioLanguageOptions[0];
+        addExcludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedExcludeAudioLanguageSearch &&
+        selectedExcludedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeExcludedAudioLanguageTag(
+          selectedExcludedAudioLanguages[selectedExcludedAudioLanguages.length - 1],
+        );
+      }
+    },
+    [
+      addExcludedAudioLanguageTag,
+      filteredExcludedAudioLanguageOptions,
+      rankedAudioLanguageOptions,
+      removeExcludedAudioLanguageTag,
+      selectedExcludedAudioLanguages,
+      trimmedExcludeAudioLanguageSearch,
+    ],
+  );
+
+  const addSuggestedExcludedAudioLanguage = useCallback((language: string) => {
+    addExcludedAudioLanguageTag(language);
+  }, [addExcludedAudioLanguageTag]);
+
+  const addNewProfileExcludedAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const has = existing.some(
+        (item) => item.toLowerCase() === language.trim().toLowerCase(),
+      );
+      if (has) return current;
+      return {
+        ...current,
+        excludeAudioLanguagesText: [...existing, language.trim()].join(', '),
+      };
+    });
+    setNewProfileExcludeAudioLanguageSearch('');
+  }, []);
+
+  const removeNewProfileExcludedAudioLanguageTag = useCallback((language: string) => {
+    setNewProfileDraft((current) => {
+      if (!current) return current;
+      const existing = normalizeCsvStringList(current.excludeAudioLanguagesText);
+      const next = existing.filter(
+        (item) => item.toLowerCase() !== language.trim().toLowerCase(),
+      );
+      return {
+        ...current,
+        excludeAudioLanguagesText: next.join(', '),
+      };
+    });
+  }, []);
+
+  const handleNewProfileExcludedAudioLanguageSearchKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = trimmedNewProfileExcludeAudioLanguageSearch;
+        if (!query) return;
+        const exactMatch = rankedAudioLanguageOptions.find(
+          (language) => language.toLowerCase() === query.toLowerCase(),
+        );
+        const firstSearchResult = newProfileFilteredExcludedAudioLanguageOptions[0];
+        addNewProfileExcludedAudioLanguageTag(exactMatch ?? firstSearchResult ?? query);
+        return;
+      }
+      if (
+        event.key === 'Backspace' &&
+        !trimmedNewProfileExcludeAudioLanguageSearch &&
+        newProfileSelectedExcludedAudioLanguages.length
+      ) {
+        event.preventDefault();
+        removeNewProfileExcludedAudioLanguageTag(
+          newProfileSelectedExcludedAudioLanguages[
+            newProfileSelectedExcludedAudioLanguages.length - 1
+          ],
+        );
+      }
+    },
+    [
+      addNewProfileExcludedAudioLanguageTag,
+      newProfileFilteredExcludedAudioLanguageOptions,
+      newProfileSelectedExcludedAudioLanguages,
+      rankedAudioLanguageOptions,
+      removeNewProfileExcludedAudioLanguageTag,
+      trimmedNewProfileExcludeAudioLanguageSearch,
+    ],
+  );
+
+  const handleCreateProfile = useCallback(() => {
+    if (!newProfileDraft) return;
+    const name = newProfileDraft.name.trim();
+    if (!name) {
+      toast.error('Enter a profile name first.');
+      return;
+    }
+    createImmaculateProfileMutation.mutate({
+      draft: newProfileDraft,
+      scopePlexUserIds: newProfileScopePlexUserIds,
+    });
+  }, [createImmaculateProfileMutation, newProfileDraft, newProfileScopePlexUserIds]);
+
+  const handleSaveActiveProfile = useCallback(() => {
+    if (!activeProfile || !profileDraft) return;
+    if (!activeProfileScopePlexUserId && !profileDraft.name.trim()) {
+      toast.error('Profile name cannot be empty.');
+      return;
+    }
+    saveImmaculateProfileMutation.mutate({
+      id: activeProfile.id,
+      draft: profileDraft,
+      scopePlexUserId: activeProfileScopePlexUserId,
+    });
+  }, [
+    activeProfile,
+    activeProfileScopePlexUserId,
+    profileDraft,
+    saveImmaculateProfileMutation,
+  ]);
+
+  const addActiveProfileScopeUser = useCallback(
+    (plexUserId: string) => {
+      const trimmedPlexUserId = plexUserId.trim();
+      if (!activeProfile || !trimmedPlexUserId) return;
+      if (activeProfileOverrideUserIds.has(trimmedPlexUserId)) return;
+      updateProfileScopeMutation.mutate({
+        profileId: activeProfile.id,
+        plexUserId: trimmedPlexUserId,
+        action: 'add',
+      });
+      setProfileScopeSearch('');
+    },
+    [activeProfile, activeProfileOverrideUserIds, updateProfileScopeMutation],
+  );
+
+  const removeActiveProfileScopeUser = useCallback(
+    (plexUserId: string) => {
+      const trimmedPlexUserId = plexUserId.trim();
+      if (!activeProfile || !trimmedPlexUserId) return;
+      if (!activeProfileOverrideUserIds.has(trimmedPlexUserId)) return;
+      updateProfileScopeMutation.mutate({
+        profileId: activeProfile.id,
+        plexUserId: trimmedPlexUserId,
+        action: 'remove',
+      });
+      setProfileScopeSearch('');
+    },
+    [activeProfile, activeProfileOverrideUserIds, updateProfileScopeMutation],
+  );
+
+  const addNewProfileScopeUser = useCallback((plexUserId: string) => {
+    const trimmedPlexUserId = plexUserId.trim();
+    if (!trimmedPlexUserId) return;
+    setNewProfileScopePlexUserIds((current) => {
+      if (current.includes(trimmedPlexUserId)) return current;
+      return [...current, trimmedPlexUserId];
+    });
+    setNewProfileScopeSearch('');
+  }, []);
+
+  const removeNewProfileScopeUser = useCallback((plexUserId: string) => {
+    const trimmedPlexUserId = plexUserId.trim();
+    if (!trimmedPlexUserId) return;
+    setNewProfileScopePlexUserIds((current) =>
+      current.filter((item) => item !== trimmedPlexUserId),
+    );
+    setNewProfileScopeSearch('');
+  }, []);
+
+  const profileDeleteDialogDescription = useMemo(() => {
+    if (!activeProfileDeleteImpact) {
+      return 'Deleting this profile removes profile-specific dataset entries.';
+    }
+    if (activeProfileDeleteImpact.uniqueCollectionNames.length > 0) {
+      const count = activeProfileDeleteImpact.uniqueCollectionNames.length;
+      return (
+        <>
+          This action will erase this profile&apos;s filters and delete{' '}
+          {count === 1 ? 'the Plex collection listed below' : 'the Plex collections listed below'}.
+          This cannot be undone.
+        </>
+      );
+    }
+    if (activeProfileDeleteImpact.sharedCollectionNames.length > 0) {
+      return 'Shared Plex collections are used by another enabled profile, so they will be kept. Are you sure you want to delete this profile?';
+    }
+    return 'Deleting this profile removes profile-specific filters and dataset entries.';
+  }, [activeProfileDeleteImpact]);
+  const profileDeleteDialogDetails = useMemo(() => {
+    if (!activeProfileDeleteImpact) return null;
+    return (
+      <div className="space-y-3">
+        {activeProfileDeleteImpact.uniqueCollectionNames.length > 0 ? (
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-rose-200/80">
+              Plex collections that will be deleted
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activeProfileDeleteImpact.uniqueCollectionNames.map((name) => (
+                <span
+                  key={`delete-unique-${name}`}
+                  className="inline-flex items-center rounded-full border border-rose-400/30 bg-rose-500/15 px-2.5 py-1 text-xs font-semibold text-rose-100"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {activeProfileDeleteImpact.sharedCollectionNames.length > 0 ? (
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-white/50">
+              Shared collections that will be kept
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activeProfileDeleteImpact.sharedCollectionNames.map((name) => (
+                <span
+                  key={`delete-shared-${name}`}
+                  className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/80"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {activeProfileDeleteImpact.defaultWillAutoEnable ? (
+          <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-100/90">
+            Deleting this profile will re-enable the default profile so at least one profile remains
+            enabled.
+          </div>
+        ) : null}
+      </div>
+    );
+  }, [activeProfileDeleteImpact]);
+  const closeProfileDeleteDialog = useCallback(() => {
+    setProfileDeleteDialogOpen(false);
+  }, []);
+  const confirmProfileDeleteDialog = useCallback(() => {
+    if (!activeProfile || activeProfile.isDefault) return;
+    deleteImmaculateProfileMutation.mutate(activeProfile);
+  }, [activeProfile, deleteImmaculateProfileMutation]);
+  const handleDeleteActiveProfile = useCallback(() => {
+    if (!activeProfile) return;
+    if (activeProfile.isDefault) {
+      toast.error('Default profile cannot be deleted.');
+      return;
+    }
+    setProfileDeleteDialogOpen(true);
+  }, [activeProfile]);
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
   const overseerrEnabledFlag = readBool(
@@ -465,6 +2793,150 @@ export function CommandCenterPage() {
       queryClient.setQueryData(['settings'], data);
     },
   });
+  const saveRadarrInstanceDefaultsMutation = useMutation({
+    mutationFn: async (params: {
+      instanceId: string;
+      patch: {
+        rootFolderPath?: string | null;
+        qualityProfileId?: number | null;
+        tagId?: number | null;
+      };
+    }) => await updateArrInstance(params.instanceId, params.patch),
+    onMutate: (variables) => {
+      const queryKey = ['arr-instances'] as const;
+      const previous = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            if (String(instance.id ?? '') !== variables.instanceId) return item;
+            return {
+              ...instance,
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'rootFolderPath')
+                ? { rootFolderPath: variables.patch.rootFolderPath ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'qualityProfileId')
+                ? { qualityProfileId: variables.patch.qualityProfileId ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'tagId')
+                ? { tagId: variables.patch.tagId ?? null }
+                : {}),
+            };
+          }),
+        };
+      });
+      return { previous };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['arr-instances'], (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            return String(instance.id ?? '') === data.instance.id ? data.instance : item;
+          }),
+        };
+      });
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['arr-instances'], context.previous);
+      }
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(
+            error.body,
+            error.message || 'Failed to save Radarr server defaults',
+          ),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save Radarr server defaults',
+      );
+    },
+  });
+  const saveSonarrInstanceDefaultsMutation = useMutation({
+    mutationFn: async (params: {
+      instanceId: string;
+      patch: {
+        rootFolderPath?: string | null;
+        qualityProfileId?: number | null;
+        tagId?: number | null;
+      };
+    }) => await updateArrInstance(params.instanceId, params.patch),
+    onMutate: (variables) => {
+      const queryKey = ['arr-instances'] as const;
+      const previous = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            if (String(instance.id ?? '') !== variables.instanceId) return item;
+            return {
+              ...instance,
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'rootFolderPath')
+                ? { rootFolderPath: variables.patch.rootFolderPath ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'qualityProfileId')
+                ? { qualityProfileId: variables.patch.qualityProfileId ?? null }
+                : {}),
+              ...(Object.prototype.hasOwnProperty.call(variables.patch, 'tagId')
+                ? { tagId: variables.patch.tagId ?? null }
+                : {}),
+            };
+          }),
+        };
+      });
+      return { previous };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['arr-instances'], (current: unknown) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+        const raw = current as { ok?: unknown; instances?: unknown };
+        if (!Array.isArray(raw.instances)) return current;
+        return {
+          ...raw,
+          instances: raw.instances.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            const instance = item as Record<string, unknown>;
+            return String(instance.id ?? '') === data.instance.id ? data.instance : item;
+          }),
+        };
+      });
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['arr-instances'], context.previous);
+      }
+      if (error instanceof ApiError) {
+        toast.error(
+          readErrorMessage(
+            error.body,
+            error.message || 'Failed to save Sonarr server defaults',
+          ),
+        );
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save Sonarr server defaults',
+      );
+    },
+  });
 
   const didInitRecommendations = useRef(false);
   const savedRecommendationCount =
@@ -565,15 +3037,41 @@ export function CommandCenterPage() {
   }, []);
 
   const savePlexLibrarySelectionMutation = useMutation({
-    mutationFn: async (selectedSectionKeys: string[]) =>
-      await savePlexLibrarySelection({ selectedSectionKeys }),
-    onSuccess: async (data) => {
+    mutationFn: async (params: {
+      selectedSectionKeys: string[];
+      cleanupDeselectedLibraries?: boolean;
+    }) =>
+      await savePlexLibrarySelection({
+        selectedSectionKeys: params.selectedSectionKeys,
+        cleanupDeselectedLibraries: params.cleanupDeselectedLibraries,
+      }),
+    onSuccess: async (data, variables) => {
       queryClient.setQueryData(['integrations', 'plex', 'libraries'], data);
       setDraftSelectedPlexLibraryKeys(data.selectedSectionKeys);
       setPlexLibraryDeselectDialogOpen(false);
       await queryClient.invalidateQueries({
         queryKey: ['immaculateTasteCollections'],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ['immaculateTaste', 'collections'],
+      });
+
+      if (variables.cleanupDeselectedLibraries && data.cleanup) {
+        const totalDatasetDeleted = data.cleanup.db?.totalDeleted ?? 0;
+        const plexCollectionsDeleted = data.cleanup.plex?.collectionsDeleted ?? 0;
+        const cleanupErrors = data.cleanup.plex?.errors ?? 0;
+        if (data.cleanup.error || cleanupErrors > 0) {
+          toast.error(
+            `Plex library selection updated, but cleanup had issues. Removed ${totalDatasetDeleted} dataset entr${totalDatasetDeleted === 1 ? 'y' : 'ies'} and ${plexCollectionsDeleted} Plex collection${plexCollectionsDeleted === 1 ? '' : 's'}.`,
+          );
+          return;
+        }
+        toast.success(
+          `Plex library selection updated. Removed ${totalDatasetDeleted} dataset entr${totalDatasetDeleted === 1 ? 'y' : 'ies'} and ${plexCollectionsDeleted} Plex collection${plexCollectionsDeleted === 1 ? '' : 's'}.`,
+        );
+        return;
+      }
+
       toast.success('Plex library selection updated.');
     },
   });
@@ -587,6 +3085,21 @@ export function CommandCenterPage() {
     }
     const serverSet = new Set(serverSelectedPlexUserIds);
     return draftSelectedPlexUserIds.some((id) => !serverSet.has(id));
+  }, [
+    draftSelectedPlexUserIds,
+    plexMonitoringUsersQuery.data,
+    serverSelectedPlexUserIds,
+  ]);
+  const deselectedPlexMonitoringUsers = useMemo<PlexMonitoringDeselectedUser[]>(() => {
+    if (!plexMonitoringUsersQuery.data) return [];
+    const serverSelectedSet = new Set(serverSelectedPlexUserIds);
+    const draftSelectedSet = new Set(draftSelectedPlexUserIds);
+    return (plexMonitoringUsersQuery.data.users ?? [])
+      .filter((user) => serverSelectedSet.has(user.id) && !draftSelectedSet.has(user.id))
+      .map((user) => ({
+        id: user.id,
+        plexAccountTitle: user.plexAccountTitle,
+      }));
   }, [
     draftSelectedPlexUserIds,
     plexMonitoringUsersQuery.data,
@@ -606,14 +3119,156 @@ export function CommandCenterPage() {
   }, []);
 
   const savePlexMonitoringUsersMutation = useMutation({
-    mutationFn: async (selectedPlexUserIds: string[]) =>
-      await savePlexMonitoringUsers({ selectedPlexUserIds }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['integrations', 'plex', 'monitoring-users'], data);
-      setDraftSelectedPlexUserIds(data.selectedPlexUserIds);
+    mutationFn: async (params: {
+      selectedPlexUserIds: string[];
+      usersToReset?: PlexMonitoringDeselectedUser[];
+    }) => {
+      const data = await savePlexMonitoringUsers({
+        selectedPlexUserIds: params.selectedPlexUserIds,
+      });
+
+      const usersToReset = params.usersToReset ?? [];
+      let resetFailures = 0;
+      let datasetDeleted = 0;
+      let plexCollectionsDeleted = 0;
+      for (const user of usersToReset) {
+        for (const mediaType of ['movie', 'tv'] as const) {
+          try {
+            const response = await resetImmaculateTasteUserCollection({
+              plexUserId: user.id,
+              mediaType,
+              includeWatchedCollections: true,
+            });
+            datasetDeleted += response.dataset.deleted;
+            plexCollectionsDeleted += response.plex.deleted;
+          } catch {
+            resetFailures += 1;
+          }
+        }
+      }
+
+      return {
+        data,
+        resetRequestedUserCount: usersToReset.length,
+        resetFailures,
+        datasetDeleted,
+        plexCollectionsDeleted,
+      };
+    },
+    onSuccess: async (result) => {
+      queryClient.setQueryData(['integrations', 'plex', 'monitoring-users'], result.data);
+      setDraftSelectedPlexUserIds(result.data.selectedPlexUserIds);
+      setPlexUserDeselectDialogOpen(false);
+      setPendingPlexUserDeselectUsers([]);
+
+      if (result.resetRequestedUserCount > 0) {
+        await queryClient.invalidateQueries({
+          queryKey: ['immaculateTaste', 'collections'],
+        });
+        await queryClient.invalidateQueries({
+          queryKey: ['immaculateTaste', 'users'],
+        });
+
+        if (result.resetFailures > 0) {
+          toast.error(
+            `Plex user monitoring updated, but ${result.resetFailures} collection reset request${result.resetFailures === 1 ? '' : 's'} failed.`,
+          );
+          return;
+        }
+
+        toast.success(
+          `Plex user monitoring updated. Removed ${result.datasetDeleted} dataset entr${result.datasetDeleted === 1 ? 'y' : 'ies'} and ${result.plexCollectionsDeleted} Plex collection${result.plexCollectionsDeleted === 1 ? '' : 's'} for ${result.resetRequestedUserCount} user${result.resetRequestedUserCount === 1 ? '' : 's'}.`,
+        );
+        return;
+      }
+
       toast.success('Plex user monitoring updated.');
     },
   });
+  const clearCollectionArtworkFlow = useCallback(() => {
+    setSelectedCollectionArtworkUserId(null);
+    setSelectedCollectionArtworkTargetKey('');
+    setCollectionArtworkUserSearch('');
+    setCollectionArtworkFile(null);
+    setCollectionArtworkPreviewOpen(false);
+    setCollectionArtworkPreviewFailed(false);
+    if (collectionArtworkFileInputRef.current) {
+      collectionArtworkFileInputRef.current.value = '';
+    }
+  }, []);
+  const selectCollectionArtworkUser = useCallback(
+    (plexUserId: string) => {
+      if (selectedCollectionArtworkUserId === plexUserId) {
+        clearCollectionArtworkFlow();
+        return;
+      }
+      setSelectedCollectionArtworkUserId(plexUserId);
+      setSelectedCollectionArtworkTargetKey('');
+      setCollectionArtworkFile(null);
+      setCollectionArtworkPreviewOpen(false);
+      setCollectionArtworkPreviewFailed(false);
+      if (collectionArtworkFileInputRef.current) {
+        collectionArtworkFileInputRef.current.value = '';
+      }
+      setCollectionArtworkUserSearch('');
+    },
+    [clearCollectionArtworkFlow, selectedCollectionArtworkUserId],
+  );
+  const handleCollectionArtworkTargetChange = useCallback((value: string) => {
+    setSelectedCollectionArtworkTargetKey(value);
+    setCollectionArtworkFile(null);
+    setCollectionArtworkPreviewOpen(false);
+    setCollectionArtworkPreviewFailed(false);
+    if (collectionArtworkFileInputRef.current) {
+      collectionArtworkFileInputRef.current.value = '';
+    }
+  }, []);
+  const handleCollectionArtworkFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextFile = event.currentTarget.files?.[0] ?? null;
+      setCollectionArtworkFile(nextFile);
+    },
+    [],
+  );
+  const saveCollectionArtworkOverride = useCallback(() => {
+    if (!selectedCollectionArtworkUserId) {
+      toast.error('Select a Plex user first.');
+      return;
+    }
+    if (!selectedCollectionArtworkTarget) {
+      toast.error('Select a collection target first.');
+      return;
+    }
+    if (!collectionArtworkFile) {
+      toast.error('Choose a poster image first.');
+      return;
+    }
+    saveCollectionArtworkOverrideMutation.mutate();
+  }, [
+    collectionArtworkFile,
+    saveCollectionArtworkOverrideMutation,
+    selectedCollectionArtworkTarget,
+    selectedCollectionArtworkUserId,
+  ]);
+  const resetCollectionArtworkOverride = useCallback(() => {
+    if (!selectedCollectionArtworkTarget?.hasCustomPoster) {
+      toast.error('No custom poster is set for this target.');
+      return;
+    }
+    resetCollectionArtworkOverrideMutation.mutate();
+  }, [resetCollectionArtworkOverrideMutation, selectedCollectionArtworkTarget]);
+  const openCollectionArtworkPreview = useCallback(() => {
+    if (!selectedCollectionArtworkTarget?.hasCustomPoster) {
+      toast.error('No custom poster is set for this target.');
+      return;
+    }
+    setCollectionArtworkPreviewFailed(false);
+    setCollectionArtworkPreviewOpen(true);
+  }, [selectedCollectionArtworkTarget]);
+  const closeCollectionArtworkPreview = useCallback(() => {
+    setCollectionArtworkPreviewOpen(false);
+    setCollectionArtworkPreviewFailed(false);
+  }, []);
 
   const renderAdminCollectionList = () => (
     <div className="space-y-3">
@@ -629,7 +3284,7 @@ export function CommandCenterPage() {
         return (
           <div
             key={`${c.mediaType}:${c.librarySectionKey}`}
-            className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+            className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition hover:bg-white/10"
           >
             <div className="min-w-0">
               <div className="flex items-center gap-2 min-w-0">
@@ -640,9 +3295,19 @@ export function CommandCenterPage() {
                   {c.libraryTitle}
                 </div>
               </div>
-              <div className="mt-1 text-xs text-white/60">
-                Plex: {plexLabel} • Dataset: {c.dataset.total} tracked (
-                {c.dataset.active} active, {c.dataset.pending} pending)
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                  Plex {plexLabel}
+                </span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                  {c.dataset.total} tracked
+                </span>
+                <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-emerald-100">
+                  {c.dataset.active} active
+                </span>
+                <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-amber-100">
+                  {c.dataset.pending} pending
+                </span>
               </div>
             </div>
 
@@ -661,7 +3326,7 @@ export function CommandCenterPage() {
                 typeof c.plex.itemCount === 'number' ? String(c.plex.itemCount) : ''
               }
               onClick={openImmaculateResetTarget}
-              className="inline-flex items-center gap-2 shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+              className="inline-flex items-center gap-2 shrink-0 rounded-xl border border-amber-300/25 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-400/20 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
               {resetImmaculateMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -677,15 +3342,27 @@ export function CommandCenterPage() {
       {!immaculateCollectionsQuery.isLoading &&
       !immaculateCollectionsQuery.isError &&
       (immaculateCollectionsQuery.data?.collections ?? []).length === 0 ? (
-        <div className="text-sm text-white/60">No Plex libraries found.</div>
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+          No Plex libraries found.
+        </div>
       ) : null}
     </div>
   );
   const closePlexLibraryDeselectDialog = useCallback(() => {
+    if (savePlexLibrarySelectionMutation.isPending) return;
     setPlexLibraryDeselectDialogOpen(false);
-  }, []);
-  const confirmPlexLibraryDeselectDialog = useCallback(() => {
-    savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
+  }, [savePlexLibrarySelectionMutation.isPending]);
+  const confirmPlexLibraryKeepCollectionsDialog = useCallback(() => {
+    savePlexLibrarySelectionMutation.mutate({
+      selectedSectionKeys: draftSelectedPlexLibraryKeys,
+      cleanupDeselectedLibraries: false,
+    });
+  }, [draftSelectedPlexLibraryKeys, savePlexLibrarySelectionMutation]);
+  const confirmPlexLibraryDeleteCollectionsDialog = useCallback(() => {
+    savePlexLibrarySelectionMutation.mutate({
+      selectedSectionKeys: draftSelectedPlexLibraryKeys,
+      cleanupDeselectedLibraries: true,
+    });
   }, [draftSelectedPlexLibraryKeys, savePlexLibrarySelectionMutation]);
   const closePlexLibraryMinDialog = useCallback(() => {
     setPlexLibraryMinDialogOpen(false);
@@ -746,13 +3423,16 @@ export function CommandCenterPage() {
   );
   const resetPlexLibrarySelectionDraft = useCallback(() => {
     setDraftSelectedPlexLibraryKeys(serverSelectedPlexLibraryKeys);
+    setPlexLibraryDeselectDialogOpen(false);
   }, [serverSelectedPlexLibraryKeys]);
   const savePlexLibrarySelectionDraft = useCallback(() => {
     if (deselectedPlexLibraries.length > 0) {
       setPlexLibraryDeselectDialogOpen(true);
       return;
     }
-    savePlexLibrarySelectionMutation.mutate(draftSelectedPlexLibraryKeys);
+    savePlexLibrarySelectionMutation.mutate({
+      selectedSectionKeys: draftSelectedPlexLibraryKeys,
+    });
   }, [
     deselectedPlexLibraries.length,
     draftSelectedPlexLibraryKeys,
@@ -768,10 +3448,43 @@ export function CommandCenterPage() {
   );
   const resetPlexUserSelectionDraft = useCallback(() => {
     setDraftSelectedPlexUserIds(serverSelectedPlexUserIds);
+    setPlexUserDeselectDialogOpen(false);
+    setPendingPlexUserDeselectUsers([]);
   }, [serverSelectedPlexUserIds]);
-  const savePlexUserSelectionDraft = useCallback(() => {
-    savePlexMonitoringUsersMutation.mutate(draftSelectedPlexUserIds);
+  const closePlexUserDeselectDialog = useCallback(() => {
+    if (savePlexMonitoringUsersMutation.isPending) return;
+    setPlexUserDeselectDialogOpen(false);
+    setPendingPlexUserDeselectUsers([]);
+  }, [savePlexMonitoringUsersMutation.isPending]);
+  const confirmPlexUserKeepCollectionsDialog = useCallback(() => {
+    savePlexMonitoringUsersMutation.mutate({
+      selectedPlexUserIds: draftSelectedPlexUserIds,
+    });
   }, [draftSelectedPlexUserIds, savePlexMonitoringUsersMutation]);
+  const confirmPlexUserDeleteCollectionsDialog = useCallback(() => {
+    savePlexMonitoringUsersMutation.mutate({
+      selectedPlexUserIds: draftSelectedPlexUserIds,
+      usersToReset: pendingPlexUserDeselectUsers,
+    });
+  }, [
+    draftSelectedPlexUserIds,
+    pendingPlexUserDeselectUsers,
+    savePlexMonitoringUsersMutation,
+  ]);
+  const savePlexUserSelectionDraft = useCallback(() => {
+    if (deselectedPlexMonitoringUsers.length > 0) {
+      setPendingPlexUserDeselectUsers(deselectedPlexMonitoringUsers);
+      setPlexUserDeselectDialogOpen(true);
+      return;
+    }
+    savePlexMonitoringUsersMutation.mutate({
+      selectedPlexUserIds: draftSelectedPlexUserIds,
+    });
+  }, [
+    deselectedPlexMonitoringUsers,
+    draftSelectedPlexUserIds,
+    savePlexMonitoringUsersMutation,
+  ]);
   const openOverseerrResetDialog = useCallback(() => {
     setOverseerrResetOpen(true);
   }, []);
@@ -980,6 +3693,37 @@ export function CommandCenterPage() {
     },
     [saveRadarrDefaultsMutation],
   );
+  const handleRadarrSecondaryRootFolderChange = useCallback(
+    (instanceId: string, next: string) => {
+      saveRadarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { rootFolderPath: next || null },
+      });
+    },
+    [saveRadarrInstanceDefaultsMutation],
+  );
+  const handleRadarrSecondaryQualityProfileChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const next = Number.parseInt(raw, 10);
+      if (!Number.isFinite(next)) return;
+      saveRadarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { qualityProfileId: next },
+      });
+    },
+    [saveRadarrInstanceDefaultsMutation],
+  );
+  const handleRadarrSecondaryTagChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+      const next = Number.isFinite(parsed ?? NaN) ? (parsed as number) : null;
+      saveRadarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { tagId: next },
+      });
+    },
+    [saveRadarrInstanceDefaultsMutation],
+  );
   const handleSonarrRootFolderChange = useCallback(
     (next: string) => {
       setSonarrDraftRootFolderPath(next);
@@ -988,6 +3732,37 @@ export function CommandCenterPage() {
       });
     },
     [saveSonarrDefaultsMutation],
+  );
+  const handleSonarrSecondaryRootFolderChange = useCallback(
+    (instanceId: string, next: string) => {
+      saveSonarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { rootFolderPath: next || null },
+      });
+    },
+    [saveSonarrInstanceDefaultsMutation],
+  );
+  const handleSonarrSecondaryQualityProfileChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const next = Number.parseInt(raw, 10);
+      if (!Number.isFinite(next)) return;
+      saveSonarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { qualityProfileId: next },
+      });
+    },
+    [saveSonarrInstanceDefaultsMutation],
+  );
+  const handleSonarrSecondaryTagChange = useCallback(
+    (instanceId: string, raw: string) => {
+      const parsed = raw === 'none' ? null : Number.parseInt(raw, 10);
+      const next = Number.isFinite(parsed ?? NaN) ? (parsed as number) : null;
+      saveSonarrInstanceDefaultsMutation.mutate({
+        instanceId,
+        patch: { tagId: next },
+      });
+    },
+    [saveSonarrInstanceDefaultsMutation],
   );
   const handleSonarrQualityProfileChange = useCallback(
     (raw: string) => {
@@ -1424,6 +4199,1781 @@ export function CommandCenterPage() {
             ) : null}
           </div>
 
+          {/* Immaculate Taste Profiles */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-fuchsia-400/10 focus-within:border-white/15 focus-within:shadow-fuchsia-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-fuchsia-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-fuchsia-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <Film className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Immaculate Taste Profiles
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {immaculateProfilesQuery.isLoading ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}>
+                    Loading…
+                  </span>
+                ) : immaculateProfilesQuery.isError ? (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
+                    Error
+                  </span>
+                ) : (
+                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}>
+                    {immaculateProfiles.length} profile{immaculateProfiles.length === 1 ? '' : 's'}
+                  </span>
+                )}
+                <SavingPill
+                  active={
+                    createImmaculateProfileMutation.isPending ||
+                    saveImmaculateProfileMutation.isPending ||
+                    deleteImmaculateProfileMutation.isPending
+                  }
+                  className="static"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Manage matching filters, ARR service routing, and collection naming per taste profile.
+            </p>
+
+            {immaculateProfilesQuery.isError ? (
+              <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{(immaculateProfilesQuery.error as Error).message}</span>
+              </div>
+            ) : null}
+
+            {!immaculateProfilesQuery.isError ? (
+              <div className="mt-5 space-y-5">
+                <div className="space-y-3">
+                  {immaculateProfiles.map((profile) => {
+                    const isActive = activeProfileId === profile.id;
+                    const isEditingThisProfile =
+                      isActive && isProfileEditorOpen && activeProfile && profileDraft;
+                    const isProfileEnabled =
+                      isEditingThisProfile && profileDraft
+                        ? profileDraft.enabled
+                        : profile.enabled;
+                    const hasOtherProfile = immaculateProfiles.some(
+                      (candidate) => candidate.id !== profile.id,
+                    );
+                    const hasEnabledFallback = immaculateProfiles.some(
+                      (candidate) => candidate.id !== profile.id && candidate.enabled,
+                    );
+                    const defaultDisableLocked =
+                      profile.isDefault && isProfileEnabled && !hasEnabledFallback;
+                    const lockedToggleReason = defaultDisableLocked
+                      ? hasOtherProfile
+                        ? 'Default profile cannot be disabled until another profile is enabled.'
+                        : 'Default profile cannot be disabled because no other profile exists.'
+                      : undefined;
+                    const toggleDisabled =
+                      saveImmaculateProfileMutation.isPending ||
+                      deleteImmaculateProfileMutation.isPending ||
+                      Boolean(isEditingThisProfile && activeProfileScopePlexUserId) ||
+                      defaultDisableLocked;
+                    return (
+                      <div
+                        key={profile.id}
+                        ref={isEditingThisProfile ? profileEditorCardRef : undefined}
+                        className={`rounded-2xl border px-4 py-3 transition ${
+                          isEditingThisProfile
+                            ? 'border-white/20 bg-white/10'
+                            : 'border-white/10 bg-white/5 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="w-full flex items-start justify-between gap-4">
+                          <button
+                            type="button"
+                            onClick={() => selectImmaculateProfile(profile)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-semibold text-white truncate">
+                                {profile.name}
+                              </div>
+                              {!profile.enabled ? (
+                                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-white/10 text-white/70 border border-white/20">
+                                  Disabled
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-xs text-white/60">
+                              {profile.mediaType === 'both'
+                                ? 'Movies + TV'
+                                : profile.mediaType === 'movie'
+                                  ? 'Movies only'
+                                  : 'TV only'}{' '}
+                              •{' '}
+                              {profile.matchMode === 'all'
+                                ? 'Match all filters'
+                                : 'Match any filter'}
+                            </div>
+                          </button>
+                          {(!profile.isDefault || immaculateProfiles.length > 1) && (
+                            <span
+                              className="inline-flex"
+                              title={lockedToggleReason}
+                              aria-label={lockedToggleReason}
+                            >
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isProfileEnabled}
+                                disabled={toggleDisabled}
+                                onClick={() => handleProfileEnabledToggle(profile)}
+                                className={[
+                                  'relative inline-flex h-7 w-12 shrink-0 rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                                  isProfileEnabled
+                                    ? 'border-emerald-400/40 bg-emerald-400/20'
+                                    : 'border-white/20 bg-white/10',
+                                ].join(' ')}
+                                aria-label={`Toggle ${profile.name} enabled`}
+                              >
+                                <span
+                                  className={[
+                                    'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+                                    isProfileEnabled
+                                      ? 'translate-x-6'
+                                      : 'translate-x-0.5',
+                                  ].join(' ')}
+                                />
+                              </button>
+                            </span>
+                          )}
+                        </div>
+
+                        {isActive && isProfileEditorOpen && activeProfile && profileDraft ? (
+                          <div className="mt-4 border-t border-white/10 pt-4 space-y-4">
+                            <div className="space-y-2">
+                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                User scope
+                              </div>
+                              <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {!activeProfileOverrideUserIds.size ? (
+                                    <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-100">
+                                      All users
+                                    </span>
+                                  ) : null}
+                                  {profileScopeSelectedUsers.map((user) => (
+                                    <span
+                                      key={user.id}
+                                      className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                    >
+                                      <span>{user.plexAccountTitle}</span>
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove ${user.plexAccountTitle} from profile scope`}
+                                        onClick={() => removeActiveProfileScopeUser(user.id)}
+                                        disabled={
+                                          updateProfileScopeMutation.isPending ||
+                                          saveImmaculateProfileMutation.isPending ||
+                                          deleteImmaculateProfileMutation.isPending
+                                        }
+                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </span>
+                                  ))}
+                                  <input
+                                    type="text"
+                                    value={profileScopeSearch}
+                                    onChange={(event) => setProfileScopeSearch(event.target.value)}
+                                    placeholder="Search users to add to scope"
+                                    className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {profileScopeSearchResults.map((user) => (
+                                  <button
+                                    key={user.id}
+                                    type="button"
+                                    onClick={() => addActiveProfileScopeUser(user.id)}
+                                    disabled={
+                                      updateProfileScopeMutation.isPending ||
+                                      saveImmaculateProfileMutation.isPending ||
+                                      deleteImmaculateProfileMutation.isPending
+                                    }
+                                    className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 transition hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  >
+                                    {user.plexAccountTitle}
+                                  </button>
+                                ))}
+                                {trimmedProfileScopeSearch && !profileScopeSearchResults.length ? (
+                                  <span className="text-[11px] text-white/45">
+                                    No users match "{profileScopeSearch.trim()}"
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Profile name
+                                </div>
+                                <input
+                                  type="text"
+                                  value={profileDraft.name}
+                                  onChange={(event) =>
+                                    setProfileDraft((current) =>
+                                      current ? { ...current, name: event.target.value } : current,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                />
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Media type
+                                  </div>
+                                  <Select
+                                    value={profileDraft.mediaType}
+                                    onValueChange={(value) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              mediaType:
+                                                value === 'movie' ||
+                                                value === 'show' ||
+                                                value === 'both'
+                                                  ? value
+                                                  : current.mediaType,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select media type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="both">Movies + TV</SelectItem>
+                                      <SelectItem value="movie">Movies only</SelectItem>
+                                      <SelectItem value="show">TV only</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Match mode
+                                  </div>
+                                  <Select
+                                    value={profileDraft.matchMode}
+                                    onValueChange={(value) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              matchMode:
+                                                value === 'all' || value === 'any'
+                                                  ? value
+                                                  : current.matchMode,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select match mode" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">Match all filters</SelectItem>
+                                      <SelectItem value="any">Match any filter</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Only Include Genres
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.includeGenreFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              includeGenreFilterEnabled: !current.includeGenreFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.includeGenreFilterEnabled
+                                        ? 'border-sky-400/40 bg-sky-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle included genre filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.includeGenreFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
+                                </div>
+                                {profileDraft.includeGenreFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedGenres.map((genre) => (
+                                          <span
+                                            key={genre}
+                                            className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                          >
+                                            {genre}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeIncludedGenreTag(genre)}
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${genre}`}
+                                              title={`Remove ${genre}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={genreSearch}
+                                          onChange={(event) => setGenreSearch(event.target.value)}
+                                          onKeyDown={handleIncludedGenreSearchKeyDown}
+                                          placeholder="Search and add genre"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                    {genreSearchIsActive || defaultGenreOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {genreSearchIsActive
+                                          ? 'Genre search results'
+                                          : 'Recommended genres to include'}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(genreSearchIsActive
+                                        ? filteredGenreOptions
+                                        : defaultGenreOptions
+                                      ).map((genre) => (
+                                        <button
+                                          key={genre}
+                                          type="button"
+                                          onClick={() => addSuggestedIncludedGenre(genre)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {genre}
+                                        </button>
+                                      ))}
+                                      {genreSearchIsActive &&
+                                      !filteredGenreOptions.length &&
+                                      trimmedGenreSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => addSuggestedIncludedGenre(trimmedGenreSearch)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedGenreSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Only Include Audio Languages
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.includeAudioLanguageFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              includeAudioLanguageFilterEnabled:
+                                                !current.includeAudioLanguageFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.includeAudioLanguageFilterEnabled
+                                        ? 'border-fuchsia-400/40 bg-fuchsia-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle included audio language filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.includeAudioLanguageFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
+                                </div>
+                                {profileDraft.includeAudioLanguageFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedAudioLanguages.map((language) => (
+                                          <span
+                                            key={language}
+                                            className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
+                                          >
+                                            {language}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeIncludedAudioLanguageTag(language)}
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${language}`}
+                                              title={`Remove ${language}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={audioLanguageSearch}
+                                          onChange={(event) =>
+                                            setAudioLanguageSearch(event.target.value)
+                                          }
+                                          onKeyDown={handleIncludedAudioLanguageSearchKeyDown}
+                                          placeholder="Search and add language"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                    {audioLanguageSearchIsActive ||
+                                    defaultAudioLanguageOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {audioLanguageSearchIsActive
+                                          ? 'Language search results'
+                                          : 'Top 10 popular languages to include'}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(audioLanguageSearchIsActive
+                                        ? filteredAudioLanguageOptions
+                                        : defaultAudioLanguageOptions
+                                      ).map((language) => (
+                                        <button
+                                          key={language}
+                                          type="button"
+                                          onClick={() => addIncludedAudioLanguageTag(language)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {language}
+                                        </button>
+                                      ))}
+                                      {audioLanguageSearchIsActive &&
+                                      !filteredAudioLanguageOptions.length &&
+                                      trimmedAudioLanguageSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            addIncludedAudioLanguageTag(trimmedAudioLanguageSearch)
+                                          }
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedAudioLanguageSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Excluded genres
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.excludeGenreFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              excludeGenreFilterEnabled:
+                                                !current.excludeGenreFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.excludeGenreFilterEnabled
+                                        ? 'border-rose-400/40 bg-rose-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle excluded genre filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.excludeGenreFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
+                                </div>
+                                {profileDraft.excludeGenreFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedExcludedGenres.map((genre) => (
+                                          <span
+                                            key={genre}
+                                            className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-1 text-[11px] text-rose-100"
+                                          >
+                                            {genre}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeExcludedGenreTag(genre)}
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-rose-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${genre}`}
+                                              title={`Remove ${genre}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={excludeGenreSearch}
+                                          onChange={(event) =>
+                                            setExcludeGenreSearch(event.target.value)
+                                          }
+                                          onKeyDown={handleExcludedGenreSearchKeyDown}
+                                          placeholder="Search and add excluded genre"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                    {excludeGenreSearchIsActive ||
+                                    defaultExcludedGenreOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {excludeGenreSearchIsActive
+                                          ? 'Genre search results'
+                                          : 'Recommended genres to exclude'}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(excludeGenreSearchIsActive
+                                        ? filteredExcludedGenreOptions
+                                        : defaultExcludedGenreOptions
+                                      ).map((genre) => (
+                                        <button
+                                          key={genre}
+                                          type="button"
+                                          onClick={() => addSuggestedExcludedGenre(genre)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {genre}
+                                        </button>
+                                      ))}
+                                      {excludeGenreSearchIsActive &&
+                                      !filteredExcludedGenreOptions.length &&
+                                      trimmedExcludeGenreSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            addSuggestedExcludedGenre(trimmedExcludeGenreSearch)
+                                          }
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedExcludeGenreSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                    Excluded audio languages
+                                  </div>
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={profileDraft.excludeAudioLanguageFilterEnabled}
+                                    onClick={() =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              excludeAudioLanguageFilterEnabled:
+                                                !current.excludeAudioLanguageFilterEnabled,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    className={[
+                                      'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                      profileDraft.excludeAudioLanguageFilterEnabled
+                                        ? 'border-amber-400/40 bg-amber-400/20'
+                                        : 'border-white/20 bg-white/10',
+                                    ].join(' ')}
+                                    aria-label="Toggle excluded audio language filter"
+                                  >
+                                    <span
+                                      className={[
+                                        'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                        profileDraft.excludeAudioLanguageFilterEnabled
+                                          ? 'translate-x-5'
+                                          : 'translate-x-0.5',
+                                      ].join(' ')}
+                                    />
+                                  </button>
+                                </div>
+                                {profileDraft.excludeAudioLanguageFilterEnabled ? (
+                                  <div className="space-y-2">
+                                    <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {selectedExcludedAudioLanguages.map((language) => (
+                                          <span
+                                            key={language}
+                                            className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] text-amber-100"
+                                          >
+                                            {language}
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                removeExcludedAudioLanguageTag(language)
+                                              }
+                                              className="inline-flex items-center justify-center rounded-full p-0.5 text-amber-100/80 hover:text-white hover:bg-white/10 transition"
+                                              aria-label={`Remove ${language}`}
+                                              title={`Remove ${language}`}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          </span>
+                                        ))}
+                                        <input
+                                          type="text"
+                                          value={excludeAudioLanguageSearch}
+                                          onChange={(event) =>
+                                            setExcludeAudioLanguageSearch(event.target.value)
+                                          }
+                                          onKeyDown={handleExcludedAudioLanguageSearchKeyDown}
+                                          placeholder="Search and add excluded language"
+                                          className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                    {excludeAudioLanguageSearchIsActive ||
+                                    defaultExcludedAudioLanguageOptions.length ? (
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                        {excludeAudioLanguageSearchIsActive
+                                          ? 'Language search results'
+                                          : 'Top 10 popular languages to exclude'}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(excludeAudioLanguageSearchIsActive
+                                        ? filteredExcludedAudioLanguageOptions
+                                        : defaultExcludedAudioLanguageOptions
+                                      ).map((language) => (
+                                        <button
+                                          key={language}
+                                          type="button"
+                                          onClick={() => addSuggestedExcludedAudioLanguage(language)}
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + {language}
+                                        </button>
+                                      ))}
+                                      {excludeAudioLanguageSearchIsActive &&
+                                      !filteredExcludedAudioLanguageOptions.length &&
+                                      trimmedExcludeAudioLanguageSearch ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            addSuggestedExcludedAudioLanguage(
+                                              trimmedExcludeAudioLanguageSearch,
+                                            )
+                                          }
+                                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                        >
+                                          + Add "{trimmedExcludeAudioLanguageSearch}"
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            {showRadarrServiceSelector || showSonarrServiceSelector ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {showRadarrServiceSelector ? (
+                                  <div>
+                                    <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                      Radarr service
+                                    </div>
+                                    <Select
+                                      value={profileDraft.radarrInstanceId}
+                                      onValueChange={(value) =>
+                                        setProfileDraft((current) =>
+                                          current
+                                            ? { ...current, radarrInstanceId: value }
+                                            : current,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select Radarr service" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                          Primary Radarr
+                                        </SelectItem>
+                                        {activeRadarrInstanceOptions
+                                          .filter((instance) => !instance.isPrimary)
+                                          .map((instance) => (
+                                            <SelectItem key={instance.id} value={instance.id}>
+                                              {instance.name}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ) : null}
+                                {showSonarrServiceSelector ? (
+                                  <div>
+                                    <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                      Sonarr service
+                                    </div>
+                                    <Select
+                                      value={profileDraft.sonarrInstanceId}
+                                      onValueChange={(value) =>
+                                        setProfileDraft((current) =>
+                                          current
+                                            ? { ...current, sonarrInstanceId: value }
+                                            : current,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select Sonarr service" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                          Primary Sonarr
+                                        </SelectItem>
+                                        {activeSonarrInstanceOptions
+                                          .filter((instance) => !instance.isPrimary)
+                                          .map((instance) => (
+                                            <SelectItem key={instance.id} value={instance.id}>
+                                              {instance.name}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            <div
+                              className={`grid grid-cols-1 gap-4 ${
+                                profileDraft.mediaType === 'both' ? 'md:grid-cols-2' : ''
+                              }`}
+                            >
+                              {profileDraft.mediaType !== 'show' ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Movie collection base name
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={profileDraft.movieCollectionBaseName}
+                                    onChange={(event) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              movieCollectionBaseName: event.target.value,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    placeholder={DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME}
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                  />
+                                </div>
+                              ) : null}
+                              {profileDraft.mediaType !== 'movie' ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    TV collection base name
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={profileDraft.showCollectionBaseName}
+                                    onChange={(event) =>
+                                      setProfileDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              showCollectionBaseName: event.target.value,
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    placeholder={DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME}
+                                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {(saveImmaculateProfileMutation.isError ||
+                              deleteImmaculateProfileMutation.isError) && (
+                              <div className="text-sm text-red-200/90">
+                                {(saveImmaculateProfileMutation.error as Error)?.message ||
+                                  (deleteImmaculateProfileMutation.error as Error)?.message}
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={closeProfileEditor}
+                                disabled={
+                                  saveImmaculateProfileMutation.isPending ||
+                                  deleteImmaculateProfileMutation.isPending
+                                }
+                                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                Cancel
+                              </button>
+                              {activeProfile.isDefault ? (
+                                <button
+                                  type="button"
+                                  onClick={resetProfileDraft}
+                                  disabled={
+                                    defaultProfileAtNetZero ||
+                                    saveImmaculateProfileMutation.isPending ||
+                                    deleteImmaculateProfileMutation.isPending
+                                  }
+                                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  Reset default profile
+                                </button>
+                              ) : null}
+                              {!activeProfile.isDefault ? (
+                                <button
+                                  type="button"
+                                  onClick={handleDeleteActiveProfile}
+                                  disabled={
+                                    saveImmaculateProfileMutation.isPending ||
+                                    deleteImmaculateProfileMutation.isPending
+                                  }
+                                  className="rounded-xl border border-rose-500/35 bg-rose-500/20 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/30 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  {deleteImmaculateProfileMutation.isPending
+                                    ? 'Deleting…'
+                                    : 'Delete'}
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={handleSaveActiveProfile}
+                                disabled={
+                                  !profileDirty ||
+                                  saveImmaculateProfileMutation.isPending ||
+                                  deleteImmaculateProfileMutation.isPending
+                                }
+                                className="rounded-xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                              >
+                                {saveImmaculateProfileMutation.isPending
+                                  ? 'Saving…'
+                                  : 'Save profile'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="space-y-3">
+                  <AnimatePresence initial={false}>
+                    {isAddProfileFormOpen && newProfileDraft ? (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-white">New profile</div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={newProfileDraft.enabled}
+                              onClick={() =>
+                                setNewProfileDraft((current) =>
+                                  current ? { ...current, enabled: !current.enabled } : current,
+                                )
+                              }
+                              className={[
+                                'relative inline-flex h-7 w-12 rounded-full border transition-colors',
+                                newProfileDraft.enabled
+                                  ? 'border-emerald-400/40 bg-emerald-400/20'
+                                  : 'border-white/20 bg-white/10',
+                              ].join(' ')}
+                              aria-label="Toggle new profile enabled"
+                            >
+                              <span
+                                className={[
+                                  'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+                                  newProfileDraft.enabled ? 'translate-x-6' : 'translate-x-0.5',
+                                ].join(' ')}
+                              />
+                            </button>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                              User scope
+                            </div>
+                            <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {!newProfileScopeSelectedUsers.length ? (
+                                  <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-100">
+                                    All users
+                                  </span>
+                                ) : null}
+                                {newProfileScopeSelectedUsers.map((user) => (
+                                  <span
+                                    key={user.id}
+                                    className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                  >
+                                    <span>{user.plexAccountTitle}</span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Remove ${user.plexAccountTitle} from profile scope`}
+                                      onClick={() => removeNewProfileScopeUser(user.id)}
+                                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                ))}
+                                <input
+                                  type="text"
+                                  value={newProfileScopeSearch}
+                                  onChange={(event) =>
+                                    setNewProfileScopeSearch(event.target.value)
+                                  }
+                                  placeholder="Search users to add to scope"
+                                  className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {newProfileScopeSearchResults.map((user) => (
+                                <button
+                                  key={user.id}
+                                  type="button"
+                                  onClick={() => addNewProfileScopeUser(user.id)}
+                                  className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 transition hover:bg-white/10"
+                                >
+                                  {user.plexAccountTitle}
+                                </button>
+                              ))}
+                              {trimmedNewProfileScopeSearch &&
+                              !newProfileScopeSearchResults.length ? (
+                                <span className="text-[11px] text-white/45">
+                                  No users match "{newProfileScopeSearch.trim()}"
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                Profile name
+                              </div>
+                              <input
+                                type="text"
+                                value={newProfileDraft.name}
+                                onChange={(event) =>
+                                  setNewProfileDraft((current) =>
+                                    current ? { ...current, name: event.target.value } : current,
+                                  )
+                                }
+                                placeholder="e.g. Action + English"
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Media type
+                                </div>
+                                <Select
+                                  value={newProfileDraft.mediaType}
+                                  onValueChange={(value) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            mediaType:
+                                              value === 'movie' ||
+                                              value === 'show' ||
+                                              value === 'both'
+                                                ? value
+                                                : current.mediaType,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select media type" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="both">Movies + TV</SelectItem>
+                                    <SelectItem value="movie">Movies only</SelectItem>
+                                    <SelectItem value="show">TV only</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Match mode
+                                </div>
+                                <Select
+                                  value={newProfileDraft.matchMode}
+                                  onValueChange={(value) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            matchMode:
+                                              value === 'all' || value === 'any'
+                                                ? value
+                                                : current.matchMode,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select match mode" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="all">Match all filters</SelectItem>
+                                    <SelectItem value="any">Match any filter</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Only Include Genres
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.includeGenreFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            includeGenreFilterEnabled: !current.includeGenreFilterEnabled,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.includeGenreFilterEnabled
+                                      ? 'border-sky-400/40 bg-sky-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile included genre filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.includeGenreFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
+                              </div>
+                              {newProfileDraft.includeGenreFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedGenres.map((genre) => (
+                                        <span
+                                          key={genre}
+                                          className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                        >
+                                          {genre}
+                                          <button
+                                            type="button"
+                                            onClick={() => removeNewProfileIncludedGenreTag(genre)}
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-sky-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${genre}`}
+                                            title={`Remove ${genre}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileGenreSearch}
+                                        onChange={(event) =>
+                                          setNewProfileGenreSearch(event.target.value)
+                                        }
+                                        onKeyDown={handleNewProfileIncludedGenreSearchKeyDown}
+                                        placeholder="Search and add genre"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {newProfileGenreSearchIsActive ||
+                                  newProfileDefaultGenreOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileGenreSearchIsActive
+                                        ? 'Genre search results'
+                                        : 'Recommended genres to include'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileGenreSearchIsActive
+                                      ? newProfileFilteredGenreOptions
+                                      : newProfileDefaultGenreOptions
+                                    ).map((genre) => (
+                                      <button
+                                        key={genre}
+                                        type="button"
+                                        onClick={() => addNewProfileIncludedGenreTag(genre)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {genre}
+                                      </button>
+                                    ))}
+                                    {newProfileGenreSearchIsActive &&
+                                    !newProfileFilteredGenreOptions.length &&
+                                    trimmedNewProfileGenreSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileIncludedGenreTag(trimmedNewProfileGenreSearch)
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileGenreSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Only Include Audio Languages
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.includeAudioLanguageFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            includeAudioLanguageFilterEnabled:
+                                              !current.includeAudioLanguageFilterEnabled,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.includeAudioLanguageFilterEnabled
+                                      ? 'border-fuchsia-400/40 bg-fuchsia-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile included audio language filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.includeAudioLanguageFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
+                              </div>
+                              {newProfileDraft.includeAudioLanguageFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedAudioLanguages.map((language) => (
+                                        <span
+                                          key={language}
+                                          className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/15 px-2 py-1 text-[11px] text-fuchsia-100"
+                                        >
+                                          {language}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeNewProfileIncludedAudioLanguageTag(language)
+                                            }
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-fuchsia-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${language}`}
+                                            title={`Remove ${language}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileAudioLanguageSearch}
+                                        onChange={(event) =>
+                                          setNewProfileAudioLanguageSearch(event.target.value)
+                                        }
+                                        onKeyDown={
+                                          handleNewProfileIncludedAudioLanguageSearchKeyDown
+                                        }
+                                        placeholder="Search and add language"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {newProfileAudioLanguageSearchIsActive ||
+                                  newProfileDefaultAudioLanguageOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileAudioLanguageSearchIsActive
+                                        ? 'Language search results'
+                                        : 'Top 10 popular languages to include'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileAudioLanguageSearchIsActive
+                                      ? newProfileFilteredAudioLanguageOptions
+                                      : newProfileDefaultAudioLanguageOptions
+                                    ).map((language) => (
+                                      <button
+                                        key={language}
+                                        type="button"
+                                        onClick={() => addNewProfileIncludedAudioLanguageTag(language)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {language}
+                                      </button>
+                                    ))}
+                                    {newProfileAudioLanguageSearchIsActive &&
+                                    !newProfileFilteredAudioLanguageOptions.length &&
+                                    trimmedNewProfileAudioLanguageSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileIncludedAudioLanguageTag(
+                                            trimmedNewProfileAudioLanguageSearch,
+                                          )
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileAudioLanguageSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Excluded genres
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.excludeGenreFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            excludeGenreFilterEnabled:
+                                              !current.excludeGenreFilterEnabled,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.excludeGenreFilterEnabled
+                                      ? 'border-rose-400/40 bg-rose-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile excluded genre filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.excludeGenreFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
+                              </div>
+                              {newProfileDraft.excludeGenreFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedExcludedGenres.map((genre) => (
+                                        <span
+                                          key={genre}
+                                          className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-1 text-[11px] text-rose-100"
+                                        >
+                                          {genre}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeNewProfileExcludedGenreTag(genre)
+                                            }
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-rose-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${genre}`}
+                                            title={`Remove ${genre}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileExcludeGenreSearch}
+                                        onChange={(event) =>
+                                          setNewProfileExcludeGenreSearch(event.target.value)
+                                        }
+                                        onKeyDown={handleNewProfileExcludedGenreSearchKeyDown}
+                                        placeholder="Search and add excluded genre"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {newProfileExcludeGenreSearchIsActive ||
+                                  newProfileDefaultExcludedGenreOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileExcludeGenreSearchIsActive
+                                        ? 'Genre search results'
+                                        : 'Recommended genres to exclude'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileExcludeGenreSearchIsActive
+                                      ? newProfileFilteredExcludedGenreOptions
+                                      : newProfileDefaultExcludedGenreOptions
+                                    ).map((genre) => (
+                                      <button
+                                        key={genre}
+                                        type="button"
+                                        onClick={() => addNewProfileExcludedGenreTag(genre)}
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {genre}
+                                      </button>
+                                    ))}
+                                    {newProfileExcludeGenreSearchIsActive &&
+                                    !newProfileFilteredExcludedGenreOptions.length &&
+                                    trimmedNewProfileExcludeGenreSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileExcludedGenreTag(
+                                            trimmedNewProfileExcludeGenreSearch,
+                                          )
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileExcludeGenreSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                                  Excluded audio languages
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={newProfileDraft.excludeAudioLanguageFilterEnabled}
+                                  onClick={() =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            excludeAudioLanguageFilterEnabled:
+                                              !current.excludeAudioLanguageFilterEnabled,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  className={[
+                                    'relative inline-flex h-6 w-11 rounded-full border transition-colors',
+                                    newProfileDraft.excludeAudioLanguageFilterEnabled
+                                      ? 'border-amber-400/40 bg-amber-400/20'
+                                      : 'border-white/20 bg-white/10',
+                                  ].join(' ')}
+                                  aria-label="Toggle new profile excluded audio language filter"
+                                >
+                                  <span
+                                    className={[
+                                      'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+                                      newProfileDraft.excludeAudioLanguageFilterEnabled
+                                        ? 'translate-x-5'
+                                        : 'translate-x-0.5',
+                                    ].join(' ')}
+                                  />
+                                </button>
+                              </div>
+                              {newProfileDraft.excludeAudioLanguageFilterEnabled ? (
+                                <div className="space-y-2">
+                                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {newProfileSelectedExcludedAudioLanguages.map((language) => (
+                                        <span
+                                          key={language}
+                                          className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] text-amber-100"
+                                        >
+                                          {language}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeNewProfileExcludedAudioLanguageTag(language)
+                                            }
+                                            className="inline-flex items-center justify-center rounded-full p-0.5 text-amber-100/80 hover:text-white hover:bg-white/10 transition"
+                                            aria-label={`Remove ${language}`}
+                                            title={`Remove ${language}`}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      <input
+                                        type="text"
+                                        value={newProfileExcludeAudioLanguageSearch}
+                                        onChange={(event) =>
+                                          setNewProfileExcludeAudioLanguageSearch(
+                                            event.target.value,
+                                          )
+                                        }
+                                        onKeyDown={
+                                          handleNewProfileExcludedAudioLanguageSearchKeyDown
+                                        }
+                                        placeholder="Search and add excluded language"
+                                        className="min-w-[10rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  {newProfileExcludeAudioLanguageSearchIsActive ||
+                                  newProfileDefaultExcludedAudioLanguageOptions.length ? (
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                                      {newProfileExcludeAudioLanguageSearchIsActive
+                                        ? 'Language search results'
+                                        : 'Top 10 popular languages to exclude'}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(newProfileExcludeAudioLanguageSearchIsActive
+                                      ? newProfileFilteredExcludedAudioLanguageOptions
+                                      : newProfileDefaultExcludedAudioLanguageOptions
+                                    ).map((language) => (
+                                      <button
+                                        key={language}
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileExcludedAudioLanguageTag(language)
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + {language}
+                                      </button>
+                                    ))}
+                                    {newProfileExcludeAudioLanguageSearchIsActive &&
+                                    !newProfileFilteredExcludedAudioLanguageOptions.length &&
+                                    trimmedNewProfileExcludeAudioLanguageSearch ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          addNewProfileExcludedAudioLanguageTag(
+                                            trimmedNewProfileExcludeAudioLanguageSearch,
+                                          )
+                                        }
+                                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10 transition"
+                                      >
+                                        + Add "{trimmedNewProfileExcludeAudioLanguageSearch}"
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          {showNewProfileRadarrServiceSelector ||
+                          showNewProfileSonarrServiceSelector ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {showNewProfileRadarrServiceSelector ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Radarr service
+                                  </div>
+                                  <Select
+                                    value={newProfileDraft.radarrInstanceId}
+                                    onValueChange={(value) =>
+                                      setNewProfileDraft((current) =>
+                                        current
+                                          ? { ...current, radarrInstanceId: value }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select Radarr service" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                        Primary Radarr
+                                      </SelectItem>
+                                      {activeRadarrInstanceOptions
+                                        .filter((instance) => !instance.isPrimary)
+                                        .map((instance) => (
+                                          <SelectItem key={instance.id} value={instance.id}>
+                                            {instance.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              ) : null}
+                              {showNewProfileSonarrServiceSelector ? (
+                                <div>
+                                  <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                    Sonarr service
+                                  </div>
+                                  <Select
+                                    value={newProfileDraft.sonarrInstanceId}
+                                    onValueChange={(value) =>
+                                      setNewProfileDraft((current) =>
+                                        current
+                                          ? { ...current, sonarrInstanceId: value }
+                                          : current,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select Sonarr service" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value={PRIMARY_INSTANCE_SENTINEL}>
+                                        Primary Sonarr
+                                      </SelectItem>
+                                      {activeSonarrInstanceOptions
+                                        .filter((instance) => !instance.isPrimary)
+                                        .map((instance) => (
+                                          <SelectItem key={instance.id} value={instance.id}>
+                                            {instance.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          <div
+                            className={`grid grid-cols-1 gap-4 ${
+                              newProfileDraft.mediaType === 'both' ? 'md:grid-cols-2' : ''
+                            }`}
+                          >
+                            {newProfileDraft.mediaType !== 'show' ? (
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Movie collection base name
+                                </div>
+                                <input
+                                  type="text"
+                                  value={newProfileDraft.movieCollectionBaseName}
+                                  onChange={(event) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            movieCollectionBaseName: event.target.value,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  placeholder={DEFAULT_IMMACULATE_MOVIE_COLLECTION_BASE_NAME}
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                />
+                              </div>
+                            ) : null}
+                            {newProfileDraft.mediaType !== 'movie' ? (
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  TV collection base name
+                                </div>
+                                <input
+                                  type="text"
+                                  value={newProfileDraft.showCollectionBaseName}
+                                  onChange={(event) =>
+                                    setNewProfileDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            showCollectionBaseName: event.target.value,
+                                          }
+                                        : current,
+                                    )
+                                  }
+                                  placeholder={DEFAULT_IMMACULATE_SHOW_COLLECTION_BASE_NAME}
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-[#facc15]/40 focus:border-[#facc15]/40"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {createImmaculateProfileMutation.isError ? (
+                            <div className="text-sm text-red-200/90">
+                              {(createImmaculateProfileMutation.error as Error)?.message}
+                            </div>
+                          ) : null}
+
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAddProfileFormOpen(false);
+                                setNewProfileDraft(null);
+                                setNewProfileScopePlexUserIds([]);
+                                setNewProfileScopeSearch('');
+                                setNewProfileGenreSearch('');
+                                setNewProfileAudioLanguageSearch('');
+                                setNewProfileExcludeGenreSearch('');
+                                setNewProfileExcludeAudioLanguageSearch('');
+                                createImmaculateProfileMutation.reset();
+                              }}
+                              disabled={createImmaculateProfileMutation.isPending}
+                              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCreateProfile}
+                              disabled={createImmaculateProfileMutation.isPending}
+                              className="rounded-xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.2)] hover:shadow-[0_0_28px_rgba(250,204,21,0.3)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                            >
+                              {createImmaculateProfileMutation.isPending
+                                ? 'Creating…'
+                                : 'Save profile'}
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+
+                  {!isAddProfileFormOpen ? (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileEditorOpen(false);
+                          setActiveProfileScopePlexUserId(null);
+                          setProfileScopeSearch('');
+                          setIsAddProfileFormOpen(true);
+                          setNewProfileDraft(createNewProfileDraft());
+                          setNewProfileScopePlexUserIds([]);
+                          setNewProfileScopeSearch('');
+                          setNewProfileGenreSearch('');
+                          setNewProfileAudioLanguageSearch('');
+                          setNewProfileExcludeGenreSearch('');
+                          setNewProfileExcludeAudioLanguageSearch('');
+                          createImmaculateProfileMutation.reset();
+                        }}
+                        className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15 transition-colors"
+                      >
+                        Add profile
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           {/* Reset Immaculate Taste */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
@@ -1455,7 +6005,7 @@ export function CommandCenterPage() {
 
             <p className="mt-3 text-sm text-white/70 leading-relaxed">
               {hasMultipleImmaculateUsers
-                ? 'Select a Plex user. Admin shows per-library resets, other users reset by media type.'
+                ? 'Select a Plex user. Admin shows per-library resets, other users reset all Immaculaterr collections by media type.'
                 : 'Pick a library to reset. This removes the Plex collection and clears its dataset.'}
             </p>
 
@@ -1469,12 +6019,18 @@ export function CommandCenterPage() {
             {hasMultipleImmaculateUsers ? (
               <div className="mt-5 space-y-3">
                 {adminImmaculateUser ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div
+                    className={`rounded-2xl border px-4 py-3 transition ${
+                      activeImmaculateUserId === adminImmaculateUser.id
+                        ? 'border-white/20 bg-white/10'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
                     <button
                       type="button"
                       data-plex-user-id={adminImmaculateUser.id}
                       onClick={toggleActiveImmaculateUser}
-                      className="w-full flex items-center justify-between gap-4 text-left"
+                      className="group w-full flex items-center justify-between gap-4 text-left"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -1485,17 +6041,30 @@ export function CommandCenterPage() {
                             {adminImmaculateUser.plexAccountTitle || 'Admin'}
                           </div>
                         </div>
-                        <div className="mt-1 text-xs text-white/60">
-                          Movie: {adminImmaculateUser.movieCount} • TV: {adminImmaculateUser.tvCount}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                            Movie {adminImmaculateUser.movieCount}
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                            TV {adminImmaculateUser.tvCount}
+                          </span>
                         </div>
                       </div>
-                      <span className="text-xs font-semibold text-white/60">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                          activeImmaculateUserId === adminImmaculateUser.id
+                            ? 'border-white/20 bg-white/15 text-white/85'
+                            : 'border-white/10 bg-white/5 text-white/65 group-hover:bg-white/10'
+                        }`}
+                      >
                         {activeImmaculateUserId === adminImmaculateUser.id ? 'Hide' : 'View'}
                       </span>
                     </button>
 
                     {activeImmaculateUserId === adminImmaculateUser.id ? (
-                      <div className="mt-4">{renderAdminCollectionList()}</div>
+                      <div className="mt-4 border-t border-white/10 pt-4">
+                        {renderAdminCollectionList()}
+                      </div>
                     ) : null}
                   </div>
                 ) : null}
@@ -1507,39 +6076,54 @@ export function CommandCenterPage() {
                   return (
                     <div
                       key={user.id}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                      className={`rounded-2xl border px-4 py-3 transition ${
+                        isActive
+                          ? 'border-white/20 bg-white/10'
+                          : 'border-white/10 bg-white/5 hover:bg-white/10'
+                      }`}
                     >
                       <button
                         type="button"
                         data-plex-user-id={user.id}
                         onClick={toggleActiveImmaculateUser}
-                        className="w-full flex items-center justify-between gap-4 text-left"
+                        className="group w-full flex items-center justify-between gap-4 text-left"
                       >
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-white truncate">
                             {user.plexAccountTitle || 'Plex User'}
                           </div>
-                          <div className="mt-1 text-xs text-white/60">
-                            Movie: {movieCount} • TV: {tvCount}
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                              Movie {movieCount}
+                            </span>
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-white/70">
+                              TV {tvCount}
+                            </span>
                           </div>
                         </div>
-                        <span className="text-xs font-semibold text-white/60">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                            isActive
+                              ? 'border-white/20 bg-white/15 text-white/85'
+                              : 'border-white/10 bg-white/5 text-white/65 group-hover:bg-white/10'
+                          }`}
+                        >
                           {isActive ? 'Hide' : 'View'}
                         </span>
                       </button>
 
                       {isActive ? (
-                        <div className="mt-4 overflow-x-auto">
-                          <table className="min-w-[420px] w-full text-sm text-white/80 border border-white/10 rounded-2xl overflow-hidden bg-white/5">
-                            <thead className="text-[11px] uppercase tracking-wider text-white/50">
-                              <tr className="bg-white/5">
+                        <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-black/20">
+                          <table className="min-w-[420px] w-full text-sm text-white/80">
+                            <thead className="text-[11px] uppercase tracking-wider text-white/55 bg-white/5">
+                              <tr>
                                 <th className="px-4 py-3 text-left font-semibold">User</th>
                                 <th className="px-4 py-3 text-left font-semibold">Movie</th>
                                 <th className="px-4 py-3 text-left font-semibold">TV Shows</th>
                               </tr>
                             </thead>
-                            <tbody>
-                              <tr className="border-t border-white/10">
+                            <tbody className="divide-y divide-white/10">
+                              <tr>
                                 <td className="px-4 py-3 font-semibold text-white">
                                   {user.plexAccountTitle || 'Plex User'}
                                 </td>
@@ -1556,7 +6140,7 @@ export function CommandCenterPage() {
                                       data-media-type="movie"
                                       data-total={String(movieCount)}
                                       onClick={openImmaculateUserResetTarget}
-                                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                      className="inline-flex items-center gap-2 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-400/20 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
                                       Reset
@@ -1574,7 +6158,7 @@ export function CommandCenterPage() {
                                       data-media-type="tv"
                                       data-total={String(tvCount)}
                                       onClick={openImmaculateUserResetTarget}
-                                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+                                      className="inline-flex items-center gap-2 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-400/20 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
                                       Reset
@@ -1619,9 +6203,7 @@ export function CommandCenterPage() {
                     Error
                   </span>
                 ) : overseerrConfigured ? (
-                  <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}>
-                    Enabled
-                  </span>
+                  null
                 ) : (
                   <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}>
                     Not set up
@@ -1908,11 +6490,14 @@ export function CommandCenterPage() {
                         <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-200" />
                         <div className="min-w-0">
                           <div className="text-white/85 font-semibold">
-                            This removes all {immaculateUserResetTarget.mediaType === 'movie' ? 'movie' : 'TV'} entries
-                            for this user across every Plex library.
+                            This will erase all{' '}
+                            {immaculateUserResetTarget.mediaType === 'movie' ? 'movie' : 'TV'} collections
+                            created by Immaculaterr for this user across every Plex library.
                           </div>
                           <div className="mt-2 text-xs text-white/55">
-                            Items: {immaculateUserResetTarget.total}
+                            This also clears every tracked{' '}
+                            {immaculateUserResetTarget.mediaType === 'movie' ? 'movie' : 'TV'} dataset
+                            entry for this user profile. Items: {immaculateUserResetTarget.total}
                           </div>
                         </div>
                       </div>
@@ -2337,19 +6922,66 @@ export function CommandCenterPage() {
           </AnimatePresence>
 
           <ConfirmDialog
-            open={plexLibraryDeselectDialogOpen}
-            onClose={closePlexLibraryDeselectDialog}
-            onConfirm={confirmPlexLibraryDeselectDialog}
-            title="Remove Selected Libraries?"
+            open={plexUserDeselectDialogOpen}
+            onClose={closePlexUserDeselectDialog}
+            onCancel={confirmPlexUserKeepCollectionsDialog}
+            onConfirm={confirmPlexUserDeleteCollectionsDialog}
+            title="Keep or Delete Deselected Users' Collections?"
             description={
               <div className="space-y-2">
                 <div className="text-white/85 font-semibold">
-                  De-selecting libraries will remove that library&apos;s
-                  suggestions database in Immaculaterr.
+                  You&apos;re unmonitoring one or more Plex users.
                 </div>
                 <div className="text-xs text-white/55">
-                  Curated collections for deselected libraries will also be
-                  removed from Plex.
+                  Choose whether to keep their existing Immaculaterr collections or delete their
+                  user data and remove those collections from Plex.
+                </div>
+              </div>
+            }
+            details={
+              pendingPlexUserDeselectUsers.length ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-white/50">
+                    Users being unmonitored
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {pendingPlexUserDeselectUsers.map((user) => (
+                      <span
+                        key={user.id}
+                        className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/80"
+                      >
+                        {user.plexAccountTitle}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null
+            }
+            confirmText="Save and delete collections"
+            cancelText="Save and keep collections"
+            variant="danger"
+            confirming={savePlexMonitoringUsersMutation.isPending}
+            error={
+              savePlexMonitoringUsersMutation.isError
+                ? (savePlexMonitoringUsersMutation.error as Error).message
+                : null
+            }
+          />
+
+          <ConfirmDialog
+            open={plexLibraryDeselectDialogOpen}
+            onClose={closePlexLibraryDeselectDialog}
+            onCancel={confirmPlexLibraryKeepCollectionsDialog}
+            onConfirm={confirmPlexLibraryDeleteCollectionsDialog}
+            title="Keep or Delete Deselected Libraries' Collections?"
+            description={
+              <div className="space-y-2">
+                <div className="text-white/85 font-semibold">
+                  You&apos;re de-selecting one or more Plex libraries.
+                </div>
+                <div className="text-xs text-white/55">
+                  Choose whether to keep existing curated collections or delete
+                  Immaculaterr data and remove curated collections from Plex.
                 </div>
               </div>
             }
@@ -2357,7 +6989,7 @@ export function CommandCenterPage() {
               deselectedPlexLibraries.length ? (
                 <div className="space-y-2">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-white/50">
-                    Libraries to remove
+                    Libraries being deselected
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {deselectedPlexLibraries.map((lib) => (
@@ -2372,8 +7004,8 @@ export function CommandCenterPage() {
                 </div>
               ) : null
             }
-            confirmText="Save and remove"
-            cancelText="Keep libraries"
+            confirmText="Save and delete collections"
+            cancelText="Save and keep collections"
             variant="danger"
             confirming={savePlexLibrarySelectionMutation.isPending}
             error={
@@ -2393,6 +7025,425 @@ export function CommandCenterPage() {
             cancelText="Close"
             variant="primary"
           />
+
+          <ConfirmDialog
+            open={profileDeleteDialogOpen}
+            onClose={closeProfileDeleteDialog}
+            onConfirm={confirmProfileDeleteDialog}
+            title={`Delete "${activeProfile?.name ?? 'Profile'}"?`}
+            description={profileDeleteDialogDescription}
+            details={profileDeleteDialogDetails}
+            confirmText="Delete profile"
+            cancelText="Keep profile"
+            variant="danger"
+            confirming={deleteImmaculateProfileMutation.isPending}
+            error={
+              deleteImmaculateProfileMutation.isError
+                ? (deleteImmaculateProfileMutation.error as Error).message
+                : null
+            }
+          />
+
+          {/* Collection Posters */}
+          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-amber-200">
+                  <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                    <Upload className="w-7 h-7" />
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                  Collection Posters
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {!selectedCollectionArtworkUserId ? (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
+                  >
+                    Select user
+                  </span>
+                ) : collectionArtworkManagedTargetsQuery.isLoading ? (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-white/10 text-white/70 border-white/10`}
+                  >
+                    Loading…
+                  </span>
+                ) : collectionArtworkManagedTargetsQuery.isError ? (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}
+                  >
+                    Error
+                  </span>
+                ) : (
+                  <span
+                    className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
+                  >
+                    {collectionArtworkTargets.length} target
+                    {collectionArtworkTargets.length === 1 ? '' : 's'}
+                  </span>
+                )}
+                <SavingPill
+                  active={
+                    saveCollectionArtworkOverrideMutation.isPending ||
+                    resetCollectionArtworkOverrideMutation.isPending
+                  }
+                  className="static"
+                />
+                {collectionArtworkFlowActive ? (
+                  <button
+                    type="button"
+                    onClick={clearCollectionArtworkFlow}
+                    disabled={
+                      saveCollectionArtworkOverrideMutation.isPending ||
+                      resetCollectionArtworkOverrideMutation.isPending
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Cancel
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">
+              Override poster art per user and managed collection target. If no custom poster is
+              set, refresh/recreate jobs use the built-in default artwork.
+            </p>
+
+            <div className="mt-5 space-y-5">
+              <div className="space-y-2">
+                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                  Plex user
+                </div>
+                <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {selectedCollectionArtworkUser ? (
+                      <span className="inline-flex items-center rounded-full border border-sky-500/35 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100">
+                        {selectedCollectionArtworkUser.plexAccountTitle}
+                      </span>
+                    ) : null}
+                    <input
+                      type="text"
+                      value={collectionArtworkUserSearch}
+                      onChange={(event) => setCollectionArtworkUserSearch(event.target.value)}
+                      placeholder="Search and select a Plex user"
+                      className="min-w-[12rem] flex-1 bg-transparent px-1 py-1 text-sm text-white placeholder-white/35 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {collectionArtworkUserSearchResults.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => selectCollectionArtworkUser(user.id)}
+                      className={[
+                        'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition',
+                        selectedCollectionArtworkUserId === user.id
+                          ? 'border-sky-500/35 bg-sky-500/15 text-sky-100'
+                          : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10',
+                      ].join(' ')}
+                    >
+                      {user.plexAccountTitle}
+                    </button>
+                  ))}
+                  {trimmedCollectionArtworkUserSearch &&
+                  !collectionArtworkUserSearchResults.length ? (
+                    <span className="text-[11px] text-white/45">
+                      No users match "{collectionArtworkUserSearch.trim()}"
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              {!selectedCollectionArtworkUserId ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+                  Select a user to load managed collection targets.
+                </div>
+              ) : collectionArtworkManagedTargetsQuery.isLoading ? (
+                <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading managed collections…
+                </div>
+              ) : collectionArtworkManagedTargetsQuery.isError ? (
+                <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
+                  <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>
+                    {(collectionArtworkManagedTargetsQuery.error as Error).message}
+                  </span>
+                </div>
+              ) : !collectionArtworkTargets.length ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+                  No data on this user yet.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                      Collection target
+                    </div>
+                    <Select
+                      value={
+                        selectedCollectionArtworkTarget
+                          ? selectedCollectionArtworkTargetKey
+                          : undefined
+                      }
+                      onValueChange={handleCollectionArtworkTargetChange}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select movie or TV collection target" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {collectionArtworkTargets.map((target) => {
+                          const key = getCollectionArtworkTargetKey(target);
+                          const mediaLabel = target.mediaType === 'movie' ? 'Movie' : 'TV';
+                          const sourceLabel =
+                            target.source === 'immaculate'
+                              ? 'Immaculate'
+                              : 'Recently watched';
+                          return (
+                            <SelectItem key={key} value={key}>
+                              <span className="inline-flex items-center gap-1.5">
+                                {target.hasCustomPoster ? (
+                                  <ImageIcon className="w-3.5 h-3.5 text-emerald-300" />
+                                ) : null}
+                                <span>
+                                  {mediaLabel} • {target.collectionName} • {sourceLabel}
+                                </span>
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedCollectionArtworkTarget ? (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/70">
+                          {selectedCollectionArtworkTarget.mediaType === 'movie'
+                            ? 'Movie'
+                            : 'TV'}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/70">
+                          {selectedCollectionArtworkTarget.source === 'immaculate'
+                            ? 'Immaculate'
+                            : 'Recently watched'}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/70">
+                          {selectedCollectionArtworkTarget.datasetRows} rows
+                        </span>
+                        {selectedCollectionArtworkTarget.hasCustomPoster ? (
+                          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-emerald-100">
+                            Custom poster
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-amber-100">
+                            Default poster
+                          </span>
+                        )}
+                      </div>
+
+                      {selectedCollectionArtworkTarget.hasCustomPoster &&
+                      selectedCollectionArtworkTarget.customPosterUpdatedAt ? (
+                        <div className="text-xs text-white/50">
+                          Custom poster updated:{' '}
+                          {new Date(
+                            selectedCollectionArtworkTarget.customPosterUpdatedAt,
+                          ).toLocaleString()}
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-2">
+                        <div className="block text-xs font-bold text-white/60 uppercase tracking-wider">
+                          Upload poster
+                        </div>
+                        <input
+                          ref={collectionArtworkFileInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={handleCollectionArtworkFileChange}
+                          className="block w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white file:mr-3 file:rounded-lg file:border-0 file:bg-[#facc15] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-black hover:file:brightness-95"
+                        />
+                        {collectionArtworkFile ? (
+                          <div className="text-xs text-white/60">
+                            Selected: {collectionArtworkFile.name} (
+                            {formatFileSize(collectionArtworkFile.size)})
+                          </div>
+                        ) : (
+                          <div className="text-xs text-white/45">
+                            PNG, JPG, or WEBP. Max 5 MB.
+                          </div>
+                        )}
+                      </div>
+
+                      {(saveCollectionArtworkOverrideMutation.isError ||
+                        resetCollectionArtworkOverrideMutation.isError) && (
+                        <div className="flex items-start gap-2 text-sm text-red-200/90">
+                          <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                          <span>
+                            {(saveCollectionArtworkOverrideMutation.error as Error)?.message ||
+                              (resetCollectionArtworkOverrideMutation.error as Error)?.message}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        {selectedCollectionArtworkTarget.hasCustomPoster ? (
+                          <button
+                            type="button"
+                            onClick={openCollectionArtworkPreview}
+                            className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-400/15 transition active:scale-95"
+                          >
+                            <ImageIcon className="w-4 h-4" />
+                            View custom poster
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={saveCollectionArtworkOverride}
+                          disabled={
+                            saveCollectionArtworkOverrideMutation.isPending ||
+                            resetCollectionArtworkOverrideMutation.isPending ||
+                            !collectionArtworkFile
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl bg-[#facc15] px-4 py-2 text-sm font-bold text-black shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                        >
+                          {saveCollectionArtworkOverrideMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Saving…
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4" />
+                              Save poster
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={resetCollectionArtworkOverride}
+                          disabled={
+                            saveCollectionArtworkOverrideMutation.isPending ||
+                            resetCollectionArtworkOverrideMutation.isPending ||
+                            !selectedCollectionArtworkTarget.hasCustomPoster
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                        >
+                          {resetCollectionArtworkOverrideMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Resetting…
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw className="w-4 h-4" />
+                              Reset to default
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearCollectionArtworkFlow}
+                          disabled={
+                            saveCollectionArtworkOverrideMutation.isPending ||
+                            resetCollectionArtworkOverrideMutation.isPending
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/75 hover:bg-white/10 hover:text-white transition disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+                        >
+                          <X className="w-4 h-4" />
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/60">
+                      Select a collection target to upload or reset poster artwork.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {collectionArtworkPreviewOpen ? (
+              <motion.div
+                className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={closeCollectionArtworkPreview}
+              >
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+                <motion.div
+                  initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 20, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+                  onClick={(event) => event.stopPropagation()}
+                  className="relative w-full max-w-xl rounded-[28px] border border-white/15 bg-[#0b0c0f]/90 p-5 sm:p-6 shadow-2xl shadow-emerald-500/10 backdrop-blur-2xl"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-200/80">
+                        Collection Poster
+                      </div>
+                      <h3 className="mt-1 text-xl font-semibold text-white truncate">
+                        {selectedCollectionArtworkTarget?.collectionName ?? 'Custom poster'}
+                      </h3>
+                      <div className="mt-1 text-xs text-white/55">
+                        {selectedCollectionArtworkTarget?.mediaType === 'movie' ? 'Movie' : 'TV'}{' '}
+                        •{' '}
+                        {selectedCollectionArtworkTarget?.source === 'immaculate'
+                          ? 'Immaculate'
+                          : 'Recently watched'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeCollectionArtworkPreview}
+                      className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white transition"
+                      aria-label="Close poster preview"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-2">
+                    {selectedCollectionArtworkPreviewUrl && !collectionArtworkPreviewFailed ? (
+                      <img
+                        src={selectedCollectionArtworkPreviewUrl}
+                        alt={`${selectedCollectionArtworkTarget?.collectionName ?? 'Collection'} poster`}
+                        onError={() => setCollectionArtworkPreviewFailed(true)}
+                        className="mx-auto w-full max-w-[320px] rounded-xl border border-white/10 bg-black/40 object-contain shadow-lg"
+                      />
+                    ) : (
+                      <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-6 text-sm text-red-200/90">
+                        Couldn&apos;t load this custom poster preview.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={closeCollectionArtworkPreview}
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
           {/* Radarr */}
           <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
@@ -2419,11 +7470,7 @@ export function CommandCenterPage() {
                         Error
                       </span>
                     ) : radarrEnabled ? (
-                      <span
-                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
-                      >
-                        Enabled
-                      </span>
+                      null
                     ) : (
                       <span
                         className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}
@@ -2433,7 +7480,10 @@ export function CommandCenterPage() {
                     )}
 
                     <SavingPill
-                      active={saveRadarrDefaultsMutation.isPending}
+                      active={
+                        saveRadarrDefaultsMutation.isPending ||
+                        saveRadarrInstanceDefaultsMutation.isPending
+                      }
                       className="static shrink-0"
                     />
                   </div>
@@ -2468,28 +7518,40 @@ export function CommandCenterPage() {
                     </p>
 
                     <div className="mt-5">
-                      {radarrOptionsQuery.isLoading ? (
-                        <div className="flex items-center gap-3 text-white/70 text-sm">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Loading Radarr options…
-                        </div>
-                      ) : radarrOptionsQuery.isError ? (
-                        <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
-                          <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                          <span>
-                            Couldn’t load Radarr folders/profiles/tags. Verify your Radarr
-                            connection in{' '}
-                            <Link
-                              to="/vault#vault-radarr"
-                              className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
-                            >
-                              Vault
-                            </Link>
-                            .
-                          </span>
-                </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div
+                        className={
+                          showRadarrStackedDefaults
+                            ? 'rounded-2xl border border-white/10 bg-white/5 p-4'
+                            : ''
+                        }
+                      >
+                        {showRadarrStackedDefaults ? (
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            Primary
+                          </div>
+                        ) : null}
+                        {radarrOptionsQuery.isLoading ? (
+                          <div className="flex items-center gap-3 text-white/70 text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading Radarr options…
+                          </div>
+                        ) : radarrOptionsQuery.isError ? (
+                          <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                            <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span>
+                              Couldn’t load Radarr folders/profiles/tags. Verify your Radarr
+                              connection in{' '}
+                              <Link
+                                to="/vault#vault-radarr"
+                                className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                              >
+                                Vault
+                              </Link>
+                              .
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                             <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
@@ -2564,9 +7626,10 @@ export function CommandCenterPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                          </div>
+                        )}
                       </div>
-                  )}
-              </div>
+                    </div>
 
                     {saveRadarrDefaultsMutation.isError ? (
                       <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
@@ -2587,6 +7650,150 @@ export function CommandCenterPage() {
                     .
                   </p>
                 )}
+                {showRadarrStackedDefaults ? (
+                  <div className="mt-5 space-y-4">
+                    {enabledSecondaryRadarrInstances.map((instance, index) => {
+                      const optionsQuery = radarrSecondaryOptionsQueries[index];
+                      const rootFolders = optionsQuery?.data?.rootFolders ?? [];
+                      const qualityProfiles = optionsQuery?.data?.qualityProfiles ?? [];
+                      const tags = optionsQuery?.data?.tags ?? [];
+                      const effectiveRootFolderPath =
+                        (instance.rootFolderPath &&
+                          rootFolders.some((folder) => folder.path === instance.rootFolderPath) &&
+                          instance.rootFolderPath) ||
+                        (rootFolders[0]?.path ?? '');
+                      const effectiveQualityProfileId = (() => {
+                        if (
+                          instance.qualityProfileId &&
+                          qualityProfiles.some(
+                            (profile) => profile.id === instance.qualityProfileId,
+                          )
+                        ) {
+                          return instance.qualityProfileId;
+                        }
+                        if (qualityProfiles.some((profile) => profile.id === 1)) return 1;
+                        return qualityProfiles[0]?.id ?? 1;
+                      })();
+                      const effectiveTagId =
+                        instance.tagId && tags.some((tag) => tag.id === instance.tagId)
+                          ? instance.tagId
+                          : null;
+
+                      return (
+                        <div
+                          key={instance.id}
+                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        >
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            {instance.name}
+                          </div>
+                          {optionsQuery?.isLoading ? (
+                            <div className="flex items-center gap-3 text-white/70 text-sm">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading {instance.name} options…
+                            </div>
+                          ) : optionsQuery?.isError ? (
+                            <div className="flex items-start gap-2 text-sm text-red-200/90">
+                              <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                              <span>
+                                Couldn’t load folders/profiles/tags for {instance.name}. Check this
+                                server in{' '}
+                                <Link
+                                  to="/vault#vault-radarr"
+                                  className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                                >
+                                  Vault
+                                </Link>
+                                .
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Root folder
+                                </div>
+                                <Select
+                                  value={effectiveRootFolderPath}
+                                  onValueChange={(next) =>
+                                    handleRadarrSecondaryRootFolderChange(instance.id, next)
+                                  }
+                                  disabled={
+                                    saveRadarrInstanceDefaultsMutation.isPending ||
+                                    !rootFolders.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select root folder" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {rootFolders.map((folder) => (
+                                      <SelectItem key={folder.id} value={folder.path}>
+                                        {folder.path}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Quality profile
+                                </div>
+                                <Select
+                                  value={String(effectiveQualityProfileId)}
+                                  onValueChange={(raw) =>
+                                    handleRadarrSecondaryQualityProfileChange(instance.id, raw)
+                                  }
+                                  disabled={
+                                    saveRadarrInstanceDefaultsMutation.isPending ||
+                                    !qualityProfiles.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select quality profile" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {qualityProfiles.map((profile) => (
+                                      <SelectItem key={profile.id} value={String(profile.id)}>
+                                        {profile.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Tag (optional)
+                                </div>
+                                <Select
+                                  value={effectiveTagId !== null ? String(effectiveTagId) : 'none'}
+                                  onValueChange={(raw) =>
+                                    handleRadarrSecondaryTagChange(instance.id, raw)
+                                  }
+                                  disabled={saveRadarrInstanceDefaultsMutation.isPending}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="No tag" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No tag</SelectItem>
+                                    {tags.map((tag) => (
+                                      <SelectItem key={tag.id} value={String(tag.id)}>
+                                        {tag.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                   </div>
                 </div>
               </div>
@@ -2616,11 +7823,7 @@ export function CommandCenterPage() {
                         Error
                       </span>
                     ) : sonarrEnabled ? (
-                      <span
-                        className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-emerald-500/15 text-emerald-200 border-emerald-500/20`}
-                      >
-                        Enabled
-                      </span>
+                      null
                     ) : (
                       <span
                         className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}
@@ -2630,7 +7833,10 @@ export function CommandCenterPage() {
                     )}
 
                     <SavingPill
-                      active={saveSonarrDefaultsMutation.isPending}
+                      active={
+                        saveSonarrDefaultsMutation.isPending ||
+                        saveSonarrInstanceDefaultsMutation.isPending
+                      }
                       className="static shrink-0"
                     />
                   </div>
@@ -2665,28 +7871,40 @@ export function CommandCenterPage() {
                     </p>
 
                     <div className="mt-5">
-                      {sonarrOptionsQuery.isLoading ? (
-                        <div className="flex items-center gap-3 text-white/70 text-sm">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Loading Sonarr options…
-                </div>
-                      ) : sonarrOptionsQuery.isError ? (
-                        <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
-                          <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                          <span>
-                            Couldn’t load Sonarr folders/profiles/tags. Verify your Sonarr
-                            connection in{' '}
-                            <Link
-                              to="/vault#vault-sonarr"
-                              className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
-                            >
-                              Vault
-                            </Link>
-                            .
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div
+                        className={
+                          showSonarrStackedDefaults
+                            ? 'rounded-2xl border border-white/10 bg-white/5 p-4'
+                            : ''
+                        }
+                      >
+                        {showSonarrStackedDefaults ? (
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            Primary
+                          </div>
+                        ) : null}
+                        {sonarrOptionsQuery.isLoading ? (
+                          <div className="flex items-center gap-3 text-white/70 text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading Sonarr options…
+                          </div>
+                        ) : sonarrOptionsQuery.isError ? (
+                          <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
+                            <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span>
+                              Couldn’t load Sonarr folders/profiles/tags. Verify your Sonarr
+                              connection in{' '}
+                              <Link
+                                to="/vault#vault-sonarr"
+                                className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                              >
+                                Vault
+                              </Link>
+                              .
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
                               Root folder
@@ -2764,9 +7982,10 @@ export function CommandCenterPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                          </div>
+                        )}
                       </div>
-                  )}
-              </div>
+                    </div>
 
                     {saveSonarrDefaultsMutation.isError ? (
                       <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
@@ -2787,6 +8006,150 @@ export function CommandCenterPage() {
                     .
                   </p>
                 )}
+                {showSonarrStackedDefaults ? (
+                  <div className="mt-5 space-y-4">
+                    {enabledSecondarySonarrInstances.map((instance, index) => {
+                      const optionsQuery = sonarrSecondaryOptionsQueries[index];
+                      const rootFolders = optionsQuery?.data?.rootFolders ?? [];
+                      const qualityProfiles = optionsQuery?.data?.qualityProfiles ?? [];
+                      const tags = optionsQuery?.data?.tags ?? [];
+                      const effectiveRootFolderPath =
+                        (instance.rootFolderPath &&
+                          rootFolders.some((folder) => folder.path === instance.rootFolderPath) &&
+                          instance.rootFolderPath) ||
+                        (rootFolders[0]?.path ?? '');
+                      const effectiveQualityProfileId = (() => {
+                        if (
+                          instance.qualityProfileId &&
+                          qualityProfiles.some(
+                            (profile) => profile.id === instance.qualityProfileId,
+                          )
+                        ) {
+                          return instance.qualityProfileId;
+                        }
+                        if (qualityProfiles.some((profile) => profile.id === 1)) return 1;
+                        return qualityProfiles[0]?.id ?? 1;
+                      })();
+                      const effectiveTagId =
+                        instance.tagId && tags.some((tag) => tag.id === instance.tagId)
+                          ? instance.tagId
+                          : null;
+
+                      return (
+                        <div
+                          key={instance.id}
+                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        >
+                          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-white/55">
+                            {instance.name}
+                          </div>
+                          {optionsQuery?.isLoading ? (
+                            <div className="flex items-center gap-3 text-white/70 text-sm">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading {instance.name} options…
+                            </div>
+                          ) : optionsQuery?.isError ? (
+                            <div className="flex items-start gap-2 text-sm text-red-200/90">
+                              <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                              <span>
+                                Couldn’t load folders/profiles/tags for {instance.name}. Check this
+                                server in{' '}
+                                <Link
+                                  to="/vault#vault-sonarr"
+                                  className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
+                                >
+                                  Vault
+                                </Link>
+                                .
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Root folder
+                                </div>
+                                <Select
+                                  value={effectiveRootFolderPath}
+                                  onValueChange={(next) =>
+                                    handleSonarrSecondaryRootFolderChange(instance.id, next)
+                                  }
+                                  disabled={
+                                    saveSonarrInstanceDefaultsMutation.isPending ||
+                                    !rootFolders.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select root folder" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {rootFolders.map((folder) => (
+                                      <SelectItem key={folder.id} value={folder.path}>
+                                        {folder.path}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Quality profile
+                                </div>
+                                <Select
+                                  value={String(effectiveQualityProfileId)}
+                                  onValueChange={(raw) =>
+                                    handleSonarrSecondaryQualityProfileChange(instance.id, raw)
+                                  }
+                                  disabled={
+                                    saveSonarrInstanceDefaultsMutation.isPending ||
+                                    !qualityProfiles.length
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select quality profile" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {qualityProfiles.map((profile) => (
+                                      <SelectItem key={profile.id} value={String(profile.id)}>
+                                        {profile.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div>
+                                <div className="block text-xs font-bold text-white/60 uppercase tracking-wider mb-2">
+                                  Tag (optional)
+                                </div>
+                                <Select
+                                  value={effectiveTagId !== null ? String(effectiveTagId) : 'none'}
+                                  onValueChange={(raw) =>
+                                    handleSonarrSecondaryTagChange(instance.id, raw)
+                                  }
+                                  disabled={saveSonarrInstanceDefaultsMutation.isPending}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="No tag" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No tag</SelectItem>
+                                    {tags.map((tag) => (
+                                      <SelectItem key={tag.id} value={String(tag.id)}>
+                                        {tag.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
