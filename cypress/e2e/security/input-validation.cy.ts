@@ -168,9 +168,10 @@ describe('security/input-validation', () => {
   });
 
   it('unexpected fields are rejected or ignored safely', () => {
+    const invalidCredential = uniqueUsername('invalid-credential');
     const payload = {
       username: uniqueUsername('unexpected'),
-      password: 'wrong-password',
+      password: invalidCredential,
       isAdmin: true,
       role: 'admin',
       tokenVersion: 999,

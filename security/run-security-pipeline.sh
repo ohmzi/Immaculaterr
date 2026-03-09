@@ -83,11 +83,11 @@ read_status_file_token() {
     return
   fi
 
-  local token
-  token="$(awk 'NR==1{print toupper($1)}' "$status_file" 2>/dev/null || true)"
-  case "$token" in
+  local status_key
+  status_key="$(awk 'NR==1{print toupper($1)}' "$status_file" 2>/dev/null || true)"
+  case "$status_key" in
     PASS|WARN|FAIL|SKIP)
-      printf '%s' "$token"
+      printf '%s' "$status_key"
       ;;
     *)
       printf ''
