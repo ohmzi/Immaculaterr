@@ -27,6 +27,14 @@ const requiredSnippets = [
     snippet: '      - closed',
   },
   {
+    name: 'pull request trigger includes develop branch',
+    snippet: '      - develop',
+  },
+  {
+    name: 'pull request trigger includes master branch',
+    snippet: '      - master',
+  },
+  {
     name: 'PR build-check job exists',
     snippet: '  pr-build-check:',
   },
@@ -57,6 +65,24 @@ const requiredSnippets = [
   {
     name: 'merge publish performs image push',
     snippet: '          push: true',
+  },
+  {
+    name: 'beta publish job exists',
+    snippet: '  build-and-push-beta:',
+  },
+  {
+    name: 'beta publish gated to merged PRs into develop (excluding master back-merge)',
+    snippet: withWorkflowExpression(
+      "github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop' && github.event.pull_request.head.ref != 'master'",
+    ),
+  },
+  {
+    name: 'beta publish includes ghcr beta tag',
+    snippet: 'echo "${GHCR_IMAGE}:beta"',
+  },
+  {
+    name: 'beta publish includes docker hub beta tag',
+    snippet: 'echo "${DOCKERHUB_IMAGE}:beta"',
   },
   {
     name: 'docker hub login requires both username and token',
