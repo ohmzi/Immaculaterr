@@ -7,7 +7,7 @@ import {
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
-import { VERSION_HISTORY_ENTRIES } from '@/lib/version-history';
+import { formatDisplayVersion, VERSION_HISTORY_ENTRIES } from '@/lib/version-history';
 
 export function VersionHistoryPage() {
   const titleIconControls = useAnimation();
@@ -121,7 +121,9 @@ export function VersionHistoryPage() {
           <div className="space-y-6">
             {VERSION_HISTORY_ENTRIES.map((entry) => (
               <div key={entry.version} className={cardClass}>
-                <div className="text-2xl font-black tracking-tight text-white">V{entry.version}</div>
+                <div className="text-2xl font-black tracking-tight text-white">
+                  V{formatDisplayVersion(entry.version) ?? entry.version}
+                </div>
 
                 <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/75">
                   {entry.sections.map((section, sectionIndex) => (

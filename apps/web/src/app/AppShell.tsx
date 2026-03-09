@@ -29,7 +29,11 @@ import { getAppMeta } from '@/api/app';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { SetupWizardModal } from '@/app/SetupWizardModal';
 import { WhatsNewModal } from '@/app/WhatsNewModal';
-import { getVersionHistoryEntry, normalizeVersion } from '@/lib/version-history';
+import {
+  formatDisplayVersion,
+  getVersionHistoryEntry,
+  normalizeVersion,
+} from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
 const readOnboardingCompleted = (settings: unknown): boolean => {
@@ -163,6 +167,10 @@ export const AppShell = () => {
   const currentVersion = useMemo(
     () => normalizeVersion(appMetaQuery.data?.version ?? null),
     [appMetaQuery.data?.version],
+  );
+  const currentVersionLabel = useMemo(
+    () => formatDisplayVersion(currentVersion),
+    [currentVersion],
   );
 
   const acknowledgedWhatsNewVersion = useMemo(() => {
@@ -390,7 +398,7 @@ export const AppShell = () => {
       <WhatsNewModal
         open={shouldShowWhatsNew}
         entry={matchingVersionHistoryEntry}
-        versionLabel={currentVersion ? `v${currentVersion}` : ''}
+        versionLabel={currentVersionLabel ? `v${currentVersionLabel}` : ''}
         onAcknowledge={handleAcknowledgeWhatsNew}
         acknowledging={acknowledgeWhatsNewMutation.isPending}
       />

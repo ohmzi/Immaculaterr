@@ -16,6 +16,12 @@ export function normalizeVersion(value: string | null | undefined): string | nul
   return trimmed.replace(/^[vV]/, '');
 }
 
+export function formatDisplayVersion(value: string | null | undefined): string | null {
+  const normalized = normalizeVersion(value);
+  if (!normalized) return null;
+  return normalized.replace(/-beta\b/i, ' beta');
+}
+
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.0-beta',

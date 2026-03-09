@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { getUpdates } from '@/api/updates';
 import { useSafeNavigate } from '@/lib/navigation';
 import { createDebuggerUrl } from '@/lib/debugger';
+import { formatDisplayVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 
 interface NavItem {
@@ -80,8 +81,8 @@ export function Navigation() {
 
   const updateAvailable =
     Boolean(updatesQuery.data?.updateAvailable) && Boolean(updatesQuery.data?.latestVersion);
-  const updateLabel = updatesQuery.data?.latestVersion ? `v${updatesQuery.data.latestVersion}` : null;
-  const currentLabel = updatesQuery.data?.currentVersion ? `v${updatesQuery.data.currentVersion}` : null;
+  const updateLabel = formatDisplayVersion(updatesQuery.data?.latestVersion ?? null);
+  const currentLabel = formatDisplayVersion(updatesQuery.data?.currentVersion ?? null);
 
   useEffect(() => {
     if (!updateAvailable || !updateLabel) return;
@@ -485,7 +486,7 @@ export function Navigation() {
                     onClick={handleDebugClick}
                             className="w-full px-4 py-2.5 text-left text-sm text-white/70 hover:text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-mono border border-white/10 bg-white/5 touch-manipulation"
                           >
-                            Version: {currentLabel ?? '—'}
+                            Version: {currentLabel ? `v${currentLabel}` : '—'}
                           </button>
 
                             {updateAvailable && updateLabel ? (
@@ -494,7 +495,7 @@ export function Navigation() {
                                 onClick={openLatestUpdate}
                                 className="w-full px-4 py-2.5 text-left text-sm text-[#facc15] hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                               >
-                                Update available {updateLabel}
+                                Update available v{updateLabel}
                               </button>
                             ) : null}
 
