@@ -136,6 +136,7 @@ function makeController() {
   const google = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
   const openai = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
   const overseerr = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
+  const arrInstances = {};
 
   const controller = new IntegrationsController(
     prisma as never,
@@ -149,6 +150,7 @@ function makeController() {
     google as never,
     openai as never,
     overseerr as never,
+    arrInstances as never,
   );
 
   return {
@@ -161,6 +163,7 @@ function makeController() {
     google,
     openai,
     overseerr,
+    arrInstances,
   };
 }
 
@@ -242,4 +245,56 @@ describe('security/integrations secret transport', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     },
   );
+
+  it('falls back localhost Radarr URL to Docker host gateway when connectivity fails', async () => {
+    const deps = makeController();
+    const req = { user: { id: 'u1' } };
+    deps.settingsService.resolveServiceSecretInput.mockResolvedValue({
+      value: 'radarr-secret',
+      source: 'envelope',
+    });
+    deps.radarr.testConnection
+      .mockRejectedValueOnce(new Error('Radarr test failed: fetch failed'))
+      .mockResolvedValueOnce({ ok: true, status: { appName: 'Radarr' } });
+
+    const res = await deps.controller.testSaved(req as never, 'radarr', {
+      baseUrl: 'http://localhost:7878',
+      apiKeyEnvelope: { ciphertext: 'x' },
+    });
+
+    expect(res.ok).toBe(true);
+    expect(deps.radarr.testConnection).toHaveBeenNthCalledWith(1, {
+      baseUrl: 'http://localhost:7878',
+      apiKey: 'radarr-secret',
+    });
+    expect(deps.radarr.testConnection).toHaveBeenNthCalledWith(2, {
+      baseUrl: 'http://172.17.0.1:7878',
+      apiKey: 'radarr-secret',
+    });
+    expect(deps.settingsService.updateSettings).toHaveBeenCalledWith('u1', {
+      radarr: { baseUrl: 'http://172.17.0.1:7878' },
+    });
+  });
+
+  it('does not apply localhost fallback when Radarr responds with auth failure', async () => {
+    const deps = makeController();
+    const req = { user: { id: 'u1' } };
+    deps.settingsService.resolveServiceSecretInput.mockResolvedValue({
+      value: 'radarr-secret',
+      source: 'envelope',
+    });
+    deps.radarr.testConnection.mockRejectedValueOnce(
+      new Error('Radarr test failed: HTTP 401 Unauthorized'),
+    );
+
+    await expect(
+      deps.controller.testSaved(req as never, 'radarr', {
+        baseUrl: 'http://localhost:7878',
+        apiKeyEnvelope: { ciphertext: 'x' },
+      }),
+    ).rejects.toBeInstanceOf(Error);
+
+    expect(deps.radarr.testConnection).toHaveBeenCalledTimes(1);
+    expect(deps.settingsService.updateSettings).not.toHaveBeenCalled();
+  });
 });

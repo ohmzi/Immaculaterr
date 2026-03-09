@@ -1053,7 +1053,8 @@ export const SettingsPage = ({
         baseUrl: params.baseUrl,
         apiKey: params.apiKeyForValidation,
       });
-      const { apiKeyForValidation: _ignore, ...payload } = params;
+      const payload = { ...params };
+      delete payload.apiKeyForValidation;
       return await createArrInstance(payload);
     },
     onSuccess: async (data, variables) => {
@@ -1316,7 +1317,8 @@ export const SettingsPage = ({
         lower.includes('timeout') ||
         lower.includes('econnrefused') ||
         lower.includes('enotfound') ||
-        lower.includes('failed to fetch')
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch failed')
       ) {
         showError('Couldn’t reach Radarr. Check the URL.');
       } else {
@@ -1387,7 +1389,8 @@ export const SettingsPage = ({
         lower.includes('timeout') ||
         lower.includes('econnrefused') ||
         lower.includes('enotfound') ||
-        lower.includes('failed to fetch')
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch failed')
       ) {
         showError('Couldn’t reach Sonarr. Check the URL.');
       } else {
@@ -1461,7 +1464,8 @@ export const SettingsPage = ({
         lower.includes('timeout') ||
         lower.includes('econnrefused') ||
         lower.includes('enotfound') ||
-        lower.includes('failed to fetch')
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch failed')
       ) {
         showError('Couldn’t reach Overseerr. Check the URL.');
       } else {

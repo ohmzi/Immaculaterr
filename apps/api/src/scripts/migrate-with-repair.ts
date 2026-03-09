@@ -60,6 +60,73 @@ const COPY_SESSION_ROWS_SQL = [
   'FROM "Session" s',
   'LEFT JOIN "User" u ON u."id" = s."userId"',
 ].join('\n');
+const CREATE_ARR_INSTANCE_TABLE_SQL = [
+  'CREATE TABLE "ArrInstance" (',
+  '  "id" TEXT NOT NULL PRIMARY KEY,',
+  '  "userId" TEXT NOT NULL,',
+  '  "type" TEXT NOT NULL,',
+  '  "name" TEXT NOT NULL,',
+  '  "baseUrl" TEXT NOT NULL,',
+  '  "apiKey" TEXT NOT NULL,',
+  '  "enabled" BOOLEAN NOT NULL DEFAULT true,',
+  '  "sortOrder" INTEGER NOT NULL DEFAULT 0,',
+  '  "rootFolderPath" TEXT,',
+  '  "qualityProfileId" INTEGER,',
+  '  "tagId" INTEGER,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "updatedAt" DATETIME NOT NULL,',
+  '  CONSTRAINT "ArrInstance_userId_fkey"',
+  '    FOREIGN KEY ("userId") REFERENCES "User" ("id")',
+  '    ON DELETE CASCADE ON UPDATE CASCADE',
+  ')',
+].join('\n');
+const ADD_ARR_INSTANCE_ENABLED_COLUMN_SQL =
+  'ALTER TABLE "ArrInstance" ADD COLUMN "enabled" BOOLEAN NOT NULL DEFAULT true';
+const ADD_ARR_INSTANCE_SORT_ORDER_COLUMN_SQL =
+  'ALTER TABLE "ArrInstance" ADD COLUMN "sortOrder" INTEGER NOT NULL DEFAULT 0';
+const ADD_ARR_INSTANCE_ROOT_FOLDER_PATH_COLUMN_SQL =
+  'ALTER TABLE "ArrInstance" ADD COLUMN "rootFolderPath" TEXT';
+const ADD_ARR_INSTANCE_QUALITY_PROFILE_ID_COLUMN_SQL =
+  'ALTER TABLE "ArrInstance" ADD COLUMN "qualityProfileId" INTEGER';
+const ADD_ARR_INSTANCE_TAG_ID_COLUMN_SQL =
+  'ALTER TABLE "ArrInstance" ADD COLUMN "tagId" INTEGER';
+const CREATE_ARR_INSTANCE_TYPE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ArrInstance_userId_type_idx" ON "ArrInstance"("userId", "type")';
+const CREATE_ARR_INSTANCE_UNIQUE_NAME_INDEX_SQL =
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ArrInstance_userId_type_name_key" ON "ArrInstance"("userId", "type", "name")';
+const CREATE_IMMACULATE_TASTE_PROFILE_TABLE_SQL = [
+  'CREATE TABLE "ImmaculateTasteProfile" (',
+  '  "id" TEXT NOT NULL PRIMARY KEY,',
+  '  "userId" TEXT NOT NULL,',
+  '  "name" TEXT NOT NULL,',
+  '  "isDefault" BOOLEAN NOT NULL DEFAULT false,',
+  '  "enabled" BOOLEAN NOT NULL DEFAULT true,',
+  '  "sortOrder" INTEGER NOT NULL DEFAULT 0,',
+  '  "mediaType" TEXT NOT NULL DEFAULT \'both\',',
+  '  "matchMode" TEXT NOT NULL DEFAULT \'all\',',
+  '  "genres" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "audioLanguages" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "excludedGenres" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "excludedAudioLanguages" TEXT NOT NULL DEFAULT \'[]\',',
+  '  "radarrInstanceId" TEXT,',
+  '  "sonarrInstanceId" TEXT,',
+  '  "movieCollectionBaseName" TEXT,',
+  '  "showCollectionBaseName" TEXT,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "updatedAt" DATETIME NOT NULL,',
+  '  CONSTRAINT "ImmaculateTasteProfile_userId_fkey"',
+  '    FOREIGN KEY ("userId") REFERENCES "User" ("id")',
+  '    ON DELETE CASCADE ON UPDATE CASCADE',
+  ')',
+].join('\n');
+const ADD_IMMACULATE_TASTE_PROFILE_RADARR_INSTANCE_ID_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "radarrInstanceId" TEXT';
+const ADD_IMMACULATE_TASTE_PROFILE_SONARR_INSTANCE_ID_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "sonarrInstanceId" TEXT';
+const CREATE_IMMACULATE_TASTE_PROFILE_USER_ENABLED_SORT_ORDER_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteProfile_userId_enabled_sortOrder_idx" ON "ImmaculateTasteProfile"("userId", "enabled", "sortOrder")';
+const CREATE_IMMACULATE_TASTE_PROFILE_USER_NAME_UNIQUE_INDEX_SQL =
+  'CREATE UNIQUE INDEX IF NOT EXISTS "ImmaculateTasteProfile_userId_name_key" ON "ImmaculateTasteProfile"("userId", "name")';
 const CREATE_IMMACULATE_TASTE_PROFILE_USER_OVERRIDE_TABLE_SQL = [
   'CREATE TABLE "ImmaculateTasteProfileUserOverride" (',
   '  "id" TEXT NOT NULL PRIMARY KEY,',
@@ -89,6 +156,10 @@ const ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_GENRES_COLUMN_SQL =
   'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "excludedGenres" TEXT NOT NULL DEFAULT \'[]\'';
 const ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL =
   'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "excludedAudioLanguages" TEXT NOT NULL DEFAULT \'[]\'';
+const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_RADARR_INSTANCE_ID_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfileUserOverride" ADD COLUMN "radarrInstanceId" TEXT';
+const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_SONARR_INSTANCE_ID_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfileUserOverride" ADD COLUMN "sonarrInstanceId" TEXT';
 const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_EXCLUDED_GENRES_COLUMN_SQL =
   'ALTER TABLE "ImmaculateTasteProfileUserOverride" ADD COLUMN "excludedGenres" TEXT NOT NULL DEFAULT \'[]\'';
 const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL =
@@ -99,6 +170,107 @@ const CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_PROFILE_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "ImmaculateTasteProfileUserOverride_profileId_idx" ON "ImmaculateTasteProfileUserOverride"("profileId")';
 const CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_PLEX_USER_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "ImmaculateTasteProfileUserOverride_plexUserId_idx" ON "ImmaculateTasteProfileUserOverride"("plexUserId")';
+const CREATE_NEW_IMMACULATE_TASTE_MOVIE_LIBRARY_TABLE_SQL = [
+  'CREATE TABLE "new_ImmaculateTasteMovieLibrary" (',
+  '  "plexUserId" TEXT NOT NULL,',
+  '  "librarySectionKey" TEXT NOT NULL,',
+  '  "profileId" TEXT NOT NULL DEFAULT \'default\',',
+  '  "tmdbId" INTEGER NOT NULL,',
+  '  "title" TEXT,',
+  '  "status" TEXT NOT NULL DEFAULT \'pending\',',
+  '  "points" INTEGER NOT NULL DEFAULT 0,',
+  '  "tmdbVoteAvg" REAL,',
+  '  "tmdbVoteCount" INTEGER,',
+  '  "downloadApproval" TEXT NOT NULL DEFAULT \'none\',',
+  '  "sentToRadarrAt" DATETIME,',
+  '  "sentToSonarrAt" DATETIME,',
+  '  "tmdbPosterPath" TEXT,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "updatedAt" DATETIME NOT NULL,',
+  '  PRIMARY KEY ("plexUserId", "librarySectionKey", "profileId", "tmdbId"),',
+  '  CONSTRAINT "ImmaculateTasteMovieLibrary_plexUserId_fkey"',
+  '    FOREIGN KEY ("plexUserId") REFERENCES "PlexUser" ("id")',
+  '    ON DELETE CASCADE ON UPDATE CASCADE',
+  ')',
+].join('\n');
+const COPY_IMMACULATE_TASTE_MOVIE_LIBRARY_ROWS_SQL = [
+  'INSERT INTO "new_ImmaculateTasteMovieLibrary" (',
+  '  "plexUserId", "librarySectionKey", "profileId", "tmdbId", "title",',
+  '  "status", "points", "tmdbVoteAvg", "tmdbVoteCount",',
+  '  "downloadApproval", "sentToRadarrAt", "sentToSonarrAt", "tmdbPosterPath",',
+  '  "createdAt", "updatedAt"',
+  ')',
+  'SELECT',
+  '  "plexUserId", "librarySectionKey", \'default\', "tmdbId", "title",',
+  '  "status", "points", "tmdbVoteAvg", "tmdbVoteCount",',
+  '  "downloadApproval", "sentToRadarrAt", "sentToSonarrAt", "tmdbPosterPath",',
+  '  "createdAt", "updatedAt"',
+  'FROM "ImmaculateTasteMovieLibrary"',
+].join('\n');
+const CREATE_NEW_IMMACULATE_TASTE_SHOW_LIBRARY_TABLE_SQL = [
+  'CREATE TABLE "new_ImmaculateTasteShowLibrary" (',
+  '  "plexUserId" TEXT NOT NULL,',
+  '  "librarySectionKey" TEXT NOT NULL,',
+  '  "profileId" TEXT NOT NULL DEFAULT \'default\',',
+  '  "tvdbId" INTEGER NOT NULL,',
+  '  "tmdbId" INTEGER,',
+  '  "title" TEXT,',
+  '  "status" TEXT NOT NULL DEFAULT \'pending\',',
+  '  "points" INTEGER NOT NULL DEFAULT 0,',
+  '  "tmdbVoteAvg" REAL,',
+  '  "tmdbVoteCount" INTEGER,',
+  '  "downloadApproval" TEXT NOT NULL DEFAULT \'none\',',
+  '  "sentToRadarrAt" DATETIME,',
+  '  "sentToSonarrAt" DATETIME,',
+  '  "tmdbPosterPath" TEXT,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "updatedAt" DATETIME NOT NULL,',
+  '  PRIMARY KEY ("plexUserId", "librarySectionKey", "profileId", "tvdbId"),',
+  '  CONSTRAINT "ImmaculateTasteShowLibrary_plexUserId_fkey"',
+  '    FOREIGN KEY ("plexUserId") REFERENCES "PlexUser" ("id")',
+  '    ON DELETE CASCADE ON UPDATE CASCADE',
+  ')',
+].join('\n');
+const COPY_IMMACULATE_TASTE_SHOW_LIBRARY_ROWS_SQL = [
+  'INSERT INTO "new_ImmaculateTasteShowLibrary" (',
+  '  "plexUserId", "librarySectionKey", "profileId", "tvdbId", "tmdbId", "title",',
+  '  "status", "points", "tmdbVoteAvg", "tmdbVoteCount",',
+  '  "downloadApproval", "sentToRadarrAt", "sentToSonarrAt", "tmdbPosterPath",',
+  '  "createdAt", "updatedAt"',
+  ')',
+  'SELECT',
+  '  "plexUserId", "librarySectionKey", \'default\', "tvdbId", "tmdbId", "title",',
+  '  "status", "points", "tmdbVoteAvg", "tmdbVoteCount",',
+  '  "downloadApproval", "sentToRadarrAt", "sentToSonarrAt", "tmdbPosterPath",',
+  '  "createdAt", "updatedAt"',
+  'FROM "ImmaculateTasteShowLibrary"',
+].join('\n');
+const CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_PLEX_USER_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_plexUserId_idx" ON "ImmaculateTasteMovieLibrary"("plexUserId")';
+const CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_SECTION_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_plexUserId_librarySectionKey_idx" ON "ImmaculateTasteMovieLibrary"("plexUserId", "librarySectionKey")';
+const CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_PROFILE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_profileId_idx" ON "ImmaculateTasteMovieLibrary"("profileId")';
+const CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_STATUS_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_plexUserId_librarySectionKey_status_idx" ON "ImmaculateTasteMovieLibrary"("plexUserId", "librarySectionKey", "status")';
+const CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_POINTS_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_plexUserId_librarySectionKey_points_idx" ON "ImmaculateTasteMovieLibrary"("plexUserId", "librarySectionKey", "points")';
+const CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_VOTE_AVG_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_plexUserId_librarySectionKey_tmdbVoteAvg_idx" ON "ImmaculateTasteMovieLibrary"("plexUserId", "librarySectionKey", "tmdbVoteAvg")';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_PLEX_USER_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_idx" ON "ImmaculateTasteShowLibrary"("plexUserId")';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_SECTION_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_librarySectionKey_idx" ON "ImmaculateTasteShowLibrary"("plexUserId", "librarySectionKey")';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_PROFILE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_profileId_idx" ON "ImmaculateTasteShowLibrary"("profileId")';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_TMDB_ID_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_tmdbId_idx" ON "ImmaculateTasteShowLibrary"("plexUserId", "tmdbId")';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_STATUS_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_librarySectionKey_status_idx" ON "ImmaculateTasteShowLibrary"("plexUserId", "librarySectionKey", "status")';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_POINTS_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_librarySectionKey_points_idx" ON "ImmaculateTasteShowLibrary"("plexUserId", "librarySectionKey", "points")';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_VOTE_AVG_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_librarySectionKey_tmdbVoteAvg_idx" ON "ImmaculateTasteShowLibrary"("plexUserId", "librarySectionKey", "tmdbVoteAvg")';
 
 type TableInfoRow = {
   name: string;
@@ -245,6 +417,20 @@ function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
   );
 }
 
+async function withSqliteForeignKeysDisabled(
+  prisma: PrismaClient,
+  run: () => Promise<void>,
+): Promise<void> {
+  await prisma.$executeRawUnsafe('PRAGMA defer_foreign_keys=ON');
+  await prisma.$executeRawUnsafe('PRAGMA foreign_keys=OFF');
+  try {
+    await run();
+  } finally {
+    await prisma.$executeRawUnsafe('PRAGMA foreign_keys=ON');
+    await prisma.$executeRawUnsafe('PRAGMA defer_foreign_keys=OFF');
+  }
+}
+
 async function repairFailedMigrationIfNeeded(
   prisma: PrismaClient,
 ): Promise<void> {
@@ -266,6 +452,137 @@ async function repairFailedMigrationIfNeeded(
   resolveTargetMigrationState(isSessionSchemaUpgraded(sessionInfo));
 }
 
+async function ensureArrInstanceSchema(prisma: PrismaClient): Promise<void> {
+  const tableName = 'ArrInstance';
+  const exists = await tableExists(prisma, tableName);
+
+  if (!exists) {
+    await prisma.$executeRawUnsafe(CREATE_ARR_INSTANCE_TABLE_SQL);
+  } else {
+    const columns = await tableInfo(prisma, tableName);
+
+    if (!hasColumn(columns, 'enabled')) {
+      await prisma.$executeRawUnsafe(ADD_ARR_INSTANCE_ENABLED_COLUMN_SQL);
+    }
+    if (!hasColumn(columns, 'sortOrder')) {
+      await prisma.$executeRawUnsafe(ADD_ARR_INSTANCE_SORT_ORDER_COLUMN_SQL);
+    }
+    if (!hasColumn(columns, 'rootFolderPath')) {
+      await prisma.$executeRawUnsafe(
+        ADD_ARR_INSTANCE_ROOT_FOLDER_PATH_COLUMN_SQL,
+      );
+    }
+    if (!hasColumn(columns, 'qualityProfileId')) {
+      await prisma.$executeRawUnsafe(
+        ADD_ARR_INSTANCE_QUALITY_PROFILE_ID_COLUMN_SQL,
+      );
+    }
+    if (!hasColumn(columns, 'tagId')) {
+      await prisma.$executeRawUnsafe(ADD_ARR_INSTANCE_TAG_ID_COLUMN_SQL);
+    }
+  }
+
+  await prisma.$executeRawUnsafe(CREATE_ARR_INSTANCE_TYPE_INDEX_SQL);
+  await prisma.$executeRawUnsafe(CREATE_ARR_INSTANCE_UNIQUE_NAME_INDEX_SQL);
+}
+
+async function rebuildImmaculateTasteMovieLibraryWithProfileId(
+  prisma: PrismaClient,
+): Promise<void> {
+  await withSqliteForeignKeysDisabled(prisma, async () => {
+    await prisma.$executeRawUnsafe(
+      'DROP TABLE IF EXISTS "new_ImmaculateTasteMovieLibrary"',
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_NEW_IMMACULATE_TASTE_MOVIE_LIBRARY_TABLE_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      COPY_IMMACULATE_TASTE_MOVIE_LIBRARY_ROWS_SQL,
+    );
+    await prisma.$executeRawUnsafe('DROP TABLE "ImmaculateTasteMovieLibrary"');
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "new_ImmaculateTasteMovieLibrary" RENAME TO "ImmaculateTasteMovieLibrary"',
+    );
+  });
+}
+
+async function rebuildImmaculateTasteShowLibraryWithProfileId(
+  prisma: PrismaClient,
+): Promise<void> {
+  await withSqliteForeignKeysDisabled(prisma, async () => {
+    await prisma.$executeRawUnsafe(
+      'DROP TABLE IF EXISTS "new_ImmaculateTasteShowLibrary"',
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_NEW_IMMACULATE_TASTE_SHOW_LIBRARY_TABLE_SQL,
+    );
+    await prisma.$executeRawUnsafe(COPY_IMMACULATE_TASTE_SHOW_LIBRARY_ROWS_SQL);
+    await prisma.$executeRawUnsafe('DROP TABLE "ImmaculateTasteShowLibrary"');
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "new_ImmaculateTasteShowLibrary" RENAME TO "ImmaculateTasteShowLibrary"',
+    );
+  });
+}
+
+async function ensureImmaculateTasteLibrarySchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const movieTable = 'ImmaculateTasteMovieLibrary';
+  if (await tableExists(prisma, movieTable)) {
+    const movieColumns = await tableInfo(prisma, movieTable);
+    if (!hasColumn(movieColumns, 'profileId')) {
+      await rebuildImmaculateTasteMovieLibraryWithProfileId(prisma);
+    }
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_PLEX_USER_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_SECTION_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_PROFILE_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_STATUS_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_POINTS_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_VOTE_AVG_INDEX_SQL,
+    );
+  }
+
+  const showTable = 'ImmaculateTasteShowLibrary';
+  if (await tableExists(prisma, showTable)) {
+    const showColumns = await tableInfo(prisma, showTable);
+    if (!hasColumn(showColumns, 'profileId')) {
+      await rebuildImmaculateTasteShowLibraryWithProfileId(prisma);
+    }
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_PLEX_USER_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_SECTION_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_PROFILE_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_TMDB_ID_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_STATUS_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_POINTS_INDEX_SQL,
+    );
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_VOTE_AVG_INDEX_SQL,
+    );
+  }
+}
+
 async function ensureImmaculateTasteProfileSchema(
   prisma: PrismaClient,
 ): Promise<void> {
@@ -273,7 +590,9 @@ async function ensureImmaculateTasteProfileSchema(
   const profileOverrideTableName = 'ImmaculateTasteProfileUserOverride';
   const profileExists = await tableExists(prisma, profileTableName);
 
-  if (!profileExists) return;
+  if (!profileExists) {
+    await prisma.$executeRawUnsafe(CREATE_IMMACULATE_TASTE_PROFILE_TABLE_SQL);
+  }
 
   const profileColumns = await tableInfo(prisma, profileTableName);
 
@@ -286,6 +605,16 @@ async function ensureImmaculateTasteProfileSchema(
   if (!hasColumn(profileColumns, 'excludedAudioLanguages')) {
     await prisma.$executeRawUnsafe(
       ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL,
+    );
+  }
+  if (!hasColumn(profileColumns, 'radarrInstanceId')) {
+    await prisma.$executeRawUnsafe(
+      ADD_IMMACULATE_TASTE_PROFILE_RADARR_INSTANCE_ID_COLUMN_SQL,
+    );
+  }
+  if (!hasColumn(profileColumns, 'sonarrInstanceId')) {
+    await prisma.$executeRawUnsafe(
+      ADD_IMMACULATE_TASTE_PROFILE_SONARR_INSTANCE_ID_COLUMN_SQL,
     );
   }
 
@@ -312,8 +641,24 @@ async function ensureImmaculateTasteProfileSchema(
         ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL,
       );
     }
+    if (!hasColumn(overrideColumns, 'radarrInstanceId')) {
+      await prisma.$executeRawUnsafe(
+        ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_RADARR_INSTANCE_ID_COLUMN_SQL,
+      );
+    }
+    if (!hasColumn(overrideColumns, 'sonarrInstanceId')) {
+      await prisma.$executeRawUnsafe(
+        ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_SONARR_INSTANCE_ID_COLUMN_SQL,
+      );
+    }
   }
 
+  await prisma.$executeRawUnsafe(
+    CREATE_IMMACULATE_TASTE_PROFILE_USER_ENABLED_SORT_ORDER_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_IMMACULATE_TASTE_PROFILE_USER_NAME_UNIQUE_INDEX_SQL,
+  );
   await prisma.$executeRawUnsafe(
     CREATE_IMMACULATE_TASTE_PROFILE_OVERRIDE_UNIQUE_INDEX_SQL,
   );
@@ -331,7 +676,9 @@ async function main() {
     await repairFailedMigrationIfNeeded(prisma);
 
     runPrisma(['migrate', 'deploy'], 'prisma migrate deploy');
+    await ensureArrInstanceSchema(prisma);
     await ensureImmaculateTasteProfileSchema(prisma);
+    await ensureImmaculateTasteLibrarySchema(prisma);
   } finally {
     await prisma.$disconnect();
   }
