@@ -346,6 +346,11 @@ type ProfileDeleteImpactSummary = {
   defaultWillAutoEnable: boolean;
 };
 
+type PlexMonitoringDeselectedUser = {
+  id: string;
+  plexAccountTitle: string;
+};
+
 function resolveProfileDraftFilters(draft: ImmaculateTasteProfileDraft): {
   includedGenres: string[];
   includedAudioLanguages: string[];
@@ -557,6 +562,10 @@ export function CommandCenterPage() {
     useState(false);
   const [plexLibraryDeselectDialogOpen, setPlexLibraryDeselectDialogOpen] =
     useState(false);
+  const [plexUserDeselectDialogOpen, setPlexUserDeselectDialogOpen] =
+    useState(false);
+  const [pendingPlexUserDeselectUsers, setPendingPlexUserDeselectUsers] =
+    useState<PlexMonitoringDeselectedUser[]>([]);
   const [profileDeleteDialogOpen, setProfileDeleteDialogOpen] = useState(false);
   const [draftSelectedPlexLibraryKeys, setDraftSelectedPlexLibraryKeys] =
     useState<string[]>([]);
@@ -3055,6 +3064,21 @@ export function CommandCenterPage() {
     plexMonitoringUsersQuery.data,
     serverSelectedPlexUserIds,
   ]);
+  const deselectedPlexMonitoringUsers = useMemo<PlexMonitoringDeselectedUser[]>(() => {
+    if (!plexMonitoringUsersQuery.data) return [];
+    const serverSelectedSet = new Set(serverSelectedPlexUserIds);
+    const draftSelectedSet = new Set(draftSelectedPlexUserIds);
+    return (plexMonitoringUsersQuery.data.users ?? [])
+      .filter((user) => serverSelectedSet.has(user.id) && !draftSelectedSet.has(user.id))
+      .map((user) => ({
+        id: user.id,
+        plexAccountTitle: user.plexAccountTitle,
+      }));
+  }, [
+    draftSelectedPlexUserIds,
+    plexMonitoringUsersQuery.data,
+    serverSelectedPlexUserIds,
+  ]);
 
   const togglePlexUserSelectionDraft = useCallback((plexUserId: string, checked: boolean) => {
     setDraftSelectedPlexUserIds((prev) => {
@@ -3069,11 +3093,69 @@ export function CommandCenterPage() {
   }, []);
 
   const savePlexMonitoringUsersMutation = useMutation({
-    mutationFn: async (selectedPlexUserIds: string[]) =>
-      await savePlexMonitoringUsers({ selectedPlexUserIds }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['integrations', 'plex', 'monitoring-users'], data);
-      setDraftSelectedPlexUserIds(data.selectedPlexUserIds);
+    mutationFn: async (params: {
+      selectedPlexUserIds: string[];
+      usersToReset?: PlexMonitoringDeselectedUser[];
+    }) => {
+      const data = await savePlexMonitoringUsers({
+        selectedPlexUserIds: params.selectedPlexUserIds,
+      });
+
+      const usersToReset = params.usersToReset ?? [];
+      let resetFailures = 0;
+      let datasetDeleted = 0;
+      let plexCollectionsDeleted = 0;
+      for (const user of usersToReset) {
+        for (const mediaType of ['movie', 'tv'] as const) {
+          try {
+            const response = await resetImmaculateTasteUserCollection({
+              plexUserId: user.id,
+              mediaType,
+              includeWatchedCollections: true,
+            });
+            datasetDeleted += response.dataset.deleted;
+            plexCollectionsDeleted += response.plex.deleted;
+          } catch {
+            resetFailures += 1;
+          }
+        }
+      }
+
+      return {
+        data,
+        resetRequestedUserCount: usersToReset.length,
+        resetFailures,
+        datasetDeleted,
+        plexCollectionsDeleted,
+      };
+    },
+    onSuccess: async (result) => {
+      queryClient.setQueryData(['integrations', 'plex', 'monitoring-users'], result.data);
+      setDraftSelectedPlexUserIds(result.data.selectedPlexUserIds);
+      setPlexUserDeselectDialogOpen(false);
+      setPendingPlexUserDeselectUsers([]);
+
+      if (result.resetRequestedUserCount > 0) {
+        await queryClient.invalidateQueries({
+          queryKey: ['immaculateTaste', 'collections'],
+        });
+        await queryClient.invalidateQueries({
+          queryKey: ['immaculateTaste', 'users'],
+        });
+
+        if (result.resetFailures > 0) {
+          toast.error(
+            `Plex user monitoring updated, but ${result.resetFailures} collection reset request${result.resetFailures === 1 ? '' : 's'} failed.`,
+          );
+          return;
+        }
+
+        toast.success(
+          `Plex user monitoring updated. Removed ${result.datasetDeleted} dataset entr${result.datasetDeleted === 1 ? 'y' : 'ies'} and ${result.plexCollectionsDeleted} Plex collection${result.plexCollectionsDeleted === 1 ? '' : 's'} for ${result.resetRequestedUserCount} user${result.resetRequestedUserCount === 1 ? '' : 's'}.`,
+        );
+        return;
+      }
+
       toast.success('Plex user monitoring updated.');
     },
   });
@@ -3327,10 +3409,43 @@ export function CommandCenterPage() {
   );
   const resetPlexUserSelectionDraft = useCallback(() => {
     setDraftSelectedPlexUserIds(serverSelectedPlexUserIds);
+    setPlexUserDeselectDialogOpen(false);
+    setPendingPlexUserDeselectUsers([]);
   }, [serverSelectedPlexUserIds]);
-  const savePlexUserSelectionDraft = useCallback(() => {
-    savePlexMonitoringUsersMutation.mutate(draftSelectedPlexUserIds);
+  const closePlexUserDeselectDialog = useCallback(() => {
+    if (savePlexMonitoringUsersMutation.isPending) return;
+    setPlexUserDeselectDialogOpen(false);
+    setPendingPlexUserDeselectUsers([]);
+  }, [savePlexMonitoringUsersMutation.isPending]);
+  const confirmPlexUserKeepCollectionsDialog = useCallback(() => {
+    savePlexMonitoringUsersMutation.mutate({
+      selectedPlexUserIds: draftSelectedPlexUserIds,
+    });
   }, [draftSelectedPlexUserIds, savePlexMonitoringUsersMutation]);
+  const confirmPlexUserDeleteCollectionsDialog = useCallback(() => {
+    savePlexMonitoringUsersMutation.mutate({
+      selectedPlexUserIds: draftSelectedPlexUserIds,
+      usersToReset: pendingPlexUserDeselectUsers,
+    });
+  }, [
+    draftSelectedPlexUserIds,
+    pendingPlexUserDeselectUsers,
+    savePlexMonitoringUsersMutation,
+  ]);
+  const savePlexUserSelectionDraft = useCallback(() => {
+    if (deselectedPlexMonitoringUsers.length > 0) {
+      setPendingPlexUserDeselectUsers(deselectedPlexMonitoringUsers);
+      setPlexUserDeselectDialogOpen(true);
+      return;
+    }
+    savePlexMonitoringUsersMutation.mutate({
+      selectedPlexUserIds: draftSelectedPlexUserIds,
+    });
+  }, [
+    deselectedPlexMonitoringUsers,
+    draftSelectedPlexUserIds,
+    savePlexMonitoringUsersMutation,
+  ]);
   const openOverseerrResetDialog = useCallback(() => {
     setOverseerrResetOpen(true);
   }, []);
@@ -6766,6 +6881,53 @@ export function CommandCenterPage() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          <ConfirmDialog
+            open={plexUserDeselectDialogOpen}
+            onClose={closePlexUserDeselectDialog}
+            onCancel={confirmPlexUserKeepCollectionsDialog}
+            onConfirm={confirmPlexUserDeleteCollectionsDialog}
+            title="Keep or Delete Deselected Users' Collections?"
+            description={
+              <div className="space-y-2">
+                <div className="text-white/85 font-semibold">
+                  You&apos;re unmonitoring one or more Plex users.
+                </div>
+                <div className="text-xs text-white/55">
+                  Choose whether to keep their existing Immaculaterr collections or delete their
+                  user data and remove those collections from Plex.
+                </div>
+              </div>
+            }
+            details={
+              pendingPlexUserDeselectUsers.length ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-white/50">
+                    Users being unmonitored
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {pendingPlexUserDeselectUsers.map((user) => (
+                      <span
+                        key={user.id}
+                        className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/80"
+                      >
+                        {user.plexAccountTitle}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null
+            }
+            confirmText="Save and delete collections"
+            cancelText="Save and keep collections"
+            variant="danger"
+            confirming={savePlexMonitoringUsersMutation.isPending}
+            error={
+              savePlexMonitoringUsersMutation.isError
+                ? (savePlexMonitoringUsersMutation.error as Error).message
+                : null
+            }
+          />
 
           <ConfirmDialog
             open={plexLibraryDeselectDialogOpen}

@@ -8,6 +8,7 @@ export function ConfirmDialog(props: {
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  onCancel?: () => void;
   title: string;
   label?: string;
   description?: ReactNode;
@@ -22,6 +23,7 @@ export function ConfirmDialog(props: {
     open,
     onClose,
     onConfirm,
+    onCancel,
     title,
     label = 'Confirm',
     description,
@@ -115,7 +117,7 @@ export function ConfirmDialog(props: {
               <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={onCancel ?? onClose}
                   className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                   disabled={confirming}
                 >

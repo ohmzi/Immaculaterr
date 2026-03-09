@@ -11,8 +11,12 @@ import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { PrismaService } from '../db/prisma.service';
 import {
+  CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+  CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+  RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
   buildImmaculateCollectionName,
   buildUserCollectionName,
   normalizeCollectionTitle,
@@ -126,6 +130,27 @@ function buildImmaculateCollectionLookupNamesForReset(params: {
   );
 }
 
+function watchedCollectionBaseNamesForMediaType(
+  mediaType: 'movie' | 'tv',
+): string[] {
+  if (mediaType === 'movie') {
+    return [
+      RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
+      CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
+      // Legacy naming support.
+      'Based on your recently watched',
+      'Change of Taste',
+    ];
+  }
+  return [
+    RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
+    CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+    // Legacy naming support.
+    'Based on your recently watched',
+    'Change of Taste',
+  ];
+}
+
 type ResetBody = {
   mediaType?: unknown;
   librarySectionKey?: unknown;
@@ -134,6 +159,7 @@ type ResetBody = {
 type ResetUserBody = {
   plexUserId?: unknown;
   mediaType?: unknown;
+  includeWatchedCollections?: unknown;
 };
 
 @Controller('immaculate-taste')
@@ -508,6 +534,7 @@ export class ImmaculateTasteController {
     const mediaType = mediaTypeRaw.toLowerCase();
     const plexUserId =
       typeof body?.plexUserId === 'string' ? body.plexUserId.trim() : '';
+    const includeWatchedCollections = body?.includeWatchedCollections === true;
 
     if (mediaType !== 'movie' && mediaType !== 'tv') {
       throw new BadRequestException('mediaType must be "movie" or "tv"');
@@ -613,6 +640,46 @@ export class ImmaculateTasteController {
         targetCollectionNameSet.add(name);
       }
     }
+    if (includeWatchedCollections) {
+      for (const baseName of watchedCollectionBaseNamesForMediaType(
+        resolvedMediaType,
+      )) {
+        const watchedCollectionName = buildUserCollectionName(
+          baseName,
+          plexUser.plexAccountTitle,
+        ).trim();
+        if (watchedCollectionName) {
+          targetCollectionNameSet.add(watchedCollectionName);
+        }
+      }
+
+      const watchedCollectionRows =
+        resolvedMediaType === 'movie'
+          ? await this.prisma.watchedMovieRecommendationLibrary.findMany({
+              where: { plexUserId: plexUser.id },
+              select: { collectionName: true },
+              distinct: ['collectionName'],
+            })
+          : await this.prisma.watchedShowRecommendationLibrary.findMany({
+              where: { plexUserId: plexUser.id },
+              select: { collectionName: true },
+              distinct: ['collectionName'],
+            });
+      for (const row of watchedCollectionRows) {
+        const rawCollectionName = String(row.collectionName ?? '').trim();
+        if (!rawCollectionName) continue;
+        targetCollectionNameSet.add(rawCollectionName);
+        if (!rawCollectionName.includes('(')) {
+          const suffixedName = buildUserCollectionName(
+            rawCollectionName,
+            plexUser.plexAccountTitle,
+          ).trim();
+          if (suffixedName) {
+            targetCollectionNameSet.add(suffixedName);
+          }
+        }
+      }
+    }
     const normalizedTargetCollectionNameSet = new Set(
       Array.from(targetCollectionNameSet)
         .map((name) => normalizeCollectionTitle(name))
@@ -689,6 +756,17 @@ export class ImmaculateTasteController {
         : await this.prisma.immaculateTasteShowLibrary.deleteMany({
             where: { plexUserId: plexUser.id },
           });
+    const watchedDatasetDeleted = includeWatchedCollections
+      ? resolvedMediaType === 'movie'
+        ? await this.prisma.watchedMovieRecommendationLibrary.deleteMany({
+            where: { plexUserId: plexUser.id },
+          })
+        : await this.prisma.watchedShowRecommendationLibrary.deleteMany({
+            where: { plexUserId: plexUser.id },
+          })
+      : { count: 0 };
+    const totalDatasetDeleted =
+      datasetDeleted.count + watchedDatasetDeleted.count;
 
     const resetAt = new Date().toISOString();
     await Promise.all(
@@ -725,7 +803,11 @@ export class ImmaculateTasteController {
         deleted: plexDeleted,
         libraries: targetSections.length,
       },
-      dataset: { deleted: datasetDeleted.count },
+      dataset: {
+        deleted: totalDatasetDeleted,
+        immaculateDeleted: datasetDeleted.count,
+        watchedDeleted: watchedDatasetDeleted.count,
+      },
     };
   }
 }

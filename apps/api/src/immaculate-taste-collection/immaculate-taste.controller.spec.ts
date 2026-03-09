@@ -12,9 +12,11 @@ describe('ImmaculateTasteController', () => {
   const asResetUserBody = (
     mediaType: string,
     plexUserId: string,
+    includeWatchedCollections = false,
   ): Parameters<ImmaculateTasteController['resetUserCollections']>[1] => ({
     mediaType,
     plexUserId,
+    includeWatchedCollections,
   });
 
   function makeController() {
@@ -30,6 +32,14 @@ describe('ImmaculateTasteController', () => {
       immaculateTasteShowLibrary: {
         count: jest.fn(),
         groupBy: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+      watchedMovieRecommendationLibrary: {
+        findMany: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+      watchedShowRecommendationLibrary: {
+        findMany: jest.fn(),
         deleteMany: jest.fn(),
       },
       plexUser: {
@@ -245,5 +255,102 @@ describe('ImmaculateTasteController', () => {
     expect(prisma.immaculateTasteShowLibrary.deleteMany).not.toHaveBeenCalled();
     expect(res.plex.deleted).toBe(3);
     expect(res.dataset.deleted).toBe(12);
+  });
+
+  it('reset-user can also delete watched/change collections and watched dataset entries', async () => {
+    const { controller, prisma, settingsService, plexServer, plexUsers } =
+      makeController();
+    prisma.user.findFirst.mockResolvedValue({ id: 'admin-user' });
+    plexUsers.ensureAdminPlexUser.mockResolvedValue({
+      id: 'plex-admin',
+      plexAccountTitle: 'Admin',
+    });
+    plexUsers.getPlexUserById.mockResolvedValue({
+      id: 'plex-user-1',
+      plexAccountTitle: 'plex laking',
+    });
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: {
+          baseUrl: 'http://plex:32400',
+        },
+      },
+      secrets: {
+        plex: { token: 'token' },
+      },
+    });
+    plexServer.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies A', type: 'movie' },
+    ]);
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([
+      {
+        id: 'default-profile-row',
+        isDefault: true,
+        mediaType: 'both',
+        movieCollectionBaseName: null,
+        showCollectionBaseName: null,
+        userOverrides: [],
+      },
+    ]);
+    prisma.immaculateTasteMovieLibrary.groupBy.mockResolvedValue([]);
+    prisma.watchedMovieRecommendationLibrary.findMany.mockResolvedValue([
+      { collectionName: 'Change of Taste' },
+      { collectionName: 'Based on your recently watched (plex laking)' },
+    ]);
+    plexServer.listCollectionsForSectionKey.mockResolvedValue([
+      {
+        ratingKey: '100',
+        title: 'Inspired by your Immaculate Taste in Movies (plex laking)',
+      },
+      {
+        ratingKey: '101',
+        title: 'Based on your recently watched Movie (plex laking)',
+      },
+      {
+        ratingKey: '102',
+        title: 'Change of Movie Taste (plex laking)',
+      },
+      { ratingKey: '103', title: 'Change of Taste (plex laking)' },
+      {
+        ratingKey: '104',
+        title: 'Based on your recently watched (plex laking)',
+      },
+      { ratingKey: '105', title: 'Unrelated Collection' },
+    ]);
+    plexServer.deleteCollection.mockResolvedValue(undefined);
+    prisma.immaculateTasteMovieLibrary.deleteMany.mockResolvedValue({
+      count: 12,
+    });
+    prisma.watchedMovieRecommendationLibrary.deleteMany.mockResolvedValue({
+      count: 5,
+    });
+    prisma.setting.upsert.mockResolvedValue({
+      key: 'reset-marker',
+      value: '2026-03-09T00:00:00.000Z',
+      encrypted: false,
+    });
+
+    const res = await controller.resetUserCollections(
+      asAuthenticatedRequest('admin-user'),
+      asResetUserBody('movie', 'plex-user-1', true),
+    );
+
+    expect(
+      prisma.watchedMovieRecommendationLibrary.findMany,
+    ).toHaveBeenCalledWith({
+      where: { plexUserId: 'plex-user-1' },
+      select: { collectionName: true },
+      distinct: ['collectionName'],
+    });
+    expect(
+      prisma.watchedMovieRecommendationLibrary.deleteMany,
+    ).toHaveBeenCalledWith({
+      where: { plexUserId: 'plex-user-1' },
+    });
+    expect(plexServer.deleteCollection).toHaveBeenCalledTimes(5);
+    expect(res.plex.deleted).toBe(5);
+    expect(res.dataset.deleted).toBe(17);
+    expect(res.dataset.immaculateDeleted).toBe(12);
+    expect(res.dataset.watchedDeleted).toBe(5);
   });
 });
