@@ -1,21 +1,48 @@
-import { motion, useAnimation } from 'motion/react';
-import { BookOpen } from 'lucide-react';
-import { useCallback, type MouseEvent as ReactMouseEvent } from 'react';
+import { AnimatePresence, motion, useAnimation } from 'motion/react';
+import {
+  ArrowUpRight,
+  BookOpen,
+  CheckCircle2,
+  ChevronUp,
+  Clock,
+  CircleAlert,
+  Film,
+  MonitorPlay,
+  RotateCcw,
+  Search,
+  Shield,
+  Sparkles,
+  Tv,
+  Upload,
+  Users,
+  Wrench,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
+import {
+  COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION,
+  TASK_MANAGER_CARD_ID_BY_FAQ_SECTION,
+} from '@/lib/faq-feature-links';
 
 export const FaqPage = () => {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [flashSection, setFlashSection] = useState<{ id: string; nonce: number } | null>(null);
+  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
 
   type FaqItem = {
     id: string;
     question: string;
-    answer: React.ReactNode;
+    answer: ReactNode;
   };
   type FaqSection = {
     id: string;
@@ -23,11 +50,6 @@ export const FaqPage = () => {
     items: FaqItem[];
   };
 
-  const scrollToId = (id: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
   const handleAnimateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
@@ -40,26 +62,76 @@ export const FaqPage = () => {
       transition: { duration: 1.4, ease: 'easeInOut' },
     });
   }, [titleIconControls, titleIconGlowControls]);
-  const handleCatalogSectionClick = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const { sectionId } = event.currentTarget.dataset;
-      if (!sectionId) return;
-      scrollToId(sectionId);
-    },
-    [],
-  );
-  const handleCatalogItemClick = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const { itemId } = event.currentTarget.dataset;
-      if (!itemId) return;
-      scrollToId(itemId);
-    },
-    [],
-  );
 
   const anchorClass = 'scroll-mt-28 md:scroll-mt-32';
+  const faqLinkClass =
+    'font-semibold text-white/85 underline underline-offset-2 hover:text-white';
+  const centerElementInViewport = useCallback((id: string, behavior: ScrollBehavior) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const headingAnchorOffset = Math.min(56, Math.max(0, rect.height / 3));
+    const anchorY = rect.top + headingAnchorOffset;
+    const targetTop = window.scrollY + anchorY - window.innerHeight / 2;
+    window.scrollTo({ top: Math.max(0, targetTop), behavior });
+  }, []);
+  const navigateToAnchor = useCallback(
+    (id: string) => {
+      if (!id) return;
+      const nextHash = `#${id}`;
+      if (location.hash === nextHash) {
+        centerElementInViewport(id, 'smooth');
+        return;
+      }
+      navigate({ pathname: location.pathname, hash: nextHash });
+    },
+    [centerElementInViewport, location.hash, location.pathname, navigate],
+  );
+  const handleScrollToTop = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+  const renderSectionFlash = (sectionId: string) => (
+    <AnimatePresence initial={false}>
+      {flashSection?.id === sectionId ? (
+        <motion.div
+          key={`${flashSection.nonce}-${sectionId}-glow`}
+          className="pointer-events-none absolute inset-0 rounded-3xl"
+          initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          animate={{
+            boxShadow: [
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+            ],
+          }}
+          exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          transition={{ duration: 3.8, ease: 'easeInOut' }}
+        />
+      ) : null}
+    </AnimatePresence>
+  );
 
-  const FAQ_SECTIONS: FaqSection[] = [
+  useEffect(() => {
+    if (!flashSection) return;
+    const t = window.setTimeout(() => setFlashSection(null), 4200);
+    return () => window.clearTimeout(t);
+  }, [flashSection]);
+
+  useEffect(() => {
+    const updateScrollTopButton = () => {
+      setShowScrollTopButton(window.scrollY > 280);
+    };
+
+    updateScrollTopButton();
+    window.addEventListener('scroll', updateScrollTopButton, { passive: true });
+    return () => window.removeEventListener('scroll', updateScrollTopButton);
+  }, []);
+
+  const FAQ_SECTIONS = useMemo<FaqSection[]>(() => [
     {
       id: 'getting-started',
       title: 'Getting started',
@@ -70,12 +142,12 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Immaculaterr is a Plex “autopilot” that watches your Plex activity, generates curated
+                Immaculaterr is a Plex autopilot that watches your Plex activity, generates curated
                 recommendation collections, and runs a few safety-focused cleanup jobs so your
                 library stays tidy.
               </p>
               <p>
-                It does not download media by itself—it can optionally send missing titles to
+                It does not download media by itself. It can optionally send missing titles to
                 Radarr/Sonarr or Overseerr, which handle the request/download workflows.
               </p>
             </>
@@ -108,16 +180,16 @@ export const FaqPage = () => {
             <ol className="list-decimal pl-5 space-y-1">
               <li>Create your admin login when prompted.</li>
               <li>
-                Go to <span className="font-semibold text-white/85">Vault</span> and connect Plex
-                (and TMDB at minimum for best results).
+                During initial setup, you already added Plex and TMDB API keys; those are enough
+                to create Plex collections.
               </li>
               <li>
-                Optionally connect Radarr/Sonarr and/or Overseerr (only if you want “Fetch Missing
-                items” behavior).
+                Optionally configure Radarr/Sonarr and/or Overseerr in Vault if you want missing-item
+                requests.
               </li>
               <li>
-                In Task Manager, choose your missing-item route per task card: direct ARR route or
-                Overseerr route.
+                In Task Manager, choose your missing-item route per task card: direct ARR or
+                Overseerr.
               </li>
               <li>
                 Go to <span className="font-semibold text-white/85">Task Manager</span> and enable{' '}
@@ -131,9 +203,7 @@ export const FaqPage = () => {
           question: 'What port does Immaculaterr use and how do I access it?',
           answer: (
             <>
-              <p>
-                If you run the HTTPS Docker Compose profile, both are available:
-              </p>
+              <p>If you use the built-in local HTTPS helper, both are available:</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>
                   HTTP: <code className="font-mono">http://&lt;server-ip&gt;:5454/</code>
@@ -142,121 +212,678 @@ export const FaqPage = () => {
                   HTTPS (local/LAN):{' '}
                   <code className="font-mono">https://&lt;server-ip&gt;:5464/</code>
                 </li>
-                <li>
-                  HTTPS (public domain):{' '}
-                  <code className="font-mono">https://&lt;your-domain&gt;/</code> on{' '}
-                  <code className="font-mono">443</code> when configured.
-                </li>
               </ul>
               <p>
-                For local HTTPS, install the local certificate authority to remove warnings, or
-                accept the browser risk page when prompted (some browsers may ask again in later
-                sessions).
+                For local HTTPS update/setup steps, use{' '}
+                <Link to="/setup#update-paths-https-sidecar" className={faqLinkClass}>
+                  Setup - Optional HTTPS sidecar
+                </Link>
+                .
               </p>
             </>
-          ),
-        },
-        {
-          id: 'getting-started-http-and-https',
-          question: 'Why keep both HTTP and HTTPS enabled?',
-          answer: (
-            <ul className="list-disc pl-5 space-y-1">
-              <li>
-                HTTP keeps existing setups working without breaking users who started on{' '}
-                <code className="font-mono">5454</code>.
-              </li>
-              <li>
-                HTTPS provides encrypted browser-to-app traffic for users who want stronger
-                transport security.
-              </li>
-              <li>
-                Some users prefer not to install a local certificate; HTTP stays available for
-                those local-only environments while HTTPS remains available when needed.
-              </li>
-            </ul>
           ),
         },
       ],
     },
     {
-      id: 'automation',
-      title: 'Automation & triggers',
+      id: 'task-manager',
+      title: 'Task Manager',
       items: [
         {
-          id: 'automation-plex-triggered',
-          question: 'What does “Plex-Triggered Auto-Run” mean?',
+          id: 'task-manager-what-is',
+          question: 'What is Task Manager for?',
           answer: (
             <>
               <p>
-                When Auto-Run is enabled for a Plex-triggered job, Immaculaterr polls Plex and
-                automatically starts the job when the trigger condition is met (for example, “watched
-                percentage reached”).
+                Task Manager is the page where you decide when each job runs and whether it should
+                run automatically.
               </p>
-              <p>
-                You can still run the job manually any time from Task Manager.
-              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Each card is a separate job.</li>
+                <li>
+                  <span className="font-semibold text-white/85">Run now</span> starts that job
+                  manually.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Auto-Run</span> lets that card run
+                  on a Plex trigger or on a schedule, depending on the job.
+                </li>
+              </ul>
             </>
           ),
         },
         {
-          id: 'automation-collection-threshold',
-          question: 'When does Collection task trigger?',
-          answer: (
-            <p>
-              By default, it triggers when Plex polling detects you’ve watched roughly{' '}
-              <span className="font-semibold text-white/85">70%</span> of the item.
-            </p>
-          ),
-        },
-        {
-          id: 'automation-did-not-trigger',
-          question: 'Why didn’t a job trigger even though I watched past the threshold?',
+          id: 'task-manager-keep-it-simple',
+          question: 'How do I keep Task Manager simple by default?',
           answer: (
             <ul className="list-disc pl-5 space-y-1">
-              <li>Auto-Run is off for that job in Task Manager.</li>
-              <li>Plex polling is disabled (or not reaching Plex).</li>
-              <li>The item is too short (minimum duration rules can apply).</li>
+              <li>Leave most cards off until you know you want that automation.</li>
               <li>
-                The job was recently triggered and deduped to prevent repeated runs.
+                For scheduled cards, the built-in default times are already set to off-peak hours.
               </li>
               <li>
-                The seed came from a Plex library you excluded in{' '}
+                For collection cards, direct{' '}
+                <span className="font-semibold text-white/85">Radarr</span> /{' '}
+                <span className="font-semibold text-white/85">Sonarr</span> fetch is the simplest
+                path if you want missing-item requests.
+              </li>
+              <li>
+                Only turn on{' '}
                 <span className="font-semibold text-white/85">
-                  Command Center → Plex Library Selection
-                </span>
-                .
+                  Route missing items via Overseerr
+                </span>{' '}
+                if you want Overseerr to become the request workflow instead.
+              </li>
+              <li>
+                Leave{' '}
+                <span className="font-semibold text-white/85">
+                  Approval required from Observatory
+                </span>{' '}
+                off unless you want to review each missing title first.
+              </li>
+              <li>
+                Leave <span className="font-semibold text-white/85">Start search immediately</span>{' '}
+                off unless you truly want instant ARR searching. Use{' '}
+                <span className="font-semibold text-white/85">Search Monitored</span> for off-peak
+                searching instead.
               </li>
             </ul>
           ),
         },
         {
-          id: 'automation-library-selection-impact',
-          question: 'How does Plex Library Selection affect auto-runs and manual runs?',
+          id: 'task-manager-run-types',
+          question: 'What is the difference between manual runs, Plex-Triggered Auto-Run, and Scheduled Auto-Run?',
+          answer: (
+            <>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Run now</span>: starts a job right
+                  away when you press the button.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Plex-Triggered Auto-Run</span>:
+                  waits for Plex activity such as a completed watch or newly added media.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Scheduled Auto-Run</span>: runs by
+                  the clock at the time and cadence you set.
+                </li>
+              </ul>
+              <p>
+                In simple terms: manual runs are for testing or catch-up, Plex-triggered jobs react
+                to activity, and scheduled jobs handle off-peak maintenance.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-schedule-controls',
+          question: 'What do the schedule controls mean?',
+          answer: (
+            <>
+              <p>Scheduled cards all use the same basic controls:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Repeat</span>: choose{' '}
+                  <span className="font-semibold text-white/85">Daily</span>,{' '}
+                  <span className="font-semibold text-white/85">Weekly</span>, or{' '}
+                  <span className="font-semibold text-white/85">Monthly</span>.
+                </li>
+                <li>
+                  Weekly lets you choose one or more weekdays.
+                </li>
+                <li>
+                  Monthly lets you choose dates <span className="font-semibold text-white/85">1-28</span>{' '}
+                  so shorter months do not break the schedule.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Time</span>: the time of day for the
+                  run.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Next Run</span>: shows the next
+                  scheduled run and can expand to preview the next few runs.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-run-now-seeds',
+          question: 'Why do some Run now buttons ask for media type, title, and year?',
           answer: (
             <>
               <p>
-                After Plex setup, you can choose which movie/show libraries Immaculaterr is allowed
-                to use. You can update this any time from{' '}
-                <span className="font-semibold text-white/85">
-                  Command Center → Plex Library Selection
-                </span>
-                .
+                Only the collection-style cards need a seed when you run them manually. The dialog is
+                letting you simulate the same kind of input the job would normally get from Plex.
+              </p>
+              <p>
+                Enter the media type, the title, and optionally the year. The run then behaves like a
+                manual watch-triggered request instead of a simple maintenance sweep.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-open-vault',
+          question: 'Why is a task card blocked or sending me to Vault?',
+          answer: (
+            <>
+              <p>
+                Some jobs depend on Radarr, Sonarr, or Overseerr being configured and reachable.
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>
-                  If a run targets a library you turned off, that part is skipped instead of failing
-                  the whole job.
+                  <span className="font-semibold text-white/85">Confirm Monitored</span> and{' '}
+                  <span className="font-semibold text-white/85">Search Monitored</span> can block the
+                  whole card if ARR is not ready.
                 </li>
                 <li>
-                  If no selected libraries are available for that media type, the run will show a
-                  clear skipped reason in the report.
-                </li>
-                <li>
-                  When you save after de-selecting a library, Immaculaterr warns you because that
-                  library’s suggestion dataset is removed and its curated collections are removed from
-                  Plex.
+                  Other cards usually stay usable, but trying to enable a missing integration toggle
+                  opens a setup shortcut to Vault.
                 </li>
               </ul>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-confirm-monitored',
+      title: 'Confirm Monitored',
+      items: [
+        {
+          id: 'task-manager-confirm-monitored-what-does',
+          question: 'What does Confirm Monitored do?',
+          answer: (
+            <p>
+              It keeps ARR monitoring aligned with what already exists in Plex. In simple English: if
+              Plex already has the item, this task helps stop Radarr or Sonarr from still treating it
+              like something that needs attention.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-confirm-monitored-when-use',
+          question: 'When should I use Confirm Monitored?',
+          answer: (
+            <>
+              <p>
+                Use it as routine maintenance or after large imports, library moves, or cleanup work.
+              </p>
+              <p>
+                If you want it running in the background, just enable its schedule and keep it on an
+                off-peak time.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-confirm-monitored-settings',
+          question: 'Does Confirm Monitored have any special settings?',
+          answer: (
+            <p>
+              No. This card is intentionally simple: schedule it if you want automation, or use{' '}
+              <span className="font-semibold text-white/85">Run now</span> when you want an immediate
+              pass. It still needs Radarr or Sonarr to be available.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-cleanup-after-adding-new-content',
+      title: 'Cleanup After Adding New Content',
+      items: [
+        {
+          id: 'task-manager-cleanup-what-does',
+          question: 'What does Cleanup After Adding New Content do?',
+          answer: (
+            <p>
+              This is the post-download cleanup card. It reacts to newly added Plex media and can run
+              cleanup actions such as duplicate cleanup, ARR unmonitoring, and watchlist cleanup.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-cleanup-toggles',
+          question: 'What do the cleanup toggles mean?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold text-white/85">Delete duplicate media</span>: clean up
+                duplicate copies based on the task&apos;s safety rules.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">
+                  Unmonitor recently downloaded media
+                </span>
+                : stop ARR from continuing to monitor items that just landed.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">
+                  Remove recently added media from watchlist
+                </span>
+                : clear those newly satisfied items out of the watchlist flow.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'task-manager-cleanup-auto-vs-run-now',
+          question: 'What is the difference between Plex-Triggered Auto-Run and Run now for this card?',
+          answer: (
+            <>
+              <p>
+                <span className="font-semibold text-white/85">Plex-Triggered Auto-Run</span> reacts to
+                new-media events from Plex.
+              </p>
+              <p>
+                <span className="font-semibold text-white/85">Run now</span> is the broad catch-up
+                option. It performs a full cleanup sweep across all libraries instead of waiting for a
+                new-media event.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-cleanup-all-off',
+          question: 'What happens if I turn every cleanup toggle off?',
+          answer: (
+            <p>
+              The card can still run, but it behaves like a no-op. That is useful if you want to keep
+              the card visible without having it perform cleanup actions.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-search-monitored',
+      title: 'Search Monitored',
+      items: [
+        {
+          id: 'task-manager-search-monitored-what-does',
+          question: 'What does Search Monitored do?',
+          answer: (
+            <p>
+              It is the off-peak missing-search card for monitored ARR items. This is the scheduled
+              place to let Radarr and Sonarr search for missing content instead of firing searches
+              immediately.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-search-monitored-includes',
+          question: 'What does the Includes section do?',
+          answer: (
+            <>
+              <p>
+                <span className="font-semibold text-white/85">Includes</span> lets you choose whether
+                the scheduled run should target <span className="font-semibold text-white/85">Radarr</span>,{' '}
+                <span className="font-semibold text-white/85">Sonarr</span>, or both.
+              </p>
+              <p>
+                If both are enabled, Sonarr starts about one hour after the scheduled time. If an ARR
+                service is not fully configured, turning that toggle on sends you to the matching
+                Vault setup shortcut.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-search-monitored-vs-immediate',
+          question: 'When should I use Search Monitored instead of Start search immediately?',
+          answer: (
+            <p>
+              Use <span className="font-semibold text-white/85">Search Monitored</span> when you want
+              missing searches to happen on a calmer schedule. Use{' '}
+              <span className="font-semibold text-white/85">Start search immediately</span> only if you
+              want ARR searching to begin as soon as a collection job adds missing titles.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-immaculate-taste-collection',
+      title: 'Immaculate Taste Collection',
+      items: [
+        {
+          id: 'task-manager-immaculate-collection-what-does',
+          question: 'What does Immaculate Taste Collection do?',
+          answer: (
+            <>
+              <p>
+                This is the watch-triggered Immaculate Taste updater. After you finish watching, it
+                updates the taste dataset, refreshes the recommendation pool, and can optionally route
+                missing titles to Radarr, Sonarr, or Overseerr.
+              </p>
+              <p>
+                It is the main card for growing and updating the Immaculate Taste pipeline.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-collection-refresher-toggle',
+          question: 'What does the Immaculate Taste Refresher toggle do?',
+          answer: (
+            <>
+              <p>
+                It chains the follow-up refresher after this watch-triggered update so the saved
+                dataset can rebuild the <span className="font-semibold text-white/85">Inspired by your
+                Immaculate Taste</span> collection.
+              </p>
+              <p>
+                If you turn this off, you can still run or schedule the separate{' '}
+                <span className="font-semibold text-white/85">Immaculate Taste Refresher</span> card
+                on its own.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-collection-fetch-missing',
+          question: 'What does Fetch Missing items do on this card?',
+          answer: (
+            <p>
+              It allows missing Immaculate Taste suggestions to leave Immaculaterr. In direct ARR mode,
+              movies can go to Radarr and shows can go to Sonarr. If you leave these toggles off, the
+              card still creates suggestions and tracking data, but it does not send missing items out
+              for requests.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-collection-start-search',
+          question: 'When should I use Start search immediately?',
+          answer: (
+            <>
+              <p>
+                Turn it on only if you want Radarr or Sonarr to start searching as soon as this card
+                adds missing titles.
+              </p>
+              <p>
+                If you prefer calmer, off-peak searching, leave it off and use{' '}
+                <span className="font-semibold text-white/85">Search Monitored</span> instead. The UI
+                even offers that option when you enable this toggle.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-collection-approval',
+          question: 'What does Approval required from Observatory do?',
+          answer: (
+            <>
+              <p>
+                It adds a review step before direct ARR requests are sent. Missing titles stay pending
+                until you swipe right on them in Observatory.
+              </p>
+              <p>
+                This only applies to direct ARR mode. If you switch the task to Overseerr routing,
+                approval mode turns off for this card.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-collection-overseerr',
+          question: 'What changes when I turn on Route missing items via Overseerr?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>New missing items are requested in Overseerr instead of being sent directly to ARR.</li>
+              <li>Direct Radarr and Sonarr fetch toggles are turned off for this card.</li>
+              <li>
+                <span className="font-semibold text-white/85">Start search immediately</span> is turned
+                off.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">
+                  Approval required from Observatory
+                </span>{' '}
+                is turned off.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-collection-run-now',
+          question: 'Why does Run now ask for media type, title, and year on this card?',
+          answer: (
+            <>
+              <p>
+                Manual runs on this card simulate a watch-triggered seed. You choose the media type,
+                enter the title, and optionally provide the year so Immaculaterr knows what you want it
+                to build from.
+              </p>
+              <p>
+                Expect a real collection-style run, not just a quick health check.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-immaculate-taste-refresher',
+      title: 'Immaculate Taste Refresher',
+      items: [
+        {
+          id: 'task-manager-immaculate-refresher-what-does',
+          question: 'What does Immaculate Taste Refresher do?',
+          answer: (
+            <p>
+              It is the off-peak rebuild card for the Immaculate Taste collection. It revisits the
+              saved dataset across eligible libraries, promotes items that are now available in Plex,
+              and refreshes the managed collection.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-refresher-when-use',
+          question: 'When should I use the separate refresher card if the collection card already has a refresher toggle?',
+          answer: (
+            <>
+              <p>
+                Use the separate card when you want a standalone scheduled rebuild, even when no recent
+                watch event happened.
+              </p>
+              <p>
+                The toggle on the collection card is only for chaining a refresher right after that
+                card runs.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-immaculate-refresher-default',
+          question: 'What is a good default setup for Immaculate Taste Refresher?',
+          answer: (
+            <p>
+              If you want background upkeep, enable the schedule and keep it on an off-peak time. If
+              you prefer more control, leave it off and use{' '}
+              <span className="font-semibold text-white/85">Run now</span> only when you want a manual
+              rebuild.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-based-on-latest-watched-collection',
+      title: 'Based on Latest Watched Collection',
+      items: [
+        {
+          id: 'task-manager-latest-watched-collection-what-does',
+          question: 'What does Based on Latest Watched Collection do?',
+          answer: (
+            <p>
+              This is the watch-triggered recommendation-builder for the latest thing you watched. It
+              turns that seed into fresh suggestions, updates the saved dataset, and can optionally send
+              missing titles out for requests.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-latest-watched-collection-fetch-missing',
+          question: 'What does Fetch Missing items do on this card?',
+          answer: (
+            <p>
+              It allows missing recommendations from this flow to go directly to Radarr or Sonarr. If
+              you leave these toggles off, the card still builds recommendations and tracks pending
+              items, but it does not send them anywhere.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-latest-watched-collection-approval',
+          question: 'What does Approval required from Observatory do here?',
+          answer: (
+            <>
+              <p>
+                It adds a review step before direct ARR requests are sent. Missing titles stay pending
+                until you approve them in Observatory.
+              </p>
+              <p>
+                Like the Immaculate Taste card, this only applies to direct ARR mode.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-latest-watched-collection-overseerr',
+          question: 'What changes when I turn on Route missing items via Overseerr?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Missing titles are sent to Overseerr instead of directly to ARR.</li>
+              <li>Direct Radarr and Sonarr fetch toggles are turned off for this card.</li>
+              <li>
+                <span className="font-semibold text-white/85">
+                  Approval required from Observatory
+                </span>{' '}
+                is turned off.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'task-manager-latest-watched-collection-run-now',
+          question: 'Why does Run now ask for media type, title, and year on this card?',
+          answer: (
+            <>
+              <p>
+                Manual runs on this card also simulate a watch-triggered seed. Enter the item you want
+                to build from, and Immaculaterr runs the latest-watched flow as if that watch event had
+                just happened.
+              </p>
+              <p>
+                Expect a full recommendation run rather than a simple maintenance task.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-based-on-latest-watched-refresher',
+      title: 'Based on Latest Watched Refresher',
+      items: [
+        {
+          id: 'task-manager-latest-watched-refresher-what-does',
+          question: 'What does Based on Latest Watched Refresher do?',
+          answer: (
+            <p>
+              It is the off-peak refresh card for the latest-watched style collections. It revisits the
+              saved dataset, promotes titles that have become available in Plex, reshuffles the active
+              set, and rebuilds the managed rows.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-latest-watched-refresher-vs-collection',
+          question: 'When should I use this refresher instead of the collection card?',
+          answer: (
+            <>
+              <p>
+                Use the collection card when you want a fresh run based on a new watch event.
+              </p>
+              <p>
+                Use the refresher when you want the saved latest-watched datasets to catch up and
+                reshuffle without waiting for a new trigger.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-latest-watched-refresher-default',
+          question: 'What is a good default setup for Based on Latest Watched Refresher?',
+          answer: (
+            <p>
+              If you want regular background upkeep, enable the schedule and keep it off-peak. If not,
+              leave it off and run it manually when you want a refresh.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'recommendations',
+      title: 'Recommendations',
+      items: [
+        {
+          id: 'recommendations-what-controls',
+          question: 'What does Recommendations control?',
+          answer: (
+            <>
+              <p>
+                Recommendations is the part of Immaculaterr that decides how seed-based suggestions
+                are built and what kind of release mix you get back.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>TMDB is always the starting point for candidate titles.</li>
+                <li>
+                  If Google and/or OpenAI are enabled in Vault, they can widen discovery or refine
+                  the final list.
+                </li>
+                <li>
+                  The current-vs-future release dial changes how much of the final mix leans toward
+                  titles you can watch now versus upcoming titles.
+                </li>
+                <li>
+                  Task Manager still decides whether missing titles stay tracked, go directly to ARR,
+                  or route through Overseerr.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'automation-plex-triggered',
+          question: 'What does "Plex-Triggered Auto-Run" mean?',
+          answer: (
+            <>
+              <p>
+                Plex-Triggered Auto-Run means the job waits for Plex activity instead of a
+                clock-based schedule.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  These jobs do not run on a timer. They wait for the matching Plex event.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Watched trigger (~70%):</span>{' '}
+                  when a movie or show episode reaches roughly 70% watched, the "Based on your
+                  recently watched" flow can trigger.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">New content trigger:</span> when a
+                  new movie or show episode is added, the cleanup task can trigger to scan for
+                  duplicates.
+                </li>
+              </ul>
+              <p>You can still run these tasks manually any time from Task Manager.</p>
             </>
           ),
         },
@@ -286,7 +913,7 @@ export const FaqPage = () => {
               </p>
               <p>
                 <span className="font-semibold text-white/85">Refresher</span> jobs revisit the saved
-                dataset, move items from pending → active when they appear in Plex, shuffle active
+                dataset, move items from pending to active when they appear in Plex, shuffle active
                 items, and rebuild collections cleanly.
               </p>
               <p>
@@ -296,21 +923,218 @@ export const FaqPage = () => {
             </>
           ),
         },
-      ],
-    },
-    {
-      id: 'collections',
-      title: 'Collections & recommendations',
-      items: [
         {
           id: 'collections-what-creates',
           question: 'What Plex collections does the app create?',
           answer: (
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Inspired by your Immaculate Taste (Movies and TV)</li>
-              <li>Based on your recently watched movie/show</li>
-              <li>Change of Taste</li>
-            </ul>
+            <>
+              <p>Current base collection names are:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Based on your recently watched Movie</li>
+                <li>Change of Movie Taste</li>
+                <li>Inspired by your Immaculate Taste in Movies</li>
+                <li>Based on your recently watched Show</li>
+                <li>Change of Show Taste</li>
+                <li>Inspired by your Immaculate Taste in Shows</li>
+              </ul>
+              <p>
+                When multiple Plex users are monitored, Immaculaterr appends the viewer name so each
+                person gets a separate row.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-how-generated',
+          question: 'How are recommendation titles generated?',
+          answer: (
+            <>
+              <p>
+                Recommendation generation always starts with TMDB. The final list then depends on
+                which optional services you enabled in Vault.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <div className="font-semibold text-white/85">Variant 1: TMDB only</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds the candidate pools.</li>
+                    <li>The final list comes from TMDB&apos;s own selection.</li>
+                    <li>The released-vs-upcoming dial still shapes the mix.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-white/85">Variant 2: TMDB + OpenAI</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds candidate pools first.</li>
+                    <li>OpenAI curates the final list from those TMDB candidates.</li>
+                    <li>The released-vs-upcoming dial still shapes the mix.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-white/85">Variant 3: TMDB + Google + OpenAI</div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>TMDB builds the candidate pools.</li>
+                    <li>Google widens discovery with extra web context.</li>
+                    <li>OpenAI uses the TMDB candidates plus that context to curate the final list.</li>
+                  </ul>
+                </div>
+              </div>
+              <p className="mt-3">
+                In every variant, Rewind shows the per-service breakdown plus the final "Generated"
+                list.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-upcoming-ratio',
+          question: 'What does the ratio of future releases vs current releases do?',
+          answer: (
+            <>
+              <p>
+                This dial lives in <span className="font-semibold text-white/85">Command Center - Recommendations</span>.
+                It controls how many suggestions are:
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Current releases</span>: already
+                  released and typically available to watch now
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Future releases</span>: upcoming
+                  titles that may not be released yet
+                </li>
+              </ul>
+              <p>
+                The system enforces that released stays at least{' '}
+                <span className="font-semibold text-white/85">25%</span>, so upcoming is effectively
+                capped.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-missing-in-plex',
+          question: 'What happens when a recommended title isn&apos;t in Plex?',
+          answer: (
+            <>
+              <p>
+                It is recorded as <span className="font-semibold text-white/85">pending</span>.
+                Pending items can later become active once they appear in Plex.
+              </p>
+              <p>
+                If the job is allowed to fetch missing items, Immaculaterr can send those missing
+                titles to Radarr/Sonarr directly or route them to Overseerr, depending on your task
+                settings.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'collections-pending-to-active',
+          question: 'How does the refresher move items from pending to active?',
+          answer: (
+            <p>
+              On refresh, Immaculaterr checks pending titles against Plex. If a title is now found in
+              Plex, it is marked active and becomes eligible for the collection rebuild.
+            </p>
+          ),
+        },
+        {
+          id: 'collections-not-enabled-skipped',
+          question: 'Why do I see "not enabled" or "skipped"?',
+          answer: (
+            <p>
+              Those cards are always shown for transparency. "Not enabled" means you did not
+              configure that integration. "Skipped" means the job strategy did not need that service
+              for this run.
+            </p>
+          ),
+        },
+        {
+          id: 'collections-why-recreate',
+          question: 'Why does the app recreate Plex collections instead of editing them in place?',
+          answer: (
+            <>
+              <p>
+                This normally should not create duplicate collections. Immaculaterr keeps track of
+                the Plex collections it created and updates those tracked collections over time.
+              </p>
+              <p>
+                Duplicates usually happen only when app state is lost (for example, app data is
+                corrupted, or the app is removed and reinstalled). In that case, a fresh install may
+                not be able to link to previously existing Immaculaterr-managed collections.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'plex-library-selection',
+      title: 'Plex Library Selection',
+      items: [
+        {
+          id: 'automation-library-selection-impact',
+          question: 'How does Plex Library Selection affect auto-runs and manual runs?',
+          answer: (
+            <>
+              <p>
+                After setup, you can choose which movie/show libraries Immaculaterr is allowed to use.
+                You can update this any time from{' '}
+                <Link
+                  to="/command-center#command-center-plex-library-selection"
+                  className={faqLinkClass}
+                >
+                  Command Center - Plex Library Selection
+                </Link>
+                .
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Auto-runs and manual runs only use selected libraries.</li>
+                <li>
+                  If a run targets a library you turned off, that part is skipped instead of failing
+                  the whole job.
+                </li>
+                <li>
+                  If no selected libraries are available for that media type, the run shows a clear
+                  skipped reason in the report.
+                </li>
+                <li>
+                  When you save after de-selecting a library, Immaculaterr warns you because that
+                  library&apos;s dataset is removed and its curated collections are removed from Plex.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'plex-user-monitoring',
+      title: 'Plex User Monitoring',
+      items: [
+        {
+          id: 'plex-user-monitoring-what-does',
+          question: 'What does Plex User Monitoring do?',
+          answer: (
+            <>
+              <p>
+                Plex User Monitoring decides which Plex accounts can trigger recommendation runs and
+                receive viewer-specific rows.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Each monitored viewer gets a separate dataset.</li>
+                <li>One person&apos;s watch habits do not change another person&apos;s suggestions.</li>
+                <li>If you stop monitoring a user, future triggers from that user stop immediately.</li>
+                <li>
+                  When saving the change, Immaculaterr lets you decide whether to keep or remove that
+                  user&apos;s existing managed collections.
+                </li>
+              </ul>
+            </>
           ),
         },
         {
@@ -319,30 +1143,40 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Each viewer gets their own recommendation rows, and each viewer’s dataset is kept
-                separate so one person’s watch habits do not change another person’s suggestions.
+                Per-viewer collections do two things: they keep each viewer&apos;s recommendations
+                separate, and they pin each viewer&apos;s rows to the right Plex surface.
               </p>
               <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  Each monitored viewer gets a separate dataset, so one person&apos;s watch habits do not
+                  change another person&apos;s suggestions.
+                </li>
                 <li>Admin viewer rows are pinned to Library Recommended and Home.</li>
                 <li>Shared-user rows are pinned to Friends Home.</li>
+                <li>
+                  The row order stays consistent: Based on your recently watched, then Change of
+                  Taste, then Inspired by your Immaculate Taste.
+                </li>
               </ul>
-              <p>
-                The row order is always consistent: Based on your recently watched, then Change of
-                Taste, then Inspired by your Immaculate Taste.
-              </p>
             </>
           ),
         },
+      ],
+    },
+    {
+      id: 'immaculate-taste-profiles',
+      title: 'Immaculate Taste Profiles',
+      items: [
         {
           id: 'collections-immaculate-vs-watched',
-          question: 'What’s the difference between “Immaculate Taste” and “Based on Latest Watched”?',
+          question: 'What&apos;s the difference between "Immaculate Taste" and "Based on Latest Watched"?',
           answer: (
             <>
               <p>
-                Immaculate Taste is a longer-lived “taste profile” collection that refreshes over time.
+                Immaculate Taste is a longer-lived taste-profile collection that refreshes over time.
               </p>
               <p>
-                Based on Latest Watched is more “right now”: it uses your recent watch as a seed,
+                Based on Latest Watched is more immediate: it uses your recent watch as a seed,
                 generates suggestions, tracks pending/active items, and refreshes as titles become
                 available.
               </p>
@@ -355,19 +1189,28 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Immaculate Taste is a long-lived per-library suggestion system that now supports a
-                simple default mode and optional profile-based mode.
+                Immaculate Taste is a long-lived per-library suggestion system. You can run it in
+                simple one-lane mode or switch to profile-based lanes for finer control.
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>
-                  In default mode, behavior stays straightforward and works like before.
+                  <span className="font-semibold text-white/85">Default mode:</span> one shared rule
+                  set keeps behavior straightforward.
                 </li>
                 <li>
-                  In profile mode, each profile has its own filter rules and can have its own ARR route.
+                  <span className="font-semibold text-white/85">Profile mode:</span> each profile can
+                  define user scope, media type, include/exclude filters, collection naming, and
+                  ARR/Overseerr routing.
                 </li>
                 <li>
-                  Suggestions are still tracked as active (already in Plex) or pending (not in Plex yet),
-                  and refresher runs still promote pending titles to active and rebuild collections.
+                  <span className="font-semibold text-white/85">Deterministic matching:</span>{' '}
+                  profiles are evaluated in order, excluded filters win, and unmatched seeds are
+                  skipped and logged.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Same lifecycle:</span> suggestions
+                  are tracked as active or pending, then refresher runs promote and rebuild as items
+                  appear in Plex.
                 </li>
               </ul>
             </>
@@ -379,59 +1222,22 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Profiles let you run multiple Immaculate Taste collection lanes at the same time.
-                Matching is deterministic and runs in profile order (top to bottom).
+                Profiles are the advanced way to split Immaculate Taste into multiple lanes instead
+                of using one shared rule set.
+              </p>
+              <p>
+                Use profiles when you want different rules for different users, media types, or
+                filter sets. If one shared lane is enough, you can stay with the default mode.
               </p>
               <ul className="list-disc pl-5 space-y-1">
+                <li>If no users are selected, the profile applies to all monitored Plex users.</li>
+                <li>Included genres or languages act as allowlists.</li>
                 <li>
-                  <span className="font-semibold text-white/85">User scope:</span> if no users are
-                  selected, the profile applies to all monitored Plex users. If users are selected,
-                  only those users are in scope. Selected users appear as chips under the search bar,
-                  are removed with the <span className="font-semibold text-white/85">X</span>, and
-                  are hidden from search results until removed.
+                  "Match any filter" means an included genre or language can match. "Match all
+                  filters" means every enabled include group must match.
                 </li>
-                <li>
-                  <span className="font-semibold text-white/85">Included filters are allowlists:</span>{' '}
-                  adding included genres or included audio languages makes the profile
-                  &ldquo;only include&rdquo; for those values.
-                </li>
-                <li>
-                  <span className="font-semibold text-white/85">Match mode:</span>{' '}
-                  &ldquo;Match any filter&rdquo; means included genre OR included language can match.
-                  &ldquo;Match all filters&rdquo; means each enabled include group must match.
-                </li>
-                <li>
-                  <span className="font-semibold text-white/85">Excluded filters win:</span> if a seed
-                  matches an excluded genre/language, that profile is skipped even if include matched.
-                </li>
-                <li>
-                  <span className="font-semibold text-white/85">Default profile fallback:</span> default
-                  with no include filters acts as catch-all and can match alongside specific profiles.
-                  If default has include filters, it only matches those include values.
-                </li>
-                <li>
-                  <span className="font-semibold text-white/85">No profile match:</span> if no enabled
-                  profile matches, the run is skipped and logged as ignored (no matching profile) in
-                  run history/Rewind.
-                </li>
-                <li>
-                  <span className="font-semibold text-white/85">Shared profile settings:</span> all users
-                  in a profile scope share the same filters, ARR routing, and collection naming for that
-                  profile.
-                </li>
-              </ul>
-              <p>Common outcomes:</p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>Secondary includes Animation + default has no include filters: both can receive that seed.</li>
-                <li>Secondary includes Animation + default excludes Animation: only secondary receives it.</li>
-                <li>
-                  Secondary includes Animation + default includes Romance: Animation goes to secondary;
-                  Romance goes to default.
-                </li>
-                <li>
-                  If a seed matches neither a specific profile nor default include rules, it is skipped
-                  and logged.
-                </li>
+                <li>Excluded filters always win over included filters.</li>
+                <li>If no enabled profile matches, the run is skipped and logged in Rewind.</li>
               </ul>
             </>
           ),
@@ -441,180 +1247,43 @@ export const FaqPage = () => {
           question: 'How do Immaculate Taste points work?',
           answer: (
             <>
-              <p>
-                Points act like a freshness score for active titles in Immaculate Taste.
-              </p>
+              <p>Points act like a freshness score for active Immaculate Taste titles.</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>Freshly suggested active titles get high points.</li>
-                <li>Pending titles start at zero points until they appear in Plex.</li>
-                <li>
-                  Active titles gradually lose points over future updates if they are not suggested
-                  again.
-                </li>
-                <li>
-                  When points run out, titles can drop from the active set to keep the list fresh.
-                </li>
+                <li>Pending titles stay at zero until the item appears in Plex.</li>
+                <li>Active titles gradually lose points when they stop being re-suggested.</li>
+                <li>When points run out, those older titles can drop from the active set.</li>
               </ul>
             </>
           ),
         },
         {
           id: 'collections-change-of-taste',
-          question: 'What is “Change of Taste” and how is it chosen?',
-          answer: (
-            <p>
-              It’s designed to intentionally vary from your “similar” recommendations—think adjacent
-              genres, different eras, or a deliberate curveball—so your feed isn’t all the same vibe.
-            </p>
-          ),
-        },
-        {
-          id: 'collections-how-generated',
-          question: 'How are recommendation titles generated?',
+          question: 'What is "Change of Taste" and how is it chosen?',
           answer: (
             <>
               <p>
-                Recommendations always start with TMDB (it builds a pool of candidates similar to the seed).
-                What happens next depends on what you configured in Vault:
+                Change of Taste is the row meant to add controlled variety, not just more of the
+                same.
               </p>
-              <div className="space-y-3">
-                <div>
-                  <div className="font-semibold text-white/85">Variant 1: TMDB only</div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>TMDB builds candidate pools (released / upcoming / unknown).</li>
-                    <li>
-                      The “future vs current” ratio dial is applied to choose a mix (see below).
-                    </li>
-                    <li>Final titles come from TMDB’s pool selection.</li>
-                  </ul>
-                </div>
-
-                <div>
-                  <div className="font-semibold text-white/85">Variant 2: TMDB + OpenAI</div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>TMDB builds candidate pools first.</li>
-                    <li>OpenAI curates the final list from TMDB candidates (better “taste” and variety).</li>
-                    <li>The final list still respects the released/upcoming mix you set.</li>
-                  </ul>
-                </div>
-
-                <div>
-                  <div className="font-semibold text-white/85">Variant 3: TMDB + Google + OpenAI</div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>TMDB builds the candidate pools.</li>
-                    <li>Google search is used as a discovery booster (web context) to widen suggestions.</li>
-                    <li>OpenAI uses both TMDB candidates and web context to curate the final list.</li>
-                  </ul>
-                </div>
-              </div>
-              <p className="mt-3">
-                The job reports include a per-service breakdown (what each service suggested) plus the final{' '}
-                “Generated” list.
+              <p>
+                It deliberately leans away from your closest matches so the feed does not stay locked
+                to one genre, mood, or era.
+              </p>
+              <p>
+                Expect adjacent genres, different eras, or other nearby taste shifts rather than
+                random unrelated picks.
               </p>
             </>
           ),
         },
-        {
-          id: 'collections-upcoming-ratio',
-          question: 'What does the ratio of future releases vs current releases do?',
-          answer: (
-            <>
-              <p>
-                This dial lives in <span className="font-semibold text-white/85">Command Center → Recommendations</span>.
-                It controls how many suggestions are:
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>
-                  <span className="font-semibold text-white/85">Current releases</span>: already released and typically available to watch now
-                </li>
-                <li>
-                  <span className="font-semibold text-white/85">Future releases</span>: upcoming titles that may not be released yet
-                </li>
-              </ul>
-              <p>
-                The system enforces that released stays at least <span className="font-semibold text-white/85">25%</span>,
-                so upcoming is effectively capped.
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'collections-not-enabled-skipped',
-          question: 'Why do I see “not enabled” or “skipped”?',
-          answer: (
-            <p>
-              Those cards are always shown for transparency. “Not enabled” means you didn’t configure
-              that integration. “Skipped” means the job strategy didn’t need that service for this run.
-            </p>
-          ),
-        },
-        {
-          id: 'collections-missing-in-plex',
-          question: 'What happens when a recommended title isn’t in Plex?',
-          answer: (
-            <>
-              <p>
-                It’s recorded as <span className="font-semibold text-white/85">pending</span>. Pending
-                items can later become active once they appear in Plex.
-              </p>
-              <p>
-                If “Fetch Missing items” is enabled for that job, Immaculaterr can optionally send
-                missing items to Radarr/Sonarr directly, or to Overseerr if Overseerr mode is enabled
-                for that task.
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'collections-pending-to-active',
-          question: 'How does the refresher move items from pending → active?',
-          answer: (
-            <p>
-              On refresh, Immaculaterr checks pending titles against Plex. If a title is now found in
-              Plex, it’s marked active and becomes eligible for the collection rebuild.
-            </p>
-          ),
-        },
-        {
-          id: 'collections-why-recreate',
-          question: 'Why does the app recreate Plex collections instead of editing them in place?',
-          answer: (
-            <p>
-              Plex can keep old ordering even after remove/re-add operations. Recreating the
-              collection is the most reliable way to guarantee ordering and to keep collections
-              consistent across refreshes.
-            </p>
-          ),
-        },
-        {
-          id: 'collections-posters',
-          question: 'How does poster artwork work for collections? Can I customize posters?',
-          answer: (
-            <>
-              <p>
-                Yes. You can now upload custom poster artwork for Immaculaterr-managed collections
-                directly in Command Center.
-              </p>
-              <p>
-                Uploaded posters are saved in app data and stay in place after restarts. If you do
-                not set a custom poster, Immaculaterr uses its default artwork.
-              </p>
-            </>
-          ),
-        },
-      ],
-    },
-    {
-      id: 'observatory',
-      title: 'Observatory (swipe review)',
-      items: [
         {
           id: 'observatory-what-is',
           question: 'What is the Observatory page?',
           answer: (
             <p>
               Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you
-              approve download requests (optional), and curate your suggestions before/while they
+              approve download requests (optional) and curate your suggestions before or while they
               land in Plex collections.
             </p>
           ),
@@ -625,52 +1294,48 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                In <span className="font-semibold text-white/85">Task Manager</span> →{' '}
+                In <span className="font-semibold text-white/85">Task Manager</span> -{' '}
                 <span className="font-semibold text-white/85">Immaculate Taste Collection</span>, turn
                 on <span className="font-semibold text-white/85">Approval required from Observatory</span>.
               </p>
               <p>
                 When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you{' '}
-                <span className="font-semibold text-white/85">swipe right</span> on them in Observatory.
+                <span className="font-semibold text-white/85">swipe right</span> on them in
+                Observatory.
               </p>
               <p>
-                Note: this applies to direct ARR mode. If you enable Overseerr routing for that task,
+                This only applies to direct ARR mode. If you enable Overseerr routing for that task,
                 Observatory approval is automatically disabled for that task.
               </p>
             </>
           ),
         },
         {
-          id: 'observatory-controls',
-          question: 'What do swipes do, and can I use keyboard shortcuts?',
+          id: 'observatory-no-suggestions',
+          question: 'Why does Observatory say there are no suggestions for my library?',
           answer: (
-            <ul className="list-disc pl-5 space-y-1">
-              <li>
-                <span className="font-semibold text-white/85">Swipe right</span>: approve (in approval
-                mode) or keep (in review mode).
-              </li>
-              <li>
-                <span className="font-semibold text-white/85">Swipe left</span>: reject/remove that
-                suggestion. This adds it to your rejected list, so it won’t be suggested again.
-              </li>
-              <li>
-                <span className="font-semibold text-white/85">Undo</span>: restores your last swipe.
-              </li>
-              <li>
-                You can reset the rejected list from{' '}
-                <span className="font-semibold text-white/85">Command Center</span> →{' '}
-                <span className="font-semibold text-white/85">Reset Rejected List</span>.
-              </li>
-              <li>
-                Desktop: use <span className="font-semibold text-white/85">←</span> and{' '}
-                <span className="font-semibold text-white/85">→</span> to swipe the top card.
-              </li>
-            </ul>
+            <>
+              <p>
+                It usually means the collection job has not generated suggestions yet for that library
+                and media type.
+              </p>
+              <p>
+                Keep using Plex and let suggestions build up, or run the collection task manually
+                from <span className="font-semibold text-white/85">Task Manager</span> for that media
+                type to generate suggestions.
+              </p>
+            </>
           ),
         },
+      ],
+    },
+    {
+      id: 'reset-immaculate-taste-collection',
+      title: 'Reset Immaculate Taste Collection',
+      items: [
         {
           id: 'observatory-reset-immaculate',
-          question: 'What does “Reset Immaculate Taste Collection” do?',
+          question: 'What does "Reset Immaculate Taste Collection" do?',
           answer: (
             <>
               <p>
@@ -684,84 +1349,54 @@ export const FaqPage = () => {
             </>
           ),
         },
-        {
-          id: 'observatory-no-suggestions',
-          question: 'Why does Observatory say there are no suggestions for my library?',
-          answer: (
-            <>
-              <p>
-                It usually means the collection job hasn’t generated suggestions yet for that library
-                and media type.
-              </p>
-              <p>
-                Please continue using Plex and let suggestions build up, or run the collection task
-                manually from <span className="font-semibold text-white/85">Task Manager</span> for that
-                media type to generate suggestions.
-              </p>
-            </>
-          ),
-        },
       ],
     },
     {
-      id: 'arr',
-      title: 'Radarr / Sonarr / Overseerr',
+      id: 'reset-overseerr-requests',
+      title: 'Reset Overseerr Requests',
       items: [
-        {
-          id: 'arr-fetch-missing',
-          question: 'What does “Fetch Missing items” actually do?',
-          answer: (
-            <p>
-              It allows collection jobs to push missing recommendations out of Immaculaterr. You can
-              route them directly to Radarr/Sonarr, or route them to Overseerr. If disabled, the app
-              still tracks pending items but does not send requests anywhere.
-            </p>
-          ),
-        },
         {
           id: 'arr-overseerr-setup',
           question: 'How do I set up Overseerr mode in simple steps?',
           answer: (
             <ol className="list-decimal pl-5 space-y-1">
               <li>
-                Go to <span className="font-semibold text-white/85">Vault</span> and set Overseerr URL
-                + API key.
+                Go to <span className="font-semibold text-white/85">Vault</span> and set Overseerr
+                URL + API key.
               </li>
               <li>Enable Overseerr in Vault and run the test.</li>
               <li>
-                Go to <span className="font-semibold text-white/85">Task Manager</span> and turn on{' '}
-                <span className="font-semibold text-white/85">
-                  Route missing items via Overseerr
-                </span>{' '}
-                for each task you want (Immaculate Taste and/or Based on Latest Watched).
+                In <span className="font-semibold text-white/85">Task Manager</span>, turn on{' '}
+                <span className="font-semibold text-white/85">Route missing items via Overseerr</span>{' '}
+                for each task you want.
               </li>
-              <li>
-                Run the task. New missing titles from that task will be requested in Overseerr.
-              </li>
+              <li>Run the task so new missing titles are requested in Overseerr.</li>
             </ol>
           ),
         },
         {
           id: 'arr-overseerr-routing',
-          question: 'What changes when I turn on “Route missing items via Overseerr”?',
+          question: 'What changes when I turn on "Route missing items via Overseerr"?',
           answer: (
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Missing titles from that task are sent to Overseerr instead of direct ARR sends.</li>
-              <li>Direct Radarr/Sonarr toggles for that task are turned off.</li>
-              <li>Approval required from Observatory is turned off for that task.</li>
-              <li>
-                For Immaculate Taste, <span className="font-semibold text-white/85">Start search immediately</span>{' '}
-                is also turned off.
-              </li>
-              <li>
-                Suggestions, pending/active tracking, and Plex collection updates still continue as
-                normal.
-              </li>
-              <li>
-                If Overseerr is unavailable for a run, those requests are skipped for that run and
-                are not sent to Radarr/Sonarr as a fallback.
-              </li>
-            </ul>
+            <>
+              <p>
+                Turning on{' '}
+                <span className="font-semibold text-white/85">Route missing items via Overseerr</span>{' '}
+                changes the request path for that task, not the recommendation or tracking side of
+                the job.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Missing titles from that task are sent to Overseerr instead of direct ARR sends.</li>
+                <li>Direct Radarr/Sonarr toggles for that task are turned off.</li>
+                <li>Approval required from Observatory is turned off for that task.</li>
+                <li>For Immaculate Taste, Start search immediately is also turned off.</li>
+                <li>Suggestions, pending/active tracking, and Plex collection updates still continue.</li>
+                <li>
+                  If Overseerr is unavailable, those requests are skipped for that run and are not
+                  sent to ARR as a fallback.
+                </li>
+              </ul>
+            </>
           ),
         },
         {
@@ -775,13 +1410,9 @@ export const FaqPage = () => {
               </p>
               <p>
                 <span className="font-semibold text-white/85">Overseerr mode</span>: Immaculaterr sends
-                missing items to Overseerr, and Overseerr becomes the place where request workflow is
-                handled.
+                missing items to Overseerr, and Overseerr becomes the request workflow.
               </p>
-              <p>
-                Use one flow per task card. If Overseerr mode is on, Immaculaterr’s Observatory approval
-                flow for sending is disabled for that task.
-              </p>
+              <p>Use one flow per task card. If Overseerr mode is on, Observatory approval is off.</p>
             </>
           ),
         },
@@ -791,61 +1422,178 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Go to <span className="font-semibold text-white/85">Command Center</span> and use{' '}
-                <span className="font-semibold text-white/85">Reset Overseerr Requests</span>.
+                Go to{' '}
+                <Link
+                  to="/command-center#command-center-reset-overseerr-requests"
+                  className={faqLinkClass}
+                >
+                  Command Center - Reset Overseerr Requests
+                </Link>
+                .
               </p>
               <p>
-                You’ll get a confirmation dialog. Once confirmed, Immaculaterr asks Overseerr to
-                delete all requests regardless of status.
-              </p>
-              <p>
-                This only clears Overseerr requests. It does not delete your existing Plex media files.
+                After confirmation, Immaculaterr asks Overseerr to delete every request regardless of
+                status. This clears request records only; it does not delete Plex media files.
               </p>
             </>
           ),
         },
+      ],
+    },
+    {
+      id: 'reset-rejected-list',
+      title: 'Reset Rejected List',
+      items: [
         {
-          id: 'arr-disable-toggles',
-          question: 'If I disable Radarr/Sonarr toggles, what changes?',
+          id: 'observatory-controls',
+          question: 'What do swipes do, and when should I reset the rejected list?',
           answer: (
-            <p>
-              The jobs stop making ARR “add/search” calls. Everything else (recommendations, Plex
-              matching, pending/active dataset, collection rebuilds) continues to work.
-            </p>
+            <>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Swipe right</span>: approve in
+                  approval mode or keep in review mode.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Swipe left</span>: reject/remove that
+                  suggestion. It goes onto your rejected list so it will not be suggested again.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Undo</span>: restores your last swipe.
+                </li>
+                <li>
+                  Desktop keyboard shortcuts: use the{' '}
+                  <span className="font-semibold text-white/85">left arrow</span> and{' '}
+                  <span className="font-semibold text-white/85">right arrow</span> keys to swipe the
+                  top card.
+                </li>
+              </ul>
+              <p>
+                Use{' '}
+                <Link
+                  to="/command-center#command-center-reset-rejected-list"
+                  className={faqLinkClass}
+                >
+                  Command Center - Reset Rejected List
+                </Link>{' '}
+                when you want previously swiped-left suggestions to become eligible again.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'collection-posters',
+      title: 'Collection Posters',
+      items: [
+        {
+          id: 'collections-posters',
+          question: 'How does poster artwork work for collections? Can I customize posters?',
+          answer: (
+            <>
+              <p>
+                Yes. You can upload custom poster artwork for Immaculaterr-managed collections directly
+                in Command Center.
+              </p>
+              <p>
+                Uploaded posters are saved in app data and stay in place after restarts. If you do
+                not set a custom poster, Immaculaterr uses its built-in default artwork.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'radarr',
+      title: 'Radarr',
+      items: [
+        {
+          id: 'arr-fetch-missing',
+          question: 'What does "Fetch Missing items" actually do?',
+          answer: (
+            <>
+              <p>
+                <span className="font-semibold text-white/85">Fetch Missing items</span> is the
+                toggle that lets a collection job send missing recommendations out of Immaculaterr.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>In direct ARR mode, movies can go to Radarr and shows can go to Sonarr.</li>
+                <li>
+                  If you leave it off, the app still builds suggestions and tracks pending items, but
+                  it does not send requests anywhere.
+                </li>
+                <li>
+                  If you want Overseerr to manage requests instead, use{' '}
+                  <span className="font-semibold text-white/85">
+                    Route missing items via Overseerr
+                  </span>{' '}
+                  for that task.
+                </li>
+              </ul>
+            </>
           ),
         },
         {
-          id: 'arr-delete-media',
-          question: 'Will it ever delete movies/shows?',
+          id: 'radarr-disable-toggles',
+          question: 'If I disable Radarr toggles, what changes?',
           answer: (
             <p>
-              Immaculaterr does not delete your Plex media files. Some cleanup jobs may unmonitor
-              duplicates in Radarr/Sonarr to reduce clutter, but they’re designed to be safety-first.
+              Movie jobs stop making Radarr add/search calls. Recommendations, Plex matching,
+              pending/active tracking, and collection rebuilds continue to work.
             </p>
           ),
         },
         {
           id: 'arr-cleanup-job',
-          question: 'What happens during “Cleanup after adding new content”?',
+          question: 'What happens during "Cleanup after adding new content"?',
           answer: (
             <p>
-              It scans for duplicates across libraries and keeps the best one, then unmonitors
-              duplicates in Radarr/Sonarr (with episode/season-aware rules for TV).
+              It scans for duplicates across libraries, keeps the best copy, and can unmonitor movie
+              duplicates in Radarr. The process is designed to be safety-first and report what was
+              changed in Rewind.
             </p>
           ),
         },
         {
-          id: 'arr-duplicates',
-          question: 'How are duplicates handled?',
+          id: 'arr-delete-media',
+          question: 'Will it ever delete movies?',
           answer: (
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Duplicates are detected across libraries; the “best” one is kept.</li>
-              <li>Movie duplicates can be unmonitored in Radarr.</li>
-              <li>
-                TV duplicates are handled carefully (single-episode duplicates can be unmonitored
-                without nuking the whole show).
-              </li>
-            </ul>
+            <p>
+              Immaculaterr does not delete your Plex media files. Cleanup jobs can unmonitor
+              duplicates in Radarr to reduce clutter, but they are not meant to wipe your library.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'sonarr',
+      title: 'Sonarr',
+      items: [
+        {
+          id: 'arr-duplicates',
+          question: 'How are TV duplicates handled in Sonarr?',
+          answer: (
+            <>
+              <p>Sonarr duplicate cleanup is designed to be cautious, not destructive.</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>TV duplicates are checked with episode-aware and season-aware rules.</li>
+                <li>Single-episode duplicates can be unmonitored without affecting the whole show.</li>
+                <li>Rewind still reports what was scanned, skipped, or unmonitored.</li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'sonarr-disable-toggles',
+          question: 'What changes if I disable Sonarr toggles?',
+          answer: (
+            <p>
+              TV-focused jobs stop making Sonarr add/search calls. Everything else around
+              recommendations, Plex matching, and collection rebuilds keeps working.
+            </p>
           ),
         },
       ],
@@ -858,21 +1606,44 @@ export const FaqPage = () => {
           id: 'updates-check',
           question: 'How does the app check for updates?',
           answer: (
-            <p>
-              The server checks the latest GitHub release and compares it to the running app version.
-              The UI surfaces this in the Help menu and can toast when a newer version is available.
-            </p>
+            <>
+              <p>
+                The server checks the latest GitHub release and compares it to the running app
+                version. The UI surfaces this in the Help menu and can toast when a newer version
+                is available.
+              </p>
+              <p>
+                When an update is available, use the{' '}
+                <Link to="/setup#update-paths-http-only" className={faqLinkClass}>
+                  Setup page
+                </Link>{' '}
+                as the source of truth for update commands.
+              </p>
+            </>
           ),
         },
         {
           id: 'updates-available',
-          question: 'Why does it say “Update available”? What should I do?',
+          question: 'Why does it say "Update available"? What should I do?',
           answer: (
             <>
               <p>It means a newer release exists than what your container is currently running.</p>
-              <p className="font-mono text-xs text-white/80">
-                docker compose pull && docker compose up -d
-              </p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>
+                  Run{' '}
+                  <Link to="/setup#update-paths-http-only" className={faqLinkClass}>
+                    Setup - HTTP-only update (required)
+                  </Link>
+                  .
+                </li>
+                <li>
+                  If you use local HTTPS on port <code className="font-mono">5464</code>, also run{' '}
+                  <Link to="/setup#update-paths-https-sidecar" className={faqLinkClass}>
+                    Setup - Optional HTTPS sidecar
+                  </Link>
+                  .
+                </li>
+              </ol>
             </>
           ),
         },
@@ -880,24 +1651,42 @@ export const FaqPage = () => {
           id: 'updates-where-version',
           question: 'Where can I see the current version and version history?',
           answer: (
-            <p>
-              In the Help menu: tap the Version button (and the Version History page will expand over
-              time). You can also view releases on GitHub.
-            </p>
+            <>
+              <p>
+                In the Help menu, tap the Version button. You can also view releases on GitHub.
+              </p>
+              <p>
+                For actual upgrade commands, use the{' '}
+                <Link to="/setup#update-paths-http-only" className={faqLinkClass}>
+                  Setup page
+                </Link>
+                .
+              </p>
+            </>
           ),
         },
         {
           id: 'updates-not-working',
-          question: 'Why isn’t update checking working?',
+          question: 'Why isn&apos;t update checking working?',
           answer: (
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Update checks can be disabled via environment configuration.</li>
-              <li>GitHub API rate limits can block checks.</li>
-              <li>
-                If you’re checking a private repo, you may need a GitHub token configured for update
-                checks.
-              </li>
-            </ul>
+            <>
+              <p>Update checking usually fails for a small set of reasons.</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Update checks can be disabled by environment configuration.</li>
+                <li>GitHub API rate limits can temporarily block checks.</li>
+                <li>
+                  If you&apos;re checking a private repo, you may need a GitHub token configured for
+                  update checks.
+                </li>
+              </ul>
+              <p>
+                Even if update checks are unavailable, you can still update manually from{' '}
+                <Link to="/setup#update-paths-http-only" className={faqLinkClass}>
+                  Setup
+                </Link>
+                .
+              </p>
+            </>
           ),
         },
       ],
@@ -911,8 +1700,8 @@ export const FaqPage = () => {
           question: 'What is APP_MASTER_KEY and why is it required?',
           answer: (
             <p>
-              It’s the encryption key used to protect stored secrets at rest (for example, API tokens).
-              It must be stable so the app can decrypt what it previously encrypted.
+              It is the encryption key used to protect stored secrets at rest (for example, API
+              tokens). It must be stable so the app can decrypt what it previously encrypted.
             </p>
           ),
         },
@@ -927,8 +1716,8 @@ export const FaqPage = () => {
               </li>
               <li>
                 Also supported: environment variable{' '}
-                <code className="font-mono">APP_MASTER_KEY</code> (64-char hex or base64 that decodes
-                to 32 bytes)
+                <code className="font-mono">APP_MASTER_KEY</code> (64-char hex or base64 that
+                decodes to 32 bytes)
               </li>
               <li>
                 If you provide neither, the app generates a key file in the data directory.
@@ -941,8 +1730,9 @@ export const FaqPage = () => {
           question: 'What happens if I lose the master key?',
           answer: (
             <p>
-              The app won’t be able to decrypt previously saved secrets. You’ll need to reset/re-enter
-              secrets (or reset the account) and store a new stable key going forward.
+              The app will not be able to decrypt previously saved secrets. You will need to
+              reset/re-enter secrets (or reset the account) and store a new stable key going
+              forward.
             </p>
           ),
         },
@@ -954,6 +1744,10 @@ export const FaqPage = () => {
               <li>Your app data directory (Docker volume) including the SQLite database.</li>
               <li>Your master key (env var or key file), so encrypted secrets remain decryptable.</li>
               <li>Any deployment configuration (compose files/env values).</li>
+              <li>
+                By default, the container also writes a pre-migration SQLite snapshot before startup
+                migrations under <code className="font-mono">/data/backups/pre-migrate</code>.
+              </li>
             </ul>
           ),
         },
@@ -962,9 +1756,49 @@ export const FaqPage = () => {
           question: 'Can I rotate the master key?',
           answer: (
             <p>
-              You can, but anything encrypted with the old key won’t decrypt with the new one. The
-              safe rotation workflow is: rotate key, then re-enter secrets so they’re re-encrypted.
+              You can, but anything encrypted with the old key will not decrypt with the new one.
+              The safe workflow is: rotate the key, then re-enter secrets so they are re-encrypted.
             </p>
+          ),
+        },
+        {
+          id: 'security-modern-measures',
+          question: 'What modern security measures does the app use?',
+          answer: (
+            <>
+              <p>
+                The app uses layered protections around saved secrets, sign-in flows, and admin-only
+                actions.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  Secrets are encrypted at rest using your stable{' '}
+                  <code className="font-mono">APP_MASTER_KEY</code>.
+                </li>
+                <li>
+                  Sensitive credentials support encrypted envelope transport and secret-reference
+                  reuse, reducing repeated plaintext handling.
+                </li>
+                <li>
+                  Session auth uses cookie protections (for example{' '}
+                  <code className="font-mono">HttpOnly</code> and{' '}
+                  <code className="font-mono">SameSite=Lax</code>), with secure-cookie behavior on
+                  HTTPS deployments.
+                </li>
+                <li>
+                  State-changing API requests include origin checks to reduce cross-site request
+                  abuse.
+                </li>
+                <li>
+                  Login and recovery flows include throttling/lockout protections against brute-force
+                  attempts.
+                </li>
+                <li>
+                  Security headers are applied on responses, and admin-only endpoints remain protected
+                  by authorization checks.
+                </li>
+              </ul>
+            </>
           ),
         },
       ],
@@ -975,61 +1809,143 @@ export const FaqPage = () => {
       items: [
         {
           id: 'troubleshooting-login',
-          question: 'I can’t log in / I keep getting logged out — what do I check?',
+          question: "I can't log in / I keep getting logged out - what do I check?",
           answer: (
             <ul className="list-disc pl-5 space-y-1">
-              <li>Cookie/security settings (HTTP vs HTTPS deployments).</li>
-              <li>Reverse proxy headers (X-Forwarded-Proto) if applicable.</li>
-              <li>Browser blocking cookies (private browsing, strict settings, etc.).</li>
+              <li>
+                Use one base URL consistently (for example, stay on only{' '}
+                <code className="font-mono">http://&lt;host&gt;:5454</code> or only{' '}
+                <code className="font-mono">https://&lt;host&gt;:5464</code>).
+              </li>
+              <li>
+                If you use a reverse proxy, ensure forwarded protocol headers are correct
+                (especially <code className="font-mono">X-Forwarded-Proto</code>) and keep{' '}
+                <code className="font-mono">TRUST_PROXY=1</code>.
+              </li>
+              <li>
+                Check browser cookie policy for this site (private mode and strict tracking
+                protection can block session cookies).
+              </li>
+              <li>After config/protocol changes, clear site cookies and sign in again.</li>
             </ul>
           ),
         },
         {
           id: 'troubleshooting-urls',
           question:
-            'Immaculaterr can’t reach Plex/Radarr/Sonarr/Overseerr — what URL should I use from Docker?',
+            "Immaculaterr can't reach Plex/Radarr/Sonarr/Overseerr - what URL should I use from Docker?",
           answer: (
             <>
+              <p>Use URLs from the container&apos;s point of view:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  Linux with <code className="font-mono">--network host</code>:{' '}
+                  <code className="font-mono">http://localhost:&lt;port&gt;</code>
+                </li>
+                <li>
+                  Docker Desktop (Mac/Windows):{' '}
+                  <code className="font-mono">http://host.docker.internal:&lt;port&gt;</code>
+                </li>
+                <li>
+                  Same Docker network/compose stack: use service DNS names like{' '}
+                  <code className="font-mono">http://radarr:7878</code> or{' '}
+                  <code className="font-mono">http://sonarr:8989</code>
+                </li>
+              </ul>
               <p>
-                On Linux with host networking, use{' '}
-                <code className="font-mono">http://localhost:&lt;port&gt;</code>.
-              </p>
-              <p>
-                On Docker Desktop, use{' '}
-                <code className="font-mono">http://host.docker.internal:&lt;port&gt;</code>.
+                Then use the test buttons in <span className="font-semibold text-white/85">Vault</span>{' '}
+                to confirm each integration from inside the app.
               </p>
             </>
           ),
         },
         {
           id: 'troubleshooting-tmdb',
-          question: 'TMDB requests fail — what’s required and where do I configure it?',
+          question: "TMDB requests fail - what's required and where do I configure it?",
           answer: (
-            <p>
-              Configure TMDB in <span className="font-semibold text-white/85">Vault</span>. If TMDB
-              isn’t set up, recommendations may be incomplete or fail depending on the job strategy.
-            </p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                Configure TMDB in <span className="font-semibold text-white/85">Vault</span> and save
+                a valid API key.
+              </li>
+              <li>Run the TMDB test in Vault to verify connectivity and key validity.</li>
+              <li>
+                If TMDB is missing or failing, recommendation jobs may be incomplete or fail based on
+                your selected strategy.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'automation-did-not-trigger',
+          question: "Why didn't a job trigger even though I watched past the threshold?",
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Auto-Run is off for that job in Task Manager.</li>
+              <li>Plex polling is disabled or not reaching Plex.</li>
+              <li>The item is too short (minimum duration rules can apply).</li>
+              <li>The job was recently triggered and deduped to prevent repeated runs.</li>
+              <li>
+                The triggering user may be disabled in{' '}
+                <Link
+                  to="/command-center#command-center-plex-user-monitoring"
+                  className={faqLinkClass}
+                >
+                  Command Center - Plex User Monitoring
+                </Link>
+                .
+              </li>
+              <li>
+                The source library may be disabled in{' '}
+                <Link
+                  to="/command-center#command-center-plex-library-selection"
+                  className={faqLinkClass}
+                >
+                  Command Center - Plex Library Selection
+                </Link>
+                .
+              </li>
+              <li>
+                The seed&apos;s genre or audio language may be excluded by your rules in{' '}
+                <Link
+                  to="/command-center#command-center-immaculate-taste-profiles"
+                  className={faqLinkClass}
+                >
+                  Command Center - Immaculate Taste Profiles
+                </Link>
+                .
+              </li>
+            </ul>
           ),
         },
         {
           id: 'troubleshooting-empty-report',
-          question: 'A job ran but the report looks empty — what does that mean?',
+          question: 'A job ran but the report looks empty - what does that mean?',
           answer: (
-            <p>
-              Usually it means there was nothing new to do (no new seed, no pending items became
-              available, or collections were already up to date). Check the step-by-step breakdown and
-              logs for details.
-            </p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                Most often it was a no-op run: no new seed, no pending titles became available, or
+                the collection was already up to date.
+              </li>
+              <li>Open the report steps and logs to see exactly which stage skipped and why.</li>
+              <li>
+                In Rewind, use <span className="font-semibold text-white/85">See raw response</span>{' '}
+                for the full run summary/log JSON when you need deeper debugging.
+              </li>
+            </ul>
           ),
         },
         {
           id: 'troubleshooting-posters',
-          question: 'Collections created but no poster shows — why?',
+          question: 'Collections created but no poster shows - why?',
           answer: (
             <ul className="list-disc pl-5 space-y-1">
-              <li>The container image may be outdated (rebuild/pull and restart).</li>
-              <li>The collection name may not match the artwork mapping.</li>
-              <li>Plex may take time to refresh metadata.</li>
+              <li>The container image may be outdated (pull/update and restart).</li>
+              <li>
+                If you renamed collection bases, your old mapping may no longer match the current
+                collection names.
+              </li>
+              <li>Plex can lag on metadata refresh; force-refresh and wait a minute.</li>
             </ul>
           ),
         },
@@ -1040,9 +1956,49 @@ export const FaqPage = () => {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 <span className="font-semibold text-white/85">Rewind</span>: run history + job reports
+                (including step breakdown and raw response)
               </li>
               <li>
                 <span className="font-semibold text-white/85">Logs</span>: raw server log lines
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'troubleshooting-resets',
+          question:
+            'When should I use reset tools (Rejected List, Overseerr Requests, Immaculate Taste Collection)?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                Use{' '}
+                <Link
+                  to="/command-center#command-center-reset-rejected-list"
+                  className={faqLinkClass}
+                >
+                  Command Center - Reset Rejected List
+                </Link>{' '}
+                when you want previously swiped-left suggestions to become eligible again.
+              </li>
+              <li>
+                Use{' '}
+                <Link
+                  to="/command-center#command-center-reset-overseerr-requests"
+                  className={faqLinkClass}
+                >
+                  Command Center - Reset Overseerr Requests
+                </Link>{' '}
+                to clear Overseerr request records managed by Immaculaterr.
+              </li>
+              <li>
+                Use{' '}
+                <Link
+                  to="/command-center#command-center-reset-immaculate-taste-collection"
+                  className={faqLinkClass}
+                >
+                  Command Center - Reset Immaculate Taste Collection
+                </Link>{' '}
+                when you need to rebuild that library&apos;s dataset/collection from a clean state.
               </li>
             </ul>
           ),
@@ -1067,7 +2023,8 @@ export const FaqPage = () => {
           question: 'Plex-Triggered',
           answer: (
             <p>
-              Jobs that start based on Plex events detected by polling (watch threshold, new media, etc.).
+              Jobs that start based on Plex events detected by polling (watch threshold, new media,
+              and related triggers).
             </p>
           ),
         },
@@ -1104,20 +2061,230 @@ export const FaqPage = () => {
           question: 'Refresher',
           answer: (
             <p>
-              A job that revisits the saved dataset, activates newly-available items, shuffles, and rebuilds collections.
+              A job that revisits the saved dataset, activates newly-available items, shuffles, and
+              rebuilds collections.
             </p>
           ),
         },
       ],
     },
-  ];
+  ], [faqLinkClass]);
 
+  useEffect(() => {
+    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    if (!hash) return;
+    const sectionIdByItemId = FAQ_SECTIONS.reduce<Record<string, string>>((acc, section) => {
+      section.items.forEach((item) => {
+        acc[item.id] = section.id;
+      });
+      return acc;
+    }, {});
+    const flashTargetId =
+      FAQ_SECTIONS.some((section) => section.id === hash) ? hash : sectionIdByItemId[hash] ?? null;
+
+    const rafId = window.requestAnimationFrame(() => {
+      centerElementInViewport(hash, 'smooth');
+    });
+    const settleId = window.setTimeout(() => centerElementInViewport(hash, 'smooth'), 320);
+    const finalId = window.setTimeout(() => centerElementInViewport(hash, 'auto'), 900);
+    const flashId =
+      flashTargetId !== null
+        ? window.setTimeout(() => {
+            setFlashSection({ id: flashTargetId, nonce: Date.now() });
+          }, 0)
+        : null;
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(settleId);
+      window.clearTimeout(finalId);
+      if (flashId !== null) {
+        window.clearTimeout(flashId);
+      }
+    };
+  }, [FAQ_SECTIONS, centerElementInViewport, location.hash]);
+
+  const sectionDescriptions: Record<string, string> = {
+    'getting-started': 'Basics, first-run setup, and how to reach the app.',
+    'task-manager':
+      'How jobs run, what the main controls mean, and how to keep automation simple.',
+    'task-manager-confirm-monitored':
+      'Keep ARR monitoring aligned with what already exists in Plex.',
+    'task-manager-cleanup-after-adding-new-content':
+      'Plex-triggered cleanup actions for newly added media.',
+    'task-manager-search-monitored': 'Off-peak missing searches for monitored ARR items.',
+    'task-manager-immaculate-taste-collection':
+      'Watch-triggered Immaculate Taste updates and missing-item routing.',
+    'task-manager-immaculate-taste-refresher':
+      'Standalone off-peak rebuilds for the Immaculate Taste collection.',
+    'task-manager-based-on-latest-watched-collection':
+      'Watch-triggered recommendation generation from your latest watch.',
+    'task-manager-based-on-latest-watched-refresher':
+      'Off-peak refreshes for latest-watched recommendation rows.',
+    recommendations: 'Seeds, generated lists, and how recommendation rows refresh over time.',
+    'plex-library-selection': 'Which Plex libraries can participate in manual and automatic runs.',
+    'plex-user-monitoring': 'How viewer-specific datasets, monitoring, and row pinning work.',
+    'immaculate-taste-profiles':
+      'Advanced taste lanes, Observatory behavior, and profile matching rules.',
+    'reset-immaculate-taste-collection':
+      'Reset the saved Immaculate Taste dataset for a selected library.',
+    'reset-overseerr-requests':
+      'Overseerr routing behavior and how to clear managed request history.',
+    'reset-rejected-list':
+      'Swipe actions, rejected suggestions, and how to make them eligible again.',
+    'collection-posters': 'Custom artwork for managed collections and poster override behavior.',
+    radarr: 'Movie request routing, cleanup behavior, and direct ARR expectations.',
+    sonarr: 'TV request routing, duplicate handling, and what toggles actually change.',
+    updates: 'Release checks, version visibility, and the safest update flow.',
+    security: 'Master key handling, backups, and the app’s built-in security controls.',
+    troubleshooting: 'Common login, integration, empty-run, and reset questions.',
+    glossary: 'Shared terms used throughout the app and job reports.',
+  };
+  const sectionVisuals: Record<
+    string,
+    { icon: (className: string) => ReactNode; toneClass: string }
+  > = {
+    'getting-started': {
+      icon: (className) => <BookOpen className={className} strokeWidth={2.4} />,
+      toneClass: 'text-[#facc15]',
+    },
+    'task-manager': {
+      icon: (className) => <Clock className={className} />,
+      toneClass: 'text-sky-200',
+    },
+    'task-manager-confirm-monitored': {
+      icon: (className) => <MonitorPlay className={className} />,
+      toneClass: 'text-blue-300',
+    },
+    'task-manager-cleanup-after-adding-new-content': {
+      icon: (className) => <CheckCircle2 className={className} />,
+      toneClass: 'text-teal-200',
+    },
+    'task-manager-search-monitored': {
+      icon: (className) => <Search className={className} />,
+      toneClass: 'text-fuchsia-200',
+    },
+    'task-manager-immaculate-taste-collection': {
+      icon: (className) => <Sparkles className={className} />,
+      toneClass: 'text-amber-200',
+    },
+    'task-manager-immaculate-taste-refresher': {
+      icon: (className) => <RotateCcw className={className} />,
+      toneClass: 'text-yellow-200',
+    },
+    'task-manager-based-on-latest-watched-collection': {
+      icon: (className) => <Sparkles className={className} />,
+      toneClass: 'text-violet-200',
+    },
+    'task-manager-based-on-latest-watched-refresher': {
+      icon: (className) => <RotateCcw className={className} />,
+      toneClass: 'text-violet-200',
+    },
+    recommendations: {
+      icon: (className) => <Film className={className} />,
+      toneClass: 'text-purple-300',
+    },
+    'plex-library-selection': {
+      icon: (className) => <Tv className={className} />,
+      toneClass: 'text-sky-200',
+    },
+    'plex-user-monitoring': {
+      icon: (className) => <Users className={className} />,
+      toneClass: 'text-cyan-200',
+    },
+    'immaculate-taste-profiles': {
+      icon: (className) => <Film className={className} />,
+      toneClass: 'text-fuchsia-200',
+    },
+    'reset-immaculate-taste-collection': {
+      icon: (className) => <RotateCcw className={className} />,
+      toneClass: 'text-amber-200',
+    },
+    'reset-overseerr-requests': {
+      icon: (className) => <RotateCcw className={className} />,
+      toneClass: 'text-cyan-200',
+    },
+    'reset-rejected-list': {
+      icon: (className) => <RotateCcw className={className} />,
+      toneClass: 'text-rose-200',
+    },
+    'collection-posters': {
+      icon: (className) => <Upload className={className} />,
+      toneClass: 'text-amber-200',
+    },
+    radarr: {
+      icon: (className) => <RadarrLogo className={className} />,
+      toneClass: 'text-[#facc15]',
+    },
+    sonarr: {
+      icon: (className) => <SonarrLogo className={className} />,
+      toneClass: 'text-sky-400',
+    },
+    updates: {
+      icon: (className) => <Wrench className={className} />,
+      toneClass: 'text-[#facc15]',
+    },
+    security: {
+      icon: (className) => <Shield className={className} />,
+      toneClass: 'text-emerald-200',
+    },
+    troubleshooting: {
+      icon: (className) => <CircleAlert className={className} />,
+      toneClass: 'text-rose-200',
+    },
+    glossary: {
+      icon: (className) => <BookOpen className={className} strokeWidth={2.4} />,
+      toneClass: 'text-white/80',
+    },
+  };
+  const sectionThemes = [
+    {
+      glow: 'from-sky-400/25 via-cyan-400/10',
+      pill: 'border-sky-400/30 bg-sky-400/10 text-sky-100',
+    },
+    {
+      glow: 'from-emerald-400/25 via-teal-400/10',
+      pill: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100',
+    },
+    {
+      glow: 'from-fuchsia-400/25 via-violet-400/10',
+      pill: 'border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-100',
+    },
+    {
+      glow: 'from-amber-300/25 via-yellow-400/10',
+      pill: 'border-amber-300/30 bg-amber-300/10 text-amber-50',
+    },
+    {
+      glow: 'from-rose-400/25 via-pink-400/10',
+      pill: 'border-rose-400/30 bg-rose-400/10 text-rose-100',
+    },
+  ] as const;
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
+  const answerBodyClass =
+    'mt-4 space-y-3 text-sm leading-relaxed text-white/70 [&_code]:rounded-md [&_code]:border [&_code]:border-white/10 [&_code]:bg-black/25 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-white/90 [&_ol]:space-y-1.5 [&_ul]:space-y-1.5';
+  const featureLinkButtonClass =
+    'inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-[#fde68a] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs';
+  const topGlowFadeStyle = {
+    WebkitMaskImage: 'linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0))',
+    maskImage: 'linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0))',
+  } satisfies React.CSSProperties;
+  const renderSectionIconTile = (sectionId: string, size: 'catalog' | 'section') => {
+    const visual = sectionVisuals[sectionId] ?? sectionVisuals.glossary;
+    const sizeClass = size === 'catalog' ? 'h-11 w-11' : 'h-14 w-14';
+    const iconClass = size === 'catalog' ? 'h-6 w-6' : 'h-7 w-7';
+
+    return (
+      <div
+        className={`${sizeClass} shrink-0 rounded-2xl border border-white/10 bg-[#0F0B15] shadow-inner flex items-center justify-center ${visual.toneClass}`}
+      >
+        {visual.icon(iconClass)}
+      </div>
+    );
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, blue-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
           src={APP_BG_IMAGE_URL}
@@ -1130,7 +2297,7 @@ export const FaqPage = () => {
       </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
-        <div className="container mx-auto px-4 pb-20 max-w-5xl">
+        <div className="container mx-auto max-w-5xl px-4 pb-20">
           <div className="mb-12">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -1143,103 +2310,278 @@ export const FaqPage = () => {
                   type="button"
                   onClick={handleAnimateTitleIcon}
                   animate={titleIconControls}
-                  className="relative group focus:outline-none touch-manipulation"
+                  className="relative group touch-manipulation focus:outline-none"
                   aria-label="Animate FAQ icon"
                   title="Animate"
                 >
                   <motion.div
                     aria-hidden="true"
                     animate={titleIconGlowControls}
-                    className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
+                    className="pointer-events-none absolute inset-0 bg-[#facc15] opacity-0 blur-xl"
                   />
-                  <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
+                  <div className="absolute inset-0 bg-[#facc15] opacity-20 blur-xl transition-opacity duration-500 group-hover:opacity-40" />
                   <motion.div
                     initial={{ rotate: -10, scale: 0.94, y: 2 }}
                     animate={{ rotate: -6, scale: 1, y: 0 }}
                     whileHover={{ rotate: 0, scale: 1.04 }}
                     transition={{ type: 'spring', stiffness: 420, damping: 28 }}
                     style={{ backfaceVisibility: 'hidden' }}
-                    className="relative will-change-transform transform-gpu p-3 md:p-4 bg-[#facc15] rounded-2xl shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20"
+                    className="relative transform-gpu rounded-2xl border border-white/20 bg-[#facc15] p-3 shadow-[0_0_30px_rgba(250,204,21,0.3)] will-change-transform md:p-4"
                   >
-                    <BookOpen className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
+                    <BookOpen className="h-8 w-8 text-black md:h-10 md:w-10" strokeWidth={2.5} />
                   </motion.div>
                 </motion.button>
 
-                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
+                <h1 className="text-5xl font-black tracking-tighter text-white drop-shadow-2xl md:text-6xl">
                   FAQ
                 </h1>
               </div>
 
-              <p className="text-sky-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
-                Frequently asked questions and quick answers. We’ll add the good stuff here soon.
+              <p className="ml-1 max-w-2xl text-lg font-medium leading-relaxed text-sky-100/70">
+                Deep-linkable answers for Task Manager and Command Center features, plus update,
+                security, and troubleshooting guidance that matches the in-app flow.
               </p>
             </motion.div>
           </div>
 
-          {/* Catalog */}
           <div className={cardClass}>
-            <div className="text-white font-semibold text-xl">Catalog</div>
-            <div className="mt-2 text-sm text-white/70 leading-relaxed">
-              Tap a section (or a question) to jump directly to the answer.
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="text-xl font-semibold text-white">Catalog</div>
+                <div className="mt-2 text-sm leading-relaxed text-white/70">
+                  Browse by feature area, then jump straight to a full answer card below.
+                </div>
+              </div>
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {FAQ_SECTIONS.map((section) => (
-                <div
-                  key={section.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                >
-                  <button
-                    type="button"
-                    data-section-id={section.id}
-                    onClick={handleCatalogSectionClick}
-                    className="w-full text-left text-sm font-semibold text-white/90 hover:text-white transition-colors"
+              {FAQ_SECTIONS.map((section, index) => {
+                const theme = sectionThemes[index % sectionThemes.length];
+                const sectionLabel = `Section ${String(index + 1).padStart(2, '0')}`;
+                const extraQuestionCount = Math.max(0, section.items.length - 3);
+
+                return (
+                  <div
+                    key={section.id}
+                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-white/15 hover:bg-white/10"
                   >
-                    {section.title}
-                  </button>
-                  <div className="mt-3 space-y-1">
-                    {section.items.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        data-item-id={item.id}
-                        onClick={handleCatalogItemClick}
-                        className="w-full text-left text-sm text-white/65 hover:text-white/90 transition-colors"
-                      >
-                        {item.question}
-                      </button>
-                    ))}
+                    <div
+                      className={`pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-r ${theme.glow} to-transparent opacity-80`}
+                      style={topGlowFadeStyle}
+                    />
+                    <div className="relative">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div
+                            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.pill}`}
+                          >
+                            {sectionLabel}
+                          </div>
+                          <div className="mt-3 flex items-center gap-3">
+                            {renderSectionIconTile(section.id, 'catalog')}
+                            <button
+                              type="button"
+                              onClick={() => navigateToAnchor(section.id)}
+                              className="min-w-0 flex-1 text-left text-base font-semibold text-white/90 transition-colors group-hover:text-white"
+                            >
+                              {section.title}
+                            </button>
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-white/60">
+                            {sectionDescriptions[section.id] ?? 'Browse this FAQ section.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        {section.items.slice(0, 3).map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => navigateToAnchor(item.id)}
+                            className="flex w-full items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left text-sm text-white/70 transition hover:border-white/15 hover:bg-white/10 hover:text-white"
+                          >
+                            <span className="min-w-0">{item.question}</span>
+                            <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0" />
+                          </button>
+                        ))}
+                        {extraQuestionCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => navigateToAnchor(section.id)}
+                            className="w-full text-left text-xs font-semibold uppercase tracking-[0.16em] text-white/45 transition hover:text-white/70"
+                          >
+                            + {extraQuestionCount} more answer{extraQuestionCount === 1 ? '' : 's'}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          {/* Sections */}
           <div className="mt-6 space-y-6">
-            {FAQ_SECTIONS.map((section) => (
-              <div
-                key={section.id}
-                id={section.id}
-                className={`${cardClass} ${anchorClass}`}
-              >
-                <div className="text-white font-semibold text-2xl">{section.title}</div>
-                <div className="mt-5 space-y-6">
-                  {section.items.map((item) => (
-                    <div key={item.id} id={item.id} className={anchorClass}>
-                      <div className="text-white font-semibold text-lg">{item.question}</div>
-                      <div className="mt-2 text-sm text-white/70 leading-relaxed space-y-2">
-                        {item.answer}
+            {FAQ_SECTIONS.map((section, index) => {
+              const theme = sectionThemes[index % sectionThemes.length];
+              const sectionLabel = `Section ${String(index + 1).padStart(2, '0')}`;
+              const commandCenterCardId =
+                section.id in COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION
+                  ? COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION[
+                      section.id as keyof typeof COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION
+                    ]
+                  : null;
+              const taskManagerCardId =
+                section.id in TASK_MANAGER_CARD_ID_BY_FAQ_SECTION
+                  ? TASK_MANAGER_CARD_ID_BY_FAQ_SECTION[
+                      section.id as keyof typeof TASK_MANAGER_CARD_ID_BY_FAQ_SECTION
+                    ]
+                  : null;
+              const featureLink = commandCenterCardId
+                ? {
+                    to: `/command-center#${commandCenterCardId}`,
+                    title: `Open ${section.title} in Command Center`,
+                  }
+                : taskManagerCardId
+                  ? {
+                      to: `/task-manager#job-${taskManagerCardId}`,
+                      title: `Open ${section.title} in Task Manager`,
+                    }
+                  : null;
+              const isFlashingSection = flashSection?.id === section.id;
+
+              return (
+                <div
+                  key={section.id}
+                  id={section.id}
+                  className={`${anchorClass} relative`}
+                >
+                  {renderSectionFlash(section.id)}
+                  <div className={`${cardClass} relative overflow-hidden`}>
+                    <div
+                      className={`pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r ${theme.glow} to-transparent opacity-80`}
+                      style={topGlowFadeStyle}
+                    />
+                    <div className="relative">
+                      <div className="min-w-0">
+                        <div
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.pill}`}
+                        >
+                          {sectionLabel}
+                        </div>
+                        <div className="mt-4 flex items-start gap-4">
+                        {renderSectionIconTile(section.id, 'section')}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <motion.h2
+                              className="text-2xl font-semibold tracking-tight text-white"
+                              animate={
+                                isFlashingSection
+                                  ? {
+                                      color: [
+                                        'rgba(255,255,255,1)',
+                                        'rgba(253,230,138,1)',
+                                        'rgba(255,255,255,1)',
+                                        'rgba(253,230,138,1)',
+                                        'rgba(255,255,255,1)',
+                                        'rgba(253,230,138,1)',
+                                        'rgba(255,255,255,1)',
+                                      ],
+                                      textShadow: [
+                                        '0 0 0px rgba(250,204,21,0)',
+                                        '0 0 20px rgba(250,204,21,0.45)',
+                                        '0 0 0px rgba(250,204,21,0)',
+                                        '0 0 20px rgba(250,204,21,0.45)',
+                                        '0 0 0px rgba(250,204,21,0)',
+                                        '0 0 20px rgba(250,204,21,0.45)',
+                                        '0 0 0px rgba(250,204,21,0)',
+                                      ],
+                                    }
+                                  : {
+                                      color: 'rgba(255,255,255,1)',
+                                      textShadow: '0 0 0px rgba(250,204,21,0)',
+                                    }
+                              }
+                              transition={{ duration: isFlashingSection ? 3.8 : 0.2, ease: 'easeInOut' }}
+                            >
+                              {section.title}
+                            </motion.h2>
+                            {featureLink ? (
+                              <Link
+                                to={featureLink.to}
+                                className={featureLinkButtonClass}
+                                title={featureLink.title}
+                                aria-label={`Open ${section.title} feature`}
+                              >
+                                <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
+                                <span className="max-[420px]:hidden">Feature</span>
+                              </Link>
+                            ) : null}
+                          </div>
+                          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-white/65">
+                            {sectionDescriptions[section.id] ?? 'Detailed answers for this FAQ section.'}
+                          </p>
+                        </div>
+                        </div>
                       </div>
-                      <div className="mt-5 h-px bg-white/10" />
+
+                      <div className="mt-6 space-y-4">
+                        {section.items.map((item, itemIndex) => (
+                          <div
+                            key={item.id}
+                            id={item.id}
+                            className={`${anchorClass} group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:border-white/15 hover:bg-white/10`}
+                          >
+                            <div
+                              className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r ${theme.glow} to-transparent opacity-90`}
+                            />
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <div
+                                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${theme.pill}`}
+                                >
+                                  Q{String(itemIndex + 1).padStart(2, '0')}
+                                </div>
+                                <Link
+                                  to={`${location.pathname}#${item.id}`}
+                                  className="mt-3 block text-lg font-semibold leading-tight text-white transition hover:text-[#fde68a]"
+                                >
+                                  {item.question}
+                                </Link>
+                              </div>
+                            </div>
+
+                            <div className={answerBodyClass}>{item.answer}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
+
+      <AnimatePresence>
+        {showScrollTopButton ? (
+          <motion.button
+            type="button"
+            onClick={handleScrollToTop}
+            initial={{ opacity: 0, y: 16, scale: 0.94 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.94 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed bottom-28 right-4 z-20 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-[#0F0B15]/90 text-[#facc15] shadow-[0_0_24px_rgba(250,204,21,0.18)] backdrop-blur-xl transition hover:bg-[#15101f]/95 hover:text-[#fde68a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#facc15]/40 sm:bottom-8 sm:right-6"
+            aria-label="Scroll to top"
+            title="Scroll to top"
+          >
+            <ChevronUp className="h-5 w-5" />
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 };

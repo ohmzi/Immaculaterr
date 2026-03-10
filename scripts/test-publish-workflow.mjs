@@ -127,12 +127,28 @@ const requiredSnippets = [
     snippet: 'HTTP-only update (required)',
   },
   {
-    name: 'release notes include version-pinned docker pull',
-    snippet: `docker pull ohmzii/immaculaterr:v\${VERSION}`,
+    name: 'release notes include ghcr latest image variable',
+    snippet: 'IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"',
+  },
+  {
+    name: 'release notes include app port variable',
+    snippet: 'APP_PORT=5454',
+  },
+  {
+    name: 'release notes pull image from variable',
+    snippet: 'docker pull "\\$IMM_IMAGE"',
   },
   {
     name: 'release notes include docker option A single-container run',
     snippet: '--name Immaculaterr \\',
+  },
+  {
+    name: 'release notes map app port from variable',
+    snippet: '-p \\${APP_PORT}:\\${APP_PORT} \\',
+  },
+  {
+    name: 'release notes include trust proxy env',
+    snippet: '-e TRUST_PROXY=1 \\',
   },
   {
     name: 'release notes include optional HTTPS sidecar label',
@@ -147,8 +163,17 @@ const requiredSnippets = [
     snippet: 'docker rm -f ImmaculaterrHttps 2>/dev/null || true',
   },
   {
-    name: 'release notes fetch sidecar caddy entrypoint from release tag',
-    snippet: `v\${VERSION}/docker/immaculaterr/caddy-entrypoint.sh`,
+    name: 'release notes fetch sidecar caddy entrypoint from master',
+    snippet: 'master/docker/immaculaterr/caddy-entrypoint.sh',
+  },
+  {
+    name: 'release notes fetch install local CA helper from master',
+    snippet: 'master/docker/immaculaterr/install-local-ca.sh',
+  },
+  {
+    name: 'release notes chmod both sidecar helper scripts',
+    snippet:
+      'chmod +x ~/immaculaterr/caddy-entrypoint.sh ~/immaculaterr/install-local-ca.sh',
   },
   {
     name: 'release notes include sidecar internal port bridge to app',

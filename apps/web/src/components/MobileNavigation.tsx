@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ToolbarSearch } from '@/components/ToolbarSearch';
 import { getUpdates } from '@/api/updates';
 import { useSafeNavigate } from '@/lib/navigation';
 import { createDebuggerUrl } from '@/lib/debugger';
@@ -55,6 +56,7 @@ const navItems: NavItem[] = [
 export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   const go = useCallback((to: string) => {
     const dest = (to ?? '').trim();
     if (!dest) return;
+    setIsSearchOpen(false);
 
     // iOS "Add to Home Screen" / standalone PWAs can have flaky SPA navigation,
     // especially after visiting heavy animated/backdrop-filter pages (Observatory).
@@ -127,6 +130,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
   const handleButtonClick = useCallback((index: number) => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     if (selectedIndex === index) {
       setSelectedIndex(null);
     } else {
@@ -208,18 +212,30 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
   );
   const handleTopHelpToggle = useCallback(() => {
     setSelectedIndex(null);
+    setIsSearchOpen(false);
     setIsHelpOpen((prev) => {
       const next = !prev;
       if (next) void updatesQuery.refetch();
       return next;
     });
   }, [updatesQuery]);
+  const handleSearchOpenChange = useCallback((next: boolean) => {
+    if (next) {
+      setSelectedIndex(null);
+      setIsHelpOpen(false);
+    }
+    setIsSearchOpen(next);
+  }, []);
   const closeHelpPanel = useCallback(() => {
     setIsHelpOpen(false);
   }, []);
   const openFaqFromHelp = useCallback(() => {
     setIsHelpOpen(false);
     go('/faq');
+  }, [go]);
+  const openSetupFromHelp = useCallback(() => {
+    setIsHelpOpen(false);
+    go('/setup');
   }, [go]);
   const openProfileFromHelp = useCallback(() => {
     setIsHelpOpen(false);
@@ -392,11 +408,15 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
 
       {/* Top bar with logo and controls */}
       <div className="fixed left-0 right-0 top-0 z-[1002] bg-black/40 backdrop-blur-xl lg:hidden">
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className="relative flex items-center gap-3 px-4 py-3">
           {/* Logo */}
-          <button
+          <motion.button
             onClick={goHome}
-            className="flex min-w-0 items-center gap-2 active:opacity-70 transition-opacity touch-manipulation"
+            animate={{ opacity: isSearchOpen ? 0 : 1 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className={`flex min-w-0 items-center gap-2 touch-manipulation active:opacity-70 ${
+              isSearchOpen ? 'pointer-events-none' : ''
+            }`}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               {/* Screen/Monitor */}
@@ -406,30 +426,39 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
               <circle cx="10" cy="10" r="3" fill="none" stroke="#facc15" strokeWidth="1.5" />
               <path d="M12.5 12.5L15 15" stroke="#facc15" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            <span
-              className="inline max-w-[150px] truncate text-lg font-semibold tracking-tight text-white sm:max-w-none"
-            >
+            <span className="inline max-w-[150px] truncate text-lg font-semibold tracking-tight text-white sm:max-w-none">
               Immaculaterr
             </span>
-          </button>
+          </motion.button>
 
           {/* Right side controls */}
-          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1">
-            {/* Help button (matches desktop top bar) */}
-            <button
-              onClick={handleTopHelpToggle}
-              className="px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95 touch-manipulation"
+          <div className="pointer-events-none absolute inset-y-0 left-4 right-4 flex items-center gap-1">
+            <ToolbarSearch
+              open={isSearchOpen}
+              onOpenChange={handleSearchOpenChange}
+              variant="mobile"
+            />
+
+            <motion.div
+              animate={{ width: isSearchOpen ? 0 : 84 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className={`shrink-0 overflow-hidden ${isSearchOpen ? 'pointer-events-none' : ''}`}
             >
-              <span className="inline-flex items-center gap-2">
-                Help
-                {updateAvailable ? (
-                  <span
-                    aria-label="Update available"
-                    className="h-2 w-2 rounded-full bg-[#facc15] shadow-[0_0_12px_rgba(250,204,21,0.55)]"
-                  />
-                ) : null}
-              </span>
-            </button>
+              <button
+                onClick={handleTopHelpToggle}
+                className="pointer-events-auto w-[84px] px-4 py-2 text-sm text-white bg-white/10 hover:bg-white/15 active:bg-white/20 backdrop-blur-sm rounded-full transition-all duration-300 border border-white/20 active:scale-95 touch-manipulation"
+              >
+                <span className="inline-flex items-center gap-2">
+                  Help
+                  {updateAvailable ? (
+                    <span
+                      aria-label="Update available"
+                      className="h-2 w-2 rounded-full bg-[#facc15] shadow-[0_0_12px_rgba(250,204,21,0.55)]"
+                    />
+                  ) : null}
+                </span>
+              </button>
+            </motion.div>
           </div>
         </div>
       </div>
@@ -457,23 +486,31 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
             >
               <div className="ml-auto w-full max-w-sm bg-[#0b0c0f]/75 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
                 <div className="p-4">
-                  <button
-                    type="button"
-                    onClick={openProfileFromHelp}
-                    className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
-                  >
-                    Profile
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={openProfileFromHelp}
+                      className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                    >
+                      Profile
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={openFaqFromHelp}
-                    className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
-                  >
-                    FAQ
-                  </button>
+                    <button
+                      type="button"
+                      onClick={openFaqFromHelp}
+                      className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                    >
+                      FAQ
+                    </button>
 
-                  <div className="mt-2 space-y-2">
+                    <button
+                      type="button"
+                      onClick={openSetupFromHelp}
+                      className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                    >
+                      Setup
+                    </button>
+
                     <button
                       type="button"
                       onPointerDown={handleDebugPointerDown}

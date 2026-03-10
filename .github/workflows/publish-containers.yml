@@ -348,32 +348,37 @@ jobs:
 
           ### Docker
 
-          HTTP-only update (required)
+          #### HTTP-only update (required)
 
           \`\`\`bash
-          docker pull ohmzii/immaculaterr:v${VERSION}
+          IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
+          APP_PORT=5454
 
+          docker pull "\$IMM_IMAGE"
           docker rm -f Immaculaterr 2>/dev/null || true
 
           docker run -d \
             --name Immaculaterr \
-            --network host \
+            -p \${APP_PORT}:\${APP_PORT} \
             -e HOST=0.0.0.0 \
-            -e PORT=5454 \
+            -e PORT=\${APP_PORT} \
+            -e TRUST_PROXY=1 \
             -e APP_DATA_DIR=/data \
             -e DATABASE_URL=file:/data/tcp.sqlite \
             -v immaculaterr-data:/data \
             --restart unless-stopped \
-            ohmzii/immaculaterr:v${VERSION}
+            "\$IMM_IMAGE"
           \`\`\`
 
-          Optional HTTPS sidecar (can run anytime later)
+          #### Optional HTTPS sidecar (can run anytime later)
 
           \`\`\`bash
           mkdir -p ~/immaculaterr
           curl -fsSL -o ~/immaculaterr/caddy-entrypoint.sh \
-            "https://raw.githubusercontent.com/ohmzi/Immaculaterr/v${VERSION}/docker/immaculaterr/caddy-entrypoint.sh"
-          chmod +x ~/immaculaterr/caddy-entrypoint.sh
+            "https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh"
+          curl -fsSL -o ~/immaculaterr/install-local-ca.sh \
+            "https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh"
+          chmod +x ~/immaculaterr/caddy-entrypoint.sh ~/immaculaterr/install-local-ca.sh
 
           docker pull caddy:2.8.4-alpine
           docker rm -f ImmaculaterrHttps 2>/dev/null || true

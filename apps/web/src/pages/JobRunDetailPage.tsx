@@ -76,6 +76,18 @@ async function copyToClipboard(text: string) {
   }
 }
 
+function buildJsonPreview(value: string, visibleLines: number): { text: string; truncated: boolean } {
+  const normalized = value.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  if (lines.length <= visibleLines) {
+    return { text: normalized, truncated: false };
+  }
+  return {
+    text: lines.slice(0, visibleLines).join('\n'),
+    truncated: true,
+  };
+}
+
 function statusPill(status: string) {
   switch (status) {
     case 'SUCCESS':
@@ -275,6 +287,8 @@ export function JobRunDetailPage() {
   const titleIconGlowControls = useAnimation();
   const [expandedContext, setExpandedContext] = useState<Record<number, boolean>>({});
   const [showRawResponse, setShowRawResponse] = useState(false);
+  const [showRunSummaryJson, setShowRunSummaryJson] = useState(false);
+  const [showLogsJson, setShowLogsJson] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const jobsQuery = useQuery({
@@ -400,6 +414,19 @@ export function JobRunDetailPage() {
     return decodeHtmlEntities(headline);
   }, [reportV1]);
   const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs]);
+  const runSummaryJson = useMemo(() => {
+    const serialized = JSON.stringify(run?.summary ?? null, null, 2);
+    return typeof serialized === 'string' ? serialized : 'null';
+  }, [run?.summary]);
+  const logsJson = useMemo(() => {
+    const serialized = JSON.stringify(logs, null, 2);
+    return typeof serialized === 'string' ? serialized : '[]';
+  }, [logs]);
+  const runSummaryJsonPreview = useMemo(
+    () => buildJsonPreview(runSummaryJson, 3),
+    [runSummaryJson],
+  );
+  const logsJsonPreview = useMemo(() => buildJsonPreview(logsJson, 3), [logsJson]);
   const visibleLogs = logs;
   const logStats = useMemo(() => {
     const counts = { error: 0, warn: 0 };
@@ -439,24 +466,37 @@ export function JobRunDetailPage() {
     [],
   );
   const handleRawResponseToggle = useCallback(() => {
-    setShowRawResponse((value) => !value);
+    setShowRawResponse((value) => {
+      const nextValue = !value;
+      if (!nextValue) {
+        setShowRunSummaryJson(false);
+        setShowLogsJson(false);
+      }
+      return nextValue;
+    });
+  }, []);
+  const handleRunSummaryJsonToggle = useCallback(() => {
+    setShowRunSummaryJson((value) => !value);
+  }, []);
+  const handleLogsJsonToggle = useCallback(() => {
+    setShowLogsJson((value) => !value);
   }, []);
   const handleCopyRunSummary = useCallback(async () => {
     try {
-      await copyToClipboard(JSON.stringify(run?.summary, null, 2));
+      await copyToClipboard(runSummaryJson);
       toast.success('Copied run summary JSON.');
     } catch {
       toast.error('Failed to copy.');
     }
-  }, [run]);
+  }, [runSummaryJson]);
   const handleCopyLogs = useCallback(async () => {
     try {
-      await copyToClipboard(JSON.stringify(logs, null, 2));
+      await copyToClipboard(logsJson);
       toast.success('Copied logs JSON.');
     } catch {
       toast.error('Failed to copy.');
     }
-  }, [logs]);
+  }, [logsJson]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -2383,8 +2423,19 @@ export function JobRunDetailPage() {
                               Copy
                             </button>
                           </div>
+                          {runSummaryJsonPreview.truncated ? (
+                            <button
+                              type="button"
+                              onClick={handleRunSummaryJsonToggle}
+                              aria-expanded={showRunSummaryJson}
+                              className="mb-2 text-[11px] font-semibold text-white/45 transition-colors duration-200 hover:text-white/65"
+                            >
+                              {showRunSummaryJson ? 'Tap to collapse.' : 'Tap to expand.'}
+                            </button>
+                          ) : null}
                           <pre className="overflow-auto rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] text-white/60">
-{JSON.stringify(run.summary, null, 2)}
+{showRunSummaryJson ? runSummaryJson : runSummaryJsonPreview.text}
+{!showRunSummaryJson && runSummaryJsonPreview.truncated ? '\n...' : ''}
                           </pre>
                         </div>
                         <div>
@@ -2401,8 +2452,19 @@ export function JobRunDetailPage() {
                               Copy
                             </button>
                           </div>
+                          {logsJsonPreview.truncated ? (
+                            <button
+                              type="button"
+                              onClick={handleLogsJsonToggle}
+                              aria-expanded={showLogsJson}
+                              className="mb-2 text-[11px] font-semibold text-white/45 transition-colors duration-200 hover:text-white/65"
+                            >
+                              {showLogsJson ? 'Tap to collapse.' : 'Tap to expand.'}
+                            </button>
+                          ) : null}
                           <pre className="overflow-auto rounded-2xl border border-white/10 bg-white/5 p-4 text-[11px] text-white/60">
-{JSON.stringify(logs, null, 2)}
+{showLogsJson ? logsJson : logsJsonPreview.text}
+{!showLogsJson && logsJsonPreview.truncated ? '\n...' : ''}
                           </pre>
                         </div>
                       </div>

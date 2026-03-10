@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CircleAlert,
@@ -25,6 +25,7 @@ import {
   CalendarDays,
   ChevronRight,
   ChevronDown,
+  Info,
   Zap,
   Sparkles,
   Search,
@@ -44,6 +45,10 @@ import {
   APP_BG_IMAGE_URL,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
+import {
+  FAQ_SECTION_BY_TASK_MANAGER_CARD_ID,
+  type TaskManagerFeatureCardId,
+} from '@/lib/faq-feature-links';
 import { useSafeNavigate } from '@/lib/navigation';
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
@@ -313,6 +318,7 @@ function calculateNextRuns(draft: ScheduleDraft, count = 5): Date[] {
 const TASK_MANAGER_AUTO_EXPAND_SEEN_KEY = 'immaculaterr.taskManager.autoExpandSeen.v1';
 
 export function TaskManagerPage() {
+  const location = useLocation();
   const navigate = useSafeNavigate();
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
@@ -408,6 +414,8 @@ export function TaskManagerPage() {
   const [flashJob, setFlashJob] = useState<{ jobId: string; nonce: number } | null>(
     null,
   );
+  const faqLinkButtonClass =
+    'inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs';
   const [webhookAutoRun, setWebhookAutoRun] = useState<Record<string, boolean>>({});
   const [arrMonitoredIncludeRadarr, setArrMonitoredIncludeRadarr] = useState(true);
   const [arrMonitoredIncludeSonarr, setArrMonitoredIncludeSonarr] = useState(true);
@@ -455,6 +463,37 @@ export function TaskManagerPage() {
       return next;
     });
   };
+  const centerJobCard = useCallback((jobId: string, behavior: ScrollBehavior) => {
+    const el = document.getElementById(`job-${jobId}`);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const headingAnchorOffset = Math.min(56, Math.max(0, rect.height / 3));
+    const anchorY = rect.top + headingAnchorOffset;
+    const targetTop = window.scrollY + anchorY - window.innerHeight / 2;
+    window.scrollTo({ top: Math.max(0, targetTop), behavior });
+  }, []);
+  const openJobFaq = useCallback(
+    (jobId: TaskManagerFeatureCardId) => {
+      const faqSectionId = FAQ_SECTION_BY_TASK_MANAGER_CARD_ID[jobId];
+      const returnUrl = `${location.pathname}${location.search}#job-${jobId}`;
+      window.history.replaceState(window.history.state, '', returnUrl);
+      navigate(`/faq#${faqSectionId}`);
+    },
+    [location.pathname, location.search, navigate],
+  );
+  const renderJobFaqButton = (jobId: TaskManagerFeatureCardId, label: string) => (
+    <button
+      type="button"
+      data-no-card-toggle="true"
+      onClick={() => openJobFaq(jobId)}
+      className={faqLinkButtonClass}
+      aria-label={`Open FAQ for ${label}`}
+      title={`Open FAQ for ${label}`}
+    >
+      <Info className="h-3.5 w-3.5 shrink-0" />
+      <span className="max-[420px]:hidden">FAQ</span>
+    </button>
+  );
 
   const publicSettings = settingsQuery.data?.settings;
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
@@ -861,6 +900,28 @@ export function TaskManagerPage() {
       ),
     [jobsQuery.data?.jobs],
   );
+  useEffect(() => {
+    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    if (!hash.startsWith('job-')) return;
+    const jobId = hash.slice('job-'.length);
+    if (!jobId || !visibleJobs.some((job) => job.id === jobId)) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      centerJobCard(jobId, 'smooth');
+    });
+    const settleId = window.setTimeout(() => centerJobCard(jobId, 'smooth'), 320);
+    const finalId = window.setTimeout(() => centerJobCard(jobId, 'auto'), 900);
+    const flashId = window.setTimeout(() => {
+      setFlashJob({ jobId, nonce: Date.now() });
+    }, 0);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(settleId);
+      window.clearTimeout(finalId);
+      window.clearTimeout(flashId);
+    };
+  }, [centerJobCard, location.hash, visibleJobs]);
 
   const runMutation = useMutation({
     mutationFn: async (params: { jobId: string; dryRun: boolean; input?: unknown }) =>
@@ -1361,15 +1422,13 @@ export function TaskManagerPage() {
   const handleScrollToImmaculateRefresher = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
-      document
-        .getElementById('job-immaculateTasteRefresher')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      centerJobCard('immaculateTasteRefresher', 'smooth');
       setFlashJob({
         jobId: 'immaculateTasteRefresher',
         nonce: Date.now(),
       });
     },
-    [],
+    [centerJobCard],
   );
   const handleJobCardPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -2064,16 +2123,9 @@ export function TaskManagerPage() {
 
     setFlashJob({ jobId: 'arrMonitoredSearch', nonce: Date.now() });
     setTimeout(() => {
-      const element = document.getElementById('job-arrMonitoredSearch');
-      if (!element) return;
-      const rect = element.getBoundingClientRect();
-      const target = window.scrollY + rect.top - window.innerHeight * 0.25;
-      window.scrollTo({
-        top: Math.max(0, Math.trunc(target)),
-        behavior: 'smooth',
-      });
+      centerJobCard('arrMonitoredSearch', 'smooth');
     }, 50);
-  }, [scheduleMutation, visibleJobs]);
+  }, [centerJobCard, scheduleMutation, visibleJobs]);
   const handleConfirmRunImmediately = useCallback(() => {
     setImmaculateStartSearchDialogOpen(false);
     const prev = immaculateStartSearchImmediately;
@@ -2264,6 +2316,7 @@ export function TaskManagerPage() {
                 jobTimePickerOpenChangeHandlers[job.id];
               const handleJobTimeChange = jobTimeChangeHandlers[job.id];
               const handleJobTimePickerClose = jobTimePickerCloseHandlers[job.id];
+              const hasFaqButton = job.id in FAQ_SECTION_BY_TASK_MANAGER_CARD_ID;
 
               return (
                 <div
@@ -2354,10 +2407,13 @@ export function TaskManagerPage() {
 
                     <div className="flex-1 space-y-1 min-w-0">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
                           <h3 className="text-xl font-bold text-white tracking-tight leading-tight break-words sm:truncate min-w-0">
                             {job.name}
                           </h3>
+                          {hasFaqButton
+                            ? renderJobFaqButton(job.id as TaskManagerFeatureCardId, job.name)
+                            : null}
                           <SavingPill
                             active={
                               (scheduleMutation.isPending &&

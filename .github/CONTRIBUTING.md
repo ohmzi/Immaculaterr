@@ -20,6 +20,6 @@ See: [`../doc/setupguide.md`](https://github.com/ohmzi/Immaculaterr/blob/develop
 
 ## Reporting security issues
 
-Preferred: [`../doc/security`](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/security.md)
+Preferred: [SECURITY.md](https://github.com/ohmzi/Immaculaterr/edit/master/.github/SECURITY.md)
 
-Fallback: [`forum`](https://forms.gle/wMpsDu9jPEY14dua6)
+Fallback: [Issues](https://github.com/ohmzi/Immaculaterr/issues)

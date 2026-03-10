@@ -32,7 +32,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   getPlexLibraries,
@@ -93,6 +93,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { APP_HEADER_STATUS_PILL_BASE_CLASS } from '@/lib/ui-classes';
+import {
+  FAQ_SECTION_BY_COMMAND_CENTER_CARD_ID,
+  type CommandCenterFeatureCardId,
+} from '@/lib/faq-feature-links';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 function readBool(obj: unknown, path: string): boolean | null {
@@ -466,7 +470,10 @@ function isNetZeroDefaultProfileDraft(
 }
 
 export function CommandCenterPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [flashCard, setFlashCard] = useState<{ id: string; nonce: number } | null>(null);
   const [immaculateResetTarget, setImmaculateResetTarget] = useState<{
     mediaType: 'movie' | 'tv';
     librarySectionKey: string;
@@ -530,6 +537,86 @@ export function CommandCenterPage() {
   const [collectionArtworkPreviewFailed, setCollectionArtworkPreviewFailed] = useState(false);
   const collectionArtworkFileInputRef = useRef<HTMLInputElement | null>(null);
   const profileEditorCardRef = useRef<HTMLDivElement | null>(null);
+  const faqLinkButtonClass =
+    'inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs';
+  const renderFeatureCardFlash = (featureId: string) => (
+    <AnimatePresence initial={false}>
+      {flashCard?.id === featureId ? (
+        <motion.div
+          key={`${flashCard.nonce}-${featureId}-glow`}
+          className="pointer-events-none absolute inset-0 rounded-3xl"
+          initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          animate={{
+            boxShadow: [
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+            ],
+          }}
+          exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          transition={{ duration: 3.8, ease: 'easeInOut' }}
+        />
+      ) : null}
+    </AnimatePresence>
+  );
+  const openFeatureFaq = useCallback(
+    (featureId: CommandCenterFeatureCardId) => {
+      const faqSectionId = FAQ_SECTION_BY_COMMAND_CENTER_CARD_ID[featureId];
+      const returnUrl = `${location.pathname}${location.search}#${featureId}`;
+      window.history.replaceState(window.history.state, '', returnUrl);
+      void navigate(`/faq#${faqSectionId}`);
+    },
+    [location.pathname, location.search, navigate],
+  );
+  const renderFeatureFaqButton = (featureId: CommandCenterFeatureCardId, label: string) => (
+    <button
+      type="button"
+      onClick={() => openFeatureFaq(featureId)}
+      className={faqLinkButtonClass}
+      aria-label={`Open FAQ for ${label}`}
+      title={`Open FAQ for ${label}`}
+    >
+      <Info className="h-3.5 w-3.5 shrink-0" />
+      <span className="max-[420px]:hidden">FAQ</span>
+    </button>
+  );
+  useEffect(() => {
+    if (!flashCard) return;
+    const t = window.setTimeout(() => setFlashCard(null), 4200);
+    return () => window.clearTimeout(t);
+  }, [flashCard?.nonce]);
+  useEffect(() => {
+    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    if (!hash) return;
+    const el = document.getElementById(hash);
+    if (!el) return;
+
+    const centerFeatureCard = (behavior: ScrollBehavior) => {
+      const rect = el.getBoundingClientRect();
+      // Center around the feature heading area instead of the full card height.
+      const headingAnchorOffset = Math.min(56, Math.max(0, rect.height / 3));
+      const anchorY = rect.top + headingAnchorOffset;
+      const targetTop = window.scrollY + anchorY - window.innerHeight / 2;
+      window.scrollTo({ top: Math.max(0, targetTop), behavior });
+    };
+
+    const rafId = window.requestAnimationFrame(() => {
+      centerFeatureCard('smooth');
+    });
+    const settleId = window.setTimeout(() => centerFeatureCard('smooth'), 320);
+    const finalId = window.setTimeout(() => centerFeatureCard('auto'), 900);
+    setFlashCard({ id: hash, nonce: Date.now() });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(settleId);
+      window.clearTimeout(finalId);
+    };
+  }, [location.hash]);
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: getPublicSettings,
@@ -3807,7 +3894,9 @@ export function CommandCenterPage() {
       extraContent={
         <div className="space-y-6">
           {/* Recommendations */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-recommendations" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-recommendations')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-purple-300">
@@ -3815,9 +3904,12 @@ export function CommandCenterPage() {
                     <Film className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Recommendations
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Recommendations
+                  </h2>
+                  {renderFeatureFaqButton('command-center-recommendations', 'Recommendations')}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -3920,10 +4012,13 @@ export function CommandCenterPage() {
                     </div>
               </>
             )}
+            </div>
           </div>
 
           {/* Plex Library Selection */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-sky-400/10 focus-within:border-white/15 focus-within:shadow-sky-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-sky-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-plex-library-selection" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-plex-library-selection')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-sky-400/10 focus-within:border-white/15 focus-within:shadow-sky-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-sky-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-200">
@@ -3931,9 +4026,15 @@ export function CommandCenterPage() {
                     <Tv className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Plex Library Selection
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Plex Library Selection
+                  </h2>
+                  {renderFeatureFaqButton(
+                    'command-center-plex-library-selection',
+                    'Plex Library Selection',
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -4060,10 +4161,13 @@ export function CommandCenterPage() {
                 </div>
               </div>
             ) : null}
+            </div>
           </div>
 
           {/* Plex User Monitoring */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-cyan-400/10 focus-within:border-white/15 focus-within:shadow-cyan-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-cyan-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-plex-user-monitoring" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-plex-user-monitoring')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-cyan-400/10 focus-within:border-white/15 focus-within:shadow-cyan-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-cyan-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-cyan-200">
@@ -4071,9 +4175,15 @@ export function CommandCenterPage() {
                     <Users className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Plex User Monitoring
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Plex User Monitoring
+                  </h2>
+                  {renderFeatureFaqButton(
+                    'command-center-plex-user-monitoring',
+                    'Plex User Monitoring',
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -4197,10 +4307,13 @@ export function CommandCenterPage() {
                 </div>
               </div>
             ) : null}
+            </div>
           </div>
 
           {/* Immaculate Taste Profiles */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-fuchsia-400/10 focus-within:border-white/15 focus-within:shadow-fuchsia-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-fuchsia-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-immaculate-taste-profiles" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-immaculate-taste-profiles')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-fuchsia-400/10 focus-within:border-white/15 focus-within:shadow-fuchsia-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-fuchsia-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-fuchsia-200">
@@ -4208,9 +4321,15 @@ export function CommandCenterPage() {
                     <Film className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Immaculate Taste Profiles
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Immaculate Taste Profiles
+                  </h2>
+                  {renderFeatureFaqButton(
+                    'command-center-immaculate-taste-profiles',
+                    'Immaculate Taste Profiles',
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -5972,10 +6091,13 @@ export function CommandCenterPage() {
                 </div>
               </div>
             ) : null}
+            </div>
           </div>
 
           {/* Reset Immaculate Taste */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-reset-immaculate-taste-collection" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-reset-immaculate-taste-collection')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-amber-200">
@@ -5983,9 +6105,15 @@ export function CommandCenterPage() {
                     <RotateCcw className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Reset Immaculate Taste Collection
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Reset Immaculate Taste Collection
+                  </h2>
+                  {renderFeatureFaqButton(
+                    'command-center-reset-immaculate-taste-collection',
+                    'Reset Immaculate Taste Collection',
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -6177,10 +6305,13 @@ export function CommandCenterPage() {
             ) : (
               <div className="mt-5">{renderAdminCollectionList()}</div>
             )}
+            </div>
           </div>
 
           {/* Reset Overseerr Requests */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-cyan-400/10 focus-within:border-white/15 focus-within:shadow-cyan-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-cyan-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-reset-overseerr-requests" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-reset-overseerr-requests')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-cyan-400/10 focus-within:border-white/15 focus-within:shadow-cyan-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-cyan-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-cyan-200">
@@ -6188,9 +6319,15 @@ export function CommandCenterPage() {
                     <RotateCcw className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Reset Overseerr Requests
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Reset Overseerr Requests
+                  </h2>
+                  {renderFeatureFaqButton(
+                    'command-center-reset-overseerr-requests',
+                    'Reset Overseerr Requests',
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -6268,10 +6405,13 @@ export function CommandCenterPage() {
                 Reset Overseerr requests
               </button>
             </div>
+            </div>
           </div>
 
           {/* Reset Rejected List */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-red-400/10 focus-within:border-white/15 focus-within:shadow-red-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-red-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-reset-rejected-list" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-reset-rejected-list')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-red-400/10 focus-within:border-white/15 focus-within:shadow-red-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-red-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-rose-200">
@@ -6279,9 +6419,15 @@ export function CommandCenterPage() {
                     <RotateCcw className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Reset Rejected List
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Reset Rejected List
+                  </h2>
+                  {renderFeatureFaqButton(
+                    'command-center-reset-rejected-list',
+                    'Reset Rejected List',
+                  )}
+                </div>
               </div>
 
               <SavingPill active={resetRejectedMutation.isPending} className="static" />
@@ -6321,6 +6467,7 @@ export function CommandCenterPage() {
                   Reset rejected list
                 </button>
               </div>
+            </div>
             </div>
           </div>
 
@@ -7045,7 +7192,9 @@ export function CommandCenterPage() {
           />
 
           {/* Collection Posters */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-collection-posters" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-collection-posters')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-amber-400/10 focus-within:border-white/15 focus-within:shadow-amber-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-amber-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-amber-200">
@@ -7053,9 +7202,15 @@ export function CommandCenterPage() {
                     <Upload className="w-7 h-7" />
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                  Collection Posters
-                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                    Collection Posters
+                  </h2>
+                  {renderFeatureFaqButton(
+                    'command-center-collection-posters',
+                    'Collection Posters',
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -7370,6 +7525,7 @@ export function CommandCenterPage() {
                 </div>
               )}
             </div>
+            </div>
           </div>
 
           <AnimatePresence>
@@ -7446,16 +7602,23 @@ export function CommandCenterPage() {
           </AnimatePresence>
 
           {/* Radarr */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-radarr" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-radarr')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="min-w-0 flex-1">
-                <div className="flex items-start gap-3">
+                <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#facc15]">
                     <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
                       <RadarrLogo className="w-7 h-7" />
                     </span>
                   </div>
-                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">Radarr</h2>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                      Radarr
+                    </h2>
+                    {renderFeatureFaqButton('command-center-radarr', 'Radarr')}
+                  </div>
                   <div className="ml-auto flex items-center gap-2 shrink-0">
                     {settingsQuery.isLoading ? (
                       <span
@@ -7796,19 +7959,27 @@ export function CommandCenterPage() {
                 ) : null}
                   </div>
                 </div>
-              </div>
+            </div>
+          </div>
 
           {/* Sonarr */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
+          <div id="command-center-sonarr" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-sonarr')}
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="min-w-0 flex-1">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-400">
                     <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
                       <SonarrLogo className="w-7 h-7" />
                     </span>
                   </div>
-                  <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">Sonarr</h2>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
+                      Sonarr
+                    </h2>
+                    {renderFeatureFaqButton('command-center-sonarr', 'Sonarr')}
+                  </div>
                   <div className="ml-auto flex items-center gap-2 shrink-0">
                     {settingsQuery.isLoading ? (
                       <span
@@ -8151,6 +8322,7 @@ export function CommandCenterPage() {
                   </div>
                 ) : null}
               </div>
+            </div>
             </div>
           </div>
         </div>

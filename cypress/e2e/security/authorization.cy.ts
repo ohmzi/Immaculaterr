@@ -34,6 +34,7 @@ type EndpointCheck = {
 
 const AUTH_LOGIN_PATH = '/api/auth/login';
 const REPORT_FILE = 'authorization-cypress.md';
+const FRONTEND_SETUP_PATH = '/setup';
 const PROTECTED_ENDPOINTS: readonly EndpointCheck[] = [
   { method: 'GET', path: '/api/auth/me' },
   { method: 'GET', path: '/api/auth/recovery/status' },
@@ -198,6 +199,24 @@ describe('security/authorization', () => {
         );
       });
     });
+  });
+
+  it('unauthenticated user cannot access setup page content', () => {
+    cy.clearCookies();
+
+    cy.request({
+      method: 'GET',
+      url: '/api/auth/me',
+      failOnStatusCode: false,
+    }).then((response) => {
+      expect(response.status).to.equal(401);
+    });
+
+    cy.visit(FRONTEND_SETUP_PATH, { failOnStatusCode: false });
+    cy.contains(/sign in|create admin login/i).should('be.visible');
+    cy.contains('HTTP-only update (required)').should('not.exist');
+
+    appendReportLine(`- PASS unauth-frontend-denied GET ${FRONTEND_SETUP_PATH}`);
   });
 
   it('normal user cannot access admin-only endpoints', () => {
