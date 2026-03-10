@@ -482,7 +482,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             alt=""
             className="h-full w-full object-cover object-center opacity-80"
           />
-          <div className="absolute inset-0 bg-gradient-to-br from-[#2e1065]/50 via-[#1e1b4b]/60 to-[#0f172a]/70" />
+          <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
           <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
           <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
         </div>
