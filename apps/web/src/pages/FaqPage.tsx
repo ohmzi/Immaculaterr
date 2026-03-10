@@ -451,8 +451,9 @@ export const FaqPage = () => {
           answer: (
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                <span className="font-semibold text-white/85">Delete duplicate media</span>: clean up
-                duplicate copies based on the task&apos;s safety rules.
+                <span className="font-semibold text-white/85">Delete duplicate media</span>: remove
+                lower-quality duplicate files/versions via the Plex API, keeping the best copy. When
+                off, no Plex media files are deleted.
               </li>
               <li>
                 <span className="font-semibold text-white/85">
@@ -524,9 +525,9 @@ export const FaqPage = () => {
                 <span className="font-semibold text-white/85">Sonarr</span>, or both.
               </p>
               <p>
-                If both are enabled, Sonarr starts about one hour after the scheduled time. If an ARR
-                service is not fully configured, turning that toggle on sends you to the matching
-                Vault setup shortcut.
+                If both are enabled on a scheduled run, Sonarr starts about one hour after the
+                scheduled time. Manual runs do not delay Sonarr. If an ARR service is not fully
+                configured, turning that toggle on sends you to the matching Vault setup shortcut.
               </p>
             </>
           ),
@@ -873,9 +874,10 @@ export const FaqPage = () => {
                   These jobs do not run on a timer. They wait for the matching Plex event.
                 </li>
                 <li>
-                  <span className="font-semibold text-white/85">Watched trigger (~70%):</span>{' '}
-                  when a movie or show episode reaches roughly 70% watched, the "Based on your
-                  recently watched" flow can trigger.
+                  <span className="font-semibold text-white/85">Watched trigger (~60% / ~70%):</span>{' '}
+                  these are default Plex polling thresholds—~60% for "Based on your recently watched"
+                  and ~70% for Immaculate Taste. Immaculate Taste can also trigger via Plex webhooks
+                  at Plex scrobble timing.
                 </li>
                 <li>
                   <span className="font-semibold text-white/85">New content trigger:</span> when a
@@ -1282,9 +1284,10 @@ export const FaqPage = () => {
           question: 'What is the Observatory page?',
           answer: (
             <p>
-              Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you
-              approve download requests (optional) and curate your suggestions before or while they
-              land in Plex collections.
+              Observatory is a swipe-based review deck for Immaculate Taste and related
+              recommendation datasets (e.g., Based on Latest Watched). It lets you approve download
+              requests (optional) and curate your suggestions before or while they land in Plex
+              collections.
             </p>
           ),
         },
@@ -1433,7 +1436,9 @@ export const FaqPage = () => {
               </p>
               <p>
                 After confirmation, Immaculaterr asks Overseerr to delete every request regardless of
-                status. This clears request records only; it does not delete Plex media files.
+                status. This clears <strong>all</strong> Overseerr requests—including user-created
+                requests, not only Immaculaterr-managed ones. It clears request records only; it does
+                not delete Plex media files.
               </p>
             </>
           ),
@@ -1551,8 +1556,9 @@ export const FaqPage = () => {
           answer: (
             <p>
               It scans for duplicates across libraries, keeps the best copy, and can unmonitor movie
-              duplicates in Radarr. The process is designed to be safety-first and report what was
-              changed in Rewind.
+              duplicates in Radarr. When <span className="font-semibold text-white/85">Delete duplicate media</span> is
+              enabled, it can also remove lower-quality duplicate files/versions via the Plex API.
+              The process is designed to be safety-first and report what was changed in Rewind.
             </p>
           ),
         },
@@ -1561,8 +1567,10 @@ export const FaqPage = () => {
           question: 'Will it ever delete movies?',
           answer: (
             <p>
-              Immaculaterr does not delete your Plex media files. Cleanup jobs can unmonitor
-              duplicates in Radarr to reduce clutter, but they are not meant to wipe your library.
+              When <span className="font-semibold text-white/85">Delete duplicate media</span> is enabled on the
+              Cleanup After Adding New Content card, Immaculaterr can delete lower-quality duplicate
+              files/versions via the Plex API, keeping the best copy. If that toggle is off, it only
+              unmonitors duplicates in Radarr and does not delete Plex media files.
             </p>
           ),
         },
@@ -1577,11 +1585,15 @@ export const FaqPage = () => {
           question: 'How are TV duplicates handled in Sonarr?',
           answer: (
             <>
-              <p>Sonarr duplicate cleanup is designed to be cautious, not destructive.</p>
+              <p>TV duplicate cleanup is designed to be cautious, not destructive.</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>TV duplicates are checked with episode-aware and season-aware rules.</li>
-                <li>Single-episode duplicates can be unmonitored without affecting the whole show.</li>
-                <li>Rewind still reports what was scanned, skipped, or unmonitored.</li>
+                <li>Single-episode duplicates can be unmonitored in Sonarr without affecting the whole show.</li>
+                <li>
+                  When <span className="font-semibold text-white/85">Delete duplicate media</span> is enabled, lower-quality
+                  episode copies can also be removed from Plex (best resolution kept).
+                </li>
+                <li>Rewind still reports what was scanned, skipped, unmonitored, or deleted.</li>
               </ul>
             </>
           ),
@@ -1883,7 +1895,9 @@ export const FaqPage = () => {
             <ul className="list-disc pl-5 space-y-1">
               <li>Auto-Run is off for that job in Task Manager.</li>
               <li>Plex polling is disabled or not reaching Plex.</li>
-              <li>The item is too short (minimum duration rules can apply).</li>
+              <li>
+                The item is too short (the default minimum is 1 minute for polling-trigger checks).
+              </li>
               <li>The job was recently triggered and deduped to prevent repeated runs.</li>
               <li>
                 The triggering user may be disabled in{' '}
@@ -1988,7 +2002,8 @@ export const FaqPage = () => {
                 >
                   Command Center - Reset Overseerr Requests
                 </Link>{' '}
-                to clear Overseerr request records managed by Immaculaterr.
+                to clear all Overseerr requests (including user-created ones, not only
+                Immaculaterr-managed).
               </li>
               <li>
                 Use{' '}
