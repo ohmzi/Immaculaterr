@@ -79,6 +79,103 @@ const asBodyObject = (body: unknown): Record<string, unknown> => {
   return body;
 };
 
+const normalizeHttpUrlOrEmpty = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const normalized = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+  try {
+    const parsed = new URL(normalized);
+    if (!/^https?:$/i.test(parsed.protocol)) return '';
+    const out = parsed.toString();
+    return out.endsWith('/') ? out.slice(0, -1) : out;
+  } catch {
+    return '';
+  }
+};
+
+const dedupeHttpUrls = (urls: string[]): string[] => {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    const normalized = normalizeHttpUrlOrEmpty(raw);
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+  return output;
+};
+
+const isLikelyLocalHostname = (hostnameRaw: string): boolean => {
+  const hostname = hostnameRaw.trim().toLowerCase();
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === 'host.docker.internal' ||
+    hostname === 'gateway.docker.internal'
+  );
+};
+
+const deriveContainerHostFallbackUrls = (raw: string): string[] => {
+  const normalized = normalizeHttpUrlOrEmpty(raw);
+  if (!normalized) return [];
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    return [];
+  }
+
+  if (!isLikelyLocalHostname(parsed.hostname)) return [normalized];
+
+  const path = parsed.pathname.replace(/\/+$/, '');
+  const suffix = `${path}${parsed.search}${parsed.hash}`;
+  const port = parsed.port ? `:${parsed.port}` : '';
+  const protocol = parsed.protocol;
+  const hostCandidates = [
+    '172.17.0.1',
+    'host.docker.internal',
+    'gateway.docker.internal',
+    '172.18.0.1',
+    '172.19.0.1',
+    'localhost',
+    '127.0.0.1',
+  ];
+  const candidates = [
+    normalized,
+    ...hostCandidates
+      .map((host) =>
+        normalizeHttpUrlOrEmpty(`${protocol}//${host}${port}${suffix}`),
+      )
+      .filter(Boolean),
+  ];
+  return dedupeHttpUrls(candidates);
+};
+
+const isConnectivityFailure = (error: unknown): boolean => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('fetch failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('econnrefused') ||
+    lower.includes('enotfound') ||
+    lower.includes('etimedout') ||
+    lower.includes('timeout') ||
+    lower.includes('network')
+  );
+};
+
 @Controller('arr-instances')
 export class ArrInstanceController {
   constructor(
@@ -174,17 +271,19 @@ export class ArrInstanceController {
     const resolved = await this.arrInstances.resolveInstance(userId, type, id, {
       requireConfigured: true,
     });
-    const result =
-      type === 'radarr'
-        ? await this.radarr.testConnection({
-            baseUrl: resolved.baseUrl,
-            apiKey: resolved.apiKey,
-          })
-        : await this.sonarr.testConnection({
-            baseUrl: resolved.baseUrl,
-            apiKey: resolved.apiKey,
-          });
-    return { ok: true, instance: resolved, result };
+    const result = await this.testArrConnectionWithFallback({
+      userId,
+      type,
+      id: resolved.id,
+      isPrimary: resolved.isPrimary,
+      baseUrl: resolved.baseUrl,
+      apiKey: resolved.apiKey,
+    });
+    return {
+      ok: true,
+      instance: { ...resolved, baseUrl: result.baseUrl },
+      result,
+    };
   }
 
   @Get(':id/options')
@@ -205,36 +304,15 @@ export class ArrInstanceController {
     const resolved = await this.arrInstances.resolveInstance(userId, type, id, {
       requireConfigured: true,
     });
-    const [rootFolders, qualityProfiles, tags] =
-      type === 'radarr'
-        ? await Promise.all([
-            this.radarr.listRootFolders({
-              baseUrl: resolved.baseUrl,
-              apiKey: resolved.apiKey,
-            }),
-            this.radarr.listQualityProfiles({
-              baseUrl: resolved.baseUrl,
-              apiKey: resolved.apiKey,
-            }),
-            this.radarr.listTags({
-              baseUrl: resolved.baseUrl,
-              apiKey: resolved.apiKey,
-            }),
-          ])
-        : await Promise.all([
-            this.sonarr.listRootFolders({
-              baseUrl: resolved.baseUrl,
-              apiKey: resolved.apiKey,
-            }),
-            this.sonarr.listQualityProfiles({
-              baseUrl: resolved.baseUrl,
-              apiKey: resolved.apiKey,
-            }),
-            this.sonarr.listTags({
-              baseUrl: resolved.baseUrl,
-              apiKey: resolved.apiKey,
-            }),
-          ]);
+    const { rootFolders, qualityProfiles, tags } =
+      await this.loadArrOptionsWithFallback({
+        userId,
+        type,
+        id: resolved.id,
+        isPrimary: resolved.isPrimary,
+        baseUrl: resolved.baseUrl,
+        apiKey: resolved.apiKey,
+      });
     rootFolders.sort((a, b) => a.path.localeCompare(b.path));
     qualityProfiles.sort((a, b) => a.name.localeCompare(b.name));
     tags.sort((a, b) => a.label.localeCompare(b.label));
@@ -364,5 +442,154 @@ export class ArrInstanceController {
       throw new BadRequestException(params.emptyMessage);
     }
     return resolvedApiKey.value;
+  }
+
+  private async testArrConnectionWithFallback(params: {
+    userId: string;
+    type: ArrInstanceType;
+    id: string;
+    isPrimary: boolean;
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<{ baseUrl: string; result: unknown }> {
+    const run = async (baseUrl: string) => {
+      return params.type === 'radarr'
+        ? await this.radarr.testConnection({
+            baseUrl,
+            apiKey: params.apiKey,
+          })
+        : await this.sonarr.testConnection({
+            baseUrl,
+            apiKey: params.apiKey,
+          });
+    };
+
+    try {
+      const result = await run(params.baseUrl);
+      return { baseUrl: params.baseUrl, result };
+    } catch (primaryError) {
+      if (!isConnectivityFailure(primaryError)) throw primaryError;
+      const fallbackBaseUrls = deriveContainerHostFallbackUrls(
+        params.baseUrl,
+      ).filter(
+        (candidate) => candidate.toLowerCase() !== params.baseUrl.toLowerCase(),
+      );
+      for (const fallbackBaseUrl of fallbackBaseUrls) {
+        try {
+          const result = await run(fallbackBaseUrl);
+          await this.persistFallbackBaseUrl({
+            userId: params.userId,
+            type: params.type,
+            id: params.id,
+            isPrimary: params.isPrimary,
+            baseUrl: fallbackBaseUrl,
+          });
+          return { baseUrl: fallbackBaseUrl, result };
+        } catch {
+          // Try next candidate URL.
+        }
+      }
+      throw primaryError;
+    }
+  }
+
+  private async loadArrOptionsWithFallback(params: {
+    userId: string;
+    type: ArrInstanceType;
+    id: string;
+    isPrimary: boolean;
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<{
+    baseUrl: string;
+    rootFolders: { path: string }[];
+    qualityProfiles: { name: string }[];
+    tags: { label: string }[];
+  }> {
+    const run = async (baseUrl: string) => {
+      const [rootFolders, qualityProfiles, tags] =
+        params.type === 'radarr'
+          ? await Promise.all([
+              this.radarr.listRootFolders({
+                baseUrl,
+                apiKey: params.apiKey,
+              }),
+              this.radarr.listQualityProfiles({
+                baseUrl,
+                apiKey: params.apiKey,
+              }),
+              this.radarr.listTags({
+                baseUrl,
+                apiKey: params.apiKey,
+              }),
+            ])
+          : await Promise.all([
+              this.sonarr.listRootFolders({
+                baseUrl,
+                apiKey: params.apiKey,
+              }),
+              this.sonarr.listQualityProfiles({
+                baseUrl,
+                apiKey: params.apiKey,
+              }),
+              this.sonarr.listTags({
+                baseUrl,
+                apiKey: params.apiKey,
+              }),
+            ]);
+      return { rootFolders, qualityProfiles, tags };
+    };
+
+    try {
+      const result = await run(params.baseUrl);
+      return { baseUrl: params.baseUrl, ...result };
+    } catch (primaryError) {
+      if (!isConnectivityFailure(primaryError)) throw primaryError;
+      const fallbackBaseUrls = deriveContainerHostFallbackUrls(
+        params.baseUrl,
+      ).filter(
+        (candidate) => candidate.toLowerCase() !== params.baseUrl.toLowerCase(),
+      );
+      for (const fallbackBaseUrl of fallbackBaseUrls) {
+        try {
+          const result = await run(fallbackBaseUrl);
+          await this.persistFallbackBaseUrl({
+            userId: params.userId,
+            type: params.type,
+            id: params.id,
+            isPrimary: params.isPrimary,
+            baseUrl: fallbackBaseUrl,
+          });
+          return { baseUrl: fallbackBaseUrl, ...result };
+        } catch {
+          // Try next candidate URL.
+        }
+      }
+      throw primaryError;
+    }
+  }
+
+  private async persistFallbackBaseUrl(params: {
+    userId: string;
+    type: ArrInstanceType;
+    id: string;
+    isPrimary: boolean;
+    baseUrl: string;
+  }): Promise<void> {
+    if (params.isPrimary) {
+      if (params.type === 'radarr') {
+        await this.settingsService.updateSettings(params.userId, {
+          radarr: { baseUrl: params.baseUrl },
+        });
+      } else {
+        await this.settingsService.updateSettings(params.userId, {
+          sonarr: { baseUrl: params.baseUrl },
+        });
+      }
+      return;
+    }
+    await this.arrInstances.update(params.userId, params.id, {
+      baseUrl: params.baseUrl,
+    });
   }
 }
