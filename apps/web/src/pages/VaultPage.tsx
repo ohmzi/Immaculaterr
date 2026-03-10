@@ -379,6 +379,30 @@ export const SettingsPage = ({
     const t = setTimeout(() => setFlashCard(null), 4200);
     return () => clearTimeout(t);
   }, [flashCard?.nonce]);
+  const renderVaultCardFlash = (id: string) => (
+    <AnimatePresence initial={false}>
+      {flashCard?.id === id ? (
+        <motion.div
+          key={`${flashCard.nonce}-${id}-glow`}
+          className="pointer-events-none absolute inset-0 rounded-3xl"
+          initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          animate={{
+            boxShadow: [
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+              '0 0 30px rgba(250, 204, 21, 0.5)',
+              '0 0 0px rgba(250, 204, 21, 0)',
+            ],
+          }}
+          exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          transition={{ duration: 3.8, ease: 'easeInOut' }}
+        />
+      ) : null}
+    </AnimatePresence>
+  );
 
   // Support deep-linking to a specific feature card via hash
   // (for example /vault#vault-radarr or /command-center#command-center-plex-user-monitoring).
@@ -2888,7 +2912,9 @@ export const SettingsPage = ({
                 {/* Settings Form */}
                 <div className="space-y-6">
               {/* Plex Settings */}
-              <div className={`${cardClass} group`}>
+              <div id="vault-plex" className="relative scroll-mt-24">
+                {renderVaultCardFlash('vault-plex')}
+                <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#fbbf24]">
@@ -2947,10 +2973,13 @@ export const SettingsPage = ({
                     </div>
                   </div>
                 </div>
+                </div>
               </div>
 
               {/* TMDB Settings */}
-              <div className={`${cardClass} group`}>
+              <div id="vault-tmdb" className="relative scroll-mt-24">
+                {renderVaultCardFlash('vault-tmdb')}
+                <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#22c55e]">
@@ -3016,6 +3045,7 @@ export const SettingsPage = ({
                       className={inputClass}
                     />
                   </div>
+                </div>
                 </div>
               </div>
 
@@ -3951,7 +3981,9 @@ export const SettingsPage = ({
               </div>
 
               {/* Google Settings */}
-              <div className={`${cardClass} group`}>
+              <div id="vault-google" className="relative scroll-mt-24">
+                {renderVaultCardFlash('vault-google')}
+                <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#60a5fa]">
@@ -4068,10 +4100,13 @@ export const SettingsPage = ({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </div>
               </div>
 
               {/* OpenAI Settings */}
-              <div className={`${cardClass} group`}>
+              <div id="vault-openai" className="relative scroll-mt-24">
+                {renderVaultCardFlash('vault-openai')}
+                <div className={`${cardClass} group`}>
                 <div className={cardHeaderClass}>
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-sky-300">
@@ -4178,6 +4213,7 @@ export const SettingsPage = ({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </div>
               </div>
 
               {/* Save Button */}

@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { logout, resetDev } from '@/api/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ToolbarSearch } from '@/components/ToolbarSearch';
 import { getUpdates } from '@/api/updates';
 import { useSafeNavigate } from '@/lib/navigation';
 import { createDebuggerUrl } from '@/lib/debugger';
@@ -51,6 +52,7 @@ const navItems: NavItem[] = [
 export function Navigation() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const navigate = useSafeNavigate();
@@ -125,6 +127,7 @@ export function Navigation() {
 
   const openDebugger = useCallback(() => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     navigate(createDebuggerUrl());
   }, [navigate]);
 
@@ -229,11 +232,13 @@ export function Navigation() {
 
   const handleLogout = useCallback(() => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     logoutMutation.mutate();
   }, [logoutMutation]);
 
   const handleResetAccount = useCallback(() => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     setResetError(null);
     setResetOpen(true);
   }, []);
@@ -253,6 +258,7 @@ export function Navigation() {
     },
   });
   const navigateHome = useCallback(() => {
+    setIsSearchOpen(false);
     navigate('/');
   }, [navigate]);
   const closeResetDialog = useCallback(() => {
@@ -277,6 +283,7 @@ export function Navigation() {
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       const to = event.currentTarget.dataset.to;
       if (!to) return;
+      setIsSearchOpen(false);
       setHoveredIndex(null);
       navigate(to);
     },
@@ -284,21 +291,33 @@ export function Navigation() {
   );
   const handleHelpToggle = useCallback(() => {
     const next = !isHelpOpen;
+    setIsSearchOpen(false);
+    setHoveredIndex(null);
     setIsHelpOpen(next);
     if (next) void updatesQuery.refetch();
   }, [isHelpOpen, updatesQuery]);
   const openFaq = useCallback(() => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     navigate('/faq');
   }, [navigate]);
   const openSetup = useCallback(() => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     navigate('/setup');
   }, [navigate]);
   const openProfile = useCallback(() => {
     setIsHelpOpen(false);
+    setIsSearchOpen(false);
     navigate('/profile');
   }, [navigate]);
+  const handleSearchOpenChange = useCallback((next: boolean) => {
+    if (next) {
+      setHoveredIndex(null);
+      setIsHelpOpen(false);
+    }
+    setIsSearchOpen(next);
+  }, []);
   const handleDebugPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -433,6 +452,11 @@ export function Navigation() {
 
               {/* Right side buttons */}
               <div className="flex items-center gap-3 ml-8 overflow-visible">
+                <ToolbarSearch
+                  open={isSearchOpen}
+                  onOpenChange={handleSearchOpenChange}
+                  variant="desktop"
+                />
                 <div
                   ref={helpRef}
                   className="relative pb-2"

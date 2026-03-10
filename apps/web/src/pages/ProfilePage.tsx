@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { motion, useAnimation } from 'motion/react';
 import { ShieldCheck, UserRoundCog } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,6 +28,8 @@ const MIN_PASSWORD_LENGTH = 10;
 
 export function ProfilePage() {
   const queryClient = useQueryClient();
+  const titleIconControls = useAnimation();
+  const titleIconGlowControls = useAnimation();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
@@ -112,6 +115,19 @@ export function ProfilePage() {
       );
     },
   });
+
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
 
   const handleCurrentPasswordChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -239,7 +255,7 @@ export function ProfilePage() {
     'w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition';
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
           src={APP_BG_IMAGE_URL}
@@ -253,16 +269,44 @@ export function ProfilePage() {
 
       <section className="relative z-10 min-h-screen pt-10 lg:pt-16">
         <div className="container mx-auto max-w-5xl px-4 pb-20">
-          <div className="mb-8 flex items-center gap-4">
-            <div className="rounded-2xl border border-white/20 bg-[#facc15] p-3 shadow-[0_0_30px_rgba(250,204,21,0.3)]">
-              <UserRoundCog className="h-8 w-8 text-black" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-black tracking-tight text-white">Profile</h1>
-              <p className="mt-1 text-sm text-white/70">
-                Manage your password and password recovery settings.
+          <div className="mb-12">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center gap-5">
+                <motion.button
+                  type="button"
+                  onClick={handleAnimateTitleIcon}
+                  animate={titleIconControls}
+                  className="relative group focus:outline-none touch-manipulation"
+                  aria-label="Animate Profile icon"
+                  title="Animate"
+                >
+                  <motion.div
+                    aria-hidden="true"
+                    animate={titleIconGlowControls}
+                    className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
+                  />
+                  <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
+                  <div className="relative p-3 md:p-4 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20 group-hover:rotate-0 transition-transform duration-300 ease-spring">
+                    <UserRoundCog className="h-8 w-8 md:h-10 md:w-10 text-black" />
+                  </div>
+                </motion.button>
+                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
+                  Profile
+                </h1>
+              </div>
+
+              <p className="text-purple-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
+                <span className="text-[#facc15] font-bold">Secure</span> your account. <br />
+                <span className="text-sm opacity-60 font-normal">
+                  Manage your password and keep password recovery ready when you need it.
+                </span>
               </p>
-            </div>
+            </motion.div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
