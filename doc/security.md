@@ -1,12 +1,11 @@
-Security Policy
-===
+# Security Policy
 
-Reporting a Vulnerability
----
+## Reporting a Vulnerability
 
-Preferred: use GitHub’s private vulnerability reporting:
-[GitHub Security](https://github.com/ohmzi/Immaculaterr/security)
+Reporting Vulnerability: use [GitHub’s issue reporting](https://github.com/ohmzi/Immaculaterr/issues), and I will priorize security concerns.
 
-If GitHub reporting isn’t possible, please use:
-[Immaculaterr Feedback](https://forms.gle/wMpsDu9jPEY14dua6).
+Suggestion Security Improvements: use [Github issues](https://github.com/ohmzi/Immaculaterr/issues) for that as well, and i'll consider making those improvements.
 
+
+## Security Measures 
+Please check [Security documentation](https://github.com/ohmzi/Immaculaterr/blob/develop/doc/security.md) for full details
