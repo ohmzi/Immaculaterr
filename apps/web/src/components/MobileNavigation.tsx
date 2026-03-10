@@ -221,6 +221,10 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     setIsHelpOpen(false);
     go('/faq');
   }, [go]);
+  const openSetupFromHelp = useCallback(() => {
+    setIsHelpOpen(false);
+    go('/setup');
+  }, [go]);
   const openProfileFromHelp = useCallback(() => {
     setIsHelpOpen(false);
     go('/profile');
@@ -471,6 +475,14 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                   >
                     FAQ
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={openSetupFromHelp}
+                    className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                  >
+                    Setup
                   </button>
 
                   <div className="mt-2 space-y-2">

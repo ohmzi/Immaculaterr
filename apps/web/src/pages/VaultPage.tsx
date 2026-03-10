@@ -247,6 +247,7 @@ export const SettingsPage = ({
   const [flashCard, setFlashCard] = useState<{ id: string; nonce: number } | null>(
     null,
   );
+  const hashScrollReady = showCards ? settingsHydrated : true;
 
   // Load settings to check which services are already configured
   const settingsQuery = useQuery({
@@ -379,25 +380,41 @@ export const SettingsPage = ({
     return () => clearTimeout(t);
   }, [flashCard?.nonce]);
 
-  // Support deep-linking to a specific integration card on Vault via hash
-  // (e.g. /vault#vault-radarr). Wait for hydration so the target exists.
+  // Support deep-linking to a specific feature card via hash
+  // (for example /vault#vault-radarr or /command-center#command-center-plex-user-monitoring).
+  // In Vault mode we wait for hydration so integration cards exist.
   useEffect(() => {
-    if (!showCards) return;
-    if (!settingsHydrated) return;
+    if (!hashScrollReady) return;
     const hash = location.hash || '';
     const id = hash.startsWith('#') ? hash.slice(1) : hash;
     if (!id) return;
     const el = document.getElementById(id);
     if (!el) return;
-    requestAnimationFrame(() => {
-      // Place the card slightly above center for nicer context while avoiding the "too high" feel.
+
+    const centerFeatureCard = (behavior: ScrollBehavior) => {
       const rect = el.getBoundingClientRect();
-      const desiredCenterY = window.innerHeight * 0.44; // tweakable
-      const targetTop = window.scrollY + rect.top - (desiredCenterY - rect.height / 2);
-      window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+      // Center around the feature heading area instead of the full card height.
+      const headingAnchorOffset = Math.min(56, Math.max(0, rect.height / 3));
+      const anchorY = rect.top + headingAnchorOffset;
+      const targetTop = window.scrollY + anchorY - window.innerHeight / 2;
+      window.scrollTo({ top: Math.max(0, targetTop), behavior });
+    };
+
+    const rafId = window.requestAnimationFrame(() => {
+      centerFeatureCard('smooth');
     });
+    // Recenter after async card content expands/collapses.
+    const settleId = window.setTimeout(() => centerFeatureCard('smooth'), 320);
+    const finalId = window.setTimeout(() => centerFeatureCard('auto'), 900);
+
     setFlashCard({ id, nonce: Date.now() });
-  }, [location.hash, settingsHydrated, showCards]);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(settleId);
+      window.clearTimeout(finalId);
+    };
+  }, [hashScrollReady, location.hash]);
 
   const [radarrBaseUrl, setRadarrBaseUrl] = useState('http://localhost:7878');
   const [radarrApiKey, setRadarrApiKey] = useState('');

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
@@ -13,6 +13,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { VaultPage } from '@/pages/VaultPage';
 import { CommandCenterPage } from '@/pages/CommandCenterPage';
 import { FaqPage } from '@/pages/FaqPage';
+import { SetupPage } from '@/pages/SetupPage';
 import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
 import { DebuggerPage } from '@/pages/DebuggerPage';
 import { ProfilePage } from '@/pages/ProfilePage';
@@ -25,6 +26,17 @@ const ProtectedAppShell = () => {
     <AuthGate>
       <AppShell />
     </AuthGate>
+  );
+};
+
+const LegacyJobsRedirect = () => {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{ pathname: '/task-manager', search: location.search, hash: location.hash }}
+      replace
+    />
   );
 };
 
@@ -51,6 +63,7 @@ const App = () => {
             <Route path="vault" element={<VaultPage />} />
             <Route path="command-center" element={<CommandCenterPage />} />
             <Route path="faq" element={<FaqPage />} />
+            <Route path="setup" element={<SetupPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="version-history" element={<VersionHistoryPage />} />
             <Route path="__debug/:token" element={<DebuggerPage />} />
@@ -63,7 +76,7 @@ const App = () => {
             <Route path="logs" element={<LogsPage />} />
             <Route path="logs/:runId" element={<LogsPage />} />
             {/* Redirect old routes */}
-            <Route path="jobs" element={<Navigate to="/task-manager" replace />} />
+            <Route path="jobs" element={<LegacyJobsRedirect />} />
             <Route path="connections" element={<Navigate to="/vault" replace />} />
             <Route path="integrations" element={<Navigate to="/vault" replace />} />
             {/* 404 also requires auth */}

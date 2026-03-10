@@ -291,6 +291,10 @@ export function Navigation() {
     setIsHelpOpen(false);
     navigate('/faq');
   }, [navigate]);
+  const openSetup = useCallback(() => {
+    setIsHelpOpen(false);
+    navigate('/setup');
+  }, [navigate]);
   const openProfile = useCallback(() => {
     setIsHelpOpen(false);
     navigate('/profile');
@@ -475,6 +479,14 @@ export function Navigation() {
                             className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
                           >
                             FAQ
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={openSetup}
+                            className="w-full px-4 py-2.5 text-left text-sm text-white/90 hover:bg-white/10 active:bg-white/12 active:scale-[0.99] rounded-xl transition-all font-semibold border border-white/10 bg-white/5"
+                          >
+                            Setup
                           </button>
 
                           <button
