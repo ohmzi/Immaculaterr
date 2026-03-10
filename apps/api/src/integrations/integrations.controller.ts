@@ -167,6 +167,71 @@ function derivePlexBaseUrlVariants(raw: string): string[] {
   return dedupeHttpUrls(variants);
 }
 
+function isLikelyLocalHostname(hostnameRaw: string): boolean {
+  const hostname = hostnameRaw.trim().toLowerCase();
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === 'host.docker.internal' ||
+    hostname === 'gateway.docker.internal'
+  );
+}
+
+function deriveContainerHostFallbackUrls(raw: string): string[] {
+  const normalized = normalizeHttpUrlOrEmpty(raw);
+  if (!normalized) return [];
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    return [];
+  }
+
+  if (!isLikelyLocalHostname(parsed.hostname)) return [normalized];
+
+  const path = parsed.pathname.replace(/\/+$/, '');
+  const suffix = `${path}${parsed.search}${parsed.hash}`;
+  const port = parsed.port ? `:${parsed.port}` : '';
+  const protocol = parsed.protocol;
+  const hostCandidates = [
+    '172.17.0.1',
+    'host.docker.internal',
+    'gateway.docker.internal',
+    '172.18.0.1',
+    '172.19.0.1',
+    'localhost',
+    '127.0.0.1',
+  ];
+  const candidates = [
+    normalized,
+    ...hostCandidates
+      .map((host) => normalizeHttpUrlOrEmpty(`${protocol}//${host}${port}${suffix}`))
+      .filter(Boolean),
+  ];
+  return dedupeHttpUrls(candidates);
+}
+
+function isConnectivityFailure(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('fetch failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('econnrefused') ||
+    lower.includes('enotfound') ||
+    lower.includes('etimedout') ||
+    lower.includes('timeout') ||
+    lower.includes('network')
+  );
+}
+
 type UpdatePlexLibrariesBody = {
   selectedSectionKeys?: unknown;
   cleanupDeselectedLibraries?: unknown;
@@ -1017,8 +1082,35 @@ export class IntegrationsController {
   ): Promise<SavedIntegrationTestResult> {
     const baseUrl = this.requireSavedBaseUrl(context, 'radarr.baseUrl', 'Radarr');
     const apiKey = await this.resolveSavedIntegrationSecret(context, 'radarr');
-    const result = await this.radarr.testConnection({ baseUrl, apiKey });
-    return { ok: true, result };
+    try {
+      const result = await this.radarr.testConnection({ baseUrl, apiKey });
+      return { ok: true, result };
+    } catch (primaryError) {
+      if (!isConnectivityFailure(primaryError)) throw primaryError;
+
+      const fallbackBaseUrls = deriveContainerHostFallbackUrls(baseUrl).filter(
+        (candidate) => candidate.toLowerCase() !== baseUrl.toLowerCase(),
+      );
+      for (const fallbackBaseUrl of fallbackBaseUrls) {
+        try {
+          const result = await this.radarr.testConnection({
+            baseUrl: fallbackBaseUrl,
+            apiKey,
+          });
+          await this.settingsService.updateSettings(context.userId, {
+            radarr: { baseUrl: fallbackBaseUrl },
+          });
+          this.logger.log(
+            `Radarr integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
+          );
+          return { ok: true, result };
+        } catch {
+          // Try next candidate URL.
+        }
+      }
+
+      throw primaryError;
+    }
   }
 
   private async testSavedSonarr(
@@ -1026,8 +1118,35 @@ export class IntegrationsController {
   ): Promise<SavedIntegrationTestResult> {
     const baseUrl = this.requireSavedBaseUrl(context, 'sonarr.baseUrl', 'Sonarr');
     const apiKey = await this.resolveSavedIntegrationSecret(context, 'sonarr');
-    const result = await this.sonarr.testConnection({ baseUrl, apiKey });
-    return { ok: true, result };
+    try {
+      const result = await this.sonarr.testConnection({ baseUrl, apiKey });
+      return { ok: true, result };
+    } catch (primaryError) {
+      if (!isConnectivityFailure(primaryError)) throw primaryError;
+
+      const fallbackBaseUrls = deriveContainerHostFallbackUrls(baseUrl).filter(
+        (candidate) => candidate.toLowerCase() !== baseUrl.toLowerCase(),
+      );
+      for (const fallbackBaseUrl of fallbackBaseUrls) {
+        try {
+          const result = await this.sonarr.testConnection({
+            baseUrl: fallbackBaseUrl,
+            apiKey,
+          });
+          await this.settingsService.updateSettings(context.userId, {
+            sonarr: { baseUrl: fallbackBaseUrl },
+          });
+          this.logger.log(
+            `Sonarr integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
+          );
+          return { ok: true, result };
+        } catch {
+          // Try next candidate URL.
+        }
+      }
+
+      throw primaryError;
+    }
   }
 
   private async testSavedTmdb(
@@ -1043,8 +1162,35 @@ export class IntegrationsController {
   ): Promise<SavedIntegrationTestResult> {
     const baseUrl = this.requireSavedBaseUrl(context, 'overseerr.baseUrl', 'Overseerr');
     const apiKey = await this.resolveSavedIntegrationSecret(context, 'overseerr');
-    const result = await this.overseerr.testConnection({ baseUrl, apiKey });
-    return { ok: true, result };
+    try {
+      const result = await this.overseerr.testConnection({ baseUrl, apiKey });
+      return { ok: true, result };
+    } catch (primaryError) {
+      if (!isConnectivityFailure(primaryError)) throw primaryError;
+
+      const fallbackBaseUrls = deriveContainerHostFallbackUrls(baseUrl).filter(
+        (candidate) => candidate.toLowerCase() !== baseUrl.toLowerCase(),
+      );
+      for (const fallbackBaseUrl of fallbackBaseUrls) {
+        try {
+          const result = await this.overseerr.testConnection({
+            baseUrl: fallbackBaseUrl,
+            apiKey,
+          });
+          await this.settingsService.updateSettings(context.userId, {
+            overseerr: { baseUrl: fallbackBaseUrl },
+          });
+          this.logger.log(
+            `Overseerr integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
+          );
+          return { ok: true, result };
+        } catch {
+          // Try next candidate URL.
+        }
+      }
+
+      throw primaryError;
+    }
   }
 
   private async testSavedGoogle(

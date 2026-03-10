@@ -38,6 +38,7 @@ import { testSavedIntegration } from '@/api/integrations';
 import { checkPlexPin, createPlexPin } from '@/api/plex';
 import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -423,6 +424,13 @@ export const SettingsPage = ({
   const [editingArrInstanceBaseUrl, setEditingArrInstanceBaseUrl] = useState('');
   const [editingArrInstanceApiKey, setEditingArrInstanceApiKey] = useState('');
   const [editingArrInstanceEnabled, setEditingArrInstanceEnabled] = useState(true);
+  const [arrInstanceDeleteDialogOpen, setArrInstanceDeleteDialogOpen] =
+    useState(false);
+  const [arrInstanceDeleteTarget, setArrInstanceDeleteTarget] = useState<{
+    id: string;
+    type: 'radarr' | 'sonarr';
+    name: string;
+  } | null>(null);
   const editingArrInstanceCardRef = useRef<HTMLDivElement | null>(null);
 
   const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
@@ -1053,7 +1061,8 @@ export const SettingsPage = ({
         baseUrl: params.baseUrl,
         apiKey: params.apiKeyForValidation,
       });
-      const { apiKeyForValidation: _ignore, ...payload } = params;
+      const payload = { ...params };
+      delete payload.apiKeyForValidation;
       return await createArrInstance(payload);
     },
     onSuccess: async (data, variables) => {
@@ -1316,7 +1325,8 @@ export const SettingsPage = ({
         lower.includes('timeout') ||
         lower.includes('econnrefused') ||
         lower.includes('enotfound') ||
-        lower.includes('failed to fetch')
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch failed')
       ) {
         showError('Couldn’t reach Radarr. Check the URL.');
       } else {
@@ -1387,7 +1397,8 @@ export const SettingsPage = ({
         lower.includes('timeout') ||
         lower.includes('econnrefused') ||
         lower.includes('enotfound') ||
-        lower.includes('failed to fetch')
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch failed')
       ) {
         showError('Couldn’t reach Sonarr. Check the URL.');
       } else {
@@ -1461,7 +1472,8 @@ export const SettingsPage = ({
         lower.includes('timeout') ||
         lower.includes('econnrefused') ||
         lower.includes('enotfound') ||
-        lower.includes('failed to fetch')
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch failed')
       ) {
         showError('Couldn’t reach Overseerr. Check the URL.');
       } else {
@@ -2382,6 +2394,7 @@ export const SettingsPage = ({
       editingArrInstanceCardRef.current = null;
       return;
     }
+    if (arrInstanceDeleteDialogOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       const card = editingArrInstanceCardRef.current;
       const target = event.target;
@@ -2393,7 +2406,7 @@ export const SettingsPage = ({
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [cancelEditingArrInstance, editingArrInstanceId]);
+  }, [arrInstanceDeleteDialogOpen, cancelEditingArrInstance, editingArrInstanceId]);
 
   const startEditingArrInstance = useCallback(
     (instance: ArrInstance) => {
@@ -2445,21 +2458,38 @@ export const SettingsPage = ({
 
   const handleDeleteEditingArrInstance = useCallback(() => {
     if (!editingArrInstanceId || !editingArrInstanceType) return;
-    const confirmed = window.confirm(
-      `Delete "${editingArrInstanceName || 'this server'}"? This cannot be undone.`,
-    );
-    if (!confirmed) return;
-    deleteArrInstanceMutation.mutate({
+    setArrInstanceDeleteTarget({
       id: editingArrInstanceId,
       type: editingArrInstanceType,
       name: editingArrInstanceName || 'server',
     });
-  }, [
-    deleteArrInstanceMutation,
-    editingArrInstanceId,
-    editingArrInstanceName,
-    editingArrInstanceType,
-  ]);
+    setArrInstanceDeleteDialogOpen(true);
+  }, [editingArrInstanceId, editingArrInstanceName, editingArrInstanceType]);
+
+  const closeArrInstanceDeleteDialog = useCallback(() => {
+    if (deleteArrInstanceMutation.isPending) return;
+    setArrInstanceDeleteDialogOpen(false);
+    setArrInstanceDeleteTarget(null);
+  }, [deleteArrInstanceMutation.isPending]);
+
+  const confirmArrInstanceDeleteDialog = useCallback(() => {
+    if (!arrInstanceDeleteTarget) return;
+    deleteArrInstanceMutation.mutate(arrInstanceDeleteTarget, {
+      onSuccess: () => {
+        setArrInstanceDeleteDialogOpen(false);
+        setArrInstanceDeleteTarget(null);
+      },
+    });
+  }, [arrInstanceDeleteTarget, deleteArrInstanceMutation]);
+
+  const isDeletingArrInstanceDialogTarget =
+    deleteArrInstanceMutation.isPending &&
+    deleteArrInstanceMutation.variables?.id === arrInstanceDeleteTarget?.id;
+  const arrInstanceDeleteDialogError =
+    deleteArrInstanceMutation.isError &&
+    deleteArrInstanceMutation.variables?.id === arrInstanceDeleteTarget?.id
+      ? (deleteArrInstanceMutation.error as Error).message
+      : null;
 
   const handleCreateRadarrInstance = useCallback(() => {
     const baseUrl = newRadarrInstanceBaseUrl.trim();
@@ -4159,6 +4189,18 @@ export const SettingsPage = ({
           ) : null}
         </div>
       </section>
+      <ConfirmDialog
+        open={arrInstanceDeleteDialogOpen}
+        onClose={closeArrInstanceDeleteDialog}
+        onConfirm={confirmArrInstanceDeleteDialog}
+        title={`Delete "${arrInstanceDeleteTarget?.name ?? 'server'}"?`}
+        description="This removes the additional server from Vault. This cannot be undone."
+        confirmText="Delete server"
+        cancelText="Keep server"
+        variant="danger"
+        confirming={isDeletingArrInstanceDialogTarget}
+        error={arrInstanceDeleteDialogError}
+      />
     </div>
   );
 };
