@@ -222,7 +222,7 @@ This is the post-download cleanup card. It reacts to newly added Plex media and 
 
 ### What do the cleanup toggles mean?
 
-- **Delete duplicate media**: clean up duplicate copies based on the task's safety rules.
+- **Delete duplicate media**: remove lower-quality duplicate files/versions via the Plex API, keeping the best copy. When off, no Plex media files are deleted.
 - **Unmonitor recently downloaded media**: stop ARR from continuing to monitor items that just landed.
 - **Remove recently added media from watchlist**: clear those newly satisfied items out of the watchlist flow.
 
@@ -248,7 +248,7 @@ It is the off-peak missing-search card for monitored ARR items. This is the sche
 
 **Includes** lets you choose whether the scheduled run should target **Radarr**, **Sonarr**, or both.
 
-If both are enabled, Sonarr starts about one hour after the scheduled time. If an ARR service is not fully configured, turning that toggle on sends you to the matching Vault setup shortcut.
+If both are enabled on a scheduled run, Sonarr starts about one hour after the scheduled time. Manual runs do not delay Sonarr. If an ARR service is not fully configured, turning that toggle on sends you to the matching Vault setup shortcut.
 
 ### When should I use Search Monitored instead of Start search immediately?
 
@@ -383,7 +383,7 @@ Recommendations is the part of Immaculaterr that decides how seed-based suggesti
 Plex-Triggered Auto-Run means the job waits for Plex activity instead of a clock-based schedule.
 
 - These jobs do not run on a timer. They wait for the matching Plex event.
-- **Watched trigger (~70%)**: when a movie or show episode reaches roughly 70% watched, the "Based on your recently watched" flow can trigger.
+- **Watched trigger (~60% / ~70%)**: these are default Plex polling thresholds—~60% for "Based on your recently watched" and ~70% for Immaculate Taste. Immaculate Taste can also trigger via Plex webhooks at Plex scrobble timing.
 - **New content trigger**: when a new movie or show episode is added, the cleanup task can trigger to scan for duplicates.
 
 You can still run these tasks manually any time from Task Manager.
@@ -556,7 +556,7 @@ Expect adjacent genres, different eras, or other nearby taste shifts rather than
 
 ### What is the Observatory page?
 
-Observatory is a swipe-based review deck for the Immaculate Taste dataset. It lets you approve download requests (optional) and curate your suggestions before or while they land in Plex collections.
+Observatory is a swipe-based review deck for Immaculate Taste and related recommendation datasets (e.g., Based on Latest Watched). It lets you approve download requests (optional) and curate your suggestions before or while they land in Plex collections.
 
 ### How do I require approval before sending anything to Radarr/Sonarr?
 
@@ -616,7 +616,7 @@ Use one flow per task card. If Overseerr mode is on, Observatory approval is off
 
 Go to [Command Center - Reset Overseerr Requests](/command-center#command-center-reset-overseerr-requests).
 
-After confirmation, Immaculaterr asks Overseerr to delete every request regardless of status. This clears request records only; it does not delete Plex media files.
+After confirmation, Immaculaterr asks Overseerr to delete every request regardless of status. This clears **all** Overseerr requests—including user-created requests, not only Immaculaterr-managed ones. It clears request records only; it does not delete Plex media files.
 
 ## Reset Rejected List
 
@@ -659,11 +659,11 @@ Movie jobs stop making Radarr add/search calls. Recommendations, Plex matching, 
 
 ### What happens during "Cleanup after adding new content"?
 
-It scans for duplicates across libraries, keeps the best copy, and can unmonitor movie duplicates in Radarr. The process is designed to be safety-first and report what was changed in Rewind.
+It scans for duplicates across libraries, keeps the best copy, and can unmonitor movie duplicates in Radarr. When **Delete duplicate media** is enabled, it can also remove lower-quality duplicate files/versions via the Plex API. The process is designed to be safety-first and report what was changed in Rewind.
 
 ### Will it ever delete movies?
 
-Immaculaterr does not delete your Plex media files. Cleanup jobs can unmonitor duplicates in Radarr to reduce clutter, but they are not meant to wipe your library.
+When **Delete duplicate media** is enabled on the Cleanup After Adding New Content card, Immaculaterr can delete lower-quality duplicate files/versions via the Plex API, keeping the best copy. If that toggle is off, it only unmonitors duplicates in Radarr and does not delete Plex media files.
 
 ## Sonarr
 
@@ -671,11 +671,12 @@ Open in app: [Command Center -> Sonarr](/command-center#command-center-sonarr)
 
 ### How are TV duplicates handled in Sonarr?
 
-Sonarr duplicate cleanup is designed to be cautious, not destructive.
+TV duplicate cleanup is designed to be cautious, not destructive.
 
 - TV duplicates are checked with episode-aware and season-aware rules.
-- Single-episode duplicates can be unmonitored without affecting the whole show.
-- Rewind still reports what was scanned, skipped, or unmonitored.
+- Single-episode duplicates can be unmonitored in Sonarr without affecting the whole show.
+- When **Delete duplicate media** is enabled, lower-quality episode copies can also be removed from Plex (best resolution kept).
+- Rewind still reports what was scanned, skipped, unmonitored, or deleted.
 
 ### What changes if I disable Sonarr toggles?
 
@@ -779,7 +780,7 @@ Then use the test buttons in **Vault** to confirm each integration from inside t
 
 - Auto-Run is off for that job in Task Manager.
 - Plex polling is disabled or not reaching Plex.
-- The item is too short (minimum duration rules can apply).
+- The item is too short (the default minimum is 1 minute for polling-trigger checks).
 - The job was recently triggered and deduped to prevent repeated runs.
 - The triggering user may be disabled in [Command Center - Plex User Monitoring](/command-center#command-center-plex-user-monitoring).
 - The source library may be disabled in [Command Center - Plex Library Selection](/command-center#command-center-plex-library-selection).
@@ -805,7 +806,7 @@ Then use the test buttons in **Vault** to confirm each integration from inside t
 ### When should I use reset tools (Rejected List, Overseerr Requests, Immaculate Taste Collection)?
 
 - Use [Command Center - Reset Rejected List](/command-center#command-center-reset-rejected-list) when you want previously swiped-left suggestions to become eligible again.
-- Use [Command Center - Reset Overseerr Requests](/command-center#command-center-reset-overseerr-requests) to clear Overseerr request records managed by Immaculaterr.
+- Use [Command Center - Reset Overseerr Requests](/command-center#command-center-reset-overseerr-requests) to clear all Overseerr requests (including user-created ones, not only Immaculaterr-managed).
 - Use [Command Center - Reset Immaculate Taste Collection](/command-center#command-center-reset-immaculate-taste-collection) when you need to rebuild that library's dataset/collection from a clean state.
 
 ## Glossary
