@@ -2,8 +2,10 @@ import { AuthService } from '../../auth/auth.service';
 
 describe('security/session cookie protection', () => {
   function makeService() {
-    const encode = (value: string) => Buffer.from(value, 'utf8').toString('base64url');
-    const decode = (value: string) => Buffer.from(value, 'base64url').toString('utf8');
+    const encode = (value: string) =>
+      Buffer.from(value, 'utf8').toString('base64url');
+    const decode = (value: string) =>
+      Buffer.from(value, 'base64url').toString('utf8');
 
     const crypto = {
       encryptString: jest.fn((value: string) => `enc:v1:${encode(value)}`),

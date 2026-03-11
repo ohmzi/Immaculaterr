@@ -332,9 +332,9 @@ export class PlexServerService {
     const container = xml.MediaContainer;
     if (!container) return [];
 
-    const activityNodes = asUnknownArray(
-      (container as Record<string, unknown>)['Activity'] ?? [],
-    ).filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === 'object');
+    const activityNodes = asUnknownArray(container['Activity'] ?? []).filter(
+      (a): a is Record<string, unknown> => Boolean(a) && typeof a === 'object',
+    );
 
     const out: PlexActivityDetails[] = [];
 
@@ -388,7 +388,9 @@ export class PlexServerService {
         const ctx = node['Context'];
         // Plex returns <Context librarySectionID="3" />
         if (!ctx || typeof ctx !== 'object') return null;
-        const v = toStringSafe((ctx as Record<string, unknown>)['librarySectionID']).trim();
+        const v = toStringSafe(
+          (ctx as Record<string, unknown>)['librarySectionID'],
+        ).trim();
         return v ? v : null;
       })();
 
@@ -412,7 +414,10 @@ export class PlexServerService {
     token: string;
   }): Promise<PlexNowPlayingSession[]> {
     const { baseUrl, token } = params;
-    const url = new URL('status/sessions', normalizeBaseUrl(baseUrl)).toString();
+    const url = new URL(
+      'status/sessions',
+      normalizeBaseUrl(baseUrl),
+    ).toString();
     const xml = asPlexXml(await this.fetchXml(url, token, 15000));
     const container = xml.MediaContainer;
     if (!container) return [];
@@ -447,7 +452,8 @@ export class PlexServerService {
 
       const year = (() => {
         const raw = it['year'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -464,7 +470,8 @@ export class PlexServerService {
       })();
       const parentIndex = (() => {
         const raw = it['parentIndex'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -472,7 +479,8 @@ export class PlexServerService {
       })();
       const index = (() => {
         const raw = it['index'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -481,7 +489,8 @@ export class PlexServerService {
 
       const librarySectionId = (() => {
         const raw = it['librarySectionID'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -494,7 +503,8 @@ export class PlexServerService {
 
       const viewOffsetMs = (() => {
         const raw = it['viewOffset'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.trunc(raw));
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.max(0, Math.trunc(raw));
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -502,7 +512,8 @@ export class PlexServerService {
       })();
       const durationMs = (() => {
         const raw = it['duration'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.trunc(raw));
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.max(0, Math.trunc(raw));
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -526,7 +537,8 @@ export class PlexServerService {
         if (!user || typeof user !== 'object') return null;
         const userObj = user as Record<string, unknown>;
         const raw = userObj['id'] ?? userObj['accountID'] ?? userObj['userID'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -561,12 +573,17 @@ export class PlexServerService {
     take?: number;
   }): Promise<PlexRecentlyAddedItem[]> {
     const { baseUrl, token } = params;
-    const take = Number.isFinite(params.take ?? NaN) ? (params.take as number) : 50;
+    const take = Number.isFinite(params.take ?? NaN)
+      ? (params.take as number)
+      : 50;
 
     const u = new URL('library/recentlyAdded', normalizeBaseUrl(baseUrl));
     // Plex uses these query params for pagination.
     u.searchParams.set('X-Plex-Container-Start', '0');
-    u.searchParams.set('X-Plex-Container-Size', String(Math.max(1, Math.min(200, take))));
+    u.searchParams.set(
+      'X-Plex-Container-Size',
+      String(Math.max(1, Math.min(200, take))),
+    );
     const url = u.toString();
 
     const xml = asPlexXml(await this.fetchXml(url, token, 15000));
@@ -592,7 +609,8 @@ export class PlexServerService {
 
       const year = (() => {
         const raw = it.year;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -601,7 +619,8 @@ export class PlexServerService {
 
       const addedAt = (() => {
         const raw = it.addedAt;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -609,7 +628,8 @@ export class PlexServerService {
       })();
       const updatedAt = (() => {
         const raw = (it as Record<string, unknown>)['updatedAt'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -618,7 +638,8 @@ export class PlexServerService {
 
       const librarySectionId = (() => {
         const raw = (it as Record<string, unknown>)['librarySectionID'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -658,7 +679,8 @@ export class PlexServerService {
 
       const parentIndex = (() => {
         const raw = it.parentIndex;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -666,7 +688,8 @@ export class PlexServerService {
       })();
       const index = (() => {
         const raw = it.index;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -701,7 +724,9 @@ export class PlexServerService {
     take?: number;
   }): Promise<PlexRecentlyAddedItem[]> {
     const { baseUrl, token, librarySectionKey } = params;
-    const take = Number.isFinite(params.take ?? NaN) ? (params.take as number) : 50;
+    const take = Number.isFinite(params.take ?? NaN)
+      ? (params.take as number)
+      : 50;
 
     const u = new URL(
       `library/sections/${encodeURIComponent(librarySectionKey)}/recentlyAdded`,
@@ -709,7 +734,10 @@ export class PlexServerService {
     );
     // Plex uses these query params for pagination.
     u.searchParams.set('X-Plex-Container-Start', '0');
-    u.searchParams.set('X-Plex-Container-Size', String(Math.max(1, Math.min(200, take))));
+    u.searchParams.set(
+      'X-Plex-Container-Size',
+      String(Math.max(1, Math.min(200, take))),
+    );
     const url = u.toString();
 
     const xml = asPlexXml(await this.fetchXml(url, token, 15000));
@@ -735,7 +763,8 @@ export class PlexServerService {
 
       const year = (() => {
         const raw = it.year;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -744,7 +773,8 @@ export class PlexServerService {
 
       const addedAt = (() => {
         const raw = it.addedAt;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -752,7 +782,8 @@ export class PlexServerService {
       })();
       const updatedAt = (() => {
         const raw = (it as Record<string, unknown>)['updatedAt'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -761,7 +792,8 @@ export class PlexServerService {
 
       const librarySectionId = (() => {
         const raw = (it as Record<string, unknown>)['librarySectionID'];
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -801,7 +833,8 @@ export class PlexServerService {
 
       const parentIndex = (() => {
         const raw = it.parentIndex;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -809,7 +842,8 @@ export class PlexServerService {
       })();
       const index = (() => {
         const raw = it.index;
-        if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+        if (typeof raw === 'number' && Number.isFinite(raw))
+          return Math.trunc(raw);
         const s = toStringSafe(raw).trim();
         if (!s) return null;
         const n = Number.parseInt(s, 10);
@@ -941,7 +975,9 @@ export class PlexServerService {
     )
       .map((genreNode) => {
         if (genreNode && typeof genreNode === 'object') {
-          return toStringSafe((genreNode as Record<string, unknown>)['tag']).trim();
+          return toStringSafe(
+            (genreNode as Record<string, unknown>)['tag'],
+          ).trim();
         }
         return toStringSafe(genreNode).trim();
       })
@@ -1231,7 +1267,11 @@ export class PlexServerService {
     const { baseUrl, token } = params;
     const key = (params.librarySectionKey ?? '').trim();
     if (key) {
-      return this.listSectionLanguages({ baseUrl, token, librarySectionKey: key });
+      return this.listSectionLanguages({
+        baseUrl,
+        token,
+        librarySectionKey: key,
+      });
     }
     const sections = await this.getSections({ baseUrl, token });
     const eligibleSections = sections.filter((section) => {
@@ -2018,9 +2058,7 @@ export class PlexServerService {
     const url = new URL(
       `library/sections/${encodeURIComponent(
         librarySectionKey,
-      )}/search?type=18&query=${encodeURIComponent(
-        collectionName,
-      )}`,
+      )}/search?type=18&query=${encodeURIComponent(collectionName)}`,
       normalizeBaseUrl(baseUrl),
     ).toString();
 
@@ -2072,15 +2110,14 @@ export class PlexServerService {
       let start = 0;
 
       while (start < take) {
-        const requestSize = Math.max(
-          1,
-          Math.min(pageSize, take - start),
-        );
+        const requestSize = Math.max(1, Math.min(pageSize, take - start));
         const url = new URL(path, normalizeBaseUrl(baseUrl));
         url.searchParams.set('X-Plex-Container-Start', String(start));
         url.searchParams.set('X-Plex-Container-Size', String(requestSize));
 
-        const xml = asPlexXml(await this.fetchXml(url.toString(), token, 20000));
+        const xml = asPlexXml(
+          await this.fetchXml(url.toString(), token, 20000),
+        );
         const container = xml.MediaContainer;
         const items = asPlexMetadataArray(container)
           .map((m) => ({
@@ -2098,9 +2135,11 @@ export class PlexServerService {
         if (items.length < requestSize) break;
 
         const totalSizeRaw = container
-          ? toStringSafe((container as Record<string, unknown>)['totalSize']).trim()
+          ? toStringSafe(container['totalSize']).trim()
           : '';
-        const totalSize = totalSizeRaw ? Number.parseInt(totalSizeRaw, 10) : NaN;
+        const totalSize = totalSizeRaw
+          ? Number.parseInt(totalSizeRaw, 10)
+          : NaN;
         start += items.length;
         if (Number.isFinite(totalSize) && start >= totalSize) break;
       }
@@ -2348,7 +2387,9 @@ export class PlexServerService {
         const container = xml.MediaContainer;
         const items = asPlexMetadataArray(container);
         const first = items[0];
-        const ratingKey = first?.ratingKey ? String(first.ratingKey).trim() : '';
+        const ratingKey = first?.ratingKey
+          ? String(first.ratingKey).trim()
+          : '';
         return ratingKey || null;
       } catch {
         return null;

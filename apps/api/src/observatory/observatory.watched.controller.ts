@@ -28,12 +28,19 @@ export class WatchedObservatoryController {
   ) {
     const librarySectionKey = String(librarySectionKeyRaw ?? '').trim();
     const mode = (String(modeRaw ?? '').trim() as ListMode) || 'review';
-    const collectionKind = (String(collectionKindRaw ?? '').trim() as CollectionKind) || '';
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+    const collectionKind =
+      (String(collectionKindRaw ?? '').trim() as CollectionKind) || '';
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mode !== 'pendingApproval' && mode !== 'review')
       throw new BadRequestException('mode must be pendingApproval|review');
-    if (collectionKind !== 'recentlyWatched' && collectionKind !== 'changeOfTaste')
-      throw new BadRequestException('collectionKind must be recentlyWatched|changeOfTaste');
+    if (
+      collectionKind !== 'recentlyWatched' &&
+      collectionKind !== 'changeOfTaste'
+    )
+      throw new BadRequestException(
+        'collectionKind must be recentlyWatched|changeOfTaste',
+      );
 
     return await this.observatory.listWatchedMovies({
       userId: req.user.id,
@@ -52,12 +59,19 @@ export class WatchedObservatoryController {
   ) {
     const librarySectionKey = String(librarySectionKeyRaw ?? '').trim();
     const mode = (String(modeRaw ?? '').trim() as ListMode) || 'review';
-    const collectionKind = (String(collectionKindRaw ?? '').trim() as CollectionKind) || '';
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+    const collectionKind =
+      (String(collectionKindRaw ?? '').trim() as CollectionKind) || '';
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mode !== 'pendingApproval' && mode !== 'review')
       throw new BadRequestException('mode must be pendingApproval|review');
-    if (collectionKind !== 'recentlyWatched' && collectionKind !== 'changeOfTaste')
-      throw new BadRequestException('collectionKind must be recentlyWatched|changeOfTaste');
+    if (
+      collectionKind !== 'recentlyWatched' &&
+      collectionKind !== 'changeOfTaste'
+    )
+      throw new BadRequestException(
+        'collectionKind must be recentlyWatched|changeOfTaste',
+      );
 
     return await this.observatory.listWatchedTv({
       userId: req.user.id,
@@ -79,17 +93,26 @@ export class WatchedObservatoryController {
     },
   ) {
     const librarySectionKey =
-      typeof body.librarySectionKey === 'string' ? body.librarySectionKey.trim() : '';
-    const mediaType = typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
+      typeof body.librarySectionKey === 'string'
+        ? body.librarySectionKey.trim()
+        : '';
+    const mediaType =
+      typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
     const collectionKind =
       typeof body.collectionKind === 'string' ? body.collectionKind.trim() : '';
     const decisions = Array.isArray(body.decisions) ? body.decisions : [];
 
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mediaType !== 'movie' && mediaType !== 'tv')
       throw new BadRequestException('mediaType must be movie|tv');
-    if (collectionKind !== 'recentlyWatched' && collectionKind !== 'changeOfTaste')
-      throw new BadRequestException('collectionKind must be recentlyWatched|changeOfTaste');
+    if (
+      collectionKind !== 'recentlyWatched' &&
+      collectionKind !== 'changeOfTaste'
+    )
+      throw new BadRequestException(
+        'collectionKind must be recentlyWatched|changeOfTaste',
+      );
 
     return await this.observatory.recordWatchedDecisions({
       userId: req.user.id,
@@ -110,9 +133,13 @@ export class WatchedObservatoryController {
     },
   ) {
     const librarySectionKey =
-      typeof body.librarySectionKey === 'string' ? body.librarySectionKey.trim() : '';
-    const mediaType = typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+      typeof body.librarySectionKey === 'string'
+        ? body.librarySectionKey.trim()
+        : '';
+    const mediaType =
+      typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mediaType !== 'movie' && mediaType !== 'tv')
       throw new BadRequestException('mediaType must be movie|tv');
 
@@ -123,4 +150,3 @@ export class WatchedObservatoryController {
     });
   }
 }
-

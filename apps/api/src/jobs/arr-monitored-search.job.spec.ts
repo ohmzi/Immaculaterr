@@ -67,7 +67,9 @@ describe('ArrMonitoredSearchJob', () => {
 
     settings.getInternalSettings.mockResolvedValue({
       settings: {
-        jobs: { arrMonitoredSearch: { includeRadarr: true, includeSonarr: true } },
+        jobs: {
+          arrMonitoredSearch: { includeRadarr: true, includeSonarr: true },
+        },
         radarr: { baseUrl: 'http://radarr.local:7878', enabled: true },
         sonarr: { baseUrl: 'http://sonarr.local:8989', enabled: false },
       },
@@ -107,7 +109,9 @@ describe('ArrMonitoredSearchJob', () => {
     ).toBe(true);
     expect(
       issues.some((entry) =>
-        String(entry.message ?? '').includes('Sonarr is enabled but not configured.'),
+        String(entry.message ?? '').includes(
+          'Sonarr is enabled but not configured.',
+        ),
       ),
     ).toBe(false);
   });
@@ -118,7 +122,9 @@ describe('ArrMonitoredSearchJob', () => {
 
     settings.getInternalSettings.mockResolvedValue({
       settings: {
-        jobs: { arrMonitoredSearch: { includeRadarr: true, includeSonarr: true } },
+        jobs: {
+          arrMonitoredSearch: { includeRadarr: true, includeSonarr: true },
+        },
         radarr: { baseUrl: 'http://radarr.local:7878', enabled: false },
         sonarr: { baseUrl: 'http://sonarr.local:8989', enabled: true },
       },

@@ -186,7 +186,11 @@ export class JobsScheduler implements OnModuleInit {
     //
     // We intentionally DO NOT override user-edited crons; we only change known
     // previous defaults for specific job IDs.
-    const defaultCronMigrations: Array<{ jobId: string; from: string; to: string }> = [
+    const defaultCronMigrations: Array<{
+      jobId: string;
+      from: string;
+      to: string;
+    }> = [
       // Monitor Confirm default moved from 3am -> 1am
       { jobId: 'monitorConfirm', from: '0 3 * * *', to: '0 1 * * *' },
       // Based on Latest Watched Refresher default moved from 1am -> 2am

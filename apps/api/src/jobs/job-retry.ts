@@ -38,13 +38,16 @@ export async function withJobRetry<T>(
 
       if (attempt < attempts) {
         if (ctx) {
-          await ctx.warn(`${label}: failed (attempt ${attempt}/${attempts}) — retrying`, {
-            attempt,
-            attempts,
-            delayMs,
-            error,
-            ...meta,
-          });
+          await ctx.warn(
+            `${label}: failed (attempt ${attempt}/${attempts}) — retrying`,
+            {
+              attempt,
+              attempts,
+              delayMs,
+              error,
+              ...meta,
+            },
+          );
         }
         await sleep(delayMs);
         continue;
@@ -76,4 +79,3 @@ export async function withJobRetryOrNull<T>(
     return null;
   }
 }
-

@@ -129,7 +129,9 @@ export class CryptoService implements OnModuleInit {
         return decodeMasterKey(raw);
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
-        throw new Error(`Failed to read APP_MASTER_KEY_FILE (${envKeyFile}): ${msg}`);
+        throw new Error(
+          `Failed to read APP_MASTER_KEY_FILE (${envKeyFile}): ${msg}`,
+        );
       }
     }
 

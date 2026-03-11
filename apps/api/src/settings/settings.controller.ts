@@ -41,10 +41,10 @@ const parseObjectPatch = (
 const parseUpdateSettingsBody = (
   body: UpdateSettingsBody,
 ): ParsedUpdateSettingsBody => ({
-    settingsPatch: parseObjectPatch(body?.settings, 'settings'),
-    secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
-    secretsEnvelope: parseObjectPatch(body?.secretsEnvelope, 'secretsEnvelope'),
-  });
+  settingsPatch: parseObjectPatch(body?.settings, 'settings'),
+  secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
+  secretsEnvelope: parseObjectPatch(body?.secretsEnvelope, 'secretsEnvelope'),
+});
 
 @Controller('settings')
 @ApiTags('settings')
@@ -71,7 +71,8 @@ export class SettingsController {
     const databaseUrl = process.env.DATABASE_URL?.trim() || null;
 
     const envMasterKeySet = Boolean(process.env.APP_MASTER_KEY?.trim());
-    const envMasterKeyFilePath = process.env.APP_MASTER_KEY_FILE?.trim() || null;
+    const envMasterKeyFilePath =
+      process.env.APP_MASTER_KEY_FILE?.trim() || null;
     const envMasterKeyFileExists = envMasterKeyFilePath
       ? existsSync(envMasterKeyFilePath)
       : false;
@@ -91,7 +92,9 @@ export class SettingsController {
     const whatToBackup = [
       ...(appDataDir ? [appDataDir] : []),
       ...(dbFilePath ? [dbFilePath] : []),
-      ...(masterKeySource === 'dataDirFile' && keyFilePath ? [keyFilePath] : []),
+      ...(masterKeySource === 'dataDirFile' && keyFilePath
+        ? [keyFilePath]
+        : []),
     ];
 
     return {

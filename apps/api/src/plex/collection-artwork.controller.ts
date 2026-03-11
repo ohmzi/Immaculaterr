@@ -39,7 +39,10 @@ function resolveMediaType(value: unknown): CollectionArtworkMediaType {
 
 function resolveTargetKind(value: unknown): CollectionArtworkTargetKind {
   const normalized = asString(value).toLowerCase();
-  if (normalized === 'immaculate_profile' || normalized === 'watched_collection') {
+  if (
+    normalized === 'immaculate_profile' ||
+    normalized === 'watched_collection'
+  ) {
     return normalized;
   }
   throw new BadRequestException(
@@ -136,14 +139,17 @@ export class CollectionArtworkController {
       ok: true as const,
       override,
       appliedNow: applyResult.appliedNow,
-      ...(applyResult.warnings.length ? { warnings: applyResult.warnings } : {}),
+      ...(applyResult.warnings.length
+        ? { warnings: applyResult.warnings }
+        : {}),
     };
   }
 
   @Delete('override')
   async deleteOverride(
     @Req() req: AuthenticatedRequest,
-    @Body() body: {
+    @Body()
+    body: {
       plexUserId?: unknown;
       mediaType?: unknown;
       targetKind?: unknown;
@@ -198,7 +204,10 @@ export class CollectionArtworkController {
     }
 
     const file = await readFile(preview.absolutePosterPath);
-    res.setHeader('Content-Type', preview.mimeType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Type',
+      preview.mimeType || 'application/octet-stream',
+    );
     res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
     return res.status(200).send(file);
   }

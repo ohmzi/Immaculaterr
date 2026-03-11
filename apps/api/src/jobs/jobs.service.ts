@@ -79,7 +79,8 @@ function evaluateJobReportFailure(report: JobReportV1): {
         : '';
     return msg ? `${title}: ${msg}` : title;
   });
-  const more = failedTasks.length > 3 ? ` (+${failedTasks.length - 3} more)` : '';
+  const more =
+    failedTasks.length > 3 ? ` (+${failedTasks.length - 3} more)` : '';
   const reason = `Job reported failed task(s): ${parts.join(' | ')}${more}`;
   return { failed: true, reason };
 }
@@ -482,19 +483,24 @@ export class JobsService {
       let finalSummary: JsonObject | null =
         result.summary ?? liveSummary ?? null;
 
-      const reportFailure = finalSummary && isJobReportV1(finalSummary)
-        ? evaluateJobReportFailure(finalSummary)
-        : { failed: false, reason: null as string | null };
+      const reportFailure =
+        finalSummary && isJobReportV1(finalSummary)
+          ? evaluateJobReportFailure(finalSummary)
+          : { failed: false, reason: null as string | null };
 
       if (finalSummary && liveProgress) {
         const totalRaw = (liveProgress as Record<string, unknown>)['total'];
         const total =
-          typeof totalRaw === 'number' && Number.isFinite(totalRaw) && totalRaw >= 0
+          typeof totalRaw === 'number' &&
+          Number.isFinite(totalRaw) &&
+          totalRaw >= 0
             ? totalRaw
             : null;
         const currentRaw = (liveProgress as Record<string, unknown>)['current'];
         const current =
-          typeof currentRaw === 'number' && Number.isFinite(currentRaw) && currentRaw >= 0
+          typeof currentRaw === 'number' &&
+          Number.isFinite(currentRaw) &&
+          currentRaw >= 0
             ? currentRaw
             : null;
 
@@ -503,9 +509,7 @@ export class JobsService {
           progress: {
             ...liveProgress,
             step: reportFailure.failed ? 'failed' : 'done',
-            message: reportFailure.failed
-              ? 'Failed.'
-              : 'Completed.',
+            message: reportFailure.failed ? 'Failed.' : 'Completed.',
             ...(total !== null
               ? {
                   total,
@@ -521,7 +525,9 @@ export class JobsService {
 
       if (reportFailure.failed) {
         if (reportFailure.reason) {
-          await ctx.error('run: reported failed', { reason: reportFailure.reason });
+          await ctx.error('run: reported failed', {
+            reason: reportFailure.reason,
+          });
         } else {
           await ctx.error('run: reported failed');
         }

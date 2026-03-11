@@ -26,4 +26,3 @@ import { ObservatoryService } from './observatory.service';
   providers: [ObservatoryService],
 })
 export class ObservatoryModule {}
-

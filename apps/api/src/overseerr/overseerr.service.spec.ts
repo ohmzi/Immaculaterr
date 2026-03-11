@@ -34,20 +34,25 @@ describe('OverseerrService', () => {
     ['http://localhost:5055', 'http://localhost:5055/api/v1/auth/me'],
     ['http://localhost:5055/', 'http://localhost:5055/api/v1/auth/me'],
     ['http://localhost:5055/api/v1', 'http://localhost:5055/api/v1/auth/me'],
-  ])('normalizes baseUrl %s for auth test endpoint', async (baseUrl, expectedUrl) => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ status: 200, json: { id: 1 } }));
+  ])(
+    'normalizes baseUrl %s for auth test endpoint',
+    async (baseUrl, expectedUrl) => {
+      fetchMock.mockResolvedValueOnce(
+        mockResponse({ status: 200, json: { id: 1 } }),
+      );
 
-    await service.testConnection({ baseUrl, apiKey: 'secret' });
+      await service.testConnection({ baseUrl, apiKey: 'secret' });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(expectedUrl);
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      method: 'GET',
-      headers: expect.objectContaining({
-        'X-Api-Key': 'secret',
-      }),
-    });
-  });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(expectedUrl);
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+        method: 'GET',
+        headers: expect.objectContaining({
+          'X-Api-Key': 'secret',
+        }),
+      });
+    },
+  );
 
   it('throws BadGatewayException when testConnection is unauthorized', async () => {
     fetchMock.mockResolvedValueOnce(
@@ -55,12 +60,17 @@ describe('OverseerrService', () => {
     );
 
     await expect(
-      service.testConnection({ baseUrl: 'http://localhost:5055', apiKey: 'bad' }),
+      service.testConnection({
+        baseUrl: 'http://localhost:5055',
+        apiKey: 'bad',
+      }),
     ).rejects.toBeInstanceOf(BadGatewayException);
   });
 
   it('sends correct movie request payload', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ status: 201, json: { id: 42 } }));
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ status: 201, json: { id: 42 } }),
+    );
 
     const result = await service.requestMovie({
       baseUrl: 'http://localhost:5055/api/v1',
@@ -69,7 +79,9 @@ describe('OverseerrService', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://localhost:5055/api/v1/request');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:5055/api/v1/request',
+    );
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.method).toBe('POST');
     expect(JSON.parse(String(init.body))).toEqual({
@@ -80,7 +92,9 @@ describe('OverseerrService', () => {
   });
 
   it('sends correct TV request payload with seasons=all', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ status: 201, json: { id: 7 } }));
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ status: 201, json: { id: 7 } }),
+    );
 
     const result = await service.requestTvAllSeasons({
       baseUrl: 'http://localhost:5055',
@@ -90,7 +104,9 @@ describe('OverseerrService', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://localhost:5055/api/v1/request');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:5055/api/v1/request',
+    );
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({
       mediaType: 'tv',
@@ -137,8 +153,12 @@ describe('OverseerrService', () => {
     const secondPage = [{ id: 101 }, { id: 102 }];
 
     fetchMock
-      .mockResolvedValueOnce(mockResponse({ status: 200, json: { results: firstPage } }))
-      .mockResolvedValueOnce(mockResponse({ status: 200, json: { results: secondPage } }));
+      .mockResolvedValueOnce(
+        mockResponse({ status: 200, json: { results: firstPage } }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({ status: 200, json: { results: secondPage } }),
+      );
     for (let i = 0; i < 102; i += 1) {
       fetchMock.mockResolvedValueOnce(mockResponse({ status: 204 }));
     }
@@ -161,17 +181,24 @@ describe('OverseerrService', () => {
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
       'http://localhost:5055/api/v1/request?take=100&skip=100',
     );
-    expect(fetchMock.mock.calls[2]?.[0]).toBe('http://localhost:5055/api/v1/request/1');
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      'http://localhost:5055/api/v1/request/1',
+    );
     expect(fetchMock).toHaveBeenCalledTimes(104);
   });
 
   it('counts failed deletions and treats missing requests as deleted', async () => {
     fetchMock
       .mockResolvedValueOnce(
-        mockResponse({ status: 200, json: { results: [{ id: 7 }, { id: 8 }, { id: 9 }] } }),
+        mockResponse({
+          status: 200,
+          json: { results: [{ id: 7 }, { id: 8 }, { id: 9 }] },
+        }),
       )
       .mockResolvedValueOnce(mockResponse({ status: 204 }))
-      .mockResolvedValueOnce(mockResponse({ status: 404, text: 'Request not found.' }))
+      .mockResolvedValueOnce(
+        mockResponse({ status: 404, text: 'Request not found.' }),
+      )
       .mockResolvedValueOnce(mockResponse({ status: 500, text: 'boom' }));
 
     const result = await service.clearAllRequests({
@@ -193,7 +220,10 @@ describe('OverseerrService', () => {
     );
 
     await expect(
-      service.clearAllRequests({ baseUrl: 'http://localhost:5055', apiKey: 'secret' }),
+      service.clearAllRequests({
+        baseUrl: 'http://localhost:5055',
+        apiKey: 'secret',
+      }),
     ).rejects.toBeInstanceOf(BadGatewayException);
   });
 });

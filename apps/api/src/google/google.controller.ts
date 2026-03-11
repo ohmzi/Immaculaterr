@@ -46,10 +46,7 @@ export class GoogleController {
   ) {}
 
   @Post('test')
-  async test(
-    @Req() req: AuthenticatedRequest,
-    @Body() body: TestGoogleBody,
-  ) {
+  async test(@Req() req: AuthenticatedRequest, @Body() body: TestGoogleBody) {
     const input = await this.resolveTestInput(req.user.id, body);
     this.assertRequiredTestInput(input);
     return this.googleService.testConnection(input);

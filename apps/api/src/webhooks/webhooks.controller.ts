@@ -88,7 +88,9 @@ function readQueryWebhookSecret(req: Request): string | null {
 }
 
 function readWebhookSecretCandidate(req: Request): string | null {
-  const headerSecret = readSingleHeader(req.headers['x-immaculaterr-webhook-secret']);
+  const headerSecret = readSingleHeader(
+    req.headers['x-immaculaterr-webhook-secret'],
+  );
   return headerSecret ?? readQueryWebhookSecret(req);
 }
 

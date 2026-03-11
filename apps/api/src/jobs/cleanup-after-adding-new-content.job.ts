@@ -12,7 +12,12 @@ import {
   type SonarrEpisode,
   type SonarrSeries,
 } from '../sonarr/sonarr.service';
-import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
+import type {
+  JobContext,
+  JobRunResult,
+  JsonObject,
+  JsonValue,
+} from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, issuesFromWarnings, metricRow } from './job-report-v1';
 
@@ -163,10 +168,8 @@ function readMediaAddedCleanupFeatures(
 ): MediaAddedCleanupFeatures {
   return {
     deleteDuplicates:
-      pickBool(
-        settings,
-        'jobs.mediaAddedCleanup.features.deleteDuplicates',
-      ) ?? true,
+      pickBool(settings, 'jobs.mediaAddedCleanup.features.deleteDuplicates') ??
+      true,
     unmonitorInArr:
       pickBool(settings, 'jobs.mediaAddedCleanup.features.unmonitorInArr') ??
       true,
@@ -627,89 +630,642 @@ export class CleanupAfterAddingNewContentJob {
           },
         );
         try {
-        await ctx.info('plex: loading movies (tmdb index)', {
-          libraries: plexMovieSections.map((s) => s.title),
-        });
+          await ctx.info('plex: loading movies (tmdb index)', {
+            libraries: plexMovieSections.map((s) => s.title),
+          });
 
-        for (const sec of plexMovieSections) {
-          try {
-            const items =
-              await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
+          for (const sec of plexMovieSections) {
+            try {
+              const items =
+                await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  librarySectionKey: sec.key,
+                  sectionTitle: sec.title,
+                });
+              for (const it of items) {
+                movies.push({ ...it, libraryTitle: sec.title });
+              }
+            } catch (err) {
+              const msg = (err as Error)?.message ?? String(err);
+              sweepWarnings.push(
+                `plex: failed listing movies for section=${sec.title} (continuing): ${msg}`,
+              );
+              await ctx.warn(
+                'plex: failed listing movies for section (continuing)',
+                {
+                  section: sec.title,
+                  error: msg,
+                },
+              );
+            }
+          }
+
+          movieStats.scanned = movies.length;
+
+          const groups = new Map<
+            number,
+            Array<{ ratingKey: string; title: string; addedAt: number | null }>
+          >();
+          for (const m of movies) {
+            if (!m.tmdbId) continue;
+            const list = groups.get(m.tmdbId) ?? [];
+            list.push({
+              ratingKey: m.ratingKey,
+              title: m.title,
+              addedAt: m.addedAt,
+            });
+            groups.set(m.tmdbId, list);
+          }
+          movieStats.groups = groups.size;
+
+          await setProgress(
+            3,
+            'clean_movies',
+            'Deleting duplicate movies (Plex) and unmonitoring in Radarr…',
+          );
+
+          for (const [tmdbId, items] of groups.entries()) {
+            if (items.length < 2) continue;
+            movieStats.groupsWithDuplicates += 1;
+
+            await ctx.info('plex: duplicate movie group found', {
+              tmdbId,
+              candidates: items.length,
+              ratingKeys: items.map((i) => i.ratingKey),
+            });
+
+            // Load details for each candidate (so we can choose a winner).
+            const metas: Array<{
+              ratingKey: string;
+              title: string;
+              addedAt: number | null;
+              preserved: boolean;
+              bestResolution: number;
+              bestSize: number | null;
+            }> = [];
+
+            for (const it of items) {
+              try {
+                const meta = await this.plexServer.getMetadataDetails({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  ratingKey: it.ratingKey,
+                });
+                if (!meta) continue;
+
+                let bestRes = 1;
+                let bestSize: number | null = null;
+                for (const m of meta.media ?? []) {
+                  bestRes = Math.max(
+                    bestRes,
+                    resolutionPriority(m.videoResolution),
+                  );
+                  for (const p of m.parts ?? []) {
+                    if (typeof p.size === 'number' && Number.isFinite(p.size)) {
+                      bestSize =
+                        bestSize === null ? p.size : Math.max(bestSize, p.size);
+                    }
+                  }
+                }
+
+                metas.push({
+                  ratingKey: meta.ratingKey,
+                  title: meta.title || it.title,
+                  addedAt: meta.addedAt ?? it.addedAt ?? null,
+                  preserved: metaHasPreservedCopy(meta),
+                  bestResolution: bestRes,
+                  bestSize,
+                });
+              } catch (err) {
+                movieStats.failures += 1;
+                await ctx.warn(
+                  'plex: failed loading movie metadata (continuing)',
+                  {
+                    ratingKey: it.ratingKey,
+                    error: (err as Error)?.message ?? String(err),
+                  },
+                );
+              }
+            }
+
+            if (metas.length < 2) continue;
+
+            const pref = deletePreference;
+            const pool = metas.some((m) => m.preserved)
+              ? metas.filter((m) => m.preserved)
+              : metas;
+
+            const sorted = pool.slice().sort((a, b) => {
+              if (pref === 'newest' || pref === 'oldest') {
+                const aa = a.addedAt ?? 0;
+                const bb = b.addedAt ?? 0;
+                // delete newest => keep oldest; delete oldest => keep newest
+                if (aa !== bb) return pref === 'newest' ? aa - bb : bb - aa;
+              } else if (pref === 'largest_file' || pref === 'smallest_file') {
+                const sa =
+                  a.bestSize ??
+                  (pref === 'smallest_file' ? Number.POSITIVE_INFINITY : 0);
+                const sb =
+                  b.bestSize ??
+                  (pref === 'smallest_file' ? Number.POSITIVE_INFINITY : 0);
+                // delete smallest => keep largest; delete largest => keep smallest
+                if (sa !== sb)
+                  return pref === 'smallest_file' ? sb - sa : sa - sb;
+              }
+
+              // Tie-breaker: higher resolution, then larger size.
+              if (a.bestResolution !== b.bestResolution) {
+                return b.bestResolution - a.bestResolution;
+              }
+              const sa2 = a.bestSize ?? 0;
+              const sb2 = b.bestSize ?? 0;
+              return sb2 - sa2;
+            });
+
+            const keep = sorted[0];
+            const deleteKeys = metas
+              .map((m) => m.ratingKey)
+              .filter((rk) => rk !== keep.ratingKey);
+
+            await ctx.info('plex: keeping best movie candidate', {
+              tmdbId,
+              keepRatingKey: keep.ratingKey,
+              keepTitle: keep.title,
+              preference: deletePreference,
+              preservedPreferred: metas.some((m) => m.preserved),
+              deleteRatingKeys: deleteKeys,
+            });
+
+            // Unmonitor in Radarr once per TMDB group (best-effort).
+            if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
+              const candidate = pickRadarrMovie(tmdbId, keep.title);
+              if (!candidate) {
+                movieStats.radarrNotFound += 1;
+                await ctx.warn('radarr: movie not found for duplicate group', {
+                  tmdbId,
+                  title: keep.title,
+                });
+              } else if (!candidate.monitored) {
+                await ctx.debug(
+                  'radarr: already unmonitored (duplicate group)',
+                  {
+                    tmdbId,
+                    title:
+                      typeof candidate.title === 'string'
+                        ? candidate.title
+                        : keep.title,
+                  },
+                );
+              } else if (ctx.dryRun) {
+                movieStats.radarrWouldUnmonitor += 1;
+                await ctx.info(
+                  'radarr: dry-run would unmonitor (duplicate group)',
+                  {
+                    tmdbId,
+                    title:
+                      typeof candidate.title === 'string'
+                        ? candidate.title
+                        : keep.title,
+                  },
+                );
+              } else {
+                const ok = await this.radarr
+                  .setMovieMonitored({
+                    baseUrl: radarrBaseUrl,
+                    apiKey: radarrApiKey,
+                    movie: candidate,
+                    monitored: false,
+                  })
+                  .catch(() => false);
+                if (ok) movieStats.radarrUnmonitored += 1;
+                if (ok) {
+                  pushItem(
+                    movieStats.radarrUnmonitoredItems,
+                    `${keep.title} [tmdbId=${tmdbId}]`,
+                    200,
+                    () => (movieStats.itemsTruncated = true),
+                  );
+                }
+                if (!ok) {
+                  await ctx.warn(
+                    'radarr: failed to unmonitor (duplicate group)',
+                    {
+                      tmdbId,
+                      radarrId: toInt(
+                        (candidate as unknown as Record<string, unknown>)['id'],
+                      ),
+                      title:
+                        typeof candidate.title === 'string'
+                          ? candidate.title
+                          : keep.title,
+                    },
+                  );
+                }
+                await ctx.info('radarr: unmonitor result (duplicate group)', {
+                  ok,
+                  tmdbId,
+                  title:
+                    typeof candidate.title === 'string'
+                      ? candidate.title
+                      : keep.title,
+                });
+              }
+            }
+
+            // Delete extra metadata items (duplicates across ratingKeys).
+            for (const rk of deleteKeys) {
+              if (ctx.dryRun) {
+                movieStats.metadataWouldDelete += 1;
+                continue;
+              }
+              try {
+                await this.plexServer.deleteMetadataByRatingKey({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  ratingKey: rk,
+                });
+                movieStats.metadataDeleted += 1;
+                deletedMovieRatingKeys.add(rk);
+                const metaTitle =
+                  metas.find((m) => m.ratingKey === rk)?.title ??
+                  `ratingKey=${rk}`;
+                pushItem(
+                  movieStats.deletedMetadataItems,
+                  `${metaTitle} [ratingKey=${rk}]`,
+                  200,
+                  () => (movieStats.itemsTruncated = true),
+                );
+              } catch (err) {
+                movieStats.failures += 1;
+                await ctx.warn(
+                  'plex: failed deleting duplicate movie metadata (continuing)',
+                  {
+                    ratingKey: rk,
+                    tmdbId,
+                    error: (err as Error)?.message ?? String(err),
+                  },
+                );
+              }
+            }
+
+            // Cleanup extra versions within the kept item (if any).
+            try {
+              const dup = await this.plexDuplicates.cleanupMovieDuplicates({
                 baseUrl: plexBaseUrl,
                 token: plexToken,
-                librarySectionKey: sec.key,
-                sectionTitle: sec.title,
+                ratingKey: keep.ratingKey,
+                dryRun: ctx.dryRun,
+                deletePreference,
+                preserveQualityTerms,
               });
-            for (const it of items) {
-              movies.push({ ...it, libraryTitle: sec.title });
+              movieStats.partsDeleted += dup.deleted;
+              movieStats.partsWouldDelete += dup.wouldDelete;
+              const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+                ctx.dryRun ? Boolean(d) : d.deleted === true,
+              );
+              for (const d of relevantDeletes) {
+                const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
+                pushItem(
+                  movieStats.deletedVersionItems,
+                  `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                  200,
+                  () => (movieStats.itemsTruncated = true),
+                );
+              }
+
+              // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+              try {
+                const post = await this.plexServer.getMetadataDetails({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  ratingKey: keep.ratingKey,
+                });
+                const mediaCount = post?.media?.length ?? 0;
+                if (mediaCount > 1) {
+                  sweepWarnings.push(
+                    `plex: movie still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
+                  );
+                  await ctx.warn(
+                    'plex: movie still has multiple media versions after cleanup',
+                    {
+                      ratingKey: keep.ratingKey,
+                      tmdbId,
+                      mediaCount,
+                    },
+                  );
+                }
+              } catch {
+                // ignore verification failures
+              }
+            } catch (err) {
+              movieStats.failures += 1;
+              await ctx.warn(
+                'plex: failed cleaning movie versions (continuing)',
+                {
+                  ratingKey: keep.ratingKey,
+                  tmdbId,
+                  error: (err as Error)?.message ?? String(err),
+                },
+              );
+            }
+          }
+
+          // Additionally: movies with internal duplicates (multiple versions) might not
+          // show up as TMDB groups. Ask Plex for duplicate-filtered movies and clean them.
+          try {
+            const dupKeys: Array<{ ratingKey: string; libraryTitle: string }> =
+              [];
+            for (const sec of plexMovieSections) {
+              try {
+                const items =
+                  await this.plexServer.listDuplicateMovieRatingKeysForSectionKey(
+                    {
+                      baseUrl: plexBaseUrl,
+                      token: plexToken,
+                      librarySectionKey: sec.key,
+                    },
+                  );
+                for (const it of items)
+                  dupKeys.push({
+                    ratingKey: it.ratingKey,
+                    libraryTitle: sec.title,
+                  });
+              } catch (err) {
+                const msg = (err as Error)?.message ?? String(err);
+                sweepWarnings.push(
+                  `plex: movie duplicate listing failed section=${sec.title} (continuing): ${msg}`,
+                );
+                await ctx.warn(
+                  'plex: movie duplicate listing failed (continuing)',
+                  {
+                    section: sec.title,
+                    error: msg,
+                  },
+                );
+              }
+            }
+
+            for (const { ratingKey: rk, libraryTitle } of dupKeys) {
+              if (deletedMovieRatingKeys.has(rk)) continue;
+              try {
+                const dup = await this.plexDuplicates.cleanupMovieDuplicates({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  ratingKey: rk,
+                  dryRun: ctx.dryRun,
+                  deletePreference,
+                  preserveQualityTerms,
+                });
+                if (dup.deleted || dup.wouldDelete) {
+                  movieStats.partsDeleted += dup.deleted;
+                  movieStats.partsWouldDelete += dup.wouldDelete;
+                  const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+                    ctx.dryRun ? Boolean(d) : d.deleted === true,
+                  );
+                  for (const d of relevantDeletes) {
+                    const mid = d.mediaId
+                      ? `mediaId=${d.mediaId}`
+                      : 'mediaId=?';
+                    pushItem(
+                      movieStats.deletedVersionItems,
+                      `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                      200,
+                      () => (movieStats.itemsTruncated = true),
+                    );
+                  }
+
+                  const tmdbId = dup.metadata.tmdbIds[0] ?? null;
+                  const candidate =
+                    radarrBaseUrl && radarrApiKey
+                      ? pickRadarrMovie(tmdbId, dup.title)
+                      : null;
+
+                  if (
+                    features.unmonitorInArr &&
+                    radarrBaseUrl &&
+                    radarrApiKey
+                  ) {
+                    if (!candidate) {
+                      movieStats.radarrNotFound += 1;
+                      await ctx.warn(
+                        'radarr: movie not found for duplicate-only item',
+                        {
+                          ratingKey: rk,
+                          tmdbId,
+                          title: dup.title,
+                        },
+                      );
+                    } else if (candidate.monitored) {
+                      if (ctx.dryRun) {
+                        movieStats.radarrWouldUnmonitor += 1;
+                      } else {
+                        const ok = await this.radarr
+                          .setMovieMonitored({
+                            baseUrl: radarrBaseUrl,
+                            apiKey: radarrApiKey,
+                            movie: candidate,
+                            monitored: false,
+                          })
+                          .catch(() => false);
+                        if (ok) movieStats.radarrUnmonitored += 1;
+                        if (ok) {
+                          pushItem(
+                            movieStats.radarrUnmonitoredItems,
+                            `${dup.title}${dup.metadata.year ? ` (${dup.metadata.year})` : ''} [tmdbId=${tmdbId ?? 'unknown'}]`,
+                            200,
+                            () => (movieStats.itemsTruncated = true),
+                          );
+                        }
+                        if (!ok) {
+                          await ctx.warn(
+                            'radarr: failed to unmonitor (duplicate-only item)',
+                            {
+                              ratingKey: rk,
+                              tmdbId,
+                              radarrId: toInt(
+                                (
+                                  candidate as unknown as Record<
+                                    string,
+                                    unknown
+                                  >
+                                )['id'],
+                              ),
+                              title:
+                                typeof candidate.title === 'string'
+                                  ? candidate.title
+                                  : dup.title,
+                            },
+                          );
+                        }
+                      }
+                    } else {
+                      await ctx.debug(
+                        'radarr: already unmonitored (duplicate-only item)',
+                        {
+                          ratingKey: rk,
+                          tmdbId,
+                          title:
+                            typeof candidate.title === 'string'
+                              ? candidate.title
+                              : dup.title,
+                        },
+                      );
+                    }
+                  }
+                }
+
+                // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+                try {
+                  const post = await this.plexServer.getMetadataDetails({
+                    baseUrl: plexBaseUrl,
+                    token: plexToken,
+                    ratingKey: rk,
+                  });
+                  const mediaCount = post?.media?.length ?? 0;
+                  if (mediaCount > 1) {
+                    sweepWarnings.push(
+                      `plex: movie still has multiple media versions after cleanup ratingKey=${rk} media=${mediaCount}`,
+                    );
+                    await ctx.warn(
+                      'plex: movie still has multiple media versions after cleanup',
+                      {
+                        ratingKey: rk,
+                        tmdbId: dup.metadata.tmdbIds[0] ?? null,
+                        mediaCount,
+                      },
+                    );
+                  }
+                } catch {
+                  // ignore verification failures
+                }
+              } catch (err) {
+                movieStats.failures += 1;
+                await ctx.warn(
+                  'plex: failed cleaning duplicate movie (continuing)',
+                  {
+                    ratingKey: rk,
+                    section: libraryTitle,
+                    error: (err as Error)?.message ?? String(err),
+                  },
+                );
+              }
             }
           } catch (err) {
             const msg = (err as Error)?.message ?? String(err);
-            sweepWarnings.push(
-              `plex: failed listing movies for section=${sec.title} (continuing): ${msg}`,
-            );
+            sweepWarnings.push(`plex: movie duplicate listing failed: ${msg}`);
             await ctx.warn(
-              'plex: failed listing movies for section (continuing)',
+              'plex: movie duplicate listing failed (continuing)',
               {
-                section: sec.title,
                 error: msg,
               },
             );
           }
-        }
-
-        movieStats.scanned = movies.length;
-
-        const groups = new Map<
-          number,
-          Array<{ ratingKey: string; title: string; addedAt: number | null }>
-        >();
-        for (const m of movies) {
-          if (!m.tmdbId) continue;
-          const list = groups.get(m.tmdbId) ?? [];
-          list.push({
-            ratingKey: m.ratingKey,
-            title: m.title,
-            addedAt: m.addedAt,
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          sweepWarnings.push(`plex: movie scan failed: ${msg}`);
+          await ctx.warn('plex: movie scan failed (continuing)', {
+            error: msg,
           });
-          groups.set(m.tmdbId, list);
         }
-        movieStats.groups = groups.size;
+
+        // --- Episode duplicates sweep
+        type EpisodeCandidate = {
+          ratingKey: string;
+          showTitle: string | null;
+          season: number | null;
+          episode: number | null;
+          bestResolution: number;
+          bestSize: number | null;
+        };
+
+        const episodeCandidates: EpisodeCandidate[] = [];
 
         await setProgress(
-          3,
-          'clean_movies',
-          'Deleting duplicate movies (Plex) and unmonitoring in Radarr…',
+          4,
+          'scan_episodes',
+          'Scanning Plex episodes for duplicates…',
+          {
+            libraries: plexTvSections.map((s) => s.title),
+          },
         );
 
-        for (const [tmdbId, items] of groups.entries()) {
-          if (items.length < 2) continue;
-          movieStats.groupsWithDuplicates += 1;
+        const loadDuplicateEpisodeKeys = async (): Promise<string[]> => {
+          const out = new Set<string>();
+          let anySucceeded = false;
 
-          await ctx.info('plex: duplicate movie group found', {
-            tmdbId,
-            candidates: items.length,
-            ratingKeys: items.map((i) => i.ratingKey),
-          });
+          for (const sec of plexTvSections) {
+            try {
+              const rows =
+                await this.plexServer.listDuplicateEpisodeRatingKeysForSectionKey(
+                  {
+                    baseUrl: plexBaseUrl,
+                    token: plexToken,
+                    librarySectionKey: sec.key,
+                  },
+                );
+              for (const r of rows) out.add(r.ratingKey);
+              anySucceeded = true;
+            } catch (err) {
+              await ctx.warn(
+                'plex: duplicate episode listing failed for section (continuing)',
+                {
+                  section: sec.title,
+                  error: (err as Error)?.message ?? String(err),
+                },
+              );
+            }
+          }
 
-          // Load details for each candidate (so we can choose a winner).
-          const metas: Array<{
-            ratingKey: string;
-            title: string;
-            addedAt: number | null;
-            preserved: boolean;
-            bestResolution: number;
-            bestSize: number | null;
-          }> = [];
+          if (anySucceeded) return Array.from(out);
 
-          for (const it of items) {
+          // Fallback: per-show duplicate leaves
+          await ctx.warn(
+            'plex: duplicate episode listing failed; falling back to per-show scan',
+          );
+          try {
+            for (const sec of plexTvSections) {
+              const shows = await this.plexServer.listTvShowsForSectionKey({
+                baseUrl: plexBaseUrl,
+                token: plexToken,
+                librarySectionKey: sec.key,
+              });
+              for (const show of shows) {
+                try {
+                  const eps = await this.plexServer.listEpisodesForShow({
+                    baseUrl: plexBaseUrl,
+                    token: plexToken,
+                    showRatingKey: show.ratingKey,
+                    duplicateOnly: true,
+                  });
+                  for (const ep of eps) out.add(ep.ratingKey);
+                } catch {
+                  // ignore per-show errors
+                }
+              }
+            }
+          } catch {
+            // ignore fallback errors
+          }
+
+          return Array.from(out);
+        };
+
+        try {
+          const dupEpisodeKeys = await loadDuplicateEpisodeKeys();
+          episodeStats.candidates = dupEpisodeKeys.length;
+
+          for (const rk of dupEpisodeKeys) {
             try {
               const meta = await this.plexServer.getMetadataDetails({
                 baseUrl: plexBaseUrl,
                 token: plexToken,
-                ratingKey: it.ratingKey,
+                ratingKey: rk,
               });
               if (!meta) continue;
+              const showTitle = meta.grandparentTitle;
+              const season = meta.parentIndex;
+              const epNum = meta.index;
 
               let bestRes = 1;
               let bestSize: number | null = null;
@@ -726,386 +1282,245 @@ export class CleanupAfterAddingNewContentJob {
                 }
               }
 
-              metas.push({
+              episodeCandidates.push({
                 ratingKey: meta.ratingKey,
-                title: meta.title || it.title,
-                addedAt: meta.addedAt ?? it.addedAt ?? null,
-                preserved: metaHasPreservedCopy(meta),
+                showTitle,
+                season,
+                episode: epNum,
                 bestResolution: bestRes,
                 bestSize,
               });
             } catch (err) {
-              movieStats.failures += 1;
+              episodeStats.failures += 1;
               await ctx.warn(
-                'plex: failed loading movie metadata (continuing)',
-                {
-                  ratingKey: it.ratingKey,
-                  error: (err as Error)?.message ?? String(err),
-                },
-              );
-            }
-          }
-
-          if (metas.length < 2) continue;
-
-          const pref = deletePreference;
-          const pool = metas.some((m) => m.preserved)
-            ? metas.filter((m) => m.preserved)
-            : metas;
-
-          const sorted = pool.slice().sort((a, b) => {
-            if (pref === 'newest' || pref === 'oldest') {
-              const aa = a.addedAt ?? 0;
-              const bb = b.addedAt ?? 0;
-              // delete newest => keep oldest; delete oldest => keep newest
-              if (aa !== bb) return pref === 'newest' ? aa - bb : bb - aa;
-            } else if (pref === 'largest_file' || pref === 'smallest_file') {
-              const sa =
-                a.bestSize ??
-                (pref === 'smallest_file' ? Number.POSITIVE_INFINITY : 0);
-              const sb =
-                b.bestSize ??
-                (pref === 'smallest_file' ? Number.POSITIVE_INFINITY : 0);
-              // delete smallest => keep largest; delete largest => keep smallest
-              if (sa !== sb)
-                return pref === 'smallest_file' ? sb - sa : sa - sb;
-            }
-
-            // Tie-breaker: higher resolution, then larger size.
-            if (a.bestResolution !== b.bestResolution) {
-              return b.bestResolution - a.bestResolution;
-            }
-            const sa2 = a.bestSize ?? 0;
-            const sb2 = b.bestSize ?? 0;
-            return sb2 - sa2;
-          });
-
-          const keep = sorted[0];
-          const deleteKeys = metas
-            .map((m) => m.ratingKey)
-            .filter((rk) => rk !== keep.ratingKey);
-
-          await ctx.info('plex: keeping best movie candidate', {
-            tmdbId,
-            keepRatingKey: keep.ratingKey,
-            keepTitle: keep.title,
-            preference: deletePreference,
-            preservedPreferred: metas.some((m) => m.preserved),
-            deleteRatingKeys: deleteKeys,
-          });
-
-          // Unmonitor in Radarr once per TMDB group (best-effort).
-          if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
-            const candidate = pickRadarrMovie(tmdbId, keep.title);
-            if (!candidate) {
-              movieStats.radarrNotFound += 1;
-              await ctx.warn('radarr: movie not found for duplicate group', {
-                tmdbId,
-                title: keep.title,
-              });
-            } else if (!candidate.monitored) {
-              await ctx.debug('radarr: already unmonitored (duplicate group)', {
-                tmdbId,
-                title:
-                  typeof candidate.title === 'string'
-                    ? candidate.title
-                    : keep.title,
-              });
-            } else if (ctx.dryRun) {
-              movieStats.radarrWouldUnmonitor += 1;
-              await ctx.info(
-                'radarr: dry-run would unmonitor (duplicate group)',
-                {
-                  tmdbId,
-                  title:
-                    typeof candidate.title === 'string'
-                      ? candidate.title
-                      : keep.title,
-                },
-              );
-            } else {
-              const ok = await this.radarr
-                .setMovieMonitored({
-                  baseUrl: radarrBaseUrl,
-                  apiKey: radarrApiKey,
-                  movie: candidate,
-                  monitored: false,
-                })
-                .catch(() => false);
-              if (ok) movieStats.radarrUnmonitored += 1;
-              if (ok) {
-                pushItem(
-                  movieStats.radarrUnmonitoredItems,
-                  `${keep.title} [tmdbId=${tmdbId}]`,
-                  200,
-                  () => (movieStats.itemsTruncated = true),
-                );
-              }
-              if (!ok) {
-                await ctx.warn('radarr: failed to unmonitor (duplicate group)', {
-                  tmdbId,
-                  radarrId: toInt((candidate as unknown as Record<string, unknown>)['id']),
-                  title:
-                    typeof candidate.title === 'string'
-                      ? candidate.title
-                      : keep.title,
-                });
-              }
-              await ctx.info('radarr: unmonitor result (duplicate group)', {
-                ok,
-                tmdbId,
-                title:
-                  typeof candidate.title === 'string'
-                    ? candidate.title
-                    : keep.title,
-              });
-            }
-          }
-
-          // Delete extra metadata items (duplicates across ratingKeys).
-          for (const rk of deleteKeys) {
-            if (ctx.dryRun) {
-              movieStats.metadataWouldDelete += 1;
-              continue;
-            }
-            try {
-              await this.plexServer.deleteMetadataByRatingKey({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                ratingKey: rk,
-              });
-              movieStats.metadataDeleted += 1;
-              deletedMovieRatingKeys.add(rk);
-              const metaTitle =
-                metas.find((m) => m.ratingKey === rk)?.title ?? `ratingKey=${rk}`;
-              pushItem(
-                movieStats.deletedMetadataItems,
-                `${metaTitle} [ratingKey=${rk}]`,
-                200,
-                () => (movieStats.itemsTruncated = true),
-              );
-            } catch (err) {
-              movieStats.failures += 1;
-              await ctx.warn(
-                'plex: failed deleting duplicate movie metadata (continuing)',
+                'plex: failed loading episode metadata (continuing)',
                 {
                   ratingKey: rk,
-                  tmdbId,
                   error: (err as Error)?.message ?? String(err),
                 },
               );
             }
           }
 
-          // Cleanup extra versions within the kept item (if any).
-          try {
-            const dup = await this.plexDuplicates.cleanupMovieDuplicates({
-              baseUrl: plexBaseUrl,
-              token: plexToken,
-              ratingKey: keep.ratingKey,
-              dryRun: ctx.dryRun,
-              deletePreference,
-              preserveQualityTerms,
+          // Group by show+season+episode across ratingKeys.
+          const byKey = new Map<string, EpisodeCandidate[]>();
+          for (const c of episodeCandidates) {
+            // Only group across ratingKeys when we have stable identifiers (show+SxxExx).
+            // Otherwise, keep groups isolated per ratingKey for safety.
+            const show =
+              typeof c.showTitle === 'string' && c.showTitle.trim()
+                ? normTitle(c.showTitle)
+                : null;
+            const season =
+              typeof c.season === 'number' && Number.isFinite(c.season)
+                ? c.season
+                : null;
+            const ep =
+              typeof c.episode === 'number' && Number.isFinite(c.episode)
+                ? c.episode
+                : null;
+            const key =
+              show && season !== null && ep !== null
+                ? `${show}:${season}:${ep}`
+                : `rk:${c.ratingKey}`;
+            const list = byKey.get(key) ?? [];
+            list.push(c);
+            byKey.set(key, list);
+          }
+
+          await setProgress(
+            5,
+            'clean_episodes',
+            'Deleting duplicate episodes (Plex) and unmonitoring in Sonarr…',
+          );
+
+          for (const [key, group] of byKey.entries()) {
+            if (!key || group.length === 0) continue;
+
+            const season = group[0]?.season ?? null;
+            const epNum = group[0]?.episode ?? null;
+            const showTitle = group[0]?.showTitle ?? null;
+
+            // Pick keep candidate (best resolution, then size).
+            const sorted = group.slice().sort((a, b) => {
+              if (a.bestResolution !== b.bestResolution)
+                return b.bestResolution - a.bestResolution;
+              const sa = a.bestSize ?? 0;
+              const sb = b.bestSize ?? 0;
+              return sb - sa;
             });
-            movieStats.partsDeleted += dup.deleted;
-            movieStats.partsWouldDelete += dup.wouldDelete;
-            const relevantDeletes = (dup.deletions ?? []).filter((d) =>
-              ctx.dryRun ? Boolean(d) : d.deleted === true,
-            );
-            for (const d of relevantDeletes) {
-              const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
-              pushItem(
-                movieStats.deletedVersionItems,
-                `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
-                200,
-                () => (movieStats.itemsTruncated = true),
-              );
-            }
+            const keep = sorted[0];
+            const deleteKeys = group
+              .map((g) => g.ratingKey)
+              .filter((rk) => rk !== keep.ratingKey);
 
-            // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
-            try {
-              const post = await this.plexServer.getMetadataDetails({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                ratingKey: keep.ratingKey,
-              });
-              const mediaCount = post?.media?.length ?? 0;
-              if (mediaCount > 1) {
-                sweepWarnings.push(
-                  `plex: movie still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
-                );
-                await ctx.warn('plex: movie still has multiple media versions after cleanup', {
-                  ratingKey: keep.ratingKey,
-                  tmdbId,
-                  mediaCount,
-                });
-              }
-            } catch {
-              // ignore verification failures
-            }
-          } catch (err) {
-            movieStats.failures += 1;
-            await ctx.warn(
-              'plex: failed cleaning movie versions (continuing)',
-              {
-                ratingKey: keep.ratingKey,
-                tmdbId,
-                error: (err as Error)?.message ?? String(err),
-              },
-            );
-          }
-        }
+            if (group.length > 1) episodeStats.groupsWithDuplicates += 1;
 
-        // Additionally: movies with internal duplicates (multiple versions) might not
-        // show up as TMDB groups. Ask Plex for duplicate-filtered movies and clean them.
-        try {
-          const dupKeys: Array<{ ratingKey: string; libraryTitle: string }> =
-            [];
-          for (const sec of plexMovieSections) {
-            try {
-              const items =
-                await this.plexServer.listDuplicateMovieRatingKeysForSectionKey(
-                  {
-                    baseUrl: plexBaseUrl,
-                    token: plexToken,
-                    librarySectionKey: sec.key,
-                  },
-                );
-              for (const it of items)
-                dupKeys.push({
-                  ratingKey: it.ratingKey,
-                  libraryTitle: sec.title,
-                });
-            } catch (err) {
-              const msg = (err as Error)?.message ?? String(err);
-              sweepWarnings.push(
-                `plex: movie duplicate listing failed section=${sec.title} (continuing): ${msg}`,
-              );
-              await ctx.warn(
-                'plex: movie duplicate listing failed (continuing)',
-                {
-                  section: sec.title,
-                  error: msg,
-                },
-              );
-            }
-          }
-
-          for (const { ratingKey: rk, libraryTitle } of dupKeys) {
-            if (deletedMovieRatingKeys.has(rk)) continue;
-            try {
-              const dup = await this.plexDuplicates.cleanupMovieDuplicates({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                ratingKey: rk,
-                dryRun: ctx.dryRun,
-                deletePreference,
-                preserveQualityTerms,
-              });
-              if (dup.deleted || dup.wouldDelete) {
-                movieStats.partsDeleted += dup.deleted;
-                movieStats.partsWouldDelete += dup.wouldDelete;
-                const relevantDeletes = (dup.deletions ?? []).filter((d) =>
-                  ctx.dryRun ? Boolean(d) : d.deleted === true,
-                );
-                for (const d of relevantDeletes) {
-                  const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
-                  pushItem(
-                    movieStats.deletedVersionItems,
-                    `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
-                    200,
-                    () => (movieStats.itemsTruncated = true),
+            // Unmonitor in Sonarr once per logical episode key (best-effort)
+            if (
+              features.unmonitorInArr &&
+              sonarrBaseUrl &&
+              sonarrApiKey &&
+              showTitle &&
+              typeof season === 'number' &&
+              typeof epNum === 'number'
+            ) {
+              const series = findSonarrSeriesFromCache({ title: showTitle });
+              if (!series) {
+                episodeStats.sonarrNotFound += 1;
+              } else {
+                try {
+                  const epMap = await getSonarrEpisodeMap(series.id);
+                  const sonarrEp = epMap.get(episodeKey(season, epNum)) ?? null;
+                  if (!sonarrEp) {
+                    episodeStats.sonarrNotFound += 1;
+                  } else if (!sonarrEp.monitored) {
+                    // already unmonitored
+                  } else if (ctx.dryRun) {
+                    episodeStats.sonarrWouldUnmonitor += 1;
+                  } else {
+                    const ok = await this.sonarr
+                      .setEpisodeMonitored({
+                        baseUrl: sonarrBaseUrl,
+                        apiKey: sonarrApiKey,
+                        episode: sonarrEp,
+                        monitored: false,
+                      })
+                      .then(() => true)
+                      .catch(() => false);
+                    if (ok) episodeStats.sonarrUnmonitored += 1;
+                    if (ok) {
+                      const s =
+                        String(showTitle ?? '').trim() || 'Unknown show';
+                      pushItem(
+                        episodeStats.sonarrUnmonitoredItems,
+                        `${s} S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`,
+                        200,
+                        () => (episodeStats.itemsTruncated = true),
+                      );
+                    } else {
+                      await ctx.warn(
+                        'sonarr: failed to unmonitor episode (duplicate group)',
+                        {
+                          title: showTitle,
+                          season,
+                          episode: epNum,
+                          sonarrSeriesId: toInt(
+                            (series as unknown as Record<string, unknown>)[
+                              'id'
+                            ],
+                          ),
+                          sonarrEpisodeId: toInt(
+                            (sonarrEp as unknown as Record<string, unknown>)[
+                              'id'
+                            ],
+                          ),
+                        },
+                      );
+                    }
+                  }
+                } catch (err) {
+                  episodeStats.failures += 1;
+                  await ctx.warn(
+                    'sonarr: failed unmonitoring episode (continuing)',
+                    {
+                      title: showTitle,
+                      season,
+                      episode: epNum,
+                      error: (err as Error)?.message ?? String(err),
+                    },
                   );
                 }
-
-                const tmdbId = dup.metadata.tmdbIds[0] ?? null;
-                const candidate =
-                  radarrBaseUrl && radarrApiKey
-                    ? pickRadarrMovie(tmdbId, dup.title)
-                    : null;
-
-                if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
-                  if (!candidate) {
-                    movieStats.radarrNotFound += 1;
-                  await ctx.warn('radarr: movie not found for duplicate-only item', {
-                    ratingKey: rk,
-                    tmdbId,
-                    title: dup.title,
-                  });
-                  } else if (candidate.monitored) {
-                    if (ctx.dryRun) {
-                      movieStats.radarrWouldUnmonitor += 1;
-                    } else {
-                      const ok = await this.radarr
-                        .setMovieMonitored({
-                          baseUrl: radarrBaseUrl,
-                          apiKey: radarrApiKey,
-                          movie: candidate,
-                          monitored: false,
-                        })
-                        .catch(() => false);
-                      if (ok) movieStats.radarrUnmonitored += 1;
-                      if (ok) {
-                        pushItem(
-                          movieStats.radarrUnmonitoredItems,
-                          `${dup.title}${dup.metadata.year ? ` (${dup.metadata.year})` : ''} [tmdbId=${tmdbId ?? 'unknown'}]`,
-                          200,
-                          () => (movieStats.itemsTruncated = true),
-                        );
-                      }
-                    if (!ok) {
-                      await ctx.warn('radarr: failed to unmonitor (duplicate-only item)', {
-                        ratingKey: rk,
-                        tmdbId,
-                        radarrId: toInt((candidate as unknown as Record<string, unknown>)['id']),
-                        title:
-                          typeof candidate.title === 'string'
-                            ? candidate.title
-                            : dup.title,
-                      });
-                    }
-                    }
-                } else {
-                  await ctx.debug('radarr: already unmonitored (duplicate-only item)', {
-                    ratingKey: rk,
-                    tmdbId,
-                    title:
-                      typeof candidate.title === 'string'
-                        ? candidate.title
-                        : dup.title,
-                  });
-                  }
-                }
               }
+            }
 
-            // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+            // Delete extra metadata items (duplicates across ratingKeys), if any.
+            for (const rk of deleteKeys) {
+              if (ctx.dryRun) {
+                episodeStats.metadataWouldDelete += 1;
+                continue;
+              }
+              try {
+                await this.plexServer.deleteMetadataByRatingKey({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  ratingKey: rk,
+                });
+                episodeStats.metadataDeleted += 1;
+                const s = String(showTitle ?? '').trim() || 'Unknown show';
+                pushItem(
+                  episodeStats.deletedMetadataItems,
+                  `${s} S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')} [ratingKey=${rk}]`,
+                  200,
+                  () => (episodeStats.itemsTruncated = true),
+                );
+              } catch (err) {
+                episodeStats.failures += 1;
+                await ctx.warn(
+                  'plex: failed deleting duplicate episode metadata (continuing)',
+                  {
+                    ratingKey: rk,
+                    error: (err as Error)?.message ?? String(err),
+                  },
+                );
+              }
+            }
+
+            // Cleanup extra versions within kept episode (if any).
             try {
-              const post = await this.plexServer.getMetadataDetails({
+              const dup = await this.plexDuplicates.cleanupEpisodeDuplicates({
                 baseUrl: plexBaseUrl,
                 token: plexToken,
-                ratingKey: rk,
+                ratingKey: keep.ratingKey,
+                dryRun: ctx.dryRun,
               });
-              const mediaCount = post?.media?.length ?? 0;
-              if (mediaCount > 1) {
-                sweepWarnings.push(
-                  `plex: movie still has multiple media versions after cleanup ratingKey=${rk} media=${mediaCount}`,
+              episodeStats.partsDeleted += dup.deleted;
+              episodeStats.partsWouldDelete += dup.wouldDelete;
+              const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+                ctx.dryRun ? Boolean(d) : d.deleted === true,
+              );
+              for (const d of relevantDeletes) {
+                const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
+                pushItem(
+                  episodeStats.deletedVersionItems,
+                  `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                  200,
+                  () => (episodeStats.itemsTruncated = true),
                 );
-                await ctx.warn('plex: movie still has multiple media versions after cleanup', {
-                  ratingKey: rk,
-                  tmdbId: dup.metadata.tmdbIds[0] ?? null,
-                  mediaCount,
-                });
               }
-            } catch {
-              // ignore verification failures
-            }
+
+              // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
+              try {
+                const post = await this.plexServer.getMetadataDetails({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  ratingKey: keep.ratingKey,
+                });
+                const mediaCount = post?.media?.length ?? 0;
+                if (mediaCount > 1) {
+                  sweepWarnings.push(
+                    `plex: episode still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
+                  );
+                  await ctx.warn(
+                    'plex: episode still has multiple media versions after cleanup',
+                    {
+                      ratingKey: keep.ratingKey,
+                      showTitle,
+                      season,
+                      episode: epNum,
+                      mediaCount,
+                    },
+                  );
+                }
+              } catch {
+                // ignore verification failures
+              }
             } catch (err) {
-              movieStats.failures += 1;
+              episodeStats.failures += 1;
               await ctx.warn(
-                'plex: failed cleaning duplicate movie (continuing)',
+                'plex: failed cleaning episode versions (continuing)',
                 {
-                  ratingKey: rk,
-                  section: libraryTitle,
+                  ratingKey: keep.ratingKey,
                   error: (err as Error)?.message ?? String(err),
                 },
               );
@@ -1113,568 +1528,225 @@ export class CleanupAfterAddingNewContentJob {
           }
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
-          sweepWarnings.push(`plex: movie duplicate listing failed: ${msg}`);
-          await ctx.warn('plex: movie duplicate listing failed (continuing)', {
+          sweepWarnings.push(`plex: episode scan failed: ${msg}`);
+          await ctx.warn('plex: episode scan failed (continuing)', {
             error: msg,
           });
         }
-        } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        sweepWarnings.push(`plex: movie scan failed: ${msg}`);
-        await ctx.warn('plex: movie scan failed (continuing)', { error: msg });
-      }
 
-      // --- Episode duplicates sweep
-      type EpisodeCandidate = {
-        ratingKey: string;
-        showTitle: string | null;
-        season: number | null;
-        episode: number | null;
-        bestResolution: number;
-        bestSize: number | null;
-      };
+        // --- Cross-library episode duplicates (same TVDB series present in multiple Plex libraries)
+        try {
+          if (plexTvSections.length > 0) {
+            await ctx.info('plex: scanning cross-library episode duplicates', {
+              tvLibraries: plexTvSections.map((s) => s.title),
+            });
 
-      const episodeCandidates: EpisodeCandidate[] = [];
-
-      await setProgress(4, 'scan_episodes', 'Scanning Plex episodes for duplicates…', {
-        libraries: plexTvSections.map((s) => s.title),
-      });
-
-      const loadDuplicateEpisodeKeys = async (): Promise<string[]> => {
-        const out = new Set<string>();
-        let anySucceeded = false;
-
-        for (const sec of plexTvSections) {
-          try {
-            const rows =
-              await this.plexServer.listDuplicateEpisodeRatingKeysForSectionKey(
-                {
+            const plexTvdbRatingKeys = new Map<number, string[]>();
+            for (const sec of plexTvSections) {
+              try {
+                const map = await this.plexServer.getTvdbShowMapForSectionKey({
                   baseUrl: plexBaseUrl,
                   token: plexToken,
                   librarySectionKey: sec.key,
-                },
-              );
-            for (const r of rows) out.add(r.ratingKey);
-            anySucceeded = true;
-          } catch (err) {
-            await ctx.warn(
-              'plex: duplicate episode listing failed for section (continuing)',
-              {
-                section: sec.title,
-                error: (err as Error)?.message ?? String(err),
-              },
-            );
-          }
-        }
-
-        if (anySucceeded) return Array.from(out);
-
-        // Fallback: per-show duplicate leaves
-        await ctx.warn(
-          'plex: duplicate episode listing failed; falling back to per-show scan',
-        );
-        try {
-          for (const sec of plexTvSections) {
-            const shows = await this.plexServer.listTvShowsForSectionKey({
-              baseUrl: plexBaseUrl,
-              token: plexToken,
-              librarySectionKey: sec.key,
-            });
-            for (const show of shows) {
-              try {
-                const eps = await this.plexServer.listEpisodesForShow({
-                  baseUrl: plexBaseUrl,
-                  token: plexToken,
-                  showRatingKey: show.ratingKey,
-                  duplicateOnly: true,
+                  sectionTitle: sec.title,
                 });
-                for (const ep of eps) out.add(ep.ratingKey);
-              } catch {
-                // ignore per-show errors
-              }
-            }
-          }
-        } catch {
-          // ignore fallback errors
-        }
-
-        return Array.from(out);
-      };
-
-      try {
-        const dupEpisodeKeys = await loadDuplicateEpisodeKeys();
-        episodeStats.candidates = dupEpisodeKeys.length;
-
-        for (const rk of dupEpisodeKeys) {
-          try {
-            const meta = await this.plexServer.getMetadataDetails({
-              baseUrl: plexBaseUrl,
-              token: plexToken,
-              ratingKey: rk,
-            });
-            if (!meta) continue;
-            const showTitle = meta.grandparentTitle;
-            const season = meta.parentIndex;
-            const epNum = meta.index;
-
-            let bestRes = 1;
-            let bestSize: number | null = null;
-            for (const m of meta.media ?? []) {
-              bestRes = Math.max(
-                bestRes,
-                resolutionPriority(m.videoResolution),
-              );
-              for (const p of m.parts ?? []) {
-                if (typeof p.size === 'number' && Number.isFinite(p.size)) {
-                  bestSize =
-                    bestSize === null ? p.size : Math.max(bestSize, p.size);
-                }
-              }
-            }
-
-            episodeCandidates.push({
-              ratingKey: meta.ratingKey,
-              showTitle,
-              season,
-              episode: epNum,
-              bestResolution: bestRes,
-              bestSize,
-            });
-          } catch (err) {
-            episodeStats.failures += 1;
-            await ctx.warn(
-              'plex: failed loading episode metadata (continuing)',
-              {
-                ratingKey: rk,
-                error: (err as Error)?.message ?? String(err),
-              },
-            );
-          }
-        }
-
-        // Group by show+season+episode across ratingKeys.
-        const byKey = new Map<string, EpisodeCandidate[]>();
-        for (const c of episodeCandidates) {
-          // Only group across ratingKeys when we have stable identifiers (show+SxxExx).
-          // Otherwise, keep groups isolated per ratingKey for safety.
-          const show =
-            typeof c.showTitle === 'string' && c.showTitle.trim()
-              ? normTitle(c.showTitle)
-              : null;
-          const season =
-            typeof c.season === 'number' && Number.isFinite(c.season)
-              ? c.season
-              : null;
-          const ep =
-            typeof c.episode === 'number' && Number.isFinite(c.episode)
-              ? c.episode
-              : null;
-          const key =
-            show && season !== null && ep !== null
-              ? `${show}:${season}:${ep}`
-              : `rk:${c.ratingKey}`;
-          const list = byKey.get(key) ?? [];
-          list.push(c);
-          byKey.set(key, list);
-        }
-
-        await setProgress(
-          5,
-          'clean_episodes',
-          'Deleting duplicate episodes (Plex) and unmonitoring in Sonarr…',
-        );
-
-        for (const [key, group] of byKey.entries()) {
-          if (!key || group.length === 0) continue;
-
-          const season = group[0]?.season ?? null;
-          const epNum = group[0]?.episode ?? null;
-          const showTitle = group[0]?.showTitle ?? null;
-
-          // Pick keep candidate (best resolution, then size).
-          const sorted = group.slice().sort((a, b) => {
-            if (a.bestResolution !== b.bestResolution)
-              return b.bestResolution - a.bestResolution;
-            const sa = a.bestSize ?? 0;
-            const sb = b.bestSize ?? 0;
-            return sb - sa;
-          });
-          const keep = sorted[0];
-          const deleteKeys = group
-            .map((g) => g.ratingKey)
-            .filter((rk) => rk !== keep.ratingKey);
-
-          if (group.length > 1) episodeStats.groupsWithDuplicates += 1;
-
-          // Unmonitor in Sonarr once per logical episode key (best-effort)
-          if (
-            features.unmonitorInArr &&
-            sonarrBaseUrl &&
-            sonarrApiKey &&
-            showTitle &&
-            typeof season === 'number' &&
-            typeof epNum === 'number'
-          ) {
-            const series = findSonarrSeriesFromCache({ title: showTitle });
-            if (!series) {
-              episodeStats.sonarrNotFound += 1;
-            } else {
-              try {
-                const epMap = await getSonarrEpisodeMap(series.id);
-                const sonarrEp = epMap.get(episodeKey(season, epNum)) ?? null;
-                if (!sonarrEp) {
-                  episodeStats.sonarrNotFound += 1;
-                } else if (!sonarrEp.monitored) {
-                  // already unmonitored
-                } else if (ctx.dryRun) {
-                  episodeStats.sonarrWouldUnmonitor += 1;
-                } else {
-                  const ok = await this.sonarr
-                    .setEpisodeMonitored({
-                      baseUrl: sonarrBaseUrl,
-                      apiKey: sonarrApiKey,
-                      episode: sonarrEp,
-                      monitored: false,
-                    })
-                    .then(() => true)
-                    .catch(() => false);
-                  if (ok) episodeStats.sonarrUnmonitored += 1;
-                  if (ok) {
-                    const s = String(showTitle ?? '').trim() || 'Unknown show';
-                    pushItem(
-                      episodeStats.sonarrUnmonitoredItems,
-                      `${s} S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')}`,
-                      200,
-                      () => (episodeStats.itemsTruncated = true),
-                    );
-                  } else {
-                    await ctx.warn('sonarr: failed to unmonitor episode (duplicate group)', {
-                      title: showTitle,
-                      season,
-                      episode: epNum,
-                      sonarrSeriesId: toInt((series as unknown as Record<string, unknown>)['id']),
-                      sonarrEpisodeId: toInt((sonarrEp as unknown as Record<string, unknown>)['id']),
-                    });
-                  }
+                for (const [tvdbId, rk] of map.entries()) {
+                  const prev = plexTvdbRatingKeys.get(tvdbId) ?? [];
+                  if (!prev.includes(rk)) prev.push(rk);
+                  plexTvdbRatingKeys.set(tvdbId, prev);
                 }
               } catch (err) {
-                episodeStats.failures += 1;
                 await ctx.warn(
-                  'sonarr: failed unmonitoring episode (continuing)',
+                  'plex: failed building TVDB map for section (continuing)',
                   {
-                    title: showTitle,
-                    season,
-                    episode: epNum,
+                    section: sec.title,
                     error: (err as Error)?.message ?? String(err),
                   },
                 );
               }
             }
-          }
+            plexTvdbRatingKeysForSweep = plexTvdbRatingKeys;
 
-          // Delete extra metadata items (duplicates across ratingKeys), if any.
-          for (const rk of deleteKeys) {
-            if (ctx.dryRun) {
-              episodeStats.metadataWouldDelete += 1;
-              continue;
-            }
-            try {
-              await this.plexServer.deleteMetadataByRatingKey({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                ratingKey: rk,
-              });
-              episodeStats.metadataDeleted += 1;
-              const s = String(showTitle ?? '').trim() || 'Unknown show';
-              pushItem(
-                episodeStats.deletedMetadataItems,
-                `${s} S${String(season).padStart(2, '0')}E${String(epNum).padStart(2, '0')} [ratingKey=${rk}]`,
-                200,
-                () => (episodeStats.itemsTruncated = true),
-              );
-            } catch (err) {
-              episodeStats.failures += 1;
-              await ctx.warn(
-                'plex: failed deleting duplicate episode metadata (continuing)',
-                {
-                  ratingKey: rk,
-                  error: (err as Error)?.message ?? String(err),
-                },
-              );
-            }
-          }
-
-          // Cleanup extra versions within kept episode (if any).
-          try {
-            const dup = await this.plexDuplicates.cleanupEpisodeDuplicates({
-              baseUrl: plexBaseUrl,
-              token: plexToken,
-              ratingKey: keep.ratingKey,
-              dryRun: ctx.dryRun,
-            });
-            episodeStats.partsDeleted += dup.deleted;
-            episodeStats.partsWouldDelete += dup.wouldDelete;
-            const relevantDeletes = (dup.deletions ?? []).filter((d) =>
-              ctx.dryRun ? Boolean(d) : d.deleted === true,
+            const dupSeries = Array.from(plexTvdbRatingKeys.entries()).filter(
+              ([, rks]) => rks.length > 1,
             );
-            for (const d of relevantDeletes) {
-              const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
-              pushItem(
-                episodeStats.deletedVersionItems,
-                `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
-                200,
-                () => (episodeStats.itemsTruncated = true),
-              );
-            }
 
-            // Verification: if Plex still reports multiple Media entries, we likely lacked deletable part keys.
-            try {
-              const post = await this.plexServer.getMetadataDetails({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                ratingKey: keep.ratingKey,
-              });
-              const mediaCount = post?.media?.length ?? 0;
-              if (mediaCount > 1) {
-                sweepWarnings.push(
-                  `plex: episode still has multiple media versions after cleanup ratingKey=${keep.ratingKey} media=${mediaCount}`,
-                );
-                await ctx.warn('plex: episode still has multiple media versions after cleanup', {
-                  ratingKey: keep.ratingKey,
-                  showTitle,
-                  season,
-                  episode: epNum,
-                  mediaCount,
+            for (const [tvdbId, showRatingKeys] of dupSeries) {
+              // Group episodes by season/episode across all show ratingKeys.
+              const episodeToRatingKeys = new Map<string, string[]>();
+              for (const showRk of showRatingKeys) {
+                const eps = await this.plexServer.listEpisodesForShow({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  showRatingKey: showRk,
                 });
+                for (const ep of eps) {
+                  const s = ep.seasonNumber;
+                  const e = ep.episodeNumber;
+                  if (!s || !e) continue;
+                  const key = episodeKey(s, e);
+                  const list = episodeToRatingKeys.get(key) ?? [];
+                  if (!list.includes(ep.ratingKey)) list.push(ep.ratingKey);
+                  episodeToRatingKeys.set(key, list);
+                }
               }
-            } catch {
-              // ignore verification failures
-            }
 
-          } catch (err) {
-            episodeStats.failures += 1;
-            await ctx.warn(
-              'plex: failed cleaning episode versions (continuing)',
-              {
-                ratingKey: keep.ratingKey,
-                error: (err as Error)?.message ?? String(err),
-              },
-            );
-          }
-        }
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        sweepWarnings.push(`plex: episode scan failed: ${msg}`);
-        await ctx.warn('plex: episode scan failed (continuing)', {
-          error: msg,
-        });
-      }
+              const series = sonarrByTvdb.get(tvdbId) ?? null;
+              const epMap = series
+                ? await getSonarrEpisodeMap(series.id)
+                : null;
 
-      // --- Cross-library episode duplicates (same TVDB series present in multiple Plex libraries)
-      try {
-        if (plexTvSections.length > 0) {
-          await ctx.info('plex: scanning cross-library episode duplicates', {
-            tvLibraries: plexTvSections.map((s) => s.title),
-          });
+              for (const [key, rks] of episodeToRatingKeys.entries()) {
+                if (rks.length < 2) continue;
 
-          const plexTvdbRatingKeys = new Map<number, string[]>();
-          for (const sec of plexTvSections) {
-            try {
-              const map = await this.plexServer.getTvdbShowMapForSectionKey({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                librarySectionKey: sec.key,
-                sectionTitle: sec.title,
-              });
-              for (const [tvdbId, rk] of map.entries()) {
-                const prev = plexTvdbRatingKeys.get(tvdbId) ?? [];
-                if (!prev.includes(rk)) prev.push(rk);
-                plexTvdbRatingKeys.set(tvdbId, prev);
-              }
-            } catch (err) {
-              await ctx.warn(
-                'plex: failed building TVDB map for section (continuing)',
-                {
-                  section: sec.title,
-                  error: (err as Error)?.message ?? String(err),
-                },
-              );
-            }
-          }
-          plexTvdbRatingKeysForSweep = plexTvdbRatingKeys;
-
-          const dupSeries = Array.from(plexTvdbRatingKeys.entries()).filter(
-            ([, rks]) => rks.length > 1,
-          );
-
-          for (const [tvdbId, showRatingKeys] of dupSeries) {
-            // Group episodes by season/episode across all show ratingKeys.
-            const episodeToRatingKeys = new Map<string, string[]>();
-            for (const showRk of showRatingKeys) {
-              const eps = await this.plexServer.listEpisodesForShow({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                showRatingKey: showRk,
-              });
-              for (const ep of eps) {
-                const s = ep.seasonNumber;
-                const e = ep.episodeNumber;
-                if (!s || !e) continue;
-                const key = episodeKey(s, e);
-                const list = episodeToRatingKeys.get(key) ?? [];
-                if (!list.includes(ep.ratingKey)) list.push(ep.ratingKey);
-                episodeToRatingKeys.set(key, list);
-              }
-            }
-
-            const series = sonarrByTvdb.get(tvdbId) ?? null;
-            const epMap = series ? await getSonarrEpisodeMap(series.id) : null;
-
-            for (const [key, rks] of episodeToRatingKeys.entries()) {
-              if (rks.length < 2) continue;
-
-              // Pick best ratingKey by resolution + size.
-              const metas: Array<{
-                ratingKey: string;
-                bestResolution: number;
-                bestSize: number | null;
-              }> = [];
-              for (const rk of rks) {
-                try {
-                  const meta = await this.plexServer.getMetadataDetails({
-                    baseUrl: plexBaseUrl,
-                    token: plexToken,
-                    ratingKey: rk,
-                  });
-                  if (!meta) continue;
-                  let bestRes = 1;
-                  let bestSize: number | null = null;
-                  for (const m of meta.media ?? []) {
-                    bestRes = Math.max(
-                      bestRes,
-                      resolutionPriority(m.videoResolution),
-                    );
-                    for (const p of m.parts ?? []) {
-                      if (
-                        typeof p.size === 'number' &&
-                        Number.isFinite(p.size)
-                      ) {
-                        bestSize =
-                          bestSize === null
-                            ? p.size
-                            : Math.max(bestSize, p.size);
+                // Pick best ratingKey by resolution + size.
+                const metas: Array<{
+                  ratingKey: string;
+                  bestResolution: number;
+                  bestSize: number | null;
+                }> = [];
+                for (const rk of rks) {
+                  try {
+                    const meta = await this.plexServer.getMetadataDetails({
+                      baseUrl: plexBaseUrl,
+                      token: plexToken,
+                      ratingKey: rk,
+                    });
+                    if (!meta) continue;
+                    let bestRes = 1;
+                    let bestSize: number | null = null;
+                    for (const m of meta.media ?? []) {
+                      bestRes = Math.max(
+                        bestRes,
+                        resolutionPriority(m.videoResolution),
+                      );
+                      for (const p of m.parts ?? []) {
+                        if (
+                          typeof p.size === 'number' &&
+                          Number.isFinite(p.size)
+                        ) {
+                          bestSize =
+                            bestSize === null
+                              ? p.size
+                              : Math.max(bestSize, p.size);
+                        }
                       }
                     }
+                    metas.push({
+                      ratingKey: rk,
+                      bestResolution: bestRes,
+                      bestSize,
+                    });
+                  } catch {
+                    // ignore
                   }
-                  metas.push({
-                    ratingKey: rk,
-                    bestResolution: bestRes,
-                    bestSize,
-                  });
-                } catch {
-                  // ignore
                 }
-              }
-              const sorted = metas.slice().sort((a, b) => {
-                if (a.bestResolution !== b.bestResolution)
-                  return b.bestResolution - a.bestResolution;
-                const sa = a.bestSize ?? 0;
-                const sb = b.bestSize ?? 0;
-                return sb - sa;
-              });
-              const keep = sorted[0];
-              if (!keep) continue;
+                const sorted = metas.slice().sort((a, b) => {
+                  if (a.bestResolution !== b.bestResolution)
+                    return b.bestResolution - a.bestResolution;
+                  const sa = a.bestSize ?? 0;
+                  const sb = b.bestSize ?? 0;
+                  return sb - sa;
+                });
+                const keep = sorted[0];
+                if (!keep) continue;
 
-              const deleteKeys = rks.filter((rk) => rk !== keep.ratingKey);
+                const deleteKeys = rks.filter((rk) => rk !== keep.ratingKey);
 
-              // Unmonitor in Sonarr (exact episode) if possible
-              if (features.unmonitorInArr && epMap) {
-                const sonarrEp = epMap.get(key) ?? null;
-                if (sonarrEp?.monitored) {
+                // Unmonitor in Sonarr (exact episode) if possible
+                if (features.unmonitorInArr && epMap) {
+                  const sonarrEp = epMap.get(key) ?? null;
+                  if (sonarrEp?.monitored) {
+                    if (ctx.dryRun) {
+                      episodeStats.sonarrWouldUnmonitor += 1;
+                    } else {
+                      const ok = await this.sonarr
+                        .setEpisodeMonitored({
+                          baseUrl: sonarrBaseUrl as string,
+                          apiKey: sonarrApiKey as string,
+                          episode: sonarrEp,
+                          monitored: false,
+                        })
+                        .then(() => true)
+                        .catch(() => false);
+                      if (ok) episodeStats.sonarrUnmonitored += 1;
+                    }
+                  }
+                }
+
+                // Delete extra metadata items (duplicates across libraries)
+                for (const rk of deleteKeys) {
                   if (ctx.dryRun) {
-                    episodeStats.sonarrWouldUnmonitor += 1;
-                  } else {
-                    const ok = await this.sonarr
-                      .setEpisodeMonitored({
-                        baseUrl: sonarrBaseUrl as string,
-                        apiKey: sonarrApiKey as string,
-                        episode: sonarrEp,
-                        monitored: false,
-                      })
-                      .then(() => true)
-                      .catch(() => false);
-                    if (ok) episodeStats.sonarrUnmonitored += 1;
+                    episodeStats.metadataWouldDelete += 1;
+                    continue;
+                  }
+                  try {
+                    await this.plexServer.deleteMetadataByRatingKey({
+                      baseUrl: plexBaseUrl,
+                      token: plexToken,
+                      ratingKey: rk,
+                    });
+                    episodeStats.metadataDeleted += 1;
+                  } catch (err) {
+                    episodeStats.failures += 1;
+                    await ctx.warn(
+                      'plex: failed deleting duplicate episode metadata (continuing)',
+                      {
+                        ratingKey: rk,
+                        error: (err as Error)?.message ?? String(err),
+                      },
+                    );
                   }
                 }
-              }
 
-              // Delete extra metadata items (duplicates across libraries)
-              for (const rk of deleteKeys) {
-                if (ctx.dryRun) {
-                  episodeStats.metadataWouldDelete += 1;
-                  continue;
-                }
+                // Cleanup extra versions within kept episode (if any)
                 try {
-                  await this.plexServer.deleteMetadataByRatingKey({
-                    baseUrl: plexBaseUrl,
-                    token: plexToken,
-                    ratingKey: rk,
-                  });
-                  episodeStats.metadataDeleted += 1;
+                  const dup =
+                    await this.plexDuplicates.cleanupEpisodeDuplicates({
+                      baseUrl: plexBaseUrl,
+                      token: plexToken,
+                      ratingKey: keep.ratingKey,
+                      dryRun: ctx.dryRun,
+                    });
+                  episodeStats.partsDeleted += dup.deleted;
+                  episodeStats.partsWouldDelete += dup.wouldDelete;
+                  const relevantDeletes = (dup.deletions ?? []).filter((d) =>
+                    ctx.dryRun ? Boolean(d) : d.deleted === true,
+                  );
+                  for (const d of relevantDeletes) {
+                    const mid = d.mediaId
+                      ? `mediaId=${d.mediaId}`
+                      : 'mediaId=?';
+                    pushItem(
+                      episodeStats.deletedVersionItems,
+                      `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
+                      200,
+                      () => (episodeStats.itemsTruncated = true),
+                    );
+                  }
                 } catch (err) {
                   episodeStats.failures += 1;
                   await ctx.warn(
-                    'plex: failed deleting duplicate episode metadata (continuing)',
+                    'plex: failed cleaning episode versions (continuing)',
                     {
-                      ratingKey: rk,
+                      ratingKey: keep.ratingKey,
                       error: (err as Error)?.message ?? String(err),
                     },
                   );
                 }
               }
-
-              // Cleanup extra versions within kept episode (if any)
-              try {
-                const dup = await this.plexDuplicates.cleanupEpisodeDuplicates({
-                  baseUrl: plexBaseUrl,
-                  token: plexToken,
-                  ratingKey: keep.ratingKey,
-                  dryRun: ctx.dryRun,
-                });
-                episodeStats.partsDeleted += dup.deleted;
-                episodeStats.partsWouldDelete += dup.wouldDelete;
-                const relevantDeletes = (dup.deletions ?? []).filter((d) =>
-                  ctx.dryRun ? Boolean(d) : d.deleted === true,
-                );
-                for (const d of relevantDeletes) {
-                  const mid = d.mediaId ? `mediaId=${d.mediaId}` : 'mediaId=?';
-                  pushItem(
-                    episodeStats.deletedVersionItems,
-                    `${dup.title} [ratingKey=${dup.ratingKey}] ${mid}`,
-                    200,
-                    () => (episodeStats.itemsTruncated = true),
-                  );
-                }
-              } catch (err) {
-                episodeStats.failures += 1;
-                await ctx.warn(
-                  'plex: failed cleaning episode versions (continuing)',
-                  {
-                    ratingKey: keep.ratingKey,
-                    error: (err as Error)?.message ?? String(err),
-                  },
-                );
-              }
             }
           }
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          sweepWarnings.push(`plex: cross-library episode scan failed: ${msg}`);
+          await ctx.warn(
+            'plex: cross-library episode scan failed (continuing)',
+            {
+              error: msg,
+            },
+          );
         }
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        sweepWarnings.push(`plex: cross-library episode scan failed: ${msg}`);
-        await ctx.warn('plex: cross-library episode scan failed (continuing)', {
-          error: msg,
-        });
-      }
       } else {
         await ctx.info(
           'mediaAddedCleanup: duplicate cleanup feature disabled; skipping duplicate sweeps',
@@ -1685,9 +1757,7 @@ export class CleanupAfterAddingNewContentJob {
       // --- Watchlist reconciliation (best-effort)
       const watchlistWarnings: string[] = [];
       const watchlistStats = {
-        mode: (features.removeFromWatchlist ? 'reconcile' : 'disabled') as
-          | 'reconcile'
-          | 'disabled',
+        mode: features.removeFromWatchlist ? 'reconcile' : 'disabled',
         movies: {
           total: 0,
           inPlex: 0,
@@ -1744,12 +1814,13 @@ export class CleanupAfterAddingNewContentJob {
         if (plexMovieYearsByNormTitle.size === 0) {
           for (const sec of plexMovieSections) {
             try {
-              const items = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
-                baseUrl: plexBaseUrl,
-                token: plexToken,
-                librarySectionKey: sec.key,
-                sectionTitle: sec.title,
-              });
+              const items =
+                await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
+                  baseUrl: plexBaseUrl,
+                  token: plexToken,
+                  librarySectionKey: sec.key,
+                  sectionTitle: sec.title,
+                });
               for (const it of items) {
                 addMovieToYearIndex(it.title, it.year ?? null);
               }
@@ -1777,192 +1848,28 @@ export class CleanupAfterAddingNewContentJob {
 
         // Movies: remove from watchlist if now in Plex; unmonitor in Radarr (best-effort)
         try {
-        const wlMovies = await this.plexWatchlist.listWatchlist({
-          token: plexToken,
-          kind: 'movie',
-        });
-        watchlistStats.movies.total = wlMovies.items.length;
-
-        for (const it of wlMovies.items) {
-          const norm = normTitle(it.title);
-          const years = plexMovieYearsByNormTitle.get(norm) ?? null;
-          const inPlex = (() => {
-            if (!years) return false;
-            if (typeof it.year === 'number' && Number.isFinite(it.year)) {
-              return years.has(it.year);
-            }
-            return true;
-          })();
-          if (!inPlex) continue;
-          watchlistStats.movies.inPlex += 1;
-
-          // Remove from Plex watchlist
-          if (ctx.dryRun) {
-            watchlistStats.movies.wouldRemove += 1;
-          } else {
-            const ok = await this.plexWatchlist
-              .removeFromWatchlistByRatingKey({
-                token: plexToken,
-                ratingKey: it.ratingKey,
-              })
-              .catch(() => false);
-            if (ok) watchlistStats.movies.removed += 1;
-            else watchlistStats.movies.failures += 1;
-            if (ok) {
-              pushItem(
-                watchlistStats.movies.removedItems,
-                `${it.title}${it.year ? ` (${it.year})` : ''} [ratingKey=${it.ratingKey}]`,
-                200,
-                () => (watchlistStats.movies.itemsTruncated = true),
-              );
-            }
-          }
-
-          // Unmonitor in Radarr (best-effort)
-          if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
-            const candidate =
-              radarrByNormTitle.get(normTitle(it.title)) ?? null;
-            if (!candidate) {
-              watchlistStats.movies.radarrNotFound += 1;
-            } else if (!candidate.monitored) {
-              // already unmonitored
-            } else if (ctx.dryRun) {
-              watchlistStats.movies.radarrWouldUnmonitor += 1;
-            } else {
-              const ok = await this.radarr
-                .setMovieMonitored({
-                  baseUrl: radarrBaseUrl,
-                  apiKey: radarrApiKey,
-                  movie: candidate,
-                  monitored: false,
-                })
-                .catch(() => false);
-              if (ok) watchlistStats.movies.radarrUnmonitored += 1;
-              if (ok) {
-                pushItem(
-                  watchlistStats.movies.radarrUnmonitoredItems,
-                  `${it.title}${it.year ? ` (${it.year})` : ''}`,
-                  200,
-                  () => (watchlistStats.movies.itemsTruncated = true),
-                );
-              }
-            }
-          }
-        }
-        } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        watchlistWarnings.push(
-          `plex: failed loading movie watchlist (continuing): ${msg}`,
-        );
-        await ctx.warn('plex: failed loading movie watchlist (continuing)', {
-          error: msg,
-        });
-      }
-
-        // Shows: only remove from watchlist if Plex has ALL episodes (per Sonarr), then unmonitor in Sonarr.
-        if (!sonarrBaseUrl || !sonarrApiKey) {
-        watchlistWarnings.push(
-          'sonarr: not configured; skipping show watchlist reconciliation',
-        );
-        } else {
-          try {
-          const wlShows = await this.plexWatchlist.listWatchlist({
+          const wlMovies = await this.plexWatchlist.listWatchlist({
             token: plexToken,
-            kind: 'show',
+            kind: 'movie',
           });
-          watchlistStats.shows.total = wlShows.items.length;
+          watchlistStats.movies.total = wlMovies.items.length;
 
-          // Build (or reuse) Plex TVDB->ratingKeys map across all TV libraries
-          const plexTvdbRatingKeys =
-            plexTvdbRatingKeysForSweep ?? new Map<number, string[]>();
-          if (!plexTvdbRatingKeysForSweep) {
-            for (const sec of plexTvSections) {
-              try {
-                const map = await this.plexServer.getTvdbShowMapForSectionKey({
-                  baseUrl: plexBaseUrl,
-                  token: plexToken,
-                  librarySectionKey: sec.key,
-                  sectionTitle: sec.title,
-                });
-                for (const [tvdbId, rk] of map.entries()) {
-                  const prev = plexTvdbRatingKeys.get(tvdbId) ?? [];
-                  if (!prev.includes(rk)) prev.push(rk);
-                  plexTvdbRatingKeys.set(tvdbId, prev);
-                }
-              } catch (err) {
-                const msg = (err as Error)?.message ?? String(err);
-                watchlistWarnings.push(
-                  `plex: failed building TVDB map for section=${sec.title} (continuing): ${msg}`,
-                );
-                await ctx.warn(
-                  'plex: failed building TVDB map for section (continuing)',
-                  {
-                    section: sec.title,
-                    error: msg,
-                  },
-                );
+          for (const it of wlMovies.items) {
+            const norm = normTitle(it.title);
+            const years = plexMovieYearsByNormTitle.get(norm) ?? null;
+            const inPlex = (() => {
+              if (!years) return false;
+              if (typeof it.year === 'number' && Number.isFinite(it.year)) {
+                return years.has(it.year);
               }
-            }
-            plexTvdbRatingKeysForSweep = plexTvdbRatingKeys;
-          }
-
-          const plexEpisodesCache = new Map<string, Set<string>>();
-
-          for (const it of wlShows.items) {
-            const title = it.title.trim();
-            if (!title) continue;
-
-            const series = findSonarrSeriesFromCache({ title });
-            if (!series) {
-              watchlistStats.shows.skippedNoSonarr += 1;
-              continue;
-            }
-
-            const tvdbId = toInt(series.tvdbId) ?? null;
-            if (!tvdbId) {
-              watchlistStats.shows.skippedNoSonarr += 1;
-              continue;
-            }
-
-            const ratingKeys = plexTvdbRatingKeys.get(tvdbId) ?? [];
-            if (ratingKeys.length === 0) {
-              watchlistStats.shows.skippedNotInPlex += 1;
-              continue;
-            }
-
-            // Union Plex episodes across all matching shows/libraries.
-            const plexEpisodes = new Set<string>();
-            for (const rk of ratingKeys) {
-              const cached = plexEpisodesCache.get(rk);
-              const eps =
-                cached ??
-                (await this.plexServer.getEpisodesSet({
-                  baseUrl: plexBaseUrl,
-                  token: plexToken,
-                  showRatingKey: rk,
-                }));
-              if (!cached) plexEpisodesCache.set(rk, eps);
-              for (const k of eps) plexEpisodes.add(k);
-            }
-
-            // Desired episodes from Sonarr (ignore specials season 0)
-            const epMap = await getSonarrEpisodeMap(series.id);
-            const desired = Array.from(epMap.keys()).filter((k) => {
-              const [sRaw] = k.split(':', 1);
-              const s = Number.parseInt(sRaw, 10);
-              return Number.isFinite(s) && s > 0;
-            });
-            const missing = desired.filter((k) => !plexEpisodes.has(k));
-            if (missing.length > 0) {
-              watchlistStats.shows.skippedNotComplete += 1;
-              continue;
-            }
-
-            watchlistStats.shows.completeInPlex += 1;
+              return true;
+            })();
+            if (!inPlex) continue;
+            watchlistStats.movies.inPlex += 1;
 
             // Remove from Plex watchlist
             if (ctx.dryRun) {
-              watchlistStats.shows.wouldRemove += 1;
+              watchlistStats.movies.wouldRemove += 1;
             } else {
               const ok = await this.plexWatchlist
                 .removeFromWatchlistByRatingKey({
@@ -1970,55 +1877,221 @@ export class CleanupAfterAddingNewContentJob {
                   ratingKey: it.ratingKey,
                 })
                 .catch(() => false);
-              if (ok) watchlistStats.shows.removed += 1;
-              else watchlistStats.shows.failures += 1;
+              if (ok) watchlistStats.movies.removed += 1;
+              else watchlistStats.movies.failures += 1;
               if (ok) {
                 pushItem(
-                  watchlistStats.shows.removedItems,
+                  watchlistStats.movies.removedItems,
                   `${it.title}${it.year ? ` (${it.year})` : ''} [ratingKey=${it.ratingKey}]`,
                   200,
-                  () => (watchlistStats.shows.itemsTruncated = true),
+                  () => (watchlistStats.movies.itemsTruncated = true),
                 );
               }
             }
 
-            // Unmonitor in Sonarr (best-effort)
-            if (!features.unmonitorInArr) {
-              // ARR monitoring mutation disabled for this task.
-            } else if (!series.monitored) {
-              // already unmonitored
-            } else if (ctx.dryRun) {
-              watchlistStats.shows.sonarrWouldUnmonitor += 1;
-            } else {
-              try {
-                await this.sonarr.updateSeries({
-                  baseUrl: sonarrBaseUrl,
-                  apiKey: sonarrApiKey,
-                  series: { ...series, monitored: false },
-                });
-                watchlistStats.shows.sonarrUnmonitored += 1;
-                pushItem(
-                  watchlistStats.shows.sonarrUnmonitoredItems,
-                  `${it.title}${it.year ? ` (${it.year})` : ''}`,
-                  200,
-                  () => (watchlistStats.shows.itemsTruncated = true),
-                );
-              } catch {
-                // ignore update error; count as warning for visibility
-                watchlistWarnings.push(
-                  `sonarr: failed to unmonitor series title=${title}`,
-                );
+            // Unmonitor in Radarr (best-effort)
+            if (features.unmonitorInArr && radarrBaseUrl && radarrApiKey) {
+              const candidate =
+                radarrByNormTitle.get(normTitle(it.title)) ?? null;
+              if (!candidate) {
+                watchlistStats.movies.radarrNotFound += 1;
+              } else if (!candidate.monitored) {
+                // already unmonitored
+              } else if (ctx.dryRun) {
+                watchlistStats.movies.radarrWouldUnmonitor += 1;
+              } else {
+                const ok = await this.radarr
+                  .setMovieMonitored({
+                    baseUrl: radarrBaseUrl,
+                    apiKey: radarrApiKey,
+                    movie: candidate,
+                    monitored: false,
+                  })
+                  .catch(() => false);
+                if (ok) watchlistStats.movies.radarrUnmonitored += 1;
+                if (ok) {
+                  pushItem(
+                    watchlistStats.movies.radarrUnmonitoredItems,
+                    `${it.title}${it.year ? ` (${it.year})` : ''}`,
+                    200,
+                    () => (watchlistStats.movies.itemsTruncated = true),
+                  );
+                }
               }
             }
           }
-          } catch (err) {
+        } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
           watchlistWarnings.push(
-            `plex: failed loading show watchlist (continuing): ${msg}`,
+            `plex: failed loading movie watchlist (continuing): ${msg}`,
           );
-          await ctx.warn('plex: failed loading show watchlist (continuing)', {
+          await ctx.warn('plex: failed loading movie watchlist (continuing)', {
             error: msg,
           });
+        }
+
+        // Shows: only remove from watchlist if Plex has ALL episodes (per Sonarr), then unmonitor in Sonarr.
+        if (!sonarrBaseUrl || !sonarrApiKey) {
+          watchlistWarnings.push(
+            'sonarr: not configured; skipping show watchlist reconciliation',
+          );
+        } else {
+          try {
+            const wlShows = await this.plexWatchlist.listWatchlist({
+              token: plexToken,
+              kind: 'show',
+            });
+            watchlistStats.shows.total = wlShows.items.length;
+
+            // Build (or reuse) Plex TVDB->ratingKeys map across all TV libraries
+            const plexTvdbRatingKeys =
+              plexTvdbRatingKeysForSweep ?? new Map<number, string[]>();
+            if (!plexTvdbRatingKeysForSweep) {
+              for (const sec of plexTvSections) {
+                try {
+                  const map = await this.plexServer.getTvdbShowMapForSectionKey(
+                    {
+                      baseUrl: plexBaseUrl,
+                      token: plexToken,
+                      librarySectionKey: sec.key,
+                      sectionTitle: sec.title,
+                    },
+                  );
+                  for (const [tvdbId, rk] of map.entries()) {
+                    const prev = plexTvdbRatingKeys.get(tvdbId) ?? [];
+                    if (!prev.includes(rk)) prev.push(rk);
+                    plexTvdbRatingKeys.set(tvdbId, prev);
+                  }
+                } catch (err) {
+                  const msg = (err as Error)?.message ?? String(err);
+                  watchlistWarnings.push(
+                    `plex: failed building TVDB map for section=${sec.title} (continuing): ${msg}`,
+                  );
+                  await ctx.warn(
+                    'plex: failed building TVDB map for section (continuing)',
+                    {
+                      section: sec.title,
+                      error: msg,
+                    },
+                  );
+                }
+              }
+              plexTvdbRatingKeysForSweep = plexTvdbRatingKeys;
+            }
+
+            const plexEpisodesCache = new Map<string, Set<string>>();
+
+            for (const it of wlShows.items) {
+              const title = it.title.trim();
+              if (!title) continue;
+
+              const series = findSonarrSeriesFromCache({ title });
+              if (!series) {
+                watchlistStats.shows.skippedNoSonarr += 1;
+                continue;
+              }
+
+              const tvdbId = toInt(series.tvdbId) ?? null;
+              if (!tvdbId) {
+                watchlistStats.shows.skippedNoSonarr += 1;
+                continue;
+              }
+
+              const ratingKeys = plexTvdbRatingKeys.get(tvdbId) ?? [];
+              if (ratingKeys.length === 0) {
+                watchlistStats.shows.skippedNotInPlex += 1;
+                continue;
+              }
+
+              // Union Plex episodes across all matching shows/libraries.
+              const plexEpisodes = new Set<string>();
+              for (const rk of ratingKeys) {
+                const cached = plexEpisodesCache.get(rk);
+                const eps =
+                  cached ??
+                  (await this.plexServer.getEpisodesSet({
+                    baseUrl: plexBaseUrl,
+                    token: plexToken,
+                    showRatingKey: rk,
+                  }));
+                if (!cached) plexEpisodesCache.set(rk, eps);
+                for (const k of eps) plexEpisodes.add(k);
+              }
+
+              // Desired episodes from Sonarr (ignore specials season 0)
+              const epMap = await getSonarrEpisodeMap(series.id);
+              const desired = Array.from(epMap.keys()).filter((k) => {
+                const [sRaw] = k.split(':', 1);
+                const s = Number.parseInt(sRaw, 10);
+                return Number.isFinite(s) && s > 0;
+              });
+              const missing = desired.filter((k) => !plexEpisodes.has(k));
+              if (missing.length > 0) {
+                watchlistStats.shows.skippedNotComplete += 1;
+                continue;
+              }
+
+              watchlistStats.shows.completeInPlex += 1;
+
+              // Remove from Plex watchlist
+              if (ctx.dryRun) {
+                watchlistStats.shows.wouldRemove += 1;
+              } else {
+                const ok = await this.plexWatchlist
+                  .removeFromWatchlistByRatingKey({
+                    token: plexToken,
+                    ratingKey: it.ratingKey,
+                  })
+                  .catch(() => false);
+                if (ok) watchlistStats.shows.removed += 1;
+                else watchlistStats.shows.failures += 1;
+                if (ok) {
+                  pushItem(
+                    watchlistStats.shows.removedItems,
+                    `${it.title}${it.year ? ` (${it.year})` : ''} [ratingKey=${it.ratingKey}]`,
+                    200,
+                    () => (watchlistStats.shows.itemsTruncated = true),
+                  );
+                }
+              }
+
+              // Unmonitor in Sonarr (best-effort)
+              if (!features.unmonitorInArr) {
+                // ARR monitoring mutation disabled for this task.
+              } else if (!series.monitored) {
+                // already unmonitored
+              } else if (ctx.dryRun) {
+                watchlistStats.shows.sonarrWouldUnmonitor += 1;
+              } else {
+                try {
+                  await this.sonarr.updateSeries({
+                    baseUrl: sonarrBaseUrl,
+                    apiKey: sonarrApiKey,
+                    series: { ...series, monitored: false },
+                  });
+                  watchlistStats.shows.sonarrUnmonitored += 1;
+                  pushItem(
+                    watchlistStats.shows.sonarrUnmonitoredItems,
+                    `${it.title}${it.year ? ` (${it.year})` : ''}`,
+                    200,
+                    () => (watchlistStats.shows.itemsTruncated = true),
+                  );
+                } catch {
+                  // ignore update error; count as warning for visibility
+                  watchlistWarnings.push(
+                    `sonarr: failed to unmonitor series title=${title}`,
+                  );
+                }
+              }
+            }
+          } catch (err) {
+            const msg = (err as Error)?.message ?? String(err);
+            watchlistWarnings.push(
+              `plex: failed loading show watchlist (continuing): ${msg}`,
+            );
+            await ctx.warn('plex: failed loading show watchlist (continuing)', {
+              error: msg,
+            });
           }
         }
       } else {
@@ -2075,7 +2148,9 @@ export class CleanupAfterAddingNewContentJob {
           }
 
           const plexEpisodesCache = new Map<string, Set<string>>();
-          const getPlexEpisodesSet = async (rk: string): Promise<Set<string>> => {
+          const getPlexEpisodesSet = async (
+            rk: string,
+          ): Promise<Set<string>> => {
             const key = rk.trim();
             if (!key) return new Set<string>();
             const cached = plexEpisodesCache.get(key);
@@ -2115,9 +2190,13 @@ export class CleanupAfterAddingNewContentJob {
             const monitoredSeasonNums = seasons
               .map((s) => ({
                 n: toInt(s.seasonNumber),
-                monitored: typeof s.monitored === 'boolean' ? s.monitored : null,
+                monitored:
+                  typeof s.monitored === 'boolean' ? s.monitored : null,
               }))
-              .filter((x) => typeof x.n === 'number' && x.n > 0 && x.monitored === true)
+              .filter(
+                (x) =>
+                  typeof x.n === 'number' && x.n > 0 && x.monitored === true,
+              )
               .map((x) => x.n as number);
             if (monitoredSeasonNums.length === 0) continue;
 
@@ -2132,7 +2211,8 @@ export class CleanupAfterAddingNewContentJob {
               desiredBySeason.set(sNum, list);
             }
 
-            const plexEpisodes = await getUnionEpisodesAcrossShows(showRatingKeys);
+            const plexEpisodes =
+              await getUnionEpisodesAcrossShows(showRatingKeys);
             const seasonsToUnmonitor: number[] = [];
             for (const seasonNum of monitoredSeasonNums) {
               const desired = desiredBySeason.get(seasonNum) ?? [];
@@ -2152,7 +2232,8 @@ export class CleanupAfterAddingNewContentJob {
                 const n = toInt(s.seasonNumber);
                 if (!n || n <= 0) return s;
                 if (!seasonsToUnmonitor.includes(n)) return s;
-                if (typeof s.monitored !== 'boolean' || s.monitored !== true) return s;
+                if (typeof s.monitored !== 'boolean' || s.monitored !== true)
+                  return s;
                 return { ...s, monitored: false };
               });
 
@@ -2169,22 +2250,33 @@ export class CleanupAfterAddingNewContentJob {
               );
               await ctx.warn(
                 'sonarr: failed unmonitoring seasons (continuing)',
-                { seriesId: series.id, tvdbId, seasons: seasonsToUnmonitor, error: msg },
+                {
+                  seriesId: series.id,
+                  tvdbId,
+                  seasons: seasonsToUnmonitor,
+                  error: msg,
+                },
               );
             }
           }
         } catch (err) {
           const msg = (err as Error)?.message ?? String(err);
-          seasonSyncWarnings.push(`sonarr: season sync failed (continuing): ${msg}`);
-          await ctx.warn('sonarr: season sync failed (continuing)', { error: msg });
+          seasonSyncWarnings.push(
+            `sonarr: season sync failed (continuing): ${msg}`,
+          );
+          await ctx.warn('sonarr: season sync failed (continuing)', {
+            error: msg,
+          });
         }
       }
 
       // Populate high-level ARR stats for the report UI (full sweep mode doesn't have a single mediaType).
       // These counts may include both "duplicates" + "watchlist" unmonitor actions.
       const sweepRadarrUnmonitored = ctx.dryRun
-        ? movieStats.radarrWouldUnmonitor + watchlistStats.movies.radarrWouldUnmonitor
-        : movieStats.radarrUnmonitored + watchlistStats.movies.radarrUnmonitored;
+        ? movieStats.radarrWouldUnmonitor +
+          watchlistStats.movies.radarrWouldUnmonitor
+        : movieStats.radarrUnmonitored +
+          watchlistStats.movies.radarrUnmonitored;
       const sweepSonarrEpisodeUnmonitored = ctx.dryRun
         ? episodeStats.sonarrWouldUnmonitor
         : episodeStats.sonarrUnmonitored;
@@ -2392,7 +2484,8 @@ export class CleanupAfterAddingNewContentJob {
         if (!preserveTerms.length) return false;
         for (const m of meta.media ?? []) {
           for (const p of m.parts ?? []) {
-            const target = `${m.videoResolution ?? ''} ${p.file ?? ''}`.toLowerCase();
+            const target =
+              `${m.videoResolution ?? ''} ${p.file ?? ''}`.toLowerCase();
             if (preserveTerms.some((t) => target.includes(t))) return true;
           }
         }
@@ -2401,14 +2494,16 @@ export class CleanupAfterAddingNewContentJob {
 
       // 1) Multi-metadata duplicates within this library (group by TMDB id when available).
       try {
-        const movies = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey,
-          sectionTitle: librarySectionTitle ?? undefined,
-          // Use Plex's duplicate filter to keep this scan lightweight.
-          duplicateOnly: true,
-        });
+        const movies = await this.plexServer.listMoviesWithTmdbIdsForSectionKey(
+          {
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey,
+            sectionTitle: librarySectionTitle ?? undefined,
+            // Use Plex's duplicate filter to keep this scan lightweight.
+            duplicateOnly: true,
+          },
+        );
 
         movieStats.scanned = movies.length;
 
@@ -2453,10 +2548,14 @@ export class CleanupAfterAddingNewContentJob {
               let bestRes = 1;
               let bestSize: number | null = null;
               for (const m of meta.media ?? []) {
-                bestRes = Math.max(bestRes, resolutionPriority(m.videoResolution));
+                bestRes = Math.max(
+                  bestRes,
+                  resolutionPriority(m.videoResolution),
+                );
                 for (const p of m.parts ?? []) {
                   if (typeof p.size === 'number' && Number.isFinite(p.size)) {
-                    bestSize = bestSize === null ? p.size : Math.max(bestSize, p.size);
+                    bestSize =
+                      bestSize === null ? p.size : Math.max(bestSize, p.size);
                   }
                 }
               }
@@ -2471,18 +2570,23 @@ export class CleanupAfterAddingNewContentJob {
               });
             } catch (err) {
               movieStats.failures += 1;
-              await ctx.warn('plex: failed loading movie metadata (continuing)', {
-                ratingKey: it.ratingKey,
-                tmdbId,
-                error: (err as Error)?.message ?? String(err),
-              });
+              await ctx.warn(
+                'plex: failed loading movie metadata (continuing)',
+                {
+                  ratingKey: it.ratingKey,
+                  tmdbId,
+                  error: (err as Error)?.message ?? String(err),
+                },
+              );
             }
           }
 
           if (metas.length < 2) continue;
 
           const pref = deletePreference;
-          const pool = metas.some((m) => m.preserved) ? metas.filter((m) => m.preserved) : metas;
+          const pool = metas.some((m) => m.preserved)
+            ? metas.filter((m) => m.preserved)
+            : metas;
           const sorted = pool.slice().sort((a, b) => {
             if (pref === 'newest' || pref === 'oldest') {
               const aa = a.addedAt ?? 0;
@@ -2497,7 +2601,8 @@ export class CleanupAfterAddingNewContentJob {
                 b.bestSize ??
                 (pref === 'smallest_file' ? Number.POSITIVE_INFINITY : 0);
               // delete smallest => keep largest; delete largest => keep smallest
-              if (sa !== sb) return pref === 'smallest_file' ? sb - sa : sa - sb;
+              if (sa !== sb)
+                return pref === 'smallest_file' ? sb - sa : sa - sb;
             }
 
             // Tie-breaker: higher resolution, then larger size.
@@ -2512,7 +2617,9 @@ export class CleanupAfterAddingNewContentJob {
           const keep = sorted[0] ?? null;
           if (!keep) continue;
 
-          const deleteKeys = metas.map((m) => m.ratingKey).filter((rk) => rk !== keep.ratingKey);
+          const deleteKeys = metas
+            .map((m) => m.ratingKey)
+            .filter((rk) => rk !== keep.ratingKey);
 
           // Delete extra metadata items (duplicates across ratingKeys)
           for (const rk of deleteKeys) {
@@ -2531,11 +2638,14 @@ export class CleanupAfterAddingNewContentJob {
               deletedMovieRatingKeys.add(rk);
             } catch (err) {
               movieStats.failures += 1;
-              await ctx.warn('plex: failed deleting duplicate movie metadata (continuing)', {
-                ratingKey: rk,
-                tmdbId,
-                error: (err as Error)?.message ?? String(err),
-              });
+              await ctx.warn(
+                'plex: failed deleting duplicate movie metadata (continuing)',
+                {
+                  ratingKey: rk,
+                  tmdbId,
+                  error: (err as Error)?.message ?? String(err),
+                },
+              );
             }
           }
 
@@ -2569,11 +2679,12 @@ export class CleanupAfterAddingNewContentJob {
 
       // 2) Single-item internal duplicates (versions) in this library.
       try {
-        const dupKeys = await this.plexServer.listDuplicateMovieRatingKeysForSectionKey({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey,
-        });
+        const dupKeys =
+          await this.plexServer.listDuplicateMovieRatingKeysForSectionKey({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey,
+          });
 
         for (const { ratingKey: rk } of dupKeys) {
           if (!rk) continue;
@@ -2646,11 +2757,12 @@ export class CleanupAfterAddingNewContentJob {
 
       let dupEpisodeKeys: Array<{ ratingKey: string; title: string }> = [];
       try {
-        dupEpisodeKeys = await this.plexServer.listDuplicateEpisodeRatingKeysForSectionKey({
-          baseUrl: plexBaseUrl,
-          token: plexToken,
-          librarySectionKey,
-        });
+        dupEpisodeKeys =
+          await this.plexServer.listDuplicateEpisodeRatingKeysForSectionKey({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey,
+          });
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
         episodeStats.failures += 1;
@@ -2688,7 +2800,8 @@ export class CleanupAfterAddingNewContentJob {
             bestRes = Math.max(bestRes, resolutionPriority(m.videoResolution));
             for (const p of m.parts ?? []) {
               if (typeof p.size === 'number' && Number.isFinite(p.size)) {
-                bestSize = bestSize === null ? p.size : Math.max(bestSize, p.size);
+                bestSize =
+                  bestSize === null ? p.size : Math.max(bestSize, p.size);
               }
             }
           }
@@ -2716,12 +2829,22 @@ export class CleanupAfterAddingNewContentJob {
         const showKey = (() => {
           const rk = (c.showRatingKey ?? '').trim();
           if (rk) return `showRk:${rk}`;
-          const title = typeof c.showTitle === 'string' ? c.showTitle.trim() : '';
+          const title =
+            typeof c.showTitle === 'string' ? c.showTitle.trim() : '';
           return title ? `show:${normTitle(title)}` : null;
         })();
-        const season = typeof c.season === 'number' && Number.isFinite(c.season) ? c.season : null;
-        const ep = typeof c.episode === 'number' && Number.isFinite(c.episode) ? c.episode : null;
-        const key = showKey && season !== null && ep !== null ? `${showKey}:${season}:${ep}` : `rk:${c.ratingKey}`;
+        const season =
+          typeof c.season === 'number' && Number.isFinite(c.season)
+            ? c.season
+            : null;
+        const ep =
+          typeof c.episode === 'number' && Number.isFinite(c.episode)
+            ? c.episode
+            : null;
+        const key =
+          showKey && season !== null && ep !== null
+            ? `${showKey}:${season}:${ep}`
+            : `rk:${c.ratingKey}`;
         const list = byKey.get(key) ?? [];
         list.push(c);
         byKey.set(key, list);
@@ -2730,14 +2853,17 @@ export class CleanupAfterAddingNewContentJob {
       for (const [, group] of byKey.entries()) {
         if (group.length === 0) continue;
         const sorted = group.slice().sort((a, b) => {
-          if (a.bestResolution !== b.bestResolution) return b.bestResolution - a.bestResolution;
+          if (a.bestResolution !== b.bestResolution)
+            return b.bestResolution - a.bestResolution;
           const sa = a.bestSize ?? 0;
           const sb = b.bestSize ?? 0;
           return sb - sa;
         });
         const keep = sorted[0];
         if (!keep) continue;
-        const deleteKeys = group.map((g) => g.ratingKey).filter((rk) => rk !== keep.ratingKey);
+        const deleteKeys = group
+          .map((g) => g.ratingKey)
+          .filter((rk) => rk !== keep.ratingKey);
 
         if (group.length > 1) episodeStats.groupsWithDuplicates += 1;
 
@@ -2755,10 +2881,13 @@ export class CleanupAfterAddingNewContentJob {
             episodeStats.metadataDeleted += 1;
           } catch (err) {
             episodeStats.failures += 1;
-            await ctx.warn('plex: failed deleting duplicate episode metadata (continuing)', {
-              ratingKey: rk,
-              error: (err as Error)?.message ?? String(err),
-            });
+            await ctx.warn(
+              'plex: failed deleting duplicate episode metadata (continuing)',
+              {
+                ratingKey: rk,
+                error: (err as Error)?.message ?? String(err),
+              },
+            );
           }
         }
 
@@ -2931,7 +3060,8 @@ export class CleanupAfterAddingNewContentJob {
             });
           } else if (!candidate.monitored) {
             radarrSummary.movieFound = true;
-            radarrSummary.movieId = typeof candidate.id === 'number' ? candidate.id : null;
+            radarrSummary.movieId =
+              typeof candidate.id === 'number' ? candidate.id : null;
             radarrSummary.monitoredBefore = false;
             await ctx.info('radarr: already unmonitored', {
               title:
@@ -2942,7 +3072,8 @@ export class CleanupAfterAddingNewContentJob {
             });
           } else if (ctx.dryRun) {
             radarrSummary.movieFound = true;
-            radarrSummary.movieId = typeof candidate.id === 'number' ? candidate.id : null;
+            radarrSummary.movieId =
+              typeof candidate.id === 'number' ? candidate.id : null;
             radarrSummary.monitoredBefore = true;
             radarrSummary.wouldUnmonitor = true;
             radarrSummary.moviesWouldUnmonitor = 1;
@@ -2961,7 +3092,8 @@ export class CleanupAfterAddingNewContentJob {
               monitored: false,
             });
             radarrSummary.movieFound = true;
-            radarrSummary.movieId = typeof candidate.id === 'number' ? candidate.id : null;
+            radarrSummary.movieId =
+              typeof candidate.id === 'number' ? candidate.id : null;
             radarrSummary.monitoredBefore = true;
             radarrSummary.unmonitored = Boolean(ok);
             radarrSummary.moviesUnmonitored = ok ? 1 : 0;
@@ -2996,9 +3128,7 @@ export class CleanupAfterAddingNewContentJob {
           mode: 'disabled',
           reason: 'feature_disabled',
         } as unknown as JsonObject;
-        await ctx.info(
-          'plex: watchlist cleanup feature disabled (skipping)',
-        );
+        await ctx.info('plex: watchlist cleanup feature disabled (skipping)');
       } else {
         const movieTitle = resolvedTitle || title;
         const movieYear = resolvedYear ?? year;
@@ -3150,9 +3280,12 @@ export class CleanupAfterAddingNewContentJob {
         (summary.warnings as string[]).push(
           `sonarr: failed to load series list (skipping show flow): ${msg}`,
         );
-        await ctx.warn('sonarr: failed to load series list (skipping show flow)', {
-          error: msg,
-        });
+        await ctx.warn(
+          'sonarr: failed to load series list (skipping show flow)',
+          {
+            error: msg,
+          },
+        );
         summary.sonarr = sonarrSummary as unknown as JsonObject;
         summary.skipped = true;
         return toReport(summary);
@@ -3233,23 +3366,28 @@ export class CleanupAfterAddingNewContentJob {
         monitored: boolean;
       }>;
 
-      const missingKeys = episodeRows.filter((r) => !r.inPlex).map((r) => r.key);
+      const missingKeys = episodeRows
+        .filter((r) => !r.inPlex)
+        .map((r) => r.key);
       const showCompleteInPlex = missingKeys.length === 0;
 
       const toUnmonitor = episodeRows.filter((r) => r.inPlex && r.monitored);
       const toMonitor = episodeRows.filter((r) => !r.inPlex && !r.monitored);
 
-      await ctx.info('sonarr: syncing episode monitoring vs Plex availability', {
-        title: seriesTitle,
-        seriesId: series.id,
-        tvdbId: seriesTvdbId ?? tvdbId ?? null,
-        episodesTotal: episodeRows.length,
-        episodesInPlex: episodeRows.length - missingKeys.length,
-        episodesMissing: missingKeys.length,
-        willUnmonitor: toUnmonitor.length,
-        willMonitor: toMonitor.length,
-        dryRun: ctx.dryRun,
-      });
+      await ctx.info(
+        'sonarr: syncing episode monitoring vs Plex availability',
+        {
+          title: seriesTitle,
+          seriesId: series.id,
+          tvdbId: seriesTvdbId ?? tvdbId ?? null,
+          episodesTotal: episodeRows.length,
+          episodesInPlex: episodeRows.length - missingKeys.length,
+          episodesMissing: missingKeys.length,
+          willUnmonitor: toUnmonitor.length,
+          willMonitor: toMonitor.length,
+          dryRun: ctx.dryRun,
+        },
+      );
 
       let episodesUnmonitored = 0;
       let episodesMonitored = 0;
@@ -3355,10 +3493,16 @@ export class CleanupAfterAddingNewContentJob {
           (summary.warnings as string[]).push(
             `plex: watchlist check/removal failed (non-critical): ${msg}`,
           );
-          await ctx.warn('plex: watchlist check/removal failed (non-critical)', {
+          await ctx.warn(
+            'plex: watchlist check/removal failed (non-critical)',
+            {
+              error: msg,
+            },
+          );
+          summary.watchlist = {
+            ok: false,
             error: msg,
-          });
-          summary.watchlist = { ok: false, error: msg } as unknown as JsonObject;
+          } as unknown as JsonObject;
         }
       }
 
@@ -3525,21 +3669,29 @@ export class CleanupAfterAddingNewContentJob {
           monitored: boolean;
         }>;
 
-        const toUnmonitor = seasonEpisodeRows.filter((r) => r.inPlex && r.monitored);
-        const toMonitor = seasonEpisodeRows.filter((r) => !r.inPlex && !r.monitored);
+        const toUnmonitor = seasonEpisodeRows.filter(
+          (r) => r.inPlex && r.monitored,
+        );
+        const toMonitor = seasonEpisodeRows.filter(
+          (r) => !r.inPlex && !r.monitored,
+        );
 
-        await ctx.info('sonarr: syncing season episode monitoring vs Plex availability', {
-          title: seriesTitle,
-          seriesId: series.id,
-          season: seasonNum,
-          seasonCompleteInPlex,
-          seasonEpisodes: seasonEpisodeRows.length,
-          seasonEpisodesInPlex: seasonEpisodeRows.length - missingSeason.length,
-          seasonEpisodesMissing: missingSeason.length,
-          willUnmonitor: toUnmonitor.length,
-          willMonitor: toMonitor.length,
-          dryRun: ctx.dryRun,
-        });
+        await ctx.info(
+          'sonarr: syncing season episode monitoring vs Plex availability',
+          {
+            title: seriesTitle,
+            seriesId: series.id,
+            season: seasonNum,
+            seasonCompleteInPlex,
+            seasonEpisodes: seasonEpisodeRows.length,
+            seasonEpisodesInPlex:
+              seasonEpisodeRows.length - missingSeason.length,
+            seasonEpisodesMissing: missingSeason.length,
+            willUnmonitor: toUnmonitor.length,
+            willMonitor: toMonitor.length,
+            dryRun: ctx.dryRun,
+          },
+        );
 
         let episodesUnmonitored = 0;
         let episodesMonitored = 0;
@@ -3604,7 +3756,9 @@ export class CleanupAfterAddingNewContentJob {
         const seasons = Array.isArray(series.seasons)
           ? series.seasons.map((s) => ({ ...s }))
           : [];
-        const seasonObj = seasons.find((s) => toInt(s.seasonNumber) === seasonNum);
+        const seasonObj = seasons.find(
+          (s) => toInt(s.seasonNumber) === seasonNum,
+        );
         const seasonWasMonitored = Boolean(seasonObj?.monitored);
         if (seasonObj && seasonCompleteInPlex) seasonObj.monitored = false;
         updatedSeries.seasons = seasons;
@@ -3671,9 +3825,12 @@ export class CleanupAfterAddingNewContentJob {
             (summary.warnings as string[]).push(
               `plex: watchlist check/removal failed (non-critical): ${msg}`,
             );
-            await ctx.warn('plex: watchlist check/removal failed (non-critical)', {
-              error: msg,
-            });
+            await ctx.warn(
+              'plex: watchlist check/removal failed (non-critical)',
+              {
+                error: msg,
+              },
+            );
             summary.watchlist = {
               ok: false,
               error: msg,
@@ -3784,7 +3941,8 @@ export class CleanupAfterAddingNewContentJob {
           } else {
             sonarrSummary.connected = true;
             sonarrSummary.seriesFound = true;
-            sonarrSummary.seriesId = typeof series.id === 'number' ? series.id : null;
+            sonarrSummary.seriesId =
+              typeof series.id === 'number' ? series.id : null;
             const episodes = await this.sonarr.getEpisodesBySeries({
               baseUrl: sonarrBaseUrl,
               apiKey: sonarrApiKey,
@@ -3882,9 +4040,7 @@ export function buildMediaAddedCleanupReport(params: {
 
   const issues: JobReportV1['issues'] = [];
   const warningsRaw = Array.isArray(rawRec.warnings)
-    ? rawRec.warnings
-        .map((w) => String(w ?? '').trim())
-        .filter(Boolean)
+    ? rawRec.warnings.map((w) => String(w ?? '').trim()).filter(Boolean)
     : [];
 
   const mediaType = (pickString(rawRec, 'mediaType') ?? '').toLowerCase();
@@ -3895,9 +4051,7 @@ export function buildMediaAddedCleanupReport(params: {
   const showTitle = pickString(rawRec, 'showTitle') ?? null;
   const seasonNumber = pickNumber(rawRec, 'seasonNumber');
   const episodeNumber = pickNumber(rawRec, 'episodeNumber');
-  const featuresRaw = isPlainObject(rawRec.features)
-    ? (rawRec.features as Record<string, unknown>)
-    : null;
+  const featuresRaw = isPlainObject(rawRec.features) ? rawRec.features : null;
   const features: MediaAddedCleanupFeatures = {
     deleteDuplicates:
       typeof featuresRaw?.deleteDuplicates === 'boolean'
@@ -3914,18 +4068,12 @@ export function buildMediaAddedCleanupReport(params: {
   };
 
   const duplicates = isPlainObject(rawRec.duplicates)
-    ? (rawRec.duplicates as Record<string, unknown>)
+    ? rawRec.duplicates
     : null;
-  const watchlist = isPlainObject(rawRec.watchlist)
-    ? (rawRec.watchlist as Record<string, unknown>)
-    : null;
+  const watchlist = isPlainObject(rawRec.watchlist) ? rawRec.watchlist : null;
 
-  const radarr = isPlainObject(rawRec.radarr)
-    ? (rawRec.radarr as Record<string, unknown>)
-    : null;
-  const sonarr = isPlainObject(rawRec.sonarr)
-    ? (rawRec.sonarr as Record<string, unknown>)
-    : null;
+  const radarr = isPlainObject(rawRec.radarr) ? rawRec.radarr : null;
+  const sonarr = isPlainObject(rawRec.sonarr) ? rawRec.sonarr : null;
 
   const asBool = (v: unknown): boolean | null =>
     typeof v === 'boolean' ? v : null;
@@ -3948,7 +4096,7 @@ export function buildMediaAddedCleanupReport(params: {
 
   const versionDeletedCount = (vc: unknown) => {
     if (!isPlainObject(vc)) return 0;
-    const rec = vc as Record<string, unknown>;
+    const rec = vc;
     const deleted = num(rec.deleted) ?? 0;
     const wouldDelete = num(rec.wouldDelete) ?? 0;
     return ctx.dryRun ? wouldDelete : deleted;
@@ -3956,7 +4104,7 @@ export function buildMediaAddedCleanupReport(params: {
 
   const versionCopiesCount = (vc: unknown): number | null => {
     if (!isPlainObject(vc)) return null;
-    return num((vc as Record<string, unknown>).copies);
+    return num(vc.copies);
   };
 
   // Duplicates: compute per-type "copies deleted" (metadata deletions + part deletions).
@@ -3966,22 +4114,20 @@ export function buildMediaAddedCleanupReport(params: {
   let episodeDuplicatesFound: boolean | null = null;
 
   if (duplicates) {
-    const mode = typeof duplicates.mode === 'string' ? duplicates.mode.trim() : '';
+    const mode =
+      typeof duplicates.mode === 'string' ? duplicates.mode.trim() : '';
 
     // Full sweep mode (has nested movie/episode stats)
     if (isPlainObject(duplicates.movie) || isPlainObject(duplicates.episode)) {
-      const m = isPlainObject(duplicates.movie)
-        ? (duplicates.movie as Record<string, unknown>)
-        : null;
-      const e = isPlainObject(duplicates.episode)
-        ? (duplicates.episode as Record<string, unknown>)
-        : null;
+      const m = isPlainObject(duplicates.movie) ? duplicates.movie : null;
+      const e = isPlainObject(duplicates.episode) ? duplicates.episode : null;
 
       const mMeta = m
-        ? (ctx.dryRun ? num(m.metadataWouldDelete) : num(m.metadataDeleted)) ?? 0
+        ? ((ctx.dryRun ? num(m.metadataWouldDelete) : num(m.metadataDeleted)) ??
+          0)
         : 0;
       const mParts = m
-        ? (ctx.dryRun ? num(m.partsWouldDelete) : num(m.partsDeleted)) ?? 0
+        ? ((ctx.dryRun ? num(m.partsWouldDelete) : num(m.partsDeleted)) ?? 0)
         : 0;
       movieDuplicatesDeleted = mMeta + mParts;
       movieDuplicatesFound = m
@@ -3989,37 +4135,44 @@ export function buildMediaAddedCleanupReport(params: {
         : null;
 
       const eMeta = e
-        ? (ctx.dryRun ? num(e.metadataWouldDelete) : num(e.metadataDeleted)) ?? 0
+        ? ((ctx.dryRun ? num(e.metadataWouldDelete) : num(e.metadataDeleted)) ??
+          0)
         : 0;
       const eParts = e
-        ? (ctx.dryRun ? num(e.partsWouldDelete) : num(e.partsDeleted)) ?? 0
+        ? ((ctx.dryRun ? num(e.partsWouldDelete) : num(e.partsDeleted)) ?? 0)
         : 0;
       episodeDuplicatesDeleted = eMeta + eParts;
       episodeDuplicatesFound = e
         ? episodeDuplicatesDeleted > 0 || (num(e.groupsWithDuplicates) ?? 0) > 0
         : null;
     } else if (mode.startsWith('movie')) {
-      const metaDeleted = (ctx.dryRun
-        ? num(duplicates.wouldDeleteMetadata)
-        : num(duplicates.deletedMetadata)) ?? 0;
+      const metaDeleted =
+        (ctx.dryRun
+          ? num(duplicates.wouldDeleteMetadata)
+          : num(duplicates.deletedMetadata)) ?? 0;
       const partsDeleted = versionDeletedCount(duplicates.versionCleanup);
       movieDuplicatesDeleted = metaDeleted + partsDeleted;
 
       const candidates = num(duplicates.candidates) ?? 0;
       const copies = versionCopiesCount(duplicates.versionCleanup);
       movieDuplicatesFound =
-        movieDuplicatesDeleted > 0 || candidates > 1 || (copies !== null && copies > 1);
+        movieDuplicatesDeleted > 0 ||
+        candidates > 1 ||
+        (copies !== null && copies > 1);
     } else if (mode.startsWith('episode')) {
-      const metaDeleted = (ctx.dryRun
-        ? num(duplicates.wouldDeleteMetadata)
-        : num(duplicates.deletedMetadata)) ?? 0;
+      const metaDeleted =
+        (ctx.dryRun
+          ? num(duplicates.wouldDeleteMetadata)
+          : num(duplicates.deletedMetadata)) ?? 0;
       const partsDeleted = versionDeletedCount(duplicates.versionCleanup);
       episodeDuplicatesDeleted = metaDeleted + partsDeleted;
 
       const candidates = num(duplicates.candidates) ?? 0;
       const copies = versionCopiesCount(duplicates.versionCleanup);
       episodeDuplicatesFound =
-        episodeDuplicatesDeleted > 0 || candidates > 1 || (copies !== null && copies > 1);
+        episodeDuplicatesDeleted > 0 ||
+        candidates > 1 ||
+        (copies !== null && copies > 1);
     }
 
     // Keep ARR connectivity noise out of the top-level Issues list.
@@ -4047,22 +4200,25 @@ export function buildMediaAddedCleanupReport(params: {
   let watchlistError: string | null = null;
 
   if (watchlist) {
-    const mode = typeof watchlist.mode === 'string' ? watchlist.mode.trim() : null;
+    const mode =
+      typeof watchlist.mode === 'string' ? watchlist.mode.trim() : null;
     if (mode === 'reconcile') {
       watchlistChecked = true;
       const wlMovies = isPlainObject(watchlist.movies)
-        ? (watchlist.movies as Record<string, unknown>)
+        ? watchlist.movies
         : null;
-      const wlShows = isPlainObject(watchlist.shows)
-        ? (watchlist.shows as Record<string, unknown>)
-        : null;
+      const wlShows = isPlainObject(watchlist.shows) ? watchlist.shows : null;
       watchlistMovieRemoved =
-        wlMovies && (ctx.dryRun ? num(wlMovies.wouldRemove) : num(wlMovies.removed))
-          ? ((ctx.dryRun ? num(wlMovies.wouldRemove) : num(wlMovies.removed)) ?? 0)
+        wlMovies &&
+        (ctx.dryRun ? num(wlMovies.wouldRemove) : num(wlMovies.removed))
+          ? ((ctx.dryRun ? num(wlMovies.wouldRemove) : num(wlMovies.removed)) ??
+            0)
           : 0;
       watchlistShowRemoved =
-        wlShows && (ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed))
-          ? ((ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed)) ?? 0)
+        wlShows &&
+        (ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed))
+          ? ((ctx.dryRun ? num(wlShows.wouldRemove) : num(wlShows.removed)) ??
+            0)
           : 0;
       // Note: warnings are already surfaced via rawRec.warnings (and filtered above) to avoid
       // duplicating/noising up the Issues list.
@@ -4076,7 +4232,8 @@ export function buildMediaAddedCleanupReport(params: {
       watchlistRemoved = num(watchlist.removed);
       watchlistMatchedBy =
         typeof watchlist.matchedBy === 'string' ? watchlist.matchedBy : null;
-      watchlistError = typeof watchlist.error === 'string' ? watchlist.error : null;
+      watchlistError =
+        typeof watchlist.error === 'string' ? watchlist.error : null;
 
       const removed = watchlistRemoved ?? 0;
       if (mediaType === 'movie') watchlistMovieRemoved = removed;
@@ -4113,14 +4270,16 @@ export function buildMediaAddedCleanupReport(params: {
   const sonarrSeasonUnmonitored = (() => {
     if (!sonarr) return null;
     const n = ctx.dryRun
-      ? num((sonarr as Record<string, unknown>).seasonsWouldUnmonitor)
-      : num((sonarr as Record<string, unknown>).seasonsUnmonitored);
+      ? num(sonarr.seasonsWouldUnmonitor)
+      : num(sonarr.seasonsUnmonitored);
     return n;
   })();
 
   // Step-by-step tasks
   const pad2 = (n: number | null) =>
-    typeof n === 'number' && Number.isFinite(n) ? String(n).padStart(2, '0') : '??';
+    typeof n === 'number' && Number.isFinite(n)
+      ? String(n).padStart(2, '0')
+      : '??';
 
   const addedLabel = (() => {
     if (mediaType === 'movie') {
@@ -4147,14 +4306,18 @@ export function buildMediaAddedCleanupReport(params: {
       mediaType === 'show');
   const duplicatesFound =
     mediaType === 'movie'
-      ? movieDuplicatesFound ?? movieDuplicatesDeleted > 0
-      : mediaType === 'episode' || mediaType === 'season' || mediaType === 'show'
-        ? episodeDuplicatesFound ?? episodeDuplicatesDeleted > 0
+      ? (movieDuplicatesFound ?? movieDuplicatesDeleted > 0)
+      : mediaType === 'episode' ||
+          mediaType === 'season' ||
+          mediaType === 'show'
+        ? (episodeDuplicatesFound ?? episodeDuplicatesDeleted > 0)
         : null;
   const duplicatesDeleted =
     mediaType === 'movie'
       ? movieDuplicatesDeleted
-      : mediaType === 'episode' || mediaType === 'season' || mediaType === 'show'
+      : mediaType === 'episode' ||
+          mediaType === 'season' ||
+          mediaType === 'show'
         ? episodeDuplicatesDeleted
         : 0;
 
@@ -4166,8 +4329,8 @@ export function buildMediaAddedCleanupReport(params: {
     features.removeFromWatchlist && runSkipped && !watchlistChecked;
 
   const isFullSweep =
-    duplicates && typeof (duplicates as Record<string, unknown>).mode === 'string'
-      ? String((duplicates as Record<string, unknown>).mode).trim() === 'fullSweep'
+    duplicates && typeof duplicates.mode === 'string'
+      ? String(duplicates.mode).trim() === 'fullSweep'
       : false;
 
   const radarrApplicable =
@@ -4195,10 +4358,9 @@ export function buildMediaAddedCleanupReport(params: {
         ? ('skipped' as const)
         : ('success' as const);
 
-    const result =
-      !features.unmonitorInArr
-        ? 'Disabled in task settings.'
-        : !applicable
+    const result = !features.unmonitorInArr
+      ? 'Disabled in task settings.'
+      : !applicable
         ? 'Not applicable for this media type.'
         : configured === false
           ? 'Skipped: not configured.'
@@ -4247,118 +4409,164 @@ export function buildMediaAddedCleanupReport(params: {
           status: features.deleteDuplicates ? 'success' : 'skipped',
           facts: features.deleteDuplicates
             ? [
-                { label: ctx.dryRun ? 'Would delete (movie)' : 'Deleted (movie)', value: movieDuplicatesDeleted },
-                { label: ctx.dryRun ? 'Would delete (episode)' : 'Deleted (episode)', value: episodeDuplicatesDeleted },
+                {
+                  label: ctx.dryRun
+                    ? 'Would delete (movie)'
+                    : 'Deleted (movie)',
+                  value: movieDuplicatesDeleted,
+                },
+                {
+                  label: ctx.dryRun
+                    ? 'Would delete (episode)'
+                    : 'Deleted (episode)',
+                  value: episodeDuplicatesDeleted,
+                },
                 ...(duplicates && isPlainObject(duplicates.movie)
-              ? [
-                  { label: 'Movie groups (dup)', value: num((duplicates.movie as Record<string, unknown>).groupsWithDuplicates) ?? 0 },
-                  {
-                    label: ctx.dryRun ? 'Radarr would unmonitor' : 'Radarr unmonitored',
-                    value:
-                      (ctx.dryRun
-                        ? num((duplicates.movie as Record<string, unknown>).radarrWouldUnmonitor)
-                        : num((duplicates.movie as Record<string, unknown>).radarrUnmonitored)) ?? 0,
-                  },
-                  ...(Array.isArray((duplicates.movie as Record<string, unknown>).deletedMetadataItems)
-                    ? [
-                        {
-                          label: 'Deleted movie metadata (items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((duplicates.movie as Record<string, unknown>).metadataWouldDelete) ?? 0
-                              : num((duplicates.movie as Record<string, unknown>).metadataDeleted) ?? 0,
-                            unit: 'items',
-                            items: (duplicates.movie as Record<string, unknown>).deletedMetadataItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(Array.isArray((duplicates.movie as Record<string, unknown>).deletedVersionItems)
-                    ? [
-                        {
-                          label: 'Deleted movie versions (items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((duplicates.movie as Record<string, unknown>).partsWouldDelete) ?? 0
-                              : num((duplicates.movie as Record<string, unknown>).partsDeleted) ?? 0,
-                            unit: 'versions',
-                            items: (duplicates.movie as Record<string, unknown>).deletedVersionItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(Array.isArray((duplicates.movie as Record<string, unknown>).radarrUnmonitoredItems)
-                    ? [
-                        {
-                          label: ctx.dryRun ? 'Radarr would unmonitor (items)' : 'Radarr unmonitored (items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((duplicates.movie as Record<string, unknown>).radarrWouldUnmonitor) ?? 0
-                              : num((duplicates.movie as Record<string, unknown>).radarrUnmonitored) ?? 0,
-                            unit: 'movies',
-                            items: (duplicates.movie as Record<string, unknown>).radarrUnmonitoredItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                ]
-              : []),
+                  ? [
+                      {
+                        label: 'Movie groups (dup)',
+                        value: num(duplicates.movie.groupsWithDuplicates) ?? 0,
+                      },
+                      {
+                        label: ctx.dryRun
+                          ? 'Radarr would unmonitor'
+                          : 'Radarr unmonitored',
+                        value:
+                          (ctx.dryRun
+                            ? num(duplicates.movie.radarrWouldUnmonitor)
+                            : num(duplicates.movie.radarrUnmonitored)) ?? 0,
+                      },
+                      ...(Array.isArray(duplicates.movie.deletedMetadataItems)
+                        ? [
+                            {
+                              label: 'Deleted movie metadata (items)',
+                              value: {
+                                count: ctx.dryRun
+                                  ? (num(
+                                      duplicates.movie.metadataWouldDelete,
+                                    ) ?? 0)
+                                  : (num(duplicates.movie.metadataDeleted) ??
+                                    0),
+                                unit: 'items',
+                                items: duplicates.movie
+                                  .deletedMetadataItems as string[],
+                              },
+                            },
+                          ]
+                        : []),
+                      ...(Array.isArray(duplicates.movie.deletedVersionItems)
+                        ? [
+                            {
+                              label: 'Deleted movie versions (items)',
+                              value: {
+                                count: ctx.dryRun
+                                  ? (num(duplicates.movie.partsWouldDelete) ??
+                                    0)
+                                  : (num(duplicates.movie.partsDeleted) ?? 0),
+                                unit: 'versions',
+                                items: duplicates.movie
+                                  .deletedVersionItems as string[],
+                              },
+                            },
+                          ]
+                        : []),
+                      ...(Array.isArray(duplicates.movie.radarrUnmonitoredItems)
+                        ? [
+                            {
+                              label: ctx.dryRun
+                                ? 'Radarr would unmonitor (items)'
+                                : 'Radarr unmonitored (items)',
+                              value: {
+                                count: ctx.dryRun
+                                  ? (num(
+                                      duplicates.movie.radarrWouldUnmonitor,
+                                    ) ?? 0)
+                                  : (num(duplicates.movie.radarrUnmonitored) ??
+                                    0),
+                                unit: 'movies',
+                                items: duplicates.movie
+                                  .radarrUnmonitoredItems as string[],
+                              },
+                            },
+                          ]
+                        : []),
+                    ]
+                  : []),
                 ...(duplicates && isPlainObject(duplicates.episode)
-              ? [
-                  { label: 'Episode groups (dup)', value: num((duplicates.episode as Record<string, unknown>).groupsWithDuplicates) ?? 0 },
-                  {
-                    label: ctx.dryRun ? 'Sonarr would unmonitor (ep)' : 'Sonarr unmonitored (ep)',
-                    value:
-                      (ctx.dryRun
-                        ? num((duplicates.episode as Record<string, unknown>).sonarrWouldUnmonitor)
-                        : num((duplicates.episode as Record<string, unknown>).sonarrUnmonitored)) ?? 0,
-                  },
-                  ...(Array.isArray((duplicates.episode as Record<string, unknown>).deletedMetadataItems)
-                    ? [
-                        {
-                          label: 'Deleted episode metadata (items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((duplicates.episode as Record<string, unknown>).metadataWouldDelete) ?? 0
-                              : num((duplicates.episode as Record<string, unknown>).metadataDeleted) ?? 0,
-                            unit: 'items',
-                            items: (duplicates.episode as Record<string, unknown>).deletedMetadataItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(Array.isArray((duplicates.episode as Record<string, unknown>).deletedVersionItems)
-                    ? [
-                        {
-                          label: 'Deleted episode versions (items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((duplicates.episode as Record<string, unknown>).partsWouldDelete) ?? 0
-                              : num((duplicates.episode as Record<string, unknown>).partsDeleted) ?? 0,
-                            unit: 'versions',
-                            items: (duplicates.episode as Record<string, unknown>).deletedVersionItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(Array.isArray((duplicates.episode as Record<string, unknown>).sonarrUnmonitoredItems)
-                    ? [
-                        {
-                          label: ctx.dryRun
-                            ? 'Sonarr would unmonitor (items)'
-                            : 'Sonarr unmonitored (items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((duplicates.episode as Record<string, unknown>).sonarrWouldUnmonitor) ?? 0
-                              : num((duplicates.episode as Record<string, unknown>).sonarrUnmonitored) ?? 0,
-                            unit: 'episodes',
-                            items: (duplicates.episode as Record<string, unknown>).sonarrUnmonitoredItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                ]
-              : []),
+                  ? [
+                      {
+                        label: 'Episode groups (dup)',
+                        value:
+                          num(duplicates.episode.groupsWithDuplicates) ?? 0,
+                      },
+                      {
+                        label: ctx.dryRun
+                          ? 'Sonarr would unmonitor (ep)'
+                          : 'Sonarr unmonitored (ep)',
+                        value:
+                          (ctx.dryRun
+                            ? num(duplicates.episode.sonarrWouldUnmonitor)
+                            : num(duplicates.episode.sonarrUnmonitored)) ?? 0,
+                      },
+                      ...(Array.isArray(duplicates.episode.deletedMetadataItems)
+                        ? [
+                            {
+                              label: 'Deleted episode metadata (items)',
+                              value: {
+                                count: ctx.dryRun
+                                  ? (num(
+                                      duplicates.episode.metadataWouldDelete,
+                                    ) ?? 0)
+                                  : (num(duplicates.episode.metadataDeleted) ??
+                                    0),
+                                unit: 'items',
+                                items: duplicates.episode
+                                  .deletedMetadataItems as string[],
+                              },
+                            },
+                          ]
+                        : []),
+                      ...(Array.isArray(duplicates.episode.deletedVersionItems)
+                        ? [
+                            {
+                              label: 'Deleted episode versions (items)',
+                              value: {
+                                count: ctx.dryRun
+                                  ? (num(duplicates.episode.partsWouldDelete) ??
+                                    0)
+                                  : (num(duplicates.episode.partsDeleted) ?? 0),
+                                unit: 'versions',
+                                items: duplicates.episode
+                                  .deletedVersionItems as string[],
+                              },
+                            },
+                          ]
+                        : []),
+                      ...(Array.isArray(
+                        duplicates.episode.sonarrUnmonitoredItems,
+                      )
+                        ? [
+                            {
+                              label: ctx.dryRun
+                                ? 'Sonarr would unmonitor (items)'
+                                : 'Sonarr unmonitored (items)',
+                              value: {
+                                count: ctx.dryRun
+                                  ? (num(
+                                      duplicates.episode.sonarrWouldUnmonitor,
+                                    ) ?? 0)
+                                  : (num(
+                                      duplicates.episode.sonarrUnmonitored,
+                                    ) ?? 0),
+                                unit: 'episodes',
+                                items: duplicates.episode
+                                  .sonarrUnmonitoredItems as string[],
+                              },
+                            },
+                          ]
+                        : []),
+                    ]
+                  : []),
               ]
             : [{ label: 'Result', value: 'Disabled in task settings.' }],
           issues: [],
@@ -4370,104 +4578,142 @@ export function buildMediaAddedCleanupReport(params: {
             ? watchlistSkippedByFlow
               ? 'skipped'
               : watchlistChecked
-              ? 'success'
-              : 'failed'
+                ? 'success'
+                : 'failed'
             : 'skipped',
           facts: features.removeFromWatchlist
             ? watchlistSkippedByFlow
               ? [{ label: 'Note', value: 'Skipped before watchlist check.' }]
               : [
-                { label: ctx.dryRun ? 'Would remove (movies)' : 'Removed (movies)', value: watchlistMovieRemoved },
-                { label: ctx.dryRun ? 'Would remove (shows)' : 'Removed (shows)', value: watchlistShowRemoved },
-                ...(watchlist && isPlainObject(watchlist.movies)
-              ? [
                   {
-                    label: ctx.dryRun ? 'Radarr would unmonitor' : 'Radarr unmonitored',
-                    value:
-                      (ctx.dryRun
-                        ? num((watchlist.movies as Record<string, unknown>).radarrWouldUnmonitor)
-                        : num((watchlist.movies as Record<string, unknown>).radarrUnmonitored)) ?? 0,
+                    label: ctx.dryRun
+                      ? 'Would remove (movies)'
+                      : 'Removed (movies)',
+                    value: watchlistMovieRemoved,
                   },
-                  ...(Array.isArray((watchlist.movies as Record<string, unknown>).removedItems)
-                    ? [
-                        {
-                          label: ctx.dryRun ? 'Would remove (movie items)' : 'Removed (movie items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((watchlist.movies as Record<string, unknown>).wouldRemove) ?? 0
-                              : num((watchlist.movies as Record<string, unknown>).removed) ?? 0,
-                            unit: 'movies',
-                            items: (watchlist.movies as Record<string, unknown>).removedItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(Array.isArray((watchlist.movies as Record<string, unknown>).radarrUnmonitoredItems)
+                  {
+                    label: ctx.dryRun
+                      ? 'Would remove (shows)'
+                      : 'Removed (shows)',
+                    value: watchlistShowRemoved,
+                  },
+                  ...(watchlist && isPlainObject(watchlist.movies)
                     ? [
                         {
                           label: ctx.dryRun
-                            ? 'Radarr would unmonitor (movie items)'
-                            : 'Radarr unmonitored (movie items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((watchlist.movies as Record<string, unknown>).radarrWouldUnmonitor) ?? 0
-                              : num((watchlist.movies as Record<string, unknown>).radarrUnmonitored) ?? 0,
-                            unit: 'movies',
-                            items: (watchlist.movies as Record<string, unknown>).radarrUnmonitoredItems as string[],
-                          },
+                            ? 'Radarr would unmonitor'
+                            : 'Radarr unmonitored',
+                          value:
+                            (ctx.dryRun
+                              ? num(watchlist.movies.radarrWouldUnmonitor)
+                              : num(watchlist.movies.radarrUnmonitored)) ?? 0,
                         },
+                        ...(Array.isArray(watchlist.movies.removedItems)
+                          ? [
+                              {
+                                label: ctx.dryRun
+                                  ? 'Would remove (movie items)'
+                                  : 'Removed (movie items)',
+                                value: {
+                                  count: ctx.dryRun
+                                    ? (num(watchlist.movies.wouldRemove) ?? 0)
+                                    : (num(watchlist.movies.removed) ?? 0),
+                                  unit: 'movies',
+                                  items: watchlist.movies
+                                    .removedItems as string[],
+                                },
+                              },
+                            ]
+                          : []),
+                        ...(Array.isArray(
+                          watchlist.movies.radarrUnmonitoredItems,
+                        )
+                          ? [
+                              {
+                                label: ctx.dryRun
+                                  ? 'Radarr would unmonitor (movie items)'
+                                  : 'Radarr unmonitored (movie items)',
+                                value: {
+                                  count: ctx.dryRun
+                                    ? (num(
+                                        watchlist.movies.radarrWouldUnmonitor,
+                                      ) ?? 0)
+                                    : (num(
+                                        watchlist.movies.radarrUnmonitored,
+                                      ) ?? 0),
+                                  unit: 'movies',
+                                  items: watchlist.movies
+                                    .radarrUnmonitoredItems as string[],
+                                },
+                              },
+                            ]
+                          : []),
                       ]
                     : []),
-                ]
-              : []),
-                ...(watchlist && isPlainObject(watchlist.shows)
-              ? [
-                  {
-                    label: ctx.dryRun ? 'Sonarr would unmonitor (series)' : 'Sonarr unmonitored (series)',
-                    value:
-                      (ctx.dryRun
-                        ? num((watchlist.shows as Record<string, unknown>).sonarrWouldUnmonitor)
-                        : num((watchlist.shows as Record<string, unknown>).sonarrUnmonitored)) ?? 0,
-                  },
-                  ...(Array.isArray((watchlist.shows as Record<string, unknown>).removedItems)
-                    ? [
-                        {
-                          label: ctx.dryRun ? 'Would remove (show items)' : 'Removed (show items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((watchlist.shows as Record<string, unknown>).wouldRemove) ?? 0
-                              : num((watchlist.shows as Record<string, unknown>).removed) ?? 0,
-                            unit: 'shows',
-                            items: (watchlist.shows as Record<string, unknown>).removedItems as string[],
-                          },
-                        },
-                      ]
-                    : []),
-                  ...(Array.isArray((watchlist.shows as Record<string, unknown>).sonarrUnmonitoredItems)
+                  ...(watchlist && isPlainObject(watchlist.shows)
                     ? [
                         {
                           label: ctx.dryRun
-                            ? 'Sonarr would unmonitor (show items)'
-                            : 'Sonarr unmonitored (show items)',
-                          value: {
-                            count: ctx.dryRun
-                              ? num((watchlist.shows as Record<string, unknown>).sonarrWouldUnmonitor) ?? 0
-                              : num((watchlist.shows as Record<string, unknown>).sonarrUnmonitored) ?? 0,
-                            unit: 'shows',
-                            items: (watchlist.shows as Record<string, unknown>).sonarrUnmonitoredItems as string[],
-                          },
+                            ? 'Sonarr would unmonitor (series)'
+                            : 'Sonarr unmonitored (series)',
+                          value:
+                            (ctx.dryRun
+                              ? num(watchlist.shows.sonarrWouldUnmonitor)
+                              : num(watchlist.shows.sonarrUnmonitored)) ?? 0,
                         },
+                        ...(Array.isArray(watchlist.shows.removedItems)
+                          ? [
+                              {
+                                label: ctx.dryRun
+                                  ? 'Would remove (show items)'
+                                  : 'Removed (show items)',
+                                value: {
+                                  count: ctx.dryRun
+                                    ? (num(watchlist.shows.wouldRemove) ?? 0)
+                                    : (num(watchlist.shows.removed) ?? 0),
+                                  unit: 'shows',
+                                  items: watchlist.shows
+                                    .removedItems as string[],
+                                },
+                              },
+                            ]
+                          : []),
+                        ...(Array.isArray(
+                          watchlist.shows.sonarrUnmonitoredItems,
+                        )
+                          ? [
+                              {
+                                label: ctx.dryRun
+                                  ? 'Sonarr would unmonitor (show items)'
+                                  : 'Sonarr unmonitored (show items)',
+                                value: {
+                                  count: ctx.dryRun
+                                    ? (num(
+                                        watchlist.shows.sonarrWouldUnmonitor,
+                                      ) ?? 0)
+                                    : (num(watchlist.shows.sonarrUnmonitored) ??
+                                      0),
+                                  unit: 'shows',
+                                  items: watchlist.shows
+                                    .sonarrUnmonitoredItems as string[],
+                                },
+                              },
+                            ]
+                          : []),
                       ]
                     : []),
                 ]
-              : []),
-              ]
             : [{ label: 'Result', value: 'Disabled in task settings.' }],
           issues:
             features.removeFromWatchlist &&
             !watchlistChecked &&
             !watchlistSkippedByFlow
-              ? [issue('error', 'Plex watchlist reconciliation was not executed.')]
+              ? [
+                  issue(
+                    'error',
+                    'Plex watchlist reconciliation was not executed.',
+                  ),
+                ]
               : [],
         },
         buildArrMonitoringTask('radarr', true),
@@ -4481,7 +4727,9 @@ export function buildMediaAddedCleanupReport(params: {
           facts: [
             ...(plexEvent ? [{ label: 'Plex event', value: plexEvent }] : []),
             { label: 'Media', value: addedLabel },
-            ...(ratingKey ? [{ label: 'Plex ratingKey', value: ratingKey }] : []),
+            ...(ratingKey
+              ? [{ label: 'Plex ratingKey', value: ratingKey }]
+              : []),
           ],
           issues: [],
         },
@@ -4491,15 +4739,32 @@ export function buildMediaAddedCleanupReport(params: {
           status: duplicatesApplicable ? 'success' : 'skipped',
           facts: duplicatesApplicable
             ? [
-                { label: 'Found', value: duplicatesFound ? 'found' : 'not found' },
-                { label: ctx.dryRun ? 'Would delete' : 'Deleted', value: duplicatesDeleted },
-                ...(duplicates && typeof duplicates.librarySectionTitle === 'string'
-                  ? [{ label: 'Library', value: duplicates.librarySectionTitle }]
+                {
+                  label: 'Found',
+                  value: duplicatesFound ? 'found' : 'not found',
+                },
+                {
+                  label: ctx.dryRun ? 'Would delete' : 'Deleted',
+                  value: duplicatesDeleted,
+                },
+                ...(duplicates &&
+                typeof duplicates.librarySectionTitle === 'string'
+                  ? [
+                      {
+                        label: 'Library',
+                        value: duplicates.librarySectionTitle,
+                      },
+                    ]
                   : []),
                 ...(mediaType === 'episode' &&
                 duplicates &&
                 typeof duplicates.showRatingKey === 'string'
-                  ? [{ label: 'Show ratingKey', value: duplicates.showRatingKey }]
+                  ? [
+                      {
+                        label: 'Show ratingKey',
+                        value: duplicates.showRatingKey,
+                      },
+                    ]
                   : []),
               ]
             : [
@@ -4522,27 +4787,37 @@ export function buildMediaAddedCleanupReport(params: {
                 ? 'success'
                 : 'failed'
             : 'skipped',
-          facts: watchlistApplicable && !watchlistSkippedByFlow
-            ? [
-                { label: 'Found', value: (watchlistAttempted ?? 0) > 0 ? 'found' : 'not found' },
-                { label: ctx.dryRun ? 'Would remove' : 'Removed', value: watchlistRemoved ?? 0 },
-                ...(watchlistMatchedBy ? [{ label: 'Matched by', value: watchlistMatchedBy }] : []),
-                ...(watchlistError ? [{ label: 'Error', value: watchlistError }] : []),
-              ]
-            : [
-                {
-                  label: 'Note',
-                  value: watchlistSkippedByFlow
-                    ? 'Skipped before watchlist check.'
-                    : features.removeFromWatchlist
-                    ? 'Not checked for episodes.'
-                    : 'Disabled in task settings.',
-                },
-              ],
+          facts:
+            watchlistApplicable && !watchlistSkippedByFlow
+              ? [
+                  {
+                    label: 'Found',
+                    value:
+                      (watchlistAttempted ?? 0) > 0 ? 'found' : 'not found',
+                  },
+                  {
+                    label: ctx.dryRun ? 'Would remove' : 'Removed',
+                    value: watchlistRemoved ?? 0,
+                  },
+                  ...(watchlistMatchedBy
+                    ? [{ label: 'Matched by', value: watchlistMatchedBy }]
+                    : []),
+                  ...(watchlistError
+                    ? [{ label: 'Error', value: watchlistError }]
+                    : []),
+                ]
+              : [
+                  {
+                    label: 'Note',
+                    value: watchlistSkippedByFlow
+                      ? 'Skipped before watchlist check.'
+                      : features.removeFromWatchlist
+                        ? 'Not checked for episodes.'
+                        : 'Disabled in task settings.',
+                  },
+                ],
           issues:
-            watchlistApplicable &&
-            !watchlistChecked &&
-            !watchlistSkippedByFlow
+            watchlistApplicable && !watchlistChecked && !watchlistSkippedByFlow
               ? [issue('error', 'Plex watchlist check was not executed.')]
               : [],
         },

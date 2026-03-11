@@ -42,12 +42,20 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-type ServiceKey = 'tmdb' | 'radarr' | 'sonarr' | 'openai' | 'google' | 'overseerr';
+type ServiceKey =
+  | 'tmdb'
+  | 'radarr'
+  | 'sonarr'
+  | 'openai'
+  | 'google'
+  | 'overseerr';
 type ServiceStatus = 'unknown' | 'not_configured' | 'online' | 'offline';
 
 @Injectable()
 export class IntegrationsConnectivityMonitorService implements OnModuleInit {
-  private readonly logger = new Logger(IntegrationsConnectivityMonitorService.name);
+  private readonly logger = new Logger(
+    IntegrationsConnectivityMonitorService.name,
+  );
 
   // Poll regularly but only log on change / sustained failure.
   private static readonly INTERVAL_MS = 5 * 60_000;
@@ -120,7 +128,10 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
 
     if (next === 'offline') {
       const last = st.lastNoisyOfflineLogAtMs ?? 0;
-      if (now - last >= IntegrationsConnectivityMonitorService.OFFLINE_REMINDER_MS) {
+      if (
+        now - last >=
+        IntegrationsConnectivityMonitorService.OFFLINE_REMINDER_MS
+      ) {
         this.logger.warn(
           `Integration connectivity: ${key.toUpperCase()} still OFFLINE error=${JSON.stringify(error ?? st.lastError ?? 'unknown')}${meta ? ` ${JSON.stringify(meta)}` : ''}`,
         );
@@ -145,8 +156,8 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
         secrets: {} as Record<string, unknown>,
       }));
 
-    const s = settings as Record<string, unknown>;
-    const sec = secrets as Record<string, unknown>;
+    const s = settings;
+    const sec = secrets;
 
     await Promise.all([
       this.checkTmdb(s, sec),
@@ -163,13 +174,18 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     private readonly settingsService: SettingsService,
   ) {}
 
-  private async checkTmdb(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
+  private async checkTmdb(
+    settings: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ) {
     const apiKey =
       pickString(secrets, 'tmdb.apiKey') ||
       pickString(secrets, 'tmdbApiKey') ||
       pickString(secrets, 'tmdb.api_key');
     if (!apiKey) {
-      this.setStatus('tmdb', 'not_configured', null, { reason: 'missing_apiKey' });
+      this.setStatus('tmdb', 'not_configured', null, {
+        reason: 'missing_apiKey',
+      });
       return;
     }
 
@@ -182,19 +198,28 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     });
   }
 
-  private async checkRadarr(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
+  private async checkRadarr(
+    settings: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ) {
     const enabled =
-      (pickBool(settings, 'radarr.enabled') ?? Boolean(pickString(secrets, 'radarr.apiKey'))) &&
+      (pickBool(settings, 'radarr.enabled') ??
+        Boolean(pickString(secrets, 'radarr.apiKey'))) &&
       Boolean(pickString(settings, 'radarr.baseUrl')) &&
       Boolean(pickString(secrets, 'radarr.apiKey'));
     if (!enabled) {
-      this.setStatus('radarr', 'not_configured', null, { reason: 'disabled_or_missing' });
+      this.setStatus('radarr', 'not_configured', null, {
+        reason: 'disabled_or_missing',
+      });
       return;
     }
 
     const baseUrl = normalizeHttpUrl(pickString(settings, 'radarr.baseUrl'));
     const apiKey = pickString(secrets, 'radarr.apiKey');
-    const url = new URL('api/v3/system/status', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
+    const url = new URL(
+      'api/v3/system/status',
+      baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`,
+    ).toString();
 
     await this.probeHttp('radarr', url, {
       headers: { Accept: 'application/json', 'X-Api-Key': apiKey },
@@ -202,19 +227,28 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     });
   }
 
-  private async checkSonarr(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
+  private async checkSonarr(
+    settings: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ) {
     const enabled =
-      (pickBool(settings, 'sonarr.enabled') ?? Boolean(pickString(secrets, 'sonarr.apiKey'))) &&
+      (pickBool(settings, 'sonarr.enabled') ??
+        Boolean(pickString(secrets, 'sonarr.apiKey'))) &&
       Boolean(pickString(settings, 'sonarr.baseUrl')) &&
       Boolean(pickString(secrets, 'sonarr.apiKey'));
     if (!enabled) {
-      this.setStatus('sonarr', 'not_configured', null, { reason: 'disabled_or_missing' });
+      this.setStatus('sonarr', 'not_configured', null, {
+        reason: 'disabled_or_missing',
+      });
       return;
     }
 
     const baseUrl = normalizeHttpUrl(pickString(settings, 'sonarr.baseUrl'));
     const apiKey = pickString(secrets, 'sonarr.apiKey');
-    const url = new URL('api/v3/system/status', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
+    const url = new URL(
+      'api/v3/system/status',
+      baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`,
+    ).toString();
 
     await this.probeHttp('sonarr', url, {
       headers: { Accept: 'application/json', 'X-Api-Key': apiKey },
@@ -222,9 +256,13 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     });
   }
 
-  private async checkOverseerr(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
+  private async checkOverseerr(
+    settings: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ) {
     const enabled =
-      (pickBool(settings, 'overseerr.enabled') ?? Boolean(pickString(secrets, 'overseerr.apiKey'))) &&
+      (pickBool(settings, 'overseerr.enabled') ??
+        Boolean(pickString(secrets, 'overseerr.apiKey'))) &&
       Boolean(pickString(settings, 'overseerr.baseUrl')) &&
       Boolean(pickString(secrets, 'overseerr.apiKey'));
     if (!enabled) {
@@ -249,28 +287,43 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     });
   }
 
-  private async checkOpenAi(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
-    const enabled = (pickBool(settings, 'openai.enabled') ?? false) && Boolean(pickString(secrets, 'openai.apiKey'));
+  private async checkOpenAi(
+    settings: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ) {
+    const enabled =
+      (pickBool(settings, 'openai.enabled') ?? false) &&
+      Boolean(pickString(secrets, 'openai.apiKey'));
     if (!enabled) {
-      this.setStatus('openai', 'not_configured', null, { reason: 'disabled_or_missing' });
+      this.setStatus('openai', 'not_configured', null, {
+        reason: 'disabled_or_missing',
+      });
       return;
     }
 
     const apiKey = pickString(secrets, 'openai.apiKey');
     const url = 'https://api.openai.com/v1/models';
     await this.probeHttp('openai', url, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
       timeoutMs: 10_000,
     });
   }
 
-  private async checkGoogle(settings: Record<string, unknown>, secrets: Record<string, unknown>) {
+  private async checkGoogle(
+    settings: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ) {
     const enabled =
       (pickBool(settings, 'google.enabled') ?? false) &&
       Boolean(pickString(secrets, 'google.apiKey')) &&
       Boolean(pickString(settings, 'google.searchEngineId'));
     if (!enabled) {
-      this.setStatus('google', 'not_configured', null, { reason: 'disabled_or_missing' });
+      this.setStatus('google', 'not_configured', null, {
+        reason: 'disabled_or_missing',
+      });
       return;
     }
 
@@ -318,7 +371,10 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       st.consecutiveFails += 1;
       st.lastError = msg;
 
-      if (st.consecutiveFails >= IntegrationsConnectivityMonitorService.FAILS_TO_MARK_OFFLINE) {
+      if (
+        st.consecutiveFails >=
+        IntegrationsConnectivityMonitorService.FAILS_TO_MARK_OFFLINE
+      ) {
         this.setStatus(key, 'offline', msg, { ms });
       }
     } catch (err) {
@@ -326,7 +382,10 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       const msg = errToMessage(err);
       st.consecutiveFails += 1;
       st.lastError = msg;
-      if (st.consecutiveFails >= IntegrationsConnectivityMonitorService.FAILS_TO_MARK_OFFLINE) {
+      if (
+        st.consecutiveFails >=
+        IntegrationsConnectivityMonitorService.FAILS_TO_MARK_OFFLINE
+      ) {
         this.setStatus(key, 'offline', msg, { ms });
       }
     } finally {

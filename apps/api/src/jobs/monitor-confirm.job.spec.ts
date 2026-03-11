@@ -13,7 +13,10 @@ type PlexMock = Pick<
   | 'getTvdbShowMapForSectionKey'
   | 'getEpisodesSet'
 >;
-type RadarrMock = Pick<RadarrService, 'listMonitoredMovies' | 'setMovieMonitored'>;
+type RadarrMock = Pick<
+  RadarrService,
+  'listMonitoredMovies' | 'setMovieMonitored'
+>;
 type SonarrMock = Pick<
   SonarrService,
   | 'listMonitoredSeries'
@@ -102,7 +105,9 @@ describe('MonitorConfirmJob', () => {
         'sonarr.apiKey': 'sonarr-key',
       },
     });
-    plex.getSections.mockResolvedValue([{ key: '1', title: 'Movies', type: 'movie' }]);
+    plex.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+    ]);
     plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(new Set<number>());
     radarr.listMonitoredMovies.mockResolvedValue([]);
 
@@ -140,7 +145,9 @@ describe('MonitorConfirmJob', () => {
         'radarr.apiKey': 'radarr-key',
       },
     });
-    plex.getSections.mockResolvedValue([{ key: '1', title: 'Movies', type: 'movie' }]);
+    plex.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+    ]);
     plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(new Set<number>());
     radarr.listMonitoredMovies.mockResolvedValue([]);
 
@@ -181,8 +188,12 @@ describe('MonitorConfirmJob', () => {
         'sonarr.apiKey': 'sonarr-key',
       },
     });
-    plex.getSections.mockResolvedValue([{ key: '2', title: 'Shows', type: 'show' }]);
-    plex.getTvdbShowMapForSectionKey.mockResolvedValue(new Map<number, string[]>());
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(
+      new Map<number, string[]>(),
+    );
     sonarr.listMonitoredSeries.mockResolvedValue([]);
     sonarr.searchMonitoredEpisodes.mockResolvedValue(true);
 

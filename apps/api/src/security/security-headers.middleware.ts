@@ -25,7 +25,10 @@ const CORE_SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
   ['X-DNS-Prefetch-Control', 'off'],
   ['X-Permitted-Cross-Domain-Policies', 'none'],
   ['Referrer-Policy', 'strict-origin-when-cross-origin'],
-  ['Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()'],
+  [
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  ],
   ['Cross-Origin-Opener-Policy', 'same-origin'],
   ['Cross-Origin-Resource-Policy', 'same-origin'],
   ['Origin-Agent-Cluster', '?1'],

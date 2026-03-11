@@ -20,7 +20,10 @@ type PinCuratedCollectionHubsParams = {
   mediaType: 'movie' | 'tv';
   pinTarget: 'admin' | 'friends';
   collectionHubOrder: string[];
-  preferredHubTargets?: Array<{ collectionName: string; collectionKey: string }>;
+  preferredHubTargets?: Array<{
+    collectionName: string;
+    collectionKey: string;
+  }>;
 };
 
 async function callPinCuratedCollectionHubs(
@@ -48,7 +51,10 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins admin target to recommended+home and reorders as 1,2,3', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
-        { ratingKey: '11', title: 'Based on your recently watched Movie (Alice)' },
+        {
+          ratingKey: '11',
+          title: 'Based on your recently watched Movie (Alice)',
+        },
         { ratingKey: '12', title: 'Change of Movie Taste (Alice)' },
         {
           ratingKey: '13',
@@ -115,7 +121,10 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins friends target to recommended+shared home and matches by base when suffix differs', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
-        { ratingKey: '31', title: 'Inspired by your Immaculate Taste in Shows (Bob)' },
+        {
+          ratingKey: '31',
+          title: 'Inspired by your Immaculate Taste in Shows (Bob)',
+        },
         { ratingKey: '32', title: 'Based on your recently watched Show (Bob)' },
         { ratingKey: '33', title: 'Change of Show Taste (Bob)' },
       ]),
@@ -178,7 +187,10 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
 
   it('retries hub target resolution when a freshly rebuilt collection is not visible on first list call', async () => {
     const firstList = [
-      { ratingKey: '41', title: 'Based on your recently watched Movie (plex laking)' },
+      {
+        ratingKey: '41',
+        title: 'Based on your recently watched Movie (plex laking)',
+      },
       { ratingKey: '42', title: 'Change of Movie Taste (plex laking)' },
     ];
     const secondList = [
@@ -234,7 +246,10 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins the freshly rebuilt collection using preferred key even when list endpoint still misses it', async () => {
     const plexServer = {
       listCollectionsForSectionKey: jest.fn(async () => [
-        { ratingKey: '61', title: 'Based on your recently watched Movie (plex laking)' },
+        {
+          ratingKey: '61',
+          title: 'Based on your recently watched Movie (plex laking)',
+        },
         { ratingKey: '62', title: 'Change of Movie Taste (plex laking)' },
       ]),
       setCollectionHubVisibility: jest.fn(async () => undefined),
@@ -244,7 +259,7 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
           if (args.collectionRatingKey === '63') {
             // Simulate eventual consistency in hub manage endpoint.
             const getCollectionHubIdentifierMock =
-              plexServer.getCollectionHubIdentifier as jest.Mock;
+              plexServer.getCollectionHubIdentifier;
             const seen = getCollectionHubIdentifierMock.mock.calls.filter(
               (call: Array<{ collectionRatingKey: string }>) =>
                 call[0].collectionRatingKey === '63',
@@ -280,7 +295,8 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       ],
       preferredHubTargets: [
         {
-          collectionName: 'Inspired by your Immaculate Taste in Movies (plex laking)',
+          collectionName:
+            'Inspired by your Immaculate Taste in Movies (plex laking)',
           collectionKey: '63',
         },
       ],
@@ -397,25 +413,27 @@ describe('PlexCuratedCollectionsService artwork mapping', () => {
       {} as ConstructorParameters<typeof CollectionArtworkService>[3],
     );
 
-    const cases: Array<{ collectionName: string; expectedPosterBasename: string }> =
-      [
-        {
-          collectionName: 'Inspired by your Immaculate Taste in Movies (Alice)',
-          expectedPosterBasename: 'immaculate_taste_collection.png',
-        },
-        {
-          collectionName: 'Inspired by your Immaculate Taste in Shows (Alice)',
-          expectedPosterBasename: 'immaculate_taste_collection.png',
-        },
-        {
-          collectionName: 'Change of Movie Taste (Alice)',
-          expectedPosterBasename: 'change_of_taste_collection.png',
-        },
-        {
-          collectionName: 'Change of Show Taste (Alice)',
-          expectedPosterBasename: 'change_of_taste_collection.png',
-        },
-      ];
+    const cases: Array<{
+      collectionName: string;
+      expectedPosterBasename: string;
+    }> = [
+      {
+        collectionName: 'Inspired by your Immaculate Taste in Movies (Alice)',
+        expectedPosterBasename: 'immaculate_taste_collection.png',
+      },
+      {
+        collectionName: 'Inspired by your Immaculate Taste in Shows (Alice)',
+        expectedPosterBasename: 'immaculate_taste_collection.png',
+      },
+      {
+        collectionName: 'Change of Movie Taste (Alice)',
+        expectedPosterBasename: 'change_of_taste_collection.png',
+      },
+      {
+        collectionName: 'Change of Show Taste (Alice)',
+        expectedPosterBasename: 'change_of_taste_collection.png',
+      },
+    ];
 
     for (const testCase of cases) {
       const artwork = artworkService.resolveDefaultArtworkPaths({

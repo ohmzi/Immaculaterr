@@ -629,7 +629,9 @@ describe('CollectionResyncUpgradeJob', () => {
       plexToken: 'token',
     });
 
-    expect(prisma.watchedShowRecommendationLibrary.updateMany).toHaveBeenCalledWith(
+    expect(
+      prisma.watchedShowRecommendationLibrary.updateMany,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           plexUserId: 'u-2',

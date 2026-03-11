@@ -48,7 +48,11 @@ function readUpdateCheckEnabled(): boolean {
 }
 
 function readUpdateRepoEnv(): string | null {
-  const raw = (process.env.UPDATE_CHECK_REPO ?? process.env.GITHUB_REPOSITORY ?? '').trim();
+  const raw = (
+    process.env.UPDATE_CHECK_REPO ??
+    process.env.GITHUB_REPOSITORY ??
+    ''
+  ).trim();
   if (!raw) return DEFAULT_UPDATE_REPO;
   // Expect "owner/repo"
   if (!/^[^/]+\/[^/]+$/.test(raw)) return null;
@@ -64,15 +68,24 @@ function readUpdateCheckTtlMs(): number {
 
 function readGitHubToken(): string | null {
   const v =
-    (process.env.UPDATE_CHECK_GITHUB_TOKEN ?? process.env.GITHUB_TOKEN ?? '').trim() || null;
+    (
+      process.env.UPDATE_CHECK_GITHUB_TOKEN ??
+      process.env.GITHUB_TOKEN ??
+      ''
+    ).trim() || null;
   return v;
 }
 
 @Injectable()
 export class UpdatesService {
-  private cache: Cached<{ latest: LatestInfo | null; error: string | null }> | null = null;
+  private cache: Cached<{
+    latest: LatestInfo | null;
+    error: string | null;
+  }> | null = null;
 
-  private async fetchLatestFromGitHubReleases(repo: string): Promise<LatestInfo> {
+  private async fetchLatestFromGitHubReleases(
+    repo: string,
+  ): Promise<LatestInfo> {
     const url = `https://api.github.com/repos/${repo}/releases/latest`;
     const token = readGitHubToken();
     const meta = readAppMeta();
@@ -103,19 +116,26 @@ export class UpdatesService {
     return { version, url: htmlUrl };
   }
 
-  private async getCachedLatest(): Promise<{ latest: LatestInfo | null; error: string | null }> {
+  private async getCachedLatest(): Promise<{
+    latest: LatestInfo | null;
+    error: string | null;
+  }> {
     if (!readUpdateCheckEnabled()) {
       return { latest: null, error: null };
     }
 
     const repo = readUpdateRepoEnv();
     if (!repo) {
-      return { latest: null, error: 'UPDATE_CHECK_REPO is invalid (expected "owner/repo")' };
+      return {
+        latest: null,
+        error: 'UPDATE_CHECK_REPO is invalid (expected "owner/repo")',
+      };
     }
 
     const ttlMs = readUpdateCheckTtlMs();
     const now = Date.now();
-    if (this.cache && now - this.cache.fetchedAtMs < ttlMs) return this.cache.value;
+    if (this.cache && now - this.cache.fetchedAtMs < ttlMs)
+      return this.cache.value;
 
     try {
       const latest = await this.fetchLatestFromGitHubReleases(repo);
@@ -123,7 +143,10 @@ export class UpdatesService {
       this.cache = { value, fetchedAtMs: now };
       return value;
     } catch (err) {
-      const value = { latest: null, error: (err as Error)?.message ?? String(err) };
+      const value = {
+        latest: null,
+        error: (err as Error)?.message ?? String(err),
+      };
       // Cache failures briefly to avoid thundering herd / log spam.
       this.cache = { value, fetchedAtMs: now };
       return value;
@@ -137,7 +160,9 @@ export class UpdatesService {
 
     const latestVersion = latest?.version ?? null;
     const cmp =
-      latestVersion && meta.version ? compareVersions(latestVersion, meta.version) : null;
+      latestVersion && meta.version
+        ? compareVersions(latestVersion, meta.version)
+        : null;
     const updateAvailable = typeof cmp === 'number' ? cmp > 0 : false;
 
     return {
@@ -152,4 +177,3 @@ export class UpdatesService {
     };
   }
 }
-

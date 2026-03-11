@@ -27,20 +27,30 @@ function createPrismaMock() {
           if (!settingsValue) return null;
           return { value: settingsValue };
         }),
-        upsert: jest.fn(async (args: { update: { value: string }; create: { value: string } }) => {
-          settingsValue = args.update.value || args.create.value;
-          return { value: settingsValue };
-        }),
+        upsert: jest.fn(
+          async (args: {
+            update: { value: string };
+            create: { value: string };
+          }) => {
+            settingsValue = args.update.value || args.create.value;
+            return { value: settingsValue };
+          },
+        ),
       },
       userSecrets: {
         findUnique: jest.fn(async () => {
           if (!secretsValue) return null;
           return { value: secretsValue };
         }),
-        upsert: jest.fn(async (args: { update: { value: string }; create: { value: string } }) => {
-          secretsValue = args.update.value || args.create.value;
-          return { value: secretsValue };
-        }),
+        upsert: jest.fn(
+          async (args: {
+            update: { value: string };
+            create: { value: string };
+          }) => {
+            secretsValue = args.update.value || args.create.value;
+            return { value: secretsValue };
+          },
+        ),
       },
     },
     readStoredSecretsValue() {

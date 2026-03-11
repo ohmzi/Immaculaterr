@@ -30,6 +30,3 @@ export class LogsRetentionService implements OnModuleInit {
     }
   }
 }
-
-
-

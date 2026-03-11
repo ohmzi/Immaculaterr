@@ -16,7 +16,8 @@ export function readAppMeta(): AppMeta {
   // - Allowing APP_VERSION to override causes confusing "stuck on old version" situations
   //   when users duplicate/recreate containers and Portainer preserves env vars.
   // If you really need to override for local/dev, set ALLOW_APP_VERSION_OVERRIDE=true.
-  const allowOverride = (process.env.ALLOW_APP_VERSION_OVERRIDE ?? '').trim() === 'true';
+  const allowOverride =
+    (process.env.ALLOW_APP_VERSION_OVERRIDE ?? '').trim() === 'true';
   const envVersion = (process.env.APP_VERSION ?? '').trim();
   const version =
     allowOverride && envVersion ? envVersion : DEFAULT_APP_VERSION;
@@ -30,4 +31,3 @@ export function readAppMeta(): AppMeta {
     buildTime,
   };
 }
-

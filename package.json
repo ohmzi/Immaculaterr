@@ -21,6 +21,7 @@
     "build": "npm --workspaces --if-present run build",
     "lint": "npm --workspaces --if-present run lint",
     "test": "npm --workspaces --if-present run test",
+    "quality:ci": "npm run lint && npm run build && npm run test:workflow:publish",
     "security:check:ajv": "bash -lc 'command -v rg >/dev/null 2>&1 || { echo \"rg is required for security:check:ajv\"; exit 2; }; ! rg -n \"\\\\$data[[:space:]]*:[[:space:]]*true\" apps scripts .github -g \"**/*.{js,cjs,mjs,ts,tsx,cts,mts,json,yml,yaml}\" -g \"!**/node_modules/**\" -g \"!**/dist/**\" -g \"!**/coverage/**\"'",
     "security:audit:prod": "npm audit --omit=dev --audit-level=high",
     "security:scan:semgrep": "bash security/scanners/semgrep.sh",
@@ -33,7 +34,7 @@
     "security:scan:audit": "bash security/scanners/dependency-audit.sh",
     "security:scorecard": "node security/scorecard.mjs",
     "security:all": "bash security/run-security-pipeline.sh",
-    "security:ci": "npm run security:check:ajv && npm run security:audit:prod"
+    "security:ci": "npm run quality:ci && npm run security:check:ajv && npm run security:audit:prod"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

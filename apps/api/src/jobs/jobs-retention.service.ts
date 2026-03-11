@@ -27,8 +27,7 @@ export class JobsRetentionService implements OnModuleInit {
 
   private async cleanupOnce() {
     const cutoff = new Date(
-      Date.now() -
-        JobsRetentionService.RETENTION_DAYS * 24 * 60 * 60_000,
+      Date.now() - JobsRetentionService.RETENTION_DAYS * 24 * 60 * 60_000,
     );
 
     let totalRuns = 0;
@@ -121,5 +120,3 @@ export class JobsRetentionService implements OnModuleInit {
     }
   }
 }
-
-

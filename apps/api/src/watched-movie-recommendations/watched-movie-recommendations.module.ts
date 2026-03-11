@@ -9,5 +9,3 @@ import { WatchedCollectionsRefresherService } from './watched-collections-refres
   exports: [WatchedCollectionsRefresherService],
 })
 export class WatchedMovieRecommendationsModule {}
-
-

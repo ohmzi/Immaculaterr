@@ -30,8 +30,8 @@ function shuffleInPlace<T>(arr: T[]) {
   for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     const tmp = arr[i];
-    arr[i] = arr[j] as T;
-    arr[j] = tmp as T;
+    arr[i] = arr[j];
+    arr[j] = tmp;
   }
   return arr;
 }
@@ -161,8 +161,8 @@ export class WatchedCollectionsRefresherService {
       const perCollection: JsonObject[] = [];
       for (const collectionName of MOVIE_COLLECTIONS) {
         // Activate pending items that are now in Plex.
-        const pending = await this.prisma.watchedMovieRecommendationLibrary.findMany(
-          {
+        const pending =
+          await this.prisma.watchedMovieRecommendationLibrary.findMany({
             where: {
               plexUserId,
               collectionName,
@@ -170,8 +170,7 @@ export class WatchedCollectionsRefresherService {
               status: 'pending',
             },
             select: { tmdbId: true },
-          },
-        );
+          });
         const toActivate = pending
           .map((p) => p.tmdbId)
           .filter((id) => tmdbMap.has(id));
@@ -191,8 +190,8 @@ export class WatchedCollectionsRefresherService {
             ).count;
 
         // Read active snapshot and rebuild Plex collection from it.
-        const active = await this.prisma.watchedMovieRecommendationLibrary.findMany(
-          {
+        const active =
+          await this.prisma.watchedMovieRecommendationLibrary.findMany({
             where: {
               plexUserId,
               collectionName,
@@ -200,8 +199,7 @@ export class WatchedCollectionsRefresherService {
               status: 'active',
             },
             select: { tmdbId: true },
-          },
-        );
+          });
 
         const activeTmdbIds = active
           .map((a) => a.tmdbId)
@@ -255,7 +253,10 @@ export class WatchedCollectionsRefresherService {
       });
     }
 
-    return { collections: Array.from(MOVIE_COLLECTIONS), byLibrary: outByLibrary };
+    return {
+      collections: Array.from(MOVIE_COLLECTIONS),
+      byLibrary: outByLibrary,
+    };
   }
 
   private async refreshTvCollections(params: {
@@ -306,8 +307,8 @@ export class WatchedCollectionsRefresherService {
 
       const perCollection: JsonObject[] = [];
       for (const collectionName of TV_COLLECTIONS) {
-        const pending = await this.prisma.watchedShowRecommendationLibrary.findMany(
-          {
+        const pending =
+          await this.prisma.watchedShowRecommendationLibrary.findMany({
             where: {
               plexUserId,
               collectionName,
@@ -315,8 +316,7 @@ export class WatchedCollectionsRefresherService {
               status: 'pending',
             },
             select: { tvdbId: true },
-          },
-        );
+          });
         const toActivate = pending
           .map((p) => p.tvdbId)
           .filter((id) => tvdbMap.has(id));
@@ -335,8 +335,8 @@ export class WatchedCollectionsRefresherService {
               })
             ).count;
 
-        const active = await this.prisma.watchedShowRecommendationLibrary.findMany(
-          {
+        const active =
+          await this.prisma.watchedShowRecommendationLibrary.findMany({
             where: {
               plexUserId,
               collectionName,
@@ -344,8 +344,7 @@ export class WatchedCollectionsRefresherService {
               status: 'active',
             },
             select: { tvdbId: true },
-          },
-        );
+          });
 
         const activeTvdbIds = active
           .map((a) => a.tvdbId)

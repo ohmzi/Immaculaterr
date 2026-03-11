@@ -97,16 +97,15 @@ describe('plex-library-selection.utils', () => {
           },
         },
       };
-      expect(
-        isPlexLibrarySectionExcluded({ settings, sectionKey: '10' }),
-      ).toBe(true);
-      expect(
-        isPlexLibrarySectionExcluded({ settings, sectionKey: 10 }),
-      ).toBe(true);
-      expect(
-        isPlexLibrarySectionExcluded({ settings, sectionKey: '11' }),
-      ).toBe(false);
+      expect(isPlexLibrarySectionExcluded({ settings, sectionKey: '10' })).toBe(
+        true,
+      );
+      expect(isPlexLibrarySectionExcluded({ settings, sectionKey: 10 })).toBe(
+        true,
+      );
+      expect(isPlexLibrarySectionExcluded({ settings, sectionKey: '11' })).toBe(
+        false,
+      );
     });
   });
 });
-

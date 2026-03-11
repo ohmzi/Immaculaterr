@@ -181,8 +181,9 @@ export class OverseerrService {
       });
 
       if (res.ok) {
-        const data =
-          (await res.json().catch(() => null)) as OverseerrRequestResponse | null;
+        const data = (await res
+          .json()
+          .catch(() => null)) as OverseerrRequestResponse | null;
         const requestId =
           typeof data?.id === 'number' && Number.isFinite(data.id)
             ? Math.trunc(data.id)
@@ -246,7 +247,10 @@ export class OverseerrService {
     const seen = new Set<number>();
 
     for (;;) {
-      const url = this.buildApiUrl(baseUrl, `/request?take=${take}&skip=${skip}`);
+      const url = this.buildApiUrl(
+        baseUrl,
+        `/request?take=${take}&skip=${skip}`,
+      );
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -292,7 +296,8 @@ export class OverseerrService {
   }
 
   private parseRequestId(value: unknown): number | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
     const raw = (value as Record<string, unknown>).id;
     if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
     if (typeof raw === 'string' && raw.trim()) {
@@ -320,7 +325,9 @@ export class OverseerrService {
 
   private normalizeHttpUrl(raw: string): string {
     const trimmed = raw.trim();
-    const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    const baseUrl = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `http://${trimmed}`;
     const parsed = new URL(baseUrl);
     if (!/^https?:$/i.test(parsed.protocol)) {
       throw new BadGatewayException('baseUrl must be a valid http(s) URL');

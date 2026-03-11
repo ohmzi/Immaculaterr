@@ -1,4 +1,8 @@
-import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Injectable,
+} from '@nestjs/common';
 import type { DownloadApprovalStatus } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
@@ -172,7 +176,9 @@ export class ObservatoryService {
     const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
     const sonarrBaseUrl =
-      sonarrBaseUrlRaw && sonarrApiKey ? normalizeHttpUrl(sonarrBaseUrlRaw) : '';
+      sonarrBaseUrlRaw && sonarrApiKey
+        ? normalizeHttpUrl(sonarrBaseUrlRaw)
+        : '';
 
     const rows = await this.prisma.rejectedSuggestion.findMany({
       where: { userId: params.userId },
@@ -258,7 +264,7 @@ export class ObservatoryService {
         const derivedKind =
           r.source === 'immaculate'
             ? 'immaculateTaste'
-            : (String(r.collectionKind ?? '').trim() || 'recentlyWatched');
+            : String(r.collectionKind ?? '').trim() || 'recentlyWatched';
         return {
           id: r.id,
           mediaType: r.mediaType,
@@ -266,9 +272,9 @@ export class ObservatoryService {
           externalId: r.externalId,
           externalName:
             r.mediaType === 'tv' && r.externalSource === 'tvdb' && tvdbId
-              ? tvdbToTitle.get(tvdbId) ?? null
+              ? (tvdbToTitle.get(tvdbId) ?? null)
               : r.mediaType === 'movie' && r.externalSource === 'tmdb' && tmdbId
-                ? tmdbToTitle.get(tmdbId) ?? null
+                ? (tmdbToTitle.get(tmdbId) ?? null)
                 : null,
           source: r.source,
           collectionKind: derivedKind as
@@ -403,13 +409,18 @@ export class ObservatoryService {
       })),
       approvalRequiredFromObservatory: readEffectiveApproval({
         settings,
-        approvalPath: 'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+        approvalPath:
+          'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
         overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
       }),
     };
   }
 
-  async listTv(params: { userId: string; librarySectionKey: string; mode: ListMode }) {
+  async listTv(params: {
+    userId: string;
+    librarySectionKey: string;
+    mode: ListMode;
+  }) {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
@@ -444,7 +455,9 @@ export class ObservatoryService {
     });
 
     if (tmdbApiKey) {
-      const missing = rows.filter((r) => !r.tmdbPosterPath && r.tmdbId).slice(0, 20);
+      const missing = rows
+        .filter((r) => !r.tmdbPosterPath && r.tmdbId)
+        .slice(0, 20);
       await Promise.all(
         missing.map(async (r) => {
           const tmdbId = typeof r.tmdbId === 'number' ? r.tmdbId : null;
@@ -518,7 +531,8 @@ export class ObservatoryService {
       })),
       approvalRequiredFromObservatory: readEffectiveApproval({
         settings,
-        approvalPath: 'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+        approvalPath:
+          'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
         overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
       }),
     };
@@ -641,7 +655,8 @@ export class ObservatoryService {
         settings,
         approvalPath:
           'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-        overseerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+        overseerrPath:
+          'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
       }),
     };
   }
@@ -768,7 +783,8 @@ export class ObservatoryService {
         settings,
         approvalPath:
           'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-        overseerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+        overseerrPath:
+          'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
       }),
     };
   }
@@ -1334,7 +1350,8 @@ export class ObservatoryService {
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const plexToken =
       pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
-    if (!plexBaseUrlRaw) throw new BadGatewayException('Plex baseUrl is not set');
+    if (!plexBaseUrlRaw)
+      throw new BadGatewayException('Plex baseUrl is not set');
     if (!plexToken) throw new BadGatewayException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
@@ -1342,8 +1359,7 @@ export class ObservatoryService {
       (pickBool(
         settings,
         'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
-      ) ??
-        false) === true;
+      ) ?? false) === true;
     const approvalRequired = readEffectiveApproval({
       settings,
       approvalPath:
@@ -1401,8 +1417,9 @@ export class ObservatoryService {
       1,
       Math.min(
         200,
-        Math.trunc(Number.isFinite(collectionLimitRaw) ? collectionLimitRaw : 15) ||
-          15,
+        Math.trunc(
+          Number.isFinite(collectionLimitRaw) ? collectionLimitRaw : 15,
+        ) || 15,
       ),
     );
 
@@ -1410,26 +1427,31 @@ export class ObservatoryService {
       const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
       const radarrApiKey = pickString(secrets, 'radarr.apiKey');
       const fetchMissingRadarr =
-        pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
-        true;
+        pickBool(
+          settings,
+          'jobs.watchedMovieRecommendations.fetchMissing.radarr',
+        ) ?? true;
       const radarrEnabled =
         !overseerrModeSelected &&
         fetchMissingRadarr &&
         (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
         Boolean(radarrBaseUrlRaw) &&
         Boolean(radarrApiKey);
-      const radarrBaseUrl = radarrEnabled ? normalizeHttpUrl(radarrBaseUrlRaw) : '';
+      const radarrBaseUrl = radarrEnabled
+        ? normalizeHttpUrl(radarrBaseUrlRaw)
+        : '';
 
-      const rejected = await this.prisma.watchedMovieRecommendationLibrary.findMany({
-        where: {
-          plexUserId,
-          librarySectionKey: params.librarySectionKey,
-          collectionName: { in: collectionNames },
-          downloadApproval: 'rejected',
-        },
-        select: { tmdbId: true, sentToRadarrAt: true },
-        take: 2000,
-      });
+      const rejected =
+        await this.prisma.watchedMovieRecommendationLibrary.findMany({
+          where: {
+            plexUserId,
+            librarySectionKey: params.librarySectionKey,
+            collectionName: { in: collectionNames },
+            downloadApproval: 'rejected',
+          },
+          select: { tmdbId: true, sentToRadarrAt: true },
+          take: 2000,
+        });
 
       const approved = approvalRequired
         ? await this.prisma.watchedMovieRecommendationLibrary.findMany({
@@ -1495,7 +1517,9 @@ export class ObservatoryService {
               ),
             ) || 1,
           preferredTagId: (() => {
-            const v = pickNumber(settings, 'radarr.defaultTagId') ?? pickNumber(settings, 'radarr.tagId');
+            const v =
+              pickNumber(settings, 'radarr.defaultTagId') ??
+              pickNumber(settings, 'radarr.tagId');
             return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
           })(),
         });
@@ -1573,26 +1597,31 @@ export class ObservatoryService {
     const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
     const fetchMissingSonarr =
-      pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
-      true;
+      pickBool(
+        settings,
+        'jobs.watchedMovieRecommendations.fetchMissing.sonarr',
+      ) ?? true;
     const sonarrEnabled =
       !overseerrModeSelected &&
       fetchMissingSonarr &&
       (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
       Boolean(sonarrBaseUrlRaw) &&
       Boolean(sonarrApiKey);
-    const sonarrBaseUrl = sonarrEnabled ? normalizeHttpUrl(sonarrBaseUrlRaw) : '';
+    const sonarrBaseUrl = sonarrEnabled
+      ? normalizeHttpUrl(sonarrBaseUrlRaw)
+      : '';
 
-    const rejected = await this.prisma.watchedShowRecommendationLibrary.findMany({
-      where: {
-        plexUserId,
-        librarySectionKey: params.librarySectionKey,
-        collectionName: { in: collectionNames },
-        downloadApproval: 'rejected',
-      },
-      select: { tvdbId: true, sentToSonarrAt: true },
-      take: 2000,
-    });
+    const rejected =
+      await this.prisma.watchedShowRecommendationLibrary.findMany({
+        where: {
+          plexUserId,
+          librarySectionKey: params.librarySectionKey,
+          collectionName: { in: collectionNames },
+          downloadApproval: 'rejected',
+        },
+        select: { tvdbId: true, sentToSonarrAt: true },
+        take: 2000,
+      });
 
     const approved = approvalRequired
       ? await this.prisma.watchedShowRecommendationLibrary.findMany({
@@ -1655,7 +1684,9 @@ export class ObservatoryService {
             ),
           ) || 1,
         preferredTagId: (() => {
-          const v = pickNumber(settings, 'sonarr.defaultTagId') ?? pickNumber(settings, 'sonarr.tagId');
+          const v =
+            pickNumber(settings, 'sonarr.defaultTagId') ??
+            pickNumber(settings, 'sonarr.tagId');
           return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
         })(),
       });
@@ -1727,7 +1758,11 @@ export class ObservatoryService {
     };
   }
 
-  async apply(params: { userId: string; librarySectionKey: string; mediaType: 'movie' | 'tv' }) {
+  async apply(params: {
+    userId: string;
+    librarySectionKey: string;
+    mediaType: 'movie' | 'tv';
+  }) {
     const { settings, secrets } = await this.settings.getInternalSettings(
       params.userId,
     );
@@ -1742,16 +1777,20 @@ export class ObservatoryService {
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
     const plexToken =
       pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
-    if (!plexBaseUrlRaw) throw new BadGatewayException('Plex baseUrl is not set');
+    if (!plexBaseUrlRaw)
+      throw new BadGatewayException('Plex baseUrl is not set');
     if (!plexToken) throw new BadGatewayException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
     const overseerrModeSelected =
-      (pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.overseerr') ??
-        false) === true;
+      (pickBool(
+        settings,
+        'jobs.immaculateTastePoints.fetchMissing.overseerr',
+      ) ?? false) === true;
     const approvalRequired = readEffectiveApproval({
       settings,
-      approvalPath: 'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+      approvalPath:
+        'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
       overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
     });
 
@@ -1828,19 +1867,25 @@ export class ObservatoryService {
     const radarrBaseUrlRaw = pickString(params.settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(params.secrets, 'radarr.apiKey');
     const fetchMissingRadarr =
-      pickBool(params.settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ??
-      true;
+      pickBool(
+        params.settings,
+        'jobs.immaculateTastePoints.fetchMissing.radarr',
+      ) ?? true;
     const radarrEnabled =
       !params.overseerrModeSelected &&
       fetchMissingRadarr &&
       (pickBool(params.settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
       Boolean(radarrBaseUrlRaw) &&
       Boolean(radarrApiKey);
-    const radarrBaseUrl = radarrEnabled ? normalizeHttpUrl(radarrBaseUrlRaw) : '';
+    const radarrBaseUrl = radarrEnabled
+      ? normalizeHttpUrl(radarrBaseUrlRaw)
+      : '';
 
     const startSearchImmediately =
-      (pickBool(params.settings, 'jobs.immaculateTastePoints.searchImmediately') ??
-        false) === true && !params.overseerrModeSelected;
+      (pickBool(
+        params.settings,
+        'jobs.immaculateTastePoints.searchImmediately',
+      ) ?? false) === true && !params.overseerrModeSelected;
 
     const rejected = await this.prisma.immaculateTasteMovieLibrary.findMany({
       where: {
@@ -1994,13 +2039,14 @@ export class ObservatoryService {
       profileId: DEFAULT_PROFILE_ID,
       minPoints: 1,
     });
-    const orderedIds = this.immaculateMovies.buildThreeTierTmdbRatingShuffleOrder({
-      movies: activeRows.map((m) => ({
-        tmdbId: m.tmdbId,
-        tmdbVoteAvg: m.tmdbVoteAvg ?? null,
-        tmdbVoteCount: m.tmdbVoteCount ?? null,
-      })),
-    });
+    const orderedIds =
+      this.immaculateMovies.buildThreeTierTmdbRatingShuffleOrder({
+        movies: activeRows.map((m) => ({
+          tmdbId: m.tmdbId,
+          tmdbVoteAvg: m.tmdbVoteAvg ?? null,
+          tmdbVoteCount: m.tmdbVoteCount ?? null,
+        })),
+      });
     const desiredItems = orderedIds
       .map((id) => tmdbToItem.get(id))
       .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
@@ -2061,19 +2107,25 @@ export class ObservatoryService {
     const sonarrBaseUrlRaw = pickString(params.settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(params.secrets, 'sonarr.apiKey');
     const fetchMissingSonarr =
-      pickBool(params.settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ??
-      true;
+      pickBool(
+        params.settings,
+        'jobs.immaculateTastePoints.fetchMissing.sonarr',
+      ) ?? true;
     const sonarrEnabled =
       !params.overseerrModeSelected &&
       fetchMissingSonarr &&
       (pickBool(params.settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
       Boolean(sonarrBaseUrlRaw) &&
       Boolean(sonarrApiKey);
-    const sonarrBaseUrl = sonarrEnabled ? normalizeHttpUrl(sonarrBaseUrlRaw) : '';
+    const sonarrBaseUrl = sonarrEnabled
+      ? normalizeHttpUrl(sonarrBaseUrlRaw)
+      : '';
 
     const startSearchImmediately =
-      (pickBool(params.settings, 'jobs.immaculateTastePoints.searchImmediately') ??
-        false) === true && !params.overseerrModeSelected;
+      (pickBool(
+        params.settings,
+        'jobs.immaculateTastePoints.searchImmediately',
+      ) ?? false) === true && !params.overseerrModeSelected;
 
     const rejected = await this.prisma.immaculateTasteShowLibrary.findMany({
       where: {
@@ -2279,12 +2331,20 @@ export class ObservatoryService {
     preferredTagId: number | null;
   }) {
     const [rootFolders, qualityProfiles, tags] = await Promise.all([
-      this.radarr.listRootFolders({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
-      this.radarr.listQualityProfiles({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
+      this.radarr.listRootFolders({
+        baseUrl: params.baseUrl,
+        apiKey: params.apiKey,
+      }),
+      this.radarr.listQualityProfiles({
+        baseUrl: params.baseUrl,
+        apiKey: params.apiKey,
+      }),
       this.radarr.listTags({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
     ]);
-    if (!rootFolders.length) throw new BadGatewayException('Radarr has no root folders');
-    if (!qualityProfiles.length) throw new BadGatewayException('Radarr has no quality profiles');
+    if (!rootFolders.length)
+      throw new BadGatewayException('Radarr has no root folders');
+    if (!qualityProfiles.length)
+      throw new BadGatewayException('Radarr has no quality profiles');
     const fallbackRootFolder = rootFolders[0];
     const fallbackQualityProfile = qualityProfiles[0];
     if (!fallbackRootFolder || !fallbackQualityProfile) {
@@ -2292,11 +2352,11 @@ export class ObservatoryService {
     }
 
     const rootFolderPath =
-      rootFolders.find((r) => r.path === params.preferredRootFolderPath)?.path ??
-      fallbackRootFolder.path;
+      rootFolders.find((r) => r.path === params.preferredRootFolderPath)
+        ?.path ?? fallbackRootFolder.path;
     const qualityProfileId =
-      qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)?.id ??
-      fallbackQualityProfile.id;
+      qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)
+        ?.id ?? fallbackQualityProfile.id;
 
     const tagIds: number[] = [];
     if (params.preferredTagId) {
@@ -2314,12 +2374,20 @@ export class ObservatoryService {
     preferredTagId: number | null;
   }) {
     const [rootFolders, qualityProfiles, tags] = await Promise.all([
-      this.sonarr.listRootFolders({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
-      this.sonarr.listQualityProfiles({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
+      this.sonarr.listRootFolders({
+        baseUrl: params.baseUrl,
+        apiKey: params.apiKey,
+      }),
+      this.sonarr.listQualityProfiles({
+        baseUrl: params.baseUrl,
+        apiKey: params.apiKey,
+      }),
       this.sonarr.listTags({ baseUrl: params.baseUrl, apiKey: params.apiKey }),
     ]);
-    if (!rootFolders.length) throw new BadGatewayException('Sonarr has no root folders');
-    if (!qualityProfiles.length) throw new BadGatewayException('Sonarr has no quality profiles');
+    if (!rootFolders.length)
+      throw new BadGatewayException('Sonarr has no root folders');
+    if (!qualityProfiles.length)
+      throw new BadGatewayException('Sonarr has no quality profiles');
     const fallbackRootFolder = rootFolders[0];
     const fallbackQualityProfile = qualityProfiles[0];
     if (!fallbackRootFolder || !fallbackQualityProfile) {
@@ -2327,11 +2395,11 @@ export class ObservatoryService {
     }
 
     const rootFolderPath =
-      rootFolders.find((r) => r.path === params.preferredRootFolderPath)?.path ??
-      fallbackRootFolder.path;
+      rootFolders.find((r) => r.path === params.preferredRootFolderPath)
+        ?.path ?? fallbackRootFolder.path;
     const qualityProfileId =
-      qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)?.id ??
-      fallbackQualityProfile.id;
+      qualityProfiles.find((q) => q.id === params.preferredQualityProfileId)
+        ?.id ?? fallbackQualityProfile.id;
 
     const tagIds: number[] = [];
     if (params.preferredTagId) {

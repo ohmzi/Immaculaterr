@@ -157,7 +157,10 @@ export class PlexDuplicatesService {
     copies: PlexDuplicateCopy[],
     mediaId: string,
   ): PlexDuplicateCopy | null {
-    const reps = copies.filter((c) => c.mediaId === mediaId).slice().sort(sortBySizeDesc);
+    const reps = copies
+      .filter((c) => c.mediaId === mediaId)
+      .slice()
+      .sort(sortBySizeDesc);
     return reps[0] ?? null;
   }
 

@@ -47,7 +47,8 @@ export function createOriginCheckMiddleware(options: OriginCheckOptions = {}) {
     if (!STATE_CHANGING_METHODS.has(req.method.toUpperCase())) return next();
 
     const originHeader = req.headers.origin;
-    if (typeof originHeader !== 'string' || originHeader.trim() === '') return next();
+    if (typeof originHeader !== 'string' || originHeader.trim() === '')
+      return next();
 
     let originUrl: URL;
     try {
@@ -61,8 +62,7 @@ export function createOriginCheckMiddleware(options: OriginCheckOptions = {}) {
       return;
     }
 
-    const hostHeader =
-      getExpectedHost(req) ?? '';
+    const hostHeader = getExpectedHost(req) ?? '';
     if (!hostHeader.trim()) {
       res.status(403).json({
         statusCode: 403,
@@ -78,7 +78,8 @@ export function createOriginCheckMiddleware(options: OriginCheckOptions = {}) {
 
     // Allow extra configured origins (e.g., separate UI host).
     const normalizedOrigin = originUrl.origin;
-    if (allowed.has(normalizedOrigin) || allowed.has(originHeader.trim())) return next();
+    if (allowed.has(normalizedOrigin) || allowed.has(originHeader.trim()))
+      return next();
 
     res.status(403).json({
       statusCode: 403,
@@ -87,4 +88,3 @@ export function createOriginCheckMiddleware(options: OriginCheckOptions = {}) {
     });
   };
 }
-

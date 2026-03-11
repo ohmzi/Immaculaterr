@@ -51,7 +51,10 @@ export class RadarrController {
   ) {}
 
   @Post('test')
-  async test(@Req() req: AuthenticatedRequest, @Body() body: TestConnectionBody) {
+  async test(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TestConnectionBody,
+  ) {
     const baseUrl = normalizeHttpBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: req.user.id,

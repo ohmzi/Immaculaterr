@@ -44,7 +44,9 @@ export function hasExplicitRefresherScopeInput(
   return scopedKeys.some((key) => hasMeaningfulScopeValue(raw[key]));
 }
 
-export function sortSweepUsers<T extends SweepSortableUser>(users: readonly T[]): T[] {
+export function sortSweepUsers<T extends SweepSortableUser>(
+  users: readonly T[],
+): T[] {
   return users.slice().sort((a, b) => {
     if (a.isAdmin !== b.isAdmin) return a.isAdmin ? 1 : -1;
 
@@ -52,11 +54,16 @@ export function sortSweepUsers<T extends SweepSortableUser>(users: readonly T[])
     const bSeen = toTimestampOrNull(b.lastSeenAt);
     if (aSeen === null && bSeen !== null) return -1;
     if (aSeen !== null && bSeen === null) return 1;
-    if (aSeen !== null && bSeen !== null && aSeen !== bSeen) return aSeen - bSeen;
+    if (aSeen !== null && bSeen !== null && aSeen !== bSeen)
+      return aSeen - bSeen;
 
-    const byTitle = a.plexAccountTitle.localeCompare(b.plexAccountTitle, undefined, {
-      sensitivity: 'base',
-    });
+    const byTitle = a.plexAccountTitle.localeCompare(
+      b.plexAccountTitle,
+      undefined,
+      {
+        sensitivity: 'base',
+      },
+    );
     if (byTitle !== 0) return byTitle;
 
     return a.id.localeCompare(b.id);

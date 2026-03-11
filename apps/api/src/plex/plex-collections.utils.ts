@@ -1,4 +1,3 @@
-
 export function normalizeCollectionTitle(value: string): string {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
@@ -20,8 +19,7 @@ export const IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME =
 
 export const RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME =
   'Based on your recently watched Show';
-export const CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME =
-  'Change of Show Taste';
+export const CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME = 'Change of Show Taste';
 export const IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME =
   'Inspired by your Immaculate Taste in Shows';
 
@@ -87,7 +85,9 @@ export function buildUserCollectionName(
   return `${base} (${title})`;
 }
 
-export function isImmaculateTasteDefaultCollectionBaseName(baseName: string): boolean {
+export function isImmaculateTasteDefaultCollectionBaseName(
+  baseName: string,
+): boolean {
   return IMMACULATE_TASTE_DEFAULT_BASE_NAME_SET.has(
     normalizeCollectionTitle(baseName),
   );
@@ -210,8 +210,9 @@ export function curatedCollectionOrderIndex(params: {
   const base = normalizeCuratedBaseName(params);
   if (!base) return Number.MAX_SAFE_INTEGER;
   return (
-    CURATED_ORDER_LOOKUP[params.mediaType].get(normalizeCollectionTitle(base)) ??
-    Number.MAX_SAFE_INTEGER
+    CURATED_ORDER_LOOKUP[params.mediaType].get(
+      normalizeCollectionTitle(base),
+    ) ?? Number.MAX_SAFE_INTEGER
   );
 }
 

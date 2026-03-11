@@ -1,5 +1,10 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
-import { buildTitleQueryVariants, normalizeTitleForMatching } from '../lib/title-normalize';
+import { lookup } from 'node:dns/promises';
+import { request as httpsRequest } from 'node:https';
+import {
+  buildTitleQueryVariants,
+  normalizeTitleForMatching,
+} from '../lib/title-normalize';
 
 type TmdbConfiguration = Record<string, unknown>;
 
@@ -207,6 +212,47 @@ const addMonths = (date: Date, months: number): Date => {
   return d;
 };
 
+const TMDB_CONNECTIVITY_ERROR_MARKERS = [
+  'fetch failed',
+  'failed to fetch',
+  'network',
+  'timeout',
+  'timed out',
+  'aborted',
+  'econnrefused',
+  'enotfound',
+  'eai_again',
+  'etimedout',
+  'ehostunreach',
+  'enetunreach',
+  'socket hang up',
+  'getaddrinfo',
+] as const;
+
+const errorMessageWithCause = (error: unknown): string => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : String(error);
+  const cause = (error as { cause?: unknown } | null)?.cause;
+  const causeMessage =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === 'string'
+        ? cause
+        : '';
+  return `${message}${causeMessage ? ` (cause: ${causeMessage})` : ''}`;
+};
+
+const isTmdbConnectivityFailure = (error: unknown): boolean => {
+  const message = errorMessageWithCause(error).toLowerCase();
+  return TMDB_CONNECTIVITY_ERROR_MARKERS.some((marker) =>
+    message.includes(marker),
+  );
+};
+
 @Injectable()
 export class TmdbService {
   private readonly logger = new Logger(TmdbService.name);
@@ -219,47 +265,26 @@ export class TmdbService {
     const url = new URL('https://api.themoviedb.org/3/configuration');
     url.searchParams.set('api_key', apiKey);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const data = (await this.fetchTmdbJson(
+      url,
+      10000,
+      'TMDB test failed',
+    )) as TmdbConfiguration;
 
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
+    // Return a small subset + raw for now; we’ll store settings later.
+    const images = (data['images'] ?? null) as Record<string, unknown> | null;
+    const secureBaseUrl =
+      images && typeof images['secure_base_url'] === 'string'
+        ? images['secure_base_url']
+        : null;
 
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `TMDB test failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as TmdbConfiguration;
-
-      // Return a small subset + raw for now; we’ll store settings later.
-      const images = (data['images'] ?? null) as Record<string, unknown> | null;
-      const secureBaseUrl =
-        images && typeof images['secure_base_url'] === 'string'
-          ? images['secure_base_url']
-          : null;
-
-      return {
-        ok: true,
-        summary: {
-          secureBaseUrl,
-        },
-        configuration: data,
-      };
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `TMDB test failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    return {
+      ok: true,
+      summary: {
+        secureBaseUrl,
+      },
+      configuration: data,
+    };
   }
 
   async searchMovie(params: {
@@ -495,9 +520,12 @@ export class TmdbService {
             tvdb_id:
               typeof (externalIdsRaw as Record<string, unknown>)['tvdb_id'] ===
               'number'
-                ? ((externalIdsRaw as Record<string, unknown>)['tvdb_id'] as number)
-                : typeof (externalIdsRaw as Record<string, unknown>)['tvdb_id'] ===
-                    'string'
+                ? ((externalIdsRaw as Record<string, unknown>)[
+                    'tvdb_id'
+                  ] as number)
+                : typeof (externalIdsRaw as Record<string, unknown>)[
+                      'tvdb_id'
+                    ] === 'string'
                   ? Number(
                       (externalIdsRaw as Record<string, unknown>)['tvdb_id'],
                     )
@@ -536,7 +564,9 @@ export class TmdbService {
     if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
     if (!Number.isFinite(tmdbId) || tmdbId <= 0) return null;
 
-    const url = new URL(`https://api.themoviedb.org/3/tv/${tmdbId}/external_ids`);
+    const url = new URL(
+      `https://api.themoviedb.org/3/tv/${tmdbId}/external_ids`,
+    );
     url.searchParams.set('api_key', apiKey);
     const data = await this.fetchTmdbJson(url, 20000);
     if (!data || typeof data !== 'object') return null;
@@ -693,7 +723,10 @@ export class TmdbService {
         seed_title: seedTitle,
         tmdb_id: best.id,
         title: details?.name ?? best.name ?? seedTitle,
-        year: (details?.first_air_date ?? best.first_air_date ?? '').slice(0, 4),
+        year: (details?.first_air_date ?? best.first_air_date ?? '').slice(
+          0,
+          4,
+        ),
         genres,
         overview: details?.overview ?? '',
         media_type: 'tv',
@@ -724,7 +757,8 @@ export class TmdbService {
           .map((n) => (Number.isFinite(n) ? Math.trunc(n) : NaN))
           .filter((n) => Number.isFinite(n) && n > 0)
       : [];
-    if (genreIds.length) url.searchParams.set('with_genres', genreIds.slice(0, 4).join(','));
+    if (genreIds.length)
+      url.searchParams.set('with_genres', genreIds.slice(0, 4).join(','));
     url.searchParams.set('primary_release_date.lte', today);
 
     const y = Math.trunc(params.seedYear ?? NaN);
@@ -801,7 +835,8 @@ export class TmdbService {
           .map((n) => (Number.isFinite(n) ? Math.trunc(n) : NaN))
           .filter((n) => Number.isFinite(n) && n > 0)
       : [];
-    if (genreIds.length) url.searchParams.set('with_genres', genreIds.slice(0, 4).join(','));
+    if (genreIds.length)
+      url.searchParams.set('with_genres', genreIds.slice(0, 4).join(','));
     url.searchParams.set('first_air_date.lte', today);
 
     const y = Math.trunc(params.seedYear ?? NaN);
@@ -876,7 +911,11 @@ export class TmdbService {
       year: params.seedYear ?? null,
       includeAdult: Boolean(params.includeAdult),
     });
-    const seedBest = bestSeedResult(seedTitle, seedResults, params.seedYear ?? null);
+    const seedBest = bestSeedResult(
+      seedTitle,
+      seedResults,
+      params.seedYear ?? null,
+    );
     if (!seedBest) return [];
 
     const seedDetails = await this.getMovie({
@@ -992,7 +1031,11 @@ export class TmdbService {
       year: params.seedYear ?? null,
       includeAdult: false,
     });
-    const seedBest = bestSeedResult(seedTitle, seedResults, params.seedYear ?? null);
+    const seedBest = bestSeedResult(
+      seedTitle,
+      seedResults,
+      params.seedYear ?? null,
+    );
     if (!seedBest) return [];
 
     const seedDetails = await this.getMovie({
@@ -1057,7 +1100,11 @@ export class TmdbService {
       firstAirDateYear: params.seedYear ?? null,
       includeAdult: false,
     });
-    const seedBest = bestSeedTvResult(seedTitle, seedResults, params.seedYear ?? null);
+    const seedBest = bestSeedTvResult(
+      seedTitle,
+      seedResults,
+      params.seedYear ?? null,
+    );
     if (!seedBest) return [];
 
     const seedDetails = await this.getTv({
@@ -1075,7 +1122,10 @@ export class TmdbService {
     const today = this.formatTodayInTimezone('America/Toronto');
     const url = new URL('https://api.themoviedb.org/3/discover/tv');
     if (seedGenreIds.length) {
-      url.searchParams.set('without_genres', seedGenreIds.slice(0, 5).join(','));
+      url.searchParams.set(
+        'without_genres',
+        seedGenreIds.slice(0, 5).join(','),
+      );
     }
     url.searchParams.set('first_air_date.lte', today);
     url.searchParams.set('vote_count.gte', '150');
@@ -1157,12 +1207,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbMovieSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-    const seedResults = await this.searchMovie({
-      apiKey,
+      const seedResults = await this.searchMovie({
+        apiKey,
         query: q,
-      year: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
+        year: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
       seedBest = bestSeedResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }
@@ -1440,12 +1490,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbMovieSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-    const seedResults = await this.searchMovie({
-      apiKey,
+      const seedResults = await this.searchMovie({
+        apiKey,
         query: q,
-      year: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
+        year: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
       seedBest = bestSeedResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }
@@ -1529,7 +1579,8 @@ export class TmdbService {
 
         existing.sources.add(source);
         if (!existing.title && title) existing.title = title;
-        if (!existing.releaseDate && releaseDate) existing.releaseDate = releaseDate;
+        if (!existing.releaseDate && releaseDate)
+          existing.releaseDate = releaseDate;
         if (existing.voteAverage === null && voteAverage !== null)
           existing.voteAverage = voteAverage;
         if (existing.voteCount === null && voteCount !== null)
@@ -1700,12 +1751,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbTvSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-    const seedResults = await this.searchTv({
-      apiKey,
+      const seedResults = await this.searchTv({
+        apiKey,
         query: q,
-      firstAirDateYear: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
+        firstAirDateYear: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
       seedBest = bestSeedTvResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }
@@ -1853,7 +1904,10 @@ export class TmdbService {
       );
       upcomingDiscoverUrl.searchParams.set('with_genres', withGenres);
       upcomingDiscoverUrl.searchParams.set('first_air_date.gte', tomorrow);
-      upcomingDiscoverUrl.searchParams.set('first_air_date.lte', upcomingWindowEnd);
+      upcomingDiscoverUrl.searchParams.set(
+        'first_air_date.lte',
+        upcomingWindowEnd,
+      );
       upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
 
       const upcomingResults = await this.pagedTvResults({
@@ -1977,12 +2031,12 @@ export class TmdbService {
     const variants = buildTitleQueryVariants(seedTitle);
     let seedBest: TmdbTvSearchResult | null = null;
     for (const q of variants.length ? variants : [seedTitle]) {
-    const seedResults = await this.searchTv({
-      apiKey,
+      const seedResults = await this.searchTv({
+        apiKey,
         query: q,
-      firstAirDateYear: params.seedYear ?? null,
-      includeAdult: Boolean(params.includeAdult),
-    });
+        firstAirDateYear: params.seedYear ?? null,
+        includeAdult: Boolean(params.includeAdult),
+      });
       seedBest = bestSeedTvResult(q, seedResults, params.seedYear ?? null);
       if (seedBest) break;
     }
@@ -2066,7 +2120,8 @@ export class TmdbService {
 
         existing.sources.add(source);
         if (!existing.title && title) existing.title = title;
-        if (!existing.releaseDate && releaseDate) existing.releaseDate = releaseDate;
+        if (!existing.releaseDate && releaseDate)
+          existing.releaseDate = releaseDate;
         if (existing.voteAverage === null && voteAverage !== null)
           existing.voteAverage = voteAverage;
         if (existing.voteCount === null && voteCount !== null)
@@ -2079,7 +2134,9 @@ export class TmdbService {
     const includeAdult = Boolean(params.includeAdult);
 
     // --- Released pool: discover excluding the seed genres ---
-    const releasedDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
+    const releasedDiscoverUrl = new URL(
+      'https://api.themoviedb.org/3/discover/tv',
+    );
     if (seedGenreIds.size) {
       releasedDiscoverUrl.searchParams.set(
         'without_genres',
@@ -2100,7 +2157,9 @@ export class TmdbService {
     addResults(discResults, 'discover_released');
 
     // --- Upcoming pool: future-window discover excluding the seed genres ---
-    const upcomingDiscoverUrl = new URL('https://api.themoviedb.org/3/discover/tv');
+    const upcomingDiscoverUrl = new URL(
+      'https://api.themoviedb.org/3/discover/tv',
+    );
     if (seedGenreIds.size) {
       upcomingDiscoverUrl.searchParams.set(
         'without_genres',
@@ -2108,7 +2167,10 @@ export class TmdbService {
       );
     }
     upcomingDiscoverUrl.searchParams.set('first_air_date.gte', tomorrow);
-    upcomingDiscoverUrl.searchParams.set('first_air_date.lte', upcomingWindowEnd);
+    upcomingDiscoverUrl.searchParams.set(
+      'first_air_date.lte',
+      upcomingWindowEnd,
+    );
     upcomingDiscoverUrl.searchParams.set('sort_by', 'popularity.desc');
 
     const upcomingResults = await this.pagedTvResults({
@@ -2167,7 +2229,8 @@ export class TmdbService {
         tmdbId: seedBest.id,
         title: seedDetails?.name ?? seedBest.name ?? seedTitle,
         genreIds: Array.from(seedGenreIds),
-        releaseDate: seedDetails?.first_air_date ?? seedBest.first_air_date ?? null,
+        releaseDate:
+          seedDetails?.first_air_date ?? seedBest.first_air_date ?? null,
       },
       meta: { today, timezone: tz, upcomingWindowEnd },
       released,
@@ -2325,7 +2388,41 @@ export class TmdbService {
     return out.slice(0, params.maxItems);
   }
 
-  private async fetchTmdbJson(url: URL, timeoutMs: number): Promise<unknown> {
+  private async fetchTmdbJson(
+    url: URL,
+    timeoutMs: number,
+    errorPrefix = 'TMDB request failed',
+  ): Promise<unknown> {
+    try {
+      return await this.fetchTmdbJsonViaFetch(url, timeoutMs, errorPrefix);
+    } catch (primaryError) {
+      if (primaryError instanceof BadGatewayException) throw primaryError;
+      if (!isTmdbConnectivityFailure(primaryError)) {
+        throw new BadGatewayException(
+          `${errorPrefix}: ${errorMessageWithCause(primaryError)}`,
+        );
+      }
+
+      this.logger.warn(
+        `TMDB connectivity failure on ${url.pathname}; retrying with IPv4 fallback`,
+      );
+
+      try {
+        return await this.fetchTmdbJsonWithIpv4(url, timeoutMs, errorPrefix);
+      } catch (fallbackError) {
+        if (fallbackError instanceof BadGatewayException) throw fallbackError;
+        throw new BadGatewayException(
+          `${errorPrefix}: ${errorMessageWithCause(primaryError)} (ipv4 fallback failed: ${errorMessageWithCause(fallbackError)})`,
+        );
+      }
+    }
+  }
+
+  private async fetchTmdbJsonViaFetch(
+    url: URL,
+    timeoutMs: number,
+    errorPrefix: string,
+  ): Promise<unknown> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -2339,30 +2436,111 @@ export class TmdbService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `TMDB request failed: HTTP ${res.status} ${body}`.trim(),
+          `${errorPrefix}: HTTP ${res.status} ${body}`.trim(),
         );
       }
 
       return (await res.json()) as unknown;
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      const cause = (err as { cause?: unknown } | null)?.cause;
-      const causeMsg =
-        cause instanceof Error
-          ? cause.message
-          : typeof cause === 'string'
-            ? cause
-            : cause
-              ? String(cause)
-              : '';
-      throw new BadGatewayException(
-        `TMDB request failed: ${(err as Error)?.message ?? String(err)}${
-          causeMsg ? ` (cause: ${causeMsg})` : ''
-        }`,
-      );
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async fetchTmdbJsonWithIpv4(
+    url: URL,
+    timeoutMs: number,
+    errorPrefix: string,
+  ): Promise<unknown> {
+    const records = await lookup(url.hostname, { family: 4, all: true });
+    const ipv4Addresses = Array.from(
+      new Set(records.map((record) => record.address.trim()).filter(Boolean)),
+    );
+    if (!ipv4Addresses.length) {
+      throw new Error(`No IPv4 records found for ${url.hostname}`);
+    }
+
+    let lastConnectivityError: unknown = null;
+    for (const ipv4Address of ipv4Addresses) {
+      try {
+        return await this.fetchTmdbJsonFromIpv4Address(
+          url,
+          ipv4Address,
+          timeoutMs,
+          errorPrefix,
+        );
+      } catch (attemptError) {
+        if (attemptError instanceof BadGatewayException) throw attemptError;
+        lastConnectivityError = attemptError;
+        if (!isTmdbConnectivityFailure(attemptError)) throw attemptError;
+      }
+    }
+
+    if (lastConnectivityError instanceof Error) {
+      throw lastConnectivityError;
+    }
+    throw new Error(`Unable to reach ${url.hostname} over IPv4 fallback`);
+  }
+
+  private async fetchTmdbJsonFromIpv4Address(
+    url: URL,
+    ipv4Address: string,
+    timeoutMs: number,
+    errorPrefix: string,
+  ): Promise<unknown> {
+    return await new Promise<unknown>((resolve, reject) => {
+      const req = httpsRequest(
+        {
+          protocol: 'https:',
+          hostname: ipv4Address,
+          port: Number.parseInt(url.port || '443', 10),
+          method: 'GET',
+          path: `${url.pathname}${url.search}`,
+          headers: {
+            Accept: 'application/json',
+            Host: url.host,
+          },
+          // Preserve SNI so TLS cert validation still targets the TMDB hostname.
+          servername: url.hostname,
+          family: 4,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer | string) => {
+            chunks.push(
+              Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf8'),
+            );
+          });
+          res.on('end', () => {
+            const body = Buffer.concat(chunks).toString('utf8');
+            const status = res.statusCode ?? 0;
+            if (status < 200 || status >= 300) {
+              reject(
+                new BadGatewayException(
+                  `${errorPrefix}: HTTP ${status} ${body}`.trim(),
+                ),
+              );
+              return;
+            }
+
+            try {
+              resolve(body ? (JSON.parse(body) as unknown) : {});
+            } catch {
+              reject(
+                new BadGatewayException(
+                  `${errorPrefix}: Invalid JSON response from TMDB`,
+                ),
+              );
+            }
+          });
+        },
+      );
+
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(new Error('TMDB IPv4 fallback request timed out'));
+      });
+      req.on('error', reject);
+      req.end();
+    });
   }
 
   private formatTodayInTimezone(timezone: string): string {

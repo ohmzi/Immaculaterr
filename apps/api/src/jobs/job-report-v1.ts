@@ -74,7 +74,10 @@ export function metricRow(params: {
   return row;
 }
 
-export function issue(level: JobReportIssueLevel, message: string): JobReportIssue {
+export function issue(
+  level: JobReportIssueLevel,
+  message: string,
+): JobReportIssue {
   return { level, message: String(message ?? '').trim() };
 }
 
@@ -89,11 +92,10 @@ export function issuesFromWarnings(warnings: unknown): JobReportIssue[] {
   return out;
 }
 
-export function issuesFromErrorMessage(errorMessage: unknown): JobReportIssue[] {
+export function issuesFromErrorMessage(
+  errorMessage: unknown,
+): JobReportIssue[] {
   const msg = String(errorMessage ?? '').trim();
   if (!msg) return [];
   return [issue('error', msg)];
 }
-
-
-
