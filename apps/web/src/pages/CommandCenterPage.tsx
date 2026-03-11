@@ -1688,8 +1688,26 @@ export function CommandCenterPage() {
     onSuccess: async (data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['immaculateTaste', 'profiles'] });
       if (activeProfileId === data.profile.id) {
-        setActiveProfileScopePlexUserId(null);
-        setProfileDraft(toProfileDraft(data.profile));
+        const normalizedPlexUserId = variables.plexUserId.trim();
+        if (variables.action === 'add') {
+          const scopedOverride = findProfileUserOverride(
+            data.profile,
+            normalizedPlexUserId,
+          );
+          setActiveProfileScopePlexUserId(normalizedPlexUserId);
+          setProfileDraft(toProfileDraft(data.profile, scopedOverride));
+        } else {
+          const nextScopePlexUserId =
+            activeProfileScopePlexUserId === normalizedPlexUserId
+              ? null
+              : activeProfileScopePlexUserId;
+          const scopedOverride = findProfileUserOverride(
+            data.profile,
+            nextScopePlexUserId,
+          );
+          setActiveProfileScopePlexUserId(nextScopePlexUserId);
+          setProfileDraft(toProfileDraft(data.profile, scopedOverride));
+        }
       }
       toast.success(
         variables.action === 'add'
@@ -4500,7 +4518,7 @@ export function CommandCenterPage() {
                                       deleteImmaculateProfileMutation.isPending
                                     }
                                     className={[
-                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition disabled:opacity-60 disabled:cursor-not-allowed',
+                                      'inline-flex h-6 items-center rounded-full border px-2 text-[11px] transition disabled:opacity-60 disabled:cursor-not-allowed',
                                       !activeProfileScopePlexUserId
                                         ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-100'
                                         : 'border-white/15 bg-white/5 text-white/75 hover:bg-white/10',
@@ -4512,7 +4530,7 @@ export function CommandCenterPage() {
                                     <span
                                       key={user.id}
                                       className={[
-                                        'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px]',
+                                        'inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px]',
                                         activeProfileScopePlexUserId === user.id
                                           ? 'border-sky-500/30 bg-sky-500/15 text-sky-100'
                                           : 'border-white/15 bg-white/5 text-white/75',
@@ -4526,7 +4544,7 @@ export function CommandCenterPage() {
                                           saveImmaculateProfileMutation.isPending ||
                                           deleteImmaculateProfileMutation.isPending
                                         }
-                                        className="rounded px-0.5 transition hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className="rounded px-0.5 leading-none transition hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                                       >
                                         {user.plexAccountTitle}
                                       </button>
@@ -4542,9 +4560,9 @@ export function CommandCenterPage() {
                                           saveImmaculateProfileMutation.isPending ||
                                           deleteImmaculateProfileMutation.isPending
                                         }
-                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed"
                                       >
-                                        <X className="h-3 w-3" />
+                                        <X className="h-2.5 w-2.5" />
                                       </button>
                                     </span>
                                   ))}
@@ -5355,23 +5373,23 @@ export function CommandCenterPage() {
                             <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 {!newProfileScopeSelectedUsers.length ? (
-                                  <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-100">
+                                  <span className="inline-flex h-6 items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 text-[11px] text-emerald-100">
                                     All users
                                   </span>
                                 ) : null}
                                 {newProfileScopeSelectedUsers.map((user) => (
                                   <span
                                     key={user.id}
-                                    className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                    className="inline-flex h-6 items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 text-[11px] text-sky-100"
                                   >
                                     <span>{user.plexAccountTitle}</span>
                                     <button
                                       type="button"
                                       aria-label={`Remove ${user.plexAccountTitle} from profile scope`}
                                       onClick={() => removeNewProfileScopeUser(user.id)}
-                                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10"
+                                      className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-sky-100/85 hover:bg-white/10"
                                     >
-                                      <X className="h-3 w-3" />
+                                      <X className="h-2.5 w-2.5" />
                                     </button>
                                   </span>
                                 ))}
