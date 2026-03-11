@@ -679,6 +679,7 @@ export class ImmaculateTasteProfileService {
           nextMovieBaseName,
           previousShowBaseName,
           nextShowBaseName,
+          alwaysUseUserSuffixForRenamedCollections: true,
           ...(scopedPlexUserIds.length > 0
             ? { targetPlexUserIds: scopedPlexUserIds }
             : {}),
@@ -1902,6 +1903,7 @@ export class ImmaculateTasteProfileService {
       nextShowBaseName: string;
       targetPlexUserIds?: string[];
       excludePlexUserIds?: string[];
+      alwaysUseUserSuffixForRenamedCollections?: boolean;
     },
   ): Promise<CollectionRenameResult> {
     const result: CollectionRenameResult = {
@@ -2049,10 +2051,16 @@ export class ImmaculateTasteProfileService {
             params.previousMovieBaseName,
             user.plexAccountTitle,
           );
-        const nextMovieName = buildImmaculateCollectionName(
-          params.nextMovieBaseName,
-          user.plexAccountTitle,
-        );
+        const nextMovieName =
+          params.alwaysUseUserSuffixForRenamedCollections === true
+            ? buildUserCollectionName(
+                params.nextMovieBaseName,
+                user.plexAccountTitle,
+              )
+            : buildImmaculateCollectionName(
+                params.nextMovieBaseName,
+                user.plexAccountTitle,
+              );
         if (
           previousMovieNameCandidates.length &&
           nextMovieName &&
@@ -2108,10 +2116,16 @@ export class ImmaculateTasteProfileService {
           params.previousShowBaseName,
           user.plexAccountTitle,
         );
-        const nextShowName = buildImmaculateCollectionName(
-          params.nextShowBaseName,
-          user.plexAccountTitle,
-        );
+        const nextShowName =
+          params.alwaysUseUserSuffixForRenamedCollections === true
+            ? buildUserCollectionName(
+                params.nextShowBaseName,
+                user.plexAccountTitle,
+              )
+            : buildImmaculateCollectionName(
+                params.nextShowBaseName,
+                user.plexAccountTitle,
+              );
         if (
           previousShowNameCandidates.length &&
           nextShowName &&
