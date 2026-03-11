@@ -34,49 +34,75 @@
 
 ## What it does
 
-- **Plex-triggered automation**:
-  - Automatically reacts to Plex library activity and runs smart workflows in real time.
-- **Scheduler automation**:
-  - Handles off-hours fetching and Plex home refresh workflows.
-- **Curated Movies and TV Shows collections**:
-  - Inspired by your Immaculate Taste (long-term collection)
-  - Based on your recently watched (refreshes on every watch)
-  - Change of Taste (refreshes on every watch)
-- **Per-viewer personalization (Movies + TV)**:
-  - Each Plex viewer gets their own curated rows (for example: `Based on your recently watched show (userName)`).
-  - Recommendation datasets are isolated per viewer and per library, so one viewer’s history does not influence another viewer’s rows.
-- **Role-based Plex pinning**:
-  - Admin viewer rows are pinned to **Library Recommended** and **Home**.
-  - Non-admin viewer rows are pinned to **Friends Home** (current Plex workflow limitation for shared users).
-- **Recommendation engine**:
-  - TMDB-powered suggestions
-  - Optional: Google + OpenAI
-- **Keeps a snapshot database:**
-  - Stores recommendation data so refresher jobs can detect when pending titles become available in Plex.
-- **Plex library selection guardrails**:
-  - Choose which movie/show libraries are included during onboarding and later from **Command Center → Plex Library Selection**.
-  - New Plex movie/show libraries are included automatically unless you turn them off.
-  - If a run targets a turned-off or temporarily unavailable library, that part is skipped safely and shown clearly in the run report instead of failing the whole job.
-- **Refresher scoping behavior**:
-  - Collection-triggered/chained refresh stays scoped to the triggering viewer/library.
-  - Standalone refresher runs (scheduled or manual without scope) sweep eligible users/libraries in deterministic order, with admin processed last.
-- **Radarr + Sonarr integration**:
-  - Sends movies/series directly to ARR downloaders when Overseerr mode is off.
-- **Observatory**:
-  - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
-  - Swipe left adds a suggestion to your rejected list (it won’t be suggested again). You can clear this via **Command Center → Reset Rejected List**.
-- **Overseerr integration (optional centralized request flow)**:
-  - Route missing movie/TV requests to Overseerr instead of direct ARR sends.
-  - Enable it per task card, so each task can use its own missing-item flow.
-  - Includes a Command Center reset control to clear all Overseerr requests when needed.
-- **Job reports & logs**:
-  - Step-by-step breakdowns, metrics tables, and run history.
-- **Operational visibility and controls**:
-  - User-aware Command Center reset controls, Plex-user dataset management, expanded debugger coverage, and clearer user/media run reporting.
-- **More features on the way**:
-  - Discovering Media from film industries around the world
-  - Email reports on media server health
+- **Reacts to Plex activity in real time**
+  Watches your Plex library and automatically triggers smart workflows when something happens.
+
+- **Runs scheduled tasks**
+  Fetches new content and refreshes your Plex home screen in the background on a schedule.
+
+- **Builds curated movie and TV collections**
+  - A long-term collection based on your overall taste (Immaculate Taste)
+  - A collection based on what you've watched recently (refreshes after every watch)
+  - A "Change of Taste" collection that also refreshes after every watch
+
+- **Supports multiple taste profiles running side by side**
+  - Run several Immaculate Taste profiles at once, each with its own download route, folder, and naming settings
+  - Naming stays consistent across profiles thanks to per-profile overrides and fallbacks
+
+- **Smarter filtering per profile**
+  - Filter by genre and audio language per profile to include or exclude exactly what you want
+  - Better matching means fewer unwanted titles and more accurate recommendations
+
+- **Personalized rows for every viewer**
+  - Each person on your Plex gets their own curated rows (e.g. *Based on your recently watched — Jane*)
+  - Viewing history is kept separate, so one person's habits don't affect anyone else's recommendations
+
+- **Pins collections to the right place based on role**
+  - Admin rows appear in Library Recommended and Home
+  - Shared user rows appear in Friends Home *(current Plex limitation for non-admins)*
+
+- **Powered by multiple recommendation sources**
+  Uses TMDB by default, with optional Google and OpenAI support.
+
+- **Remembers what's been recommended**
+  Keeps a local database so it can detect when a previously suggested title finally lands in your Plex library.
+
+- **Lets you control which libraries are included**
+  - Pick your movie and TV libraries during setup, or adjust anytime from Command Center
+  - New libraries are included automatically unless you turn them off
+  - If a library is unavailable during a run, that part is skipped cleanly and noted in the report — nothing breaks
+
+- **Smart refresh scoping**
+  - When a collection triggers a refresh, it stays focused on that viewer and library
+  - Scheduled or manual full runs process all eligible users and libraries in a consistent order, with the admin handled last
+
+- **Sends content directly to Radarr and Sonarr**
+  When Overseerr is off, missing titles go straight to your download apps.
+
+- **Observatory — approve and manage suggestions**
+  - Swipe to approve download requests *(optional approval mode)*
+  - Swipe left to reject a suggestion and stop it from appearing again — reset your rejected list anytime from Command Center
+
+- **Custom posters for your collections**
+  - Upload your own poster for any collection Immaculaterr creates
+  - Preview and upload from Command Center — posters are saved and survive app restarts and updates
+
+- **Optional Overseerr routing**
+  - Send missing content requests through Overseerr instead of directly to your download apps
+  - Toggle it per task, so different tasks can use different flows
+  - Clear all Overseerr requests at once from Command Center when needed
+
+- **Detailed job reports and logs**
+  Step-by-step breakdown of every run, with metrics and full history.
+
+- **Full visibility and control**
+  Manage users, datasets, and resets from Command Center. Clear reporting shows exactly what ran, what was skipped, and why.
+
+- **Coming soon**
+  - Discovering content from film industries around the world
+  - Email reports on your media server's health
   - Windows and macOS support
+
 
 <div align="center">
   <p><b>Desktop UI</b></p>
