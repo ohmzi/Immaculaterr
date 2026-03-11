@@ -115,6 +115,18 @@ const requiredSnippets = [
     snippet: '**Full Changelog**:',
   },
   {
+    name: 'release notes build top changes heading',
+    snippet: 'TOP_CHANGES_HEADING="## Top ${top_count} changes since ${PREV_TAG}"',
+  },
+  {
+    name: 'release notes cap top changes at five',
+    snippet: 'MAX_TOP_CHANGES=5',
+  },
+  {
+    name: 'release notes require at least three top changes when available',
+    snippet: 'MIN_TOP_CHANGES=3',
+  },
+  {
     name: 'release notes include updating heading',
     snippet: '## Updating',
   },
@@ -173,7 +185,19 @@ const requiredSnippets = [
   {
     name: 'release notes chmod both sidecar helper scripts',
     snippet:
-      'chmod +x ~/immaculaterr/caddy-entrypoint.sh ~/immaculaterr/install-local-ca.sh',
+      'chmod +x "\\$HOME/immaculaterr/caddy-entrypoint.sh" "\\$HOME/immaculaterr/install-local-ca.sh"',
+  },
+  {
+    name: 'release notes include certutil dependency guard',
+    snippet: 'if ! command -v certutil >/dev/null 2>&1; then',
+  },
+  {
+    name: 'release notes trust caddy local CA after sidecar start',
+    snippet: '"\\$HOME/immaculaterr/install-local-ca.sh"',
+  },
+  {
+    name: 'release notes include https quick verification command',
+    snippet: 'curl -I https://localhost:5464',
   },
   {
     name: 'release notes include sidecar internal port bridge to app',
