@@ -1418,6 +1418,167 @@ describe('ImmaculateTasteProfileService update rename task', () => {
     });
   });
 
+  it('resets scoped override to inherited custom base naming with user suffix', async () => {
+    const { service, prisma, settings, plexServer, plexUsers } =
+      createService();
+    const current = makeProfile({
+      id: 'profile-1',
+      movieCollectionBaseName: 'immaculate',
+      showCollectionBaseName: null,
+    });
+    const existingOverride: ImmaculateTasteProfileUserOverride = {
+      id: 'override-custom-reset',
+      profileId: 'profile-1',
+      plexUserId: 'plex-user-2',
+      mediaType: 'both',
+      matchMode: 'all',
+      genres: '[]',
+      audioLanguages: '[]',
+      excludedGenres: '[]',
+      excludedAudioLanguages: '[]',
+      radarrInstanceId: null,
+      sonarrInstanceId: null,
+      movieCollectionBaseName: 'Movie Night Picks',
+      showCollectionBaseName: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([current]);
+    prisma.immaculateTasteProfile.findFirst
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce({ ...current, userOverrides: [] });
+    prisma.plexUser.findFirst.mockResolvedValue({ id: 'plex-user-2' });
+    prisma.immaculateTasteProfileUserOverride.findUnique.mockResolvedValue(
+      existingOverride,
+    );
+    prisma.immaculateTasteProfileUserOverride.delete.mockResolvedValue(
+      existingOverride,
+    );
+    settings.getInternalSettings.mockResolvedValue({
+      settings: { plex: { baseUrl: 'http://plex:32400' } },
+      secrets: { plex: { token: 'plex-token' } },
+    });
+    plexServer.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+    ]);
+    plexUsers.ensureAdminPlexUser.mockResolvedValue({
+      id: 'user-1',
+      plexAccountTitle: 'admin',
+    });
+    prisma.plexUser.findMany.mockResolvedValue([
+      { id: 'user-1', plexAccountTitle: 'admin', isAdmin: true },
+      { id: 'plex-user-2', plexAccountTitle: 'ohmz_i', isAdmin: false },
+    ]);
+    plexServer.findCollectionRatingKey.mockImplementation(
+      (params: { collectionName: string }) =>
+        params.collectionName === 'Movie Night Picks'
+          ? Promise.resolve('rk-movie-custom')
+          : Promise.resolve(null),
+    );
+    plexServer.renameCollection.mockResolvedValue(undefined);
+
+    const result = await service.update('user-1', 'profile-1', {
+      scopePlexUserId: 'plex-user-2',
+      resetScopeToDefaultNaming: true,
+    });
+
+    expect(result.userOverrides).toEqual([]);
+    expect(
+      prisma.immaculateTasteProfileUserOverride.delete,
+    ).toHaveBeenCalledWith({
+      where: { id: 'override-custom-reset' },
+    });
+    expect(plexServer.renameCollection).toHaveBeenCalledWith({
+      baseUrl: 'http://plex:32400',
+      token: 'plex-token',
+      librarySectionKey: '1',
+      collectionRatingKey: 'rk-movie-custom',
+      collectionName: 'immaculate (ohmz_i)',
+    });
+  });
+
+  it('removing scoped user override reverts to inherited naming for non-default profiles', async () => {
+    const { service, prisma, settings, plexServer, plexUsers } = createService();
+    const current = makeProfile({
+      id: 'profile-2',
+      name: 'Kids',
+      isDefault: false,
+      movieCollectionBaseName: null,
+      showCollectionBaseName: null,
+    });
+    const existingOverride: ImmaculateTasteProfileUserOverride = {
+      id: 'override-3',
+      profileId: 'profile-2',
+      plexUserId: 'plex-user-2',
+      mediaType: 'both',
+      matchMode: 'all',
+      genres: '[]',
+      audioLanguages: '[]',
+      excludedGenres: '[]',
+      excludedAudioLanguages: '[]',
+      radarrInstanceId: null,
+      sonarrInstanceId: null,
+      movieCollectionBaseName: 'Movie Night Picks',
+      showCollectionBaseName: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    prisma.immaculateTasteProfile.findMany.mockResolvedValue([current]);
+    prisma.immaculateTasteProfile.findFirst
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce({ ...current, userOverrides: [] });
+    prisma.plexUser.findFirst.mockResolvedValue({ id: 'plex-user-2' });
+    prisma.immaculateTasteProfileUserOverride.findUnique.mockResolvedValue(
+      existingOverride,
+    );
+    prisma.immaculateTasteProfileUserOverride.delete.mockResolvedValue(
+      existingOverride,
+    );
+    settings.getInternalSettings.mockResolvedValue({
+      settings: { plex: { baseUrl: 'http://plex:32400' } },
+      secrets: { plex: { token: 'plex-token' } },
+    });
+    plexServer.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+    ]);
+    plexUsers.ensureAdminPlexUser.mockResolvedValue({
+      id: 'user-1',
+      plexAccountTitle: 'admin',
+    });
+    prisma.plexUser.findMany.mockResolvedValue([
+      { id: 'user-1', plexAccountTitle: 'admin', isAdmin: true },
+      { id: 'plex-user-2', plexAccountTitle: 'ohmz_i', isAdmin: false },
+    ]);
+    plexServer.findCollectionRatingKey.mockImplementation(
+      (params: { collectionName: string }) =>
+        params.collectionName === 'Movie Night Picks'
+          ? Promise.resolve('rk-movie-custom')
+          : Promise.resolve(null),
+    );
+    plexServer.renameCollection.mockResolvedValue(undefined);
+
+    const result = await service.update('user-1', 'profile-2', {
+      scopePlexUserId: 'plex-user-2',
+      resetScopeToDefaultNaming: true,
+    });
+
+    expect(result.userOverrides).toEqual([]);
+    expect(
+      prisma.immaculateTasteProfileUserOverride.delete,
+    ).toHaveBeenCalledWith({
+      where: { id: 'override-3' },
+    });
+    expect(plexServer.renameCollection).toHaveBeenCalledWith({
+      baseUrl: 'http://plex:32400',
+      token: 'plex-token',
+      librarySectionKey: '1',
+      collectionRatingKey: 'rk-movie-custom',
+      collectionName: 'Inspired by your Immaculate Taste in Movies (ohmz_i)',
+    });
+  });
+
   it('re-enables default profile when deleting leaves no enabled profiles', async () => {
     const { service, prisma } = createService();
     const defaultProfile = makeProfile({

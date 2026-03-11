@@ -852,20 +852,26 @@ export class ImmaculateTasteProfileService {
     const nextShowBaseName = resolveShowCollectionBaseName(
       nextSettings.showCollectionBaseName,
     );
-    const shouldRenameMovieBaseName = shouldRenameCollectionBaseName({
-      isDefaultProfile: current.isDefault,
-      previousRaw: previousSettings.movieCollectionBaseName,
-      nextRaw: nextSettings.movieCollectionBaseName,
-      previousResolved: previousMovieBaseName,
-      nextResolved: nextMovieBaseName,
-    });
-    const shouldRenameShowBaseName = shouldRenameCollectionBaseName({
-      isDefaultProfile: current.isDefault,
-      previousRaw: previousSettings.showCollectionBaseName,
-      nextRaw: nextSettings.showCollectionBaseName,
-      previousResolved: previousShowBaseName,
-      nextResolved: nextShowBaseName,
-    });
+    const shouldForceRenameToInheritedBaseNames =
+      resetScopeToDefaultNaming && Boolean(existingOverride);
+    const shouldRenameMovieBaseName = shouldForceRenameToInheritedBaseNames
+      ? previousMovieBaseName !== nextMovieBaseName
+      : shouldRenameCollectionBaseName({
+          isDefaultProfile: current.isDefault,
+          previousRaw: previousSettings.movieCollectionBaseName,
+          nextRaw: nextSettings.movieCollectionBaseName,
+          previousResolved: previousMovieBaseName,
+          nextResolved: nextMovieBaseName,
+        });
+    const shouldRenameShowBaseName = shouldForceRenameToInheritedBaseNames
+      ? previousShowBaseName !== nextShowBaseName
+      : shouldRenameCollectionBaseName({
+          isDefaultProfile: current.isDefault,
+          previousRaw: previousSettings.showCollectionBaseName,
+          nextRaw: nextSettings.showCollectionBaseName,
+          previousResolved: previousShowBaseName,
+          nextResolved: nextShowBaseName,
+        });
     const renameMovies =
       shouldRenameMovieBaseName &&
       (includesMovies(previousSettings.mediaType) ||
@@ -1059,6 +1065,9 @@ export class ImmaculateTasteProfileService {
         previousShowBaseName,
         nextShowBaseName,
         targetPlexUserIds: [scopePlexUserId],
+        // When scoped settings are reset to inherit the shared profile naming,
+        // preserve shared naming semantics by keeping the per-user suffix.
+        alwaysUseUserSuffixForRenamedCollections: shouldInheritBase,
       });
     }
 

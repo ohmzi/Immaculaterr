@@ -2544,6 +2544,21 @@ export function CommandCenterPage() {
     saveImmaculateProfileMutation,
   ]);
 
+  const selectActiveProfileScopeUser = useCallback(
+    (plexUserId: string | null) => {
+      if (!activeProfile) return;
+      const normalizedPlexUserId = (plexUserId ?? '').trim() || null;
+      const scopedOverride = findProfileUserOverride(activeProfile, normalizedPlexUserId);
+      setActiveProfileScopePlexUserId(normalizedPlexUserId);
+      setProfileDraft(toProfileDraft(activeProfile, scopedOverride));
+      setGenreSearch('');
+      setAudioLanguageSearch('');
+      setExcludeGenreSearch('');
+      setExcludeAudioLanguageSearch('');
+    },
+    [activeProfile],
+  );
+
   const addActiveProfileScopeUser = useCallback(
     (plexUserId: string) => {
       const trimmedPlexUserId = plexUserId.trim();
@@ -4476,21 +4491,52 @@ export function CommandCenterPage() {
                               </div>
                               <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 focus-within:ring-2 focus-within:ring-[#facc15]/40 focus-within:border-[#facc15]/40">
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  {!activeProfileOverrideUserIds.size ? (
-                                    <span className="inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-100">
-                                      All users
-                                    </span>
-                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => selectActiveProfileScopeUser(null)}
+                                    disabled={
+                                      updateProfileScopeMutation.isPending ||
+                                      saveImmaculateProfileMutation.isPending ||
+                                      deleteImmaculateProfileMutation.isPending
+                                    }
+                                    className={[
+                                      'inline-flex items-center rounded-full border px-2 py-1 text-[11px] transition disabled:opacity-60 disabled:cursor-not-allowed',
+                                      !activeProfileScopePlexUserId
+                                        ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-100'
+                                        : 'border-white/15 bg-white/5 text-white/75 hover:bg-white/10',
+                                    ].join(' ')}
+                                  >
+                                    All users
+                                  </button>
                                   {profileScopeSelectedUsers.map((user) => (
                                     <span
                                       key={user.id}
-                                      className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/15 px-2 py-1 text-[11px] text-sky-100"
+                                      className={[
+                                        'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px]',
+                                        activeProfileScopePlexUserId === user.id
+                                          ? 'border-sky-500/30 bg-sky-500/15 text-sky-100'
+                                          : 'border-white/15 bg-white/5 text-white/75',
+                                      ].join(' ')}
                                     >
-                                      <span>{user.plexAccountTitle}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => selectActiveProfileScopeUser(user.id)}
+                                        disabled={
+                                          updateProfileScopeMutation.isPending ||
+                                          saveImmaculateProfileMutation.isPending ||
+                                          deleteImmaculateProfileMutation.isPending
+                                        }
+                                        className="rounded px-0.5 transition hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                      >
+                                        {user.plexAccountTitle}
+                                      </button>
                                       <button
                                         type="button"
                                         aria-label={`Remove ${user.plexAccountTitle} from profile scope`}
-                                        onClick={() => removeActiveProfileScopeUser(user.id)}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          removeActiveProfileScopeUser(user.id);
+                                        }}
                                         disabled={
                                           updateProfileScopeMutation.isPending ||
                                           saveImmaculateProfileMutation.isPending ||
@@ -4511,6 +4557,15 @@ export function CommandCenterPage() {
                                   />
                                 </div>
                               </div>
+                              {activeProfileScopePlexUserId ? (
+                                <div className="text-[11px] text-sky-200/80">
+                                  Editing scoped settings for the selected user.
+                                </div>
+                              ) : (
+                                <div className="text-[11px] text-white/45">
+                                  Editing shared profile settings for all users in scope.
+                                </div>
+                              )}
                               <div className="flex flex-wrap gap-1.5">
                                 {profileScopeSearchResults.map((user) => (
                                   <button
