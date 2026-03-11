@@ -1245,6 +1245,76 @@ export const FaqPage = () => {
           ),
         },
         {
+          id: 'collections-profile-user-scope-editing',
+          question: 'How does User scope editing work (All users vs selected user)?',
+          answer: (
+            <>
+              <p>
+                In the profile editor, the selected chip in{' '}
+                <span className="font-semibold text-white/85">User scope</span> decides which
+                settings you are editing.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">All users</span> edits shared
+                  profile settings for everyone currently in scope.
+                </li>
+                <li>
+                  Clicking a user chip edits that user&apos;s scoped override only.
+                </li>
+                <li>
+                  Adding a user from search auto-selects that user so settings are ready to
+                  customize immediately.
+                </li>
+                <li>
+                  Clicking <span className="font-semibold text-white/85">X</span> on a scoped user
+                  removes the override and reverts that user back to inherited shared settings
+                  (filters and naming).
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'collections-profile-collection-rename',
+          question: 'How do I rename Immaculate Taste collections from a profile?',
+          answer: (
+            <>
+              <p>
+                In <span className="font-semibold text-white/85">Command Center</span> -{' '}
+                <span className="font-semibold text-white/85">Immaculate Taste Profiles</span>, open
+                a profile and edit{' '}
+                <span className="font-semibold text-white/85">
+                  Movie collection base name
+                </span>{' '}
+                and/or{' '}
+                <span className="font-semibold text-white/85">TV collection base name</span>, then
+                save profile.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  With <span className="font-semibold text-white/85">All users</span> selected,
+                  shared base-name updates keep per-user suffix naming when collections are renamed
+                  (for example: <code>immaculate (ohmz_i)</code>).
+                </li>
+                <li>
+                  With a specific user selected, scoped custom base names are applied for that user
+                  only, without automatically appending the username.
+                </li>
+                <li>
+                  If you remove a scoped user override, that user&apos;s collection naming reverts to
+                  the inherited shared naming convention.
+                </li>
+              </ul>
+              <p>
+                For enabled profiles, Immaculaterr attempts to rename matching managed Plex
+                collections for monitored users in selected libraries. If no existing managed
+                collection matches yet, the next collection or refresher run uses the new base name.
+              </p>
+            </>
+          ),
+        },
+        {
           id: 'collections-immaculate-points',
           question: 'How do Immaculate Taste points work?',
           answer: (

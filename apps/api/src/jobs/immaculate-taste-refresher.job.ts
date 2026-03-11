@@ -274,6 +274,8 @@ export class ImmaculateTasteRefresherJob {
     const profileId =
       resolveDatasetProfileId(requestedProfileId, profiles) ?? 'default';
     const selectedProfile = profiles.find((profile) => profile.datasetId === profileId) ?? null;
+    const selectedProfileOverride =
+      selectedProfile?.userOverrides.find((item) => item.plexUserId === plexUserId) ?? null;
     if (selectedProfile && selectedProfile.enabled === false) {
       const summary: JsonObject = {
         mode,
@@ -290,10 +292,12 @@ export class ImmaculateTasteRefresherJob {
     }
     const movieCollectionBaseName =
       inputMovieCollectionBaseName ||
+      selectedProfileOverride?.movieCollectionBaseName ||
       selectedProfile?.movieCollectionBaseName ||
       ImmaculateTasteRefresherJob.MOVIE_COLLECTION_NAME;
     const tvCollectionBaseName =
       inputTvCollectionBaseName ||
+      selectedProfileOverride?.showCollectionBaseName ||
       selectedProfile?.showCollectionBaseName ||
       ImmaculateTasteRefresherJob.TV_COLLECTION_NAME;
 

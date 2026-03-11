@@ -63,7 +63,7 @@ Pick a feature area first, then jump into the full section below.
 > ### [Immaculate Taste Profiles](#immaculate-taste-profiles)
 > Advanced taste lanes, Observatory behavior, and profile matching rules.
 > [What's the difference between "Immaculate Taste" and "Based on Latest Watched"?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched) · [How does the Immaculate Taste collection work?](#how-does-the-immaculate-taste-collection-work) · [What are Immaculate Taste profiles and smart filters, and when should I use them?](#what-are-immaculate-taste-profiles-and-smart-filters-and-when-should-i-use-them)
-> + 5 more answers in the section below.
+> + 6 more answers in the section below.
 
 > ### [Reset Immaculate Taste Collection](#reset-immaculate-taste-collection)
 > Reset the saved Immaculate Taste dataset for a selected library.
@@ -536,6 +536,25 @@ Use profiles when you want different rules for different users, media types, or 
 - "Match any filter" means an included genre or language can match. "Match all filters" means every enabled include group must match.
 - Excluded filters always win over included filters.
 - If no enabled profile matches, the run is skipped and logged in Rewind.
+
+### How does User scope editing work (All users vs selected user)?
+
+In the profile editor, the selected chip in **User scope** decides which settings you are editing.
+
+- **All users** edits shared profile settings for everyone currently in scope.
+- Clicking a user chip edits that user's scoped override only.
+- Adding a user from search auto-selects that user so settings are ready to customize immediately.
+- Clicking **X** on a scoped user removes the override and reverts that user back to inherited shared settings (filters and naming).
+
+### How do I rename Immaculate Taste collections from a profile?
+
+In **Command Center - Immaculate Taste Profiles**, open a profile and edit **Movie collection base name** and/or **TV collection base name**, then save profile.
+
+- With **All users** selected, shared base-name updates keep per-user suffix naming when collections are renamed (for example: `immaculate (ohmz_i)`).
+- With a specific user selected, scoped custom base names are applied for that user only, without automatically appending the username.
+- If you remove a scoped user override, that user's collection naming reverts to the inherited shared naming convention.
+
+For enabled profiles, Immaculaterr attempts to rename matching managed Plex collections for monitored users in selected libraries. If no existing managed collection matches yet, the next collection or refresher run uses the new base name.
 
 ### How do Immaculate Taste points work?
 

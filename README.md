@@ -191,6 +191,7 @@ Full project README: [`doc/README.md`](doc/README.md)
 
 ## Security and Suggestions
 - Report Bug or issues: [GitHub Report Bug](https://github.com/ohmzi/Immaculaterr/issues)
+- After V1.7 i'll be taking break from working on new features, and only do security patches and if needed bug fixes. I shall resume working on new feature in couple months.
 - Send Suggestion: [GitHub Feature Request](https://github.com/ohmzi/Immaculaterr/issues)
 ##
 
