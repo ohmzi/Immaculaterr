@@ -1,36 +1,20 @@
 Setup Guide
 ===
 
-This guide covers the quickest way to **pull the Docker image** and run Immaculaterr.
+This guide covers current installation and update paths for Immaculaterr.
 
 Prerequisites
 ---
 
-- Docker
-- A Plex server, TMDB API Key (It's Free)
-- Optional integrations: Radarr, Sonarr, TMDB, OpenAI, Google
+- Docker and Docker Compose v2
+- A Plex server
+- A TMDB API key (configured in Vault after first sign-in)
+- Optional integrations: Radarr, Sonarr, Overseerr, OpenAI, Google
 
-Pull the image
+Quick install (recommended)
 ---
 
-Images are published to **Docker Hub** (best for Portainer search/discovery) and **GHCR**.
-
-- Latest (Docker Hub):
-
-```bash
-docker pull ohmzii/immaculaterr:latest
-```
-
-- Latest (GHCR):
-
-```bash
-docker pull ghcr.io/ohmzi/immaculaterr:latest
-```
-
-Run with Docker
----
-
-Immaculaterr works best with **host networking** on Linux (so it can reach Plex/Radarr/Sonarr via `http://localhost:<port>`).
+Use the Docker Hub compose stack (app + Caddy sidecar) so HTTP and HTTPS are both available.
 
 ```bash
 mkdir -p /opt/immaculaterr
@@ -51,143 +35,141 @@ Then open:
 - `http://<server-ip>:5454/`
 - `https://<server-ip>:5464/`
 
-Optional (recommended for HTTPS without browser warnings):
+Optional (recommended for clean HTTPS browser trust):
 
 ```bash
 cd /opt/immaculaterr
 ./install-local-ca.sh
 ```
 
-Run this on the Docker host. If users browse from other devices, import the same CA certificate on those devices.
-
-Run with Docker Compose
+Compose stacks at a glance
 ---
 
-Docker Compose templates are included in this repo under `docker/immaculaterr/`.
+Compose templates live in `docker/immaculaterr/`:
 
-Immaculaterr works best with **host networking** on Linux (so it can reach Plex/Radarr/Sonarr via `http://localhost:<port>`). The provided compose files default to `network_mode: host`.
+- `docker-compose.yml`: GHCR image, HTTP only (`:5454`)
+- `docker-compose.source.yml`: build from local source, HTTP only (`:5454`)
+- `docker-compose.https.yml`: GHCR image + Caddy sidecar, HTTP (`:5454`) + HTTPS (`:5464`)
+- `docker-compose.dockerhub.yml`: Docker Hub image + Caddy sidecar, HTTP (`:5454`) + HTTPS (`:5464`)
+- `docker-compose.secrets.yml`: optional overlay to load `APP_MASTER_KEY_FILE` from Docker secrets
 
-- Build locally from sourcecode :
+These compose files use `network_mode: host` by default. On Linux, this keeps local integrations simple (`http://localhost:<port>` from inside the app).
+
+Run from a cloned repository
+---
 
 ```bash
 cd docker/immaculaterr
-docker compose -f docker-compose.source.yml up -d --build
 ```
 
-- GHCR image:
+GHCR (HTTP only):
 
 ```bash
-cd docker/immaculaterr
 docker compose -f docker-compose.yml up -d
 ```
 
-- Docker Hub image:
+Build from source (HTTP only):
 
 ```bash
-cd docker/immaculaterr
+docker compose -f docker-compose.source.yml up -d --build
+```
+
+GHCR + built-in HTTPS sidecar:
+
+```bash
+docker compose -f docker-compose.https.yml up -d
+```
+
+Docker Hub + built-in HTTPS sidecar:
+
+```bash
 docker compose -f docker-compose.dockerhub.yml up -d
 ```
 
-
-Updating (Docker Compose)
+Optional: Docker secret for APP_MASTER_KEY
 ---
+
+For persistent encrypted secret handling, use a stable master key with the secrets overlay:
 
 ```bash
 cd docker/immaculaterr
+mkdir -p secrets
+openssl rand -hex 32 > secrets/app_master_key
+chmod 600 secrets/app_master_key
+```
+
+Example with Docker Hub HTTPS stack:
+
+```bash
+docker compose -f docker-compose.dockerhub.yml -f docker-compose.secrets.yml up -d
+```
+
+Notes:
+
+- `APP_MASTER_KEY_FILE` from `docker-compose.secrets.yml` points to `/run/secrets/app_master_key`.
+- If you do not provide `APP_MASTER_KEY` or `APP_MASTER_KEY_FILE`, the app creates a key file in the data directory.
+
+Updating
+---
+
+From a clone:
+
+```bash
+cd docker/immaculaterr
+```
+
+Update GHCR (HTTP only):
+
+```bash
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d --force-recreate
+```
+
+Update GHCR + HTTPS sidecar:
+
+```bash
+docker compose -f docker-compose.https.yml pull
+docker compose -f docker-compose.https.yml up -d --force-recreate
+```
+
+Update Docker Hub + HTTPS sidecar:
+
+```bash
 docker compose -f docker-compose.dockerhub.yml pull
 docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
 ```
 
-If you use local HTTPS (`:5464`) from this host and still get browser trust warnings, run:
+Update source build stack:
 
 ```bash
-cd docker/immaculaterr
+docker compose -f docker-compose.source.yml up -d --build
+```
+
+If you use local HTTPS (`:5464`) and still get trust warnings, rerun:
+
+```bash
 ./install-local-ca.sh
 ```
 
-Run with HTTP + HTTPS (Docker Compose)
+Portainer update
 ---
 
-This stack uses Caddy as a TLS reverse proxy in front of Immaculaterr while keeping host networking for local integrations.
-It keeps both access paths available:
+In Portainer: **Immaculaterr Container -> Recreate -> enable Re-Pull Image -> Recreate**.
 
-- HTTP on `5454` (backward compatibility and quick local access)
-- HTTPS on `5464` (encrypted local/LAN browser traffic)
-
-It auto-configures these HTTPS endpoints by default:
-
-- `https://localhost:5464/`
-- `https://<detected-lan-ip>:5464/` (for example `https://192.168.1.106:5464/`)
-
-It also keeps HTTP available locally/LAN:
-
-- `http://localhost:5454/`
-- `http://<detected-lan-ip>:5454/`
-
-```bash
-cd docker/immaculaterr
-docker compose -f docker-compose.https.yml up -d
-```
-
-Optional public domain support:
-
-- Add `IMM_PUBLIC_DOMAIN=<your-domain>` to also serve `https://<your-domain>/` on port `443`.
-- `IMM_PUBLIC_DOMAIN_TLS_MODE=public` (default) uses ACME/Let's Encrypt.
-- Set `IMM_PUBLIC_DOMAIN_TLS_MODE=internal` if you want a local/internal cert instead.
-
-Notes:
-
-- The app itself runs on internal host port `5455` (`APP_INTERNAL_PORT`).
-- Caddy serves local/LAN HTTP on `5454` (`IMM_HTTP_PORT`) and HTTPS on `5464` (`IMM_HTTPS_PORT`).
-- Public domain HTTPS remains on `443`.
-- Local endpoints (`localhost` + LAN IP) use Caddy's internal CA (`tls internal`).
-- Recommended: install and trust the local CA once on each host to remove browser warnings:
-```bash
-cd docker/immaculaterr
-./install-local-ca.sh
-```
-- The script exports the cert to `/tmp/immaculaterr-local-ca.crt`. Import this cert on other client devices that browse `https://<server-ip>:5464/`.
-- If you do not install the local CA, you can still open HTTPS by accepting the browser risk warning page. Some browsers may require accepting this again in future sessions.
-- If Firefox import is skipped, install `certutil` and rerun:
-```bash
-sudo apt-get install -y libnss3-tools
-cd docker/immaculaterr
-./install-local-ca.sh
-```
-- In this mode, `TRUST_PROXY=1` is enabled and cookie security is applied by request scheme (`https` requests are marked secure while `http` remains usable for compatibility).
-
-Updating (Portainer)
+Local development (monorepo)
 ---
 
-In Portainer: **Immaculaterr Container → Recreate → toggle Re-Pull Image → Recreate**. 
-Then Portainer will pull the latest image.
-
-
-Updating (Docker)
----
-- If you prefer GHCR, replace the image with `ghcr.io/ohmzi/immaculaterr:latest`.
-
 ```bash
-mkdir -p /opt/immaculaterr
-cd /opt/immaculaterr
-
-curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/docker-compose.dockerhub.yml
-curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
-curl -fsSL -o install-local-ca.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh
-chmod +x caddy-entrypoint.sh install-local-ca.sh
-
-docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
-
-IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml pull
-IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
+npm install
+npm -w apps/api run db:generate
+APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite npm -w apps/api run db:migrate
+APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite PORT=5859 WEB_PORT=5858 npm run dev
 ```
 
-Optional (recommended if you use local HTTPS on `:5464`):
+Then open:
 
-```bash
-cd /opt/immaculaterr
-./install-local-ca.sh
-```
+- Web UI: `http://localhost:5858/`
+- API: `http://localhost:5859/api`
 
 License
 ---
