@@ -24,7 +24,7 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.0-beta',
+    version: '1.7.0',
     popupHighlights: [
       'Immaculate Taste profiles now support separate collection strategies with their own rules.',
       'Multiple collections can run together, each with its own Radarr/Sonarr route.',
