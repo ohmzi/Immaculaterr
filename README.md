@@ -38,7 +38,7 @@
   Watches your Plex library and automatically triggers smart workflows when you watch TV shows or  Movies.
 
 - **Runs scheduled tasks**
-  Fetches new content and refreshes your Plex home screen in the background on a schedule.
+  Fetches new content and refreshes your Plex home screen in the background on a schedule, to freshen up your plex home screens.
 
 - **Builds curated movie and TV collections**
   - A long-term collection based on your overall taste (Immaculate Taste)
