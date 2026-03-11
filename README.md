@@ -35,7 +35,7 @@
 ## What it does
 
 - **Reacts to Plex activity in real time**
-  Watches your Plex library and automatically triggers smart workflows when something happens.
+  Watches your Plex library and automatically triggers smart workflows when you watch TV shows or  Movies.
 
 - **Runs scheduled tasks**
   Fetches new content and refreshes your Plex home screen in the background on a schedule.
