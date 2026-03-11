@@ -24,6 +24,11 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.1-beta',
+    popupHighlights: [],
+    sections: [],
+  },
+  {
     version: '1.7.0',
     popupHighlights: [
       'Immaculate Taste profiles now support separate collection strategies with their own rules.',
