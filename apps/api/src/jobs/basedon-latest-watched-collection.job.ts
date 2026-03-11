@@ -18,7 +18,12 @@ import {
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
   RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
 } from '../plex/plex-collections.utils';
-import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
+import type {
+  JobContext,
+  JobRunResult,
+  JsonObject,
+  JsonValue,
+} from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import { withJobRetry, withJobRetryOrNull } from './job-retry';
@@ -70,7 +75,10 @@ function normalizeHttpUrl(raw: string): string {
 function buildLibrarySelectionSkippedReport(params: {
   ctx: JobContext;
   mediaType: 'movie' | 'tv';
-  reason: 'library_excluded' | 'no_selected_movie_libraries' | 'no_selected_tv_libraries';
+  reason:
+    | 'library_excluded'
+    | 'no_selected_movie_libraries'
+    | 'no_selected_tv_libraries';
   seedLibrarySectionId: string;
   seedLibrarySectionTitle: string;
 }): JobReportV1 {
@@ -179,9 +187,7 @@ export class BasedonLatestWatchedCollectionJob {
     const input = ctx.input ?? {};
     const { plexUserId, plexUserTitle, pinCollections } =
       await this.resolvePlexUserContext(ctx);
-    const pinTarget: 'admin' | 'friends' = pinCollections
-      ? 'admin'
-      : 'friends';
+    const pinTarget: 'admin' | 'friends' = pinCollections ? 'admin' : 'friends';
     const mediaTypeRaw =
       typeof input['mediaType'] === 'string' ? input['mediaType'].trim() : '';
     const mediaType = mediaTypeRaw.toLowerCase();
@@ -251,10 +257,13 @@ export class BasedonLatestWatchedCollectionJob {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(ctx.userId);
     if (isPlexUserExcludedFromMonitoring({ settings, plexUserId })) {
-      await ctx.warn('watchedMovieRecommendations: skipped (user monitoring disabled)', {
-        plexUserId,
-        plexUserTitle,
-      });
+      await ctx.warn(
+        'watchedMovieRecommendations: skipped (user monitoring disabled)',
+        {
+          plexUserId,
+          plexUserTitle,
+        },
+      );
       const report = buildUserMonitoringSkippedReport({
         ctx,
         mediaType: 'movie',
@@ -264,14 +273,15 @@ export class BasedonLatestWatchedCollectionJob {
       return { summary: report as unknown as JsonObject };
     }
     const approvalRequiredFromObservatorySaved =
-      (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
-        false) === true;
+      (pickBool(
+        settings,
+        'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
+      ) ?? false) === true;
     const overseerrModeSelected =
       (pickBool(
         settings,
         'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
-      ) ??
-        false) === true;
+      ) ?? false) === true;
     const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
     const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
     const overseerrConfiguredEnabled =
@@ -298,20 +308,26 @@ export class BasedonLatestWatchedCollectionJob {
         this.plexServer.getSections({
           baseUrl: plexBaseUrl,
           token: plexToken,
-      }),
+        }),
       { ctx, label: 'plex: get libraries' },
     );
-    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const librarySelection = resolvePlexLibrarySelection({
+      settings,
+      sections,
+    });
     const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const excludedSectionKeySet = new Set(librarySelection.excludedSectionKeys);
     if (
       seedLibrarySectionIdRaw &&
       excludedSectionKeySet.has(seedLibrarySectionIdRaw)
     ) {
-      await ctx.warn('watchedMovieRecommendations: skipped (seed library excluded)', {
-        seedLibrarySectionId: seedLibrarySectionIdRaw,
-        seedLibrarySectionTitle: seedLibrarySectionTitle || null,
-      });
+      await ctx.warn(
+        'watchedMovieRecommendations: skipped (seed library excluded)',
+        {
+          seedLibrarySectionId: seedLibrarySectionIdRaw,
+          seedLibrarySectionTitle: seedLibrarySectionTitle || null,
+        },
+      );
       const report = buildLibrarySelectionSkippedReport({
         ctx,
         mediaType: 'movie',
@@ -357,7 +373,11 @@ export class BasedonLatestWatchedCollectionJob {
             token: plexToken,
             ratingKey: seedRatingKey,
           }),
-        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+        {
+          ctx,
+          label: 'plex: get seed metadata',
+          meta: { ratingKey: seedRatingKey },
+        },
       );
       if (meta?.librarySectionId) movieSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle)
@@ -368,7 +388,8 @@ export class BasedonLatestWatchedCollectionJob {
         'watchedMovieRecommendations: skipped (resolved seed library excluded)',
         {
           seedLibrarySectionId: movieSectionKey,
-          seedLibrarySectionTitle: movieLibraryName || seedLibrarySectionTitle || null,
+          seedLibrarySectionTitle:
+            movieLibraryName || seedLibrarySectionTitle || null,
         },
       );
       const report = buildLibrarySelectionSkippedReport({
@@ -394,9 +415,9 @@ export class BasedonLatestWatchedCollectionJob {
         await ctx.warn(
           'plex: seed librarySectionID is not a movie library (continuing)',
           {
-          movieSectionKey,
-          libraryTitle: match.title,
-          libraryType: match.type,
+            movieSectionKey,
+            libraryTitle: match.title,
+            libraryType: match.type,
           },
         );
       }
@@ -508,7 +529,9 @@ export class BasedonLatestWatchedCollectionJob {
           count: recCount,
           webContextFraction,
           upcomingPercent,
-          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          openai: openAiEnabled
+            ? { apiKey: openAiApiKey, model: openAiModel }
+            : null,
           google: googleEnabled
             ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
             : null,
@@ -516,20 +539,21 @@ export class BasedonLatestWatchedCollectionJob {
       { ctx, label: 'recommendations: build similar movie titles' },
     );
 
-    const changeOfTaste =
-      await withJobRetry(
-        () =>
-          this.recommendations.buildChangeOfTasteMovieTitles({
-            ctx,
-            seedTitle,
-            seedYear,
-            tmdbApiKey,
-            count: recCount,
-            upcomingPercent,
-            openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
-          }),
-        { ctx, label: 'recommendations: build change of taste movie titles' },
-      );
+    const changeOfTaste = await withJobRetry(
+      () =>
+        this.recommendations.buildChangeOfTasteMovieTitles({
+          ctx,
+          seedTitle,
+          seedYear,
+          tmdbApiKey,
+          count: recCount,
+          upcomingPercent,
+          openai: openAiEnabled
+            ? { apiKey: openAiApiKey, model: openAiModel }
+            : null,
+        }),
+      { ctx, label: 'recommendations: build change of taste movie titles' },
+    );
 
     await ctx.info('watchedMovieRecommendations: recommendations ready', {
       similar: {
@@ -555,9 +579,13 @@ export class BasedonLatestWatchedCollectionJob {
       },
       googleSuggestedTitles: [] as string[],
       openAiSuggestedTitles:
-        changeOfTaste.strategy === 'openai' ? changeOfTaste.titles : ([] as string[]),
+        changeOfTaste.strategy === 'openai'
+          ? changeOfTaste.titles
+          : ([] as string[]),
       tmdbSuggestedTitles:
-        changeOfTaste.strategy === 'tmdb' ? changeOfTaste.titles : ([] as string[]),
+        changeOfTaste.strategy === 'tmdb'
+          ? changeOfTaste.titles
+          : ([] as string[]),
     };
 
     const collectionsToBuild: Array<{
@@ -583,8 +611,10 @@ export class BasedonLatestWatchedCollectionJob {
     const radarrBaseUrlRaw = pickString(settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(secrets, 'radarr.apiKey');
     const fetchMissingRadarrSaved =
-      pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
-      true;
+      pickBool(
+        settings,
+        'jobs.watchedMovieRecommendations.fetchMissing.radarr',
+      ) ?? true;
     const fetchMissingRadarr =
       fetchMissingRadarrSaved && !overseerrModeSelected;
     // Back-compat: if radarr.enabled isn't set, treat "secret present" as enabled.
@@ -621,10 +651,16 @@ export class BasedonLatestWatchedCollectionJob {
                   const v =
                     pickNumber(settings, 'radarr.defaultTagId') ??
                     pickNumber(settings, 'radarr.tagId');
-                  return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+                  return v && Number.isFinite(v) && v > 0
+                    ? Math.trunc(v)
+                    : null;
                 })(),
               }),
-            { ctx, label: 'radarr: resolve defaults', meta: { baseUrl: radarrBaseUrl } },
+            {
+              ctx,
+              label: 'radarr: resolve defaults',
+              meta: { baseUrl: radarrBaseUrl },
+            },
           )
         : null;
 
@@ -692,9 +728,28 @@ export class BasedonLatestWatchedCollectionJob {
             failed: 0,
             skipped: 0,
           },
-          overseerrLists: { attempted: [], requested: [], exists: [], failed: [], skipped: [] },
-          radarr: { enabled: false, attempted: 0, added: 0, exists: 0, failed: 0, skipped: 0 },
-          radarrLists: { attempted: [], added: [], exists: [], failed: [], skipped: [] },
+          overseerrLists: {
+            attempted: [],
+            requested: [],
+            exists: [],
+            failed: [],
+            skipped: [],
+          },
+          radarr: {
+            enabled: false,
+            attempted: 0,
+            added: 0,
+            exists: 0,
+            failed: 0,
+            skipped: 0,
+          },
+          radarrLists: {
+            attempted: [],
+            added: [],
+            exists: [],
+            failed: [],
+            skipped: [],
+          },
           sampleMissing: col.titles.slice(0, 10),
           sampleResolved: [],
           error: (err as Error)?.message ?? String(err),
@@ -720,9 +775,12 @@ export class BasedonLatestWatchedCollectionJob {
       });
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
-      await ctx.warn('watchedMovieRecommendations: refresh failed (continuing)', {
-        error: msg,
-      });
+      await ctx.warn(
+        'watchedMovieRecommendations: refresh failed (continuing)',
+        {
+          error: msg,
+        },
+      );
       refresh = { error: msg };
     }
 
@@ -764,13 +822,13 @@ export class BasedonLatestWatchedCollectionJob {
       apiKey: string;
     } | null;
     radarr: {
-          baseUrl: string;
-          apiKey: string;
-          defaults: {
-            rootFolderPath: string;
-            qualityProfileId: number;
-            tagIds: number[];
-          } | null;
+      baseUrl: string;
+      apiKey: string;
+      defaults: {
+        rootFolderPath: string;
+        qualityProfileId: number;
+        tagIds: number[];
+      } | null;
     } | null;
   }): Promise<JsonObject> {
     const {
@@ -845,8 +903,8 @@ export class BasedonLatestWatchedCollectionJob {
     }
     const resolvedItems = Array.from(resolvedUnique.entries()).map(
       ([ratingKey, title]) => ({
-      ratingKey,
-      title,
+        ratingKey,
+        title,
       }),
     );
 
@@ -984,7 +1042,12 @@ export class BasedonLatestWatchedCollectionJob {
         select: { externalId: true },
         take: 50000,
       })
-      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .then(
+        (rows) =>
+          new Set(
+            rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean),
+          ),
+      )
       .catch(() => new Set<string>());
 
     const excludedByRejectList: string[] = [];
@@ -1003,7 +1066,8 @@ export class BasedonLatestWatchedCollectionJob {
     for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
       const t = missingTitles[i] ?? '';
       const match = missingTitleToTmdb.get(t.trim()) ?? null;
-      if (match && rejectIds.has(String(match.tmdbId))) missingTitles.splice(i, 1);
+      if (match && rejectIds.has(String(match.tmdbId)))
+        missingTitles.splice(i, 1);
     }
 
     // Overwrite the per-library snapshot (active/pending) — no points/decay.
@@ -1033,13 +1097,21 @@ export class BasedonLatestWatchedCollectionJob {
     }
 
     const snapshotRows = Array.from(byTmdbId.values());
-    const snapshotActive = snapshotRows.filter((r) => r.status === 'active').length;
-    const snapshotPending = snapshotRows.filter((r) => r.status === 'pending').length;
+    const snapshotActive = snapshotRows.filter(
+      (r) => r.status === 'active',
+    ).length;
+    const snapshotPending = snapshotRows.filter(
+      (r) => r.status === 'pending',
+    ).length;
 
     let snapshotSaved = false;
     if (!ctx.dryRun) {
       await this.prisma.watchedMovieRecommendationLibrary.deleteMany({
-        where: { plexUserId, collectionName, librarySectionKey: movieSectionKey },
+        where: {
+          plexUserId,
+          collectionName,
+          librarySectionKey: movieSectionKey,
+        },
       });
       if (snapshotRows.length) {
         await this.prisma.watchedMovieRecommendationLibrary.createMany({
@@ -1115,7 +1187,11 @@ export class BasedonLatestWatchedCollectionJob {
             {
               ctx,
               label: 'overseerr: request movie',
-              meta: { collectionName, title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
+              meta: {
+                collectionName,
+                title: tmdbMatch.title,
+                tmdbId: tmdbMatch.tmdbId,
+              },
             },
           ).catch((err) => ({
             status: 'failed' as const,
@@ -1141,7 +1217,10 @@ export class BasedonLatestWatchedCollectionJob {
           }
         }
 
-        await ctx.info('overseerr: done', { collectionName, ...overseerrStats });
+        await ctx.info('overseerr: done', {
+          collectionName,
+          ...overseerrStats,
+        });
       }
     }
 
@@ -1217,10 +1296,13 @@ export class BasedonLatestWatchedCollectionJob {
             continue;
           }
           if (precheck === null) {
-            await ctx.warn('radarr: tmdb precheck unavailable (continuing with add)', {
-              title: tmdbMatch.title,
-              tmdbId: tmdbMatch.tmdbId,
-            });
+            await ctx.warn(
+              'radarr: tmdb precheck unavailable (continuing with add)',
+              {
+                title: tmdbMatch.title,
+                tmdbId: tmdbMatch.tmdbId,
+              },
+            );
           }
 
           try {
@@ -1304,7 +1386,13 @@ export class BasedonLatestWatchedCollectionJob {
       generatedTitles: uniqueStrings(recommendationTitles),
       resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
       missingTitles: uniqueStrings(missingTitles),
-      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListTitles: Array.from(
+        new Set(
+          excludedByRejectList
+            .map((s) => String(s ?? '').trim())
+            .filter(Boolean),
+        ),
+      ),
       excludedByRejectListCount: excludedByRejectList.length,
       snapshot: {
         saved: snapshotSaved,
@@ -1366,14 +1454,15 @@ export class BasedonLatestWatchedCollectionJob {
       return { summary: report as unknown as JsonObject };
     }
     const approvalRequiredFromObservatorySaved =
-      (pickBool(settings, 'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory') ??
-        false) === true;
+      (pickBool(
+        settings,
+        'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
+      ) ?? false) === true;
     const overseerrModeSelected =
       (pickBool(
         settings,
         'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
-      ) ??
-        false) === true;
+      ) ?? false) === true;
     const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
     const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
     const overseerrConfiguredEnabled =
@@ -1401,10 +1490,13 @@ export class BasedonLatestWatchedCollectionJob {
         this.plexServer.getSections({
           baseUrl: plexBaseUrl,
           token: plexToken,
-      }),
+        }),
       { ctx, label: 'plex: get libraries' },
     );
-    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const librarySelection = resolvePlexLibrarySelection({
+      settings,
+      sections,
+    });
     const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const excludedSectionKeySet = new Set(librarySelection.excludedSectionKeys);
     if (
@@ -1463,7 +1555,11 @@ export class BasedonLatestWatchedCollectionJob {
             token: plexToken,
             ratingKey: seedRatingKey,
           }),
-        { ctx, label: 'plex: get seed metadata', meta: { ratingKey: seedRatingKey } },
+        {
+          ctx,
+          label: 'plex: get seed metadata',
+          meta: { ratingKey: seedRatingKey },
+        },
       );
       if (meta?.librarySectionId) tvSectionKey = meta.librarySectionId;
       if (meta?.librarySectionTitle) tvLibraryName = meta.librarySectionTitle;
@@ -1473,7 +1569,8 @@ export class BasedonLatestWatchedCollectionJob {
         'watchedMovieRecommendations(tv): skipped (resolved seed library excluded)',
         {
           seedLibrarySectionId: tvSectionKey,
-          seedLibrarySectionTitle: tvLibraryName || seedLibrarySectionTitle || null,
+          seedLibrarySectionTitle:
+            tvLibraryName || seedLibrarySectionTitle || null,
         },
       );
       const report = buildLibrarySelectionSkippedReport({
@@ -1558,8 +1655,9 @@ export class BasedonLatestWatchedCollectionJob {
       0,
       Math.min(
         75,
-        Math.trunc(Number.isFinite(upcomingPercentRaw) ? upcomingPercentRaw : 25) ||
-          25,
+        Math.trunc(
+          Number.isFinite(upcomingPercentRaw) ? upcomingPercentRaw : 25,
+        ) || 25,
       ),
     );
     const webContextFraction =
@@ -1572,8 +1670,9 @@ export class BasedonLatestWatchedCollectionJob {
       1,
       Math.min(
         200,
-        Math.trunc(Number.isFinite(collectionLimitRaw) ? collectionLimitRaw : 15) ||
-          15,
+        Math.trunc(
+          Number.isFinite(collectionLimitRaw) ? collectionLimitRaw : 15,
+        ) || 15,
       ),
     );
 
@@ -1612,7 +1711,9 @@ export class BasedonLatestWatchedCollectionJob {
           count: recCount,
           webContextFraction,
           upcomingPercent,
-          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          openai: openAiEnabled
+            ? { apiKey: openAiApiKey, model: openAiModel }
+            : null,
           google: googleEnabled
             ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
             : null,
@@ -1629,7 +1730,9 @@ export class BasedonLatestWatchedCollectionJob {
           tmdbApiKey,
           count: recCount,
           upcomingPercent,
-          openai: openAiEnabled ? { apiKey: openAiApiKey, model: openAiModel } : null,
+          openai: openAiEnabled
+            ? { apiKey: openAiApiKey, model: openAiModel }
+            : null,
         }),
       { ctx, label: 'recommendations: build change of taste tv titles' },
     );
@@ -1658,9 +1761,13 @@ export class BasedonLatestWatchedCollectionJob {
       },
       googleSuggestedTitles: [] as string[],
       openAiSuggestedTitles:
-        changeOfTaste.strategy === 'openai' ? changeOfTaste.titles : ([] as string[]),
+        changeOfTaste.strategy === 'openai'
+          ? changeOfTaste.titles
+          : ([] as string[]),
       tmdbSuggestedTitles:
-        changeOfTaste.strategy === 'tmdb' ? changeOfTaste.titles : ([] as string[]),
+        changeOfTaste.strategy === 'tmdb'
+          ? changeOfTaste.titles
+          : ([] as string[]),
     };
 
     const collectionsToBuild: Array<{
@@ -1686,8 +1793,10 @@ export class BasedonLatestWatchedCollectionJob {
     const sonarrBaseUrlRaw = pickString(settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(secrets, 'sonarr.apiKey');
     const fetchMissingSonarrSaved =
-      pickBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
-      true;
+      pickBool(
+        settings,
+        'jobs.watchedMovieRecommendations.fetchMissing.sonarr',
+      ) ?? true;
     const fetchMissingSonarr =
       fetchMissingSonarrSaved && !overseerrModeSelected;
     const sonarrEnabled =
@@ -1723,10 +1832,16 @@ export class BasedonLatestWatchedCollectionJob {
                   const v =
                     pickNumber(settings, 'sonarr.defaultTagId') ??
                     pickNumber(settings, 'sonarr.tagId');
-                  return v && Number.isFinite(v) && v > 0 ? Math.trunc(v) : null;
+                  return v && Number.isFinite(v) && v > 0
+                    ? Math.trunc(v)
+                    : null;
                 })(),
               }),
-            { ctx, label: 'sonarr: resolve defaults', meta: { baseUrl: sonarrBaseUrl } },
+            {
+              ctx,
+              label: 'sonarr: resolve defaults',
+              meta: { baseUrl: sonarrBaseUrl },
+            },
           )
         : null;
 
@@ -1796,9 +1911,28 @@ export class BasedonLatestWatchedCollectionJob {
             failed: 0,
             skipped: 0,
           },
-          overseerrLists: { attempted: [], requested: [], exists: [], failed: [], skipped: [] },
-          sonarr: { enabled: false, attempted: 0, added: 0, exists: 0, failed: 0, skipped: 0 },
-          sonarrLists: { attempted: [], added: [], exists: [], failed: [], skipped: [] },
+          overseerrLists: {
+            attempted: [],
+            requested: [],
+            exists: [],
+            failed: [],
+            skipped: [],
+          },
+          sonarr: {
+            enabled: false,
+            attempted: 0,
+            added: 0,
+            exists: 0,
+            failed: 0,
+            skipped: 0,
+          },
+          sonarrLists: {
+            attempted: [],
+            added: [],
+            exists: [],
+            failed: [],
+            skipped: [],
+          },
           sampleMissing: col.titles.slice(0, 10),
           sampleResolved: [],
           error: (err as Error)?.message ?? String(err),
@@ -1824,9 +1958,12 @@ export class BasedonLatestWatchedCollectionJob {
       });
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
-      await ctx.warn('watchedShowRecommendations: refresh failed (continuing)', {
-        error: msg,
-      });
+      await ctx.warn(
+        'watchedShowRecommendations: refresh failed (continuing)',
+        {
+          error: msg,
+        },
+      );
       refresh = { error: msg };
     }
 
@@ -1938,13 +2075,15 @@ export class BasedonLatestWatchedCollectionJob {
           }),
         { ctx, label: 'plex: find show by title', meta: { title: t } },
       );
-      if (found) resolved.push({ ratingKey: found.ratingKey, title: found.title });
+      if (found)
+        resolved.push({ ratingKey: found.ratingKey, title: found.title });
       else missingTitles.push(t);
     }
 
     const resolvedUnique = new Map<string, string>();
     for (const it of resolved) {
-      if (!resolvedUnique.has(it.ratingKey)) resolvedUnique.set(it.ratingKey, it.title);
+      if (!resolvedUnique.has(it.ratingKey))
+        resolvedUnique.set(it.ratingKey, it.title);
     }
     const resolvedItems = Array.from(resolvedUnique.entries()).map(
       ([ratingKey, title]) => ({ ratingKey, title }),
@@ -1961,15 +2100,14 @@ export class BasedonLatestWatchedCollectionJob {
     // --- Resolve TMDB ids + tvdb ids + ratings for BOTH in-Plex and missing titles
     const matchCache = new Map<
       string,
-      | {
-          tmdbId: number;
-          tvdbId: number | null;
-          title: string;
-          year: number | null;
-          vote_average: number | null;
-          vote_count: number | null;
-        }
-      | null
+      {
+        tmdbId: number;
+        tvdbId: number | null;
+        title: string;
+        year: number | null;
+        vote_average: number | null;
+        vote_count: number | null;
+      } | null
     >();
     const getMatch = async (title: string) => {
       const key = title.trim().toLowerCase();
@@ -2002,13 +2140,16 @@ export class BasedonLatestWatchedCollectionJob {
       }
     >();
 
-    const pushSuggested = (match: {
-      tmdbId: number;
-      tvdbId: number | null;
-      title: string;
-      vote_average: number | null;
-      vote_count: number | null;
-    }, inPlex: boolean) => {
+    const pushSuggested = (
+      match: {
+        tmdbId: number;
+        tvdbId: number | null;
+        title: string;
+        vote_average: number | null;
+        vote_count: number | null;
+      },
+      inPlex: boolean,
+    ) => {
       if (!match.tvdbId) return;
       suggestedForPoints.push({
         tvdbId: match.tvdbId,
@@ -2055,7 +2196,12 @@ export class BasedonLatestWatchedCollectionJob {
         select: { externalId: true },
         take: 50000,
       })
-      .then((rows) => new Set(rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean)))
+      .then(
+        (rows) =>
+          new Set(
+            rows.map((r) => String(r.externalId ?? '').trim()).filter(Boolean),
+          ),
+      )
       .catch(() => new Set<string>());
 
     const excludedByRejectList: string[] = [];
@@ -2069,12 +2215,14 @@ export class BasedonLatestWatchedCollectionJob {
     suggestedForPoints.push(...filteredSuggestedForPoints);
 
     for (const [k, v] of Array.from(missingTitleToIds.entries())) {
-      if (v?.tvdbId && rejectIds.has(String(v.tvdbId))) missingTitleToIds.delete(k);
+      if (v?.tvdbId && rejectIds.has(String(v.tvdbId)))
+        missingTitleToIds.delete(k);
     }
     for (let i = missingTitles.length - 1; i >= 0; i -= 1) {
       const t = missingTitles[i] ?? '';
       const ids = missingTitleToIds.get(t.trim()) ?? null;
-      if (ids?.tvdbId && rejectIds.has(String(ids.tvdbId))) missingTitles.splice(i, 1);
+      if (ids?.tvdbId && rejectIds.has(String(ids.tvdbId)))
+        missingTitles.splice(i, 1);
     }
 
     // Overwrite the per-library snapshot (active/pending) — no points/decay.
@@ -2106,8 +2254,12 @@ export class BasedonLatestWatchedCollectionJob {
     }
 
     const snapshotRows = Array.from(byTvdbId.values());
-    const snapshotActive = snapshotRows.filter((r) => r.status === 'active').length;
-    const snapshotPending = snapshotRows.filter((r) => r.status === 'pending').length;
+    const snapshotActive = snapshotRows.filter(
+      (r) => r.status === 'active',
+    ).length;
+    const snapshotPending = snapshotRows.filter(
+      (r) => r.status === 'pending',
+    ).length;
 
     let snapshotSaved = false;
     if (!ctx.dryRun) {
@@ -2224,7 +2376,10 @@ export class BasedonLatestWatchedCollectionJob {
           }
         }
 
-        await ctx.info('overseerr: done', { collectionName, ...overseerrStats });
+        await ctx.info('overseerr: done', {
+          collectionName,
+          ...overseerrStats,
+        });
       }
     }
 
@@ -2285,10 +2440,13 @@ export class BasedonLatestWatchedCollectionJob {
             continue;
           }
           if (precheck === null) {
-            await ctx.warn('sonarr: tvdb precheck unavailable (continuing with add)', {
-              title: ids.title,
-              tvdbId,
-            });
+            await ctx.warn(
+              'sonarr: tvdb precheck unavailable (continuing with add)',
+              {
+                title: ids.title,
+                tvdbId,
+              },
+            );
           }
 
           try {
@@ -2360,7 +2518,13 @@ export class BasedonLatestWatchedCollectionJob {
       generatedTitles: uniqueStrings(recommendationTitles),
       resolvedTitles: uniqueStrings(resolvedItems.map((d) => d.title)),
       missingTitles: uniqueStrings(missingTitles),
-      excludedByRejectListTitles: Array.from(new Set(excludedByRejectList.map((s) => String(s ?? '').trim()).filter(Boolean))),
+      excludedByRejectListTitles: Array.from(
+        new Set(
+          excludedByRejectList
+            .map((s) => String(s ?? '').trim())
+            .filter(Boolean),
+        ),
+      ),
       excludedByRejectListCount: excludedByRejectList.length,
       snapshot: {
         saved: snapshotSaved,
@@ -2472,7 +2636,9 @@ export class BasedonLatestWatchedCollectionJob {
 
   private async resolvePlexUserContext(ctx: JobContext) {
     const input = ctx.input ?? {};
-    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
+    const admin = await this.plexUsers.ensureAdminPlexUser({
+      userId: ctx.userId,
+    });
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
     const plexUserTitleRaw =
@@ -2496,7 +2662,9 @@ export class BasedonLatestWatchedCollectionJob {
       ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
       : null;
     const normalize = (value: string | null | undefined) =>
-      String(value ?? '').trim().toLowerCase();
+      String(value ?? '')
+        .trim()
+        .toLowerCase();
     const isAdminUser = (row: {
       id: string;
       plexAccountId: number | null;
@@ -2678,7 +2846,9 @@ export class BasedonLatestWatchedCollectionJob {
       Number.isFinite(params.preferredTagId)
         ? Math.trunc(params.preferredTagId)
         : null;
-    const tag = preferredTagId ? tags.find((t) => t.id === preferredTagId) : null;
+    const tag = preferredTagId
+      ? tags.find((t) => t.id === preferredTagId)
+      : null;
 
     const rootFolderPath = rootFolder.path;
     const qualityProfileId = qualityProfile.id;
@@ -2693,7 +2863,9 @@ export class BasedonLatestWatchedCollectionJob {
       usedPreferredRootFolder: Boolean(
         preferredRoot && rootFolder.path === preferredRoot,
       ),
-      usedPreferredQualityProfile: Boolean(qualityProfile.id === desiredQualityId),
+      usedPreferredQualityProfile: Boolean(
+        qualityProfile.id === desiredQualityId,
+      ),
       usedPreferredTag: Boolean(tag),
     });
 
@@ -2792,10 +2964,11 @@ export class BasedonLatestWatchedCollectionJob {
         ? Math.trunc(tvdbIdRaw)
         : null;
 
-    const yearRaw = (details?.first_air_date ?? best.first_air_date ?? '').slice(
-      0,
-      4,
-    );
+    const yearRaw = (
+      details?.first_air_date ??
+      best.first_air_date ??
+      ''
+    ).slice(0, 4);
     const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
 
     const voteAverageRaw = details?.vote_average ?? best.vote_average ?? null;
@@ -2898,21 +3071,29 @@ function buildWatchedLatestCollectionReport(params: {
     totals.missingInPlex += asNum(c.missingInPlex) ?? 0;
   }
 
-  const isTv = Boolean(String((raw as Record<string, unknown>).tvSectionKey ?? '').trim());
+  const isTv = Boolean(
+    String((raw as Record<string, unknown>).tvSectionKey ?? '').trim(),
+  );
   const mediaType: 'movie' | 'tv' = isTv ? 'tv' : 'movie';
   const rawWithMediaType = { ...raw, mediaType } as JsonObject;
   const unit = isTv ? 'shows' : 'movies';
-  const seedTitle = String((raw as Record<string, unknown>).seedTitle ?? '').trim();
+  const seedTitle = String(
+    (raw as Record<string, unknown>).seedTitle ?? '',
+  ).trim();
   const seedYear = asNum((raw as Record<string, unknown>).seedYear);
-  const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
+  const plexUserId = String(
+    (raw as Record<string, unknown>).plexUserId ?? '',
+  ).trim();
   const plexUserTitle = String(
     (raw as Record<string, unknown>).plexUserTitle ?? '',
   ).trim();
 
   const tasks: JobReportV1['tasks'] = [];
   const contextFacts: Array<{ label: string; value: JsonValue }> = [];
-  if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
-  if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+  if (plexUserTitle)
+    contextFacts.push({ label: 'Plex user', value: plexUserTitle });
+  if (plexUserId)
+    contextFacts.push({ label: 'Plex user id', value: plexUserId });
   if (contextFacts.length) {
     tasks.push({
       id: 'context',
@@ -2928,7 +3109,9 @@ function buildWatchedLatestCollectionReport(params: {
   if (seedYear !== null) recFacts.push({ label: 'Seed year', value: seedYear });
 
   for (const [idx, c] of collections.entries()) {
-    const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+    const name =
+      String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+      `Collection ${idx + 1}`;
     const generatedTitles = sortTitles(
       uniqueStrings(asStringArray(c.generatedTitles)),
     );
@@ -2939,7 +3122,7 @@ function buildWatchedLatestCollectionReport(params: {
       : null;
     const recommendationUsed =
       recommendationDebug && isPlainObject(recommendationDebug.used)
-        ? (recommendationDebug.used as Record<string, unknown>)
+        ? recommendationDebug.used
         : null;
 
     const googleEnabled = Boolean(recommendationDebug?.googleEnabled);
@@ -2947,9 +3130,7 @@ function buildWatchedLatestCollectionReport(params: {
     const googleUsed = Boolean(recommendationUsed?.google);
 
     const googleSuggestedTitles = sortTitles(
-      uniqueStrings(
-      asStringArray(recommendationDebug?.googleSuggestedTitles),
-      ),
+      uniqueStrings(asStringArray(recommendationDebug?.googleSuggestedTitles)),
     );
     const openAiSuggestedTitles = sortTitles(
       uniqueStrings(asStringArray(recommendationDebug?.openAiSuggestedTitles)),
@@ -2963,21 +3144,31 @@ function buildWatchedLatestCollectionReport(params: {
       value: !googleEnabled
         ? 'Not enabled'
         : googleUsed
-          ? { count: googleSuggestedTitles.length, unit, items: googleSuggestedTitles }
+          ? {
+              count: googleSuggestedTitles.length,
+              unit,
+              items: googleSuggestedTitles,
+            }
           : 'Skipped',
     });
 
-    const strategy = String(c.recommendationStrategy ?? '').trim().toLowerCase();
+    const strategy = String(c.recommendationStrategy ?? '')
+      .trim()
+      .toLowerCase();
     recFacts.push({
       label: `${name} — OpenAI`,
       value: !openAiEnabled
         ? 'Not enabled'
         : strategy === 'openai'
           ? {
-              count: (openAiSuggestedTitles.length ? openAiSuggestedTitles : generatedTitles)
-                .length,
+              count: (openAiSuggestedTitles.length
+                ? openAiSuggestedTitles
+                : generatedTitles
+              ).length,
               unit,
-              items: openAiSuggestedTitles.length ? openAiSuggestedTitles : generatedTitles,
+              items: openAiSuggestedTitles.length
+                ? openAiSuggestedTitles
+                : generatedTitles,
             }
           : 'Skipped',
     });
@@ -2986,10 +3177,14 @@ function buildWatchedLatestCollectionReport(params: {
       value:
         strategy === 'tmdb'
           ? {
-              count: (tmdbSuggestedTitles.length ? tmdbSuggestedTitles : generatedTitles)
-                .length,
+              count: (tmdbSuggestedTitles.length
+                ? tmdbSuggestedTitles
+                : generatedTitles
+              ).length,
               unit,
-              items: tmdbSuggestedTitles.length ? tmdbSuggestedTitles : generatedTitles,
+              items: tmdbSuggestedTitles.length
+                ? tmdbSuggestedTitles
+                : generatedTitles,
             }
           : 'Skipped',
     });
@@ -2999,7 +3194,8 @@ function buildWatchedLatestCollectionReport(params: {
       label: name,
       value: { count: generatedCount, unit, items: generatedTitles },
     });
-    if (strategy) recFacts.push({ label: `${name} — Strategy`, value: strategy });
+    if (strategy)
+      recFacts.push({ label: `${name} — Strategy`, value: strategy });
   }
 
   tasks.push({
@@ -3038,7 +3234,9 @@ function buildWatchedLatestCollectionReport(params: {
   // 2) Resolve titles in Plex
   const resolveFacts: Array<{ label: string; value: JsonValue }> = [];
   for (const [idx, c] of collections.entries()) {
-    const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+    const name =
+      String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+      `Collection ${idx + 1}`;
     const resolvedTitles = sortTitles(
       uniqueStrings(asStringArray(c.resolvedTitles ?? c.sampleResolved)),
     );
@@ -3087,8 +3285,12 @@ function buildWatchedLatestCollectionReport(params: {
     }
 
     const lists = isPlainObject(c.overseerrLists) ? c.overseerrLists : null;
-    const attempted = sortTitles(uniqueStrings(asStringArray(lists?.attempted)));
-    const requested = sortTitles(uniqueStrings(asStringArray(lists?.requested)));
+    const attempted = sortTitles(
+      uniqueStrings(asStringArray(lists?.attempted)),
+    );
+    const requested = sortTitles(
+      uniqueStrings(asStringArray(lists?.requested)),
+    );
     const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
     const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
     const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
@@ -3160,32 +3362,64 @@ function buildWatchedLatestCollectionReport(params: {
     const sonarrFailedTitles: string[] = [];
 
     for (const [idx, c] of collections.entries()) {
-      const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+      const name =
+        String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+        `Collection ${idx + 1}`;
       const sonarr = isPlainObject(c.sonarr) ? c.sonarr : null;
-      const enabled = sonarr ? Boolean((sonarr as Record<string, unknown>).enabled) : false;
+      const enabled = sonarr
+        ? Boolean((sonarr as Record<string, unknown>).enabled)
+        : false;
       if (enabled) sonarrEnabled = true;
-      if (enabled) sonarrFailed += asNum((sonarr as Record<string, unknown>)?.failed) ?? 0;
+      if (enabled)
+        sonarrFailed += asNum((sonarr as Record<string, unknown>)?.failed) ?? 0;
 
       const lists = isPlainObject(c.sonarrLists) ? c.sonarrLists : null;
-      const attempted = sortTitles(uniqueStrings(asStringArray(lists?.attempted)));
+      const attempted = sortTitles(
+        uniqueStrings(asStringArray(lists?.attempted)),
+      );
       const added = sortTitles(uniqueStrings(asStringArray(lists?.added)));
       const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
       const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
       const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
       sonarrFailedTitles.push(...failed);
 
-      const attemptedCount = sonarr ? asNum((sonarr as Record<string, unknown>).attempted) : null;
-      const addedCount = sonarr ? asNum((sonarr as Record<string, unknown>).added) : null;
-      const existsCount = sonarr ? asNum((sonarr as Record<string, unknown>).exists) : null;
-      const failedCount = sonarr ? asNum((sonarr as Record<string, unknown>).failed) : null;
-      const skippedCount = sonarr ? asNum((sonarr as Record<string, unknown>).skipped) : null;
+      const attemptedCount = sonarr
+        ? asNum((sonarr as Record<string, unknown>).attempted)
+        : null;
+      const addedCount = sonarr
+        ? asNum((sonarr as Record<string, unknown>).added)
+        : null;
+      const existsCount = sonarr
+        ? asNum((sonarr as Record<string, unknown>).exists)
+        : null;
+      const failedCount = sonarr
+        ? asNum((sonarr as Record<string, unknown>).failed)
+        : null;
+      const skippedCount = sonarr
+        ? asNum((sonarr as Record<string, unknown>).skipped)
+        : null;
 
       sonarrFacts.push(
-        { label: `${name} — Attempted`, value: { count: attemptedCount, unit, items: attempted } },
-        { label: `${name} — Added`, value: { count: addedCount, unit, items: added } },
-        { label: `${name} — Exists`, value: { count: existsCount, unit, items: exists } },
-        { label: `${name} — Failed`, value: { count: failedCount, unit, items: failed } },
-        { label: `${name} — Skipped`, value: { count: skippedCount, unit, items: skipped } },
+        {
+          label: `${name} — Attempted`,
+          value: { count: attemptedCount, unit, items: attempted },
+        },
+        {
+          label: `${name} — Added`,
+          value: { count: addedCount, unit, items: added },
+        },
+        {
+          label: `${name} — Exists`,
+          value: { count: existsCount, unit, items: exists },
+        },
+        {
+          label: `${name} — Failed`,
+          value: { count: failedCount, unit, items: failed },
+        },
+        {
+          label: `${name} — Skipped`,
+          value: { count: skippedCount, unit, items: skipped },
+        },
       );
     }
 
@@ -3224,32 +3458,64 @@ function buildWatchedLatestCollectionReport(params: {
     const radarrFailedTitles: string[] = [];
 
     for (const [idx, c] of collections.entries()) {
-      const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+      const name =
+        String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+        `Collection ${idx + 1}`;
       const radarr = isPlainObject(c.radarr) ? c.radarr : null;
-      const enabled = radarr ? Boolean((radarr as Record<string, unknown>).enabled) : false;
+      const enabled = radarr
+        ? Boolean((radarr as Record<string, unknown>).enabled)
+        : false;
       if (enabled) radarrEnabled = true;
-      if (enabled) radarrFailed += asNum((radarr as Record<string, unknown>)?.failed) ?? 0;
+      if (enabled)
+        radarrFailed += asNum((radarr as Record<string, unknown>)?.failed) ?? 0;
 
       const lists = isPlainObject(c.radarrLists) ? c.radarrLists : null;
-      const attempted = sortTitles(uniqueStrings(asStringArray(lists?.attempted)));
+      const attempted = sortTitles(
+        uniqueStrings(asStringArray(lists?.attempted)),
+      );
       const added = sortTitles(uniqueStrings(asStringArray(lists?.added)));
       const exists = sortTitles(uniqueStrings(asStringArray(lists?.exists)));
       const failed = sortTitles(uniqueStrings(asStringArray(lists?.failed)));
       const skipped = sortTitles(uniqueStrings(asStringArray(lists?.skipped)));
       radarrFailedTitles.push(...failed);
 
-      const attemptedCount = radarr ? asNum((radarr as Record<string, unknown>).attempted) : null;
-      const addedCount = radarr ? asNum((radarr as Record<string, unknown>).added) : null;
-      const existsCount = radarr ? asNum((radarr as Record<string, unknown>).exists) : null;
-      const failedCount = radarr ? asNum((radarr as Record<string, unknown>).failed) : null;
-      const skippedCount = radarr ? asNum((radarr as Record<string, unknown>).skipped) : null;
+      const attemptedCount = radarr
+        ? asNum((radarr as Record<string, unknown>).attempted)
+        : null;
+      const addedCount = radarr
+        ? asNum((radarr as Record<string, unknown>).added)
+        : null;
+      const existsCount = radarr
+        ? asNum((radarr as Record<string, unknown>).exists)
+        : null;
+      const failedCount = radarr
+        ? asNum((radarr as Record<string, unknown>).failed)
+        : null;
+      const skippedCount = radarr
+        ? asNum((radarr as Record<string, unknown>).skipped)
+        : null;
 
       radarrFacts.push(
-        { label: `${name} — Attempted`, value: { count: attemptedCount, unit, items: attempted } },
-        { label: `${name} — Added`, value: { count: addedCount, unit, items: added } },
-        { label: `${name} — Exists`, value: { count: existsCount, unit, items: exists } },
-        { label: `${name} — Failed`, value: { count: failedCount, unit, items: failed } },
-        { label: `${name} — Skipped`, value: { count: skippedCount, unit, items: skipped } },
+        {
+          label: `${name} — Attempted`,
+          value: { count: attemptedCount, unit, items: attempted },
+        },
+        {
+          label: `${name} — Added`,
+          value: { count: addedCount, unit, items: added },
+        },
+        {
+          label: `${name} — Exists`,
+          value: { count: existsCount, unit, items: exists },
+        },
+        {
+          label: `${name} — Failed`,
+          value: { count: failedCount, unit, items: failed },
+        },
+        {
+          label: `${name} — Skipped`,
+          value: { count: skippedCount, unit, items: skipped },
+        },
       );
     }
 
@@ -3286,16 +3552,14 @@ function buildWatchedLatestCollectionReport(params: {
   // 5) Refresh Plex collection
   const desiredByCollection = new Map<string, string[]>();
   const refreshRaw = (raw as Record<string, unknown>).refresh;
-  const refresh = isPlainObject(refreshRaw)
-    ? (refreshRaw as Record<string, unknown>)
-    : null;
+  const refresh = isPlainObject(refreshRaw) ? refreshRaw : null;
   const refreshError =
     refresh && typeof refresh['error'] === 'string'
       ? refresh['error'].trim()
       : '';
   const hasRefreshError = Boolean(refreshError);
   const sideRaw = refresh ? (isTv ? refresh['tv'] : refresh['movie']) : null;
-  const side = isPlainObject(sideRaw) ? (sideRaw as Record<string, unknown>) : null;
+  const side = isPlainObject(sideRaw) ? sideRaw : null;
   const byLibraryRaw = side?.['byLibrary'];
   const byLibrary = Array.isArray(byLibraryRaw)
     ? byLibraryRaw.filter((b): b is Record<string, unknown> => isPlainObject(b))
@@ -3313,7 +3577,7 @@ function buildWatchedLatestCollectionReport(params: {
     for (const c of cols) {
       const name = String(c['collectionName'] ?? '').trim();
       if (!name) continue;
-      const plex = isPlainObject(c['plex']) ? (c['plex'] as Record<string, unknown>) : null;
+      const plex = isPlainObject(c['plex']) ? c['plex'] : null;
       const fullName =
         plex && typeof plex['collectionName'] === 'string'
           ? String(plex['collectionName']).trim()
@@ -3355,7 +3619,9 @@ function buildWatchedLatestCollectionReport(params: {
   const plexFacts: Array<{ label: string; value: JsonValue }> = [];
   let anyDesired = false;
   for (const [idx, c] of collections.entries()) {
-    const name = String(c.collectionName ?? `Collection ${idx + 1}`).trim() || `Collection ${idx + 1}`;
+    const name =
+      String(c.collectionName ?? `Collection ${idx + 1}`).trim() ||
+      `Collection ${idx + 1}`;
     const desiredTitles =
       desiredByCollection.get(name) ??
       uniqueStrings(asStringArray(c.sampleResolved));
@@ -3396,10 +3662,16 @@ function buildWatchedLatestCollectionReport(params: {
   const viewerLabel = plexUserTitle || plexUserId;
   const headlineViewer = viewerLabel ? ` by ${viewerLabel}` : '';
   const collectionNames = uniqueStrings(
-    collections.map((c) => String(c.collectionName ?? '').trim()).filter(Boolean),
+    collections
+      .map((c) => String(c.collectionName ?? '').trim())
+      .filter(Boolean),
   );
-  const hasChangeOfTaste = collectionNames.some((n) => n.toLowerCase().includes('change of taste'));
-  const hasRecentlyWatched = collectionNames.some((n) => n.toLowerCase().includes('recently watched'));
+  const hasChangeOfTaste = collectionNames.some((n) =>
+    n.toLowerCase().includes('change of taste'),
+  );
+  const hasRecentlyWatched = collectionNames.some((n) =>
+    n.toLowerCase().includes('recently watched'),
+  );
 
   return {
     template: 'jobReportV1',
@@ -3418,10 +3690,26 @@ function buildWatchedLatestCollectionReport(params: {
         id: 'totals',
         title: 'Totals',
         rows: [
-          metricRow({ label: 'Collections', end: totals.collections, unit: 'collections' }),
-          metricRow({ label: 'Recommendations generated', end: totals.generated, unit: 'titles' }),
-          metricRow({ label: 'Resolved in Plex', end: totals.resolvedInPlex, unit: 'items' }),
-          metricRow({ label: 'Missing in Plex', end: totals.missingInPlex, unit: 'titles' }),
+          metricRow({
+            label: 'Collections',
+            end: totals.collections,
+            unit: 'collections',
+          }),
+          metricRow({
+            label: 'Recommendations generated',
+            end: totals.generated,
+            unit: 'titles',
+          }),
+          metricRow({
+            label: 'Resolved in Plex',
+            end: totals.resolvedInPlex,
+            unit: 'items',
+          }),
+          metricRow({
+            label: 'Missing in Plex',
+            end: totals.missingInPlex,
+            unit: 'titles',
+          }),
         ],
       },
     ],

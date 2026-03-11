@@ -1259,7 +1259,8 @@ describe('ImmaculateTasteProfileService update rename task', () => {
   });
 
   it('renames scoped custom base names without user suffix', async () => {
-    const { service, prisma, settings, plexServer, plexUsers } = createService();
+    const { service, prisma, settings, plexServer, plexUsers } =
+      createService();
     const current = makeProfile({
       id: 'profile-1',
       movieCollectionBaseName: null,
@@ -1288,7 +1289,9 @@ describe('ImmaculateTasteProfileService update rename task', () => {
       .mockResolvedValueOnce(current)
       .mockResolvedValueOnce({ ...current, userOverrides: [createdOverride] });
     prisma.plexUser.findFirst.mockResolvedValue({ id: 'plex-user-2' });
-    prisma.immaculateTasteProfileUserOverride.findUnique.mockResolvedValue(null);
+    prisma.immaculateTasteProfileUserOverride.findUnique.mockResolvedValue(
+      null,
+    );
     prisma.immaculateTasteProfileUserOverride.create.mockResolvedValue(
       createdOverride,
     );
@@ -1499,7 +1502,8 @@ describe('ImmaculateTasteProfileService update rename task', () => {
   });
 
   it('removing scoped user override reverts to inherited naming for non-default profiles', async () => {
-    const { service, prisma, settings, plexServer, plexUsers } = createService();
+    const { service, prisma, settings, plexServer, plexUsers } =
+      createService();
     const current = makeProfile({
       id: 'profile-2',
       name: 'Kids',

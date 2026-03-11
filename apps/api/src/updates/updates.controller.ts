@@ -16,4 +16,3 @@ export class UpdatesController {
     return await this.updates.getUpdates();
   }
 }
-

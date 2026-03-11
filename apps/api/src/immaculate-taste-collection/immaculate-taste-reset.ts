@@ -8,6 +8,3 @@ export function immaculateTasteResetMarkerKey(params: {
   const librarySectionKey = params.librarySectionKey.trim();
   return `immaculateTaste.resetAt.${mediaType}.${librarySectionKey}`;
 }
-
-
-

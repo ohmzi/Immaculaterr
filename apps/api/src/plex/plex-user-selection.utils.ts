@@ -47,9 +47,7 @@ export function resolvePlexUserMonitoringSelection(params: {
   users: PlexUserLike[];
 }) {
   const knownIds = new Set(
-    params.users
-      .map((u) => String(u.id ?? '').trim())
-      .filter(Boolean),
+    params.users.map((u) => String(u.id ?? '').trim()).filter(Boolean),
   );
   const excludedPlexUserIds = readConfiguredExcludedPlexUserIds(
     params.settings,
@@ -81,5 +79,7 @@ export function isPlexUserExcludedFromMonitoring(params: {
 }): boolean {
   const plexUserId = normalizePlexUserId(params.plexUserId);
   if (!plexUserId) return false;
-  return readConfiguredExcludedPlexUserIds(params.settings).includes(plexUserId);
+  return readConfiguredExcludedPlexUserIds(params.settings).includes(
+    plexUserId,
+  );
 }

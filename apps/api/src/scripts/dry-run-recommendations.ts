@@ -44,7 +44,12 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   return null;
 }
 
-function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+function clampInt(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
   const n =
     typeof value === 'number' && Number.isFinite(value)
       ? Math.trunc(value)
@@ -81,7 +86,8 @@ function classifyReleaseDate(
   const d = typeof releaseDate === 'string' ? releaseDate.trim() : '';
   if (!d) return 'unknown';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'unknown';
-  if (today && /^\d{4}-\d{2}-\d{2}$/.test(today) && d > today) return 'upcoming';
+  if (today && /^\d{4}-\d{2}-\d{2}$/.test(today) && d > today)
+    return 'upcoming';
   return 'released';
 }
 
@@ -110,10 +116,14 @@ async function main() {
     select: { id: true, username: true },
   });
   if (!user) {
-    throw new Error('No admin user exists. Open the web UI and complete onboarding first.');
+    throw new Error(
+      'No admin user exists. Open the web UI and complete onboarding first.',
+    );
   }
 
-  const { settings, secrets } = await settingsService.getInternalSettings(user.id);
+  const { settings, secrets } = await settingsService.getInternalSettings(
+    user.id,
+  );
 
   const tmdbApiKey =
     pickString(secrets, 'tmdb.apiKey') ||
@@ -123,7 +133,12 @@ async function main() {
     throw new Error('TMDB apiKey is not set (Vault → TMDB).');
   }
 
-  const count = clampInt(pickNumber(settings, 'recommendations.count') ?? 10, 5, 100, 10);
+  const count = clampInt(
+    pickNumber(settings, 'recommendations.count') ?? 10,
+    5,
+    100,
+    10,
+  );
   const upcomingPercent = clampInt(
     pickNumber(settings, 'recommendations.upcomingPercent') ?? 25,
     0,
@@ -151,7 +166,11 @@ async function main() {
   const openai = new OpenAiService();
   const recs = new RecommendationsService(tmdb, google, openai);
 
-  const logs: Array<{ level: JobLogLevel; message: string; context?: JsonObject }> = [];
+  const logs: Array<{
+    level: JobLogLevel;
+    message: string;
+    context?: JsonObject;
+  }> = [];
   let summaryCache: JsonObject | null = null;
   const ctx: JobContext = {
     jobId: 'dryRunRecommendations',
@@ -170,7 +189,7 @@ async function main() {
     log: async (level, message, context) => {
       logs.push({ level, message, context });
       const ctxText = context ? ` ${JSON.stringify(context)}` : '';
-      // eslint-disable-next-line no-console
+
       console.log(`[${level}] ${message}${ctxText}`);
     },
     debug: async (m, c) => ctx.log('debug', m, c),
@@ -185,9 +204,8 @@ async function main() {
     seedYear: null,
   });
 
-  // eslint-disable-next-line no-console
   console.log('\n=== DRY RUN: Recommendations ===');
-  // eslint-disable-next-line no-console
+
   console.log(
     JSON.stringify(
       {
@@ -205,7 +223,7 @@ async function main() {
       2,
     ),
   );
-  // eslint-disable-next-line no-console
+
   console.log('==============================\n');
 
   const result = await recs.buildSimilarMovieTitles({
@@ -248,9 +266,8 @@ async function main() {
     else unknown.push(row);
   }
 
-  // eslint-disable-next-line no-console
   console.log('\n=== FINAL RESULT ===');
-  // eslint-disable-next-line no-console
+
   console.log(
     JSON.stringify(
       {
@@ -270,35 +287,29 @@ async function main() {
     ),
   );
 
-  // eslint-disable-next-line no-console
   console.log('\n--- Released recommendations ---');
   for (const r of released) {
-    // eslint-disable-next-line no-console
     console.log(`- ${r.title}${r.releaseDate ? ` (${r.releaseDate})` : ''}`);
   }
 
-  // eslint-disable-next-line no-console
   console.log('\n--- Upcoming recommendations ---');
   for (const r of upcoming) {
-    // eslint-disable-next-line no-console
     console.log(`- ${r.title}${r.releaseDate ? ` (${r.releaseDate})` : ''}`);
   }
 
   if (unknown.length) {
-    // eslint-disable-next-line no-console
-    console.log('\n--- Unknown release date (TMDB search could not classify) ---');
+    console.log(
+      '\n--- Unknown release date (TMDB search could not classify) ---',
+    );
     for (const r of unknown) {
-      // eslint-disable-next-line no-console
       console.log(`- ${r.title}${r.releaseDate ? ` (${r.releaseDate})` : ''}`);
     }
   }
 }
 
 void main().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error(err instanceof Error ? err.stack ?? err.message : String(err));
+  console.error(
+    err instanceof Error ? (err.stack ?? err.message) : String(err),
+  );
   process.exitCode = 1;
 });
-
-
-

@@ -63,7 +63,9 @@ export function toEligiblePlexLibraries(
   for (const section of sections) {
     const key = String(section.key ?? '').trim();
     const title = String(section.title ?? '').trim();
-    const rawType = String(section.type ?? '').trim().toLowerCase();
+    const rawType = String(section.type ?? '')
+      .trim()
+      .toLowerCase();
     if (!key || !title) continue;
     if (rawType !== 'movie' && rawType !== 'show') continue;
     if (seen.has(key)) continue;
@@ -116,4 +118,3 @@ export function isPlexLibrarySectionExcluded(params: {
   if (!key) return false;
   return readConfiguredExcludedSectionKeys(params.settings).includes(key);
 }
-

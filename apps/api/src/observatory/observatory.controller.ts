@@ -28,7 +28,8 @@ export class ObservatoryController {
   ) {
     const librarySectionKey = String(librarySectionKeyRaw ?? '').trim();
     const mode = (String(modeRaw ?? '').trim() as ListMode) || 'review';
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mode !== 'pendingApproval' && mode !== 'review')
       throw new BadRequestException('mode must be pendingApproval|review');
     return await this.observatory.listMovies({
@@ -46,7 +47,8 @@ export class ObservatoryController {
   ) {
     const librarySectionKey = String(librarySectionKeyRaw ?? '').trim();
     const mode = (String(modeRaw ?? '').trim() as ListMode) || 'review';
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mode !== 'pendingApproval' && mode !== 'review')
       throw new BadRequestException('mode must be pendingApproval|review');
     return await this.observatory.listTv({
@@ -67,11 +69,15 @@ export class ObservatoryController {
     },
   ) {
     const librarySectionKey =
-      typeof body.librarySectionKey === 'string' ? body.librarySectionKey.trim() : '';
-    const mediaType = typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
+      typeof body.librarySectionKey === 'string'
+        ? body.librarySectionKey.trim()
+        : '';
+    const mediaType =
+      typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
     const decisions = Array.isArray(body.decisions) ? body.decisions : [];
 
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mediaType !== 'movie' && mediaType !== 'tv')
       throw new BadRequestException('mediaType must be movie|tv');
 
@@ -93,9 +99,13 @@ export class ObservatoryController {
     },
   ) {
     const librarySectionKey =
-      typeof body.librarySectionKey === 'string' ? body.librarySectionKey.trim() : '';
-    const mediaType = typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
-    if (!librarySectionKey) throw new BadRequestException('librarySectionKey is required');
+      typeof body.librarySectionKey === 'string'
+        ? body.librarySectionKey.trim()
+        : '';
+    const mediaType =
+      typeof body.mediaType === 'string' ? body.mediaType.trim() : '';
+    if (!librarySectionKey)
+      throw new BadRequestException('librarySectionKey is required');
     if (mediaType !== 'movie' && mediaType !== 'tv')
       throw new BadRequestException('mediaType must be movie|tv');
 
@@ -108,12 +118,16 @@ export class ObservatoryController {
 
   @Delete('rejected/reset')
   async resetRejected(@Req() req: AuthenticatedRequest) {
-    return await this.observatory.resetRejectedSuggestions({ userId: req.user.id });
+    return await this.observatory.resetRejectedSuggestions({
+      userId: req.user.id,
+    });
   }
 
   @Get('rejected')
   async listRejected(@Req() req: AuthenticatedRequest) {
-    return await this.observatory.listRejectedSuggestions({ userId: req.user.id });
+    return await this.observatory.listRejectedSuggestions({
+      userId: req.user.id,
+    });
   }
 
   @Delete('rejected/:id')
@@ -129,4 +143,3 @@ export class ObservatoryController {
     });
   }
 }
-

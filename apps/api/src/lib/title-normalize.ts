@@ -102,8 +102,12 @@ export function buildTitleQueryVariants(title: string): string[] {
   push(base.replace(/·/g, ' ').replace(/\s+/g, ' ').trim());
   push(base.replace(/·/g, '').replace(/\s+/g, ' ').trim());
   push(base.replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim());
-  push(base.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()); // strip punctuation
+  push(
+    base
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  ); // strip punctuation
 
   return variants.slice(0, 8);
 }
-

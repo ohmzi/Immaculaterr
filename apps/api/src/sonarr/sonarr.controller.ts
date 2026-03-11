@@ -46,7 +46,10 @@ export class SonarrController {
   ) {}
 
   @Post('test')
-  async test(@Req() req: AuthenticatedRequest, @Body() body: TestConnectionBody) {
+  async test(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TestConnectionBody,
+  ) {
     const baseUrlRaw = requireBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: req.user.id,

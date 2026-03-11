@@ -98,8 +98,7 @@ export class OverseerrController {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(userId);
 
-    const baseUrl =
-      pickString(settings, 'overseerr.baseUrl');
+    const baseUrl = pickString(settings, 'overseerr.baseUrl');
     const apiKey = pickString(secrets, 'overseerr.apiKey');
     if (!baseUrl) throw new BadRequestException('Overseerr baseUrl is not set');
     if (!apiKey) throw new BadRequestException('Overseerr apiKey is not set');

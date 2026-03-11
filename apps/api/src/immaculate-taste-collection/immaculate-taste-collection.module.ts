@@ -10,7 +10,13 @@ import { ImmaculateTasteController } from './immaculate-taste.controller';
 @Module({
   imports: [DbModule, TmdbModule, SettingsModule, PlexModule],
   controllers: [ImmaculateTasteController],
-  providers: [ImmaculateTasteCollectionService, ImmaculateTasteShowCollectionService],
-  exports: [ImmaculateTasteCollectionService, ImmaculateTasteShowCollectionService],
+  providers: [
+    ImmaculateTasteCollectionService,
+    ImmaculateTasteShowCollectionService,
+  ],
+  exports: [
+    ImmaculateTasteCollectionService,
+    ImmaculateTasteShowCollectionService,
+  ],
 })
 export class ImmaculateTasteCollectionModule {}

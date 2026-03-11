@@ -80,19 +80,27 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
         secrets: {} as Record<string, unknown>,
       }));
 
-    const baseUrl = pickString(settings as Record<string, unknown>, 'plex.baseUrl');
-    const token = pickString(secrets as Record<string, unknown>, 'plex.token');
+    const baseUrl = pickString(settings, 'plex.baseUrl');
+    const token = pickString(secrets, 'plex.token');
 
     if (!baseUrl || !token) {
       this.setStatus('not_configured', null, {
-        reason: !baseUrl && !token ? 'missing_baseUrl_and_token' : !baseUrl ? 'missing_baseUrl' : 'missing_token',
+        reason:
+          !baseUrl && !token
+            ? 'missing_baseUrl_and_token'
+            : !baseUrl
+              ? 'missing_baseUrl'
+              : 'missing_token',
       });
       return;
     }
 
     const startedAt = Date.now();
     try {
-      const activities = await this.plexServer.listActivities({ baseUrl, token });
+      const activities = await this.plexServer.listActivities({
+        baseUrl,
+        token,
+      });
       const ms = Date.now() - startedAt;
       this.setStatus('ok', null, { ms, count: activities.length });
       this.diffAndLog(activities);
@@ -255,7 +263,10 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
           },
         });
 
-        this.logProgressIfUseful({ act, when: subtitleChanged ? 'subtitle' : 'progress' });
+        this.logProgressIfUseful({
+          act,
+          when: subtitleChanged ? 'subtitle' : 'progress',
+        });
 
         this.lastByUuid.set(act.uuid, {
           ...act,
@@ -270,7 +281,10 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
     }
   }
 
-  private logProgressIfUseful(params: { act: PlexActivityDetails; when: 'start' | 'subtitle' | 'progress' }) {
+  private logProgressIfUseful(params: {
+    act: PlexActivityDetails;
+    when: 'start' | 'subtitle' | 'progress';
+  }) {
     const { act, when } = params;
     if (when === 'progress') return;
 
@@ -287,4 +301,3 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
     });
   }
 }
-

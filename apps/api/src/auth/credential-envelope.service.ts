@@ -237,7 +237,8 @@ export class CredentialEnvelopeService {
     requireNonce: boolean;
   } {
     const maxSkewMs =
-      typeof options?.maxSkewMs === 'number' && Number.isFinite(options.maxSkewMs)
+      typeof options?.maxSkewMs === 'number' &&
+      Number.isFinite(options.maxSkewMs)
         ? Math.max(1, Math.trunc(options.maxSkewMs))
         : this.maxSkewMs;
     return {
@@ -276,7 +277,9 @@ export class CredentialEnvelopeService {
     const algorithm =
       typeof rawAlgorithm === 'string' ? rawAlgorithm.trim() : '';
     if (algorithm && algorithm !== 'RSA-OAEP-256+A256GCM') {
-      throw new BadRequestException('Unsupported credential envelope algorithm');
+      throw new BadRequestException(
+        'Unsupported credential envelope algorithm',
+      );
     }
   }
 
@@ -327,7 +330,11 @@ export class CredentialEnvelopeService {
     ciphertext: Buffer;
   }): Buffer {
     try {
-      const decipher = createDecipheriv('aes-256-gcm', params.aesKey, params.iv);
+      const decipher = createDecipheriv(
+        'aes-256-gcm',
+        params.aesKey,
+        params.iv,
+      );
       decipher.setAuthTag(params.tag);
       return Buffer.concat([
         decipher.update(params.ciphertext),

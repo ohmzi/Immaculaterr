@@ -93,7 +93,9 @@ export class JobsController {
   ) {
     const userId = req.user.id;
     const jobId =
-      typeof jobIdRaw === 'string' && jobIdRaw.trim() ? jobIdRaw.trim() : undefined;
+      typeof jobIdRaw === 'string' && jobIdRaw.trim()
+        ? jobIdRaw.trim()
+        : undefined;
     const result = await this.jobsService.clearRuns({ userId, jobId });
     return { ok: true, ...result };
   }

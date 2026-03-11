@@ -1,6 +1,4 @@
-import {
-  buildMediaAddedCleanupReport,
-} from './cleanup-after-adding-new-content.job';
+import { buildMediaAddedCleanupReport } from './cleanup-after-adding-new-content.job';
 import type { JobContext, JsonObject } from './jobs.types';
 
 function createCtx(dryRun = false): JobContext {
@@ -30,8 +28,18 @@ describe('buildMediaAddedCleanupReport', () => {
       warnings: ['sonarr: failed to load series (continuing): timeout'],
       duplicates: {
         mode: 'fullSweep',
-        movie: { metadataDeleted: 0, partsDeleted: 0, groupsWithDuplicates: 0, radarrUnmonitored: 1 },
-        episode: { metadataDeleted: 0, partsDeleted: 0, groupsWithDuplicates: 0, sonarrUnmonitored: 0 },
+        movie: {
+          metadataDeleted: 0,
+          partsDeleted: 0,
+          groupsWithDuplicates: 0,
+          radarrUnmonitored: 1,
+        },
+        episode: {
+          metadataDeleted: 0,
+          partsDeleted: 0,
+          groupsWithDuplicates: 0,
+          sonarrUnmonitored: 0,
+        },
         warnings: ['sonarr: failed to load series (continuing): timeout'],
       },
       watchlist: {
@@ -39,8 +47,18 @@ describe('buildMediaAddedCleanupReport', () => {
         movies: { removed: 0, wouldRemove: 0 },
         shows: { removed: 0, wouldRemove: 0 },
       },
-      radarr: { configured: true, connected: true, moviesUnmonitored: 1, moviesWouldUnmonitor: 0 },
-      sonarr: { configured: false, connected: null, episodesUnmonitored: 0, episodesWouldUnmonitor: 0 },
+      radarr: {
+        configured: true,
+        connected: true,
+        moviesUnmonitored: 1,
+        moviesWouldUnmonitor: 0,
+      },
+      sonarr: {
+        configured: false,
+        connected: null,
+        episodesUnmonitored: 0,
+        episodesWouldUnmonitor: 0,
+      },
     };
 
     const report = buildMediaAddedCleanupReport({ ctx, raw });
@@ -53,7 +71,10 @@ describe('buildMediaAddedCleanupReport', () => {
     expect(sonarrTask).toBeTruthy();
     expect(sonarrTask?.status).toBe('skipped');
     expect(
-      sonarrFacts.some((f) => f.label === 'Result' && String(f.value).includes('not configured')),
+      sonarrFacts.some(
+        (f) =>
+          f.label === 'Result' && String(f.value).includes('not configured'),
+      ),
     ).toBe(true);
     expect(
       issueMessages.some((m) => m.includes('Unable to connect to Sonarr.')),
@@ -67,8 +88,18 @@ describe('buildMediaAddedCleanupReport', () => {
       warnings: ['sonarr: failed to load series (continuing): timeout'],
       duplicates: {
         mode: 'fullSweep',
-        movie: { metadataDeleted: 0, partsDeleted: 0, groupsWithDuplicates: 0, radarrUnmonitored: 0 },
-        episode: { metadataDeleted: 0, partsDeleted: 0, groupsWithDuplicates: 0, sonarrUnmonitored: 0 },
+        movie: {
+          metadataDeleted: 0,
+          partsDeleted: 0,
+          groupsWithDuplicates: 0,
+          radarrUnmonitored: 0,
+        },
+        episode: {
+          metadataDeleted: 0,
+          partsDeleted: 0,
+          groupsWithDuplicates: 0,
+          sonarrUnmonitored: 0,
+        },
         warnings: ['sonarr: failed to load series (continuing): timeout'],
       },
       watchlist: {
@@ -76,8 +107,18 @@ describe('buildMediaAddedCleanupReport', () => {
         movies: { removed: 0, wouldRemove: 0 },
         shows: { removed: 0, wouldRemove: 0 },
       },
-      radarr: { configured: true, connected: true, moviesUnmonitored: 0, moviesWouldUnmonitor: 0 },
-      sonarr: { configured: true, connected: false, episodesUnmonitored: 0, episodesWouldUnmonitor: 0 },
+      radarr: {
+        configured: true,
+        connected: true,
+        moviesUnmonitored: 0,
+        moviesWouldUnmonitor: 0,
+      },
+      sonarr: {
+        configured: true,
+        connected: false,
+        episodesUnmonitored: 0,
+        episodesWouldUnmonitor: 0,
+      },
     };
 
     const report = buildMediaAddedCleanupReport({ ctx, raw });
@@ -129,7 +170,9 @@ describe('buildMediaAddedCleanupReport', () => {
     expect(watchlistTask?.issues ?? []).toEqual([]);
     expect(
       (watchlistTask?.facts ?? []).some(
-        (f) => f.label === 'Note' && String(f.value).includes('Disabled in task settings'),
+        (f) =>
+          f.label === 'Note' &&
+          String(f.value).includes('Disabled in task settings'),
       ),
     ).toBe(true);
   });
@@ -179,7 +222,9 @@ describe('buildMediaAddedCleanupReport', () => {
     expect(watchlistTask?.issues ?? []).toEqual([]);
     expect(
       (watchlistTask?.facts ?? []).some(
-        (f) => f.label === 'Result' && String(f.value).includes('Disabled in task settings'),
+        (f) =>
+          f.label === 'Result' &&
+          String(f.value).includes('Disabled in task settings'),
       ),
     ).toBe(true);
   });

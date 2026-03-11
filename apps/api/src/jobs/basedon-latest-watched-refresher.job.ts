@@ -11,7 +11,12 @@ import {
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
   RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
 } from '../plex/plex-collections.utils';
-import type { JobContext, JobRunResult, JsonObject, JsonValue } from './jobs.types';
+import type {
+  JobContext,
+  JobRunResult,
+  JsonObject,
+  JsonValue,
+} from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { metricRow } from './job-report-v1';
 import {
@@ -135,9 +140,14 @@ export class BasedonLatestWatchedRefresherJob {
     }
 
     const includeMovies =
-      typeof input['includeMovies'] === 'boolean' ? input['includeMovies'] : true;
-    const includeTv = typeof input['includeTv'] === 'boolean' ? input['includeTv'] : true;
-    const forcedMovieSectionKeys = normalizeSectionKeys(input['__movieSectionKeys']);
+      typeof input['includeMovies'] === 'boolean'
+        ? input['includeMovies']
+        : true;
+    const includeTv =
+      typeof input['includeTv'] === 'boolean' ? input['includeTv'] : true;
+    const forcedMovieSectionKeys = normalizeSectionKeys(
+      input['__movieSectionKeys'],
+    );
     const forcedTvSectionKeys = normalizeSectionKeys(input['__tvSectionKeys']);
 
     const { plexUserId, plexUserTitle, pinCollections } =
@@ -195,7 +205,10 @@ export class BasedonLatestWatchedRefresherJob {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
-    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const librarySelection = resolvePlexLibrarySelection({
+      settings,
+      sections,
+    });
     const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const movieSectionsAll = sections
       .filter(
@@ -232,7 +245,8 @@ export class BasedonLatestWatchedRefresherJob {
     );
     const limit = inputLimit ?? configuredLimit;
 
-    const noMovieLibrariesForScope = includeMovies && movieSections.length === 0;
+    const noMovieLibrariesForScope =
+      includeMovies && movieSections.length === 0;
     const noTvLibrariesForScope = includeTv && tvSections.length === 0;
     if (
       (!includeMovies || noMovieLibrariesForScope) &&
@@ -272,13 +286,16 @@ export class BasedonLatestWatchedRefresherJob {
         limit,
         refresh: skippedRefresh,
       };
-      await ctx.info('recentlyWatchedRefresher: skipped (no selected libraries)', {
-        includeMovies,
-        includeTv,
-        forcedMovieSectionKeys,
-        forcedTvSectionKeys,
-        selectedSectionKeys: librarySelection.selectedSectionKeys,
-      });
+      await ctx.info(
+        'recentlyWatchedRefresher: skipped (no selected libraries)',
+        {
+          includeMovies,
+          includeTv,
+          forcedMovieSectionKeys,
+          forcedTvSectionKeys,
+          selectedSectionKeys: librarySelection.selectedSectionKeys,
+        },
+      );
       const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
       return { summary: report as unknown as JsonObject };
     }
@@ -340,8 +357,11 @@ export class BasedonLatestWatchedRefresherJob {
     input: JsonObject,
   ): Promise<JobRunResult> {
     const includeMovies =
-      typeof input['includeMovies'] === 'boolean' ? input['includeMovies'] : true;
-    const includeTv = typeof input['includeTv'] === 'boolean' ? input['includeTv'] : true;
+      typeof input['includeMovies'] === 'boolean'
+        ? input['includeMovies']
+        : true;
+    const includeTv =
+      typeof input['includeTv'] === 'boolean' ? input['includeTv'] : true;
 
     const limitRaw = typeof input['limit'] === 'number' ? input['limit'] : null;
     const inputLimit =
@@ -374,7 +394,10 @@ export class BasedonLatestWatchedRefresherJob {
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
-    const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+    const librarySelection = resolvePlexLibrarySelection({
+      settings,
+      sections,
+    });
     const selectedSectionKeySet = new Set(librarySelection.selectedSectionKeys);
     const movieSectionsAll = sections
       .filter(
@@ -399,7 +422,8 @@ export class BasedonLatestWatchedRefresherJob {
     );
     const limit = inputLimit ?? configuredLimit;
 
-    const noMovieLibrariesForScope = includeMovies && movieSectionsAll.length === 0;
+    const noMovieLibrariesForScope =
+      includeMovies && movieSectionsAll.length === 0;
     const noTvLibrariesForScope = includeTv && tvSectionsAll.length === 0;
     if (
       (!includeMovies || noMovieLibrariesForScope) &&
@@ -422,11 +446,14 @@ export class BasedonLatestWatchedRefresherJob {
           ...(noTvLibrariesForScope ? ['no_selected_tv_libraries'] : []),
         ],
       };
-      await ctx.info('recentlyWatchedRefresher: sweep skipped (no selected libraries)', {
-        includeMovies,
-        includeTv,
-        selectedSectionKeys: librarySelection.selectedSectionKeys,
-      });
+      await ctx.info(
+        'recentlyWatchedRefresher: sweep skipped (no selected libraries)',
+        {
+          includeMovies,
+          includeTv,
+          selectedSectionKeys: librarySelection.selectedSectionKeys,
+        },
+      );
       const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
       return { summary: report as unknown as JsonObject };
     }
@@ -438,17 +465,19 @@ export class BasedonLatestWatchedRefresherJob {
 
     const userIds = new Set<string>();
     if (includeMovies) {
-      const movieRows = await this.prisma.watchedMovieRecommendationLibrary.findMany({
-        select: { plexUserId: true },
-        distinct: ['plexUserId'],
-      });
+      const movieRows =
+        await this.prisma.watchedMovieRecommendationLibrary.findMany({
+          select: { plexUserId: true },
+          distinct: ['plexUserId'],
+        });
       for (const row of movieRows) userIds.add(row.plexUserId);
     }
     if (includeTv) {
-      const tvRows = await this.prisma.watchedShowRecommendationLibrary.findMany({
-        select: { plexUserId: true },
-        distinct: ['plexUserId'],
-      });
+      const tvRows =
+        await this.prisma.watchedShowRecommendationLibrary.findMany({
+          select: { plexUserId: true },
+          distinct: ['plexUserId'],
+        });
       for (const row of tvRows) userIds.add(row.plexUserId);
     }
 
@@ -502,9 +531,13 @@ export class BasedonLatestWatchedRefresherJob {
       const report = buildRecentlyWatchedRefresherReport({ ctx, raw: summary });
       return { summary: report as unknown as JsonObject };
     }
-    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
+    const admin = await this.plexUsers.ensureAdminPlexUser({
+      userId: ctx.userId,
+    });
     const normalize = (value: string | null | undefined) =>
-      String(value ?? '').trim().toLowerCase();
+      String(value ?? '')
+        .trim()
+        .toLowerCase();
     const isAdminUser = (user: {
       id: string;
       plexAccountId: number | null;
@@ -568,8 +601,12 @@ export class BasedonLatestWatchedRefresherJob {
           })
         : [];
 
-      const movieLibraryKeys = new Set(movieLibraryRows.map((r) => r.librarySectionKey));
-      const tvLibraryKeys = new Set(tvLibraryRows.map((r) => r.librarySectionKey));
+      const movieLibraryKeys = new Set(
+        movieLibraryRows.map((r) => r.librarySectionKey),
+      );
+      const tvLibraryKeys = new Set(
+        tvLibraryRows.map((r) => r.librarySectionKey),
+      );
 
       const movieSections = includeMovies
         ? movieSectionsAll.filter((s) => movieLibraryKeys.has(s.key))
@@ -604,14 +641,17 @@ export class BasedonLatestWatchedRefresherJob {
               : { skipped: true, reason: 'disabled' },
           },
         });
-        await ctx.info('recentlyWatchedRefresher: sweep user skipped (no selected libraries)', {
-          plexUserId: user.id,
-          plexUserTitle: user.plexAccountTitle,
-          includeMovies,
-          includeTv,
-          movieLibraryKeys: Array.from(movieLibraryKeys),
-          tvLibraryKeys: Array.from(tvLibraryKeys),
-        });
+        await ctx.info(
+          'recentlyWatchedRefresher: sweep user skipped (no selected libraries)',
+          {
+            plexUserId: user.id,
+            plexUserTitle: user.plexAccountTitle,
+            includeMovies,
+            includeTv,
+            movieLibraryKeys: Array.from(movieLibraryKeys),
+            tvLibraryKeys: Array.from(tvLibraryKeys),
+          },
+        );
         continue;
       }
 
@@ -658,11 +698,14 @@ export class BasedonLatestWatchedRefresherJob {
           pinTarget,
           error: msg,
         });
-        await ctx.warn('recentlyWatchedRefresher: sweep user failed (continuing)', {
-          plexUserId: user.id,
-          plexUserTitle: user.plexAccountTitle,
-          error: msg,
-        });
+        await ctx.warn(
+          'recentlyWatchedRefresher: sweep user failed (continuing)',
+          {
+            plexUserId: user.id,
+            plexUserTitle: user.plexAccountTitle,
+            error: msg,
+          },
+        );
       }
     }
 
@@ -688,7 +731,9 @@ export class BasedonLatestWatchedRefresherJob {
 
   private async resolvePlexUserContext(ctx: JobContext) {
     const input = ctx.input ?? {};
-    const admin = await this.plexUsers.ensureAdminPlexUser({ userId: ctx.userId });
+    const admin = await this.plexUsers.ensureAdminPlexUser({
+      userId: ctx.userId,
+    });
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
     const plexUserTitleRaw =
@@ -712,7 +757,9 @@ export class BasedonLatestWatchedRefresherJob {
       ? await this.plexUsers.getPlexUserById(plexUserIdRaw)
       : null;
     const normalize = (value: string | null | undefined) =>
-      String(value ?? '').trim().toLowerCase();
+      String(value ?? '')
+        .trim()
+        .toLowerCase();
     const isAdminUser = (row: {
       id: string;
       plexAccountId: number | null;
@@ -799,10 +846,12 @@ function buildRecentlyWatchedRefresherReport(params: {
     sentLabel: 'Sent to Radarr' | 'Sent to Sonarr';
   }) => {
     const sideRaw = params.refresh ? params.refresh[params.prefix] : null;
-    const side = isPlainObject(sideRaw) ? (sideRaw as Record<string, unknown>) : null;
+    const side = isPlainObject(sideRaw) ? sideRaw : null;
     const byLibraryRaw = side?.byLibrary;
     const byLibrary = Array.isArray(byLibraryRaw)
-      ? byLibraryRaw.filter((b): b is Record<string, unknown> => isPlainObject(b))
+      ? byLibraryRaw.filter((b): b is Record<string, unknown> =>
+          isPlainObject(b),
+        )
       : [];
 
     for (const lib of byLibrary) {
@@ -823,19 +872,20 @@ function buildRecentlyWatchedRefresherReport(params: {
         const applying = asNum(col.applying) ?? desiredTitles.length;
         if (applying <= 0) continue;
 
-        const plex = isPlainObject(col.plex) ? (col.plex as Record<string, unknown>) : null;
+        const plex = isPlainObject(col.plex) ? col.plex : null;
         const existingCount = plex ? asNum(plex.existingCount) : null;
         const desiredCount =
           (plex ? asNum(plex.desiredCount) : null) ??
-          (asNum(col.applying) ?? desiredTitles.length);
+          asNum(col.applying) ??
+          desiredTitles.length;
 
         const activatedNow = asNum(col.activatedNow) ?? 0;
-        const tmdbBackfilled = asNum((col as Record<string, unknown>).tmdbBackfilled) ?? 0;
+        const tmdbBackfilled = asNum(col.tmdbBackfilled) ?? 0;
 
         const sent =
           params.prefix === 'movie'
-            ? asNum((col as Record<string, unknown>).sentToRadarr) ?? 0
-            : asNum((col as Record<string, unknown>).sentToSonarr) ?? 0;
+            ? (asNum(col.sentToRadarr) ?? 0)
+            : (asNum(col.sentToSonarr) ?? 0);
 
         tasks.push({
           id: `${params.userPrefix}${params.prefix}_${librarySectionKey}_${collectionName}`,
@@ -852,7 +902,11 @@ function buildRecentlyWatchedRefresherReport(params: {
               end: desiredCount,
               unit: 'items',
             }),
-            metricRow({ label: 'Activated now', end: activatedNow, unit: 'items' }),
+            metricRow({
+              label: 'Activated now',
+              end: activatedNow,
+              unit: 'items',
+            }),
             metricRow({ label: params.sentLabel, end: sent, unit: 'titles' }),
             metricRow({
               label: 'TMDB ratings backfilled',
@@ -878,11 +932,15 @@ function buildRecentlyWatchedRefresherReport(params: {
       facts: [
         {
           label: 'Order',
-          value: String((raw as Record<string, unknown>).sweepOrder ?? SWEEP_ORDER),
+          value: String(
+            (raw as Record<string, unknown>).sweepOrder ?? SWEEP_ORDER,
+          ),
         },
         {
           label: 'Users processed',
-          value: asNum((raw as Record<string, unknown>).usersProcessed) ?? users.length,
+          value:
+            asNum((raw as Record<string, unknown>).usersProcessed) ??
+            users.length,
         },
         {
           label: 'Users succeeded',
@@ -897,7 +955,8 @@ function buildRecentlyWatchedRefresherReport(params: {
 
     for (const user of users) {
       const plexUserId = String(user.plexUserId ?? '').trim() || 'unknown';
-      const plexUserTitle = String(user.plexUserTitle ?? '').trim() || 'Unknown';
+      const plexUserTitle =
+        String(user.plexUserTitle ?? '').trim() || 'Unknown';
       const error =
         typeof user.error === 'string' && user.error.trim()
           ? user.error.trim()
@@ -926,9 +985,7 @@ function buildRecentlyWatchedRefresherReport(params: {
       }
 
       const refreshRaw = user.refresh;
-      const refresh = isPlainObject(refreshRaw)
-        ? (refreshRaw as Record<string, unknown>)
-        : null;
+      const refresh = isPlainObject(refreshRaw) ? refreshRaw : null;
 
       addSideFromRefresh({
         refresh,
@@ -951,17 +1008,19 @@ function buildRecentlyWatchedRefresherReport(params: {
     }
   } else {
     const refreshRaw = (raw as Record<string, unknown>).refresh;
-    const refresh = isPlainObject(refreshRaw)
-      ? (refreshRaw as Record<string, unknown>)
-      : null;
+    const refresh = isPlainObject(refreshRaw) ? refreshRaw : null;
 
-    const plexUserId = String((raw as Record<string, unknown>).plexUserId ?? '').trim();
+    const plexUserId = String(
+      (raw as Record<string, unknown>).plexUserId ?? '',
+    ).trim();
     const plexUserTitle = String(
       (raw as Record<string, unknown>).plexUserTitle ?? '',
     ).trim();
     const contextFacts: Array<{ label: string; value: JsonValue }> = [];
-    if (plexUserTitle) contextFacts.push({ label: 'Plex user', value: plexUserTitle });
-    if (plexUserId) contextFacts.push({ label: 'Plex user id', value: plexUserId });
+    if (plexUserTitle)
+      contextFacts.push({ label: 'Plex user', value: plexUserTitle });
+    if (plexUserId)
+      contextFacts.push({ label: 'Plex user id', value: plexUserId });
     if (contextFacts.length) {
       tasks.push({
         id: 'context',

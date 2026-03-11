@@ -62,7 +62,10 @@ export class AppService {
       try {
         const s = await stat(dataDir);
         if (!s.isDirectory()) {
-          checks.dataDir = { ok: false, error: 'APP_DATA_DIR is not a directory' };
+          checks.dataDir = {
+            ok: false,
+            error: 'APP_DATA_DIR is not a directory',
+          };
         } else {
           // To create files we need write + execute (search) on the directory.
           await access(dataDir, fsConstants.W_OK | fsConstants.X_OK);
@@ -77,7 +80,9 @@ export class AppService {
     }
 
     const status =
-      checks.db.ok && checks.dataDir.ok ? ('ready' as const) : ('not_ready' as const);
+      checks.db.ok && checks.dataDir.ok
+        ? ('ready' as const)
+        : ('not_ready' as const);
 
     return { status, time, checks };
   }

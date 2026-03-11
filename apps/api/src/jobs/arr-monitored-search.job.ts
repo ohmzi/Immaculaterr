@@ -20,14 +20,20 @@ const pick = (obj: Record<string, unknown>, path: string): unknown => {
   return cur;
 };
 
-const pickString = (obj: Record<string, unknown>, path: string): string | null => {
+const pickString = (
+  obj: Record<string, unknown>,
+  path: string,
+): string | null => {
   const v = pick(obj, path);
   if (typeof v !== 'string') return null;
   const s = v.trim();
   return s ? s : null;
 };
 
-const pickBool = (obj: Record<string, unknown>, path: string): boolean | null => {
+const pickBool = (
+  obj: Record<string, unknown>,
+  path: string,
+): boolean | null => {
   const v = pick(obj, path);
   return typeof v === 'boolean' ? v : null;
 };
@@ -53,7 +59,11 @@ export class ArrMonitoredSearchJob {
   async run(ctx: JobContext): Promise<JobRunResult> {
     const startedAtMs = Date.now();
 
-    const setProgress = async (step: string, message: string, context?: JsonObject) => {
+    const setProgress = async (
+      step: string,
+      message: string,
+      context?: JsonObject,
+    ) => {
       await ctx.patchSummary({
         phase: 'running',
         progress: {
@@ -72,9 +82,8 @@ export class ArrMonitoredSearchJob {
 
     await setProgress('load_settings', 'Loading settings…');
 
-    const { settings, secrets } = await this.settingsService.getInternalSettings(
-      ctx.userId,
-    );
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(ctx.userId);
 
     const includeRadarr =
       pickBool(settings, 'jobs.arrMonitoredSearch.includeRadarr') ?? true;
@@ -90,30 +99,40 @@ export class ArrMonitoredSearchJob {
     };
 
     if (!includeRadarr && !includeSonarr) {
-      issues.push(issue('warn', 'Both Radarr and Sonarr are disabled; nothing to do.'));
+      issues.push(
+        issue('warn', 'Both Radarr and Sonarr are disabled; nothing to do.'),
+      );
     }
 
     const radarrBaseUrlRaw =
-      pickString(settings, 'radarr.baseUrl') ?? pickString(settings, 'radarr.url');
+      pickString(settings, 'radarr.baseUrl') ??
+      pickString(settings, 'radarr.url');
     const radarrApiKey =
-      pickString(secrets, 'radarr.apiKey') ?? pickString(secrets, 'radarrApiKey');
+      pickString(secrets, 'radarr.apiKey') ??
+      pickString(secrets, 'radarrApiKey');
     const radarrEnabledSetting = pickBool(settings, 'radarr.enabled');
     const radarrIntegrationEnabled =
       (radarrEnabledSetting ?? Boolean(radarrApiKey)) === true;
     const radarrConfigured =
       radarrIntegrationEnabled && Boolean(radarrBaseUrlRaw && radarrApiKey);
-    const radarrBaseUrl = radarrBaseUrlRaw ? normalizeHttpUrl(radarrBaseUrlRaw) : null;
+    const radarrBaseUrl = radarrBaseUrlRaw
+      ? normalizeHttpUrl(radarrBaseUrlRaw)
+      : null;
 
     const sonarrBaseUrlRaw =
-      pickString(settings, 'sonarr.baseUrl') ?? pickString(settings, 'sonarr.url');
+      pickString(settings, 'sonarr.baseUrl') ??
+      pickString(settings, 'sonarr.url');
     const sonarrApiKey =
-      pickString(secrets, 'sonarr.apiKey') ?? pickString(secrets, 'sonarrApiKey');
+      pickString(secrets, 'sonarr.apiKey') ??
+      pickString(secrets, 'sonarrApiKey');
     const sonarrEnabledSetting = pickBool(settings, 'sonarr.enabled');
     const sonarrIntegrationEnabled =
       (sonarrEnabledSetting ?? Boolean(sonarrApiKey)) === true;
     const sonarrConfigured =
       sonarrIntegrationEnabled && Boolean(sonarrBaseUrlRaw && sonarrApiKey);
-    const sonarrBaseUrl = sonarrBaseUrlRaw ? normalizeHttpUrl(sonarrBaseUrlRaw) : null;
+    const sonarrBaseUrl = sonarrBaseUrlRaw
+      ? normalizeHttpUrl(sonarrBaseUrlRaw)
+      : null;
 
     raw['radarr'] = {
       enabled: includeRadarr,
@@ -196,7 +215,15 @@ export class ArrMonitoredSearchJob {
           id: 'radarr',
           title: 'Radarr: MissingMoviesSearch (monitored)',
           status: 'success',
-          rows: [metricRow({ label: 'Queued', start: 0, changed: 1, end: 1, unit: 'cmd' })],
+          rows: [
+            metricRow({
+              label: 'Queued',
+              start: 0,
+              changed: 1,
+              end: 1,
+              unit: 'cmd',
+            }),
+          ],
           facts: [{ label: 'Base URL', value: radarrBaseUrl as string }],
         });
       } catch (err) {
@@ -241,7 +268,10 @@ export class ArrMonitoredSearchJob {
           }),
         ],
         facts: [
-          { label: 'Planned Sonarr start', value: new Date(plannedSonarrAtMs).toISOString() },
+          {
+            label: 'Planned Sonarr start',
+            value: new Date(plannedSonarrAtMs).toISOString(),
+          },
         ],
       });
     } else {
@@ -251,7 +281,10 @@ export class ArrMonitoredSearchJob {
         status: 'skipped',
         facts: [
           { label: 'Applied', value: false },
-          { label: 'Reason', value: shouldDelaySonarr ? 'dryRun' : 'not_required' },
+          {
+            label: 'Reason',
+            value: shouldDelaySonarr ? 'dryRun' : 'not_required',
+          },
         ],
       });
     }
@@ -304,7 +337,15 @@ export class ArrMonitoredSearchJob {
           id: 'sonarr',
           title: 'Sonarr: MissingEpisodeSearch (monitored)',
           status: 'success',
-          rows: [metricRow({ label: 'Queued', start: 0, changed: 1, end: 1, unit: 'cmd' })],
+          rows: [
+            metricRow({
+              label: 'Queued',
+              start: 0,
+              changed: 1,
+              end: 1,
+              unit: 'cmd',
+            }),
+          ],
           facts: [{ label: 'Base URL', value: sonarrBaseUrl as string }],
         });
       } catch (err) {
@@ -322,7 +363,8 @@ export class ArrMonitoredSearchJob {
 
     const headline = (() => {
       if (ctx.dryRun) return 'Dry run: no commands were queued.';
-      if (radarrQueued && sonarrQueued) return 'Queued Radarr + Sonarr monitored missing searches.';
+      if (radarrQueued && sonarrQueued)
+        return 'Queued Radarr + Sonarr monitored missing searches.';
       if (radarrQueued) return 'Queued Radarr monitored missing search.';
       if (sonarrQueued) return 'Queued Sonarr monitored missing search.';
       if (!includeRadarr && !includeSonarr) return 'Nothing to do.';
@@ -385,7 +427,9 @@ export class ArrMonitoredSearchJob {
       raw,
     };
 
-    await setProgress('done', 'Done.', { finishedAt: new Date().toISOString() });
+    await setProgress('done', 'Done.', {
+      finishedAt: new Date().toISOString(),
+    });
     await ctx.info('arrMonitoredSearch: done', {
       radarrQueued,
       sonarrQueued,

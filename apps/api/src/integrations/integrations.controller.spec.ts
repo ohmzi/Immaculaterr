@@ -143,10 +143,9 @@ describe('IntegrationsController plex libraries', () => {
     ]);
 
     await expect(
-      controller.savePlexLibraries(
-        { user: { id: 'u1' } } as never,
-        { selectedSectionKeys: [] },
-      ),
+      controller.savePlexLibraries({ user: { id: 'u1' } } as never, {
+        selectedSectionKeys: [],
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -162,10 +161,9 @@ describe('IntegrationsController plex libraries', () => {
     ]);
 
     await expect(
-      controller.savePlexLibraries(
-        { user: { id: 'u1' } } as never,
-        { selectedSectionKeys: ['unknown'] },
-      ),
+      controller.savePlexLibraries({ user: { id: 'u1' } } as never, {
+        selectedSectionKeys: ['unknown'],
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -204,7 +202,8 @@ describe('IntegrationsController plex libraries', () => {
   });
 
   it('PUT /plex/libraries cleans deselected library data and curated Plex collections', async () => {
-    const { controller, prisma, settingsService, plexServer } = makeController();
+    const { controller, prisma, settingsService, plexServer } =
+      makeController();
     settingsService.getInternalSettings.mockResolvedValue({
       settings: {
         plex: {
@@ -224,12 +223,7 @@ describe('IntegrationsController plex libraries', () => {
         librarySelection: { excludedSectionKeys: ['2'] },
       },
     });
-    const mockedTx = [
-      { count: 11 },
-      { count: 7 },
-      { count: 5 },
-      { count: 3 },
-    ];
+    const mockedTx = [{ count: 11 }, { count: 7 }, { count: 5 }, { count: 3 }];
     prisma.$transaction.mockResolvedValue(mockedTx);
     plexServer.listCollectionsForSectionKey.mockResolvedValue([
       { ratingKey: '101', title: 'Inspired by your Immaculate Taste (Admin)' },
@@ -248,10 +242,14 @@ describe('IntegrationsController plex libraries', () => {
     expect(prisma.immaculateTasteShowLibrary.deleteMany).toHaveBeenCalledWith({
       where: { librarySectionKey: { in: ['2'] } },
     });
-    expect(prisma.watchedMovieRecommendationLibrary.deleteMany).toHaveBeenCalledWith({
+    expect(
+      prisma.watchedMovieRecommendationLibrary.deleteMany,
+    ).toHaveBeenCalledWith({
       where: { librarySectionKey: { in: ['2'] } },
     });
-    expect(prisma.watchedShowRecommendationLibrary.deleteMany).toHaveBeenCalledWith({
+    expect(
+      prisma.watchedShowRecommendationLibrary.deleteMany,
+    ).toHaveBeenCalledWith({
       where: { librarySectionKey: { in: ['2'] } },
     });
     expect(plexServer.listCollectionsForSectionKey).toHaveBeenCalledWith({
@@ -270,7 +268,8 @@ describe('IntegrationsController plex libraries', () => {
   });
 
   it('PUT /plex/libraries can keep deselected library collections and data', async () => {
-    const { controller, prisma, settingsService, plexServer } = makeController();
+    const { controller, prisma, settingsService, plexServer } =
+      makeController();
     settingsService.getInternalSettings.mockResolvedValue({
       settings: {
         plex: {
@@ -300,10 +299,16 @@ describe('IntegrationsController plex libraries', () => {
     );
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.immaculateTasteMovieLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(
+      prisma.immaculateTasteMovieLibrary.deleteMany,
+    ).not.toHaveBeenCalled();
     expect(prisma.immaculateTasteShowLibrary.deleteMany).not.toHaveBeenCalled();
-    expect(prisma.watchedMovieRecommendationLibrary.deleteMany).not.toHaveBeenCalled();
-    expect(prisma.watchedShowRecommendationLibrary.deleteMany).not.toHaveBeenCalled();
+    expect(
+      prisma.watchedMovieRecommendationLibrary.deleteMany,
+    ).not.toHaveBeenCalled();
+    expect(
+      prisma.watchedShowRecommendationLibrary.deleteMany,
+    ).not.toHaveBeenCalled();
     expect(plexServer.listCollectionsForSectionKey).not.toHaveBeenCalled();
     expect(plexServer.deleteCollection).not.toHaveBeenCalled();
     expect(res.selectedSectionKeys).toEqual(['1']);
@@ -347,11 +352,7 @@ describe('IntegrationsController plex libraries', () => {
     });
 
     await expect(
-      controller.testSaved(
-        { user: { id: 'u1' } } as never,
-        'overseerr',
-        {},
-      ),
+      controller.testSaved({ user: { id: 'u1' } } as never, 'overseerr', {}),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(overseerr.testConnection).not.toHaveBeenCalled();
   });
@@ -372,11 +373,7 @@ describe('IntegrationsController plex libraries', () => {
     }) as Record<string, unknown>;
 
     await expect(
-      controller.testSaved(
-        { user: { id: 'u1' } } as never,
-        'overseerr',
-        body,
-      ),
+      controller.testSaved({ user: { id: 'u1' } } as never, 'overseerr', body),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(overseerr.testConnection).not.toHaveBeenCalled();
   });
@@ -426,7 +423,10 @@ describe('IntegrationsController plex libraries', () => {
     expect(settingsService.updateSettings).toHaveBeenCalledWith('u1', {
       plex: { baseUrl: 'http://172.17.0.1:32400' },
     });
-    expect(res).toEqual({ ok: true, summary: { machineIdentifier: 'machine-1' } });
+    expect(res).toEqual({
+      ok: true,
+      summary: { machineIdentifier: 'machine-1' },
+    });
   });
 
   it('POST /test/plex derives decoded-IP fallback from plex.direct URL when suggestions are unusable', async () => {
@@ -490,11 +490,9 @@ describe('IntegrationsController plex libraries', () => {
     plexServer.getMachineIdentifier.mockRejectedValue(explicitError);
 
     await expect(
-      controller.testSaved(
-        { user: { id: 'u1' } } as never,
-        'plex',
-        { baseUrl: 'http://manual-base:32400' },
-      ),
+      controller.testSaved({ user: { id: 'u1' } } as never, 'plex', {
+        baseUrl: 'http://manual-base:32400',
+      }),
     ).rejects.toBe(explicitError);
 
     expect(plex.suggestPreferredServerBaseUrl).not.toHaveBeenCalled();
@@ -582,10 +580,9 @@ describe('IntegrationsController plex libraries', () => {
     plex.listSharedUsersForServer.mockResolvedValue([]);
 
     await expect(
-      controller.savePlexMonitoringUsers(
-        { user: { id: 'u1' } } as never,
-        { selectedPlexUserIds: ['missing'] },
-      ),
+      controller.savePlexMonitoringUsers({ user: { id: 'u1' } } as never, {
+        selectedPlexUserIds: ['missing'],
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 

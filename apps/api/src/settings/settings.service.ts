@@ -110,7 +110,8 @@ function selectSecretSource(params: {
   secretRef: unknown;
   plaintext: unknown;
 }): SelectedSecretSource {
-  const envelopeProvided = params.envelope !== undefined && params.envelope !== null;
+  const envelopeProvided =
+    params.envelope !== undefined && params.envelope !== null;
   const secretRef = asString(params.secretRef);
   const plaintext = asString(params.plaintext);
   assertSingleSecretSource([
@@ -182,7 +183,9 @@ function parseSecretRefParts(secretRef: string): {
   const serviceRaw = parts[1] ?? '';
   const fingerprint = parts[2] ?? '';
   const signature = signatureIncluded ? parts[3] : undefined;
-  if (!isValidSecretRefData(serviceRaw, fingerprint, signatureIncluded, signature)) {
+  if (
+    !isValidSecretRefData(serviceRaw, fingerprint, signatureIncluded, signature)
+  ) {
     throw new BadRequestException('secretRef is invalid');
   }
 
@@ -335,7 +338,9 @@ export class SettingsService {
       create: { userId, value: encrypted },
     });
     this.logger.log(`Updated secrets userId=${userId}`);
-    return Object.fromEntries(Object.keys(normalized).map((key) => [key, true]));
+    return Object.fromEntries(
+      Object.keys(normalized).map((key) => [key, true]),
+    );
   }
 
   async updateSecretsFromEnvelope(userId: string, envelope: unknown) {
@@ -418,9 +423,10 @@ export class SettingsService {
     };
   }
 
-  private resolvePlaintextSecretInput(
-    plaintext: string,
-  ): { value: string; source: 'plaintext' } {
+  private resolvePlaintextSecretInput(plaintext: string): {
+    value: string;
+    source: 'plaintext';
+  } {
     this.assertPlaintextSecretTransportAllowed();
     return { value: plaintext, source: 'plaintext' };
   }
@@ -452,7 +458,8 @@ export class SettingsService {
     const parsed = parseSecretRef(params.secretRef);
     assertSecretRefServiceMatch(parsed.service, params.service);
     this.assertSecretRefSignature(params.userId, parsed);
-    const secrets = params.currentSecrets ?? (await this.getSecretsDoc(params.userId));
+    const secrets =
+      params.currentSecrets ?? (await this.getSecretsDoc(params.userId));
     const currentSecret = this.readServiceSecret(parsed.service, secrets);
     assertSecretRefResolved(currentSecret);
     this.assertSecretRefFresh(currentSecret, parsed.fingerprint);
@@ -472,7 +479,10 @@ export class SettingsService {
     }
   }
 
-  private assertSecretRefFresh(secret: string, expectedFingerprint: string): void {
+  private assertSecretRefFresh(
+    secret: string,
+    expectedFingerprint: string,
+  ): void {
     if (this.secretFingerprint(secret) === expectedFingerprint) return;
     throw new BadRequestException('secretRef is stale');
   }
@@ -500,7 +510,10 @@ export class SettingsService {
     const settings = await this.getSettingsDoc(userId);
     const secrets = await this.getSecretsDoc(userId);
 
-    const readBool = (obj: Record<string, unknown>, path: string): boolean | null => {
+    const readBool = (
+      obj: Record<string, unknown>,
+      path: string,
+    ): boolean | null => {
       const parts = path.split('.');
       let cur: unknown = obj;
       for (const p of parts) {
@@ -519,8 +532,10 @@ export class SettingsService {
     // Match the web UI's semantics:
     // - if enabled flag exists, it wins
     // - otherwise, presence of secrets implies enabled
-    const radarrEnabled = (radarrEnabledSetting ?? radarrSecretsPresent) === true;
-    const sonarrEnabled = (sonarrEnabledSetting ?? sonarrSecretsPresent) === true;
+    const radarrEnabled =
+      (radarrEnabledSetting ?? radarrSecretsPresent) === true;
+    const sonarrEnabled =
+      (sonarrEnabledSetting ?? sonarrSecretsPresent) === true;
 
     if (radarrEnabled || sonarrEnabled) return;
 
@@ -572,7 +587,9 @@ export class SettingsService {
     }
   }
 
-  private createSecretRefs(secrets: Record<string, unknown>): Record<string, string> {
+  private createSecretRefs(
+    secrets: Record<string, unknown>,
+  ): Record<string, string> {
     const refs: Record<string, string> = {};
     for (const service of SERVICE_SECRET_IDS) {
       const secret = this.readServiceSecret(service, secrets);

@@ -135,7 +135,11 @@ function parsePlexDirectIpv4(hostname: string): string | null {
   return `${ip[0]}.${ip[1]}.${ip[2]}.${ip[3]}`;
 }
 
-function buildUrl(protocol: 'http' | 'https', host: string, port: string): string {
+function buildUrl(
+  protocol: 'http' | 'https',
+  host: string,
+  port: string,
+): string {
   return normalizeHttpUrlOrEmpty(`${protocol}://${host}:${port}`);
 }
 
@@ -207,7 +211,9 @@ function deriveContainerHostFallbackUrls(raw: string): string[] {
   const candidates = [
     normalized,
     ...hostCandidates
-      .map((host) => normalizeHttpUrlOrEmpty(`${protocol}//${host}${port}${suffix}`))
+      .map((host) =>
+        normalizeHttpUrlOrEmpty(`${protocol}//${host}${port}${suffix}`),
+      )
       .filter(Boolean),
   ];
   return dedupeHttpUrls(candidates);
@@ -308,7 +314,8 @@ export class IntegrationsController {
       service,
       secretField,
       expectedPurpose: `integration.${service}.test`,
-      envelope: params.bodyObj[envelopeField] ?? params.bodyObj['secretEnvelope'],
+      envelope:
+        params.bodyObj[envelopeField] ?? params.bodyObj['secretEnvelope'],
       secretRef: params.bodyObj['secretRef'],
       plaintext: params.bodyObj[secretField],
       currentSecrets: params.currentSecrets,
@@ -373,27 +380,32 @@ export class IntegrationsController {
 
     if (!sectionKeys.length) return emptyResult;
 
-    const [immaculateMovieDeletedRes, immaculateTvDeletedRes, watchedMovieDeletedRes, watchedTvDeletedRes] =
-      await this.prisma.$transaction([
-        this.prisma.immaculateTasteMovieLibrary.deleteMany({
-          where: { librarySectionKey: { in: sectionKeys } },
-        }),
-        this.prisma.immaculateTasteShowLibrary.deleteMany({
-          where: { librarySectionKey: { in: sectionKeys } },
-        }),
-        this.prisma.watchedMovieRecommendationLibrary.deleteMany({
-          where: { librarySectionKey: { in: sectionKeys } },
-        }),
-        this.prisma.watchedShowRecommendationLibrary.deleteMany({
-          where: { librarySectionKey: { in: sectionKeys } },
-        }),
-      ]);
+    const [
+      immaculateMovieDeletedRes,
+      immaculateTvDeletedRes,
+      watchedMovieDeletedRes,
+      watchedTvDeletedRes,
+    ] = await this.prisma.$transaction([
+      this.prisma.immaculateTasteMovieLibrary.deleteMany({
+        where: { librarySectionKey: { in: sectionKeys } },
+      }),
+      this.prisma.immaculateTasteShowLibrary.deleteMany({
+        where: { librarySectionKey: { in: sectionKeys } },
+      }),
+      this.prisma.watchedMovieRecommendationLibrary.deleteMany({
+        where: { librarySectionKey: { in: sectionKeys } },
+      }),
+      this.prisma.watchedShowRecommendationLibrary.deleteMany({
+        where: { librarySectionKey: { in: sectionKeys } },
+      }),
+    ]);
 
     let librariesChecked = 0;
     let collectionsDeleted = 0;
     let plexErrors = 0;
     for (const lib of params.deselectedLibraries) {
-      const mediaType = lib.type === 'movie' ? 'movie' : lib.type === 'show' ? 'tv' : null;
+      const mediaType =
+        lib.type === 'movie' ? 'movie' : lib.type === 'show' ? 'tv' : null;
       if (!mediaType) continue;
       librariesChecked += 1;
 
@@ -464,7 +476,8 @@ export class IntegrationsController {
 
     const baseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
-    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    const token =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
     if (!baseUrlRaw || !token) {
       throw new BadRequestException('Plex is not configured');
     }
@@ -512,7 +525,8 @@ export class IntegrationsController {
         });
       }
     } catch {
-      warning = 'Could not load Plex shared users right now. Showing admin only.';
+      warning =
+        'Could not load Plex shared users right now. Showing admin only.';
     }
 
     const users = Array.from(usersById.values()).sort((a, b) => {
@@ -563,7 +577,9 @@ export class IntegrationsController {
       const enabledFlag = radarrEnabledFlag ?? Boolean(apiKey);
       const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
       if (!enabled) {
-        throw new BadRequestException('Radarr is not enabled or not configured');
+        throw new BadRequestException(
+          'Radarr is not enabled or not configured',
+        );
       }
       baseUrl = normalizeHttpUrl(baseUrlRaw);
     }
@@ -614,7 +630,9 @@ export class IntegrationsController {
       const enabledFlag = sonarrEnabledFlag ?? Boolean(apiKey);
       const enabled = enabledFlag && Boolean(baseUrlRaw) && Boolean(apiKey);
       if (!enabled) {
-        throw new BadRequestException('Sonarr is not enabled or not configured');
+        throw new BadRequestException(
+          'Sonarr is not enabled or not configured',
+        );
       }
       baseUrl = normalizeHttpUrl(baseUrlRaw);
     }
@@ -643,7 +661,8 @@ export class IntegrationsController {
       await this.settingsService.getInternalSettings(userId);
     const baseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
-    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    const token =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
     if (!baseUrlRaw || !token) {
       throw new BadRequestException('Plex is not configured');
     }
@@ -686,10 +705,13 @@ export class IntegrationsController {
       appendUnique(sectionLanguages, audioLanguages, languageSet);
     } else {
       const sections = await this.plexServer.getSections({ baseUrl, token });
-      const librarySelection = resolvePlexLibrarySelection({ settings, sections });
+      const librarySelection = resolvePlexLibrarySelection({
+        settings,
+        sections,
+      });
       const selectedKeys = new Set(librarySelection.selectedSectionKeys);
-      const selectedEligible = librarySelection.eligibleLibraries.filter((library) =>
-        selectedKeys.has(library.key),
+      const selectedEligible = librarySelection.eligibleLibraries.filter(
+        (library) => selectedKeys.has(library.key),
       );
       for (const library of selectedEligible) {
         const [sectionGenres, sectionLanguages] = await Promise.all([
@@ -731,7 +753,8 @@ export class IntegrationsController {
 
     const baseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
-    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    const token =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
     if (!baseUrlRaw || !token) {
       throw new BadRequestException('Plex is not configured');
     }
@@ -781,7 +804,8 @@ export class IntegrationsController {
 
     const baseUrlRaw =
       pickString(settings, 'plex.baseUrl') || pickString(settings, 'plex.url');
-    const token = pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
+    const token =
+      pickString(secrets, 'plex.token') || pickString(secrets, 'plexToken');
     if (!baseUrlRaw || !token) {
       throw new BadRequestException('Plex is not configured');
     }
@@ -802,7 +826,9 @@ export class IntegrationsController {
     const eligibleKeys = new Set(
       selection.eligibleLibraries.map((lib) => lib.key),
     );
-    const unknownKeys = selectedSectionKeys.filter((key) => !eligibleKeys.has(key));
+    const unknownKeys = selectedSectionKeys.filter(
+      (key) => !eligibleKeys.has(key),
+    );
     if (unknownKeys.length) {
       throw new BadRequestException(
         `Unknown library section keys: ${unknownKeys.join(', ')}`,
@@ -908,7 +934,9 @@ export class IntegrationsController {
     const knownIds = new Set(users.map((user) => user.id));
     const unknownIds = selectedPlexUserIds.filter((id) => !knownIds.has(id));
     if (unknownIds.length) {
-      throw new BadRequestException(`Unknown Plex user ids: ${unknownIds.join(', ')}`);
+      throw new BadRequestException(
+        `Unknown Plex user ids: ${unknownIds.join(', ')}`,
+      );
     }
 
     const excludedPlexUserIds = buildExcludedPlexUserIdsFromSelected({
@@ -952,7 +980,8 @@ export class IntegrationsController {
     @Body() body: unknown,
   ) {
     const userId = req.user.id;
-    const { settings, secrets } = await this.settingsService.getInternalSettings(userId);
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
     const integrationKey = integrationId.toLowerCase();
     const context: SavedIntegrationTestContext = {
       userId,
@@ -984,7 +1013,9 @@ export class IntegrationsController {
       case 'openai':
         return await this.testSavedOpenAi(context);
       default:
-        throw new BadRequestException(`Unknown integrationId: ${integrationKey}`);
+        throw new BadRequestException(
+          `Unknown integrationId: ${integrationKey}`,
+        );
     }
   }
 
@@ -1006,7 +1037,8 @@ export class IntegrationsController {
     integrationLabel: string,
   ): string {
     const baseUrlRaw =
-      pickString(context.bodyObj, 'baseUrl') || pickString(context.settings, settingPath);
+      pickString(context.bodyObj, 'baseUrl') ||
+      pickString(context.settings, settingPath);
     if (!baseUrlRaw) {
       throw new BadRequestException(`${integrationLabel} baseUrl is not set`);
     }
@@ -1046,7 +1078,9 @@ export class IntegrationsController {
       ]);
       const fallbackBaseUrls = dedupeHttpUrls(
         [
-          ...baseCandidates.flatMap((candidate) => derivePlexBaseUrlVariants(candidate)),
+          ...baseCandidates.flatMap((candidate) =>
+            derivePlexBaseUrlVariants(candidate),
+          ),
           ...derivePlexBaseUrlVariants(baseUrl),
         ].filter(Boolean),
       ).filter((url) => url.toLowerCase() !== baseUrl.toLowerCase());
@@ -1080,7 +1114,11 @@ export class IntegrationsController {
   private async testSavedRadarr(
     context: SavedIntegrationTestContext,
   ): Promise<SavedIntegrationTestResult> {
-    const baseUrl = this.requireSavedBaseUrl(context, 'radarr.baseUrl', 'Radarr');
+    const baseUrl = this.requireSavedBaseUrl(
+      context,
+      'radarr.baseUrl',
+      'Radarr',
+    );
     const apiKey = await this.resolveSavedIntegrationSecret(context, 'radarr');
     try {
       const result = await this.radarr.testConnection({ baseUrl, apiKey });
@@ -1116,7 +1154,11 @@ export class IntegrationsController {
   private async testSavedSonarr(
     context: SavedIntegrationTestContext,
   ): Promise<SavedIntegrationTestResult> {
-    const baseUrl = this.requireSavedBaseUrl(context, 'sonarr.baseUrl', 'Sonarr');
+    const baseUrl = this.requireSavedBaseUrl(
+      context,
+      'sonarr.baseUrl',
+      'Sonarr',
+    );
     const apiKey = await this.resolveSavedIntegrationSecret(context, 'sonarr');
     try {
       const result = await this.sonarr.testConnection({ baseUrl, apiKey });
@@ -1160,8 +1202,15 @@ export class IntegrationsController {
   private async testSavedOverseerr(
     context: SavedIntegrationTestContext,
   ): Promise<SavedIntegrationTestResult> {
-    const baseUrl = this.requireSavedBaseUrl(context, 'overseerr.baseUrl', 'Overseerr');
-    const apiKey = await this.resolveSavedIntegrationSecret(context, 'overseerr');
+    const baseUrl = this.requireSavedBaseUrl(
+      context,
+      'overseerr.baseUrl',
+      'Overseerr',
+    );
+    const apiKey = await this.resolveSavedIntegrationSecret(
+      context,
+      'overseerr',
+    );
     try {
       const result = await this.overseerr.testConnection({ baseUrl, apiKey });
       return { ok: true, result };

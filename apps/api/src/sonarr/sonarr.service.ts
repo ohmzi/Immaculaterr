@@ -518,7 +518,8 @@ export class SonarrService {
       monitored: params.monitored ?? true,
       addOptions: {
         searchForMissingEpisodes: params.searchForMissingEpisodes ?? true,
-        searchForCutoffUnmetEpisodes: params.searchForCutoffUnmetEpisodes ?? true,
+        searchForCutoffUnmetEpisodes:
+          params.searchForCutoffUnmetEpisodes ?? true,
       },
     };
 

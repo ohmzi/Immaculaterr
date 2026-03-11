@@ -14,7 +14,8 @@ type PlexUserRow = PlexUser;
 const DEFAULT_ADMIN_ID = 'plex-admin';
 
 function coerceAccountId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'number' && Number.isFinite(value))
+    return Math.trunc(value);
   if (typeof value === 'string' && value.trim()) {
     const n = Number.parseInt(value.trim(), 10);
     return Number.isFinite(n) ? n : null;
@@ -45,7 +46,10 @@ function titleQuality(value: string | null): number {
   return 2.5;
 }
 
-function pickPreferredTitle(existing: string | null, incoming: string | null): string | null {
+function pickPreferredTitle(
+  existing: string | null,
+  incoming: string | null,
+): string | null {
   if (!incoming) return existing;
   if (!existing) return incoming;
 
@@ -269,18 +273,19 @@ export class PlexUsersService {
       .getInternalSettings(userId)
       .catch(() => ({ secrets: {} as Record<string, unknown> }));
 
-    const tokenRaw = (secrets as Record<string, unknown>)['plex'];
+    const tokenRaw = secrets['plex'];
     const token =
       typeof tokenRaw === 'object' && tokenRaw
         ? normalizeTitle((tokenRaw as Record<string, unknown>)['token'])
-        : normalizeTitle((secrets as Record<string, unknown>)['plex.token']);
+        : normalizeTitle(secrets['plex.token']);
     if (!token) return null;
 
     try {
       const who = await this.plexService.whoami(token);
       return {
         plexAccountId: coerceAccountId(who.id),
-        plexAccountTitle: normalizeTitle(who.title) ?? normalizeTitle(who.username),
+        plexAccountTitle:
+          normalizeTitle(who.title) ?? normalizeTitle(who.username),
       };
     } catch (err) {
       this.logger.warn(

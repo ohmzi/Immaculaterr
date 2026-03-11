@@ -73,53 +73,72 @@ export class WebhooksService {
 
     const title = payloadObj ? pickString(payloadObj, 'Metadata.title') : '';
     const year = payloadObj ? pickNumber(payloadObj, 'Metadata.year') : null;
-    const ratingKey = payloadObj ? pickString(payloadObj, 'Metadata.ratingKey') : '';
+    const ratingKey = payloadObj
+      ? pickString(payloadObj, 'Metadata.ratingKey')
+      : '';
     const guid = payloadObj ? pickString(payloadObj, 'Metadata.guid') : '';
     const libraryTitle = payloadObj
       ? pickString(payloadObj, 'Metadata.librarySectionTitle')
       : '';
-    const libraryId = payloadObj ? pickNumber(payloadObj, 'Metadata.librarySectionID') : null;
+    const libraryId = payloadObj
+      ? pickNumber(payloadObj, 'Metadata.librarySectionID')
+      : null;
 
     const grandparentTitle = payloadObj
       ? pickString(payloadObj, 'Metadata.grandparentTitle')
       : '';
-    const parentIndex = payloadObj ? pickNumber(payloadObj, 'Metadata.parentIndex') : null;
+    const parentIndex = payloadObj
+      ? pickNumber(payloadObj, 'Metadata.parentIndex')
+      : null;
     const index = payloadObj ? pickNumber(payloadObj, 'Metadata.index') : null;
 
-    const accountTitle =
-      payloadObj
-        ? pickString(payloadObj, 'Account.title') ||
-          pickString(payloadObj, 'Account.name') ||
-          pickString(payloadObj, 'user') ||
-          pickString(payloadObj, 'owner')
-        : '';
-    const serverTitle = payloadObj ? pickString(payloadObj, 'Server.title') : '';
+    const accountTitle = payloadObj
+      ? pickString(payloadObj, 'Account.title') ||
+        pickString(payloadObj, 'Account.name') ||
+        pickString(payloadObj, 'user') ||
+        pickString(payloadObj, 'owner')
+      : '';
+    const serverTitle = payloadObj
+      ? pickString(payloadObj, 'Server.title')
+      : '';
     const serverUuid = payloadObj ? pickString(payloadObj, 'Server.uuid') : '';
-    const playerTitle = payloadObj ? pickString(payloadObj, 'Player.title') : '';
-    const playerProduct = payloadObj ? pickString(payloadObj, 'Player.product') : '';
-    const playerPlatform = payloadObj ? pickString(payloadObj, 'Player.platform') : '';
-    const playerState = payloadObj ? pickString(payloadObj, 'Player.state') : '';
+    const playerTitle = payloadObj
+      ? pickString(payloadObj, 'Player.title')
+      : '';
+    const playerProduct = payloadObj
+      ? pickString(payloadObj, 'Player.product')
+      : '';
+    const playerPlatform = payloadObj
+      ? pickString(payloadObj, 'Player.platform')
+      : '';
+    const playerState = payloadObj
+      ? pickString(payloadObj, 'Player.state')
+      : '';
 
-    const viewOffset = payloadObj ? pickNumber(payloadObj, 'Metadata.viewOffset') : null;
-    const duration = payloadObj ? pickNumber(payloadObj, 'Metadata.duration') : null;
+    const viewOffset = payloadObj
+      ? pickNumber(payloadObj, 'Metadata.viewOffset')
+      : null;
+    const duration = payloadObj
+      ? pickNumber(payloadObj, 'Metadata.duration')
+      : null;
 
     const fileCount = params.files?.length ?? 0;
-    const fileSummary =
-      fileCount > 0
-        ? ` files=${fileCount}`
-        : '';
+    const fileSummary = fileCount > 0 ? ` files=${fileCount}` : '';
 
     const srcIp = (params.source?.ip ?? '').trim();
-    const src =
-      srcIp ? ` ip=${srcIp}` : '';
+    const src = srcIp ? ` ip=${srcIp}` : '';
 
     const base = [
       'Plex webhook:',
       plexEvent || '(unknown)',
       mediaType ? `type=${mediaType}` : null,
-      serverTitle ? `server=${JSON.stringify(truncate(serverTitle, 60))}` : null,
+      serverTitle
+        ? `server=${JSON.stringify(truncate(serverTitle, 60))}`
+        : null,
       serverUuid ? `uuid=${serverUuid}` : null,
-      accountTitle ? `user=${JSON.stringify(truncate(accountTitle, 40))}` : null,
+      accountTitle
+        ? `user=${JSON.stringify(truncate(accountTitle, 40))}`
+        : null,
       playerTitle || playerProduct || playerPlatform
         ? `player=${JSON.stringify(
             truncate(
@@ -210,9 +229,7 @@ export class WebhooksService {
       parts.push(`user=${JSON.stringify(truncate(plexUserTitle, 40))}`);
     if (plexUserId) parts.push(`plexUserId=${plexUserId}`);
     if (Object.keys(runs).length) {
-      parts.push(
-        `runs=${JSON.stringify(runs)}`,
-      );
+      parts.push(`runs=${JSON.stringify(runs)}`);
     }
     if (Object.keys(skipped).length) {
       parts.push(`skipped=${JSON.stringify(skipped)}`);

@@ -28,7 +28,11 @@ function errToMessage(err: unknown): string {
   return String(err);
 }
 
-type PlexConnectivityStatus = 'unknown' | 'not_configured' | 'online' | 'offline';
+type PlexConnectivityStatus =
+  | 'unknown'
+  | 'not_configured'
+  | 'online'
+  | 'offline';
 
 @Injectable()
 export class PlexConnectivityMonitorService implements OnModuleInit {
@@ -73,12 +77,17 @@ export class PlexConnectivityMonitorService implements OnModuleInit {
         secrets: {} as Record<string, unknown>,
       }));
 
-    const baseUrl = pickString(settings as Record<string, unknown>, 'plex.baseUrl');
-    const token = pickString(secrets as Record<string, unknown>, 'plex.token');
+    const baseUrl = pickString(settings, 'plex.baseUrl');
+    const token = pickString(secrets, 'plex.token');
 
     if (!baseUrl || !token) {
       this.setStatus('not_configured', null, {
-        reason: !baseUrl && !token ? 'missing_baseUrl_and_token' : !baseUrl ? 'missing_baseUrl' : 'missing_token',
+        reason:
+          !baseUrl && !token
+            ? 'missing_baseUrl_and_token'
+            : !baseUrl
+              ? 'missing_baseUrl'
+              : 'missing_token',
       });
       return;
     }
@@ -147,4 +156,3 @@ export class PlexConnectivityMonitorService implements OnModuleInit {
     this.lastError = error ?? this.lastError;
   }
 }
-

@@ -54,12 +54,14 @@ const normalizeProfileId = (value: unknown): string => {
 const shuffleInPlace = <T>(arr: T[]) => {
   for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j] as T, arr[i] as T];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
 };
 
-const toUniqueRatedShows = (shows: ThreeTierShowShuffleParams['shows']): RatedShow[] => {
+const toUniqueRatedShows = (
+  shows: ThreeTierShowShuffleParams['shows'],
+): RatedShow[] => {
   const uniq = new Map<number, RatedShow>();
   for (const show of shows ?? []) {
     const tvdbId = Number.isFinite(show.tvdbId) ? Math.trunc(show.tvdbId) : NaN;
@@ -76,11 +78,19 @@ const toUniqueRatedShows = (shows: ThreeTierShowShuffleParams['shows']): RatedSh
 
 const sortByTmdbRating = (shows: RatedShow[]): RatedShow[] => {
   return [...shows].sort((a, b) => {
-    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN) ? Number(a.tmdbVoteAvg) : 0;
-    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN) ? Number(b.tmdbVoteAvg) : 0;
+    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN)
+      ? Number(a.tmdbVoteAvg)
+      : 0;
+    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN)
+      ? Number(b.tmdbVoteAvg)
+      : 0;
     if (br !== ar) return br - ar;
-    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
-    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
+    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN)
+      ? Number(a.tmdbVoteCount)
+      : 0;
+    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN)
+      ? Number(b.tmdbVoteCount)
+      : 0;
     if (bc !== ac) return bc - ac;
     return a.tvdbId - b.tvdbId;
   });
@@ -99,13 +109,17 @@ const splitThreeTiers = <T>(items: T[]) => {
   };
 };
 
-const pickTopTierShowIds = (tiers: { high: RatedShow[]; mid: RatedShow[]; low: RatedShow[] }): number[] => {
+const pickTopTierShowIds = (tiers: {
+  high: RatedShow[];
+  mid: RatedShow[];
+  low: RatedShow[];
+}): number[] => {
   const picks: number[] = [];
   const used = new Set<number>();
   const pickOne = (tier: RatedShow[]) => {
     const pool = tier.filter((show) => !used.has(show.tvdbId));
     if (!pool.length) return;
-    const pick = pool[Math.floor(Math.random() * pool.length)] as RatedShow;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
     used.add(pick.tvdbId);
     picks.push(pick.tvdbId);
   };
@@ -116,7 +130,9 @@ const pickTopTierShowIds = (tiers: { high: RatedShow[]; mid: RatedShow[]; low: R
   return picks;
 };
 
-const buildThreeTierShowOrder = (params: ThreeTierShowShuffleParams): number[] => {
+const buildThreeTierShowOrder = (
+  params: ThreeTierShowShuffleParams,
+): number[] => {
   const sorted = sortByTmdbRating(toUniqueRatedShows(params.shows));
   if (!sorted.length) return [];
   const tiers = splitThreeTiers(sorted);
@@ -140,7 +156,8 @@ export class ImmaculateTasteShowCollectionService {
 
   private readonly legacyImportImportedCount = 0;
 
-  private readonly buildThreeTierTmdbRatingShuffleOrderImpl = buildThreeTierShowOrder;
+  private readonly buildThreeTierTmdbRatingShuffleOrderImpl =
+    buildThreeTierShowOrder;
 
   // TV has no legacy JSON import (movie-only historical artifact).
   ensureLegacyImported(params: {
@@ -148,7 +165,11 @@ export class ImmaculateTasteShowCollectionService {
     plexUserId: string;
     profileId?: string;
     maxPoints?: number;
-  }): Promise<{ imported: boolean; sourcePath: string | null; importedCount: number }> {
+  }): Promise<{
+    imported: boolean;
+    sourcePath: string | null;
+    importedCount: number;
+  }> {
     const importedCount = this.legacyImportImportedCount;
     return Promise.resolve({
       imported: false,
@@ -246,17 +267,23 @@ export class ImmaculateTasteShowCollectionService {
       sampleSuggested: suggestedTvdbIds.slice(0, 10),
     });
 
-    const [totalBefore, totalActiveBefore, totalPendingBefore] = await Promise.all([
-      this.prisma.immaculateTasteShowLibrary.count({
-        where: { plexUserId, librarySectionKey, profileId },
-      }),
-      this.prisma.immaculateTasteShowLibrary.count({
-        where: { plexUserId, librarySectionKey, profileId, status: 'active' },
-      }),
-      this.prisma.immaculateTasteShowLibrary.count({
-        where: { plexUserId, librarySectionKey, profileId, status: 'pending' },
-      }),
-    ]);
+    const [totalBefore, totalActiveBefore, totalPendingBefore] =
+      await Promise.all([
+        this.prisma.immaculateTasteShowLibrary.count({
+          where: { plexUserId, librarySectionKey, profileId },
+        }),
+        this.prisma.immaculateTasteShowLibrary.count({
+          where: { plexUserId, librarySectionKey, profileId, status: 'active' },
+        }),
+        this.prisma.immaculateTasteShowLibrary.count({
+          where: {
+            plexUserId,
+            librarySectionKey,
+            profileId,
+            status: 'pending',
+          },
+        }),
+      ]);
 
     const existing = suggestedTvdbIds.length
       ? await this.prisma.immaculateTasteShowLibrary.findMany({
@@ -376,7 +403,9 @@ export class ImmaculateTasteShowCollectionService {
         profileId,
         status: 'active',
         points: { gt: 0 },
-        ...(suggestedTvdbIds.length ? { tvdbId: { notIn: suggestedTvdbIds } } : {}),
+        ...(suggestedTvdbIds.length
+          ? { tvdbId: { notIn: suggestedTvdbIds } }
+          : {}),
       },
       data: { points: { decrement: 1 } },
     });
@@ -391,17 +420,24 @@ export class ImmaculateTasteShowCollectionService {
       },
     });
 
-    const [totalAfter, totalActiveAfter, totalPendingAfter] = await Promise.all([
-      this.prisma.immaculateTasteShowLibrary.count({
-        where: { plexUserId, librarySectionKey, profileId },
-      }),
-      this.prisma.immaculateTasteShowLibrary.count({
-        where: { plexUserId, librarySectionKey, profileId, status: 'active' },
-      }),
-      this.prisma.immaculateTasteShowLibrary.count({
-        where: { plexUserId, librarySectionKey, profileId, status: 'pending' },
-      }),
-    ]);
+    const [totalAfter, totalActiveAfter, totalPendingAfter] = await Promise.all(
+      [
+        this.prisma.immaculateTasteShowLibrary.count({
+          where: { plexUserId, librarySectionKey, profileId },
+        }),
+        this.prisma.immaculateTasteShowLibrary.count({
+          where: { plexUserId, librarySectionKey, profileId, status: 'active' },
+        }),
+        this.prisma.immaculateTasteShowLibrary.count({
+          where: {
+            plexUserId,
+            librarySectionKey,
+            profileId,
+            status: 'pending',
+          },
+        }),
+      ],
+    );
 
     const summary: JsonObject = {
       librarySectionKey,
@@ -447,13 +483,16 @@ export class ImmaculateTasteShowCollectionService {
       new Set(
         (params.tvdbIds ?? [])
           .map((id) =>
-            typeof id === 'number' && Number.isFinite(id) ? Math.trunc(id) : NaN,
+            typeof id === 'number' && Number.isFinite(id)
+              ? Math.trunc(id)
+              : NaN,
           )
           .filter((n) => Number.isFinite(n) && n > 0),
       ),
     );
     const pointsOnActivation = clampMaxPoints(
-      params.pointsOnActivation ?? ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS,
+      params.pointsOnActivation ??
+        ImmaculateTasteShowCollectionService.DEFAULT_MAX_POINTS,
     );
 
     if (!tvdbIds.length) return { activated: 0, tmdbRatingsUpdated: 0 };
@@ -483,10 +522,13 @@ export class ImmaculateTasteShowCollectionService {
     });
 
     if (res.count) {
-      await ctx.info('immaculateTaste(tv): activated pending shows now in Plex', {
-        activated: res.count,
-        pointsOnActivation,
-      });
+      await ctx.info(
+        'immaculateTaste(tv): activated pending shows now in Plex',
+        {
+          activated: res.count,
+          pointsOnActivation,
+        },
+      );
     }
 
     let tmdbRatingsUpdated = 0;
@@ -506,7 +548,10 @@ export class ImmaculateTasteShowCollectionService {
         await Promise.all(
           batch.map(async (p) => {
             const stats = await this.tmdb
-              .getTvVoteStats({ apiKey: tmdbApiKey, tmdbId: p.tmdbId as number })
+              .getTvVoteStats({
+                apiKey: tmdbApiKey,
+                tmdbId: p.tmdbId as number,
+              })
               .catch(() => null);
             const voteAvg = stats?.vote_average ?? null;
             const voteCount = stats?.vote_count ?? null;
@@ -529,10 +574,13 @@ export class ImmaculateTasteShowCollectionService {
       }
 
       if (tmdbRatingsUpdated) {
-        await ctx.info('immaculateTaste(tv): refreshed TMDB ratings on activation', {
-          updated: tmdbRatingsUpdated,
-          activated: res.count,
-        });
+        await ctx.info(
+          'immaculateTaste(tv): refreshed TMDB ratings on activation',
+          {
+            updated: tmdbRatingsUpdated,
+            activated: res.count,
+          },
+        );
       }
     } else if (res.count && !tmdbApiKey) {
       await ctx.warn(
@@ -572,7 +620,9 @@ export class ImmaculateTasteShowCollectionService {
     });
   }
 
-  buildThreeTierTmdbRatingShuffleOrder(params: ThreeTierShowShuffleParams): number[] {
+  buildThreeTierTmdbRatingShuffleOrder(
+    params: ThreeTierShowShuffleParams,
+  ): number[] {
     return this.buildThreeTierTmdbRatingShuffleOrderImpl(params);
   }
 }

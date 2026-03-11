@@ -1015,7 +1015,7 @@ export class CollectionResyncUpgradeJob {
       sections: [],
       tasks: toTaskArray(params.taskState),
       issues: params.issues,
-      raw: (asJsonObject(params.raw) ?? {}) as JsonObject,
+      raw: asJsonObject(params.raw) ?? {},
     };
   }
 

@@ -166,13 +166,20 @@ export class PlexPollingService implements OnModuleInit {
   >();
   private readonly nowPlayingLogStateBySessionKey = new Map<
     string,
-    { lastLogAtMs: number; lastViewOffsetMs: number | null; lastRatingKey: string | null }
+    {
+      lastLogAtMs: number;
+      lastViewOffsetMs: number | null;
+      lastRatingKey: string | null;
+    }
   >();
 
   // Polling-only cooldown/queue for the two collection jobs.
   // This does NOT affect other jobs/triggers.
   private static readonly COLLECTION_COOLDOWN_MS = 10 * 60_000;
-  private readonly collectionCooldownUntilByPlexUser = new Map<string, number>();
+  private readonly collectionCooldownUntilByPlexUser = new Map<
+    string,
+    number
+  >();
   private readonly pendingCollectionRunsByPlexUser = new Map<
     string,
     PendingCollectionRun[]
@@ -241,14 +248,17 @@ export class PlexPollingService implements OnModuleInit {
     nowMs: number;
     progressRatio: number;
   }) {
-    const existing = this.sessionAutomationStateById.get(params.sessionAutomationId);
+    const existing = this.sessionAutomationStateById.get(
+      params.sessionAutomationId,
+    );
     if (existing) {
       existing.lastSeenAtMs = params.nowMs;
       existing.maxProgressRatio = Math.max(
         existing.maxProgressRatio,
         params.progressRatio,
       );
-      if (!existing.seedTitle && params.seedTitle) existing.seedTitle = params.seedTitle;
+      if (!existing.seedTitle && params.seedTitle)
+        existing.seedTitle = params.seedTitle;
       return existing;
     }
 
@@ -293,7 +303,10 @@ export class PlexPollingService implements OnModuleInit {
     state.lastSeenAtMs = nowMs;
   }
 
-  private canScheduleSessionJob(sessionAutomationId: string, jobId: CollectionJobId) {
+  private canScheduleSessionJob(
+    sessionAutomationId: string,
+    jobId: CollectionJobId,
+  ) {
     const status = this.getSessionJobStatus(sessionAutomationId, jobId);
     return status !== 'queued' && status !== 'running' && status !== 'success';
   }
@@ -317,7 +330,8 @@ export class PlexPollingService implements OnModuleInit {
   private async enqueueCollectionRun(
     params: Omit<PendingCollectionRun, 'runId'> & { runId?: string },
   ): Promise<{ queued: boolean; runId: string | null; error: string | null }> {
-    const queue = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
+    const queue =
+      this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
     const exists = queue.some(
       (run) =>
         run.jobId === params.jobId &&
@@ -361,7 +375,8 @@ export class PlexPollingService implements OnModuleInit {
   }
 
   private dequeueNextPendingCollectionRun(params: { plexUserId: string }) {
-    const queue = this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
+    const queue =
+      this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
     if (!queue.length) {
       this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
       return null;
@@ -370,10 +385,14 @@ export class PlexPollingService implements OnModuleInit {
     while (queue.length) {
       const run = queue.shift();
       if (!run) continue;
-      const state = this.getSessionJobStatus(run.sessionAutomationId, run.jobId);
+      const state = this.getSessionJobStatus(
+        run.sessionAutomationId,
+        run.jobId,
+      );
       if (state === 'success' || state === 'running') continue;
 
-      if (!queue.length) this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
+      if (!queue.length)
+        this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
       else this.pendingCollectionRunsByPlexUser.set(params.plexUserId, queue);
       return run;
     }
@@ -443,10 +462,13 @@ export class PlexPollingService implements OnModuleInit {
     if (!pending) return;
 
     const watchedEnabled =
-      pickBool(params.settings, 'jobs.webhookEnabled.watchedMovieRecommendations') ??
-      false;
+      pickBool(
+        params.settings,
+        'jobs.webhookEnabled.watchedMovieRecommendations',
+      ) ?? false;
     const immaculateEnabled =
-      pickBool(params.settings, 'jobs.webhookEnabled.immaculateTastePoints') ?? false;
+      pickBool(params.settings, 'jobs.webhookEnabled.immaculateTastePoints') ??
+      false;
 
     const enabled =
       pending.jobId === 'watchedMovieRecommendations'
@@ -548,7 +570,8 @@ export class PlexPollingService implements OnModuleInit {
         requeued = true;
         skipped[pending.jobId] = `retry_queued_attempt_${nextAttempt}`;
       } else if (queued.error) {
-        errors[pending.jobId] = `${errors[pending.jobId]} | retry_queue_failed: ${queued.error}`;
+        errors[pending.jobId] =
+          `${errors[pending.jobId]} | retry_queue_failed: ${queued.error}`;
       }
     }
 
@@ -600,7 +623,10 @@ export class PlexPollingService implements OnModuleInit {
       });
     }
 
-    const baseUrl = pickString(settings as Record<string, unknown>, 'plex.baseUrl');
+    const baseUrl = pickString(
+      settings as Record<string, unknown>,
+      'plex.baseUrl',
+    );
     const token = pickString(secrets as Record<string, unknown>, 'plex.token');
 
     if (!baseUrl || !token) return;
@@ -615,7 +641,10 @@ export class PlexPollingService implements OnModuleInit {
 
     let sessions: PlexNowPlayingSession[] = [];
     try {
-      sessions = await this.plexServer.listNowPlayingSessions({ baseUrl, token });
+      sessions = await this.plexServer.listNowPlayingSessions({
+        baseUrl,
+        token,
+      });
     } catch (err) {
       // Keep logs quiet unless this keeps failing; PlexConnectivityMonitor already covers reachability.
       this.logger.debug(
@@ -708,7 +737,10 @@ export class PlexPollingService implements OnModuleInit {
 
     const now = Date.now();
     const last = this.lastRecentlyAddedPollAtMs ?? 0;
-    if (this.lastRecentlyAddedPollAtMs !== null && now - last < this.recentlyAddedIntervalMs) {
+    if (
+      this.lastRecentlyAddedPollAtMs !== null &&
+      now - last < this.recentlyAddedIntervalMs
+    ) {
       return;
     }
     this.lastRecentlyAddedPollAtMs = now;
@@ -716,7 +748,11 @@ export class PlexPollingService implements OnModuleInit {
     let items: PlexRecentlyAddedItem[] = [];
     try {
       // Request a deeper window so TV items aren't pushed out by frequent movie imports.
-      items = await this.plexServer.listRecentlyAdded({ baseUrl, token, take: 200 });
+      items = await this.plexServer.listRecentlyAdded({
+        baseUrl,
+        token,
+        take: 200,
+      });
     } catch (err) {
       this.logger.debug(
         `Polling /library/recentlyAdded failed: ${(err as Error)?.message ?? String(err)}`,
@@ -758,7 +794,8 @@ export class PlexPollingService implements OnModuleInit {
     }
 
     const maxAddedAt =
-      items.reduce((max, it) => Math.max(max, itemTimestampSec(it) ?? 0), 0) || 0;
+      items.reduce((max, it) => Math.max(max, itemTimestampSec(it) ?? 0), 0) ||
+      0;
     if (!maxAddedAt) return;
 
     if (
@@ -794,13 +831,23 @@ export class PlexPollingService implements OnModuleInit {
     if (newItems.length > 0 && !canRunNow) {
       const firstNewItem = newItems[0];
       if (!firstNewItem) return;
-      const newest = newItems.reduce((best, it) => pickNewer(best, it), firstNewItem);
+      const newest = newItems.reduce(
+        (best, it) => pickNewer(best, it),
+        firstNewItem,
+      );
       if (!this.pendingLibraryNew) {
-        this.pendingLibraryNew = { newest, newlyAddedCount: newItems.length, sinceSec: since };
+        this.pendingLibraryNew = {
+          newest,
+          newlyAddedCount: newItems.length,
+          sinceSec: since,
+        };
       } else {
         this.pendingLibraryNew = {
           newest: pickNewer(this.pendingLibraryNew.newest, newest),
-          newlyAddedCount: Math.max(this.pendingLibraryNew.newlyAddedCount, newItems.length),
+          newlyAddedCount: Math.max(
+            this.pendingLibraryNew.newlyAddedCount,
+            newItems.length,
+          ),
           // Keep the earliest window start so we can derive TV types from episodes later.
           sinceSec: this.pendingLibraryNew.sinceSec,
         };
@@ -821,7 +868,10 @@ export class PlexPollingService implements OnModuleInit {
       if (newItems.length > 0) {
         const firstNewItem = newItems[0];
         if (firstNewItem) {
-          newestFromPoll = newItems.reduce((best, it) => pickNewer(best, it), firstNewItem);
+          newestFromPoll = newItems.reduce(
+            (best, it) => pickNewer(best, it),
+            firstNewItem,
+          );
         }
       }
       if (newestFromPoll && pendingLibraryNew) {
@@ -850,7 +900,8 @@ export class PlexPollingService implements OnModuleInit {
     // - multiple new episodes within one season => season
     // - multiple new episodes across multiple seasons => show
     const librarySectionKey =
-      typeof newest.librarySectionId === 'number' && Number.isFinite(newest.librarySectionId)
+      typeof newest.librarySectionId === 'number' &&
+      Number.isFinite(newest.librarySectionId)
         ? String(Math.trunc(newest.librarySectionId))
         : null;
     const derivedTv = await (async () => {
@@ -883,17 +934,24 @@ export class PlexPollingService implements OnModuleInit {
 
       const firstNewEpisode = newEpisodes[0];
       if (!firstNewEpisode) return null;
-      const newestEpisode = newEpisodes.reduce((best, it) => pickNewer(best, it), firstNewEpisode);
+      const newestEpisode = newEpisodes.reduce(
+        (best, it) => pickNewer(best, it),
+        firstNewEpisode,
+      );
 
       const showRatingKey =
-        newestEpisode.grandparentRatingKey ?? newestEpisode.parentRatingKey ?? null;
+        newestEpisode.grandparentRatingKey ??
+        newestEpisode.parentRatingKey ??
+        null;
       const showTitle =
         newestEpisode.grandparentTitle ?? newestEpisode.parentTitle ?? null;
 
       const belongsToSameShow = (it: PlexRecentlyAddedItem) => {
         const rk = it.grandparentRatingKey ?? it.parentRatingKey ?? null;
         if (showRatingKey && rk) return rk === showRatingKey;
-        const t = (it.grandparentTitle ?? it.parentTitle ?? '').trim().toLowerCase();
+        const t = (it.grandparentTitle ?? it.parentTitle ?? '')
+          .trim()
+          .toLowerCase();
         return showTitle ? t === showTitle.trim().toLowerCase() : false;
       };
 
@@ -916,8 +974,10 @@ export class PlexPollingService implements OnModuleInit {
           ratingKey: newestEpisode.ratingKey,
           showTitle,
           showRatingKey,
-          seasonNumber: typeof s === 'number' && Number.isFinite(s) ? Math.trunc(s) : null,
-          episodeNumber: typeof e === 'number' && Number.isFinite(e) ? Math.trunc(e) : null,
+          seasonNumber:
+            typeof s === 'number' && Number.isFinite(s) ? Math.trunc(s) : null,
+          episodeNumber:
+            typeof e === 'number' && Number.isFinite(e) ? Math.trunc(e) : null,
           newestAddedAt: itemTimestampSec(newestEpisode) ?? null,
           newlyAddedCount: episodesForShow.length,
         };
@@ -927,7 +987,9 @@ export class PlexPollingService implements OnModuleInit {
         const seasonNumber = Array.from(seasons)[0] ?? null;
         return {
           mediaType: 'season' as const,
-          title: newestEpisode.parentTitle ?? (seasonNumber ? `Season ${seasonNumber}` : ''),
+          title:
+            newestEpisode.parentTitle ??
+            (seasonNumber ? `Season ${seasonNumber}` : ''),
           ratingKey: newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
           showTitle,
           showRatingKey,
@@ -941,7 +1003,10 @@ export class PlexPollingService implements OnModuleInit {
       return {
         mediaType: 'show' as const,
         title: showTitle ?? newestEpisode.grandparentTitle ?? '',
-        ratingKey: newestEpisode.grandparentRatingKey ?? newestEpisode.parentRatingKey ?? newestEpisode.ratingKey,
+        ratingKey:
+          newestEpisode.grandparentRatingKey ??
+          newestEpisode.parentRatingKey ??
+          newestEpisode.ratingKey,
         showTitle,
         showRatingKey,
         seasonNumber: null,
@@ -953,16 +1018,24 @@ export class PlexPollingService implements OnModuleInit {
 
     const mediaType = derivedTv?.mediaType ?? mediaTypeRaw;
 
-    const title = derivedTv?.title ?? (newest.title ?? '');
-    const ratingKey = derivedTv?.ratingKey ?? (newest.ratingKey ?? '');
-    const showTitle = derivedTv?.showTitle ?? (newest.grandparentTitle || newest.parentTitle || null);
-    const showRatingKey = derivedTv?.showRatingKey ?? (newest.grandparentRatingKey || newest.parentRatingKey || null);
+    const title = derivedTv?.title ?? newest.title ?? '';
+    const ratingKey = derivedTv?.ratingKey ?? newest.ratingKey ?? '';
+    const showTitle =
+      derivedTv?.showTitle ??
+      (newest.grandparentTitle || newest.parentTitle || null);
+    const showRatingKey =
+      derivedTv?.showRatingKey ??
+      (newest.grandparentRatingKey || newest.parentRatingKey || null);
     const seasonNumber = derivedTv
       ? derivedTv.seasonNumber
       : mediaType === 'season'
         ? (newest.index ?? newest.parentIndex ?? null)
-        : newest.parentIndex ?? null;
-    const episodeNumber = derivedTv ? derivedTv.episodeNumber : mediaType === 'episode' ? newest.index ?? null : null;
+        : (newest.parentIndex ?? null);
+    const episodeNumber = derivedTv
+      ? derivedTv.episodeNumber
+      : mediaType === 'episode'
+        ? (newest.index ?? null)
+        : null;
     const newestAddedAt = derivedTv?.newestAddedAt ?? itemTimestampSec(newest);
 
     const payload: Record<string, unknown> = {
@@ -1073,7 +1146,7 @@ export class PlexPollingService implements OnModuleInit {
     const lastViewOffsetMs =
       viewOffset !== null
         ? Math.max(viewOffset, prev.lastViewOffsetMs ?? 0)
-        : prev.lastViewOffsetMs ?? null;
+        : (prev.lastViewOffsetMs ?? null);
 
     return {
       ...prev,
@@ -1094,7 +1167,8 @@ export class PlexPollingService implements OnModuleInit {
       const show = snap.grandparentTitle ?? '(show)';
       const season = snap.parentIndex ? `S${snap.parentIndex}` : '';
       const ep = snap.index ? `E${snap.index}` : '';
-      const se = season || ep ? ` ${[season, ep].filter(Boolean).join('')}` : '';
+      const se =
+        season || ep ? ` ${[season, ep].filter(Boolean).join('')}` : '';
       const episodeTitle = snap.title ? ` — ${snap.title}` : '';
       return `${show}${se}${episodeTitle}`;
     }
@@ -1105,8 +1179,12 @@ export class PlexPollingService implements OnModuleInit {
   private formatNowPlayingProgress(snap: SessionSnapshot): string | null {
     const duration = snap.durationMs ?? null;
     const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
-    if (!duration || duration <= 0 || viewOffset === null || viewOffset < 0) return null;
-    const pct = Math.min(100, Math.max(0, Math.round((viewOffset / duration) * 100)));
+    if (!duration || duration <= 0 || viewOffset === null || viewOffset < 0)
+      return null;
+    const pct = Math.min(
+      100,
+      Math.max(0, Math.round((viewOffset / duration) * 100)),
+    );
     const fmt = (ms: number) => {
       const totalSeconds = Math.max(0, Math.floor(ms / 1000));
       const hours = Math.floor(totalSeconds / 3600);
@@ -1121,7 +1199,8 @@ export class PlexPollingService implements OnModuleInit {
   }
 
   private shouldLogNowPlaying(snap: SessionSnapshot, nowMs: number): boolean {
-    const state = this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
+    const state =
+      this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
     if (!state) return true;
     if (this.didNowPlayingMediaChange(state.lastRatingKey, snap.ratingKey)) {
       return true;
@@ -1140,9 +1219,7 @@ export class PlexPollingService implements OnModuleInit {
     currentRatingKey: string | null | undefined,
   ): boolean {
     return Boolean(
-      lastRatingKey &&
-        currentRatingKey &&
-        lastRatingKey !== currentRatingKey,
+      lastRatingKey && currentRatingKey && lastRatingKey !== currentRatingKey,
     );
   }
 
@@ -1176,7 +1253,9 @@ export class PlexPollingService implements OnModuleInit {
 
   private logNowPlayingStarted(snap: SessionSnapshot, nowMs: number) {
     if (!this.shouldLogNowPlaying(snap, nowMs)) return;
-    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const user = snap.userTitle
+      ? ` user=${JSON.stringify(snap.userTitle)}`
+      : '';
     const progress = this.formatNowPlayingProgress(snap);
     const progressLabel = progress ? ` progress=${progress}` : '';
     const library = snap.librarySectionTitle
@@ -1189,7 +1268,9 @@ export class PlexPollingService implements OnModuleInit {
 
   private logNowPlayingProgress(snap: SessionSnapshot, nowMs: number) {
     if (!this.shouldLogNowPlaying(snap, nowMs)) return;
-    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const user = snap.userTitle
+      ? ` user=${JSON.stringify(snap.userTitle)}`
+      : '';
     const progress = this.formatNowPlayingProgress(snap);
     const progressLabel = progress ? ` progress=${progress}` : '';
     const library = snap.librarySectionTitle
@@ -1201,7 +1282,9 @@ export class PlexPollingService implements OnModuleInit {
   }
 
   private logNowPlayingEnded(snap: SessionSnapshot, nowMs: number) {
-    const user = snap.userTitle ? ` user=${JSON.stringify(snap.userTitle)}` : '';
+    const user = snap.userTitle
+      ? ` user=${JSON.stringify(snap.userTitle)}`
+      : '';
     const progress = this.formatNowPlayingProgress(snap);
     const progressLabel = progress ? ` progress=${progress}` : '';
     const library = snap.librarySectionTitle
@@ -1260,7 +1343,8 @@ export class PlexPollingService implements OnModuleInit {
     });
     const plexUserId = resolvedPlexUser.id;
     const plexUserTitle = resolvedPlexUser.plexAccountTitle;
-    const resolvedPlexAccountId = resolvedPlexUser.plexAccountId ?? snap.userId ?? null;
+    const resolvedPlexAccountId =
+      resolvedPlexUser.plexAccountId ?? snap.userId ?? null;
     const resolvedPlexAccountTitle = plexUserTitle || snap.userTitle || null;
     const now = Date.now();
     const sessionAutomationId = this.buildSessionAutomationId({
@@ -1291,7 +1375,10 @@ export class PlexPollingService implements OnModuleInit {
       (ratio >= this.watchedScrobbleThreshold || forceBothAtNinetyPercent);
     const shouldConsiderImmaculate =
       immaculateEnabled &&
-      this.canScheduleSessionJob(sessionAutomationId, 'immaculateTastePoints') &&
+      this.canScheduleSessionJob(
+        sessionAutomationId,
+        'immaculateTastePoints',
+      ) &&
       (ratio >= this.immaculateScrobbleThreshold || forceBothAtNinetyPercent);
     if (!shouldConsiderWatched && !shouldConsiderImmaculate) return snap;
 
@@ -1385,8 +1472,7 @@ export class PlexPollingService implements OnModuleInit {
 
     let next: SessionSnapshot = { ...snap };
 
-    const viewOffset =
-      snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
+    const viewOffset = snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
 
     const payload: Record<string, unknown> = {
       event: 'media.scrobble',
@@ -1437,8 +1523,7 @@ export class PlexPollingService implements OnModuleInit {
     });
 
     // Build the same "seed" input structure the webhook controller uses.
-    const episodeTitle =
-      mediaTypeLower === 'episode' ? (snap.title ?? '') : '';
+    const episodeTitle = mediaTypeLower === 'episode' ? (snap.title ?? '') : '';
 
     const payloadInput = {
       source: 'plexPolling',
@@ -1546,12 +1631,20 @@ export class PlexPollingService implements OnModuleInit {
       } else {
         if (queued.queued) {
           skipped.immaculateTastePoints = params.reason;
-          next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+          next = {
+            ...next,
+            immaculateTriggered: true,
+            immaculateTriggeredAtMs: now,
+          };
         } else if (queued.error) {
           errors.immaculateTastePoints = `queue_failed: ${queued.error}`;
         } else {
           skipped.immaculateTastePoints = 'already_queued_or_processed';
-          next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+          next = {
+            ...next,
+            immaculateTriggered: true,
+            immaculateTriggeredAtMs: now,
+          };
         }
       }
     };
@@ -1580,7 +1673,11 @@ export class PlexPollingService implements OnModuleInit {
         if (first.jobId === 'watchedMovieRecommendations') {
           next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
         } else {
-          next = { ...next, immaculateTriggered: true, immaculateTriggeredAtMs: now };
+          next = {
+            ...next,
+            immaculateTriggered: true,
+            immaculateTriggeredAtMs: now,
+          };
         }
         this.setCollectionCooldown({ plexUserId, nowMs: now });
       }

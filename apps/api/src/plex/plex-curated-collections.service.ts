@@ -120,13 +120,13 @@ export class PlexCuratedCollectionsService {
     // Collection format: "Collection Name (username)"
     const exactMatches: Array<{ ratingKey: string; title: string }> = [];
     const normalizedMatches: Array<{ ratingKey: string; title: string }> = [];
-    
+
     const normalizedTarget = normalizeCollectionTitle(collectionName);
 
     for (const coll of allCollections) {
       const collTitle = coll.title || '';
       const collNormalized = normalizeCollectionTitle(collTitle);
-      
+
       // Exact match (case-insensitive)
       if (collTitle.toLowerCase() === collectionName.toLowerCase()) {
         exactMatches.push(coll);
@@ -138,21 +138,25 @@ export class PlexCuratedCollectionsService {
     }
 
     // Prefer exact matches, but include normalized matches if no exact match
-    const matchingCollections = exactMatches.length > 0 ? exactMatches : normalizedMatches;
+    const matchingCollections =
+      exactMatches.length > 0 ? exactMatches : normalizedMatches;
 
     // Try to delete matching collections using their ratingKey (metadata ID)
     let deletedSuccessfully = false;
     if (!ctx.dryRun && matchingCollections.length) {
-      await ctx.info('collection: deleting existing Plex collections by ratingKey', {
-        collectionName,
-        targetRatingKeys: matchingCollections.map((c) => c.ratingKey),
-        matches: matchingCollections.map((c) => ({
-          title: c.title,
-          ratingKey: c.ratingKey,
-          matchType: exactMatches.includes(c) ? 'exact' : 'normalized',
-        })),
-      });
-      
+      await ctx.info(
+        'collection: deleting existing Plex collections by ratingKey',
+        {
+          collectionName,
+          targetRatingKeys: matchingCollections.map((c) => c.ratingKey),
+          matches: matchingCollections.map((c) => ({
+            title: c.title,
+            ratingKey: c.ratingKey,
+            matchType: exactMatches.includes(c) ? 'exact' : 'normalized',
+          })),
+        },
+      );
+
       for (const match of matchingCollections) {
         try {
           // Delete using the ratingKey (metadata ID) directly
@@ -167,17 +171,22 @@ export class PlexCuratedCollectionsService {
           });
           deletedSuccessfully = true;
         } catch (err) {
-          await ctx.warn('collection: failed to delete Plex collection by ratingKey, will remove items instead', {
-            collectionName: match.title,
-            ratingKey: match.ratingKey,
-            error: (err as Error)?.message ?? String(err),
-          });
+          await ctx.warn(
+            'collection: failed to delete Plex collection by ratingKey, will remove items instead',
+            {
+              collectionName: match.title,
+              ratingKey: match.ratingKey,
+              error: (err as Error)?.message ?? String(err),
+            },
+          );
         }
       }
-      
+
       // Wait for deletion to complete and verify (up to 5 seconds)
       if (deletedSuccessfully) {
-        const targetRatingKeys = new Set(matchingCollections.map((c) => c.ratingKey));
+        const targetRatingKeys = new Set(
+          matchingCollections.map((c) => c.ratingKey),
+        );
         for (let i = 0; i < 20; i += 1) {
           await sleep(250);
           const remaining = await this.plexServer.listCollectionsForSectionKey({
@@ -187,7 +196,9 @@ export class PlexCuratedCollectionsService {
             take: 500,
           });
           // Check if any of the deleted collections still exist by ratingKey
-          const stillThere = remaining.filter((c) => targetRatingKeys.has(c.ratingKey));
+          const stillThere = remaining.filter((c) =>
+            targetRatingKeys.has(c.ratingKey),
+          );
           if (!stillThere.length) {
             await ctx.info('collection: verified deletion complete', {
               collectionName,
@@ -197,10 +208,16 @@ export class PlexCuratedCollectionsService {
             break;
           }
           if (i === 19) {
-            await ctx.warn('collection: deletion verification timeout, collections may still exist', {
-              collectionName,
-              stillExisting: stillThere.map((c) => ({ title: c.title, ratingKey: c.ratingKey })),
-            });
+            await ctx.warn(
+              'collection: deletion verification timeout, collections may still exist',
+              {
+                collectionName,
+                stillExisting: stillThere.map((c) => ({
+                  title: c.title,
+                  ratingKey: c.ratingKey,
+                })),
+              },
+            );
           }
         }
       }
@@ -220,7 +237,7 @@ export class PlexCuratedCollectionsService {
       if (deletedSuccessfully) {
         await sleep(500);
       }
-      
+
       for (let i = 0; i < 10; i += 1) {
         plexCollectionKey = await this.plexServer.findCollectionRatingKey({
           baseUrl,
@@ -241,25 +258,34 @@ export class PlexCuratedCollectionsService {
           });
           existingCount = existingItems.length;
           if (existingCount > 0) {
-            await ctx.info('collection: found existing collection with items, will remove them', {
-              collectionName,
-              plexCollectionKey,
-              existingCount,
-            });
+            await ctx.info(
+              'collection: found existing collection with items, will remove them',
+              {
+                collectionName,
+                plexCollectionKey,
+                existingCount,
+              },
+            );
           } else {
-            await ctx.info('collection: found existing collection but it is empty', {
-              collectionName,
-              plexCollectionKey,
-            });
+            await ctx.info(
+              'collection: found existing collection but it is empty',
+              {
+                collectionName,
+                plexCollectionKey,
+              },
+            );
           }
           break;
         } catch (err) {
-          await ctx.warn('collection: failed to get existing items, will retry', {
-            collectionName,
-            plexCollectionKey,
-            attempt: i + 1,
-            error: (err as Error)?.message ?? String(err),
-          });
+          await ctx.warn(
+            'collection: failed to get existing items, will retry',
+            {
+              collectionName,
+              plexCollectionKey,
+              attempt: i + 1,
+              error: (err as Error)?.message ?? String(err),
+            },
+          );
           // Retry after a short delay
           await sleep(300);
           if (i === 9) {
@@ -464,18 +490,23 @@ export class PlexCuratedCollectionsService {
           });
         }
       } catch (err) {
-        await ctx.warn('collection: failed to inspect items after create (continuing)', {
-          collectionName,
-          plexCollectionKey,
-          error: (err as Error)?.message ?? String(err),
-        });
+        await ctx.warn(
+          'collection: failed to inspect items after create (continuing)',
+          {
+            collectionName,
+            plexCollectionKey,
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
       }
 
       await ctx.info('collection: adding items', {
         collectionName,
         total: desired.length,
       });
-      const addTargets = desired.filter((item) => !existingKeys.has(item.ratingKey));
+      const addTargets = desired.filter(
+        (item) => !existingKeys.has(item.ratingKey),
+      );
       for (let i = 0; i < addTargets.length; i += 1) {
         const item = addTargets[i];
         if (!item) continue;
@@ -669,7 +700,9 @@ export class PlexCuratedCollectionsService {
             token,
             collectionRatingKey: plexCollectionKey,
           });
-          const orderedKeys = ordered.map((it) => String(it.ratingKey ?? '')).filter(Boolean);
+          const orderedKeys = ordered
+            .map((it) => String(it.ratingKey ?? ''))
+            .filter(Boolean);
           const orderedKeySet = new Set(orderedKeys);
           const setsMatch =
             orderedKeys.length === desiredKeySet.size &&
@@ -677,13 +710,16 @@ export class PlexCuratedCollectionsService {
             Array.from(desiredKeySet).every((key) => orderedKeySet.has(key));
 
           if (!setsMatch) {
-            await ctx.debug('collection: ordered snapshot not fully settled yet', {
-              collectionName,
-              plexCollectionKey,
-              attempt: i + 1,
-              desiredCount: desiredKeySet.size,
-              observedCount: orderedKeys.length,
-            });
+            await ctx.debug(
+              'collection: ordered snapshot not fully settled yet',
+              {
+                collectionName,
+                plexCollectionKey,
+                attempt: i + 1,
+                desiredCount: desiredKeySet.size,
+                observedCount: orderedKeys.length,
+              },
+            );
             lastErr = null;
             if (i < 9) await sleep(300);
             continue;
@@ -704,11 +740,14 @@ export class PlexCuratedCollectionsService {
         if (i < 9) await sleep(300);
       }
       if (lastErr) {
-        await ctx.warn('collection: failed to fetch ordered items (continuing)', {
-          collectionName,
-          plexCollectionKey,
-          error: (lastErr as Error)?.message ?? String(lastErr),
-        });
+        await ctx.warn(
+          'collection: failed to fetch ordered items (continuing)',
+          {
+            collectionName,
+            plexCollectionKey,
+            error: (lastErr as Error)?.message ?? String(lastErr),
+          },
+        );
       } else if (collectionItemsSource !== 'plex') {
         await ctx.warn(
           'collection: using desired fallback order; Plex ordered snapshot did not settle in time',
@@ -765,7 +804,8 @@ export class PlexCuratedCollectionsService {
           mediaType,
           pinTarget,
           collectionHubOrder:
-            collectionHubOrder ?? Array.from(CURATED_MOVIE_COLLECTION_HUB_ORDER),
+            collectionHubOrder ??
+            Array.from(CURATED_MOVIE_COLLECTION_HUB_ORDER),
           preferredHubTargets: [
             ...preferredHubTargets,
             { collectionName, collectionKey: plexCollectionKey },
@@ -941,7 +981,9 @@ export class PlexCuratedCollectionsService {
       collectionKey: string;
       matchType: 'exact' | 'preferred' | 'base';
     };
-    const resolveHubTargets = (allCollections: Array<{ ratingKey: string; title: string }>) => {
+    const resolveHubTargets = (
+      allCollections: Array<{ ratingKey: string; title: string }>,
+    ) => {
       const availableCollections = allCollections
         .slice()
         .sort((a, b) => a.title.localeCompare(b.title));
@@ -953,9 +995,12 @@ export class PlexCuratedCollectionsService {
       let fallbackByBase = 0;
 
       for (const requestedCollectionName of requestedOrder) {
-        const normalizedRequested = normalizeCollectionTitle(requestedCollectionName);
+        const normalizedRequested = normalizeCollectionTitle(
+          requestedCollectionName,
+        );
         const exactMatch = availableCollections.find((item) => {
-          if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
+          if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey))
+            return false;
           return normalizeCollectionTitle(item.title) === normalizedRequested;
         });
         if (exactMatch) {
@@ -971,14 +1016,15 @@ export class PlexCuratedCollectionsService {
         }
 
         const preferredMatch = preferredHubTargets.find((target) => {
-          if (!target.collectionKey || usedCollectionKeys.has(target.collectionKey)) {
+          if (
+            !target.collectionKey ||
+            usedCollectionKeys.has(target.collectionKey)
+          ) {
             return false;
           }
           const preferredName = String(target.collectionName ?? '').trim();
           if (!preferredName) return false;
-          if (
-            normalizeCollectionTitle(preferredName) === normalizedRequested
-          ) {
+          if (normalizeCollectionTitle(preferredName) === normalizedRequested) {
             return true;
           }
           return hasSameCuratedCollectionBase({
@@ -999,9 +1045,12 @@ export class PlexCuratedCollectionsService {
           continue;
         }
 
-        const requestedUserSuffix = resolveRequestedUserSuffix(requestedCollectionName);
+        const requestedUserSuffix = resolveRequestedUserSuffix(
+          requestedCollectionName,
+        );
         const fallbackCandidates = availableCollections.filter((item) => {
-          if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey)) return false;
+          if (!item.ratingKey || usedCollectionKeys.has(item.ratingKey))
+            return false;
           return hasSameCuratedCollectionBase({
             left: item.title,
             right: requestedCollectionName,
@@ -1015,7 +1064,8 @@ export class PlexCuratedCollectionsService {
             requestedUserSuffix && aSuffix === requestedUserSuffix ? 0 : 1;
           const bUserPriority =
             requestedUserSuffix && bSuffix === requestedUserSuffix ? 0 : 1;
-          if (aUserPriority !== bUserPriority) return aUserPriority - bUserPriority;
+          if (aUserPriority !== bUserPriority)
+            return aUserPriority - bUserPriority;
           return normalizeCollectionTitle(a.title).localeCompare(
             normalizeCollectionTitle(b.title),
           );
@@ -1035,7 +1085,13 @@ export class PlexCuratedCollectionsService {
         }
       }
 
-      return { targetMatches, missingCollections, exact, preferred, fallbackByBase };
+      return {
+        targetMatches,
+        missingCollections,
+        exact,
+        preferred,
+        fallbackByBase,
+      };
     };
 
     let listAttempt = 0;
@@ -1115,7 +1171,9 @@ export class PlexCuratedCollectionsService {
       const identifiers: string[] = [];
       const matchedCollections: string[] = [];
 
-      const resolveHubIdentifier = async (collectionKey: string): Promise<string | null> => {
+      const resolveHubIdentifier = async (
+        collectionKey: string,
+      ): Promise<string | null> => {
         for (let attempt = 0; attempt < 8; attempt += 1) {
           const identifier = await this.plexServer
             .getCollectionHubIdentifier({
@@ -1194,7 +1252,6 @@ export class PlexCuratedCollectionsService {
       stats,
     });
   }
-
 }
 
 function shuffle<T>(items: T[]): T[] {

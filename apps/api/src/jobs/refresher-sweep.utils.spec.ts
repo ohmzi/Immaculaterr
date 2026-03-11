@@ -10,12 +10,18 @@ describe('refresher-sweep.utils', () => {
     expect(hasExplicitRefresherScopeInput(undefined)).toBe(false);
 
     expect(hasExplicitRefresherScopeInput({ plexUserId: 'abc' })).toBe(true);
-    expect(hasExplicitRefresherScopeInput({ plexUserTitle: 'viewer' })).toBe(true);
+    expect(hasExplicitRefresherScopeInput({ plexUserTitle: 'viewer' })).toBe(
+      true,
+    );
     expect(hasExplicitRefresherScopeInput({ plexAccountId: 123 })).toBe(true);
-    expect(hasExplicitRefresherScopeInput({ plexAccountTitle: 'viewer' })).toBe(true);
+    expect(hasExplicitRefresherScopeInput({ plexAccountTitle: 'viewer' })).toBe(
+      true,
+    );
     expect(hasExplicitRefresherScopeInput({ movieSectionKey: '1' })).toBe(true);
     expect(hasExplicitRefresherScopeInput({ tvSectionKey: '2' })).toBe(true);
-    expect(hasExplicitRefresherScopeInput({ seedLibrarySectionId: 7 })).toBe(true);
+    expect(hasExplicitRefresherScopeInput({ seedLibrarySectionId: 7 })).toBe(
+      true,
+    );
   });
 
   it('orders sweep users with admin last and deterministic tie-breakers', () => {

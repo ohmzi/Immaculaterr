@@ -5,7 +5,10 @@ type Scenario = {
   id: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'overseerr' | 'google' | 'openai';
   secretField: 'token' | 'apiKey';
   body: Record<string, unknown>;
-  assertCalled: (deps: ReturnType<typeof makeController>, secret: string) => void;
+  assertCalled: (
+    deps: ReturnType<typeof makeController>,
+    secret: string,
+  ) => void;
 };
 
 const scenarios: Scenario[] = [
@@ -79,7 +82,9 @@ const scenarios: Scenario[] = [
     secretField: 'apiKey',
     body: {},
     assertCalled: (deps, secret) => {
-      expect(deps.openai.testConnection).toHaveBeenCalledWith({ apiKey: secret });
+      expect(deps.openai.testConnection).toHaveBeenCalledWith({
+        apiKey: secret,
+      });
     },
   },
 ];
@@ -135,7 +140,9 @@ function makeController() {
   const tmdb = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
   const google = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
   const openai = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
-  const overseerr = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
+  const overseerr = {
+    testConnection: jest.fn().mockResolvedValue({ ok: true }),
+  };
   const arrInstances = {};
 
   const controller = new IntegrationsController(
@@ -186,7 +193,9 @@ describe('security/integrations secret transport', () => {
           : { apiKeyEnvelope: { ciphertext: 'x' } }),
       });
 
-      expect(deps.settingsService.resolveServiceSecretInput).toHaveBeenCalledWith(
+      expect(
+        deps.settingsService.resolveServiceSecretInput,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'u1',
           service: scenario.id,
@@ -213,7 +222,9 @@ describe('security/integrations secret transport', () => {
         secretRef: 'sr1.fake',
       });
 
-      expect(deps.settingsService.resolveServiceSecretInput).toHaveBeenCalledWith(
+      expect(
+        deps.settingsService.resolveServiceSecretInput,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'u1',
           service: scenario.id,

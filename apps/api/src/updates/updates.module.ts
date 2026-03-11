@@ -7,4 +7,3 @@ import { UpdatesService } from './updates.service';
   providers: [UpdatesService],
 })
 export class UpdatesModule {}
-

@@ -91,15 +91,19 @@ const normalizeProfileId = (value: unknown): string => {
 const shuffleInPlace = <T>(arr: T[]) => {
   for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j] as T, arr[i] as T];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
 };
 
-const toUniqueRatedMovies = (movies: ThreeTierMovieShuffleParams['movies']): RatedMovie[] => {
+const toUniqueRatedMovies = (
+  movies: ThreeTierMovieShuffleParams['movies'],
+): RatedMovie[] => {
   const uniq = new Map<number, RatedMovie>();
   for (const movie of movies ?? []) {
-    const tmdbId = Number.isFinite(movie.tmdbId) ? Math.trunc(movie.tmdbId) : NaN;
+    const tmdbId = Number.isFinite(movie.tmdbId)
+      ? Math.trunc(movie.tmdbId)
+      : NaN;
     if (!Number.isFinite(tmdbId) || tmdbId <= 0) continue;
     if (uniq.has(tmdbId)) continue;
     uniq.set(tmdbId, {
@@ -113,11 +117,19 @@ const toUniqueRatedMovies = (movies: ThreeTierMovieShuffleParams['movies']): Rat
 
 const sortByTmdbRating = (movies: RatedMovie[]): RatedMovie[] => {
   return [...movies].sort((a, b) => {
-    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN) ? Number(a.tmdbVoteAvg) : 0;
-    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN) ? Number(b.tmdbVoteAvg) : 0;
+    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN)
+      ? Number(a.tmdbVoteAvg)
+      : 0;
+    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN)
+      ? Number(b.tmdbVoteAvg)
+      : 0;
     if (br !== ar) return br - ar;
-    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN) ? Number(a.tmdbVoteCount) : 0;
-    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN) ? Number(b.tmdbVoteCount) : 0;
+    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN)
+      ? Number(a.tmdbVoteCount)
+      : 0;
+    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN)
+      ? Number(b.tmdbVoteCount)
+      : 0;
     if (bc !== ac) return bc - ac;
     return a.tmdbId - b.tmdbId;
   });
@@ -136,13 +148,17 @@ const splitThreeTiers = <T>(items: T[]) => {
   };
 };
 
-const pickTopTierMovieIds = (tiers: { high: RatedMovie[]; mid: RatedMovie[]; low: RatedMovie[] }): number[] => {
+const pickTopTierMovieIds = (tiers: {
+  high: RatedMovie[];
+  mid: RatedMovie[];
+  low: RatedMovie[];
+}): number[] => {
   const picks: number[] = [];
   const used = new Set<number>();
   const pickOne = (tier: RatedMovie[]) => {
     const pool = tier.filter((m) => !used.has(m.tmdbId));
     if (!pool.length) return;
-    const pick = pool[Math.floor(Math.random() * pool.length)] as RatedMovie;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
     used.add(pick.tmdbId);
     picks.push(pick.tmdbId);
   };
@@ -153,7 +169,9 @@ const pickTopTierMovieIds = (tiers: { high: RatedMovie[]; mid: RatedMovie[]; low
   return picks;
 };
 
-const buildThreeTierMovieOrder = (params: ThreeTierMovieShuffleParams): number[] => {
+const buildThreeTierMovieOrder = (
+  params: ThreeTierMovieShuffleParams,
+): number[] => {
   const sorted = sortByTmdbRating(toUniqueRatedMovies(params.movies));
   if (!sorted.length) return [];
   const tiers = splitThreeTiers(sorted);
@@ -426,8 +444,8 @@ export class ImmaculateTasteCollectionService {
       sampleSuggested: suggestedTmdbIds.slice(0, 10),
     });
 
-    const [totalBefore, totalActiveBefore, totalPendingBefore] = await Promise.all(
-      [
+    const [totalBefore, totalActiveBefore, totalPendingBefore] =
+      await Promise.all([
         this.prisma.immaculateTasteMovieLibrary.count({
           where: { plexUserId, librarySectionKey, profileId },
         }),
@@ -435,10 +453,14 @@ export class ImmaculateTasteCollectionService {
           where: { plexUserId, librarySectionKey, profileId, status: 'active' },
         }),
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey, profileId, status: 'pending' },
+          where: {
+            plexUserId,
+            librarySectionKey,
+            profileId,
+            status: 'pending',
+          },
         }),
-      ],
-    );
+      ]);
 
     const existing = suggestedTmdbIds.length
       ? await this.prisma.immaculateTasteMovieLibrary.findMany({
@@ -583,7 +605,12 @@ export class ImmaculateTasteCollectionService {
           where: { plexUserId, librarySectionKey, profileId, status: 'active' },
         }),
         this.prisma.immaculateTasteMovieLibrary.count({
-          where: { plexUserId, librarySectionKey, profileId, status: 'pending' },
+          where: {
+            plexUserId,
+            librarySectionKey,
+            profileId,
+            status: 'pending',
+          },
         }),
       ],
     );
@@ -711,15 +738,21 @@ export class ImmaculateTasteCollectionService {
         );
       }
       if (tmdbRatingsUpdated) {
-        await ctx.info('immaculateTaste: refreshed TMDB ratings on activation', {
-          updated: tmdbRatingsUpdated,
-          activated: res.count,
-        });
+        await ctx.info(
+          'immaculateTaste: refreshed TMDB ratings on activation',
+          {
+            updated: tmdbRatingsUpdated,
+            activated: res.count,
+          },
+        );
       }
     } else if (res.count && !tmdbApiKey) {
-      await ctx.warn('immaculateTaste: TMDB apiKey missing; skipping rating refresh on activation', {
-        activated: res.count,
-      });
+      await ctx.warn(
+        'immaculateTaste: TMDB apiKey missing; skipping rating refresh on activation',
+        {
+          activated: res.count,
+        },
+      );
     }
 
     return { activated: res.count, tmdbRatingsUpdated };
@@ -753,7 +786,8 @@ export class ImmaculateTasteCollectionService {
     });
   }
 
-  private readonly buildThreeTierTmdbRatingShuffleOrderImpl = buildThreeTierMovieOrder;
+  private readonly buildThreeTierTmdbRatingShuffleOrderImpl =
+    buildThreeTierMovieOrder;
 
   buildThreeTierTmdbRatingShuffleOrder(
     params: ThreeTierMovieShuffleParams,

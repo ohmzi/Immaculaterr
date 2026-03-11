@@ -1,4 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { lookup } from 'node:dns/promises';
+import { request as httpsRequest } from 'node:https';
 
 type GoogleCseItem = {
   title?: unknown;
@@ -14,6 +16,47 @@ export type GoogleSearchResult = {
   title: string;
   snippet: string;
   link: string;
+};
+
+const GOOGLE_CONNECTIVITY_ERROR_MARKERS = [
+  'fetch failed',
+  'failed to fetch',
+  'network',
+  'timeout',
+  'timed out',
+  'aborted',
+  'econnrefused',
+  'enotfound',
+  'eai_again',
+  'etimedout',
+  'ehostunreach',
+  'enetunreach',
+  'socket hang up',
+  'getaddrinfo',
+] as const;
+
+const googleErrorWithCause = (error: unknown): string => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : String(error);
+  const cause = (error as { cause?: unknown } | null)?.cause;
+  const causeMessage =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === 'string'
+        ? cause
+        : '';
+  return `${message}${causeMessage ? ` (cause: ${causeMessage})` : ''}`;
+};
+
+const isGoogleConnectivityFailure = (error: unknown): boolean => {
+  const message = googleErrorWithCause(error).toLowerCase();
+  return GOOGLE_CONNECTIVITY_ERROR_MARKERS.some((marker) =>
+    message.includes(marker),
+  );
 };
 
 @Injectable()
@@ -134,15 +177,8 @@ export class GoogleService {
       url.searchParams.set('num', String(pageSize));
       url.searchParams.set('start', String(start));
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
       try {
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          signal: controller.signal,
-        });
+        const res = await this.fetchGoogleResponseWithFallback(url, 15000);
 
         if (!res.ok) {
           const detail = await this.extractGoogleErrorDetail(res);
@@ -184,8 +220,6 @@ export class GoogleService {
         throw new BadGatewayException(
           `Google CSE failed: ${(err as Error)?.message ?? String(err)}`,
         );
-      } finally {
-        clearTimeout(timeout);
       }
     }
 
@@ -227,5 +261,120 @@ export class GoogleService {
         return '';
       }
     }
+  }
+
+  private async fetchGoogleResponseWithFallback(
+    url: URL,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    } catch (primaryError) {
+      if (!isGoogleConnectivityFailure(primaryError)) throw primaryError;
+
+      this.logger.warn(
+        `Google CSE connectivity failure on ${url.pathname}; retrying with IPv4 fallback`,
+      );
+      try {
+        return await this.fetchGoogleResponseWithIpv4(url, timeoutMs);
+      } catch (fallbackError) {
+        throw new Error(
+          `${googleErrorWithCause(primaryError)} (ipv4 fallback failed: ${googleErrorWithCause(fallbackError)})`,
+        );
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async fetchGoogleResponseWithIpv4(
+    url: URL,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const records = await lookup(url.hostname, { family: 4, all: true });
+    const ipv4Addresses = Array.from(
+      new Set(records.map((record) => record.address.trim()).filter(Boolean)),
+    );
+    if (!ipv4Addresses.length) {
+      throw new Error(`No IPv4 records found for ${url.hostname}`);
+    }
+
+    let lastConnectivityError: unknown = null;
+    for (const ipv4Address of ipv4Addresses) {
+      try {
+        return await this.fetchGoogleResponseFromIpv4Address(
+          url,
+          ipv4Address,
+          timeoutMs,
+        );
+      } catch (attemptError) {
+        lastConnectivityError = attemptError;
+        if (!isGoogleConnectivityFailure(attemptError)) throw attemptError;
+      }
+    }
+
+    if (lastConnectivityError instanceof Error) throw lastConnectivityError;
+    throw new Error(`Unable to reach ${url.hostname} over IPv4 fallback`);
+  }
+
+  private async fetchGoogleResponseFromIpv4Address(
+    url: URL,
+    ipv4Address: string,
+    timeoutMs: number,
+  ): Promise<Response> {
+    return await new Promise<Response>((resolve, reject) => {
+      const req = httpsRequest(
+        {
+          protocol: 'https:',
+          hostname: ipv4Address,
+          port: Number.parseInt(url.port || '443', 10),
+          method: 'GET',
+          path: `${url.pathname}${url.search}`,
+          headers: {
+            Accept: 'application/json',
+            Host: url.host,
+          },
+          servername: url.hostname,
+          family: 4,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer | string) => {
+            chunks.push(
+              Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf8'),
+            );
+          });
+          res.on('end', () => {
+            const body = Buffer.concat(chunks).toString('utf8');
+            const headers = new Headers();
+            for (const [key, value] of Object.entries(res.headers)) {
+              if (typeof value === 'string') {
+                headers.set(key, value);
+              } else if (Array.isArray(value)) {
+                headers.set(key, value.join(', '));
+              }
+            }
+            resolve(
+              new Response(body, {
+                status: res.statusCode ?? 0,
+                headers,
+              }),
+            );
+          });
+        },
+      );
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(new Error('Google IPv4 fallback request timed out'));
+      });
+      req.on('error', reject);
+      req.end();
+    });
   }
 }

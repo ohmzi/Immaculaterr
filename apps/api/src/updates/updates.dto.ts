@@ -29,4 +29,3 @@ export class UpdatesResponseDto {
   @ApiProperty({ example: null, nullable: true })
   error!: string | null;
 }
-

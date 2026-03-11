@@ -13,10 +13,14 @@ type RateLimitEntry = {
 };
 
 export function createIpRateLimitMiddleware(options: IpRateLimitOptions) {
-  const windowMs = Number.isFinite(options.windowMs) ? options.windowMs : 60_000;
+  const windowMs = Number.isFinite(options.windowMs)
+    ? options.windowMs
+    : 60_000;
   const max = Number.isFinite(options.max) ? options.max : 10;
   const keyPrefix = options.keyPrefix ?? 'iprl';
-  const methods = new Set((options.methods ?? ['POST']).map((m) => m.toUpperCase()));
+  const methods = new Set(
+    (options.methods ?? ['POST']).map((m) => m.toUpperCase()),
+  );
 
   // In-memory store. Suitable for single-instance deployments.
   const store = new Map<string, RateLimitEntry>();
@@ -45,7 +49,10 @@ export function createIpRateLimitMiddleware(options: IpRateLimitOptions) {
       store.set(key, { count: 1, resetAtMs: nowMs + windowMs });
       res.setHeader('X-RateLimit-Limit', String(max));
       res.setHeader('X-RateLimit-Remaining', String(Math.max(0, max - 1)));
-      res.setHeader('X-RateLimit-Reset', String(Math.ceil((nowMs + windowMs) / 1000)));
+      res.setHeader(
+        'X-RateLimit-Reset',
+        String(Math.ceil((nowMs + windowMs) / 1000)),
+      );
       return next();
     }
 
@@ -55,7 +62,10 @@ export function createIpRateLimitMiddleware(options: IpRateLimitOptions) {
       'X-RateLimit-Remaining',
       String(Math.max(0, max - existing.count)),
     );
-    res.setHeader('X-RateLimit-Reset', String(Math.ceil(existing.resetAtMs / 1000)));
+    res.setHeader(
+      'X-RateLimit-Reset',
+      String(Math.ceil(existing.resetAtMs / 1000)),
+    );
 
     if (existing.count > max) {
       const retryAfterSec = Math.max(
@@ -74,4 +84,3 @@ export function createIpRateLimitMiddleware(options: IpRateLimitOptions) {
     next();
   };
 }
-
