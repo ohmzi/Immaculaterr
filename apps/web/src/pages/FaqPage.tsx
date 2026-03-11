@@ -1245,6 +1245,30 @@ export const FaqPage = () => {
           ),
         },
         {
+          id: 'collections-profile-collection-rename',
+          question: 'How do I rename Immaculate Taste collections from a profile?',
+          answer: (
+            <>
+              <p>
+                In <span className="font-semibold text-white/85">Command Center</span> -{' '}
+                <span className="font-semibold text-white/85">Immaculate Taste Profiles</span>, open
+                a profile and edit{' '}
+                <span className="font-semibold text-white/85">
+                  Movie collection base name
+                </span>{' '}
+                and/or{' '}
+                <span className="font-semibold text-white/85">TV collection base name</span>, then
+                save profile.
+              </p>
+              <p>
+                For enabled profiles, Immaculaterr attempts to rename matching managed Plex
+                collections for monitored users in selected libraries. If no existing managed
+                collection matches yet, the next collection or refresher run uses the new base name.
+              </p>
+            </>
+          ),
+        },
+        {
           id: 'collections-immaculate-points',
           question: 'How do Immaculate Taste points work?',
           answer: (
