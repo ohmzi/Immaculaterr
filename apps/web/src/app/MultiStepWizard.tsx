@@ -179,7 +179,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   const buildIntegrationSecretEnvelope = useCallback(
     async (params: {
-      service: 'overseerr';
+      service: 'tmdb' | 'overseerr';
       secretField: 'apiKey';
       value: string;
     }) => {
@@ -246,6 +246,44 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       }
     },
     [buildSettingsSecretsEnvelope],
+  );
+
+  const testTmdbWithSecretCompatibility = useCallback(
+    async (apiKey: string) => {
+      const normalizedApiKey = apiKey.trim();
+      const webCryptoFallbackError =
+        'WebCrypto is not available in this browser.';
+      const compatibilityHint = buildWebCryptoCompatibilityHint();
+
+      try {
+        const apiKeyEnvelope = await buildIntegrationSecretEnvelope({
+          service: 'tmdb',
+          secretField: 'apiKey',
+          value: normalizedApiKey,
+        });
+        await testSavedIntegration('tmdb', { apiKeyEnvelope });
+        return;
+      } catch (error) {
+        if (!isWebCryptoUnavailableError(error)) throw error;
+      }
+
+      try {
+        await testSavedIntegration('tmdb', { apiKey: normalizedApiKey });
+      } catch (fallbackError) {
+        if (
+          fallbackError instanceof ApiError &&
+          String(fallbackError.message ?? '')
+            .toLowerCase()
+            .includes('plaintext secret transport is disabled')
+        ) {
+          throw new Error(
+            `${webCryptoFallbackError} ${compatibilityHint} If needed, set SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true on the API as a compatibility fallback.`,
+          );
+        }
+        throw fallbackError;
+      }
+    },
+    [buildIntegrationSecretEnvelope],
   );
 
   const getCurrentStepIndex = () => STEP_ORDER.indexOf(currentStep);
@@ -542,16 +580,19 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   const saveAndValidateTmdb = useMutation({
     mutationFn: async () => {
+      const normalizedApiKey = tmdbApiKey.trim();
+      if (!normalizedApiKey) throw new Error('Please enter TMDB API key.');
+
       // Save TMDB credentials
       await putSettingsWithSecretsCompatibility({
         secretsPatch: {
-          tmdb: { apiKey: tmdbApiKey.trim() },
+          tmdb: { apiKey: normalizedApiKey },
         },
       });
 
       // Validate
       toast.info('Validating TMDB credentials...');
-      await testSavedIntegration('tmdb');
+      await testTmdbWithSecretCompatibility(normalizedApiKey);
       toast.success('Connected to TMDB.');
     },
     onSuccess: () => {
@@ -559,9 +600,14 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
       handleNext();
     },
     onError: (error: Error) => {
-      const msg = (error?.message ?? '').toLowerCase();
+      const rawMessage = String(error?.message ?? '').trim();
+      const msg = rawMessage.toLowerCase();
       if (msg.includes('http 401') || msg.includes('invalid api key') || msg.includes('unauthorized')) {
         toast.error('TMDB API key is invalid.');
+        return;
+      }
+      if (rawMessage) {
+        toast.error(rawMessage);
         return;
       }
       toast.error('Couldn’t connect to TMDB.');
