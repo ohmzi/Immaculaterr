@@ -1,5 +1,5 @@
 import { BadGatewayException } from '@nestjs/common';
-import { OverseerrService } from './overseerr.service';
+import { SeerrService } from './seerr.service';
 
 type MockResponseInput = {
   status: number;
@@ -20,14 +20,14 @@ function mockResponse(input: MockResponseInput): Response {
   } as unknown as Response;
 }
 
-describe('OverseerrService', () => {
+describe('SeerrService', () => {
   const fetchMock = jest.fn();
-  let service: OverseerrService;
+  let service: SeerrService;
 
   beforeEach(() => {
     fetchMock.mockReset();
     (global as { fetch: typeof fetch }).fetch = fetchMock as never;
-    service = new OverseerrService();
+    service = new SeerrService();
   });
 
   it.each([
@@ -146,7 +146,7 @@ describe('OverseerrService', () => {
     expect(result.error).toContain('HTTP 500');
   });
 
-  it('clears all Overseerr requests across paginated list results', async () => {
+  it('clears all Seerr requests across paginated list results', async () => {
     const firstPage = Array.from({ length: 100 }, (_, index) => ({
       id: index + 1,
     }));

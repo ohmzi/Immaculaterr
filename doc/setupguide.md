@@ -9,7 +9,7 @@ Prerequisites
 - Docker and Docker Compose v2
 - A Plex server
 - A TMDB API key (configured in Vault after first sign-in)
-- Optional integrations: Radarr, Sonarr, Overseerr, OpenAI, Google
+- Optional integrations: Radarr, Sonarr, Seerr, OpenAI, Google
 
 Quick install (recommended)
 ---

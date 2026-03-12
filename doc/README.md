@@ -8,15 +8,15 @@ Immaculaterr
 [![Docker Pulls](https://img.shields.io/docker/pulls/ohmzii/immaculaterr)](https://hub.docker.com/r/ohmzii/immaculaterr)
 
 Immaculaterr is a **Plex “autopilot”** that watches what you’re watching, generates recommendations, and keeps your library tidy.
-It builds curated Plex collections (with proper artwork), can optionally send missing titles to Radarr/Sonarr or Overseerr, and gives you detailed run reports so you always know what happened.
+It builds curated Plex collections (with proper artwork), can optionally send missing titles to Radarr/Sonarr or Seerr, and gives you detailed run reports so you always know what happened.
 
 Major Features Include
 ---
 
-- **Overseerr integration (optional centralized request flow)**:
-  - Route missing movie/TV requests to Overseerr instead of direct ARR sends.
+- **Seerr integration (optional centralized request flow)**:
+  - Route missing movie/TV requests to Seerr instead of direct ARR sends.
   - Works per task card, so you can choose where missing titles go.
-  - Includes Command Center reset control to clear all Overseerr requests when needed.
+  - Includes Command Center reset control to clear all Seerr requests when needed.
 - **Plex-triggered automation**:
   - Automatically reacts to Plex library activity and runs smart workflows in real time.
 - **Scheduler automation**:
@@ -31,7 +31,7 @@ Major Features Include
 - **Keeps a snapshot database:**
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Radarr + Sonarr integration**:
-  - Seamlessly organizes your media collection and sends movies/series directly to ARR downloaders when Overseerr mode is off.
+  - Seamlessly organizes your media collection and sends movies/series directly to ARR downloaders when Seerr mode is off.
 - **Observatory**:
   - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
 - **Job reports & logs**:

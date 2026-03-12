@@ -26,7 +26,7 @@ describe('IntegrationsController plex libraries', () => {
         radarr: 'radarr.apiKey',
         sonarr: 'sonarr.apiKey',
         tmdb: 'tmdb.apiKey',
-        overseerr: 'overseerr.apiKey',
+        seerr: 'seerr.apiKey',
         google: 'google.apiKey',
         openai: 'openai.apiKey',
       };
@@ -66,7 +66,7 @@ describe('IntegrationsController plex libraries', () => {
       ensureAdminPlexUser: jest.fn(),
       getOrCreateByPlexAccount: jest.fn(),
     };
-    const overseerr = {
+    const seerr = {
       testConnection: jest.fn(),
     };
     const arrInstances = {};
@@ -81,7 +81,7 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       {} as never,
       {} as never,
-      overseerr as never,
+      seerr as never,
       arrInstances as never,
     );
     return {
@@ -91,7 +91,7 @@ describe('IntegrationsController plex libraries', () => {
       plex,
       plexServer,
       plexUsers,
-      overseerr,
+      seerr,
       arrInstances,
     };
   };
@@ -315,56 +315,56 @@ describe('IntegrationsController plex libraries', () => {
     expect((res as Record<string, unknown>)['cleanup']).toBeUndefined();
   });
 
-  it('POST /test/overseerr validates with saved credentials', async () => {
-    const { controller, settingsService, overseerr } = makeController();
+  it('POST /test/seerr validates with saved credentials', async () => {
+    const { controller, settingsService, seerr } = makeController();
     settingsService.getInternalSettings.mockResolvedValue({
       settings: {
-        overseerr: { baseUrl: 'http://localhost:5055' },
+        seerr: { baseUrl: 'http://localhost:5055' },
       },
       secrets: {
-        overseerr: { apiKey: 'secret' },
+        seerr: { apiKey: 'secret' },
       },
     });
-    overseerr.testConnection.mockResolvedValue({ ok: true });
+    seerr.testConnection.mockResolvedValue({ ok: true });
 
     const res = await controller.testSaved(
       { user: { id: 'u1' } } as never,
-      'overseerr',
+      'seerr',
       {},
     );
 
-    expect(overseerr.testConnection).toHaveBeenCalledWith({
+    expect(seerr.testConnection).toHaveBeenCalledWith({
       baseUrl: 'http://localhost:5055',
       apiKey: 'secret',
     });
     expect(res).toEqual({ ok: true, result: { ok: true } });
   });
 
-  it('POST /test/overseerr rejects cloud metadata hosts', async () => {
-    const { controller, settingsService, overseerr } = makeController();
+  it('POST /test/seerr rejects cloud metadata hosts', async () => {
+    const { controller, settingsService, seerr } = makeController();
     settingsService.getInternalSettings.mockResolvedValue({
       settings: {
-        overseerr: { baseUrl: 'http://169.254.169.254' },
+        seerr: { baseUrl: 'http://169.254.169.254' },
       },
       secrets: {
-        overseerr: { apiKey: 'secret' },
+        seerr: { apiKey: 'secret' },
       },
     });
 
     await expect(
-      controller.testSaved({ user: { id: 'u1' } } as never, 'overseerr', {}),
+      controller.testSaved({ user: { id: 'u1' } } as never, 'seerr', {}),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(overseerr.testConnection).not.toHaveBeenCalled();
+    expect(seerr.testConnection).not.toHaveBeenCalled();
   });
 
-  it('POST /test/overseerr ignores prototype-inherited baseUrl fields', async () => {
-    const { controller, settingsService, overseerr } = makeController();
+  it('POST /test/seerr ignores prototype-inherited baseUrl fields', async () => {
+    const { controller, settingsService, seerr } = makeController();
     settingsService.getInternalSettings.mockResolvedValue({
       settings: {
-        overseerr: {},
+        seerr: {},
       },
       secrets: {
-        overseerr: { apiKey: 'secret' },
+        seerr: { apiKey: 'secret' },
       },
     });
 
@@ -373,9 +373,9 @@ describe('IntegrationsController plex libraries', () => {
     }) as Record<string, unknown>;
 
     await expect(
-      controller.testSaved({ user: { id: 'u1' } } as never, 'overseerr', body),
+      controller.testSaved({ user: { id: 'u1' } } as never, 'seerr', body),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(overseerr.testConnection).not.toHaveBeenCalled();
+    expect(seerr.testConnection).not.toHaveBeenCalled();
   });
 
   it('POST /test/plex falls back to suggested server URL and persists the working baseUrl', async () => {

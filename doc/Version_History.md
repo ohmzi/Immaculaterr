@@ -7,22 +7,9 @@ This file tracks notable changes by version.
 ---
 
 - What's new since 1.7.0:
-  - Integration connectivity hardening:
-    - TMDB, OpenAI, and Google now retry with explicit IPv4 fallback when standard requests fail due to DNS/IPv6 network issues.
-    - This improves API-key validation reliability in Docker environments where resolver behavior is unstable.
-    - Added focused test coverage for fallback behavior and non-fallback auth failure handling.
-  - Plex reliability improvements:
-    - Curated collection cleanup uses direct `ratingKey` targeting with settlement verification retries.
-    - Playback/session metadata parsing and monitoring logs are more resilient.
-  - Job/report consistency improvements:
-    - Background recommendation and cleanup jobs were hardened for better type safety and more consistent run reporting.
-  - UI polish:
-    - Task Manager trigger status badges now keep stable alignment to prevent layout shifting.
-  - Release and pipeline updates:
-    - Release notes generation in CI now auto-highlights top user-facing commits with improved noise filtering.
-    - HTTPS sidecar release notes/docs were updated with clearer trust-store setup and verification steps.
-    - Added `quality:ci`; `security:ci` now runs quality checks first.
-
+  'TMDB, OpenAI, and Google now retry with explicit IPv4 fallback when normal requests fail due to DNS/IPv6 network issues.',
+  'This improves API-key validation reliability in Docker environments with unstable resolver behavior.',
+  'Added focused test coverage for fallback behavior and non-fallback auth failure handling.'
 1.7.0
 ---
 
@@ -83,9 +70,9 @@ This file tracks notable changes by version.
 - Plex user monitoring controls:
   - Any Plex user can be toggled off from monitoring.
   - Auto-triggered tasks skip users that are toggled off.
-- Overseerr integration improvements:
+- Seerr integration improvements:
   - Optional centralized missing-item flow per task card.
-  - Command Center reset control for Overseerr requests.
+  - Command Center reset control for Seerr requests.
 - Observatory improvements:
   - Swipe-left adds a suggestion to the rejected list.
   - Command Center reset for rejected list.

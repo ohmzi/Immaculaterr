@@ -48,7 +48,7 @@ import {
 import {
   GoogleLogo,
   OpenAiLogo,
-  OverseerrLogo,
+  SeerrLogo,
   PlexLogo,
   RadarrLogo,
   SonarrLogo,
@@ -62,7 +62,7 @@ type IntegrationId =
   | 'radarr'
   | 'sonarr'
   | 'tmdb'
-  | 'overseerr'
+  | 'seerr'
   | 'google'
   | 'openai';
 
@@ -309,31 +309,31 @@ export const SettingsPage = ({
     const plexBaseUrlSaved = readString(settings, 'plex.baseUrl');
     const radarrBaseUrlSaved = readString(settings, 'radarr.baseUrl');
     const sonarrBaseUrlSaved = readString(settings, 'sonarr.baseUrl');
-    const overseerrBaseUrlSaved = readString(settings, 'overseerr.baseUrl');
+    const seerrBaseUrlSaved = readString(settings, 'seerr.baseUrl');
     const googleSearchEngineIdSaved = readString(settings, 'google.searchEngineId');
 
     if (plexBaseUrlSaved) setPlexBaseUrl(plexBaseUrlSaved);
     if (radarrBaseUrlSaved) setRadarrBaseUrl(radarrBaseUrlSaved);
     if (sonarrBaseUrlSaved) setSonarrBaseUrl(sonarrBaseUrlSaved);
-    if (overseerrBaseUrlSaved) setOverseerrBaseUrl(overseerrBaseUrlSaved);
+    if (seerrBaseUrlSaved) setSeerrBaseUrl(seerrBaseUrlSaved);
     if (googleSearchEngineIdSaved) setGoogleSearchEngineId(googleSearchEngineIdSaved);
 
     // Prefer explicit enabled flags from settings. Fallback to secrets-present for legacy configs.
     const radarrEnabledSaved = readBool(settings, 'radarr.enabled');
     const sonarrEnabledSaved = readBool(settings, 'sonarr.enabled');
-    const overseerrEnabledSaved = readBool(settings, 'overseerr.enabled');
+    const seerrEnabledSaved = readBool(settings, 'seerr.enabled');
     const googleEnabledSaved = readBool(settings, 'google.enabled');
     const openAiEnabledSaved = readBool(settings, 'openai.enabled');
 
     const nextRadarrEnabled = radarrEnabledSaved ?? Boolean(secrets.radarr);
     const nextSonarrEnabled = sonarrEnabledSaved ?? Boolean(secrets.sonarr);
-    const nextOverseerrEnabled = overseerrEnabledSaved ?? Boolean(secrets.overseerr);
+    const nextSeerrEnabled = seerrEnabledSaved ?? Boolean(secrets.seerr);
     const nextGoogleEnabled = googleEnabledSaved ?? Boolean(secrets.google);
     const nextOpenAiEnabled = openAiEnabledSaved ?? Boolean(secrets.openai);
 
     setRadarrEnabled(nextRadarrEnabled);
     setSonarrEnabled(nextSonarrEnabled);
-    setOverseerrEnabled(nextOverseerrEnabled);
+    setSeerrEnabled(nextSeerrEnabled);
     setGoogleEnabled(nextGoogleEnabled);
     setOpenAiEnabled(nextOpenAiEnabled);
 
@@ -344,7 +344,7 @@ export const SettingsPage = ({
       setTmdbTouched(false);
       setRadarrTouched(false);
       setSonarrTouched(false);
-      setOverseerrTouched(false);
+      setSeerrTouched(false);
       setGoogleTouched(false);
       setOpenAiTouched(false);
 
@@ -352,8 +352,8 @@ export const SettingsPage = ({
       setTmdbTestOk(secrets.tmdb ? true : null);
       setRadarrTestOk(nextRadarrEnabled && Boolean(secrets.radarr) ? true : null);
       setSonarrTestOk(nextSonarrEnabled && Boolean(secrets.sonarr) ? true : null);
-      setOverseerrTestOk(
-        nextOverseerrEnabled && Boolean(secrets.overseerr) ? true : null,
+      setSeerrTestOk(
+        nextSeerrEnabled && Boolean(secrets.seerr) ? true : null,
       );
       setGoogleTestOk(
         nextGoogleEnabled && Boolean(secrets.google) && Boolean(googleSearchEngineIdSaved) ? true : null,
@@ -474,8 +474,8 @@ export const SettingsPage = ({
   } | null>(null);
   const editingArrInstanceCardRef = useRef<HTMLDivElement | null>(null);
 
-  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
-  const [overseerrApiKey, setOverseerrApiKey] = useState('');
+  const [seerrBaseUrl, setSeerrBaseUrl] = useState('http://localhost:5055');
+  const [seerrApiKey, setSeerrApiKey] = useState('');
 
   const [tmdbApiKey, setTmdbApiKey] = useState('');
 
@@ -490,7 +490,7 @@ export const SettingsPage = ({
   );
 
   const buildSecretEnvelope = async (params: {
-    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'overseerr' | 'google' | 'openai';
+    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'seerr' | 'google' | 'openai';
     secretField: 'token' | 'apiKey';
     value: string;
   }) => {
@@ -551,7 +551,7 @@ export const SettingsPage = ({
   };
 
   const buildIntegrationSecretPayload = async (params: {
-    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'overseerr' | 'google' | 'openai';
+    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'seerr' | 'google' | 'openai';
     secretField: 'token' | 'apiKey';
     rawSecret: string;
     secretRef: string;
@@ -575,7 +575,7 @@ export const SettingsPage = ({
   // Service toggle states
   const [radarrEnabled, setRadarrEnabled] = useState(false);
   const [sonarrEnabled, setSonarrEnabled] = useState(false);
-  const [overseerrEnabled, setOverseerrEnabled] = useState(false);
+  const [seerrEnabled, setSeerrEnabled] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [openAiEnabled, setOpenAiEnabled] = useState(false);
 
@@ -590,7 +590,7 @@ export const SettingsPage = ({
   const [tmdbTouched, setTmdbTouched] = useState(false);
   const [radarrTouched, setRadarrTouched] = useState(false);
   const [sonarrTouched, setSonarrTouched] = useState(false);
-  const [overseerrTouched, setOverseerrTouched] = useState(false);
+  const [seerrTouched, setSeerrTouched] = useState(false);
   const [googleTouched, setGoogleTouched] = useState(false);
   const [openAiTouched, setOpenAiTouched] = useState(false);
 
@@ -598,7 +598,7 @@ export const SettingsPage = ({
   const [tmdbTestOk, setTmdbTestOk] = useState<boolean | null>(null);
   const [radarrTestOk, setRadarrTestOk] = useState<boolean | null>(null);
   const [sonarrTestOk, setSonarrTestOk] = useState<boolean | null>(null);
-  const [overseerrTestOk, setOverseerrTestOk] = useState<boolean | null>(null);
+  const [seerrTestOk, setSeerrTestOk] = useState<boolean | null>(null);
   const [googleTestOk, setGoogleTestOk] = useState<boolean | null>(null);
   const [openAiTestOk, setOpenAiTestOk] = useState<boolean | null>(null);
 
@@ -606,7 +606,7 @@ export const SettingsPage = ({
   const [tmdbIsTesting, setTmdbIsTesting] = useState(false);
   const [radarrIsTesting, setRadarrIsTesting] = useState(false);
   const [sonarrIsTesting, setSonarrIsTesting] = useState(false);
-  const [overseerrIsTesting, setOverseerrIsTesting] = useState(false);
+  const [seerrIsTesting, setSeerrIsTesting] = useState(false);
   const [googleIsTesting, setGoogleIsTesting] = useState(false);
   const [openAiIsTesting, setOpenAiIsTesting] = useState(false);
   const [arrInstanceIsTestingById, setArrInstanceIsTestingById] = useState<
@@ -620,7 +620,7 @@ export const SettingsPage = ({
   const tmdbTestRunId = useRef(0);
   const radarrTestRunId = useRef(0);
   const sonarrTestRunId = useRef(0);
-  const overseerrTestRunId = useRef(0);
+  const seerrTestRunId = useRef(0);
   const googleTestRunId = useRef(0);
   const openAiTestRunId = useRef(0);
 
@@ -784,15 +784,15 @@ export const SettingsPage = ({
       // Optional services (diff-based patches; only when toggled on)
       const curRadarrBaseUrl = readString(currentSettings, 'radarr.baseUrl');
       const curSonarrBaseUrl = readString(currentSettings, 'sonarr.baseUrl');
-      const curOverseerrBaseUrl = readString(currentSettings, 'overseerr.baseUrl');
+      const curSeerrBaseUrl = readString(currentSettings, 'seerr.baseUrl');
       const curGoogleSearchEngineId = readString(currentSettings, 'google.searchEngineId');
 
       const curRadarrEnabled =
         readBool(currentSettings, 'radarr.enabled') ?? Boolean(secretsPresent.radarr);
       const curSonarrEnabled =
         readBool(currentSettings, 'sonarr.enabled') ?? Boolean(secretsPresent.sonarr);
-      const curOverseerrEnabled =
-        readBool(currentSettings, 'overseerr.enabled') ?? Boolean(secretsPresent.overseerr);
+      const curSeerrEnabled =
+        readBool(currentSettings, 'seerr.enabled') ?? Boolean(secretsPresent.seerr);
       const curGoogleEnabled =
         readBool(currentSettings, 'google.enabled') ?? Boolean(secretsPresent.google);
       const curOpenAiEnabled =
@@ -800,12 +800,12 @@ export const SettingsPage = ({
 
       const nextRadarrBaseUrl = radarrBaseUrl.trim();
       const nextSonarrBaseUrl = sonarrBaseUrl.trim();
-      const nextOverseerrBaseUrl = overseerrBaseUrl.trim();
+      const nextSeerrBaseUrl = seerrBaseUrl.trim();
       const nextGoogleSearchEngineId = googleSearchEngineId.trim();
 
       const radarrEnabledChanged = radarrEnabled !== curRadarrEnabled;
       const sonarrEnabledChanged = sonarrEnabled !== curSonarrEnabled;
-      const overseerrEnabledChanged = overseerrEnabled !== curOverseerrEnabled;
+      const seerrEnabledChanged = seerrEnabled !== curSeerrEnabled;
       const googleEnabledChanged = googleEnabled !== curGoogleEnabled;
       const openAiEnabledChanged = openAiEnabled !== curOpenAiEnabled;
 
@@ -813,10 +813,10 @@ export const SettingsPage = ({
         radarrEnabled && Boolean(nextRadarrBaseUrl) && nextRadarrBaseUrl !== curRadarrBaseUrl;
       const sonarrBaseChanged =
         sonarrEnabled && Boolean(nextSonarrBaseUrl) && nextSonarrBaseUrl !== curSonarrBaseUrl;
-      const overseerrBaseChanged =
-        overseerrEnabled &&
-        Boolean(nextOverseerrBaseUrl) &&
-        nextOverseerrBaseUrl !== curOverseerrBaseUrl;
+      const seerrBaseChanged =
+        seerrEnabled &&
+        Boolean(nextSeerrBaseUrl) &&
+        nextSeerrBaseUrl !== curSeerrBaseUrl;
       const googleIdChanged =
         googleEnabled &&
         Boolean(nextGoogleSearchEngineId) &&
@@ -832,10 +832,10 @@ export const SettingsPage = ({
       if (sonarrBaseChanged) sonarrSettings.baseUrl = nextSonarrBaseUrl;
       if (Object.keys(sonarrSettings).length) settingsPatch.sonarr = sonarrSettings;
 
-      const overseerrSettings: Record<string, unknown> = {};
-      if (overseerrEnabledChanged) overseerrSettings.enabled = overseerrEnabled;
-      if (overseerrBaseChanged) overseerrSettings.baseUrl = nextOverseerrBaseUrl;
-      if (Object.keys(overseerrSettings).length) settingsPatch.overseerr = overseerrSettings;
+      const seerrSettings: Record<string, unknown> = {};
+      if (seerrEnabledChanged) seerrSettings.enabled = seerrEnabled;
+      if (seerrBaseChanged) seerrSettings.baseUrl = nextSeerrBaseUrl;
+      if (Object.keys(seerrSettings).length) settingsPatch.seerr = seerrSettings;
 
       const googleSettings: Record<string, unknown> = {};
       if (googleEnabledChanged) googleSettings.enabled = googleEnabled;
@@ -868,11 +868,11 @@ export const SettingsPage = ({
         secretsPatch.sonarr = { apiKey: sonarrKeyTrimmed };
       }
 
-      const overseerrKeyTrimmed = overseerrApiKey.trim();
-      const overseerrKeyChanged =
-        overseerrEnabled && Boolean(overseerrKeyTrimmed);
-      if (overseerrKeyChanged) {
-        secretsPatch.overseerr = { apiKey: overseerrKeyTrimmed };
+      const seerrKeyTrimmed = seerrApiKey.trim();
+      const seerrKeyChanged =
+        seerrEnabled && Boolean(seerrKeyTrimmed);
+      if (seerrKeyChanged) {
+        secretsPatch.seerr = { apiKey: seerrKeyTrimmed };
       }
 
       const googleKeyTrimmed = googleApiKey.trim();
@@ -947,27 +947,27 @@ export const SettingsPage = ({
         });
       }
 
-      // Overseerr: validate if baseUrl/apiKey changed (and enabled)
-      const overseerrBecameEnabled = overseerrEnabled && !curOverseerrEnabled;
+      // Seerr: validate if baseUrl/apiKey changed (and enabled)
+      const seerrBecameEnabled = seerrEnabled && !curSeerrEnabled;
       if (
-        overseerrEnabled &&
-        (overseerrBecameEnabled || overseerrBaseChanged || overseerrKeyChanged)
+        seerrEnabled &&
+        (seerrBecameEnabled || seerrBaseChanged || seerrKeyChanged)
       ) {
-        if (!nextOverseerrBaseUrl) throw new Error('Please enter Overseerr Base URL');
-        if (!overseerrKeyChanged && !secretsPresent.overseerr) {
-          throw new Error('Please enter Overseerr API Key');
+        if (!nextSeerrBaseUrl) throw new Error('Please enter Seerr Base URL');
+        if (!seerrKeyChanged && !secretsPresent.seerr) {
+          throw new Error('Please enter Seerr API Key');
         }
         const secretPayload = await buildIntegrationSecretPayload({
-          service: 'overseerr',
+          service: 'seerr',
           secretField: 'apiKey',
-          rawSecret: overseerrKeyTrimmed,
-          secretRef: secretRefs.overseerr ?? '',
+          rawSecret: seerrKeyTrimmed,
+          secretRef: secretRefs.seerr ?? '',
         });
-        await callIntegrationTest('overseerr', {
-          baseUrl: nextOverseerrBaseUrl,
+        await callIntegrationTest('seerr', {
+          baseUrl: nextSeerrBaseUrl,
           ...secretPayload,
         }).catch(() => {
-          throw new Error('Overseerr credentials are incorrect.');
+          throw new Error('Seerr credentials are incorrect.');
         });
       }
 
@@ -1036,7 +1036,7 @@ export const SettingsPage = ({
       setPlexToken('');
       setRadarrApiKey('');
       setSonarrApiKey('');
-      setOverseerrApiKey('');
+      setSeerrApiKey('');
       setTmdbApiKey('');
       setGoogleApiKey('');
       setOpenAiApiKey('');
@@ -1234,7 +1234,7 @@ export const SettingsPage = ({
 
   const integrationEnabledMutation = useMutation({
     mutationFn: async (params: {
-      integration: 'radarr' | 'sonarr' | 'overseerr' | 'google' | 'openai';
+      integration: 'radarr' | 'sonarr' | 'seerr' | 'google' | 'openai';
       enabled: boolean;
     }) =>
       putSettings({
@@ -1450,11 +1450,11 @@ export const SettingsPage = ({
   };
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testOverseerrConnection = async (
+  const testSeerrConnection = async (
     mode: TestMode = 'manual',
   ): Promise<boolean | null> => {
     const toastId =
-      mode === 'manual' ? toast.loading('Testing Overseerr connection...') : undefined;
+      mode === 'manual' ? toast.loading('Testing Seerr connection...') : undefined;
     const startedAt = Date.now();
     const showError = (message: string, opts?: { immediate?: boolean }) => {
       if (mode === 'background') return;
@@ -1479,26 +1479,26 @@ export const SettingsPage = ({
     };
 
     try {
-      const baseUrl = overseerrBaseUrl.trim();
-      const apiKey = overseerrApiKey.trim();
+      const baseUrl = seerrBaseUrl.trim();
+      const apiKey = seerrApiKey.trim();
 
       if (!baseUrl) {
-        showError('Please enter Overseerr Base URL', { immediate: true });
+        showError('Please enter Seerr Base URL', { immediate: true });
         return null;
       }
-      if (!secretsPresent.overseerr && !apiKey) {
-        showError('Please enter Overseerr API Key', { immediate: true });
+      if (!secretsPresent.seerr && !apiKey) {
+        showError('Please enter Seerr API Key', { immediate: true });
         return null;
       }
 
       const secretPayload = await buildIntegrationSecretPayload({
-        service: 'overseerr',
+        service: 'seerr',
         secretField: 'apiKey',
         rawSecret: apiKey,
-        secretRef: secretRefs.overseerr ?? '',
+        secretRef: secretRefs.seerr ?? '',
       });
-      await callIntegrationTest('overseerr', { baseUrl, ...secretPayload });
-      if (mode === 'manual') showSuccess('Connected to Overseerr.');
+      await callIntegrationTest('seerr', { baseUrl, ...secretPayload });
+      if (mode === 'manual') showSuccess('Connected to Seerr.');
       return true;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -1508,7 +1508,7 @@ export const SettingsPage = ({
         lower.includes('http 403') ||
         lower.includes('unauthorized')
       ) {
-        showError('Overseerr API key is incorrect.');
+        showError('Seerr API key is incorrect.');
       } else if (
         lower.includes('timeout') ||
         lower.includes('econnrefused') ||
@@ -1516,9 +1516,9 @@ export const SettingsPage = ({
         lower.includes('failed to fetch') ||
         lower.includes('fetch failed')
       ) {
-        showError('Couldn’t reach Overseerr. Check the URL.');
+        showError('Couldn’t reach Seerr. Check the URL.');
       } else {
-        showError('Couldn’t connect to Overseerr. Check the URL and API key.');
+        showError('Couldn’t connect to Seerr. Check the URL and API key.');
       }
       return false;
     }
@@ -1780,24 +1780,24 @@ export const SettingsPage = ({
     return typeof result === 'boolean' ? result : null;
   };
 
-  const runOverseerrTest = async (mode: TestMode): Promise<boolean | null> => {
-    const runId = ++overseerrTestRunId.current;
+  const runSeerrTest = async (mode: TestMode): Promise<boolean | null> => {
+    const runId = ++seerrTestRunId.current;
     const startedAt = Date.now();
-    setOverseerrIsTesting(true);
-    const result = await testOverseerrConnection(mode);
-    if (overseerrTestRunId.current !== runId) return null;
+    setSeerrIsTesting(true);
+    const result = await testSeerrConnection(mode);
+    if (seerrTestRunId.current !== runId) return null;
 
     if (typeof result === 'boolean') {
       const elapsed = Date.now() - startedAt;
       const remaining = Math.max(0, 1000 - elapsed);
       if (remaining) {
         await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-        if (overseerrTestRunId.current !== runId) return null;
+        if (seerrTestRunId.current !== runId) return null;
       }
     }
 
-    setOverseerrIsTesting(false);
-    if (typeof result === 'boolean') setOverseerrTestOk(result);
+    setSeerrIsTesting(false);
+    if (typeof result === 'boolean') setSeerrTestOk(result);
     return typeof result === 'boolean' ? result : null;
   };
 
@@ -2080,7 +2080,7 @@ export const SettingsPage = ({
           | 'tmdb'
           | 'radarr'
           | 'sonarr'
-          | 'overseerr'
+          | 'seerr'
           | 'google'
           | 'openai';
         label: string;
@@ -2094,7 +2094,7 @@ export const SettingsPage = ({
       // Optional integrations (active if enabled in persisted settings)
       if (radarrEnabled) tasks.push({ key: 'radarr', label: 'Radarr', run: () => runRadarrTest('background'), disableOnFail: true });
       if (sonarrEnabled) tasks.push({ key: 'sonarr', label: 'Sonarr', run: () => runSonarrTest('background'), disableOnFail: true });
-      if (overseerrEnabled) tasks.push({ key: 'overseerr', label: 'Overseerr', run: () => runOverseerrTest('background'), disableOnFail: true });
+      if (seerrEnabled) tasks.push({ key: 'seerr', label: 'Seerr', run: () => runSeerrTest('background'), disableOnFail: true });
       if (googleEnabled) tasks.push({ key: 'google', label: 'Google', run: () => runGoogleTest('background'), disableOnFail: true });
       if (openAiEnabled) tasks.push({ key: 'openai', label: 'OpenAI', run: () => runOpenAiTest('background'), disableOnFail: true });
 
@@ -2128,9 +2128,9 @@ export const SettingsPage = ({
           } else if (r.key === 'sonarr') {
             setSonarrEnabled(false);
             disablePatch.sonarr = { enabled: false };
-          } else if (r.key === 'overseerr') {
-            setOverseerrEnabled(false);
-            disablePatch.overseerr = { enabled: false };
+          } else if (r.key === 'seerr') {
+            setSeerrEnabled(false);
+            disablePatch.seerr = { enabled: false };
           } else if (r.key === 'google') {
             setGoogleEnabled(false);
             disablePatch.google = { enabled: false };
@@ -2165,7 +2165,7 @@ export const SettingsPage = ({
     secretsPresent.tmdb,
     radarrEnabled,
     sonarrEnabled,
-    overseerrEnabled,
+    seerrEnabled,
     googleEnabled,
     openAiEnabled,
     queryClient,
@@ -2268,8 +2268,8 @@ export const SettingsPage = ({
     radarrTouched || Boolean(radarrApiKey.trim());
   const sonarrNeedsTest =
     sonarrTouched || Boolean(sonarrApiKey.trim());
-  const overseerrNeedsTest =
-    overseerrTouched || Boolean(overseerrApiKey.trim());
+  const seerrNeedsTest =
+    seerrTouched || Boolean(seerrApiKey.trim());
   const googleNeedsTest =
     googleTouched || Boolean(googleApiKey.trim());
   const openAiNeedsTest =
@@ -2315,15 +2315,15 @@ export const SettingsPage = ({
           : sonarrNeedsTest
             ? 'test'
             : 'inactive';
-  const overseerrStatus: StatusPillVariant = !overseerrEnabled
+  const seerrStatus: StatusPillVariant = !seerrEnabled
     ? 'inactive'
-    : overseerrIsTesting
+    : seerrIsTesting
       ? 'testing'
-      : overseerrTestOk === true
+      : seerrTestOk === true
         ? 'active'
-        : overseerrTestOk === false
+        : seerrTestOk === false
           ? 'inactive'
-          : overseerrNeedsTest
+          : seerrNeedsTest
             ? 'test'
             : 'inactive';
   const googleStatus: StatusPillVariant = !googleEnabled
@@ -2382,9 +2382,9 @@ export const SettingsPage = ({
     setSonarrTestOk(null);
   }, []);
 
-  const markOverseerrEdited = useCallback(() => {
-    setOverseerrTouched(true);
-    setOverseerrTestOk(null);
+  const markSeerrEdited = useCallback(() => {
+    setSeerrTouched(true);
+    setSeerrTestOk(null);
   }, []);
 
   const markGoogleEdited = useCallback(() => {
@@ -2602,12 +2602,12 @@ export const SettingsPage = ({
     newSonarrInstanceName,
   ]);
 
-  const handleOverseerrBaseUrlChange = useCallback(
+  const handleSeerrBaseUrlChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      markOverseerrEdited();
-      setOverseerrBaseUrl(event.target.value);
+      markSeerrEdited();
+      setSeerrBaseUrl(event.target.value);
     },
-    [markOverseerrEdited],
+    [markSeerrEdited],
   );
 
   const handleGoogleSearchEngineIdChange = useCallback(
@@ -2634,9 +2634,9 @@ export const SettingsPage = ({
     runAsyncTask(runSonarrTest('manual'));
   }, [runSonarrTest]);
 
-  const handleOverseerrManualTest = useCallback(() => {
-    runAsyncTask(runOverseerrTest('manual'));
-  }, [runOverseerrTest]);
+  const handleSeerrManualTest = useCallback(() => {
+    runAsyncTask(runSeerrTest('manual'));
+  }, [runSeerrTest]);
 
   const handleGoogleManualTest = useCallback(() => {
     runAsyncTask(runGoogleTest('manual'));
@@ -2647,7 +2647,7 @@ export const SettingsPage = ({
   }, [runOpenAiTest]);
 
   const persistIntegrationEnabledState = useCallback((params: {
-    integration: 'radarr' | 'sonarr' | 'overseerr' | 'google' | 'openai';
+    integration: 'radarr' | 'sonarr' | 'seerr' | 'google' | 'openai';
     enabled: boolean;
     restoreEnabledState: () => void;
     serviceName: string;
@@ -2726,35 +2726,35 @@ export const SettingsPage = ({
     runSonarrTest,
   ]);
 
-  const handleOverseerrToggle = useCallback(() => {
-    const previousEnabled = overseerrEnabled;
-    const nextEnabled = !overseerrEnabled;
-    setOverseerrEnabled(nextEnabled);
-    setOverseerrTestOk(null);
-    overseerrTestRunId.current += 1;
-    setOverseerrIsTesting(false);
+  const handleSeerrToggle = useCallback(() => {
+    const previousEnabled = seerrEnabled;
+    const nextEnabled = !seerrEnabled;
+    setSeerrEnabled(nextEnabled);
+    setSeerrTestOk(null);
+    seerrTestRunId.current += 1;
+    setSeerrIsTesting(false);
 
     persistIntegrationEnabledState({
-      integration: 'overseerr',
+      integration: 'seerr',
       enabled: nextEnabled,
       restoreEnabledState: () => {
-        setOverseerrEnabled(previousEnabled);
+        setSeerrEnabled(previousEnabled);
       },
-      serviceName: 'Overseerr',
+      serviceName: 'Seerr',
     });
 
     const usesSavedCreds =
-      Boolean(secretsPresent.overseerr) && !overseerrApiKey.trim();
-    if (nextEnabled && usesSavedCreds && !overseerrTouched) {
-      runAsyncTask(runOverseerrTest('auto'));
+      Boolean(secretsPresent.seerr) && !seerrApiKey.trim();
+    if (nextEnabled && usesSavedCreds && !seerrTouched) {
+      runAsyncTask(runSeerrTest('auto'));
     }
   }, [
-    overseerrApiKey,
-    overseerrEnabled,
-    overseerrTouched,
+    seerrApiKey,
+    seerrEnabled,
+    seerrTouched,
     persistIntegrationEnabledState,
-    runOverseerrTest,
-    secretsPresent.overseerr,
+    runSeerrTest,
+    secretsPresent.seerr,
   ]);
 
   const shouldAutoTestGoogle = useCallback(() => {
@@ -2820,11 +2820,11 @@ export const SettingsPage = ({
     secretsPresent.openai,
   ]);
 
-  const handleOverseerrApiKeyBlur = useCallback(() => {
-    const apiKey = overseerrApiKey.trim();
-    if (!overseerrEnabled || !apiKey) return;
-    runAsyncTask(runOverseerrTest('auto'));
-  }, [overseerrApiKey, overseerrEnabled, runOverseerrTest]);
+  const handleSeerrApiKeyBlur = useCallback(() => {
+    const apiKey = seerrApiKey.trim();
+    if (!seerrEnabled || !apiKey) return;
+    runAsyncTask(runSeerrTest('auto'));
+  }, [seerrApiKey, seerrEnabled, runSeerrTest]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -3831,26 +3831,26 @@ export const SettingsPage = ({
                 </div>
               </div>
 
-              {/* Overseerr Settings */}
-              <div id="vault-overseerr" className="relative scroll-mt-24">
+              {/* Seerr Settings */}
+              <div id="vault-seerr" className="relative scroll-mt-24">
                 <AnimatePresence initial={false}>
-                  {flashCard?.id === 'vault-overseerr' && (
+                  {flashCard?.id === 'vault-seerr' && (
                     <motion.div
-                      key={`${flashCard.nonce}-glow-overseerr`}
+                      key={`${flashCard.nonce}-glow-seerr`}
                       className="pointer-events-none absolute inset-0 rounded-3xl"
-                      initial={{ boxShadow: '0 0 0px rgba(34, 211, 238, 0)' }}
+                      initial={{ boxShadow: '0 0 0px rgba(167, 139, 250, 0)' }}
                       animate={{
                         boxShadow: [
-                          '0 0 0px rgba(34, 211, 238, 0)',
-                          '0 0 30px rgba(34, 211, 238, 0.45)',
-                          '0 0 0px rgba(34, 211, 238, 0)',
-                          '0 0 30px rgba(34, 211, 238, 0.45)',
-                          '0 0 0px rgba(34, 211, 238, 0)',
-                          '0 0 30px rgba(34, 211, 238, 0.45)',
-                          '0 0 0px rgba(34, 211, 238, 0)',
+                          '0 0 0px rgba(167, 139, 250, 0)',
+                          '0 0 30px rgba(167, 139, 250, 0.45)',
+                          '0 0 0px rgba(167, 139, 250, 0)',
+                          '0 0 30px rgba(167, 139, 250, 0.45)',
+                          '0 0 0px rgba(167, 139, 250, 0)',
+                          '0 0 30px rgba(167, 139, 250, 0.45)',
+                          '0 0 0px rgba(167, 139, 250, 0)',
                         ],
                       }}
-                      exit={{ boxShadow: '0 0 0px rgba(34, 211, 238, 0)' }}
+                      exit={{ boxShadow: '0 0 0px rgba(167, 139, 250, 0)' }}
                       transition={{ duration: 3.8, ease: 'easeInOut' }}
                     />
                   )}
@@ -3859,18 +3859,18 @@ export const SettingsPage = ({
                 <div className={`${cardClass} group`}>
                   <div className={cardHeaderClass}>
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-cyan-300">
+                      <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-violet-300">
                         <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
-                          <OverseerrLogo className="w-7 h-7" />
+                          <SeerrLogo className="w-7 h-7" />
                         </span>
                       </div>
                       <div className="flex items-center gap-2 min-w-0">
-                        <h2 className={cardTitleClass}>Overseerr</h2>
+                        <h2 className={cardTitleClass}>Seerr</h2>
                         <Popover>
                           <PopoverTrigger asChild>
                             <button
                               type="button"
-                              aria-label="Overseerr API key help"
+                              aria-label="Seerr API key help"
                               className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                             >
                               <Info className="w-4 h-4" />
@@ -3881,14 +3881,14 @@ export const SettingsPage = ({
                             className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
                           >
                             <div className="space-y-2 text-sm text-white/80">
-                              <div>Find your Overseerr API key in Settings.</div>
+                              <div>Find your Seerr API key in Settings.</div>
                               <a
                                 href="http://localhost:5055/settings"
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-[#67e8f9] hover:text-[#a5f3fc] underline underline-offset-4"
+                                className="text-[#c4b5fd] hover:text-[#ddd6fe] underline underline-offset-4"
                               >
-                                Overseerr → Settings
+                                Seerr → Settings
                               </a>
                             </div>
                           </PopoverContent>
@@ -3899,42 +3899,42 @@ export const SettingsPage = ({
                       <button
                         type="button"
                         disabled={
-                          !overseerrEnabled ||
-                          overseerrStatus === 'testing' ||
-                          (overseerrStatus === 'inactive' && overseerrTestOk !== false)
+                          !seerrEnabled ||
+                          seerrStatus === 'testing' ||
+                          (seerrStatus === 'inactive' && seerrTestOk !== false)
                         }
-                        onClick={handleOverseerrManualTest}
-                        className={statusPillClass(overseerrStatus)}
-                        aria-label={`Overseerr status: ${statusLabel(overseerrStatus)}`}
+                        onClick={handleSeerrManualTest}
+                        className={statusPillClass(seerrStatus)}
+                        aria-label={`Seerr status: ${statusLabel(seerrStatus)}`}
                       >
-                        {overseerrStatus === 'testing' ? (
+                        {seerrStatus === 'testing' ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <span
-                            className={`h-2 w-2 rounded-full ${statusDotClass(overseerrStatus)}`}
+                            className={`h-2 w-2 rounded-full ${statusDotClass(seerrStatus)}`}
                           />
                         )}
-                        {statusLabel(overseerrStatus)}
+                        {statusLabel(seerrStatus)}
                       </button>
                       <button
                         type="button"
                         role="switch"
-                        aria-checked={overseerrEnabled}
-                        onClick={handleOverseerrToggle}
+                        aria-checked={seerrEnabled}
+                        onClick={handleSeerrToggle}
                         disabled={
                           integrationEnabledMutation.isPending &&
                           integrationEnabledMutation.variables?.integration ===
-                            'overseerr'
+                            'seerr'
                         }
-                        className={toggleTrackClass(overseerrEnabled)}
-                        aria-label="Toggle Overseerr"
+                        className={toggleTrackClass(seerrEnabled)}
+                        aria-label="Toggle Seerr"
                       >
-                        <span className={toggleThumbClass(overseerrEnabled)} />
+                        <span className={toggleThumbClass(seerrEnabled)} />
                       </button>
                     </div>
                   </div>
                   <AnimatePresence initial={false}>
-                    {overseerrEnabled && (
+                    {seerrEnabled && (
                       <motion.div
                         initial={
                           allowCardExpandAnimations.current
@@ -3951,8 +3951,8 @@ export const SettingsPage = ({
                             <div className={labelClass}>Base URL</div>
                             <input
                               type="text"
-                              value={overseerrBaseUrl}
-                              onChange={handleOverseerrBaseUrlChange}
+                              value={seerrBaseUrl}
+                              onChange={handleSeerrBaseUrlChange}
                               placeholder="http://localhost:5055"
                               className={inputClass}
                             />
@@ -3960,15 +3960,15 @@ export const SettingsPage = ({
                           <div>
                             <div className={labelClass}>API Key</div>
                             <MaskedSecretInput
-                              value={overseerrApiKey}
-                              setValue={setOverseerrApiKey}
-                              hasSavedValue={Boolean(secretsPresent.overseerr)}
-                              onEditStart={markOverseerrEdited}
-                              onBlur={handleOverseerrApiKeyBlur}
+                              value={seerrApiKey}
+                              setValue={setSeerrApiKey}
+                              hasSavedValue={Boolean(secretsPresent.seerr)}
+                              onEditStart={markSeerrEdited}
+                              onBlur={handleSeerrApiKeyBlur}
                               placeholder={
-                                secretsPresent.overseerr
+                                secretsPresent.seerr
                                   ? 'Saved (enter new to replace)'
-                                  : 'Enter Overseerr API key'
+                                  : 'Enter Seerr API key'
                               }
                               className={inputClass}
                             />

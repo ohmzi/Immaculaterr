@@ -69,9 +69,9 @@ Pick a feature area first, then jump into the full section below.
 > Reset the saved Immaculate Taste dataset for a selected library.
 > [What does "Reset Immaculate Taste Collection" do?](#what-does-reset-immaculate-taste-collection-do)
 
-> ### [Reset Overseerr Requests](#reset-overseerr-requests)
-> Overseerr routing behavior and how to clear managed request history.
-> [How do I set up Overseerr mode in simple steps?](#how-do-i-set-up-overseerr-mode-in-simple-steps) · [What changes when I turn on "Route missing items via Overseerr"?](#what-changes-when-i-turn-on-route-missing-items-via-overseerr) · [What is the difference between in-app approval mode and Overseerr mode?](#what-is-the-difference-between-in-app-approval-mode-and-overseerr-mode)
+> ### [Reset Seerr Requests](#reset-seerr-requests)
+> Seerr routing behavior and how to clear managed request history.
+> [How do I set up Seerr mode in simple steps?](#how-do-i-set-up-seerr-mode-in-simple-steps) · [What changes when I turn on "Route missing items via Seerr"?](#what-changes-when-i-turn-on-route-missing-items-via-seerr) · [What is the difference between in-app approval mode and Seerr mode?](#what-is-the-difference-between-in-app-approval-mode-and-seerr-mode)
 > + 1 more answer in the section below.
 
 > ### [Reset Rejected List](#reset-rejected-list)
@@ -103,7 +103,7 @@ Pick a feature area first, then jump into the full section below.
 
 > ### [Troubleshooting](#troubleshooting)
 > Common login, integration, empty-run, and reset questions.
-> [I can't log in / I keep getting logged out - what do I check?](#i-cant-log-in--i-keep-getting-logged-out---what-do-i-check) · [Immaculaterr can't reach Plex/Radarr/Sonarr/Overseerr - what URL should I use from Docker?](#immaculaterr-cant-reach-plexradarrsonarroverseerr---what-url-should-i-use-from-docker) · [TMDB requests fail - what's required and where do I configure it?](#tmdb-requests-fail---whats-required-and-where-do-i-configure-it)
+> [I can't log in / I keep getting logged out - what do I check?](#i-cant-log-in--i-keep-getting-logged-out---what-do-i-check) · [Immaculaterr can't reach Plex/Radarr/Sonarr/Seerr - what URL should I use from Docker?](#immaculaterr-cant-reach-plexradarrsonarrseerr---what-url-should-i-use-from-docker) · [TMDB requests fail - what's required and where do I configure it?](#tmdb-requests-fail---whats-required-and-where-do-i-configure-it)
 > + 5 more answers in the section below.
 
 > ### [Glossary](#glossary)
@@ -117,11 +117,11 @@ Pick a feature area first, then jump into the full section below.
 
 Immaculaterr is a Plex autopilot that watches your Plex activity, generates curated recommendation collections, and runs a few safety-focused cleanup jobs so your library stays tidy.
 
-It does not download media by itself. It can optionally send missing titles to Radarr/Sonarr or Overseerr, which handle the request/download workflows.
+It does not download media by itself. It can optionally send missing titles to Radarr/Sonarr or Seerr, which handle the request/download workflows.
 
 ### What are the three main pages I need to understand?
 
-- Vault: connect services (Plex, Radarr/Sonarr/Overseerr, TMDB, optional Google/OpenAI).
+- Vault: connect services (Plex, Radarr/Sonarr/Seerr, TMDB, optional Google/OpenAI).
 - Command Center: tune how the app behaves (defaults and dials).
 - Task Manager: run jobs manually, and enable/disable Auto-Run.
 
@@ -129,8 +129,8 @@ It does not download media by itself. It can optionally send missing titles to R
 
 1. Create your admin login when prompted.
 2. During initial setup, you already added Plex and TMDB API keys; those are enough to create Plex collections.
-3. Optionally configure Radarr/Sonarr and/or Overseerr in Vault if you want missing-item requests.
-4. In Task Manager, choose your missing-item route per task card: direct ARR or Overseerr.
+3. Optionally configure Radarr/Sonarr and/or Seerr in Vault if you want missing-item requests.
+4. In Task Manager, choose your missing-item route per task card: direct ARR or Seerr.
 5. Go to Task Manager and enable Auto-Run for the jobs you want.
 
 ### What port does Immaculaterr use and how do I access it?
@@ -159,7 +159,7 @@ Task Manager is the page where you decide when each job runs and whether it shou
 - Leave most cards off until you know you want that automation.
 - For scheduled cards, the built-in default times are already set to off-peak hours.
 - For collection cards, direct **Radarr** / **Sonarr** fetch is the simplest path if you want missing-item requests.
-- Only turn on **Route missing items via Overseerr** if you want Overseerr to become the request workflow instead.
+- Only turn on **Route missing items via Seerr** if you want Seerr to become the request workflow instead.
 - Leave **Approval required from Observatory** off unless you want to review each missing title first.
 - Leave **Start search immediately** off unless you truly want instant ARR searching. Use **Search Monitored** for off-peak searching instead.
 
@@ -189,7 +189,7 @@ Enter the media type, the title, and optionally the year. The run then behaves l
 
 ### Why is a task card blocked or sending me to Vault?
 
-Some jobs depend on Radarr, Sonarr, or Overseerr being configured and reachable.
+Some jobs depend on Radarr, Sonarr, or Seerr being configured and reachable.
 
 - **Confirm Monitored** and **Search Monitored** can block the whole card if ARR is not ready.
 - Other cards usually stay usable, but trying to enable a missing integration toggle opens a setup shortcut to Vault.
@@ -260,7 +260,7 @@ Open in app: [Task Manager -> Immaculate Taste Collection](/task-manager#job-imm
 
 ### What does Immaculate Taste Collection do?
 
-This is the watch-triggered Immaculate Taste updater. After you finish watching, it updates the taste dataset, refreshes the recommendation pool, and can optionally route missing titles to Radarr, Sonarr, or Overseerr.
+This is the watch-triggered Immaculate Taste updater. After you finish watching, it updates the taste dataset, refreshes the recommendation pool, and can optionally route missing titles to Radarr, Sonarr, or Seerr.
 
 It is the main card for growing and updating the Immaculate Taste pipeline.
 
@@ -284,11 +284,11 @@ If you prefer calmer, off-peak searching, leave it off and use **Search Monitore
 
 It adds a review step before direct ARR requests are sent. Missing titles stay pending until you swipe right on them in Observatory.
 
-This only applies to direct ARR mode. If you switch the task to Overseerr routing, approval mode turns off for this card.
+This only applies to direct ARR mode. If you switch the task to Seerr routing, approval mode turns off for this card.
 
-### What changes when I turn on Route missing items via Overseerr?
+### What changes when I turn on Route missing items via Seerr?
 
-- New missing items are requested in Overseerr instead of being sent directly to ARR.
+- New missing items are requested in Seerr instead of being sent directly to ARR.
 - Direct Radarr and Sonarr fetch toggles are turned off for this card.
 - **Start search immediately** is turned off.
 - **Approval required from Observatory** is turned off.
@@ -335,9 +335,9 @@ It adds a review step before direct ARR requests are sent. Missing titles stay p
 
 Like the Immaculate Taste card, this only applies to direct ARR mode.
 
-### What changes when I turn on Route missing items via Overseerr?
+### What changes when I turn on Route missing items via Seerr?
 
-- Missing titles are sent to Overseerr instead of directly to ARR.
+- Missing titles are sent to Seerr instead of directly to ARR.
 - Direct Radarr and Sonarr fetch toggles are turned off for this card.
 - **Approval required from Observatory** is turned off.
 
@@ -376,7 +376,7 @@ Recommendations is the part of Immaculaterr that decides how seed-based suggesti
 - TMDB is always the starting point for candidate titles.
 - If Google and/or OpenAI are enabled in Vault, they can widen discovery or refine the final list.
 - The current-vs-future release dial changes how much of the final mix leans toward titles you can watch now versus upcoming titles.
-- Task Manager still decides whether missing titles stay tracked, go directly to ARR, or route through Overseerr.
+- Task Manager still decides whether missing titles stay tracked, go directly to ARR, or route through Seerr.
 
 ### What does "Plex-Triggered Auto-Run" mean?
 
@@ -452,7 +452,7 @@ The system enforces that released stays at least **25%**, so upcoming is effecti
 
 It is recorded as **pending**. Pending items can later become active once they appear in Plex.
 
-If the job is allowed to fetch missing items, Immaculaterr can send those missing titles to Radarr/Sonarr directly or route them to Overseerr, depending on your task settings.
+If the job is allowed to fetch missing items, Immaculaterr can send those missing titles to Radarr/Sonarr directly or route them to Seerr, depending on your task settings.
 
 ### How does the refresher move items from pending to active?
 
@@ -521,7 +521,7 @@ Based on Latest Watched is more immediate: it uses your recent watch as a seed, 
 Immaculate Taste is a long-lived per-library suggestion system. You can run it in simple one-lane mode or switch to profile-based lanes for finer control.
 
 - **Default mode**: one shared rule set keeps behavior straightforward.
-- **Profile mode**: each profile can define user scope, media type, include/exclude filters, collection naming, and ARR/Overseerr routing.
+- **Profile mode**: each profile can define user scope, media type, include/exclude filters, collection naming, and ARR/Seerr routing.
 - **Deterministic matching**: profiles are evaluated in order, excluded filters win, and unmatched seeds are skipped and logged.
 - **Same lifecycle**: suggestions are tracked as active or pending, then refresher runs promote and rebuild as items appear in Plex.
 
@@ -583,7 +583,7 @@ In **Task Manager - Immaculate Taste Collection**, turn on **Approval required f
 
 When enabled, Immaculaterr will not send missing titles to Radarr/Sonarr until you **swipe right** on them in Observatory.
 
-This only applies to direct ARR mode. If you enable Overseerr routing for that task, Observatory approval is automatically disabled for that task.
+This only applies to direct ARR mode. If you enable Seerr routing for that task, Observatory approval is automatically disabled for that task.
 
 ### Why does Observatory say there are no suggestions for my library?
 
@@ -601,41 +601,41 @@ It deletes the Immaculate Taste Plex collection for the selected library and cle
 
 After reset, run the Immaculate Taste Collection job again (or let it auto-run) to rebuild suggestions and recreate the Plex collection.
 
-## Reset Overseerr Requests
+## Reset Seerr Requests
 
-Open in app: [Command Center -> Reset Overseerr Requests](/command-center#command-center-reset-overseerr-requests)
+Open in app: [Command Center -> Reset Seerr Requests](/command-center#command-center-reset-seerr-requests)
 
-### How do I set up Overseerr mode in simple steps?
+### How do I set up Seerr mode in simple steps?
 
-1. Go to **Vault** and set Overseerr URL + API key.
-2. Enable Overseerr in Vault and run the test.
-3. In **Task Manager**, turn on **Route missing items via Overseerr** for each task you want.
-4. Run the task so new missing titles are requested in Overseerr.
+1. Go to **Vault** and set Seerr URL + API key.
+2. Enable Seerr in Vault and run the test.
+3. In **Task Manager**, turn on **Route missing items via Seerr** for each task you want.
+4. Run the task so new missing titles are requested in Seerr.
 
-### What changes when I turn on "Route missing items via Overseerr"?
+### What changes when I turn on "Route missing items via Seerr"?
 
-Turning on **Route missing items via Overseerr** changes the request path for that task, not the recommendation or tracking side of the job.
+Turning on **Route missing items via Seerr** changes the request path for that task, not the recommendation or tracking side of the job.
 
-- Missing titles from that task are sent to Overseerr instead of direct ARR sends.
+- Missing titles from that task are sent to Seerr instead of direct ARR sends.
 - Direct Radarr/Sonarr toggles for that task are turned off.
 - Approval required from Observatory is turned off for that task.
 - For Immaculate Taste, Start search immediately is also turned off.
 - Suggestions, pending/active tracking, and Plex collection updates still continue.
-- If Overseerr is unavailable, those requests are skipped for that run and are not sent to ARR as a fallback.
+- If Seerr is unavailable, those requests are skipped for that run and are not sent to ARR as a fallback.
 
-### What is the difference between in-app approval mode and Overseerr mode?
+### What is the difference between in-app approval mode and Seerr mode?
 
 **In-app approval mode**: you approve in Observatory, then Immaculaterr sends approved items directly to Radarr/Sonarr.
 
-**Overseerr mode**: Immaculaterr sends missing items to Overseerr, and Overseerr becomes the request workflow.
+**Seerr mode**: Immaculaterr sends missing items to Seerr, and Seerr becomes the request workflow.
 
-Use one flow per task card. If Overseerr mode is on, Observatory approval is off.
+Use one flow per task card. If Seerr mode is on, Observatory approval is off.
 
-### How do I clear all Overseerr requests from Immaculaterr?
+### How do I clear all Seerr requests from Immaculaterr?
 
-Go to [Command Center - Reset Overseerr Requests](/command-center#command-center-reset-overseerr-requests).
+Go to [Command Center - Reset Seerr Requests](/command-center#command-center-reset-seerr-requests).
 
-After confirmation, Immaculaterr asks Overseerr to delete every request regardless of status. This clears **all** Overseerr requests—including user-created requests, not only Immaculaterr-managed ones. It clears request records only; it does not delete Plex media files.
+After confirmation, Immaculaterr asks Seerr to delete every request regardless of status. This clears **all** Seerr requests—including user-created requests, not only Immaculaterr-managed ones. It clears request records only; it does not delete Plex media files.
 
 ## Reset Rejected List
 
@@ -670,7 +670,7 @@ Open in app: [Command Center -> Radarr](/command-center#command-center-radarr)
 
 - In direct ARR mode, movies can go to Radarr and shows can go to Sonarr.
 - If you leave it off, the app still builds suggestions and tracks pending items, but it does not send requests anywhere.
-- If you want Overseerr to manage requests instead, use **Route missing items via Overseerr** for that task.
+- If you want Seerr to manage requests instead, use **Route missing items via Seerr** for that task.
 
 ### If I disable Radarr toggles, what changes?
 
@@ -779,7 +779,7 @@ The app uses layered protections around saved secrets, sign-in flows, and admin-
 - Check browser cookie policy for this site (private mode and strict tracking protection can block session cookies).
 - After config/protocol changes, clear site cookies and sign in again.
 
-### Immaculaterr can't reach Plex/Radarr/Sonarr/Overseerr - what URL should I use from Docker?
+### Immaculaterr can't reach Plex/Radarr/Sonarr/Seerr - what URL should I use from Docker?
 
 Use URLs from the container's point of view:
 
@@ -822,10 +822,10 @@ Then use the test buttons in **Vault** to confirm each integration from inside t
 - **Rewind**: run history + job reports (including step breakdown and raw response)
 - **Logs**: raw server log lines
 
-### When should I use reset tools (Rejected List, Overseerr Requests, Immaculate Taste Collection)?
+### When should I use reset tools (Rejected List, Seerr Requests, Immaculate Taste Collection)?
 
 - Use [Command Center - Reset Rejected List](/command-center#command-center-reset-rejected-list) when you want previously swiped-left suggestions to become eligible again.
-- Use [Command Center - Reset Overseerr Requests](/command-center#command-center-reset-overseerr-requests) to clear all Overseerr requests (including user-created ones, not only Immaculaterr-managed).
+- Use [Command Center - Reset Seerr Requests](/command-center#command-center-reset-seerr-requests) to clear all Seerr requests (including user-created ones, not only Immaculaterr-managed).
 - Use [Command Center - Reset Immaculate Taste Collection](/command-center#command-center-reset-immaculate-taste-collection) when you need to rebuild that library's dataset/collection from a clean state.
 
 ## Glossary

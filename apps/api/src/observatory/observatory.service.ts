@@ -108,13 +108,13 @@ function watchedCollectionName(params: {
 function readEffectiveApproval(params: {
   settings: Record<string, unknown>;
   approvalPath: string;
-  overseerrPath: string;
+  seerrPath: string;
 }): boolean {
   const approvalRequired =
     (pickBool(params.settings, params.approvalPath) ?? false) === true;
-  const overseerrModeSelected =
-    (pickBool(params.settings, params.overseerrPath) ?? false) === true;
-  return approvalRequired && !overseerrModeSelected;
+  const seerrModeSelected =
+    (pickBool(params.settings, params.seerrPath) ?? false) === true;
+  return approvalRequired && !seerrModeSelected;
 }
 
 @Injectable()
@@ -411,7 +411,7 @@ export class ObservatoryService {
         settings,
         approvalPath:
           'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
-        overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
+        seerrPath: 'jobs.immaculateTastePoints.fetchMissing.seerr',
       }),
     };
   }
@@ -533,7 +533,7 @@ export class ObservatoryService {
         settings,
         approvalPath:
           'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
-        overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
+        seerrPath: 'jobs.immaculateTastePoints.fetchMissing.seerr',
       }),
     };
   }
@@ -655,8 +655,7 @@ export class ObservatoryService {
         settings,
         approvalPath:
           'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-        overseerrPath:
-          'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+        seerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.seerr',
       }),
     };
   }
@@ -783,8 +782,7 @@ export class ObservatoryService {
         settings,
         approvalPath:
           'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-        overseerrPath:
-          'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+        seerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.seerr',
       }),
     };
   }
@@ -1355,16 +1353,16 @@ export class ObservatoryService {
     if (!plexToken) throw new BadGatewayException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const overseerrModeSelected =
+    const seerrModeSelected =
       (pickBool(
         settings,
-        'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+        'jobs.watchedMovieRecommendations.fetchMissing.seerr',
       ) ?? false) === true;
     const approvalRequired = readEffectiveApproval({
       settings,
       approvalPath:
         'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-      overseerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.overseerr',
+      seerrPath: 'jobs.watchedMovieRecommendations.fetchMissing.seerr',
     });
 
     const ctx: JobContext = {
@@ -1432,7 +1430,7 @@ export class ObservatoryService {
           'jobs.watchedMovieRecommendations.fetchMissing.radarr',
         ) ?? true;
       const radarrEnabled =
-        !overseerrModeSelected &&
+        !seerrModeSelected &&
         fetchMissingRadarr &&
         (pickBool(settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
         Boolean(radarrBaseUrlRaw) &&
@@ -1586,7 +1584,7 @@ export class ObservatoryService {
       return {
         ok: true,
         approvalRequired,
-        overseerrModeSelected,
+        seerrModeSelected,
         unmonitored,
         sent,
         refresh,
@@ -1602,7 +1600,7 @@ export class ObservatoryService {
         'jobs.watchedMovieRecommendations.fetchMissing.sonarr',
       ) ?? true;
     const sonarrEnabled =
-      !overseerrModeSelected &&
+      !seerrModeSelected &&
       fetchMissingSonarr &&
       (pickBool(settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
       Boolean(sonarrBaseUrlRaw) &&
@@ -1751,7 +1749,7 @@ export class ObservatoryService {
     return {
       ok: true,
       approvalRequired,
-      overseerrModeSelected,
+      seerrModeSelected,
       unmonitored,
       sent,
       refresh,
@@ -1782,16 +1780,14 @@ export class ObservatoryService {
     if (!plexToken) throw new BadGatewayException('Plex token is not set');
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
-    const overseerrModeSelected =
-      (pickBool(
-        settings,
-        'jobs.immaculateTastePoints.fetchMissing.overseerr',
-      ) ?? false) === true;
+    const seerrModeSelected =
+      (pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
+        false) === true;
     const approvalRequired = readEffectiveApproval({
       settings,
       approvalPath:
         'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
-      overseerrPath: 'jobs.immaculateTastePoints.fetchMissing.overseerr',
+      seerrPath: 'jobs.immaculateTastePoints.fetchMissing.seerr',
     });
 
     // Treat this as an apply-style operation (no real JobRun persistence).
@@ -1830,7 +1826,7 @@ export class ObservatoryService {
         pinTarget,
         librarySectionKey: params.librarySectionKey,
         approvalRequired,
-        overseerrModeSelected,
+        seerrModeSelected,
       });
     }
 
@@ -1846,7 +1842,7 @@ export class ObservatoryService {
       pinTarget,
       librarySectionKey: params.librarySectionKey,
       approvalRequired,
-      overseerrModeSelected,
+      seerrModeSelected,
     });
   }
 
@@ -1862,7 +1858,7 @@ export class ObservatoryService {
     pinTarget: 'admin' | 'friends';
     librarySectionKey: string;
     approvalRequired: boolean;
-    overseerrModeSelected: boolean;
+    seerrModeSelected: boolean;
   }) {
     const radarrBaseUrlRaw = pickString(params.settings, 'radarr.baseUrl');
     const radarrApiKey = pickString(params.secrets, 'radarr.apiKey');
@@ -1872,7 +1868,7 @@ export class ObservatoryService {
         'jobs.immaculateTastePoints.fetchMissing.radarr',
       ) ?? true;
     const radarrEnabled =
-      !params.overseerrModeSelected &&
+      !params.seerrModeSelected &&
       fetchMissingRadarr &&
       (pickBool(params.settings, 'radarr.enabled') ?? Boolean(radarrApiKey)) &&
       Boolean(radarrBaseUrlRaw) &&
@@ -1885,7 +1881,7 @@ export class ObservatoryService {
       (pickBool(
         params.settings,
         'jobs.immaculateTastePoints.searchImmediately',
-      ) ?? false) === true && !params.overseerrModeSelected;
+      ) ?? false) === true && !params.seerrModeSelected;
 
     const rejected = await this.prisma.immaculateTasteMovieLibrary.findMany({
       where: {
@@ -2079,7 +2075,7 @@ export class ObservatoryService {
       mediaType: 'movie',
       librarySectionKey: params.librarySectionKey,
       approvalRequiredFromObservatory: params.approvalRequired,
-      overseerrModeSelected: params.overseerrModeSelected,
+      seerrModeSelected: params.seerrModeSelected,
       radarr: {
         enabled: radarrEnabled,
         sent,
@@ -2102,7 +2098,7 @@ export class ObservatoryService {
     pinTarget: 'admin' | 'friends';
     librarySectionKey: string;
     approvalRequired: boolean;
-    overseerrModeSelected: boolean;
+    seerrModeSelected: boolean;
   }) {
     const sonarrBaseUrlRaw = pickString(params.settings, 'sonarr.baseUrl');
     const sonarrApiKey = pickString(params.secrets, 'sonarr.apiKey');
@@ -2112,7 +2108,7 @@ export class ObservatoryService {
         'jobs.immaculateTastePoints.fetchMissing.sonarr',
       ) ?? true;
     const sonarrEnabled =
-      !params.overseerrModeSelected &&
+      !params.seerrModeSelected &&
       fetchMissingSonarr &&
       (pickBool(params.settings, 'sonarr.enabled') ?? Boolean(sonarrApiKey)) &&
       Boolean(sonarrBaseUrlRaw) &&
@@ -2125,7 +2121,7 @@ export class ObservatoryService {
       (pickBool(
         params.settings,
         'jobs.immaculateTastePoints.searchImmediately',
-      ) ?? false) === true && !params.overseerrModeSelected;
+      ) ?? false) === true && !params.seerrModeSelected;
 
     const rejected = await this.prisma.immaculateTasteShowLibrary.findMany({
       where: {
@@ -2312,7 +2308,7 @@ export class ObservatoryService {
       mediaType: 'tv',
       librarySectionKey: params.librarySectionKey,
       approvalRequiredFromObservatory: params.approvalRequired,
-      overseerrModeSelected: params.overseerrModeSelected,
+      seerrModeSelected: params.seerrModeSelected,
       sonarr: {
         enabled: sonarrEnabled,
         sent,

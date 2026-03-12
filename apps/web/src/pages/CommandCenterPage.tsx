@@ -77,7 +77,7 @@ import {
   deleteRejectedSuggestion,
   type RejectedSuggestionItem,
 } from '@/api/observatory';
-import { resetOverseerrRequests } from '@/api/overseerr';
+import { resetSeerrRequests } from '@/api/seerr';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { ApiError } from '@/api/http';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
@@ -495,7 +495,7 @@ export function CommandCenterPage() {
     total: number;
   } | null>(null);
   const [rejectedResetOpen, setRejectedResetOpen] = useState(false);
-  const [overseerrResetOpen, setOverseerrResetOpen] = useState(false);
+  const [seerrResetOpen, setSeerrResetOpen] = useState(false);
   const [rejectedListOpen, setRejectedListOpen] = useState(false);
   const [rejectedMediaTab, setRejectedMediaTab] = useState<'movie' | 'tv'>('movie');
   const [rejectedKind, setRejectedKind] = useState<
@@ -727,16 +727,16 @@ export function CommandCenterPage() {
     },
   });
 
-  const resetOverseerrMutation = useMutation({
-    mutationFn: resetOverseerrRequests,
+  const resetSeerrMutation = useMutation({
+    mutationFn: resetSeerrRequests,
     onSuccess: (data) => {
       if (data.failed > 0) {
         toast.error(
-          `Overseerr reset finished with ${data.failed} failed request deletions (${data.deleted} removed).`,
+          `Seerr reset finished with ${data.failed} failed request deletions (${data.deleted} removed).`,
         );
         return;
       }
-      toast.success(`Overseerr requests reset (${data.deleted} removed).`);
+      toast.success(`Seerr requests reset (${data.deleted} removed).`);
     },
   });
 
@@ -2709,20 +2709,20 @@ export function CommandCenterPage() {
   }, [activeProfile]);
 
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
-  const overseerrEnabledFlag = readBool(
+  const seerrEnabledFlag = readBool(
     settingsQuery.data?.settings,
-    'overseerr.enabled',
+    'seerr.enabled',
   );
-  const overseerrBaseUrl = readString(
+  const seerrBaseUrl = readString(
     settingsQuery.data?.settings,
-    'overseerr.baseUrl',
+    'seerr.baseUrl',
   );
-  const overseerrHasSecret = Boolean(secretsPresent.overseerr);
-  // Back-compat: if overseerr.enabled isn't set, treat "secret present" as enabled.
-  const overseerrConfigured =
-    (overseerrEnabledFlag ?? overseerrHasSecret) &&
-    Boolean(overseerrBaseUrl) &&
-    overseerrHasSecret;
+  const seerrHasSecret = Boolean(secretsPresent.seerr);
+  // Back-compat: if seerr.enabled isn't set, treat "secret present" as enabled.
+  const seerrConfigured =
+    (seerrEnabledFlag ?? seerrHasSecret) &&
+    Boolean(seerrBaseUrl) &&
+    seerrHasSecret;
 
   const radarrEnabledFlag = readBool(settingsQuery.data?.settings, 'radarr.enabled');
   const radarrBaseUrl = readString(settingsQuery.data?.settings, 'radarr.baseUrl');
@@ -3605,8 +3605,8 @@ export function CommandCenterPage() {
     draftSelectedPlexUserIds,
     savePlexMonitoringUsersMutation,
   ]);
-  const openOverseerrResetDialog = useCallback(() => {
-    setOverseerrResetOpen(true);
+  const openSeerrResetDialog = useCallback(() => {
+    setSeerrResetOpen(true);
   }, []);
   const openRejectedList = useCallback(() => {
     setRejectedListOpen(true);
@@ -3716,19 +3716,19 @@ export function CommandCenterPage() {
       },
     );
   }, [immaculateUserResetTarget, resetImmaculateUserMutation]);
-  const closeOverseerrReset = useCallback(() => {
-    if (resetOverseerrMutation.isPending) return;
-    setOverseerrResetOpen(false);
-  }, [resetOverseerrMutation.isPending]);
-  const clearOverseerrReset = useCallback(() => {
-    setOverseerrResetOpen(false);
+  const closeSeerrReset = useCallback(() => {
+    if (resetSeerrMutation.isPending) return;
+    setSeerrResetOpen(false);
+  }, [resetSeerrMutation.isPending]);
+  const clearSeerrReset = useCallback(() => {
+    setSeerrResetOpen(false);
   }, []);
-  const confirmOverseerrReset = useCallback(() => {
-    if (resetOverseerrMutation.isPending) return;
-    resetOverseerrMutation.mutate(undefined, {
-      onSuccess: () => setOverseerrResetOpen(false),
+  const confirmSeerrReset = useCallback(() => {
+    if (resetSeerrMutation.isPending) return;
+    resetSeerrMutation.mutate(undefined, {
+      onSuccess: () => setSeerrResetOpen(false),
     });
-  }, [resetOverseerrMutation]);
+  }, [resetSeerrMutation]);
   const closeRejectedReset = useCallback(() => {
     if (resetRejectedMutation.isPending) return;
     setRejectedResetOpen(false);
@@ -6381,9 +6381,9 @@ export function CommandCenterPage() {
             </div>
           </div>
 
-          {/* Reset Overseerr Requests */}
-          <div id="command-center-reset-overseerr-requests" className="relative scroll-mt-24">
-            {renderFeatureCardFlash('command-center-reset-overseerr-requests')}
+          {/* Reset Seerr Requests */}
+          <div id="command-center-reset-seerr-requests" className="relative scroll-mt-24">
+            {renderFeatureCardFlash('command-center-reset-seerr-requests')}
             <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl transition-all duration-300 hover:bg-[#0b0c0f]/75 hover:border-white/15 hover:shadow-2xl hover:shadow-cyan-400/10 focus-within:border-white/15 focus-within:shadow-cyan-400/10 active:bg-[#0b0c0f]/75 active:border-white/15 active:shadow-2xl active:shadow-cyan-400/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
@@ -6394,11 +6394,11 @@ export function CommandCenterPage() {
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <h2 className="text-2xl font-semibold text-white min-w-0 leading-tight">
-                    Reset Overseerr Requests
+                    Reset Seerr Requests
                   </h2>
                   {renderFeatureFaqButton(
-                    'command-center-reset-overseerr-requests',
-                    'Reset Overseerr Requests',
+                    'command-center-reset-seerr-requests',
+                    'Reset Seerr Requests',
                   )}
                 </div>
               </div>
@@ -6412,7 +6412,7 @@ export function CommandCenterPage() {
                   <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-red-500/15 text-red-200 border-red-500/20`}>
                     Error
                   </span>
-                ) : overseerrConfigured ? (
+                ) : seerrConfigured ? (
                   null
                 ) : (
                   <span className={`${APP_HEADER_STATUS_PILL_BASE_CLASS} bg-yellow-400/10 text-yellow-200 border-yellow-400/20`}>
@@ -6420,12 +6420,12 @@ export function CommandCenterPage() {
                   </span>
                 )}
 
-                <SavingPill active={resetOverseerrMutation.isPending} className="static" />
+                <SavingPill active={resetSeerrMutation.isPending} className="static" />
               </div>
             </div>
 
             <p className="mt-3 text-sm text-white/70 leading-relaxed">
-              Delete all Overseerr requests, regardless of status.
+              Delete all Seerr requests, regardless of status.
             </p>
 
             {settingsQuery.isError ? (
@@ -6434,19 +6434,19 @@ export function CommandCenterPage() {
                 <span>
                   Couldn&apos;t load settings. Please open{' '}
                   <Link
-                    to="/vault#vault-overseerr"
+                    to="/vault#vault-seerr"
                     className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
                   >
                     Vault
                   </Link>{' '}
-                  and verify Overseerr configuration.
+                  and verify Seerr configuration.
                 </span>
               </div>
-            ) : !overseerrConfigured ? (
+            ) : !seerrConfigured ? (
               <div className="mt-3 text-sm text-white/65">
-                Set up Overseerr in{' '}
+                Set up Seerr in{' '}
                 <Link
-                  to="/vault#vault-overseerr"
+                  to="/vault#vault-seerr"
                   className="text-white underline underline-offset-4 hover:text-white/90 transition-colors"
                 >
                   Vault
@@ -6455,10 +6455,10 @@ export function CommandCenterPage() {
               </div>
             ) : null}
 
-            {resetOverseerrMutation.isError ? (
+            {resetSeerrMutation.isError ? (
               <div className="mt-3 flex items-start gap-2 text-sm text-red-200/90">
                 <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>{(resetOverseerrMutation.error as Error).message}</span>
+                <span>{(resetSeerrMutation.error as Error).message}</span>
               </div>
             ) : null}
 
@@ -6466,16 +6466,16 @@ export function CommandCenterPage() {
               <button
                 type="button"
                 disabled={
-                  resetOverseerrMutation.isPending ||
-                  !overseerrConfigured ||
+                  resetSeerrMutation.isPending ||
+                  !seerrConfigured ||
                   settingsQuery.isLoading ||
                   settingsQuery.isError
                 }
-                onClick={openOverseerrResetDialog}
+                onClick={openSeerrResetDialog}
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
               >
                 <RotateCcw className="w-4 h-4" />
-                Reset Overseerr requests
+                Reset Seerr requests
               </button>
             </div>
             </div>
@@ -6764,15 +6764,15 @@ export function CommandCenterPage() {
             )}
           </AnimatePresence>
 
-          {/* Reset Overseerr Requests - Confirm Dialog */}
+          {/* Reset Seerr Requests - Confirm Dialog */}
           <AnimatePresence>
-            {overseerrResetOpen && (
+            {seerrResetOpen && (
               <motion.div
                 className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={closeOverseerrReset}
+                onClick={closeSeerrReset}
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -6791,15 +6791,15 @@ export function CommandCenterPage() {
                           Reset
                         </div>
                         <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                          Overseerr Requests
+                          Seerr Requests
                         </h2>
                       </div>
                       <button
                         type="button"
-                        onClick={closeOverseerrReset}
+                        onClick={closeSeerrReset}
                         className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                         aria-label="Close"
-                        disabled={resetOverseerrMutation.isPending}
+                        disabled={resetSeerrMutation.isPending}
                       >
                         <X className="w-5 h-5" />
                       </button>
@@ -6810,7 +6810,7 @@ export function CommandCenterPage() {
                         <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-cyan-200" />
                         <div className="min-w-0">
                           <div className="text-white/85 font-semibold">
-                            This will delete all requests in Overseerr, regardless of status.
+                            This will delete all requests in Seerr, regardless of status.
                           </div>
                           <div className="mt-2 text-xs text-white/55">
                             This action cannot be undone.
@@ -6819,29 +6819,29 @@ export function CommandCenterPage() {
                       </div>
                     </div>
 
-                    {resetOverseerrMutation.isError ? (
+                    {resetSeerrMutation.isError ? (
                       <div className="mt-4 flex items-start gap-2 text-sm text-red-200/90">
                         <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                        <span>{(resetOverseerrMutation.error as Error).message}</span>
+                        <span>{(resetSeerrMutation.error as Error).message}</span>
                       </div>
                     ) : null}
 
                     <div className="mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
                       <button
                         type="button"
-                        onClick={clearOverseerrReset}
+                        onClick={clearSeerrReset}
                         className="h-12 rounded-full px-6 border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-                        disabled={resetOverseerrMutation.isPending}
+                        disabled={resetSeerrMutation.isPending}
                       >
                         Cancel
                       </button>
                       <button
                         type="button"
-                        onClick={confirmOverseerrReset}
+                        onClick={confirmSeerrReset}
                         className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                        disabled={resetOverseerrMutation.isPending}
+                        disabled={resetSeerrMutation.isPending}
                       >
-                        {resetOverseerrMutation.isPending ? (
+                        {resetSeerrMutation.isPending ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
                             Resetting…

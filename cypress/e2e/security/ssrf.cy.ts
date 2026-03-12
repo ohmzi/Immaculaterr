@@ -22,7 +22,7 @@ type SessionContext = {
 };
 
 const LOGIN_PATH = '/api/auth/login';
-const SSRF_TEST_PATH = '/api/integrations/test/overseerr';
+const SSRF_TEST_PATH = '/api/integrations/test/seerr';
 const REPORT_FILE = 'ssrf-cypress.md';
 const OBSERVATIONS_FILE = 'ssrf-observations.json';
 

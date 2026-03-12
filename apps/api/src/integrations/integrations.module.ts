@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { GoogleModule } from '../google/google.module';
 import { OpenAiModule } from '../openai/openai.module';
-import { OverseerrModule } from '../overseerr/overseerr.module';
+import { SeerrModule } from '../seerr/seerr.module';
 import { PlexModule } from '../plex/plex.module';
 import { RadarrModule } from '../radarr/radarr.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -22,7 +22,7 @@ import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
     TmdbModule,
     GoogleModule,
     OpenAiModule,
-    OverseerrModule,
+    SeerrModule,
     ArrInstanceModule,
   ],
   controllers: [IntegrationsController],

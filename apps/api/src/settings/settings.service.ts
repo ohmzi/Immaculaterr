@@ -17,7 +17,7 @@ export const SERVICE_SECRET_IDS = [
   'radarr',
   'sonarr',
   'tmdb',
-  'overseerr',
+  'seerr',
   'google',
   'openai',
 ] as const;
@@ -32,7 +32,7 @@ const SERVICE_SECRET_PATHS: Record<ServiceSecretId, readonly string[]> = {
   radarr: ['radarr.apiKey', 'radarrApiKey'],
   sonarr: ['sonarr.apiKey', 'sonarrApiKey'],
   tmdb: ['tmdb.apiKey', 'tmdbApiKey', 'tmdb.api_key'],
-  overseerr: ['overseerr.apiKey', 'overseerrApiKey'],
+  seerr: ['seerr.apiKey', 'seerrApiKey'],
   google: ['google.apiKey', 'googleApiKey'],
   openai: ['openai.apiKey', 'openAiApiKey'],
 };

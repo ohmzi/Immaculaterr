@@ -42,13 +42,7 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-type ServiceKey =
-  | 'tmdb'
-  | 'radarr'
-  | 'sonarr'
-  | 'openai'
-  | 'google'
-  | 'overseerr';
+type ServiceKey = 'tmdb' | 'radarr' | 'sonarr' | 'openai' | 'google' | 'seerr';
 type ServiceStatus = 'unknown' | 'not_configured' | 'online' | 'offline';
 
 @Injectable()
@@ -163,7 +157,7 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       this.checkTmdb(s, sec),
       this.checkRadarr(s, sec),
       this.checkSonarr(s, sec),
-      this.checkOverseerr(s, sec),
+      this.checkSeerr(s, sec),
       this.checkOpenAi(s, sec),
       this.checkGoogle(s, sec),
     ]);
@@ -256,24 +250,24 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     });
   }
 
-  private async checkOverseerr(
+  private async checkSeerr(
     settings: Record<string, unknown>,
     secrets: Record<string, unknown>,
   ) {
     const enabled =
-      (pickBool(settings, 'overseerr.enabled') ??
-        Boolean(pickString(secrets, 'overseerr.apiKey'))) &&
-      Boolean(pickString(settings, 'overseerr.baseUrl')) &&
-      Boolean(pickString(secrets, 'overseerr.apiKey'));
+      (pickBool(settings, 'seerr.enabled') ??
+        Boolean(pickString(secrets, 'seerr.apiKey'))) &&
+      Boolean(pickString(settings, 'seerr.baseUrl')) &&
+      Boolean(pickString(secrets, 'seerr.apiKey'));
     if (!enabled) {
-      this.setStatus('overseerr', 'not_configured', null, {
+      this.setStatus('seerr', 'not_configured', null, {
         reason: 'disabled_or_missing',
       });
       return;
     }
 
-    const baseUrl = normalizeHttpUrl(pickString(settings, 'overseerr.baseUrl'));
-    const apiKey = pickString(secrets, 'overseerr.apiKey');
+    const baseUrl = normalizeHttpUrl(pickString(settings, 'seerr.baseUrl'));
+    const apiKey = pickString(secrets, 'seerr.apiKey');
     const root = new URL(baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
     const rootPath = root.pathname.replace(/\/+$/, '');
     root.pathname = rootPath.toLowerCase().endsWith('/api/v1')
@@ -281,7 +275,7 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       : `${rootPath || ''}/`;
     const url = new URL('api/v1/auth/me', root.toString()).toString();
 
-    await this.probeHttp('overseerr', url, {
+    await this.probeHttp('seerr', url, {
       headers: { Accept: 'application/json', 'X-Api-Key': apiKey },
       timeoutMs: 10_000,
     });

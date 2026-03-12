@@ -1,32 +1,32 @@
 import { fetchJson } from '@/api/http';
 import { apiPath, JSON_HEADERS } from '@/api/constants';
 
-export type TestOverseerrConnectionParams = {
+export type TestSeerrConnectionParams = {
   baseUrl: string;
   apiKey: string;
 };
 
-export type TestOverseerrConnectionResponse = {
+export type TestSeerrConnectionResponse = {
   ok: true;
   user: unknown;
 };
 
-export function testOverseerrConnection(
-  params: TestOverseerrConnectionParams,
+export function testSeerrConnection(
+  params: TestSeerrConnectionParams,
 ) {
-  return fetchJson<TestOverseerrConnectionResponse>(apiPath('/overseerr/test'), {
+  return fetchJson<TestSeerrConnectionResponse>(apiPath('/seerr/test'), {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
 }
 
-export async function resetOverseerrRequests() {
+export async function resetSeerrRequests() {
   return await fetchJson<{
     ok: true;
     total: number;
     deleted: number;
     failed: number;
     failedRequestIds: number[];
-  }>(apiPath('/overseerr/requests/reset'), { method: 'DELETE' });
+  }>(apiPath('/seerr/requests/reset'), { method: 'DELETE' });
 }

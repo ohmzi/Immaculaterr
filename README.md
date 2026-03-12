@@ -77,7 +77,7 @@
   - Scheduled or manual full runs process all eligible users and libraries in a consistent order, with the admin handled last
 
 - **Sends content directly to Radarr and Sonarr**
-  When Overseerr is off, missing titles go straight to your download apps.
+  When Seerr is off, missing titles go straight to your download apps.
 
 - **Observatory — approve and manage suggestions**
   - Swipe to approve download requests *(optional approval mode)*
@@ -87,10 +87,10 @@
   - Upload your own poster for any collection Immaculaterr creates
   - Preview and upload from Command Center — posters are saved and survive app restarts and updates
 
-- **Optional Overseerr routing**
-  - Send missing content requests through Overseerr instead of directly to your download apps
+- **Optional Seerr routing**
+  - Send missing content requests through Seerr instead of directly to your download apps
   - Toggle it per task, so different tasks can use different flows
-  - Clear all Overseerr requests at once from Command Center when needed
+  - Clear all Seerr requests at once from Command Center when needed
 
 - **Detailed job reports and logs**
   Step-by-step breakdown of every run, with metrics and full history.

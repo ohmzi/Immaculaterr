@@ -1,6 +1,6 @@
 // Single source of truth for the app version.
 // Bump this constant only.
 
-export const APP_VERSION = '1.7.1-beta' as const;
+export const APP_VERSION = '1.7.1-beta-2' as const;
 
 export const APP_VERSION_TAG = `v${APP_VERSION}` as const;
