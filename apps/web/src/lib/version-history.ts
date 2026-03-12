@@ -24,7 +24,7 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.1-beta',
+    version: '1.7.1-beta-2',
     popupHighlights: [
       'TMDB, OpenAI, and Google connectivity checks are now more reliable on DNS/IPv6-problem Docker hosts.',
       'External API tests now retry with explicit IPv4 fallback before failing.',
@@ -35,7 +35,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         bullets: [
           'TMDB, OpenAI, and Google now retry with explicit IPv4 fallback when normal requests fail due to DNS/IPv6 network issues.',
           'This improves API-key validation reliability in Docker environments with unstable resolver behavior.',
-          'Added focused test coverage for fallback behavior and non-fallback auth failure handling.',
+          'Added focused test coverage for fallback behavior and non-fallback auth failure handling.'
         ],
       }
     ],
