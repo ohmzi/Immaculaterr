@@ -206,6 +206,23 @@ describe('AuthService.resetAllData', () => {
     expect(prisma.setting.deleteMany).toHaveBeenCalledTimes(1);
   });
 
+  it('continues reset when a legacy table is missing', async () => {
+    const { service, prisma } = createService();
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.userRecovery.deleteMany.mockRejectedValueOnce({
+      code: 'P2021',
+      meta: { table: 'main.UserRecovery' },
+    });
+
+    await service.resetAllData();
+
+    expect(prisma.userRecovery.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.userSecrets.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.userSettings.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.user.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.setting.deleteMany).toHaveBeenCalledTimes(1);
+  });
+
   it('fails reset when Plex cleanup cannot fully remove matching collections', async () => {
     const { service, prisma, plexServer } = createService();
     prisma.user.findMany.mockResolvedValue([{ id: 'u1' }]);

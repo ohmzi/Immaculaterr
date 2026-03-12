@@ -113,6 +113,20 @@ function errorToMessage(error: unknown): string {
   return String(error);
 }
 
+function isPrismaMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const maybeCode = (error as { code?: unknown }).code;
+  return maybeCode === 'P2021';
+}
+
+function readPrismaMissingTableName(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const meta = (error as { meta?: unknown }).meta;
+  if (!meta || typeof meta !== 'object') return null;
+  const table = (meta as { table?: unknown }).table;
+  return typeof table === 'string' && table.trim() ? table.trim() : null;
+}
+
 export type PasswordRecoveryQuestion = {
   key: string;
   prompt: string;
@@ -777,32 +791,97 @@ export class AuthService {
   async resetAllData() {
     await this.deletePlexCollectionsForFreshReset();
 
-    await this.prisma.jobLogLine.deleteMany();
-    await this.prisma.jobRun.deleteMany();
-    await this.prisma.jobSchedule.deleteMany();
-    await this.prisma.curatedCollectionItem.deleteMany();
-    await this.prisma.curatedCollection.deleteMany();
-    await this.prisma.watchedMovieRecommendationLibrary.deleteMany();
-    await this.prisma.watchedShowRecommendationLibrary.deleteMany();
-    await this.prisma.immaculateTasteMovieLibrary.deleteMany();
-    await this.prisma.immaculateTasteShowLibrary.deleteMany();
-    await this.prisma.watchedMovieRecommendation.deleteMany();
-    await this.prisma.watchedShowRecommendation.deleteMany();
-    await this.prisma.immaculateTasteMovie.deleteMany();
-    await this.prisma.immaculateTasteShow.deleteMany();
-    await this.prisma.immaculateTasteProfileUserOverride.deleteMany();
-    await this.prisma.immaculateTasteProfile.deleteMany();
-    await this.prisma.rejectedSuggestion.deleteMany();
-    await this.prisma.arrInstance.deleteMany();
-    await this.prisma.plexUser.deleteMany();
-    await this.prisma.session.deleteMany();
-    await this.prisma.userRecovery.deleteMany();
-    await this.prisma.userSecrets.deleteMany();
-    await this.prisma.userSettings.deleteMany();
-    await this.prisma.user.deleteMany();
-    await this.prisma.setting.deleteMany();
+    await this.runResetDeleteStep('jobLogLine', () =>
+      this.prisma.jobLogLine.deleteMany(),
+    );
+    await this.runResetDeleteStep('jobRun', () =>
+      this.prisma.jobRun.deleteMany(),
+    );
+    await this.runResetDeleteStep('jobSchedule', () =>
+      this.prisma.jobSchedule.deleteMany(),
+    );
+    await this.runResetDeleteStep('curatedCollectionItem', () =>
+      this.prisma.curatedCollectionItem.deleteMany(),
+    );
+    await this.runResetDeleteStep('curatedCollection', () =>
+      this.prisma.curatedCollection.deleteMany(),
+    );
+    await this.runResetDeleteStep('watchedMovieRecommendationLibrary', () =>
+      this.prisma.watchedMovieRecommendationLibrary.deleteMany(),
+    );
+    await this.runResetDeleteStep('watchedShowRecommendationLibrary', () =>
+      this.prisma.watchedShowRecommendationLibrary.deleteMany(),
+    );
+    await this.runResetDeleteStep('immaculateTasteMovieLibrary', () =>
+      this.prisma.immaculateTasteMovieLibrary.deleteMany(),
+    );
+    await this.runResetDeleteStep('immaculateTasteShowLibrary', () =>
+      this.prisma.immaculateTasteShowLibrary.deleteMany(),
+    );
+    await this.runResetDeleteStep('watchedMovieRecommendation', () =>
+      this.prisma.watchedMovieRecommendation.deleteMany(),
+    );
+    await this.runResetDeleteStep('watchedShowRecommendation', () =>
+      this.prisma.watchedShowRecommendation.deleteMany(),
+    );
+    await this.runResetDeleteStep('immaculateTasteMovie', () =>
+      this.prisma.immaculateTasteMovie.deleteMany(),
+    );
+    await this.runResetDeleteStep('immaculateTasteShow', () =>
+      this.prisma.immaculateTasteShow.deleteMany(),
+    );
+    await this.runResetDeleteStep('immaculateTasteProfileUserOverride', () =>
+      this.prisma.immaculateTasteProfileUserOverride.deleteMany(),
+    );
+    await this.runResetDeleteStep('immaculateTasteProfile', () =>
+      this.prisma.immaculateTasteProfile.deleteMany(),
+    );
+    await this.runResetDeleteStep('rejectedSuggestion', () =>
+      this.prisma.rejectedSuggestion.deleteMany(),
+    );
+    await this.runResetDeleteStep('arrInstance', () =>
+      this.prisma.arrInstance.deleteMany(),
+    );
+    await this.runResetDeleteStep('plexUser', () =>
+      this.prisma.plexUser.deleteMany(),
+    );
+    await this.runResetDeleteStep('session', () =>
+      this.prisma.session.deleteMany(),
+    );
+    await this.runResetDeleteStep('userRecovery', () =>
+      this.prisma.userRecovery.deleteMany(),
+    );
+    await this.runResetDeleteStep('userSecrets', () =>
+      this.prisma.userSecrets.deleteMany(),
+    );
+    await this.runResetDeleteStep('userSettings', () =>
+      this.prisma.userSettings.deleteMany(),
+    );
+    await this.runResetDeleteStep('user', () => this.prisma.user.deleteMany());
+    await this.runResetDeleteStep('setting', () =>
+      this.prisma.setting.deleteMany(),
+    );
     this.passwordResetChallenges.clear();
     this.passwordResetAttempts.clear();
+  }
+
+  private async runResetDeleteStep(
+    modelName: string,
+    operation: () => Promise<unknown>,
+  ): Promise<void> {
+    try {
+      await operation();
+    } catch (error) {
+      if (isPrismaMissingTableError(error)) {
+        const tableName =
+          readPrismaMissingTableName(error) ?? `${modelName} (unknown table)`;
+        this.logger.warn(
+          `auth: reset-dev skipped missing table cleanup model=${modelName} table=${JSON.stringify(tableName)}`,
+        );
+        return;
+      }
+      throw error;
+    }
   }
 
   private async deletePlexCollectionsForFreshReset(): Promise<void> {
