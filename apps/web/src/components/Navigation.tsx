@@ -574,8 +574,8 @@ export function Navigation() {
           <div className="space-y-2">
             <div>This will:</div>
             <ul className="list-disc pl-5 space-y-1">
-              <li>Erase all Immaculaterr user data (profiles, datasets, logs, settings, and secrets)</li>
-              <li>Delete collections created by Immaculaterr in Plex for all users</li>
+              <li>Erase all Immaculaterr app database data (users, profiles, datasets, logs, schedules, settings, and secrets)</li>
+              <li>Delete all Plex collections created by Immaculaterr for all users</li>
               <li>Also delete Plex collections containing: Immaculate Taste, Based on your recently watched, Change of Taste, and Change of Movie Taste</li>
               <li>Force setup again and log you out</li>
             </ul>
