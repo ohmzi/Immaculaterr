@@ -35,6 +35,7 @@ import { getSecretsEnvelopeKey, putSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { SeerrLogo } from '@/components/ArrLogos';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -47,7 +48,7 @@ type WizardStep =
   | 'tmdb'
   | 'radarr'
   | 'sonarr'
-  | 'overseerr'
+  | 'seerr'
   | 'google'
   | 'openai'
   | 'complete';
@@ -60,7 +61,7 @@ const STEP_ORDER: WizardStep[] = [
   'tmdb',
   'radarr',
   'sonarr',
-  'overseerr',
+  'seerr',
   'google',
   'openai',
   'complete',
@@ -90,7 +91,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     'tmdb',
     'radarr',
     'sonarr',
-    'overseerr',
+    'seerr',
     'google',
     'openai',
   ];
@@ -147,9 +148,9 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const [sonarrBaseUrl, setSonarrBaseUrl] = useState('http://localhost:8989');
   const [sonarrApiKey, setSonarrApiKey] = useState('');
 
-  // Overseerr state
-  const [overseerrBaseUrl, setOverseerrBaseUrl] = useState('http://localhost:5055');
-  const [overseerrApiKey, setOverseerrApiKey] = useState('');
+  // Seerr state
+  const [seerrBaseUrl, setSeerrBaseUrl] = useState('http://localhost:5055');
+  const [seerrApiKey, setSeerrApiKey] = useState('');
 
   // Google state
   const [googleSearchEngineId, setGoogleSearchEngineId] = useState('');
@@ -179,7 +180,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   const buildIntegrationSecretEnvelope = useCallback(
     async (params: {
-      service: 'tmdb' | 'overseerr';
+      service: 'tmdb' | 'seerr';
       secretField: 'apiKey';
       value: string;
     }) => {
@@ -646,41 +647,41 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     },
   });
 
-  const saveAndValidateOverseerr = useMutation({
+  const saveAndValidateSeerr = useMutation({
     mutationFn: async () => {
-      const baseUrl = overseerrBaseUrl.trim();
-      const apiKey = overseerrApiKey.trim();
-      if (!baseUrl) throw new Error('Please enter Overseerr URL');
-      if (!apiKey) throw new Error('Please enter Overseerr API key');
+      const baseUrl = seerrBaseUrl.trim();
+      const apiKey = seerrApiKey.trim();
+      if (!baseUrl) throw new Error('Please enter Seerr URL');
+      if (!apiKey) throw new Error('Please enter Seerr API key');
 
-      toast.info('Validating Overseerr credentials...');
+      toast.info('Validating Seerr credentials...');
       try {
         const apiKeyEnvelope = await buildIntegrationSecretEnvelope({
-          service: 'overseerr',
+          service: 'seerr',
           secretField: 'apiKey',
           value: apiKey,
         });
-        await testSavedIntegration('overseerr', { baseUrl, apiKeyEnvelope });
+        await testSavedIntegration('seerr', { baseUrl, apiKeyEnvelope });
       } catch {
-        throw new Error('Overseerr credentials are incorrect.');
+        throw new Error('Seerr credentials are incorrect.');
       }
 
       await putSettingsWithSecretsCompatibility({
         settings: {
-          overseerr: { enabled: true, baseUrl },
+          seerr: { enabled: true, baseUrl },
         },
         secretsPatch: {
-          overseerr: { apiKey },
+          seerr: { apiKey },
         },
       });
-      toast.success('Connected to Overseerr.');
+      toast.success('Connected to Seerr.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       handleNext();
     },
     onError: (error: Error) => {
-      toast.error(error?.message ?? 'Couldn’t connect to Overseerr.');
+      toast.error(error?.message ?? 'Couldn’t connect to Seerr.');
     },
   });
 
@@ -782,17 +783,17 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const handleSonarrApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setSonarrApiKey(event.target.value);
   }, []);
-  const submitOverseerrStep = useCallback(() => {
-    saveAndValidateOverseerr.mutate();
-  }, [saveAndValidateOverseerr]);
-  const handleOverseerrBaseUrlChange = useCallback(
+  const submitSeerrStep = useCallback(() => {
+    saveAndValidateSeerr.mutate();
+  }, [saveAndValidateSeerr]);
+  const handleSeerrBaseUrlChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      setOverseerrBaseUrl(event.target.value);
+      setSeerrBaseUrl(event.target.value);
     },
     [],
   );
-  const handleOverseerrApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setOverseerrApiKey(event.target.value);
+  const handleSeerrApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setSeerrApiKey(event.target.value);
   }, []);
   const submitGoogleStep = useCallback(() => {
     saveOptionalService.mutate('google');
@@ -864,7 +865,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   />
                   <RequirementItem icon={<Database className="h-4 w-4 text-zinc-500" />} text="Radarr (optional)" />
                   <RequirementItem icon={<HardDrive className="h-4 w-4 text-zinc-500" />} text="Sonarr (optional)" />
-                  <RequirementItem icon={<Server className="h-4 w-4 text-zinc-500" />} text="Overseerr (optional)" />
+                  <RequirementItem icon={<Server className="h-4 w-4 text-zinc-500" />} text="Seerr (optional)" />
                   <RequirementItem icon={<Globe className="h-4 w-4 text-zinc-500" />} text="Other services (optional)" />
                 </ul>
               </div>
@@ -1495,16 +1496,19 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
           </WizardShell>
         );
 
-      case 'overseerr':
+      case 'seerr':
         return (
           <WizardShell
             step={currentStep}
             title={
-              <>
-                <span className="text-yellow-400">Overseerr</span> Configuration
-              </>
+              <span className="inline-flex items-center gap-2">
+                <SeerrLogo className="h-6 w-6" />
+                <span>
+                  <span className="text-yellow-400">Seerr</span> Configuration
+                </span>
+              </span>
             }
-            subtitle="Optional: connect Overseerr for centralized movie/show requests."
+            subtitle="Optional: connect Seerr for centralized movie/show requests."
             progress={{
               stepNumber: coreStepNumber,
               stepTotal: coreStepTotal,
@@ -1527,15 +1531,15 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   Skip
                 </Button>
                 <Button
-                  onClick={submitOverseerrStep}
+                  onClick={submitSeerrStep}
                   disabled={
-                    !overseerrBaseUrl.trim() ||
-                    !overseerrApiKey.trim() ||
-                    saveAndValidateOverseerr.isPending
+                    !seerrBaseUrl.trim() ||
+                    !seerrApiKey.trim() ||
+                    saveAndValidateSeerr.isPending
                   }
                   className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
                 >
-                  {saveAndValidateOverseerr.isPending ? (
+                  {saveAndValidateSeerr.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Validating...
                     </>
@@ -1552,32 +1556,32 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label
-                    htmlFor="overseerrBaseUrl"
+                    htmlFor="seerrBaseUrl"
                     className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
                   >
-                    Overseerr URL
+                    Seerr URL
                   </Label>
                   <Input
-                    id="overseerrBaseUrl"
-                    value={overseerrBaseUrl}
-                    onChange={handleOverseerrBaseUrlChange}
+                    id="seerrBaseUrl"
+                    value={seerrBaseUrl}
+                    onChange={handleSeerrBaseUrlChange}
                     placeholder="http://localhost:5055"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label
-                    htmlFor="overseerrApiKey"
+                    htmlFor="seerrApiKey"
                     className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
                   >
-                    Overseerr API Key
+                    Seerr API Key
                   </Label>
                   <Input
-                    id="overseerrApiKey"
+                    id="seerrApiKey"
                     type="password"
-                    value={overseerrApiKey}
-                    onChange={handleOverseerrApiKeyChange}
-                    placeholder="Enter Overseerr API key"
+                    value={seerrApiKey}
+                    onChange={handleSeerrApiKeyChange}
+                    placeholder="Enter Seerr API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>

@@ -62,7 +62,7 @@ type ScheduleDraft = {
   advancedCron?: string | null; // present if stored cron isn't representable by simple UI
 };
 
-type IntegrationSetupTarget = 'radarr' | 'sonarr' | 'overseerr';
+type IntegrationSetupTarget = 'radarr' | 'sonarr' | 'seerr';
 
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup', // webhook/manual input only
@@ -115,7 +115,7 @@ const JOB_CONFIG: Record<
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-yellow-300',
     description:
-      'Updates your Immaculate Taste collection after you finish watching, and can send missing titles to Radarr/Sonarr/Overseerr.',
+      'Updates your Immaculate Taste collection after you finish watching, and can send missing titles to Radarr/Sonarr/Seerr.',
   },
   immaculateTasteRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
@@ -431,11 +431,11 @@ export function TaskManagerPage() {
     useState(true);
   const [immaculateFetchMissingSonarr, setImmaculateFetchMissingSonarr] =
     useState(true);
-  const [immaculateFetchMissingOverseerr, setImmaculateFetchMissingOverseerr] =
+  const [immaculateFetchMissingSeerr, setImmaculateFetchMissingSeerr] =
     useState(false);
   const [watchedFetchMissingRadarr, setWatchedFetchMissingRadarr] = useState(true);
   const [watchedFetchMissingSonarr, setWatchedFetchMissingSonarr] = useState(true);
-  const [watchedFetchMissingOverseerr, setWatchedFetchMissingOverseerr] =
+  const [watchedFetchMissingSeerr, setWatchedFetchMissingSeerr] =
     useState(false);
   const [immaculateApprovalRequired, setImmaculateApprovalRequired] =
     useState(false);
@@ -506,24 +506,24 @@ export function TaskManagerPage() {
     const saved = readBool(publicSettings, 'sonarr.enabled');
     return (saved ?? Boolean(secretsPresent.sonarr)) === true;
   })();
-  const isOverseerrEnabled = (() => {
-    const saved = readBool(publicSettings, 'overseerr.enabled');
-    return (saved ?? Boolean(secretsPresent.overseerr)) === true;
+  const isSeerrEnabled = (() => {
+    const saved = readBool(publicSettings, 'seerr.enabled');
+    return (saved ?? Boolean(secretsPresent.seerr)) === true;
   })();
 
   const hasRadarrBaseUrl = Boolean(readString(publicSettings, 'radarr.baseUrl'));
   const hasSonarrBaseUrl = Boolean(readString(publicSettings, 'sonarr.baseUrl'));
-  const hasOverseerrBaseUrl = Boolean(readString(publicSettings, 'overseerr.baseUrl'));
+  const hasSeerrBaseUrl = Boolean(readString(publicSettings, 'seerr.baseUrl'));
   const hasRadarrApiKey = Boolean(secretsPresent.radarr);
   const hasSonarrApiKey = Boolean(secretsPresent.sonarr);
-  const hasOverseerrApiKey = Boolean(secretsPresent.overseerr);
+  const hasSeerrApiKey = Boolean(secretsPresent.seerr);
 
   const canEnableRadarrTaskToggles =
     isRadarrEnabled && hasRadarrBaseUrl && hasRadarrApiKey;
   const canEnableSonarrTaskToggles =
     isSonarrEnabled && hasSonarrBaseUrl && hasSonarrApiKey;
-  const canEnableOverseerrTaskToggles =
-    isOverseerrEnabled && hasOverseerrBaseUrl && hasOverseerrApiKey;
+  const canEnableSeerrTaskToggles =
+    isSeerrEnabled && hasSeerrBaseUrl && hasSeerrApiKey;
 
   // Background ARR reachability ping when entering Task Manager (fast validation).
   useEffect(() => {
@@ -702,7 +702,7 @@ export function TaskManagerPage() {
     },
   });
 
-  const overseerrModeMutation = useMutation({
+  const seerrModeMutation = useMutation({
     mutationFn: async (params: {
       jobId: 'immaculateTastePoints' | 'watchedMovieRecommendations';
       enabled: boolean;
@@ -713,7 +713,7 @@ export function TaskManagerPage() {
             jobs: {
               [params.jobId]: {
                 fetchMissing: {
-                  overseerr: false,
+                  seerr: false,
                 },
               },
             },
@@ -727,7 +727,7 @@ export function TaskManagerPage() {
             jobs: {
               immaculateTastePoints: {
                 fetchMissing: {
-                  overseerr: true,
+                  seerr: true,
                   radarr: false,
                   sonarr: false,
                 },
@@ -744,7 +744,7 @@ export function TaskManagerPage() {
           jobs: {
             watchedMovieRecommendations: {
               fetchMissing: {
-                overseerr: true,
+                seerr: true,
                 radarr: false,
                 sonarr: false,
               },
@@ -760,7 +760,7 @@ export function TaskManagerPage() {
   });
 
   useEffect(() => {
-    if (fetchMissingMutation.isPending || overseerrModeMutation.isPending) return;
+    if (fetchMissingMutation.isPending || seerrModeMutation.isPending) return;
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
 
@@ -770,8 +770,8 @@ export function TaskManagerPage() {
     setImmaculateFetchMissingSonarr(
       readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ?? true,
     );
-    setImmaculateFetchMissingOverseerr(
-      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.overseerr') ??
+    setImmaculateFetchMissingSeerr(
+      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
         false,
     );
     setWatchedFetchMissingRadarr(
@@ -782,8 +782,8 @@ export function TaskManagerPage() {
       readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
         true,
     );
-    setWatchedFetchMissingOverseerr(
-      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.overseerr') ??
+    setWatchedFetchMissingSeerr(
+      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.seerr') ??
         false,
     );
 
@@ -803,7 +803,7 @@ export function TaskManagerPage() {
   }, [
     settingsQuery.data?.settings,
     fetchMissingMutation.isPending,
-    overseerrModeMutation.isPending,
+    seerrModeMutation.isPending,
   ]);
 
   const immaculateApprovalRequiredMutation = useMutation({
@@ -834,14 +834,14 @@ export function TaskManagerPage() {
     },
   });
 
-  const immaculateOverseerrMode = immaculateFetchMissingOverseerr;
-  const watchedOverseerrMode = watchedFetchMissingOverseerr;
-  const immaculateOverseerrModePending =
-    overseerrModeMutation.isPending &&
-    overseerrModeMutation.variables?.jobId === 'immaculateTastePoints';
-  const watchedOverseerrModePending =
-    overseerrModeMutation.isPending &&
-    overseerrModeMutation.variables?.jobId === 'watchedMovieRecommendations';
+  const immaculateSeerrMode = immaculateFetchMissingSeerr;
+  const watchedSeerrMode = watchedFetchMissingSeerr;
+  const immaculateSeerrModePending =
+    seerrModeMutation.isPending &&
+    seerrModeMutation.variables?.jobId === 'immaculateTastePoints';
+  const watchedSeerrModePending =
+    seerrModeMutation.isPending &&
+    seerrModeMutation.variables?.jobId === 'watchedMovieRecommendations';
 
   useEffect(() => {
     if (!flashJob) return;
@@ -1213,13 +1213,13 @@ export function TaskManagerPage() {
         hasApiKey: hasSonarrApiKey,
       };
     }
-    if (integrationSetupTarget === 'overseerr') {
+    if (integrationSetupTarget === 'seerr') {
       return {
-        id: 'overseerr' as const,
-        label: 'Overseerr',
-        enabled: isOverseerrEnabled,
-        hasBaseUrl: hasOverseerrBaseUrl,
-        hasApiKey: hasOverseerrApiKey,
+        id: 'seerr' as const,
+        label: 'Seerr',
+        enabled: isSeerrEnabled,
+        hasBaseUrl: hasSeerrBaseUrl,
+        hasApiKey: hasSeerrApiKey,
       };
     }
     return null;
@@ -1726,40 +1726,40 @@ export function TaskManagerPage() {
     },
     [immaculateApprovalRequired, immaculateApprovalRequiredMutation],
   );
-  const handleToggleImmaculateOverseerrMode = useCallback(
+  const handleToggleImmaculateSeerrMode = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
       const prev = {
-        overseerr: immaculateFetchMissingOverseerr,
+        seerr: immaculateFetchMissingSeerr,
         radarr: immaculateFetchMissingRadarr,
         sonarr: immaculateFetchMissingSonarr,
         approval: immaculateApprovalRequired,
         search: immaculateStartSearchImmediately,
       };
-      const next = !prev.overseerr;
-      if (next && !canEnableOverseerrTaskToggles) {
-        openIntegrationSetupDialog('overseerr');
+      const next = !prev.seerr;
+      if (next && !canEnableSeerrTaskToggles) {
+        openIntegrationSetupDialog('seerr');
         return;
       }
 
       if (next) {
-        setImmaculateFetchMissingOverseerr(true);
+        setImmaculateFetchMissingSeerr(true);
         setImmaculateFetchMissingRadarr(false);
         setImmaculateFetchMissingSonarr(false);
         setImmaculateApprovalRequired(false);
         setImmaculateStartSearchImmediately(false);
       } else {
-        setImmaculateFetchMissingOverseerr(false);
+        setImmaculateFetchMissingSeerr(false);
       }
 
-      overseerrModeMutation.mutate(
+      seerrModeMutation.mutate(
         {
           jobId: 'immaculateTastePoints',
           enabled: next,
         },
         {
           onError: () => {
-            setImmaculateFetchMissingOverseerr(prev.overseerr);
+            setImmaculateFetchMissingSeerr(prev.seerr);
             setImmaculateFetchMissingRadarr(prev.radarr);
             setImmaculateFetchMissingSonarr(prev.sonarr);
             setImmaculateApprovalRequired(prev.approval);
@@ -1769,14 +1769,14 @@ export function TaskManagerPage() {
       );
     },
     [
-      canEnableOverseerrTaskToggles,
+      canEnableSeerrTaskToggles,
       immaculateApprovalRequired,
-      immaculateFetchMissingOverseerr,
+      immaculateFetchMissingSeerr,
       immaculateFetchMissingRadarr,
       immaculateFetchMissingSonarr,
       immaculateStartSearchImmediately,
       openIntegrationSetupDialog,
-      overseerrModeMutation,
+      seerrModeMutation,
     ],
   );
   const handleToggleWatchedFetchMissingRadarr = useCallback(
@@ -1845,38 +1845,38 @@ export function TaskManagerPage() {
     },
     [watchedApprovalRequired, watchedApprovalRequiredMutation],
   );
-  const handleToggleWatchedOverseerrMode = useCallback(
+  const handleToggleWatchedSeerrMode = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
       const prev = {
-        overseerr: watchedFetchMissingOverseerr,
+        seerr: watchedFetchMissingSeerr,
         radarr: watchedFetchMissingRadarr,
         sonarr: watchedFetchMissingSonarr,
         approval: watchedApprovalRequired,
       };
-      const next = !prev.overseerr;
-      if (next && !canEnableOverseerrTaskToggles) {
-        openIntegrationSetupDialog('overseerr');
+      const next = !prev.seerr;
+      if (next && !canEnableSeerrTaskToggles) {
+        openIntegrationSetupDialog('seerr');
         return;
       }
 
       if (next) {
-        setWatchedFetchMissingOverseerr(true);
+        setWatchedFetchMissingSeerr(true);
         setWatchedFetchMissingRadarr(false);
         setWatchedFetchMissingSonarr(false);
         setWatchedApprovalRequired(false);
       } else {
-        setWatchedFetchMissingOverseerr(false);
+        setWatchedFetchMissingSeerr(false);
       }
 
-      overseerrModeMutation.mutate(
+      seerrModeMutation.mutate(
         {
           jobId: 'watchedMovieRecommendations',
           enabled: next,
         },
         {
           onError: () => {
-            setWatchedFetchMissingOverseerr(prev.overseerr);
+            setWatchedFetchMissingSeerr(prev.seerr);
             setWatchedFetchMissingRadarr(prev.radarr);
             setWatchedFetchMissingSonarr(prev.sonarr);
             setWatchedApprovalRequired(prev.approval);
@@ -1885,11 +1885,11 @@ export function TaskManagerPage() {
       );
     },
     [
-      canEnableOverseerrTaskToggles,
+      canEnableSeerrTaskToggles,
       openIntegrationSetupDialog,
-      overseerrModeMutation,
+      seerrModeMutation,
       watchedApprovalRequired,
-      watchedFetchMissingOverseerr,
+      watchedFetchMissingSeerr,
       watchedFetchMissingRadarr,
       watchedFetchMissingSonarr,
     ],
@@ -2945,8 +2945,8 @@ export function TaskManagerPage() {
                                             disabled={
                                               settingsQuery.isLoading ||
                                               fetchMissingMutation.isPending ||
-                                              immaculateOverseerrMode ||
-                                              immaculateOverseerrModePending
+                                              immaculateSeerrMode ||
+                                              immaculateSeerrModePending
                                             }
                                             className={cn(
                                               'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -2985,8 +2985,8 @@ export function TaskManagerPage() {
                                             disabled={
                                               settingsQuery.isLoading ||
                                               fetchMissingMutation.isPending ||
-                                              immaculateOverseerrMode ||
-                                              immaculateOverseerrModePending
+                                              immaculateSeerrMode ||
+                                              immaculateSeerrModePending
                                             }
                                             className={cn(
                                               'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -3032,8 +3032,8 @@ export function TaskManagerPage() {
                                           disabled={
                                             settingsQuery.isLoading ||
                                             immaculateStartSearchMutation.isPending ||
-                                            immaculateOverseerrMode ||
-                                            immaculateOverseerrModePending
+                                            immaculateSeerrMode ||
+                                            immaculateSeerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -3086,8 +3086,8 @@ export function TaskManagerPage() {
                                           disabled={
                                             settingsQuery.isLoading ||
                                             immaculateApprovalRequiredMutation.isPending ||
-                                            immaculateOverseerrMode ||
-                                            immaculateOverseerrModePending
+                                            immaculateSeerrMode ||
+                                            immaculateSeerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -3117,40 +3117,40 @@ export function TaskManagerPage() {
                                       <div className="flex items-start justify-between gap-4">
                                         <div className="min-w-0">
                                           <div className="text-sm font-semibold text-white">
-                                            Route missing items via Overseerr
+                                            Route missing items via Seerr
                                           </div>
                                           <div className="mt-1 text-xs text-white/55 leading-relaxed">
-                                            When enabled, new missing items are requested in Overseerr. Radarr/Sonarr direct send, immediate search, and Observatory approval are turned off for this task.
+                                            When enabled, new missing items are requested in Seerr. Radarr/Sonarr direct send, immediate search, and Observatory approval are turned off for this task.
                                           </div>
                                         </div>
 
                                         <button
                                           type="button"
                                           role="switch"
-                                          aria-checked={immaculateFetchMissingOverseerr}
-                                          onClick={handleToggleImmaculateOverseerrMode}
+                                          aria-checked={immaculateFetchMissingSeerr}
+                                          onClick={handleToggleImmaculateSeerrMode}
                                           onPointerDown={handleStopPropagationPointer}
                                           disabled={
                                             settingsQuery.isLoading ||
-                                            immaculateOverseerrModePending
+                                            immaculateSeerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                            immaculateFetchMissingOverseerr
+                                            immaculateFetchMissingSeerr
                                               ? 'bg-cyan-400'
                                               : 'bg-[#2a2438] border-2 border-white/10',
                                           )}
-                                          aria-label="Toggle Overseerr mode for Immaculate Taste Collection"
+                                          aria-label="Toggle Seerr mode for Immaculate Taste Collection"
                                         >
                                           <span
                                             className={cn(
                                               'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                              immaculateFetchMissingOverseerr
+                                              immaculateFetchMissingSeerr
                                                 ? 'translate-x-6'
                                                 : 'translate-x-1',
                                             )}
                                           >
-                                            {immaculateOverseerrModePending && (
+                                            {immaculateSeerrModePending && (
                                               <Loader2 className="h-3 w-3 animate-spin text-black/70" />
                                             )}
                                           </span>
@@ -3180,8 +3180,8 @@ export function TaskManagerPage() {
                                           disabled={
                                             settingsQuery.isLoading ||
                                             fetchMissingMutation.isPending ||
-                                            watchedOverseerrMode ||
-                                            watchedOverseerrModePending
+                                            watchedSeerrMode ||
+                                            watchedSeerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -3220,8 +3220,8 @@ export function TaskManagerPage() {
                                           disabled={
                                             settingsQuery.isLoading ||
                                             fetchMissingMutation.isPending ||
-                                            watchedOverseerrMode ||
-                                            watchedOverseerrModePending
+                                            watchedSeerrMode ||
+                                            watchedSeerrModePending
                                           }
                                           className={cn(
                                             'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -3268,8 +3268,8 @@ export function TaskManagerPage() {
                                         disabled={
                                           settingsQuery.isLoading ||
                                           watchedApprovalRequiredMutation.isPending ||
-                                          watchedOverseerrMode ||
-                                          watchedOverseerrModePending
+                                          watchedSeerrMode ||
+                                          watchedSeerrModePending
                                         }
                                         className={cn(
                                           'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
@@ -3299,40 +3299,40 @@ export function TaskManagerPage() {
                                     <div className="flex items-start justify-between gap-4">
                                       <div className="min-w-0">
                                         <div className="text-sm font-semibold text-white">
-                                          Route missing items via Overseerr
+                                          Route missing items via Seerr
                                         </div>
                                         <div className="mt-1 text-xs text-white/55 leading-relaxed">
-                                          When enabled, new missing items are requested in Overseerr. Radarr/Sonarr direct send and Observatory approval are turned off for this task.
+                                          When enabled, new missing items are requested in Seerr. Radarr/Sonarr direct send and Observatory approval are turned off for this task.
                                         </div>
                                       </div>
 
                                       <button
                                         type="button"
                                         role="switch"
-                                        aria-checked={watchedFetchMissingOverseerr}
-                                        onClick={handleToggleWatchedOverseerrMode}
+                                        aria-checked={watchedFetchMissingSeerr}
+                                        onClick={handleToggleWatchedSeerrMode}
                                         onPointerDown={handleStopPropagationPointer}
                                         disabled={
                                           settingsQuery.isLoading ||
-                                          watchedOverseerrModePending
+                                          watchedSeerrModePending
                                         }
                                         className={cn(
                                           'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                          watchedFetchMissingOverseerr
+                                          watchedFetchMissingSeerr
                                             ? 'bg-cyan-400'
                                             : 'bg-[#2a2438] border-2 border-white/10',
                                         )}
-                                        aria-label="Toggle Overseerr mode for Based on Latest Watched Collection"
+                                        aria-label="Toggle Seerr mode for Based on Latest Watched Collection"
                                       >
                                         <span
                                           className={cn(
                                             'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                                            watchedFetchMissingOverseerr
+                                            watchedFetchMissingSeerr
                                               ? 'translate-x-6'
                                               : 'translate-x-1',
                                           )}
                                         >
-                                          {watchedOverseerrModePending && (
+                                          {watchedSeerrModePending && (
                                             <Loader2 className="h-3 w-3 animate-spin text-black/70" />
                                           )}
                                         </span>

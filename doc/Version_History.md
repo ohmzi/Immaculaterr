@@ -70,9 +70,9 @@ This file tracks notable changes by version.
 - Plex user monitoring controls:
   - Any Plex user can be toggled off from monitoring.
   - Auto-triggered tasks skip users that are toggled off.
-- Overseerr integration improvements:
+- Seerr integration improvements:
   - Optional centralized missing-item flow per task card.
-  - Command Center reset control for Overseerr requests.
+  - Command Center reset control for Seerr requests.
 - Observatory improvements:
   - Swipe-left adds a suggestion to the rejected list.
   - Command Center reset for rejected list.

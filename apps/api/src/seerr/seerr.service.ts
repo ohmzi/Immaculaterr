@@ -1,35 +1,35 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 
-export type OverseerrRequestStatus = 'requested' | 'exists' | 'failed';
+export type SeerrRequestStatus = 'requested' | 'exists' | 'failed';
 
-export type OverseerrRequestResult = {
-  status: OverseerrRequestStatus;
+export type SeerrRequestResult = {
+  status: SeerrRequestStatus;
   requestId: number | null;
   error: string | null;
 };
 
-export type OverseerrClearAllRequestsResult = {
+export type SeerrClearAllRequestsResult = {
   total: number;
   deleted: number;
   failed: number;
   failedRequestIds: number[];
 };
 
-type OverseerrAuthMe = Record<string, unknown>;
-type OverseerrRequestResponse = Record<string, unknown>;
-type OverseerrRequestListResponse = {
+type SeerrAuthMe = Record<string, unknown>;
+type SeerrRequestResponse = Record<string, unknown>;
+type SeerrRequestListResponse = {
   results?: unknown;
 };
 
 @Injectable()
-export class OverseerrService {
-  private readonly logger = new Logger(OverseerrService.name);
+export class SeerrService {
+  private readonly logger = new Logger(SeerrService.name);
 
   async testConnection(params: { baseUrl: string; apiKey: string }) {
     const { baseUrl, apiKey } = params;
     const url = this.buildApiUrl(baseUrl, '/auth/me');
 
-    this.logger.log(`Testing Overseerr connection: ${url}`);
+    this.logger.log(`Testing Seerr connection: ${url}`);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -47,16 +47,16 @@ export class OverseerrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Overseerr test failed: HTTP ${res.status} ${body}`.trim(),
+          `Seerr test failed: HTTP ${res.status} ${body}`.trim(),
         );
       }
 
-      const data = (await res.json()) as OverseerrAuthMe;
+      const data = (await res.json()) as SeerrAuthMe;
       return { ok: true, user: data };
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Overseerr test failed: ${(err as Error)?.message ?? String(err)}`,
+        `Seerr test failed: ${(err as Error)?.message ?? String(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -68,7 +68,7 @@ export class OverseerrService {
     apiKey: string;
     tmdbId: number;
     is4k?: boolean;
-  }): Promise<OverseerrRequestResult> {
+  }): Promise<SeerrRequestResult> {
     return this.requestMedia({
       baseUrl: params.baseUrl,
       apiKey: params.apiKey,
@@ -86,7 +86,7 @@ export class OverseerrService {
     tmdbId: number;
     tvdbId: number;
     is4k?: boolean;
-  }): Promise<OverseerrRequestResult> {
+  }): Promise<SeerrRequestResult> {
     return this.requestMedia({
       baseUrl: params.baseUrl,
       apiKey: params.apiKey,
@@ -103,7 +103,7 @@ export class OverseerrService {
   async clearAllRequests(params: {
     baseUrl: string;
     apiKey: string;
-  }): Promise<OverseerrClearAllRequestsResult> {
+  }): Promise<SeerrClearAllRequestsResult> {
     const { baseUrl, apiKey } = params;
     const requestIds = await this.listAllRequestIds({ baseUrl, apiKey });
     if (!requestIds.length) {
@@ -136,12 +136,12 @@ export class OverseerrService {
 
         const body = await res.text().catch(() => '');
         this.logger.warn(
-          `Overseerr request delete failed (${requestId}): HTTP ${res.status} ${body}`.trim(),
+          `Seerr request delete failed (${requestId}): HTTP ${res.status} ${body}`.trim(),
         );
         failedRequestIds.push(requestId);
       } catch (err) {
         this.logger.warn(
-          `Overseerr request delete failed (${requestId}): ${(err as Error)?.message ?? String(err)}`,
+          `Seerr request delete failed (${requestId}): ${(err as Error)?.message ?? String(err)}`,
         );
         failedRequestIds.push(requestId);
       } finally {
@@ -161,7 +161,7 @@ export class OverseerrService {
     baseUrl: string;
     apiKey: string;
     payload: Record<string, unknown>;
-  }): Promise<OverseerrRequestResult> {
+  }): Promise<SeerrRequestResult> {
     const { baseUrl, apiKey, payload } = params;
     const url = this.buildApiUrl(baseUrl, '/request');
 
@@ -183,7 +183,7 @@ export class OverseerrService {
       if (res.ok) {
         const data = (await res
           .json()
-          .catch(() => null)) as OverseerrRequestResponse | null;
+          .catch(() => null)) as SeerrRequestResponse | null;
         const requestId =
           typeof data?.id === 'number' && Number.isFinite(data.id)
             ? Math.trunc(data.id)
@@ -205,8 +205,7 @@ export class OverseerrService {
         };
       }
 
-      const message =
-        `Overseerr request failed: HTTP ${res.status} ${body}`.trim();
+      const message = `Seerr request failed: HTTP ${res.status} ${body}`.trim();
       return {
         status: 'failed',
         requestId: null,
@@ -216,7 +215,7 @@ export class OverseerrService {
       return {
         status: 'failed',
         requestId: null,
-        error: `Overseerr request failed: ${(err as Error)?.message ?? String(err)}`,
+        error: `Seerr request failed: ${(err as Error)?.message ?? String(err)}`,
       };
     } finally {
       clearTimeout(timeout);
@@ -267,11 +266,11 @@ export class OverseerrService {
         if (!res.ok) {
           const body = await res.text().catch(() => '');
           throw new BadGatewayException(
-            `Overseerr list requests failed: HTTP ${res.status} ${body}`.trim(),
+            `Seerr list requests failed: HTTP ${res.status} ${body}`.trim(),
           );
         }
 
-        const data = (await res.json()) as OverseerrRequestListResponse;
+        const data = (await res.json()) as SeerrRequestListResponse;
         const rows = Array.isArray(data?.results) ? data.results : [];
         for (const row of rows) {
           const requestId = this.parseRequestId(row);
@@ -285,7 +284,7 @@ export class OverseerrService {
       } catch (err) {
         if (err instanceof BadGatewayException) throw err;
         throw new BadGatewayException(
-          `Overseerr list requests failed: ${(err as Error)?.message ?? String(err)}`,
+          `Seerr list requests failed: ${(err as Error)?.message ?? String(err)}`,
         );
       } finally {
         clearTimeout(timeout);

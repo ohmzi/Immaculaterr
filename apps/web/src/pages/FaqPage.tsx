@@ -148,7 +148,7 @@ export const FaqPage = () => {
               </p>
               <p>
                 It does not download media by itself. It can optionally send missing titles to
-                Radarr/Sonarr or Overseerr, which handle the request/download workflows.
+                Radarr/Sonarr or Seerr, which handle the request/download workflows.
               </p>
             </>
           ),
@@ -160,7 +160,7 @@ export const FaqPage = () => {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 <span className="font-semibold text-white/85">Vault</span>: connect services (Plex,
-                Radarr/Sonarr/Overseerr, TMDB, optional Google/OpenAI).
+                Radarr/Sonarr/Seerr, TMDB, optional Google/OpenAI).
               </li>
               <li>
                 <span className="font-semibold text-white/85">Command Center</span>: tune how the
@@ -184,12 +184,12 @@ export const FaqPage = () => {
                 to create Plex collections.
               </li>
               <li>
-                Optionally configure Radarr/Sonarr and/or Overseerr in Vault if you want missing-item
+                Optionally configure Radarr/Sonarr and/or Seerr in Vault if you want missing-item
                 requests.
               </li>
               <li>
                 In Task Manager, choose your missing-item route per task card: direct ARR or
-                Overseerr.
+                Seerr.
               </li>
               <li>
                 Go to <span className="font-semibold text-white/85">Task Manager</span> and enable{' '}
@@ -270,9 +270,9 @@ export const FaqPage = () => {
               <li>
                 Only turn on{' '}
                 <span className="font-semibold text-white/85">
-                  Route missing items via Overseerr
+                  Route missing items via Seerr
                 </span>{' '}
-                if you want Overseerr to become the request workflow instead.
+                if you want Seerr to become the request workflow instead.
               </li>
               <li>
                 Leave{' '}
@@ -370,7 +370,7 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Some jobs depend on Radarr, Sonarr, or Overseerr being configured and reachable.
+                Some jobs depend on Radarr, Sonarr, or Seerr being configured and reachable.
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>
@@ -558,7 +558,7 @@ export const FaqPage = () => {
               <p>
                 This is the watch-triggered Immaculate Taste updater. After you finish watching, it
                 updates the taste dataset, refreshes the recommendation pool, and can optionally route
-                missing titles to Radarr, Sonarr, or Overseerr.
+                missing titles to Radarr, Sonarr, or Seerr.
               </p>
               <p>
                 It is the main card for growing and updating the Immaculate Taste pipeline.
@@ -623,18 +623,18 @@ export const FaqPage = () => {
                 until you swipe right on them in Observatory.
               </p>
               <p>
-                This only applies to direct ARR mode. If you switch the task to Overseerr routing,
+                This only applies to direct ARR mode. If you switch the task to Seerr routing,
                 approval mode turns off for this card.
               </p>
             </>
           ),
         },
         {
-          id: 'task-manager-immaculate-collection-overseerr',
-          question: 'What changes when I turn on Route missing items via Overseerr?',
+          id: 'task-manager-immaculate-collection-seerr',
+          question: 'What changes when I turn on Route missing items via Seerr?',
           answer: (
             <ul className="list-disc pl-5 space-y-1">
-              <li>New missing items are requested in Overseerr instead of being sent directly to ARR.</li>
+              <li>New missing items are requested in Seerr instead of being sent directly to ARR.</li>
               <li>Direct Radarr and Sonarr fetch toggles are turned off for this card.</li>
               <li>
                 <span className="font-semibold text-white/85">Start search immediately</span> is turned
@@ -754,11 +754,11 @@ export const FaqPage = () => {
           ),
         },
         {
-          id: 'task-manager-latest-watched-collection-overseerr',
-          question: 'What changes when I turn on Route missing items via Overseerr?',
+          id: 'task-manager-latest-watched-collection-seerr',
+          question: 'What changes when I turn on Route missing items via Seerr?',
           answer: (
             <ul className="list-disc pl-5 space-y-1">
-              <li>Missing titles are sent to Overseerr instead of directly to ARR.</li>
+              <li>Missing titles are sent to Seerr instead of directly to ARR.</li>
               <li>Direct Radarr and Sonarr fetch toggles are turned off for this card.</li>
               <li>
                 <span className="font-semibold text-white/85">
@@ -854,7 +854,7 @@ export const FaqPage = () => {
                 </li>
                 <li>
                   Task Manager still decides whether missing titles stay tracked, go directly to ARR,
-                  or route through Overseerr.
+                  or route through Seerr.
                 </li>
               </ul>
             </>
@@ -1028,7 +1028,7 @@ export const FaqPage = () => {
               </p>
               <p>
                 If the job is allowed to fetch missing items, Immaculaterr can send those missing
-                titles to Radarr/Sonarr directly or route them to Overseerr, depending on your task
+                titles to Radarr/Sonarr directly or route them to Seerr, depending on your task
                 settings.
               </p>
             </>
@@ -1202,7 +1202,7 @@ export const FaqPage = () => {
                 <li>
                   <span className="font-semibold text-white/85">Profile mode:</span> each profile can
                   define user scope, media type, include/exclude filters, collection naming, and
-                  ARR/Overseerr routing.
+                  ARR/Seerr routing.
                 </li>
                 <li>
                   <span className="font-semibold text-white/85">Deterministic matching:</span>{' '}
@@ -1377,7 +1377,7 @@ export const FaqPage = () => {
                 Observatory.
               </p>
               <p>
-                This only applies to direct ARR mode. If you enable Overseerr routing for that task,
+                This only applies to direct ARR mode. If you enable Seerr routing for that task,
                 Observatory approval is automatically disabled for that task.
               </p>
             </>
@@ -1425,47 +1425,47 @@ export const FaqPage = () => {
       ],
     },
     {
-      id: 'reset-overseerr-requests',
-      title: 'Reset Overseerr Requests',
+      id: 'reset-seerr-requests',
+      title: 'Reset Seerr Requests',
       items: [
         {
-          id: 'arr-overseerr-setup',
-          question: 'How do I set up Overseerr mode in simple steps?',
+          id: 'arr-seerr-setup',
+          question: 'How do I set up Seerr mode in simple steps?',
           answer: (
             <ol className="list-decimal pl-5 space-y-1">
               <li>
-                Go to <span className="font-semibold text-white/85">Vault</span> and set Overseerr
+                Go to <span className="font-semibold text-white/85">Vault</span> and set Seerr
                 URL + API key.
               </li>
-              <li>Enable Overseerr in Vault and run the test.</li>
+              <li>Enable Seerr in Vault and run the test.</li>
               <li>
                 In <span className="font-semibold text-white/85">Task Manager</span>, turn on{' '}
-                <span className="font-semibold text-white/85">Route missing items via Overseerr</span>{' '}
+                <span className="font-semibold text-white/85">Route missing items via Seerr</span>{' '}
                 for each task you want.
               </li>
-              <li>Run the task so new missing titles are requested in Overseerr.</li>
+              <li>Run the task so new missing titles are requested in Seerr.</li>
             </ol>
           ),
         },
         {
-          id: 'arr-overseerr-routing',
-          question: 'What changes when I turn on "Route missing items via Overseerr"?',
+          id: 'arr-seerr-routing',
+          question: 'What changes when I turn on "Route missing items via Seerr"?',
           answer: (
             <>
               <p>
                 Turning on{' '}
-                <span className="font-semibold text-white/85">Route missing items via Overseerr</span>{' '}
+                <span className="font-semibold text-white/85">Route missing items via Seerr</span>{' '}
                 changes the request path for that task, not the recommendation or tracking side of
                 the job.
               </p>
               <ul className="list-disc pl-5 space-y-1">
-                <li>Missing titles from that task are sent to Overseerr instead of direct ARR sends.</li>
+                <li>Missing titles from that task are sent to Seerr instead of direct ARR sends.</li>
                 <li>Direct Radarr/Sonarr toggles for that task are turned off.</li>
                 <li>Approval required from Observatory is turned off for that task.</li>
                 <li>For Immaculate Taste, Start search immediately is also turned off.</li>
                 <li>Suggestions, pending/active tracking, and Plex collection updates still continue.</li>
                 <li>
-                  If Overseerr is unavailable, those requests are skipped for that run and are not
+                  If Seerr is unavailable, those requests are skipped for that run and are not
                   sent to ARR as a fallback.
                 </li>
               </ul>
@@ -1473,8 +1473,8 @@ export const FaqPage = () => {
           ),
         },
         {
-          id: 'arr-overseerr-vs-observatory',
-          question: 'What is the difference between in-app approval mode and Overseerr mode?',
+          id: 'arr-seerr-vs-observatory',
+          question: 'What is the difference between in-app approval mode and Seerr mode?',
           answer: (
             <>
               <p>
@@ -1482,31 +1482,31 @@ export const FaqPage = () => {
                 in Observatory, then Immaculaterr sends approved items directly to Radarr/Sonarr.
               </p>
               <p>
-                <span className="font-semibold text-white/85">Overseerr mode</span>: Immaculaterr sends
-                missing items to Overseerr, and Overseerr becomes the request workflow.
+                <span className="font-semibold text-white/85">Seerr mode</span>: Immaculaterr sends
+                missing items to Seerr, and Seerr becomes the request workflow.
               </p>
-              <p>Use one flow per task card. If Overseerr mode is on, Observatory approval is off.</p>
+              <p>Use one flow per task card. If Seerr mode is on, Observatory approval is off.</p>
             </>
           ),
         },
         {
-          id: 'arr-overseerr-reset',
-          question: 'How do I clear all Overseerr requests from Immaculaterr?',
+          id: 'arr-seerr-reset',
+          question: 'How do I clear all Seerr requests from Immaculaterr?',
           answer: (
             <>
               <p>
                 Go to{' '}
                 <Link
-                  to="/command-center#command-center-reset-overseerr-requests"
+                  to="/command-center#command-center-reset-seerr-requests"
                   className={faqLinkClass}
                 >
-                  Command Center - Reset Overseerr Requests
+                  Command Center - Reset Seerr Requests
                 </Link>
                 .
               </p>
               <p>
-                After confirmation, Immaculaterr asks Overseerr to delete every request regardless of
-                status. This clears <strong>all</strong> Overseerr requests—including user-created
+                After confirmation, Immaculaterr asks Seerr to delete every request regardless of
+                status. This clears <strong>all</strong> Seerr requests—including user-created
                 requests, not only Immaculaterr-managed ones. It clears request records only; it does
                 not delete Plex media files.
               </p>
@@ -1600,9 +1600,9 @@ export const FaqPage = () => {
                   it does not send requests anywhere.
                 </li>
                 <li>
-                  If you want Overseerr to manage requests instead, use{' '}
+                  If you want Seerr to manage requests instead, use{' '}
                   <span className="font-semibold text-white/85">
-                    Route missing items via Overseerr
+                    Route missing items via Seerr
                   </span>{' '}
                   for that task.
                 </li>
@@ -1915,7 +1915,7 @@ export const FaqPage = () => {
         {
           id: 'troubleshooting-urls',
           question:
-            "Immaculaterr can't reach Plex/Radarr/Sonarr/Overseerr - what URL should I use from Docker?",
+            "Immaculaterr can't reach Plex/Radarr/Sonarr/Seerr - what URL should I use from Docker?",
           answer: (
             <>
               <p>Use URLs from the container&apos;s point of view:</p>
@@ -2051,7 +2051,7 @@ export const FaqPage = () => {
         {
           id: 'troubleshooting-resets',
           question:
-            'When should I use reset tools (Rejected List, Overseerr Requests, Immaculate Taste Collection)?',
+            'When should I use reset tools (Rejected List, Seerr Requests, Immaculate Taste Collection)?',
           answer: (
             <ul className="list-disc pl-5 space-y-1">
               <li>
@@ -2067,12 +2067,12 @@ export const FaqPage = () => {
               <li>
                 Use{' '}
                 <Link
-                  to="/command-center#command-center-reset-overseerr-requests"
+                  to="/command-center#command-center-reset-seerr-requests"
                   className={faqLinkClass}
                 >
-                  Command Center - Reset Overseerr Requests
+                  Command Center - Reset Seerr Requests
                 </Link>{' '}
-                to clear all Overseerr requests (including user-created ones, not only
+                to clear all Seerr requests (including user-created ones, not only
                 Immaculaterr-managed).
               </li>
               <li>
@@ -2213,8 +2213,8 @@ export const FaqPage = () => {
       'Advanced taste lanes, Observatory behavior, and profile matching rules.',
     'reset-immaculate-taste-collection':
       'Reset the saved Immaculate Taste dataset for a selected library.',
-    'reset-overseerr-requests':
-      'Overseerr routing behavior and how to clear managed request history.',
+    'reset-seerr-requests':
+      'Seerr routing behavior and how to clear managed request history.',
     'reset-rejected-list':
       'Swipe actions, rejected suggestions, and how to make them eligible again.',
     'collection-posters': 'Custom artwork for managed collections and poster override behavior.',
@@ -2285,7 +2285,7 @@ export const FaqPage = () => {
       icon: (className) => <RotateCcw className={className} />,
       toneClass: 'text-amber-200',
     },
-    'reset-overseerr-requests': {
+    'reset-seerr-requests': {
       icon: (className) => <RotateCcw className={className} />,
       toneClass: 'text-cyan-200',
     },

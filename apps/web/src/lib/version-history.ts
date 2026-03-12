@@ -98,7 +98,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
       'Plex pinning behaves better for admin and shared users.',
       'You can disable monitoring for any Plex user.',
       'Plex library selection is safer and easier to manage.',
-      'Overseerr support is optional for missing requests.',
+      'Seerr support is optional for missing requests.',
       'Observatory is more stable with a simpler reject flow.',
       'Cleanup task actions can be toggled independently.',
     ],
@@ -154,7 +154,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
       'Plex pinning: row placement is smarter for admin and shared users.',
       'Plex user monitoring: toggle any user off so auto-triggered tasks skip them.',
       'Plex library selection: safer setup and easier ongoing management.',
-      'Overseerr integration: optional centralized missing-request routing.',
+      'Seerr integration: optional centralized missing-request routing.',
       'Observatory: improved stability and easier reject-list workflow.',
       'Task Manager > Cleanup After Adding New Content: independent action toggles.',
     ],
@@ -193,10 +193,10 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         ],
       },
       {
-        title: 'Overseerr integration (optional centralized request flow)',
+        title: 'Seerr integration (optional centralized request flow)',
         bullets: [
-          'Route missing movie/TV requests to Overseerr per task card.',
-          'Command Center includes a reset action for Overseerr requests.',
+          'Route missing movie/TV requests to Seerr per task card.',
+          'Command Center includes a reset action for Seerr requests.',
         ],
       },
       {

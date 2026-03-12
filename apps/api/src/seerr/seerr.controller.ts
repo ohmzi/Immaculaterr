@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
-import { OverseerrService } from './overseerr.service';
+import { SeerrService } from './seerr.service';
 
 type TestConnectionBody = {
   baseUrl?: unknown;
@@ -63,10 +63,10 @@ function pickString(obj: Record<string, unknown>, path: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-@Controller('overseerr')
-export class OverseerrController {
+@Controller('seerr')
+export class SeerrController {
   constructor(
-    private readonly overseerrService: OverseerrService,
+    private readonly seerrService: SeerrService,
     private readonly settingsService: SettingsService,
   ) {}
 
@@ -78,9 +78,9 @@ export class OverseerrController {
     const baseUrl = normalizeHttpBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: req.user.id,
-      service: 'overseerr',
+      service: 'seerr',
       secretField: 'apiKey',
-      expectedPurpose: 'integration.overseerr.test',
+      expectedPurpose: 'integration.seerr.test',
       envelope: body.apiKeyEnvelope,
       secretRef: body.secretRef,
       plaintext: body.apiKey,
@@ -89,7 +89,7 @@ export class OverseerrController {
 
     if (!apiKey) throw new BadRequestException('apiKey is required');
 
-    return this.overseerrService.testConnection({ baseUrl, apiKey });
+    return this.seerrService.testConnection({ baseUrl, apiKey });
   }
 
   @Delete('requests/reset')
@@ -98,12 +98,12 @@ export class OverseerrController {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(userId);
 
-    const baseUrl = pickString(settings, 'overseerr.baseUrl');
-    const apiKey = pickString(secrets, 'overseerr.apiKey');
-    if (!baseUrl) throw new BadRequestException('Overseerr baseUrl is not set');
-    if (!apiKey) throw new BadRequestException('Overseerr apiKey is not set');
+    const baseUrl = pickString(settings, 'seerr.baseUrl');
+    const apiKey = pickString(secrets, 'seerr.apiKey');
+    if (!baseUrl) throw new BadRequestException('Seerr baseUrl is not set');
+    if (!apiKey) throw new BadRequestException('Seerr apiKey is not set');
 
-    const result = await this.overseerrService.clearAllRequests({
+    const result = await this.seerrService.clearAllRequests({
       baseUrl,
       apiKey,
     });

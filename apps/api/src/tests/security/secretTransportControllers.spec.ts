@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { IntegrationsController } from '../../integrations/integrations.controller';
 
 type Scenario = {
-  id: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'overseerr' | 'google' | 'openai';
+  id: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'seerr' | 'google' | 'openai';
   secretField: 'token' | 'apiKey';
   body: Record<string, unknown>;
   assertCalled: (
@@ -54,12 +54,12 @@ const scenarios: Scenario[] = [
     },
   },
   {
-    id: 'overseerr',
+    id: 'seerr',
     secretField: 'apiKey',
-    body: { baseUrl: 'http://overseerr.local' },
+    body: { baseUrl: 'http://seerr.local' },
     assertCalled: (deps, secret) => {
-      expect(deps.overseerr.testConnection).toHaveBeenCalledWith({
-        baseUrl: 'http://overseerr.local',
+      expect(deps.seerr.testConnection).toHaveBeenCalledWith({
+        baseUrl: 'http://seerr.local',
         apiKey: secret,
       });
     },
@@ -104,7 +104,7 @@ function makeController() {
         plex: { baseUrl: 'http://plex.saved' },
         radarr: { baseUrl: 'http://radarr.saved' },
         sonarr: { baseUrl: 'http://sonarr.saved' },
-        overseerr: { baseUrl: 'http://overseerr.saved' },
+        seerr: { baseUrl: 'http://seerr.saved' },
         google: { searchEngineId: 'saved-cse' },
       },
       secrets: {
@@ -112,7 +112,7 @@ function makeController() {
         radarr: { apiKey: 'saved-radarr' },
         sonarr: { apiKey: 'saved-sonarr' },
         tmdb: { apiKey: 'saved-tmdb' },
-        overseerr: { apiKey: 'saved-overseerr' },
+        seerr: { apiKey: 'saved-seerr' },
         google: { apiKey: 'saved-google' },
         openai: { apiKey: 'saved-openai' },
       },
@@ -140,7 +140,7 @@ function makeController() {
   const tmdb = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
   const google = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
   const openai = { testConnection: jest.fn().mockResolvedValue({ ok: true }) };
-  const overseerr = {
+  const seerr = {
     testConnection: jest.fn().mockResolvedValue({ ok: true }),
   };
   const arrInstances = {};
@@ -156,7 +156,7 @@ function makeController() {
     tmdb as never,
     google as never,
     openai as never,
-    overseerr as never,
+    seerr as never,
     arrInstances as never,
   );
 
@@ -169,7 +169,7 @@ function makeController() {
     tmdb,
     google,
     openai,
-    overseerr,
+    seerr,
     arrInstances,
   };
 }

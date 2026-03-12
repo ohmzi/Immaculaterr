@@ -7,7 +7,7 @@ import { RecommendationsService } from '../recommendations/recommendations.servi
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
-import { OverseerrService } from '../overseerr/overseerr.service';
+import { SeerrService } from '../seerr/seerr.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
@@ -266,7 +266,7 @@ export class ImmaculateTasteCollectionJob {
     private readonly tmdb: TmdbService,
     private readonly radarr: RadarrService,
     private readonly sonarr: SonarrService,
-    private readonly overseerr: OverseerrService,
+    private readonly seerr: SeerrService,
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
     private readonly immaculateTasteRefresher: ImmaculateTasteRefresherJob,
@@ -651,25 +651,23 @@ export class ImmaculateTasteCollectionJob {
         settings,
         'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
       ) ?? false;
-    const overseerrModeSelected =
-      (pickBool(
-        settings,
-        'jobs.immaculateTastePoints.fetchMissing.overseerr',
-      ) ?? false) === true;
-    const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
-    const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
-    const overseerrConfiguredEnabled =
-      overseerrModeSelected &&
-      (pickBool(settings, 'overseerr.enabled') ?? Boolean(overseerrApiKey)) &&
-      Boolean(overseerrBaseUrlRaw) &&
-      Boolean(overseerrApiKey);
-    const overseerrBaseUrl = overseerrConfiguredEnabled
-      ? normalizeHttpUrl(overseerrBaseUrlRaw)
+    const seerrModeSelected =
+      (pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
+        false) === true;
+    const seerrBaseUrlRaw = pickString(settings, 'seerr.baseUrl');
+    const seerrApiKey = pickString(secrets, 'seerr.apiKey');
+    const seerrConfiguredEnabled =
+      seerrModeSelected &&
+      (pickBool(settings, 'seerr.enabled') ?? Boolean(seerrApiKey)) &&
+      Boolean(seerrBaseUrlRaw) &&
+      Boolean(seerrApiKey);
+    const seerrBaseUrl = seerrConfiguredEnabled
+      ? normalizeHttpUrl(seerrBaseUrlRaw)
       : '';
     const startSearchImmediately =
-      startSearchImmediatelySaved && !overseerrModeSelected;
+      startSearchImmediatelySaved && !seerrModeSelected;
     const approvalRequiredFromObservatory =
-      approvalRequiredFromObservatorySaved && !overseerrModeSelected;
+      approvalRequiredFromObservatorySaved && !seerrModeSelected;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -688,8 +686,8 @@ export class ImmaculateTasteCollectionJob {
       includeRefresherAfterUpdate,
       startSearchImmediatelySaved,
       approvalRequiredFromObservatorySaved,
-      overseerrModeSelected,
-      overseerrConfiguredEnabled,
+      seerrModeSelected,
+      seerrConfiguredEnabled,
       startSearchImmediately,
       approvalRequiredFromObservatory,
       webContextFraction,
@@ -1064,16 +1062,16 @@ export class ImmaculateTasteCollectionJob {
         missingTitles.splice(i, 1);
     }
 
-    const overseerrStats = {
-      selected: overseerrModeSelected,
-      enabled: overseerrConfiguredEnabled,
+    const seerrStats = {
+      selected: seerrModeSelected,
+      enabled: seerrConfiguredEnabled,
       attempted: 0,
       requested: 0,
       exists: 0,
       failed: 0,
       skipped: 0,
     };
-    const overseerrLists = {
+    const seerrLists = {
       attempted: [] as string[],
       requested: [] as string[],
       exists: [] as string[],
@@ -1081,17 +1079,17 @@ export class ImmaculateTasteCollectionJob {
       skipped: [] as string[],
     };
 
-    if (!ctx.dryRun && overseerrModeSelected && missingTitles.length) {
-      if (!overseerrConfiguredEnabled) {
-        await ctx.warn('overseerr: skipped (selected but not configured)', {
+    if (!ctx.dryRun && seerrModeSelected && missingTitles.length) {
+      if (!seerrConfiguredEnabled) {
+        await ctx.warn('seerr: skipped (selected but not configured)', {
           missingTitles: missingTitles.length,
         });
-        overseerrStats.skipped += missingTitles.length;
-        overseerrLists.skipped.push(
+        seerrStats.skipped += missingTitles.length;
+        seerrLists.skipped.push(
           ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
         );
       } else {
-        await ctx.info('overseerr: start', {
+        await ctx.info('seerr: start', {
           missingTitles: missingTitles.length,
           sampleMissing: missingTitles.slice(0, 10),
         });
@@ -1099,24 +1097,24 @@ export class ImmaculateTasteCollectionJob {
         for (const title of missingTitles) {
           const tmdbMatch = missingTitleToTmdb.get(title.trim()) ?? null;
           if (!tmdbMatch) {
-            overseerrStats.skipped += 1;
-            overseerrLists.skipped.push(title.trim());
+            seerrStats.skipped += 1;
+            seerrLists.skipped.push(title.trim());
             continue;
           }
 
-          overseerrStats.attempted += 1;
-          overseerrLists.attempted.push(tmdbMatch.title);
+          seerrStats.attempted += 1;
+          seerrLists.attempted.push(tmdbMatch.title);
 
           const result = await withJobRetry(
             () =>
-              this.overseerr.requestMovie({
-                baseUrl: overseerrBaseUrl,
-                apiKey: overseerrApiKey,
+              this.seerr.requestMovie({
+                baseUrl: seerrBaseUrl,
+                apiKey: seerrApiKey,
                 tmdbId: tmdbMatch.tmdbId,
               }),
             {
               ctx,
-              label: 'overseerr: request movie',
+              label: 'seerr: request movie',
               meta: { title: tmdbMatch.title, tmdbId: tmdbMatch.tmdbId },
             },
           ).catch((err) => ({
@@ -1126,15 +1124,15 @@ export class ImmaculateTasteCollectionJob {
           }));
 
           if (result.status === 'requested') {
-            overseerrStats.requested += 1;
-            overseerrLists.requested.push(tmdbMatch.title);
+            seerrStats.requested += 1;
+            seerrLists.requested.push(tmdbMatch.title);
           } else if (result.status === 'exists') {
-            overseerrStats.exists += 1;
-            overseerrLists.exists.push(tmdbMatch.title);
+            seerrStats.exists += 1;
+            seerrLists.exists.push(tmdbMatch.title);
           } else {
-            overseerrStats.failed += 1;
-            overseerrLists.failed.push(tmdbMatch.title);
-            await ctx.warn('overseerr: request failed (continuing)', {
+            seerrStats.failed += 1;
+            seerrLists.failed.push(tmdbMatch.title);
+            await ctx.warn('seerr: request failed (continuing)', {
               title: tmdbMatch.title,
               tmdbId: tmdbMatch.tmdbId,
               error: result.error ?? 'unknown',
@@ -1142,7 +1140,7 @@ export class ImmaculateTasteCollectionJob {
           }
         }
 
-        await ctx.info('overseerr: done', overseerrStats);
+        await ctx.info('seerr: done', seerrStats);
       }
     }
 
@@ -1150,8 +1148,7 @@ export class ImmaculateTasteCollectionJob {
     const fetchMissingRadarrSaved =
       pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ??
       true;
-    const fetchMissingRadarr =
-      fetchMissingRadarrSaved && !overseerrModeSelected;
+    const fetchMissingRadarr = fetchMissingRadarrSaved && !seerrModeSelected;
     const resolvedRadarrInstance = fetchMissingRadarr
       ? await this.arrInstances
           .resolveInstance(
@@ -1709,10 +1706,10 @@ export class ImmaculateTasteCollectionJob {
       ),
       excludedByRejectListCount: excludedByRejectList.length,
       approvalRequiredFromObservatory,
-      overseerrModeSelected,
-      overseerrConfiguredEnabled,
-      overseerr: overseerrStats,
-      overseerrLists,
+      seerrModeSelected,
+      seerrConfiguredEnabled,
+      seerr: seerrStats,
+      seerrLists,
       radarr: radarrStats,
       radarrLists,
       startSearchImmediately,
@@ -2020,25 +2017,23 @@ export class ImmaculateTasteCollectionJob {
         settings,
         'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
       ) ?? false;
-    const overseerrModeSelected =
-      (pickBool(
-        settings,
-        'jobs.immaculateTastePoints.fetchMissing.overseerr',
-      ) ?? false) === true;
-    const overseerrBaseUrlRaw = pickString(settings, 'overseerr.baseUrl');
-    const overseerrApiKey = pickString(secrets, 'overseerr.apiKey');
-    const overseerrConfiguredEnabled =
-      overseerrModeSelected &&
-      (pickBool(settings, 'overseerr.enabled') ?? Boolean(overseerrApiKey)) &&
-      Boolean(overseerrBaseUrlRaw) &&
-      Boolean(overseerrApiKey);
-    const overseerrBaseUrl = overseerrConfiguredEnabled
-      ? normalizeHttpUrl(overseerrBaseUrlRaw)
+    const seerrModeSelected =
+      (pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
+        false) === true;
+    const seerrBaseUrlRaw = pickString(settings, 'seerr.baseUrl');
+    const seerrApiKey = pickString(secrets, 'seerr.apiKey');
+    const seerrConfiguredEnabled =
+      seerrModeSelected &&
+      (pickBool(settings, 'seerr.enabled') ?? Boolean(seerrApiKey)) &&
+      Boolean(seerrBaseUrlRaw) &&
+      Boolean(seerrApiKey);
+    const seerrBaseUrl = seerrConfiguredEnabled
+      ? normalizeHttpUrl(seerrBaseUrlRaw)
       : '';
     const startSearchImmediately =
-      startSearchImmediatelySaved && !overseerrModeSelected;
+      startSearchImmediatelySaved && !seerrModeSelected;
     const approvalRequiredFromObservatory =
-      approvalRequiredFromObservatorySaved && !overseerrModeSelected;
+      approvalRequiredFromObservatorySaved && !seerrModeSelected;
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ??
       pickNumber(settings, 'recommendations.web_context_fraction') ??
@@ -2057,8 +2052,8 @@ export class ImmaculateTasteCollectionJob {
       includeRefresherAfterUpdate,
       startSearchImmediatelySaved,
       approvalRequiredFromObservatorySaved,
-      overseerrModeSelected,
-      overseerrConfiguredEnabled,
+      seerrModeSelected,
+      seerrConfiguredEnabled,
       startSearchImmediately,
       approvalRequiredFromObservatory,
       webContextFraction,
@@ -2392,16 +2387,16 @@ export class ImmaculateTasteCollectionJob {
         missingTitles.splice(i, 1);
     }
 
-    const overseerrStats = {
-      selected: overseerrModeSelected,
-      enabled: overseerrConfiguredEnabled,
+    const seerrStats = {
+      selected: seerrModeSelected,
+      enabled: seerrConfiguredEnabled,
       attempted: 0,
       requested: 0,
       exists: 0,
       failed: 0,
       skipped: 0,
     };
-    const overseerrLists = {
+    const seerrLists = {
       attempted: [] as string[],
       requested: [] as string[],
       exists: [] as string[],
@@ -2409,17 +2404,17 @@ export class ImmaculateTasteCollectionJob {
       skipped: [] as string[],
     };
 
-    if (!ctx.dryRun && overseerrModeSelected && missingTitles.length) {
-      if (!overseerrConfiguredEnabled) {
-        await ctx.warn('overseerr: skipped (selected but not configured)', {
+    if (!ctx.dryRun && seerrModeSelected && missingTitles.length) {
+      if (!seerrConfiguredEnabled) {
+        await ctx.warn('seerr: skipped (selected but not configured)', {
           missingTitles: missingTitles.length,
         });
-        overseerrStats.skipped += missingTitles.length;
-        overseerrLists.skipped.push(
+        seerrStats.skipped += missingTitles.length;
+        seerrLists.skipped.push(
           ...missingTitles.map((t) => String(t ?? '').trim()).filter(Boolean),
         );
       } else {
-        await ctx.info('overseerr: start', {
+        await ctx.info('seerr: start', {
           missingTitles: missingTitles.length,
           sampleMissing: missingTitles.slice(0, 10),
         });
@@ -2429,25 +2424,25 @@ export class ImmaculateTasteCollectionJob {
           const tmdbId = ids?.tmdbId ?? null;
           const tvdbId = ids?.tvdbId ?? null;
           if (!ids || tmdbId === null || tvdbId === null) {
-            overseerrStats.skipped += 1;
-            overseerrLists.skipped.push(title.trim());
+            seerrStats.skipped += 1;
+            seerrLists.skipped.push(title.trim());
             continue;
           }
 
-          overseerrStats.attempted += 1;
-          overseerrLists.attempted.push(ids.title);
+          seerrStats.attempted += 1;
+          seerrLists.attempted.push(ids.title);
 
           const result = await withJobRetry(
             () =>
-              this.overseerr.requestTvAllSeasons({
-                baseUrl: overseerrBaseUrl,
-                apiKey: overseerrApiKey,
+              this.seerr.requestTvAllSeasons({
+                baseUrl: seerrBaseUrl,
+                apiKey: seerrApiKey,
                 tmdbId,
                 tvdbId,
               }),
             {
               ctx,
-              label: 'overseerr: request tv',
+              label: 'seerr: request tv',
               meta: {
                 title: ids.title,
                 tmdbId: ids.tmdbId,
@@ -2461,15 +2456,15 @@ export class ImmaculateTasteCollectionJob {
           }));
 
           if (result.status === 'requested') {
-            overseerrStats.requested += 1;
-            overseerrLists.requested.push(ids.title);
+            seerrStats.requested += 1;
+            seerrLists.requested.push(ids.title);
           } else if (result.status === 'exists') {
-            overseerrStats.exists += 1;
-            overseerrLists.exists.push(ids.title);
+            seerrStats.exists += 1;
+            seerrLists.exists.push(ids.title);
           } else {
-            overseerrStats.failed += 1;
-            overseerrLists.failed.push(ids.title);
-            await ctx.warn('overseerr: request failed (continuing)', {
+            seerrStats.failed += 1;
+            seerrLists.failed.push(ids.title);
+            await ctx.warn('seerr: request failed (continuing)', {
               title: ids.title,
               tmdbId: ids.tmdbId,
               tvdbId: ids.tvdbId,
@@ -2478,7 +2473,7 @@ export class ImmaculateTasteCollectionJob {
           }
         }
 
-        await ctx.info('overseerr: done', overseerrStats);
+        await ctx.info('seerr: done', seerrStats);
       }
     }
 
@@ -2486,8 +2481,7 @@ export class ImmaculateTasteCollectionJob {
     const fetchMissingSonarrSaved =
       pickBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ??
       true;
-    const fetchMissingSonarr =
-      fetchMissingSonarrSaved && !overseerrModeSelected;
+    const fetchMissingSonarr = fetchMissingSonarrSaved && !seerrModeSelected;
     const resolvedSonarrInstance = fetchMissingSonarr
       ? await this.arrInstances
           .resolveInstance(
@@ -3046,10 +3040,10 @@ export class ImmaculateTasteCollectionJob {
       ),
       excludedByRejectListCount: excludedByRejectList.length,
       approvalRequiredFromObservatory,
-      overseerrModeSelected,
-      overseerrConfiguredEnabled,
-      overseerr: overseerrStats,
-      overseerrLists,
+      seerrModeSelected,
+      seerrConfiguredEnabled,
+      seerr: seerrStats,
+      seerrLists,
       sonarr: sonarrStats,
       sonarrLists,
       startSearchImmediately,
@@ -3551,7 +3545,7 @@ function buildImmaculateTastePointsReport(params: {
 
   const radarr = isPlainObject(raw.radarr) ? raw.radarr : null;
   const sonarr = isPlainObject(raw.sonarr) ? raw.sonarr : null;
-  const overseerr = isPlainObject(raw.overseerr) ? raw.overseerr : null;
+  const seerr = isPlainObject(raw.seerr) ? raw.seerr : null;
   const points = isPlainObject(raw.points) ? raw.points : null;
 
   const generated = asNum(raw.generated) ?? 0;
@@ -3567,7 +3561,7 @@ function buildImmaculateTastePointsReport(params: {
 
   const radarrFailed = radarr ? (asNum(radarr.failed) ?? 0) : 0;
   const sonarrFailed = sonarr ? (asNum(sonarr.failed) ?? 0) : 0;
-  const overseerrFailed = overseerr ? (asNum(overseerr.failed) ?? 0) : 0;
+  const seerrFailed = seerr ? (asNum(seerr.failed) ?? 0) : 0;
 
   const refresher = raw.refresher;
   const refresherObj =
@@ -3641,8 +3635,8 @@ function buildImmaculateTastePointsReport(params: {
   }
 
   const issues = [
-    ...(overseerrFailed
-      ? [issue('warn', `Overseerr: ${overseerrFailed} request(s) failed.`)]
+    ...(seerrFailed
+      ? [issue('warn', `Seerr: ${seerrFailed} request(s) failed.`)]
       : []),
     ...(radarrFailed
       ? [issue('warn', `Radarr: ${radarrFailed} add(s) failed.`)]
@@ -3951,9 +3945,7 @@ function buildImmaculateTastePointsReport(params: {
 
   const radarrLists = isPlainObject(raw.radarrLists) ? raw.radarrLists : null;
   const sonarrLists = isPlainObject(raw.sonarrLists) ? raw.sonarrLists : null;
-  const overseerrLists = isPlainObject(raw.overseerrLists)
-    ? raw.overseerrLists
-    : null;
+  const seerrLists = isPlainObject(raw.seerrLists) ? raw.seerrLists : null;
 
   const recommendationDebug = isPlainObject(raw.recommendationDebug)
     ? (raw.recommendationDebug as Record<string, unknown>)
@@ -4207,30 +4199,28 @@ function buildImmaculateTastePointsReport(params: {
         },
       ],
     },
-    ...(overseerr
+    ...(seerr
       ? [
           {
-            id: 'overseerr_request',
-            title: 'Overseerr: request missing titles',
+            id: 'seerr_request',
+            title: 'Seerr: request missing titles',
             status:
-              ctx.dryRun || !overseerr.selected || !overseerr.enabled
+              ctx.dryRun || !seerr.selected || !seerr.enabled
                 ? ('skipped' as const)
-                : overseerrFailed
+                : seerrFailed
                   ? ('failed' as const)
                   : ('success' as const),
             facts: [
-              { label: 'Selected', value: Boolean(overseerr.selected) },
-              { label: 'Configured', value: Boolean(overseerr.enabled) },
+              { label: 'Selected', value: Boolean(seerr.selected) },
+              { label: 'Configured', value: Boolean(seerr.enabled) },
               {
                 label: 'Attempted',
                 value: {
-                  count: asNum(overseerr.attempted),
+                  count: asNum(seerr.attempted),
                   unit: mode === 'tv' ? 'shows' : 'movies',
                   items: sortTitles(
                     uniqueStrings(
-                      overseerrLists
-                        ? asStringArray(overseerrLists.attempted)
-                        : [],
+                      seerrLists ? asStringArray(seerrLists.attempted) : [],
                     ),
                   ),
                 },
@@ -4238,13 +4228,11 @@ function buildImmaculateTastePointsReport(params: {
               {
                 label: 'Requested',
                 value: {
-                  count: asNum(overseerr.requested),
+                  count: asNum(seerr.requested),
                   unit: mode === 'tv' ? 'shows' : 'movies',
                   items: sortTitles(
                     uniqueStrings(
-                      overseerrLists
-                        ? asStringArray(overseerrLists.requested)
-                        : [],
+                      seerrLists ? asStringArray(seerrLists.requested) : [],
                     ),
                   ),
                 },
@@ -4252,13 +4240,11 @@ function buildImmaculateTastePointsReport(params: {
               {
                 label: 'Exists',
                 value: {
-                  count: asNum(overseerr.exists),
+                  count: asNum(seerr.exists),
                   unit: mode === 'tv' ? 'shows' : 'movies',
                   items: sortTitles(
                     uniqueStrings(
-                      overseerrLists
-                        ? asStringArray(overseerrLists.exists)
-                        : [],
+                      seerrLists ? asStringArray(seerrLists.exists) : [],
                     ),
                   ),
                 },
@@ -4266,13 +4252,11 @@ function buildImmaculateTastePointsReport(params: {
               {
                 label: 'Failed',
                 value: {
-                  count: asNum(overseerr.failed),
+                  count: asNum(seerr.failed),
                   unit: mode === 'tv' ? 'shows' : 'movies',
                   items: sortTitles(
                     uniqueStrings(
-                      overseerrLists
-                        ? asStringArray(overseerrLists.failed)
-                        : [],
+                      seerrLists ? asStringArray(seerrLists.failed) : [],
                     ),
                   ),
                 },
@@ -4280,13 +4264,11 @@ function buildImmaculateTastePointsReport(params: {
               {
                 label: 'Skipped',
                 value: {
-                  count: asNum(overseerr.skipped),
+                  count: asNum(seerr.skipped),
                   unit: mode === 'tv' ? 'shows' : 'movies',
                   items: sortTitles(
                     uniqueStrings(
-                      overseerrLists
-                        ? asStringArray(overseerrLists.skipped)
-                        : [],
+                      seerrLists ? asStringArray(seerrLists.skipped) : [],
                     ),
                   ),
                 },

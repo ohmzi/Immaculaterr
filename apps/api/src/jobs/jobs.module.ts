@@ -7,7 +7,7 @@ import { RecommendationsModule } from '../recommendations/recommendations.module
 import { SettingsModule } from '../settings/settings.module';
 import { SonarrModule } from '../sonarr/sonarr.module';
 import { TmdbModule } from '../tmdb/tmdb.module';
-import { OverseerrModule } from '../overseerr/overseerr.module';
+import { SeerrModule } from '../seerr/seerr.module';
 import { ImmaculateTasteCollectionModule } from '../immaculate-taste-collection/immaculate-taste-collection.module';
 import { WatchedMovieRecommendationsModule } from '../watched-movie-recommendations/watched-movie-recommendations.module';
 import { JobsController } from './jobs.controller';
@@ -34,7 +34,7 @@ import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immac
     PlexModule,
     RadarrModule,
     SonarrModule,
-    OverseerrModule,
+    SeerrModule,
     RecommendationsModule,
     TmdbModule,
     ArrInstanceModule,

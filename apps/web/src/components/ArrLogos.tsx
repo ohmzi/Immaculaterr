@@ -312,9 +312,11 @@ export function PlexLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function OverseerrLogo(props: SVGProps<SVGSVGElement>) {
+export function SeerrLogo(props: SVGProps<SVGSVGElement>) {
   const uid = useId().replace(/:/g, '');
-  const ringId = `overseerrRing-${uid}`;
+  const ringId = `seerrRing-${uid}`;
+  const blobId = `seerrBlob-${uid}`;
+  const glowId = `seerrGlow-${uid}`;
 
   return (
     <svg
@@ -327,28 +329,61 @@ export function OverseerrLogo(props: SVGProps<SVGSVGElement>) {
       <defs>
         <linearGradient
           id={ringId}
-          x1="14"
-          y1="14"
-          x2="50"
-          y2="50"
+          x1="10"
+          y1="10"
+          x2="52"
+          y2="52"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0" stopColor="#60a5fa" />
-          <stop offset="1" stopColor="#22d3ee" />
+          <stop offset="0" stopColor="#c4b5fd" />
+          <stop offset="1" stopColor="#7c3aed" />
         </linearGradient>
+        <radialGradient
+          id={blobId}
+          cx="22"
+          cy="18"
+          r="24"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor="#ddd6fe" />
+          <stop offset="0.6" stopColor="#a78bfa" />
+          <stop offset="1" stopColor="#7c3aed" />
+        </radialGradient>
+        <filter
+          id={glowId}
+          x="-60%"
+          y="-60%"
+          width="220%"
+          height="220%"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="2.2" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
+
+      <g filter={`url(#${glowId})`} opacity="0.42">
+        <circle cx="32" cy="32" r="25" fill={`url(#${ringId})`} />
+      </g>
 
       <circle
         cx="32"
         cy="32"
-        r="22"
-        fill="none"
-        stroke={`url(#${ringId})`}
-        strokeWidth="8"
-        opacity="0.9"
+        r="24.5"
+        fill={`url(#${ringId})`}
+        opacity="0.96"
       />
-      <circle cx="32" cy="32" r="8" fill="#22d3ee" opacity="0.22" />
-      <circle cx="32" cy="32" r="4.5" fill="#e0f2fe" opacity="0.92" />
+
+      <circle cx="34" cy="35" r="13.2" fill="#060a18" />
+
+      <path
+        d="M16.5 21.5C16.5 14.6 22.1 9 29 9c5 0 9.6 2.9 11.7 7.3-.7-.1-1.5-.2-2.3-.2-6.9 0-12.5 5.6-12.5 12.5 0 1.9.4 3.7 1.2 5.3-6-1.1-10.6-6.3-10.6-12.4Z"
+        fill={`url(#${blobId})`}
+      />
+      <circle cx="23.8" cy="19.3" r="3.8" fill="#ddd6fe" opacity="0.95" />
     </svg>
   );
 }

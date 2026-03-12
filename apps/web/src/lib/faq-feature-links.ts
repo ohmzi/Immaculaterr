@@ -4,7 +4,7 @@ export const FAQ_SECTION_BY_COMMAND_CENTER_CARD_ID = {
   'command-center-plex-user-monitoring': 'plex-user-monitoring',
   'command-center-immaculate-taste-profiles': 'immaculate-taste-profiles',
   'command-center-reset-immaculate-taste-collection': 'reset-immaculate-taste-collection',
-  'command-center-reset-overseerr-requests': 'reset-overseerr-requests',
+  'command-center-reset-seerr-requests': 'reset-seerr-requests',
   'command-center-reset-rejected-list': 'reset-rejected-list',
   'command-center-collection-posters': 'collection-posters',
   'command-center-radarr': 'radarr',

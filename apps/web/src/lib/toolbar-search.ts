@@ -66,11 +66,11 @@ export const COMMAND_CENTER_SEARCH_TARGETS: ToolbarSearchTarget[] = [
     hash: 'command-center-reset-immaculate-taste-collection',
   }),
   createToolbarSearchTarget({
-    id: 'command-center-reset-overseerr-requests',
-    title: 'Reset Overseerr Requests',
+    id: 'command-center-reset-seerr-requests',
+    title: 'Reset Seerr Requests',
     area: 'Command Center',
     route: '/command-center',
-    hash: 'command-center-reset-overseerr-requests',
+    hash: 'command-center-reset-seerr-requests',
   }),
   createToolbarSearchTarget({
     id: 'command-center-reset-rejected-list',
@@ -132,11 +132,11 @@ export const VAULT_SEARCH_TARGETS: ToolbarSearchTarget[] = [
     hash: 'vault-sonarr',
   }),
   createToolbarSearchTarget({
-    id: 'vault-overseerr',
-    title: 'Overseerr',
+    id: 'vault-seerr',
+    title: 'Seerr',
     area: 'Vault',
     route: '/vault',
-    hash: 'vault-overseerr',
+    hash: 'vault-seerr',
   }),
   createToolbarSearchTarget({
     id: 'vault-google',

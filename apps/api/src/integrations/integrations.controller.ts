@@ -15,7 +15,7 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 import { PrismaService } from '../db/prisma.service';
 import { GoogleService } from '../google/google.service';
 import { OpenAiService } from '../openai/openai.service';
-import { OverseerrService } from '../overseerr/overseerr.service';
+import { SeerrService } from '../seerr/seerr.service';
 import {
   type PlexEligibleLibrary,
   buildExcludedSectionKeysFromSelected,
@@ -252,7 +252,7 @@ const SERVICE_SECRET_ID_BY_INTEGRATION: Record<string, ServiceSecretId> = {
   radarr: 'radarr',
   sonarr: 'sonarr',
   tmdb: 'tmdb',
-  overseerr: 'overseerr',
+  seerr: 'seerr',
   google: 'google',
   openai: 'openai',
 };
@@ -286,7 +286,7 @@ export class IntegrationsController {
     private readonly tmdb: TmdbService,
     private readonly google: GoogleService,
     private readonly openai: OpenAiService,
-    private readonly overseerr: OverseerrService,
+    private readonly seerr: SeerrService,
     private readonly arrInstances: ArrInstanceService,
   ) {}
 
@@ -1006,8 +1006,8 @@ export class IntegrationsController {
         return await this.testSavedSonarr(context);
       case 'tmdb':
         return await this.testSavedTmdb(context);
-      case 'overseerr':
-        return await this.testSavedOverseerr(context);
+      case 'seerr':
+        return await this.testSavedSeerr(context);
       case 'google':
         return await this.testSavedGoogle(context);
       case 'openai':
@@ -1199,20 +1199,13 @@ export class IntegrationsController {
     return { ok: true, result };
   }
 
-  private async testSavedOverseerr(
+  private async testSavedSeerr(
     context: SavedIntegrationTestContext,
   ): Promise<SavedIntegrationTestResult> {
-    const baseUrl = this.requireSavedBaseUrl(
-      context,
-      'overseerr.baseUrl',
-      'Overseerr',
-    );
-    const apiKey = await this.resolveSavedIntegrationSecret(
-      context,
-      'overseerr',
-    );
+    const baseUrl = this.requireSavedBaseUrl(context, 'seerr.baseUrl', 'Seerr');
+    const apiKey = await this.resolveSavedIntegrationSecret(context, 'seerr');
     try {
-      const result = await this.overseerr.testConnection({ baseUrl, apiKey });
+      const result = await this.seerr.testConnection({ baseUrl, apiKey });
       return { ok: true, result };
     } catch (primaryError) {
       if (!isConnectivityFailure(primaryError)) throw primaryError;
@@ -1222,15 +1215,15 @@ export class IntegrationsController {
       );
       for (const fallbackBaseUrl of fallbackBaseUrls) {
         try {
-          const result = await this.overseerr.testConnection({
+          const result = await this.seerr.testConnection({
             baseUrl: fallbackBaseUrl,
             apiKey,
           });
           await this.settingsService.updateSettings(context.userId, {
-            overseerr: { baseUrl: fallbackBaseUrl },
+            seerr: { baseUrl: fallbackBaseUrl },
           });
           this.logger.log(
-            `Overseerr integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
+            `Seerr integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
           );
           return { ok: true, result };
         } catch {
