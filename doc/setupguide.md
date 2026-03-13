@@ -28,19 +28,14 @@ chmod +x caddy-entrypoint.sh install-local-ca.sh
 docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
 
 IMM_IMAGE=ohmzii/immaculaterr IMM_TAG=latest docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
+cd /opt/immaculaterr
+./install-local-ca.sh
 ```
 
 Then open:
 
 - `http://<server-ip>:5454/`
 - `https://<server-ip>:5464/`
-
-Optional (recommended for clean HTTPS browser trust):
-
-```bash
-cd /opt/immaculaterr
-./install-local-ca.sh
-```
 
 Compose stacks at a glance
 ---

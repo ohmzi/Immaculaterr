@@ -55,6 +55,9 @@ const OPTIONAL_HTTPS_SIDECAR_COMMAND = [
   '  --restart unless-stopped \\',
   '  caddy:2.8.4-alpine \\',
   '  /bin/sh /etc/caddy/caddy-entrypoint.sh',
+  '',
+  'cd ~/immaculaterr',
+  './install-local-ca.sh',
 ].join('\n');
 
 async function copyToClipboard(text: string) {
@@ -289,7 +292,8 @@ export const SetupPage = () => {
                 Use it when you browse on{' '}
                 <code className="font-mono">https://&lt;server-ip&gt;:5464</code> and want local
                 secure-cookie behavior without setting up your own reverse proxy. If you only use
-                plain HTTP or already have your own TLS setup, you can skip this block.
+                plain HTTP or already have your own TLS setup, you can skip this block. This command
+                also runs local CA certificate install on the Docker host.
               </p>
               {renderCommandBlock('update-paths-https-sidecar', OPTIONAL_HTTPS_SIDECAR_COMMAND)}
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -304,6 +308,11 @@ export const SetupPage = () => {
                   <li>
                     On first use per device, trust the local certificate authority if you want a clean
                     browser experience.
+                  </li>
+                  <li>
+                    If you browse from other devices, import{' '}
+                    <code className="font-mono">/tmp/immaculaterr-local-ca.crt</code> from the Docker
+                    host on those devices.
                   </li>
                   <li>
                     Keep using the same HTTPS URL after sign-in so browser cookies stay consistent.
