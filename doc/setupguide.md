@@ -58,12 +58,18 @@ These compose files use `network_mode: host` by default. On Linux, this keeps lo
 TrueNAS SCALE (GUI-only Custom Apps)
 ---
 
-If you deploy through the TrueNAS Apps UI (no shell/compose workflow), create two Custom Apps:
+Use one of the options below.
+
+### Option 1 (recommended): HTTPS sidecar + encrypted secret transport
+
+This keeps `SECRETS_TRANSPORT_ALLOW_PLAINTEXT=false` and uses local HTTPS on `:5464`.
+
+Create two Custom Apps in TrueNAS:
 
 1. `immaculaterr` (main app on `:5454`)
 2. `immaculaterr-https` (Caddy sidecar on `:5464`)
 
-### 1) Main app (`immaculaterr`)
+#### Option 1 - Main app (`immaculaterr`)
 
 In TrueNAS: **Apps -> Discover Apps -> Custom App** (name: `immaculaterr`), then paste:
 
@@ -103,7 +109,7 @@ volumes:
   immaculaterr-data: {}
 ```
 
-### 2) HTTPS sidecar app (`immaculaterr-https`)
+#### Option 1 - HTTPS sidecar app (`immaculaterr-https`)
 
 Create a second Custom App (name: `immaculaterr-https`), then paste:
 
@@ -153,7 +159,7 @@ Notes:
 - Replace `192.168.122.179` with your TrueNAS IP.
 - Keep using `https://immaculaterr.local:5464` (hostname, not raw IP) for browser access.
 
-### 3) Client hostname mapping
+#### Option 1 - Client hostname mapping
 
 On each client machine:
 
@@ -161,7 +167,7 @@ On each client machine:
 echo "192.168.122.179 immaculaterr.local" | sudo tee -a /etc/hosts
 ```
 
-### 4) Collect and trust local CA cert
+#### Option 1 - Collect and trust local CA cert
 
 In TrueNAS shell for the `immaculaterr-https` app:
 
@@ -184,14 +190,59 @@ Firefox only (if needed):
 
 - `about:config` -> `security.enterprise_roots.enabled` -> `true`
 
-### 5) Verify
+#### Option 1 - Verify
 
 ```bash
 curl -I http://192.168.122.179:5454
 curl -I https://immaculaterr.local:5464
 ```
 
-Run without `-k` for HTTPS verification. A successful response confirms certificate trust is configured correctly.
+Run HTTPS verification without `-k`. A successful response confirms certificate trust is configured correctly.
+
+### Option 2: HTTP-only compatibility mode (plaintext secret transport)
+
+Use this when you want setup to work directly over HTTP with no HTTPS sidecar.
+
+By choosing this option, you accept responsibility for sending credentials in plaintext between browser and API. Use only on trusted local networks.
+
+Create only one Custom App named `immaculaterr` and use:
+
+```yaml
+services:
+  immaculaterr:
+    image: ohmzii/immaculaterr:v1.7.1-beta-2
+    platform: linux/amd64
+    pull_policy: always
+    privileged: false
+    restart: unless-stopped
+    stdin_open: false
+    tty: false
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5454"
+      APP_DATA_DIR: "/data"
+      DATABASE_URL: "file:/data/tcp.sqlite"
+      TRUST_PROXY: "1"
+      COOKIE_SECURE: "false"
+      SECRETS_TRANSPORT_ALLOW_PLAINTEXT: "true"
+      TZ: "America/Los_Angeles"
+      NVIDIA_VISIBLE_DEVICES: "void"
+    ports:
+      - "5454:5454"
+    volumes:
+      - immaculaterr-data:/data
+    group_add:
+      - "568"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+
+volumes:
+  immaculaterr-data: {}
+```
+
+Open: `http://192.168.122.179:5454`
 
 Run from a cloned repository
 ---
