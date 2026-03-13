@@ -54,6 +54,8 @@ Compose templates live in `docker/immaculaterr/`:
 - `docker-compose.secrets.yml`: optional overlay to load `APP_MASTER_KEY_FILE` from Docker secrets
 
 These compose files use `network_mode: host` by default. On Linux, this keeps local integrations simple (`http://localhost:<port>` from inside the app).
+##
+##
 
 TrueNAS SCALE (GUI-only Custom Apps)
 ---
@@ -243,6 +245,8 @@ volumes:
 ```
 
 Open: `http://192.168.122.179:5454`
+##
+##
 
 Run from a cloned repository
 ---
