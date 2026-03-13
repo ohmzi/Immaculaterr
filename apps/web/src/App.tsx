@@ -14,6 +14,7 @@ import { VaultPage } from '@/pages/VaultPage';
 import { CommandCenterPage } from '@/pages/CommandCenterPage';
 import { FaqPage } from '@/pages/FaqPage';
 import { SetupPage } from '@/pages/SetupPage';
+import { SetupTrueNasPage } from '@/pages/SetupTrueNasPage';
 import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
 import { DebuggerPage } from '@/pages/DebuggerPage';
 import { ProfilePage } from '@/pages/ProfilePage';
@@ -64,6 +65,7 @@ const App = () => {
             <Route path="command-center" element={<CommandCenterPage />} />
             <Route path="faq" element={<FaqPage />} />
             <Route path="setup" element={<SetupPage />} />
+            <Route path="setup/truenas" element={<SetupTrueNasPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="version-history" element={<VersionHistoryPage />} />
             <Route path="__debug/:token" element={<DebuggerPage />} />

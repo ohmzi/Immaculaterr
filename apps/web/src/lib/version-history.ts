@@ -24,10 +24,11 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.1-beta-2',
+    version: '1.7.1-beta-3',
     popupHighlights: [
       'TMDB, OpenAI, and Google connectivity checks are now more reliable on DNS/IPv6-problem Docker hosts.',
       'External API tests now retry with explicit IPv4 fallback before failing.',
+      'Added a dedicated TrueNAS setup guide with working main-app and HTTPS sidecar YAML.',
     ],
     sections: [
       {
@@ -37,7 +38,15 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'This improves API-key validation reliability in Docker environments with unstable resolver behavior.',
           'Added focused test coverage for fallback behavior and non-fallback auth failure handling.'
         ],
-      }
+      },
+      {
+        title: 'TrueNAS setup and HTTPS guidance',
+        bullets: [
+          'Added a dedicated in-app TrueNAS guide at /setup/truenas with copy-ready YAML for the main app and HTTPS sidecar.',
+          'Setup page catalog now links directly to the TrueNAS guide for faster onboarding.',
+          'Updated setup docs with TrueNAS GUI flow, local CA certificate collection/trust steps, and HTTPS verification commands.',
+        ],
+      },
     ],
   },
   {

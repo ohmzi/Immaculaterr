@@ -3,13 +3,18 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.1-beta
+1.7.1-beta-3
 ---
 
 - What's new since 1.7.0:
   'TMDB, OpenAI, and Google now retry with explicit IPv4 fallback when normal requests fail due to DNS/IPv6 network issues.',
   'This improves API-key validation reliability in Docker environments with unstable resolver behavior.',
-  'Added focused test coverage for fallback behavior and non-fallback auth failure handling.'
+  'Added focused test coverage for fallback behavior and non-fallback auth failure handling.',
+  'Added a dedicated in-app TrueNAS setup guide at /setup/truenas with copy-ready YAML for the main app and HTTPS sidecar.',
+  'Setup page now links directly to the TrueNAS guide for faster navigation.',
+  'Updated setupguide.md with TrueNAS GUI deployment flow, local CA certificate trust steps, and HTTPS verification commands.'
+
+
 1.7.0
 ---
 

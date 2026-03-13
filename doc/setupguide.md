@@ -55,6 +55,144 @@ Compose templates live in `docker/immaculaterr/`:
 
 These compose files use `network_mode: host` by default. On Linux, this keeps local integrations simple (`http://localhost:<port>` from inside the app).
 
+TrueNAS SCALE (GUI-only Custom Apps)
+---
+
+If you deploy through the TrueNAS Apps UI (no shell/compose workflow), create two Custom Apps:
+
+1. `immaculaterr` (main app on `:5454`)
+2. `immaculaterr-https` (Caddy sidecar on `:5464`)
+
+### 1) Main app (`immaculaterr`)
+
+In TrueNAS: **Apps -> Discover Apps -> Custom App** (name: `immaculaterr`), then paste:
+
+```yaml
+services:
+  immaculaterr:
+    image: ohmzii/immaculaterr:v1.7.1-beta-2
+    platform: linux/amd64
+    pull_policy: always
+    privileged: false
+    restart: unless-stopped
+    stdin_open: false
+    tty: false
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5454"
+      APP_DATA_DIR: "/data"
+      DATABASE_URL: "file:/data/tcp.sqlite"
+      TRUST_PROXY: "1"
+      COOKIE_SECURE: "true"
+      SECRETS_TRANSPORT_ALLOW_PLAINTEXT: "false"
+      CORS_ORIGINS: "https://immaculaterr.local:5464"
+      TZ: "America/Los_Angeles"
+      NVIDIA_VISIBLE_DEVICES: "void"
+    ports:
+      - "5454:5454"
+    volumes:
+      - immaculaterr-data:/data
+    group_add:
+      - "568"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+
+volumes:
+  immaculaterr-data: {}
+```
+
+### 2) HTTPS sidecar app (`immaculaterr-https`)
+
+Create a second Custom App (name: `immaculaterr-https`), then paste:
+
+```yaml
+services:
+  immaculaterr-https:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "5464:5464"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        cat >/etc/caddy/Caddyfile <<'EOF'
+        {
+          admin off
+          auto_https disable_redirects
+          servers {
+            strict_sni_host insecure_off
+          }
+        }
+
+        https://immaculaterr.local:5464, https://localhost:5464, https://127.0.0.1:5464 {
+          tls internal
+          encode zstd gzip
+          reverse_proxy http://192.168.122.179:5454 {
+            header_up Host {http.request.host}
+            header_up X-Forwarded-Host {http.request.host}
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Port {server_port}
+          }
+        }
+        EOF
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - immaculaterr-caddy-data:/data
+      - immaculaterr-caddy-config:/config
+
+volumes:
+  immaculaterr-caddy-data: {}
+  immaculaterr-caddy-config: {}
+```
+
+Notes:
+
+- Replace `192.168.122.179` with your TrueNAS IP.
+- Keep using `https://immaculaterr.local:5464` (hostname, not raw IP) for browser access.
+
+### 3) Client hostname mapping
+
+On each client machine:
+
+```bash
+echo "192.168.122.179 immaculaterr.local" | sudo tee -a /etc/hosts
+```
+
+### 4) Collect and trust local CA cert
+
+In TrueNAS shell for the `immaculaterr-https` app:
+
+```bash
+cat /data/caddy/pki/authorities/local/root.crt
+```
+
+Copy full PEM output, save it on each Ubuntu client as:
+
+`~/Downloads/immaculaterr-local-ca.crt`
+
+Install trust:
+
+```bash
+sudo cp ~/Downloads/immaculaterr-local-ca.crt /usr/local/share/ca-certificates/immaculaterr-local-ca.crt
+sudo update-ca-certificates --fresh
+```
+
+Firefox only (if needed):
+
+- `about:config` -> `security.enterprise_roots.enabled` -> `true`
+
+### 5) Verify
+
+```bash
+curl -I http://192.168.122.179:5454
+curl -I https://immaculaterr.local:5464
+```
+
+Run without `-k` for HTTPS verification. A successful response confirms certificate trust is configured correctly.
+
 Run from a cloned repository
 ---
 
