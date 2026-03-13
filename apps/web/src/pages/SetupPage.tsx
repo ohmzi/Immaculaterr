@@ -1,7 +1,7 @@
 import { motion, useAnimation } from 'motion/react';
 import { Check, Copy, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -199,6 +199,36 @@ export const SetupPage = () => {
   }, []);
 
   const SETUP_SECTIONS: SetupSection[] = [
+    {
+      id: 'truenas-guide',
+      title: 'TrueNAS guide',
+      items: [
+        {
+          id: 'truenas-guide-overview',
+          question: 'Need TrueNAS-specific setup steps?',
+          answer: (
+            <>
+              <p>
+                If you are deploying with TrueNAS SCALE Custom Apps (main app + HTTPS sidecar), use
+                the dedicated guide:
+              </p>
+              <p>
+                <Link
+                  to="/setup/truenas"
+                  className="font-semibold text-sky-200 underline decoration-sky-200/40 underline-offset-4 hover:text-white hover:decoration-white/60"
+                >
+                  Open Setup: TrueNAS
+                </Link>
+              </p>
+              <p>
+                It includes the working YAML for both apps, local hostname mapping, certificate
+                collection, Ubuntu trust install steps, and verification commands.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
     {
       id: 'update-paths',
       title: 'Update helper',
