@@ -142,6 +142,11 @@ If you use the built-in local HTTPS helper, both are available:
 
 For local HTTPS update/setup steps, use [Setup - Optional HTTPS sidecar](/setup#update-paths-https-sidecar).
 
+For TrueNAS SCALE GUI installs, use [Setup: TrueNAS](/setup/truenas), which includes:
+
+- Option 1 (recommended): HTTPS sidecar + encrypted secret transport.
+- Option 2 (compatibility): HTTP-only with `SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true` (plaintext credential transport).
+
 ## Task Manager
 
 Open in app: [Task Manager](/task-manager)

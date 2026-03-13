@@ -100,6 +100,11 @@ If users browse from other devices, import `/tmp/immaculaterr-local-ca.crt` from
 
 For full setup and update options (including certificate trust), use [`doc/setupguide.md`](setupguide.md).
 
+If you deploy with TrueNAS SCALE Custom Apps, use the TrueNAS section in `setupguide.md`:
+
+- Option 1 (recommended): HTTPS sidecar with encrypted secret transport.
+- Option 2 (compatibility): HTTP-only with `SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true` (credentials are sent in plaintext; use only on trusted local networks).
+
 Development
 ---
 

@@ -89,6 +89,7 @@ export const SetupPage = () => {
   type SetupSection = {
     id: string;
     title: string;
+    catalogLine: string;
     items: SetupItem[];
   };
   const handleAnimateTitleIcon = useCallback(() => {
@@ -200,38 +201,9 @@ export const SetupPage = () => {
 
   const SETUP_SECTIONS: SetupSection[] = [
     {
-      id: 'truenas-guide',
-      title: 'TrueNAS guide',
-      items: [
-        {
-          id: 'truenas-guide-overview',
-          question: 'Need TrueNAS-specific setup steps?',
-          answer: (
-            <>
-              <p>
-                If you are deploying with TrueNAS SCALE Custom Apps (main app + HTTPS sidecar), use
-                the dedicated guide:
-              </p>
-              <p>
-                <Link
-                  to="/setup/truenas"
-                  className="font-semibold text-sky-200 underline decoration-sky-200/40 underline-offset-4 hover:text-white hover:decoration-white/60"
-                >
-                  Open Setup: TrueNAS
-                </Link>
-              </p>
-              <p>
-                It includes the working YAML for both apps, local hostname mapping, certificate
-                collection, Ubuntu trust install steps, and verification commands.
-              </p>
-            </>
-          ),
-        },
-      ],
-    },
-    {
       id: 'update-paths',
       title: 'Update helper',
+      catalogLine: 'Open update commands and post-update checks.',
       items: [
         {
           id: 'update-paths-run-order',
@@ -366,6 +338,38 @@ export const SetupPage = () => {
         },
       ],
     },
+    {
+      id: 'truenas-guide',
+      title: 'TrueNAS guide',
+      catalogLine:
+        'Open the TrueNAS setup guide with both HTTPS-sidecar and HTTP-compatibility options.',
+      items: [
+        {
+          id: 'truenas-guide-overview',
+          question: 'Need TrueNAS-specific setup steps?',
+          answer: (
+            <>
+              <p>
+                If you are deploying with TrueNAS SCALE Custom Apps, use the dedicated guide:
+              </p>
+              <p>
+                <Link
+                  to="/setup/truenas"
+                  className="font-semibold text-sky-200 underline decoration-sky-200/40 underline-offset-4 hover:text-white hover:decoration-white/60"
+                >
+                  Open Setup: TrueNAS
+                </Link>
+              </p>
+              <p>
+                It includes both paths: Option 1 (HTTPS sidecar + encrypted secret transport) and
+                Option 2 (HTTP-only compatibility with plaintext secret transport), plus working YAML
+                and verification steps.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
   ];
 
   const cardClass =
@@ -435,36 +439,23 @@ export const SetupPage = () => {
           <div className={cardClass}>
             <div className="text-white font-semibold text-xl">Catalog</div>
             <div className="mt-2 text-sm text-white/70 leading-relaxed">
-              Tap a section or step to update the URL hash and jump straight to that part of the
-              guide.
+              Jump straight to the section you need.
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {SETUP_SECTIONS.map((section) => (
-                <div
+            <div className="mt-5 space-y-2 rounded-2xl border border-white/10 bg-white/5 p-3">
+              {SETUP_SECTIONS.map((section, index) => (
+                <button
                   key={section.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  type="button"
+                  onClick={() => navigateToAnchor(section.id)}
+                  className="w-full rounded-xl border border-transparent px-3 py-3 text-left transition-colors hover:border-white/10 hover:bg-white/5"
                 >
-                  <button
-                    type="button"
-                    onClick={() => navigateToAnchor(section.id)}
-                    className="w-full text-left text-sm font-semibold text-white/90 hover:text-white transition-colors"
-                  >
-                    {section.title}
-                  </button>
-                  <div className="mt-3 space-y-1">
-                    {section.items.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => navigateToAnchor(item.id)}
-                        className="w-full text-left text-sm text-white/65 hover:text-white/90 transition-colors"
-                      >
-                        {item.question}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                  <div className="text-sm font-semibold text-white/90">{section.title}</div>
+                  <div className="mt-1 text-sm text-white/65">{section.catalogLine}</div>
+                  {index < SETUP_SECTIONS.length - 1 ? (
+                    <div className="mt-3 h-px bg-white/10" />
+                  ) : null}
+                </button>
               ))}
             </div>
           </div>
