@@ -16,6 +16,7 @@ type TmdbMovieSearchResult = {
   vote_count?: number;
   vote_average?: number;
   popularity?: number;
+  original_language?: string;
 };
 
 type TmdbMovieDetails = {
@@ -78,6 +79,37 @@ export type TmdbTvCandidate = {
   voteCount: number | null;
   popularity: number | null;
   sources: string[];
+};
+
+export type TmdbMovieGenreOption = {
+  id: number;
+  name: string;
+};
+
+export type TmdbLanguageOption = {
+  code: string;
+  englishName: string;
+  name: string;
+};
+
+export type TmdbMovieCertificationOption = {
+  countryCode: string;
+  certification: string;
+};
+
+export type TmdbMovieWatchProviderOption = {
+  id: number;
+  name: string;
+};
+
+export type TmdbUpcomingMovieDiscoverCandidate = {
+  tmdbId: number;
+  title: string;
+  releaseDate: string | null;
+  voteAverage: number | null;
+  voteCount: number | null;
+  popularity: number | null;
+  originalLanguage: string | null;
 };
 
 const bestSeedResult = (
@@ -344,6 +376,10 @@ export class TmdbService {
           typeof rec['popularity'] === 'number'
             ? rec['popularity']
             : Number(rec['popularity']),
+        original_language:
+          typeof rec['original_language'] === 'string'
+            ? rec['original_language'].trim()
+            : undefined,
       });
     }
 
@@ -627,6 +663,461 @@ export class TmdbService {
         : null;
 
     return { vote_average, vote_count };
+  }
+
+  async getMovieGenres(params: {
+    apiKey: string;
+  }): Promise<TmdbMovieGenreOption[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+
+    const url = new URL('https://api.themoviedb.org/3/genre/movie/list');
+    url.searchParams.set('api_key', apiKey);
+    const data = await this.fetchTmdbJson(url, 20000);
+    if (!data || typeof data !== 'object') return [];
+
+    const raw = (data as Record<string, unknown>)['genres'];
+    const rows = Array.isArray(raw) ? raw : [];
+    const out: TmdbMovieGenreOption[] = [];
+    const seen = new Set<number>();
+
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      const rec = row as Record<string, unknown>;
+      const id = typeof rec['id'] === 'number' ? rec['id'] : Number(rec['id']);
+      const name = typeof rec['name'] === 'string' ? rec['name'].trim() : '';
+      if (!Number.isFinite(id) || id <= 0) continue;
+      if (!name) continue;
+      const normalizedId = Math.trunc(id);
+      if (seen.has(normalizedId)) continue;
+      seen.add(normalizedId);
+      out.push({ id: normalizedId, name });
+    }
+
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }
+
+  async getLanguages(params: {
+    apiKey: string;
+  }): Promise<TmdbLanguageOption[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+
+    const url = new URL('https://api.themoviedb.org/3/configuration/languages');
+    url.searchParams.set('api_key', apiKey);
+    const data = await this.fetchTmdbJson(url, 20000);
+    const rows = Array.isArray(data) ? data : [];
+
+    const out: TmdbLanguageOption[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      const rec = row as Record<string, unknown>;
+      const code =
+        typeof rec['iso_639_1'] === 'string' ? rec['iso_639_1'].trim() : '';
+      if (!code) continue;
+      const key = code.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const englishName =
+        typeof rec['english_name'] === 'string'
+          ? rec['english_name'].trim()
+          : '';
+      const name = typeof rec['name'] === 'string' ? rec['name'].trim() : '';
+      out.push({
+        code,
+        englishName: englishName || code,
+        name: name || englishName || code,
+      });
+    }
+
+    out.sort((a, b) => a.englishName.localeCompare(b.englishName));
+    return out;
+  }
+
+  async getMovieCertifications(params: {
+    apiKey: string;
+    countryCode?: string;
+  }): Promise<TmdbMovieCertificationOption[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+
+    const countryCode = (
+      (params.countryCode ?? 'US').trim().toUpperCase() || 'US'
+    ).slice(0, 2);
+    const url = new URL(
+      'https://api.themoviedb.org/3/certification/movie/list',
+    );
+    url.searchParams.set('api_key', apiKey);
+    const data = await this.fetchTmdbJson(url, 20000);
+    if (!data || typeof data !== 'object') return [];
+
+    const resultsRaw = (data as Record<string, unknown>)['certifications'];
+    if (!resultsRaw || typeof resultsRaw !== 'object') return [];
+    const countryRows = (resultsRaw as Record<string, unknown>)[countryCode];
+    const rows = Array.isArray(countryRows) ? countryRows : [];
+
+    const out: TmdbMovieCertificationOption[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      const rec = row as Record<string, unknown>;
+      const certification =
+        typeof rec['certification'] === 'string'
+          ? rec['certification'].trim()
+          : '';
+      if (!certification) continue;
+      const key = certification.toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ countryCode, certification });
+    }
+
+    out.sort((a, b) => a.certification.localeCompare(b.certification));
+    return out;
+  }
+
+  async getMovieWatchProviders(params: {
+    apiKey: string;
+    countryCode?: string;
+  }): Promise<TmdbMovieWatchProviderOption[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+
+    const countryCode = (
+      (params.countryCode ?? 'US').trim().toUpperCase() || 'US'
+    ).slice(0, 2);
+    const url = new URL('https://api.themoviedb.org/3/watch/providers/movie');
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('watch_region', countryCode);
+    const data = await this.fetchTmdbJson(url, 20000);
+    if (!data || typeof data !== 'object') return [];
+
+    const resultsRaw = (data as Record<string, unknown>)['results'];
+    const rows = Array.isArray(resultsRaw) ? resultsRaw : [];
+    const out: Array<
+      TmdbMovieWatchProviderOption & { displayPriority: number }
+    > = [];
+    const seen = new Set<number>();
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      const rec = row as Record<string, unknown>;
+      const idRaw = rec['provider_id'];
+      const parsedId = typeof idRaw === 'number' ? idRaw : Number(idRaw);
+      if (!Number.isFinite(parsedId) || parsedId <= 0) continue;
+      const id = Math.trunc(parsedId);
+      if (seen.has(id)) continue;
+      const name =
+        typeof rec['provider_name'] === 'string'
+          ? rec['provider_name'].trim()
+          : '';
+      if (!name) continue;
+      const displayPriorityRaw = rec['display_priority'];
+      const parsedDisplayPriority =
+        typeof displayPriorityRaw === 'number'
+          ? displayPriorityRaw
+          : Number(displayPriorityRaw);
+      const displayPriority = Number.isFinite(parsedDisplayPriority)
+        ? Math.trunc(parsedDisplayPriority)
+        : Number.MAX_SAFE_INTEGER;
+      seen.add(id);
+      out.push({ id, name, displayPriority });
+    }
+
+    out.sort((a, b) => {
+      if (a.displayPriority !== b.displayPriority) {
+        return a.displayPriority - b.displayPriority;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    return out.map(({ id, name }) => ({ id, name }));
+  }
+
+  async getMovieCertification(params: {
+    apiKey: string;
+    tmdbId: number;
+    countryCode?: string;
+  }): Promise<string | null> {
+    const apiKey = params.apiKey.trim();
+    const tmdbId = Math.trunc(params.tmdbId);
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return null;
+
+    const countryCode = (
+      (params.countryCode ?? 'US').trim().toUpperCase() || 'US'
+    ).slice(0, 2);
+    const url = new URL(
+      `https://api.themoviedb.org/3/movie/${tmdbId}/release_dates`,
+    );
+    url.searchParams.set('api_key', apiKey);
+    const data = await this.fetchTmdbJson(url, 20000);
+    if (!data || typeof data !== 'object') return null;
+
+    const rowsRaw = (data as Record<string, unknown>)['results'];
+    const countryRows = Array.isArray(rowsRaw) ? (rowsRaw as unknown[]) : [];
+    let countryEntry: Record<string, unknown> | null = null;
+    for (const row of countryRows) {
+      if (!row || typeof row !== 'object') continue;
+      const code = (row as Record<string, unknown>)['iso_3166_1'];
+      if (
+        typeof code === 'string' &&
+        code.trim().toUpperCase() === countryCode
+      ) {
+        countryEntry = row as Record<string, unknown>;
+        break;
+      }
+    }
+    if (!countryEntry) return null;
+
+    const releasesRaw = countryEntry['release_dates'];
+    const releases = Array.isArray(releasesRaw) ? releasesRaw : [];
+    const releaseTypePriority = [3, 2, 4, 1, 5, 6];
+    const releaseTypeRank = new Map(
+      releaseTypePriority.map((type, index) => [type, index]),
+    );
+
+    const parsed = releases
+      .map((release) => {
+        if (!release || typeof release !== 'object') return null;
+        const rec = release as Record<string, unknown>;
+        const certification =
+          typeof rec['certification'] === 'string'
+            ? rec['certification'].trim()
+            : '';
+        if (!certification) return null;
+        const releaseTypeRaw = rec['release_type'];
+        let releaseType: number | null = null;
+        if (
+          typeof releaseTypeRaw === 'number' &&
+          Number.isFinite(releaseTypeRaw)
+        ) {
+          releaseType = Math.trunc(releaseTypeRaw);
+        } else if (
+          typeof releaseTypeRaw === 'string' &&
+          releaseTypeRaw.trim()
+        ) {
+          const parsedReleaseType = Number.parseInt(releaseTypeRaw.trim(), 10);
+          if (Number.isFinite(parsedReleaseType)) {
+            releaseType = parsedReleaseType;
+          }
+        }
+        return {
+          certification,
+          releaseType,
+        };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is { certification: string; releaseType: number | null } =>
+          entry !== null,
+      )
+      .sort((a, b) => {
+        const aRank = a.releaseType
+          ? (releaseTypeRank.get(a.releaseType) ?? Number.MAX_SAFE_INTEGER)
+          : Number.MAX_SAFE_INTEGER;
+        const bRank = b.releaseType
+          ? (releaseTypeRank.get(b.releaseType) ?? Number.MAX_SAFE_INTEGER)
+          : Number.MAX_SAFE_INTEGER;
+        if (aRank !== bRank) return aRank - bRank;
+        return a.certification.localeCompare(b.certification);
+      });
+
+    return parsed[0]?.certification ?? null;
+  }
+
+  async discoverUpcomingMovies(params: {
+    apiKey: string;
+    fromDate: string;
+    toDate: string;
+    genreIds?: number[] | null;
+    languages?: string[] | null;
+    watchProviderIds?: number[] | null;
+    watchRegion?: string | null;
+    minScore?: number | null;
+    maxScore?: number | null;
+    startPage?: number;
+    maxItems?: number;
+    maxPages?: number;
+  }): Promise<TmdbUpcomingMovieDiscoverCandidate[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    const fromDate = params.fromDate.trim();
+    const toDate = params.toDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+      throw new BadGatewayException('TMDB fromDate must be YYYY-MM-DD');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+      throw new BadGatewayException('TMDB toDate must be YYYY-MM-DD');
+    }
+
+    const genreIds = Array.isArray(params.genreIds)
+      ? params.genreIds
+          .map((value) =>
+            Number.isFinite(value) ? Math.trunc(value) : Number.NaN,
+          )
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+    const languageAllowlist = Array.isArray(params.languages)
+      ? params.languages
+          .map((value) =>
+            String(value ?? '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean)
+      : [];
+    const languageSet = new Set(languageAllowlist);
+    const watchProviderIdsRaw = Array.isArray(params.watchProviderIds)
+      ? params.watchProviderIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+          .map((value) => Math.trunc(value))
+      : [];
+    const watchProviderIds = Array.from(new Set(watchProviderIdsRaw));
+    const watchRegion = (
+      typeof params.watchRegion === 'string'
+        ? params.watchRegion.trim().toUpperCase()
+        : 'US'
+    ).slice(0, 2);
+
+    const minScoreRaw =
+      typeof params.minScore === 'number' && Number.isFinite(params.minScore)
+        ? params.minScore
+        : null;
+    const maxScoreRaw =
+      typeof params.maxScore === 'number' && Number.isFinite(params.maxScore)
+        ? params.maxScore
+        : null;
+    const minScore = minScoreRaw !== null ? Math.max(0, minScoreRaw) : null;
+    const maxScore = maxScoreRaw !== null ? Math.min(10, maxScoreRaw) : null;
+    const scoreLower =
+      minScore !== null && maxScore !== null
+        ? Math.min(minScore, maxScore)
+        : minScore;
+    const scoreUpper =
+      minScore !== null && maxScore !== null
+        ? Math.max(minScore, maxScore)
+        : maxScore;
+
+    const maxItems = Math.max(
+      1,
+      Math.min(500, Math.trunc(params.maxItems ?? 250)),
+    );
+    const maxPages = Math.max(
+      1,
+      Math.min(20, Math.trunc(params.maxPages ?? 10)),
+    );
+    const startPage = Math.max(
+      1,
+      Math.min(500, Math.trunc(params.startPage ?? 1)),
+    );
+
+    const url = new URL('https://api.themoviedb.org/3/discover/movie');
+    url.searchParams.set('primary_release_date.gte', fromDate);
+    url.searchParams.set('primary_release_date.lte', toDate);
+    url.searchParams.set('sort_by', 'popularity.desc');
+    if (genreIds.length) {
+      url.searchParams.set('with_genres', genreIds.join(','));
+    }
+    if (scoreLower !== null) {
+      url.searchParams.set('vote_average.gte', scoreLower.toFixed(1));
+    }
+    if (scoreUpper !== null) {
+      url.searchParams.set('vote_average.lte', scoreUpper.toFixed(1));
+    }
+    if (languageAllowlist.length === 1) {
+      url.searchParams.set('with_original_language', languageAllowlist[0]);
+    }
+    if (watchProviderIds.length) {
+      url.searchParams.set('with_watch_providers', watchProviderIds.join(','));
+      url.searchParams.set('watch_region', watchRegion || 'US');
+    }
+
+    const rows = await this.pagedResults({
+      apiKey,
+      url,
+      includeAdult: false,
+      maxItems,
+      maxPages,
+      startPage,
+    });
+
+    const out: TmdbUpcomingMovieDiscoverCandidate[] = [];
+    const seen = new Set<number>();
+    for (const row of rows) {
+      if (!row || !Number.isFinite(row.id) || row.id <= 0) continue;
+      const tmdbId = Math.trunc(row.id);
+      if (seen.has(tmdbId)) continue;
+      const title = (row.title ?? '').trim();
+      if (!title) continue;
+      const originalLanguage =
+        typeof row.original_language === 'string' &&
+        row.original_language.trim()
+          ? row.original_language.trim().toLowerCase()
+          : null;
+      if (
+        languageSet.size &&
+        originalLanguage &&
+        !languageSet.has(originalLanguage)
+      ) {
+        continue;
+      }
+      if (languageSet.size && !originalLanguage) continue;
+      seen.add(tmdbId);
+      out.push({
+        tmdbId,
+        title,
+        releaseDate:
+          typeof row.release_date === 'string' && row.release_date.trim()
+            ? row.release_date.trim()
+            : null,
+        voteAverage:
+          typeof row.vote_average === 'number' &&
+          Number.isFinite(row.vote_average)
+            ? Number(row.vote_average)
+            : null,
+        voteCount:
+          typeof row.vote_count === 'number' && Number.isFinite(row.vote_count)
+            ? Math.max(0, Math.trunc(row.vote_count))
+            : null,
+        popularity:
+          typeof row.popularity === 'number' && Number.isFinite(row.popularity)
+            ? Number(row.popularity)
+            : null,
+        originalLanguage,
+      });
+      if (out.length >= maxItems) break;
+    }
+
+    return out;
+  }
+
+  async getMovieFilterMetadata(params: {
+    apiKey: string;
+    countryCode?: string;
+  }): Promise<{
+    genres: TmdbMovieGenreOption[];
+    languages: TmdbLanguageOption[];
+    certifications: TmdbMovieCertificationOption[];
+    watchProviders: TmdbMovieWatchProviderOption[];
+  }> {
+    const [genres, languages, certifications, watchProviders] =
+      await Promise.all([
+        this.getMovieGenres({ apiKey: params.apiKey }),
+        this.getLanguages({ apiKey: params.apiKey }),
+        this.getMovieCertifications({
+          apiKey: params.apiKey,
+          countryCode: params.countryCode,
+        }),
+        this.getMovieWatchProviders({
+          apiKey: params.apiKey,
+          countryCode: params.countryCode,
+        }),
+      ]);
+
+    return { genres, languages, certifications, watchProviders };
   }
 
   async getSeedMetadata(params: {
@@ -2245,11 +2736,13 @@ export class TmdbService {
     includeAdult: boolean;
     maxItems: number;
     maxPages: number;
+    startPage?: number;
   }): Promise<TmdbMovieSearchResult[]> {
     const out: TmdbMovieSearchResult[] = [];
-    let page = 1;
+    let page = Math.max(1, Math.trunc(params.startPage ?? 1));
+    let pagesScanned = 0;
 
-    while (out.length < params.maxItems && page <= params.maxPages) {
+    while (out.length < params.maxItems && pagesScanned < params.maxPages) {
       const url = new URL(params.url.toString());
       url.searchParams.set('api_key', params.apiKey.trim());
       url.searchParams.set(
@@ -2298,6 +2791,10 @@ export class TmdbService {
             typeof rec['popularity'] === 'number'
               ? rec['popularity']
               : Number(rec['popularity']),
+          original_language:
+            typeof rec['original_language'] === 'string'
+              ? rec['original_language'].trim()
+              : undefined,
         });
         if (out.length >= params.maxItems) break;
       }
@@ -2308,6 +2805,7 @@ export class TmdbService {
           ? totalPagesRaw
           : Number(totalPagesRaw);
       if (Number.isFinite(totalPages) && page >= totalPages) break;
+      pagesScanned += 1;
       page += 1;
     }
 

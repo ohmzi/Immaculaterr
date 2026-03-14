@@ -35,6 +35,13 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     defaultScheduleCron: '0 4 * * 0', // Sunday at 4am weekly (disabled by default)
   },
   {
+    id: 'tmdbUpcomingMovies',
+    name: 'TMDB Upcoming Movies',
+    description:
+      'Discovers upcoming movies from TMDB filter sets, merges and ranks candidates, and routes the top results to Radarr or Seerr.',
+    defaultScheduleCron: '0 5 * * 0', // Sunday at 5am weekly (disabled by default)
+  },
+  {
     id: 'immaculateTastePoints',
     name: 'Immaculate Taste Collection',
     description:

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Post,
   Req,
 } from '@nestjs/common';
@@ -36,5 +37,22 @@ export class TmdbController {
     const apiKey = resolved.value;
     if (!apiKey) throw new BadRequestException('TMDB_API_KEY is required');
     return this.tmdbService.testConnection({ apiKey });
+  }
+
+  @Get('movie-filters')
+  async getMovieFilters(@Req() req: AuthenticatedRequest) {
+    const { secrets } = await this.settingsService.getInternalSettings(
+      req.user.id,
+    );
+    const apiKey = this.settingsService.readServiceSecret('tmdb', secrets);
+    if (!apiKey) throw new BadRequestException('TMDB_API_KEY is required');
+    const metadata = await this.tmdbService.getMovieFilterMetadata({
+      apiKey,
+      countryCode: 'US',
+    });
+    return {
+      ok: true,
+      ...metadata,
+    };
   }
 }
