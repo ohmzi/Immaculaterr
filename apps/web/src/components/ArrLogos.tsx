@@ -1,92 +1,33 @@
-import { useId, type SVGProps } from 'react';
+import { useId, type ComponentPropsWithoutRef, type SVGProps } from 'react';
 
-export function RadarrLogo(props: SVGProps<SVGSVGElement>) {
+const RADARR_LOGO_SRC =
+  'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@master/svg/radarr.svg';
+const SONARR_LOGO_SRC =
+  'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@master/svg/sonarr.svg';
+
+export function RadarrLogo(props: Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'alt'>) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="24"
-      height="24"
+    <img
+      src={RADARR_LOGO_SRC}
+      alt=""
       aria-hidden="true"
+      draggable={false}
+      decoding="async"
       {...props}
-    >
-      <path
-        d="M5 3L19 12L5 21V3Z"
-        fill="currentColor"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-    </svg>
+    />
   );
 }
 
-export function SonarrLogo(props: SVGProps<SVGSVGElement>) {
-  const uid = useId().replace(/:/g, '');
-  const discId = `sonarrDisc-${uid}`;
-
+export function SonarrLogo(props: Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'alt'>) {
   return (
-    <svg
-      viewBox="0 0 64 64"
-      width="24"
-      height="24"
+    <img
+      src={SONARR_LOGO_SRC}
+      alt=""
       aria-hidden="true"
+      draggable={false}
+      decoding="async"
       {...props}
-    >
-      <defs>
-        <radialGradient
-          id={discId}
-          cx="22"
-          cy="20"
-          r="44"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="rgba(255,255,255,0.14)" />
-          <stop offset="0.55" stopColor="rgba(255,255,255,0.07)" />
-          <stop offset="1" stopColor="rgba(255,255,255,0.03)" />
-        </radialGradient>
-      </defs>
-
-      {/* Disc (helps the logo read cleanly on a very dark tile) */}
-      <circle
-        cx="32"
-        cy="32"
-        r="28"
-        fill={`url(#${discId})`}
-        stroke="rgba(255,255,255,0.18)"
-        strokeWidth="1.5"
-      />
-
-      {/* 4‑segment “aperture” ring (closer to the real Sonarr mark than a generic dashed circle) */}
-      <circle
-        cx="32"
-        cy="32"
-        r="18.5"
-        fill="none"
-        stroke="rgba(255,255,255,0.94)"
-        strokeWidth="11.5"
-        strokeLinecap="round"
-        strokeDasharray="21 8"
-        transform="rotate(-45 32 32)"
-      />
-
-      {/* Soft inner highlight so the segments feel a bit beveled */}
-      <circle
-        cx="32"
-        cy="32"
-        r="18.5"
-        fill="none"
-        stroke="rgba(255,255,255,0.18)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeDasharray="21 8"
-        transform="rotate(-45 32 32)"
-      />
-
-      {/* Center glow + core */}
-      <circle cx="32" cy="32" r="10.5" fill="#38bdf8" opacity="0.14" />
-      <circle cx="32" cy="32" r="5.8" fill="#38bdf8" opacity="0.95" />
-      <circle cx="29.5" cy="28.8" r="1.4" fill="rgba(255,255,255,0.65)" opacity="0.35" />
-    </svg>
+    />
   );
 }
 
@@ -312,79 +253,19 @@ export function PlexLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function SeerrLogo(props: SVGProps<SVGSVGElement>) {
-  const uid = useId().replace(/:/g, '');
-  const ringId = `seerrRing-${uid}`;
-  const blobId = `seerrBlob-${uid}`;
-  const glowId = `seerrGlow-${uid}`;
+const SEERR_LOGO_SRC =
+  'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@master/svg/overseerr.svg';
 
+export function SeerrLogo(props: Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'alt'>) {
   return (
-    <svg
-      viewBox="0 0 64 64"
-      width="24"
-      height="24"
+    <img
+      src={SEERR_LOGO_SRC}
+      alt=""
       aria-hidden="true"
+      draggable={false}
+      decoding="async"
       {...props}
-    >
-      <defs>
-        <linearGradient
-          id={ringId}
-          x1="10"
-          y1="10"
-          x2="52"
-          y2="52"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="#c4b5fd" />
-          <stop offset="1" stopColor="#7c3aed" />
-        </linearGradient>
-        <radialGradient
-          id={blobId}
-          cx="22"
-          cy="18"
-          r="24"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="#ddd6fe" />
-          <stop offset="0.6" stopColor="#a78bfa" />
-          <stop offset="1" stopColor="#7c3aed" />
-        </radialGradient>
-        <filter
-          id={glowId}
-          x="-60%"
-          y="-60%"
-          width="220%"
-          height="220%"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="2.2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      <g filter={`url(#${glowId})`} opacity="0.42">
-        <circle cx="32" cy="32" r="25" fill={`url(#${ringId})`} />
-      </g>
-
-      <circle
-        cx="32"
-        cy="32"
-        r="24.5"
-        fill={`url(#${ringId})`}
-        opacity="0.96"
-      />
-
-      <circle cx="34" cy="35" r="13.2" fill="#060a18" />
-
-      <path
-        d="M16.5 21.5C16.5 14.6 22.1 9 29 9c5 0 9.6 2.9 11.7 7.3-.7-.1-1.5-.2-2.3-.2-6.9 0-12.5 5.6-12.5 12.5 0 1.9.4 3.7 1.2 5.3-6-1.1-10.6-6.3-10.6-12.4Z"
-        fill={`url(#${blobId})`}
-      />
-      <circle cx="23.8" cy="19.3" r="3.8" fill="#ddd6fe" opacity="0.95" />
-    </svg>
+    />
   );
 }
 

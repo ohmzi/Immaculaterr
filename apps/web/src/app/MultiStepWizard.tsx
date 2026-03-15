@@ -12,10 +12,8 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
-  Database,
   ExternalLink,
   Globe,
-  HardDrive,
   Key,
   Loader2,
   Server,
@@ -35,7 +33,7 @@ import { getSecretsEnvelopeKey, putSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { SeerrLogo } from '@/components/ArrLogos';
+import { RadarrLogo, SeerrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -863,9 +861,9 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     text="TMDB API Key"
                     required
                   />
-                  <RequirementItem icon={<Database className="h-4 w-4 text-zinc-500" />} text="Radarr (optional)" />
-                  <RequirementItem icon={<HardDrive className="h-4 w-4 text-zinc-500" />} text="Sonarr (optional)" />
-                  <RequirementItem icon={<Server className="h-4 w-4 text-zinc-500" />} text="Seerr (optional)" />
+                  <RequirementItem icon={<RadarrLogo className="h-4 w-4 opacity-80" />} text="Radarr (optional)" />
+                  <RequirementItem icon={<SonarrLogo className="h-4 w-4 opacity-80" />} text="Sonarr (optional)" />
+                  <RequirementItem icon={<SeerrLogo className="h-4 w-4 opacity-80" />} text="Seerr (optional)" />
                   <RequirementItem icon={<Globe className="h-4 w-4 text-zinc-500" />} text="Other services (optional)" />
                 </ul>
               </div>
