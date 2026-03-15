@@ -588,7 +588,7 @@ export function CommandCenterPage() {
     if (!flashCard) return;
     const t = window.setTimeout(() => setFlashCard(null), 4200);
     return () => window.clearTimeout(t);
-  }, [flashCard?.nonce]);
+  }, [flashCard]);
   useEffect(() => {
     const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
     if (!hash) return;
@@ -609,12 +609,15 @@ export function CommandCenterPage() {
     });
     const settleId = window.setTimeout(() => centerFeatureCard('smooth'), 320);
     const finalId = window.setTimeout(() => centerFeatureCard('auto'), 900);
-    setFlashCard({ id: hash, nonce: Date.now() });
+    const flashId = window.setTimeout(() => {
+      setFlashCard({ id: hash, nonce: Date.now() });
+    }, 0);
 
     return () => {
       window.cancelAnimationFrame(rafId);
       window.clearTimeout(settleId);
       window.clearTimeout(finalId);
+      window.clearTimeout(flashId);
     };
   }, [location.hash]);
   const settingsQuery = useQuery({
@@ -668,7 +671,10 @@ export function CommandCenterPage() {
   });
   useEffect(() => {
     if (!plexLibrariesQuery.data) return;
-    setDraftSelectedPlexLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
+    const timeout = window.setTimeout(() => {
+      setDraftSelectedPlexLibraryKeys(plexLibrariesQuery.data.selectedSectionKeys);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [plexLibrariesQuery.data]);
 
   const plexMonitoringUsersQuery = useQuery({
@@ -680,7 +686,10 @@ export function CommandCenterPage() {
   });
   useEffect(() => {
     if (!plexMonitoringUsersQuery.data) return;
-    setDraftSelectedPlexUserIds(plexMonitoringUsersQuery.data.selectedPlexUserIds);
+    const timeout = window.setTimeout(() => {
+      setDraftSelectedPlexUserIds(plexMonitoringUsersQuery.data.selectedPlexUserIds);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [plexMonitoringUsersQuery.data]);
 
   const immaculateCollectionsQuery = useQuery({
@@ -774,7 +783,10 @@ export function CommandCenterPage() {
     return 'Recently Watched';
   };
 
-  const immaculateProfiles = immaculateProfilesQuery.data?.profiles ?? [];
+  const immaculateProfiles = useMemo(
+    () => immaculateProfilesQuery.data?.profiles ?? [],
+    [immaculateProfilesQuery.data?.profiles],
+  );
   const profileScopeUsers = useMemo<PlexMonitoringUserItem[]>(() => {
     const users = plexMonitoringUsersQuery.data?.users ?? [];
     return users
@@ -814,7 +826,10 @@ export function CommandCenterPage() {
     refetchOnWindowFocus: false,
     retry: 1,
   });
-  const collectionArtworkTargets = collectionArtworkManagedTargetsQuery.data?.collections ?? [];
+  const collectionArtworkTargets = useMemo(
+    () => collectionArtworkManagedTargetsQuery.data?.collections ?? [],
+    [collectionArtworkManagedTargetsQuery.data?.collections],
+  );
   const selectedCollectionArtworkTarget = useMemo(
     () =>
       collectionArtworkTargets.find(
@@ -841,8 +856,11 @@ export function CommandCenterPage() {
   useEffect(() => {
     if (!collectionArtworkPreviewOpen) return;
     if (!selectedCollectionArtworkTarget?.hasCustomPoster || !selectedCollectionArtworkPreviewUrl) {
-      setCollectionArtworkPreviewOpen(false);
-      setCollectionArtworkPreviewFailed(false);
+      const timeout = window.setTimeout(() => {
+        setCollectionArtworkPreviewOpen(false);
+        setCollectionArtworkPreviewFailed(false);
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
   }, [
     collectionArtworkPreviewOpen,
@@ -1181,7 +1199,10 @@ export function CommandCenterPage() {
       retry: 1,
     })),
   }) as UseQueryResult<SonarrOptionsResponse, Error>[];
-  const recommendedGenres = plexLibraryFiltersQuery.data?.genres ?? [];
+  const recommendedGenres = useMemo(
+    () => plexLibraryFiltersQuery.data?.genres ?? [],
+    [plexLibraryFiltersQuery.data?.genres],
+  );
   const trimmedGenreSearch = genreSearch.trim();
   const genreSearchIsActive = trimmedGenreSearch.length > 0;
   const rankedGenreOptions = useMemo(
@@ -1291,7 +1312,10 @@ export function CommandCenterPage() {
     newProfileSelectedExcludedGenreSet,
     trimmedNewProfileExcludeGenreSearch,
   ]);
-  const recommendedAudioLanguages = plexLibraryFiltersQuery.data?.audioLanguages ?? [];
+  const recommendedAudioLanguages = useMemo(
+    () => plexLibraryFiltersQuery.data?.audioLanguages ?? [],
+    [plexLibraryFiltersQuery.data?.audioLanguages],
+  );
   const trimmedAudioLanguageSearch = audioLanguageSearch.trim();
   const audioLanguageSearchIsActive = trimmedAudioLanguageSearch.length > 0;
   const rankedAudioLanguageOptions = useMemo(
@@ -1447,31 +1471,40 @@ export function CommandCenterPage() {
 
   useEffect(() => {
     if (!immaculateProfiles.length) {
-      setActiveProfileId(null);
-      setActiveProfileScopePlexUserId(null);
-      setProfileScopeSearch('');
-      setProfileDraft(null);
-      setIsProfileEditorOpen(false);
-      return;
+      const timeout = window.setTimeout(() => {
+        setActiveProfileId(null);
+        setActiveProfileScopePlexUserId(null);
+        setProfileScopeSearch('');
+        setProfileDraft(null);
+        setIsProfileEditorOpen(false);
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
     if (!activeProfileId) {
       const first = immaculateProfiles[0];
-      setActiveProfileId(first.id);
-      setActiveProfileScopePlexUserId(null);
-      setProfileDraft(toProfileDraft(first));
-      return;
+      const timeout = window.setTimeout(() => {
+        setActiveProfileId(first.id);
+        setActiveProfileScopePlexUserId(null);
+        setProfileDraft(toProfileDraft(first));
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
     const existing = immaculateProfiles.find((profile) => profile.id === activeProfileId);
     if (!existing) {
       const first = immaculateProfiles[0];
-      setActiveProfileId(first.id);
-      setActiveProfileScopePlexUserId(null);
-      setProfileDraft(toProfileDraft(first));
-      return;
+      const timeout = window.setTimeout(() => {
+        setActiveProfileId(first.id);
+        setActiveProfileScopePlexUserId(null);
+        setProfileDraft(toProfileDraft(first));
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
     if (!profileDraft) {
       const activeOverride = findProfileUserOverride(existing, activeProfileScopePlexUserId);
-      setProfileDraft(toProfileDraft(existing, activeOverride));
+      const timeout = window.setTimeout(() => {
+        setProfileDraft(toProfileDraft(existing, activeOverride));
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
   }, [activeProfileId, activeProfileScopePlexUserId, immaculateProfiles, profileDraft]);
   const normalizeProfileServiceSelection = useCallback(
@@ -2796,9 +2829,12 @@ export function CommandCenterPage() {
     if (!radarrOptionsQuery.data) return;
     if (didInitRadarrDefaults.current) return;
     didInitRadarrDefaults.current = true;
-    setDraftRootFolderPath(effectiveDefaults.rootFolderPath);
-    setDraftQualityProfileId(effectiveDefaults.qualityProfileId);
-    setDraftTagId(effectiveDefaults.tagId);
+    const timeout = window.setTimeout(() => {
+      setDraftRootFolderPath(effectiveDefaults.rootFolderPath);
+      setDraftQualityProfileId(effectiveDefaults.qualityProfileId);
+      setDraftTagId(effectiveDefaults.tagId);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [radarrEnabled, radarrOptionsQuery.data, effectiveDefaults]);
 
   const saveRadarrDefaultsMutation = useMutation({
@@ -2888,14 +2924,17 @@ export function CommandCenterPage() {
   useEffect(() => {
     if (!sonarrEnabled) {
       didInitSonarrDefaults.current = false;
-        return;
-      }
+      return;
+    }
     if (!sonarrOptionsQuery.data) return;
     if (didInitSonarrDefaults.current) return;
     didInitSonarrDefaults.current = true;
-    setSonarrDraftRootFolderPath(sonarrEffectiveDefaults.rootFolderPath);
-    setSonarrDraftQualityProfileId(sonarrEffectiveDefaults.qualityProfileId);
-    setSonarrDraftTagId(sonarrEffectiveDefaults.tagId);
+    const timeout = window.setTimeout(() => {
+      setSonarrDraftRootFolderPath(sonarrEffectiveDefaults.rootFolderPath);
+      setSonarrDraftQualityProfileId(sonarrEffectiveDefaults.qualityProfileId);
+      setSonarrDraftTagId(sonarrEffectiveDefaults.tagId);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [sonarrEnabled, sonarrOptionsQuery.data, sonarrEffectiveDefaults]);
 
   const saveSonarrDefaultsMutation = useMutation({
@@ -3072,10 +3111,13 @@ export function CommandCenterPage() {
     if (!settingsQuery.data?.settings) return;
     if (didInitRecommendations.current) return;
     didInitRecommendations.current = true;
-    setDraftRecommendationCount(
-      Math.max(5, Math.min(100, Math.trunc(savedRecommendationCount))),
-    );
-    setDraftUpcomingPercent(savedUpcomingPercent);
+    const timeout = window.setTimeout(() => {
+      setDraftRecommendationCount(
+        Math.max(5, Math.min(100, Math.trunc(savedRecommendationCount))),
+      );
+      setDraftUpcomingPercent(savedUpcomingPercent);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, savedRecommendationCount, savedUpcomingPercent]);
 
   const saveRecommendationsMutation = useMutation({
@@ -3110,8 +3152,10 @@ export function CommandCenterPage() {
   const upcomingTarget = Math.max(0, Math.min(upcomingTargetRaw, maxUpcomingTarget));
   const releasedTarget = Math.max(0, effectiveRecommendationCount - upcomingTarget);
 
-  const serverSelectedPlexLibraryKeys =
-    plexLibrariesQuery.data?.selectedSectionKeys ?? [];
+  const serverSelectedPlexLibraryKeys = useMemo(
+    () => plexLibrariesQuery.data?.selectedSectionKeys ?? [],
+    [plexLibrariesQuery.data?.selectedSectionKeys],
+  );
   const plexLibrarySelectionDirty = useMemo(() => {
     if (!plexLibrariesQuery.data) return false;
     if (draftSelectedPlexLibraryKeys.length !== serverSelectedPlexLibraryKeys.length) {
@@ -3196,8 +3240,10 @@ export function CommandCenterPage() {
     },
   });
 
-  const serverSelectedPlexUserIds =
-    plexMonitoringUsersQuery.data?.selectedPlexUserIds ?? [];
+  const serverSelectedPlexUserIds = useMemo(
+    () => plexMonitoringUsersQuery.data?.selectedPlexUserIds ?? [],
+    [plexMonitoringUsersQuery.data?.selectedPlexUserIds],
+  );
   const plexUserSelectionDirty = useMemo(() => {
     if (!plexMonitoringUsersQuery.data) return false;
     if (draftSelectedPlexUserIds.length !== serverSelectedPlexUserIds.length) {

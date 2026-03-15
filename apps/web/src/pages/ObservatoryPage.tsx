@@ -134,14 +134,20 @@ function SwipeCard({
   const threshold = 120;
   const throwX = 520;
   const throwRotate = 18;
-  const springBack = { type: 'spring' as const, stiffness: 420, damping: 28 };
+  const springBack = useMemo(
+    () => ({ type: 'spring' as const, stiffness: 420, damping: 28 }),
+    [],
+  );
   // Faster "throw" so the next card becomes interactive sooner.
-  const springThrow = {
-    type: 'spring' as const,
-    stiffness: 520,
-    damping: 34,
-    mass: 0.55,
-  };
+  const springThrow = useMemo(
+    () => ({
+      type: 'spring' as const,
+      stiffness: 520,
+      damping: 34,
+      mass: 0.55,
+    }),
+    [],
+  );
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       // Ensure we always release capture on pointerup/cancel/unmount.
@@ -587,7 +593,7 @@ export function ObservatoryPage() {
     [],
   );
 
-  const makeNoDataCard = (): CardModel => {
+  const makeNoDataCard = useCallback((): CardModel => {
     const mediaTypeLabel = mediaTab === 'movie' ? 'movie' : 'tv';
     const libraryKindLabel =
       mediaTab === 'movie' ? 'Movie Library' : 'TV Show Library';
@@ -597,7 +603,7 @@ export function ObservatoryPage() {
       sentinel: 'noData',
       message: `Please continue using Plex for ${mediaTypeLabel}${libraryLabel} and let the suggestion list build up, or run Immaculate Taste Collection manually for ${mediaTypeLabel} to generate suggestions.`,
     };
-  };
+  }, [activeLibraryTitle, mediaTab]);
 
   const watchedApprovalsDoneCard = useMemo<CardModel>(
     () => ({
@@ -626,7 +632,7 @@ export function ObservatoryPage() {
     [],
   );
 
-  const makeWatchedNoDataCard = (): CardModel => {
+  const makeWatchedNoDataCard = useCallback((): CardModel => {
     const mediaTypeLabel = mediaTab === 'movie' ? 'movie' : 'tv';
     const libraryKindLabel =
       mediaTab === 'movie' ? 'Movie Library' : 'TV Show Library';
@@ -643,9 +649,9 @@ export function ObservatoryPage() {
       title: `${deckLabel}: No suggestions yet`,
       message: `Please continue using Plex for ${mediaTypeLabel}${libraryLabel} and let the suggestion list build up, or run Based on Latest Watched Collection manually for ${mediaTypeLabel} to generate suggestions.`,
     };
-  };
+  }, [activeLibraryTitle, mediaTab, watchedCollectionKind]);
 
-  const setWatchedDeckForApprovals = () => {
+  const setWatchedDeckForApprovals = useCallback(() => {
     const pending = listWatchedPendingQuery.data?.items ?? [];
     const review = listWatchedReviewQuery.data?.items ?? [];
     setWatchedPhase('pendingApprovals');
@@ -656,9 +662,14 @@ export function ObservatoryPage() {
           ? [watchedApprovalsDoneCard]
           : [makeWatchedNoDataCard()],
     );
-  };
+  }, [
+    listWatchedPendingQuery.data?.items,
+    listWatchedReviewQuery.data?.items,
+    makeWatchedNoDataCard,
+    watchedApprovalsDoneCard,
+  ]);
 
-  const setWatchedDeckForReview = () => {
+  const setWatchedDeckForReview = useCallback(() => {
     const items = listWatchedReviewQuery.data?.items ?? [];
     const pending = listWatchedPendingQuery.data?.items ?? [];
     setWatchedPhase('review');
@@ -673,7 +684,14 @@ export function ObservatoryPage() {
             ]
           : [makeWatchedNoDataCard()],
     );
-  };
+  }, [
+    listWatchedPendingQuery.data?.items,
+    listWatchedReviewQuery.data?.items,
+    makeWatchedNoDataCard,
+    watchedCollectionKind,
+    watchedNextDeckCard,
+    watchedRestartCard,
+  ]);
 
   const advanceWatchedOneOrSentinel = (sentinel: CardModel) => {
     setWatchedDeck((prev) => {
@@ -682,7 +700,7 @@ export function ObservatoryPage() {
     });
   };
 
-  const restartWatchedCycle = () => {
+  const restartWatchedCycle = useCallback(() => {
     void Promise.all([
       queryClient.invalidateQueries({
         queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey, 'recentlyWatched'],
@@ -694,9 +712,9 @@ export function ObservatoryPage() {
       setWatchedCollectionKind('recentlyWatched');
       watchedDeckKeyRef.current = null;
     });
-  };
+  }, [activeLibraryKey, mediaTab, queryClient]);
 
-  const setDeckForApprovals = () => {
+  const setDeckForApprovals = useCallback(() => {
     const pending = listPendingQuery.data?.items ?? [];
     const review = listReviewQuery.data?.items ?? [];
     setPhase('pendingApprovals');
@@ -707,16 +725,26 @@ export function ObservatoryPage() {
           ? [approvalsDoneCard]
           : [makeNoDataCard()],
     );
-  };
+  }, [
+    approvalsDoneCard,
+    listPendingQuery.data?.items,
+    listReviewQuery.data?.items,
+    makeNoDataCard,
+  ]);
 
-  const setDeckForReview = () => {
+  const setDeckForReview = useCallback(() => {
     const items = listReviewQuery.data?.items ?? [];
     const pending = listPendingQuery.data?.items ?? [];
     setPhase('review');
     setDeck(
       items.length ? buildDeck(items) : pending.length ? [reviewDoneCard] : [makeNoDataCard()],
     );
-  };
+  }, [
+    listPendingQuery.data?.items,
+    listReviewQuery.data?.items,
+    makeNoDataCard,
+    reviewDoneCard,
+  ]);
 
   const advanceOneOrSentinel = (sentinel: CardModel) => {
     setDeck((prev) => {
@@ -725,7 +753,7 @@ export function ObservatoryPage() {
     });
   };
 
-  const restartCycle = () => {
+  const restartCycle = useCallback(() => {
     void Promise.all([
       queryClient.invalidateQueries({
         queryKey: [
@@ -749,7 +777,14 @@ export function ObservatoryPage() {
       if (approvalRequired) setDeckForApprovals();
       else setDeckForReview();
     });
-  };
+  }, [
+    activeLibraryKey,
+    approvalRequired,
+    mediaTab,
+    queryClient,
+    setDeckForApprovals,
+    setDeckForReview,
+  ]);
 
   // Initialize deck only when tab/library changes (avoid re-mounting the whole deck after each swipe/refetch).
   useEffect(() => {
@@ -808,6 +843,8 @@ export function ObservatoryPage() {
     deck,
     listPendingQuery.data,
     listReviewQuery.data,
+    setDeckForApprovals,
+    setDeckForReview,
   ]);
 
   // Watched: whenever library/media changes, start from the "recently watched" deck.
@@ -874,6 +911,8 @@ export function ObservatoryPage() {
     watchedDeck,
     listWatchedPendingQuery.data,
     listWatchedReviewQuery.data,
+    setWatchedDeckForApprovals,
+    setWatchedDeckForReview,
   ]);
 
   const recordDecisionMutation = useMutation({
@@ -1141,7 +1180,7 @@ export function ObservatoryPage() {
     watchedUndoState,
   ]);
 
-  const swipeTopCardImmaculate = (dir: 'left' | 'right') => {
+  const swipeTopCardImmaculate = useCallback((dir: 'left' | 'right') => {
     if (activeCollectionTab !== 'immaculate') return;
     if (!activeLibraryKey) return;
     if (!deck.length) return;
@@ -1190,9 +1229,22 @@ export function ObservatoryPage() {
       phase === 'pendingApprovals' ? approvalsDoneCard : reviewDoneCard,
     );
     scheduleApply();
-  };
+  }, [
+    activeCollectionTab,
+    activeLibraryKey,
+    approvalsDoneCard,
+    applyMutation.isPending,
+    deck,
+    mediaTab,
+    phase,
+    recordDecisionMutation,
+    restartCycle,
+    reviewDoneCard,
+    scheduleApply,
+    setDeckForReview,
+  ]);
 
-  const swipeTopCardWatched = (dir: 'left' | 'right') => {
+  const swipeTopCardWatched = useCallback((dir: 'left' | 'right') => {
     if (activeCollectionTab !== 'latestWatched') return;
     if (!activeLibraryKey) return;
     if (!watchedDeck.length) return;
@@ -1254,7 +1306,22 @@ export function ObservatoryPage() {
           : watchedRestartCard,
     );
     scheduleWatchedApply();
-  };
+  }, [
+    activeCollectionTab,
+    activeLibraryKey,
+    applyWatchedMutation.isPending,
+    mediaTab,
+    recordWatchedDecisionMutation,
+    restartWatchedCycle,
+    scheduleWatchedApply,
+    setWatchedDeckForReview,
+    watchedApprovalsDoneCard,
+    watchedCollectionKind,
+    watchedDeck,
+    watchedNextDeckCard,
+    watchedPhase,
+    watchedRestartCard,
+  ]);
 
   // Keep the latest swipe handler available to the keyboard listener (without re-binding listeners).
   useEffect(() => {

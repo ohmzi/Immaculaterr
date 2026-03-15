@@ -271,7 +271,7 @@ export function DebuggerPage() {
       .join('\n');
   }, [plexLogsDisplay]);
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     setCopied(false);
     try {
       await navigator.clipboard.writeText(diagnosticsText);
@@ -280,8 +280,8 @@ export function DebuggerPage() {
     } catch {
       // ignore copy errors (clipboard permissions)
     }
-  };
-  const handlePlexCopy = async () => {
+  }, [diagnosticsText]);
+  const handlePlexCopy = useCallback(async () => {
     setPlexCopied(false);
     try {
       await navigator.clipboard.writeText(plexLogText || '');
@@ -290,8 +290,8 @@ export function DebuggerPage() {
     } catch {
       // ignore copy errors (clipboard permissions)
     }
-  };
-  const handlePlexClear = async () => {
+  }, [plexLogText]);
+  const handlePlexClear = useCallback(async () => {
     if (plexLogClearing) return;
     setPlexLogClearing(true);
     // Invalidate any in-flight fetches so stale responses can't repopulate UI.
@@ -308,7 +308,7 @@ export function DebuggerPage() {
     } finally {
       setPlexLogClearing(false);
     }
-  };
+  }, [plexLogClearing]);
   const togglePlexLogCollapse = useCallback(() => {
     setPlexLogCollapsed((prev) => !prev);
   }, []);

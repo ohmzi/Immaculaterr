@@ -792,17 +792,17 @@ export function TaskManagerPage() {
     [tmdbWindowEndCalendarMonth],
   );
 
-  const openIntegrationSetupDialog = (target: IntegrationSetupTarget) => {
+  const openIntegrationSetupDialog = useCallback((target: IntegrationSetupTarget) => {
     setIntegrationSetupTarget(target);
     setIntegrationSetupOpen(true);
-  };
+  }, []);
 
   const closeIntegrationSetupDialog = useCallback(() => {
     setIntegrationSetupOpen(false);
     setIntegrationSetupTarget(null);
   }, []);
 
-  const markAutoExpandSeen = (jobId: string) => {
+  const markAutoExpandSeen = useCallback((jobId: string) => {
     setAutoExpandSeen((prev) => {
       if (prev[jobId] === true) return prev;
       const next = { ...prev, [jobId]: true };
@@ -813,7 +813,7 @@ export function TaskManagerPage() {
       }
       return next;
     });
-  };
+  }, []);
   const centerJobCard = useCallback((jobId: string, behavior: ScrollBehavior) => {
     const el = document.getElementById(`job-${jobId}`);
     if (!el) return;
@@ -888,28 +888,37 @@ export function TaskManagerPage() {
     if (!tmdbWindowStartCalendarOpen) return;
     const selectedStart =
       parseDateOnly(tmdbUpcomingSettingsDraft.windowStart) ?? new Date();
-    setTmdbWindowStartCalendarMonth(startOfMonth(selectedStart));
+    const timeout = window.setTimeout(() => {
+      setTmdbWindowStartCalendarMonth(startOfMonth(selectedStart));
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [tmdbUpcomingSettingsDraft.windowStart, tmdbWindowStartCalendarOpen]);
 
   useEffect(() => {
     if (!tmdbWindowEndCalendarOpen) return;
     const selectedEnd = parseDateOnly(tmdbUpcomingSettingsDraft.windowEnd) ?? new Date();
-    setTmdbWindowEndCalendarMonth(startOfMonth(selectedEnd));
+    const timeout = window.setTimeout(() => {
+      setTmdbWindowEndCalendarMonth(startOfMonth(selectedEnd));
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [tmdbUpcomingSettingsDraft.windowEnd, tmdbWindowEndCalendarOpen]);
 
   useEffect(() => {
-    setTmdbFilterExpandedById((prev) => {
-      const next: Record<string, boolean> = {};
-      let changed = Object.keys(prev).length !== tmdbUpcomingSettingsDraft.filters.length;
-      for (const filter of tmdbUpcomingSettingsDraft.filters) {
-        const expanded = prev[filter.id] ?? false;
-        next[filter.id] = expanded;
-        if (!changed && prev[filter.id] !== expanded) {
-          changed = true;
+    const timeout = window.setTimeout(() => {
+      setTmdbFilterExpandedById((prev) => {
+        const next: Record<string, boolean> = {};
+        let changed = Object.keys(prev).length !== tmdbUpcomingSettingsDraft.filters.length;
+        for (const filter of tmdbUpcomingSettingsDraft.filters) {
+          const expanded = prev[filter.id] ?? false;
+          next[filter.id] = expanded;
+          if (!changed && prev[filter.id] !== expanded) {
+            changed = true;
+          }
         }
-      }
-      return changed ? next : prev;
-    });
+        return changed ? next : prev;
+      });
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [tmdbUpcomingSettingsDraft.filters]);
 
   const isRadarrEnabled = (() => {
@@ -944,12 +953,23 @@ export function TaskManagerPage() {
     if (settingsQuery.status !== 'success') return;
     if (!isRadarrEnabled && !isSonarrEnabled) {
       // Nothing enabled -> don't ping.
-      setArrPing((p) => ({ ...p, loading: false, radarrOk: null, sonarrOk: null, checkedAtMs: Date.now() }));
-      return;
+      const timeout = window.setTimeout(() => {
+        setArrPing((p) => ({
+          ...p,
+          loading: false,
+          radarrOk: null,
+          sonarrOk: null,
+          checkedAtMs: Date.now(),
+        }));
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
 
     let cancelled = false;
-    setArrPing((p) => ({ ...p, loading: true }));
+    const loadingTimeout = window.setTimeout(() => {
+      if (cancelled) return;
+      setArrPing((p) => ({ ...p, loading: true }));
+    }, 0);
 
     const run = async () => {
       const [radarrRes, sonarrRes] = await Promise.allSettled([
@@ -974,6 +994,7 @@ export function TaskManagerPage() {
     void run();
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingTimeout);
     };
   }, [settingsQuery.status, isRadarrEnabled, isSonarrEnabled]);
   const immaculateIncludeRefresherMutation = useMutation({
@@ -1001,7 +1022,10 @@ export function TaskManagerPage() {
       settingsQuery.data?.settings,
       'immaculateTaste.includeRefresherAfterUpdate',
     );
-    setImmaculateIncludeRefresherAfterUpdate(saved ?? true);
+    const timeout = window.setTimeout(() => {
+      setImmaculateIncludeRefresherAfterUpdate(saved ?? true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, immaculateIncludeRefresherMutation.isPending]);
 
   useEffect(() => {
@@ -1010,13 +1034,18 @@ export function TaskManagerPage() {
       settingsQuery.data?.settings,
       'jobs.immaculateTastePoints.searchImmediately',
     );
-    setImmaculateStartSearchImmediately(saved ?? false);
+    const timeout = window.setTimeout(() => {
+      setImmaculateStartSearchImmediately(saved ?? false);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, immaculateStartSearchMutation.isPending]);
 
   useEffect(() => {
-    if (immaculateIncludeRefresherMutation.isError) {
+    if (!immaculateIncludeRefresherMutation.isError) return;
+    const timeout = window.setTimeout(() => {
       setImmaculateRefresherDetailsOpen(true);
-    }
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [immaculateIncludeRefresherMutation.isError]);
 
   const webhookAutoRunMutation = useMutation({
@@ -1035,17 +1064,20 @@ export function TaskManagerPage() {
     if (!settings) return;
     if (webhookAutoRunMutation.isPending) return;
 
-    setWebhookAutoRun((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const jobId of UNSCHEDULABLE_JOB_IDS) {
-        if (next[jobId] !== undefined) continue;
-        const saved = readBool(settings, `jobs.webhookEnabled.${jobId}`);
-        next[jobId] = saved ?? false;
-        changed = true;
-      }
-      return changed ? next : prev;
-    });
+    const timeout = window.setTimeout(() => {
+      setWebhookAutoRun((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const jobId of UNSCHEDULABLE_JOB_IDS) {
+          if (next[jobId] !== undefined) continue;
+          const saved = readBool(settings, `jobs.webhookEnabled.${jobId}`);
+          next[jobId] = saved ?? false;
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, webhookAutoRunMutation.isPending]);
 
   const arrMonitoredSearchOptionsMutation = useMutation({
@@ -1064,8 +1096,11 @@ export function TaskManagerPage() {
     if (!settings) return;
     const includeRadarr = readBool(settings, 'jobs.arrMonitoredSearch.includeRadarr');
     const includeSonarr = readBool(settings, 'jobs.arrMonitoredSearch.includeSonarr');
-    setArrMonitoredIncludeRadarr(includeRadarr ?? true);
-    setArrMonitoredIncludeSonarr(includeSonarr ?? true);
+    const timeout = window.setTimeout(() => {
+      setArrMonitoredIncludeRadarr(includeRadarr ?? true);
+      setArrMonitoredIncludeSonarr(includeSonarr ?? true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, arrMonitoredSearchOptionsMutation.isPending]);
 
   const mediaAddedCleanupFeaturesMutation = useMutation({
@@ -1092,15 +1127,18 @@ export function TaskManagerPage() {
     if (mediaAddedCleanupFeaturesMutation.isPending) return;
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
-    setMediaAddedCleanupDeleteDuplicates(
-      readBool(settings, 'jobs.mediaAddedCleanup.features.deleteDuplicates') ?? true,
-    );
-    setMediaAddedCleanupUnmonitorInArr(
-      readBool(settings, 'jobs.mediaAddedCleanup.features.unmonitorInArr') ?? true,
-    );
-    setMediaAddedCleanupRemoveFromWatchlist(
-      readBool(settings, 'jobs.mediaAddedCleanup.features.removeFromWatchlist') ?? true,
-    );
+    const timeout = window.setTimeout(() => {
+      setMediaAddedCleanupDeleteDuplicates(
+        readBool(settings, 'jobs.mediaAddedCleanup.features.deleteDuplicates') ?? true,
+      );
+      setMediaAddedCleanupUnmonitorInArr(
+        readBool(settings, 'jobs.mediaAddedCleanup.features.unmonitorInArr') ?? true,
+      );
+      setMediaAddedCleanupRemoveFromWatchlist(
+        readBool(settings, 'jobs.mediaAddedCleanup.features.removeFromWatchlist') ?? true,
+      );
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, mediaAddedCleanupFeaturesMutation.isPending]);
 
   const fetchMissingMutation = useMutation({
@@ -1177,43 +1215,45 @@ export function TaskManagerPage() {
     if (fetchMissingMutation.isPending || seerrModeMutation.isPending) return;
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
+    const timeout = window.setTimeout(() => {
+      setImmaculateFetchMissingRadarr(
+        readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ?? true,
+      );
+      setImmaculateFetchMissingSonarr(
+        readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ?? true,
+      );
+      setImmaculateFetchMissingSeerr(
+        readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
+          false,
+      );
+      setWatchedFetchMissingRadarr(
+        readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
+          true,
+      );
+      setWatchedFetchMissingSonarr(
+        readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
+          true,
+      );
+      setWatchedFetchMissingSeerr(
+        readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.seerr') ??
+          false,
+      );
 
-    setImmaculateFetchMissingRadarr(
-      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ?? true,
-    );
-    setImmaculateFetchMissingSonarr(
-      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ?? true,
-    );
-    setImmaculateFetchMissingSeerr(
-      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
-        false,
-    );
-    setWatchedFetchMissingRadarr(
-      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
-        true,
-    );
-    setWatchedFetchMissingSonarr(
-      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
-        true,
-    );
-    setWatchedFetchMissingSeerr(
-      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.seerr') ??
-        false,
-    );
+      setImmaculateApprovalRequired(
+        readBool(
+          settings,
+          'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+        ) ?? false,
+      );
 
-    setImmaculateApprovalRequired(
-      readBool(
-        settings,
-        'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
-      ) ?? false,
-    );
-
-    setWatchedApprovalRequired(
-      readBool(
-        settings,
-        'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-      ) ?? false,
-    );
+      setWatchedApprovalRequired(
+        readBool(
+          settings,
+          'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
+        ) ?? false,
+      );
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [
     settingsQuery.data?.settings,
     fetchMissingMutation.isPending,
@@ -1302,13 +1342,13 @@ export function TaskManagerPage() {
     // Keep the highlight mounted long enough for the full pulse sequence.
     const t = setTimeout(() => setFlashJob(null), 4200);
     return () => clearTimeout(t);
-  }, [flashJob?.nonce]);
+  }, [flashJob]);
 
   useEffect(() => {
     if (!cardIconPulse) return;
     const t = setTimeout(() => setCardIconPulse(null), 750);
     return () => clearTimeout(t);
-  }, [cardIconPulse?.nonce]);
+  }, [cardIconPulse]);
 
   // Close all popups when clicking outside
   useEffect(() => {
@@ -1414,7 +1454,7 @@ export function TaskManagerPage() {
     },
   });
 
-  const clearRunNowTimers = (jobId: string) => {
+  const clearRunNowTimers = useCallback((jobId: string) => {
     const finishTimer = runNowFinishTimersRef.current[jobId];
     if (finishTimer) clearTimeout(finishTimer);
     runNowFinishTimersRef.current[jobId] = null;
@@ -1422,20 +1462,22 @@ export function TaskManagerPage() {
     const resetTimer = runNowResetTimersRef.current[jobId];
     if (resetTimer) clearTimeout(resetTimer);
     runNowResetTimersRef.current[jobId] = null;
-  };
+  }, []);
 
-  const startRunNowUi = (jobId: string) => {
+  const startRunNowUi = useCallback((jobId: string) => {
     clearRunNowTimers(jobId);
     setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'running' } }));
-  };
+  }, [clearRunNowTimers]);
 
   // Cleanup timers on unmount (page leave).
   useEffect(() => {
+    const finishTimers = runNowFinishTimersRef.current;
+    const resetTimers = runNowResetTimersRef.current;
     return () => {
-      for (const t of Object.values(runNowFinishTimersRef.current)) {
+      for (const t of Object.values(finishTimers)) {
         if (t) clearTimeout(t);
       }
-      for (const t of Object.values(runNowResetTimersRef.current)) {
+      for (const t of Object.values(resetTimers)) {
         if (t) clearTimeout(t);
       }
     };
@@ -1453,29 +1495,31 @@ export function TaskManagerPage() {
 
       // 80% -> 100% (amber), then switch to green (SUCCESS) or red (FAILED).
       clearRunNowTimers(jobId);
-      setRunNowUi((prev) => ({
-        ...prev,
-        [jobId]: { phase: 'finishing', runId: t.runId ?? ui.runId ?? null, result },
-      }));
-
       runNowFinishTimersRef.current[jobId] = setTimeout(() => {
         setRunNowUi((prev) => ({
           ...prev,
-          [jobId]: {
-            phase: 'complete',
-            runId: t.runId ?? ui.runId ?? null,
-            completedAt: Date.now(),
-            result,
-          },
+          [jobId]: { phase: 'finishing', runId: t.runId ?? ui.runId ?? null, result },
         }));
 
-        // Hold "Complete" for 2 minutes, then reset back to "Run Now" (while staying on page).
-        runNowResetTimersRef.current[jobId] = setTimeout(() => {
-          setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'idle' } }));
-        }, 120_000);
-      }, 650);
+        runNowFinishTimersRef.current[jobId] = setTimeout(() => {
+          setRunNowUi((prev) => ({
+            ...prev,
+            [jobId]: {
+              phase: 'complete',
+              runId: t.runId ?? ui.runId ?? null,
+              completedAt: Date.now(),
+              result,
+            },
+          }));
+
+          // Hold "Complete" for 2 minutes, then reset back to "Run Now" (while staying on page).
+          runNowResetTimersRef.current[jobId] = setTimeout(() => {
+            setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'idle' } }));
+          }, 120_000);
+        }, 650);
+      }, 0);
     }
-  }, [runNowUi, terminalState]);
+  }, [clearRunNowTimers, runNowUi, terminalState]);
 
   const scheduleMutation = useMutation({
     mutationFn: updateJobSchedule,
@@ -1531,6 +1575,7 @@ export function TaskManagerPage() {
     arrPing.sonarrOk,
     isRadarrEnabled,
     isSonarrEnabled,
+    scheduleMutation,
   ]);
 
   // Check for recent runs on mount and when jobs change
@@ -1646,7 +1691,7 @@ export function TaskManagerPage() {
     return () => {
       timeoutIds.forEach((id) => clearTimeout(id));
     };
-  }, [drafts, visibleJobs]);
+  }, [drafts, scheduleMutation, visibleJobs]);
 
   const integrationSetupMeta = (() => {
     if (integrationSetupTarget === 'radarr') {

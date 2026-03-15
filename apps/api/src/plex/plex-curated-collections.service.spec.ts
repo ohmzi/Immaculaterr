@@ -5,10 +5,10 @@ import { PlexCuratedCollectionsService } from './plex-curated-collections.servic
 function createTestCtx() {
   return {
     dryRun: false,
-    info: jest.fn(async () => undefined),
-    warn: jest.fn(async () => undefined),
-    debug: jest.fn(async () => undefined),
-    patchSummary: jest.fn(async () => undefined),
+    info: jest.fn(() => Promise.resolve(undefined)),
+    warn: jest.fn(() => Promise.resolve(undefined)),
+    debug: jest.fn(() => Promise.resolve(undefined)),
+    patchSummary: jest.fn(() => Promise.resolve(undefined)),
   };
 }
 
@@ -40,33 +40,37 @@ async function callPinCuratedCollectionHubs(
 
 function createCollectionArtworkStub() {
   return {
-    resolveArtworkPaths: jest.fn(async () => ({
-      poster: null,
-      background: null,
-    })),
+    resolveArtworkPaths: jest.fn(() =>
+      Promise.resolve({
+        poster: null,
+        background: null,
+      }),
+    ),
   };
 }
 
 describe('PlexCuratedCollectionsService hub pinning', () => {
   it('pins admin target to recommended+home and reorders as 1,2,3', async () => {
     const plexServer = {
-      listCollectionsForSectionKey: jest.fn(async () => [
-        {
-          ratingKey: '11',
-          title: 'Based on your recently watched Movie (Alice)',
-        },
-        { ratingKey: '12', title: 'Change of Movie Taste (Alice)' },
-        {
-          ratingKey: '13',
-          title: 'Inspired by your Immaculate Taste in Movies (Alice)',
-        },
-      ]),
-      setCollectionHubVisibility: jest.fn(async () => undefined),
-      getCollectionHubIdentifier: jest.fn(
-        async (args: { collectionRatingKey: string }) =>
-          `hub-${args.collectionRatingKey}`,
+      listCollectionsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          {
+            ratingKey: '11',
+            title: 'Based on your recently watched Movie (Alice)',
+          },
+          { ratingKey: '12', title: 'Change of Movie Taste (Alice)' },
+          {
+            ratingKey: '13',
+            title: 'Inspired by your Immaculate Taste in Movies (Alice)',
+          },
+        ]),
       ),
-      moveHubRow: jest.fn(async () => undefined),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
+      getCollectionHubIdentifier: jest.fn(
+        (args: { collectionRatingKey: string }) =>
+          Promise.resolve(`hub-${args.collectionRatingKey}`),
+      ),
+      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -120,20 +124,25 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
 
   it('pins friends target to recommended+shared home and matches by base when suffix differs', async () => {
     const plexServer = {
-      listCollectionsForSectionKey: jest.fn(async () => [
-        {
-          ratingKey: '31',
-          title: 'Inspired by your Immaculate Taste in Shows (Bob)',
-        },
-        { ratingKey: '32', title: 'Based on your recently watched Show (Bob)' },
-        { ratingKey: '33', title: 'Change of Show Taste (Bob)' },
-      ]),
-      setCollectionHubVisibility: jest.fn(async () => undefined),
-      getCollectionHubIdentifier: jest.fn(
-        async (args: { collectionRatingKey: string }) =>
-          `hub-${args.collectionRatingKey}`,
+      listCollectionsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          {
+            ratingKey: '31',
+            title: 'Inspired by your Immaculate Taste in Shows (Bob)',
+          },
+          {
+            ratingKey: '32',
+            title: 'Based on your recently watched Show (Bob)',
+          },
+          { ratingKey: '33', title: 'Change of Show Taste (Bob)' },
+        ]),
       ),
-      moveHubRow: jest.fn(async () => undefined),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
+      getCollectionHubIdentifier: jest.fn(
+        (args: { collectionRatingKey: string }) =>
+          Promise.resolve(`hub-${args.collectionRatingKey}`),
+      ),
+      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -206,12 +215,12 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
         .fn()
         .mockResolvedValueOnce(firstList)
         .mockResolvedValue(secondList),
-      setCollectionHubVisibility: jest.fn(async () => undefined),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
       getCollectionHubIdentifier: jest.fn(
-        async (args: { collectionRatingKey: string }) =>
-          `hub-${args.collectionRatingKey}`,
+        (args: { collectionRatingKey: string }) =>
+          Promise.resolve(`hub-${args.collectionRatingKey}`),
       ),
-      moveHubRow: jest.fn(async () => undefined),
+      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -245,17 +254,19 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
 
   it('pins the freshly rebuilt collection using preferred key even when list endpoint still misses it', async () => {
     const plexServer = {
-      listCollectionsForSectionKey: jest.fn(async () => [
-        {
-          ratingKey: '61',
-          title: 'Based on your recently watched Movie (plex laking)',
-        },
-        { ratingKey: '62', title: 'Change of Movie Taste (plex laking)' },
-      ]),
-      setCollectionHubVisibility: jest.fn(async () => undefined),
+      listCollectionsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          {
+            ratingKey: '61',
+            title: 'Based on your recently watched Movie (plex laking)',
+          },
+          { ratingKey: '62', title: 'Change of Movie Taste (plex laking)' },
+        ]),
+      ),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
       getCollectionHubIdentifier: jest
         .fn()
-        .mockImplementation(async (args: { collectionRatingKey: string }) => {
+        .mockImplementation((args: { collectionRatingKey: string }) => {
           if (args.collectionRatingKey === '63') {
             // Simulate eventual consistency in hub manage endpoint.
             const getCollectionHubIdentifierMock =
@@ -264,11 +275,11 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
               (call: Array<{ collectionRatingKey: string }>) =>
                 call[0].collectionRatingKey === '63',
             ).length;
-            return seen >= 2 ? 'hub-63' : null;
+            return Promise.resolve(seen >= 2 ? 'hub-63' : null);
           }
-          return `hub-${args.collectionRatingKey}`;
+          return Promise.resolve(`hub-${args.collectionRatingKey}`);
         }),
-      moveHubRow: jest.fn(async () => undefined),
+      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -328,8 +339,8 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
     ];
 
     const plexServer = {
-      listCollectionsForSectionKey: jest.fn(async () => []),
-      findCollectionRatingKey: jest.fn(async () => null),
+      listCollectionsForSectionKey: jest.fn(() => Promise.resolve([])),
+      findCollectionRatingKey: jest.fn(() => Promise.resolve(null)),
       createCollection: jest
         .fn()
         .mockRejectedValueOnce(new Error('HTTP 500'))
@@ -343,11 +354,11 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
           { ratingKey: '233616', title: 'Game of Thrones' },
           { ratingKey: '233617', title: 'Breaking Bad' },
         ]),
-      addItemToCollection: jest.fn(async () => undefined),
-      setCollectionSort: jest.fn(async () => undefined),
-      moveCollectionItem: jest.fn(async () => undefined),
-      uploadCollectionPoster: jest.fn(async () => undefined),
-      uploadCollectionBackground: jest.fn(async () => undefined),
+      addItemToCollection: jest.fn(() => Promise.resolve(undefined)),
+      setCollectionSort: jest.fn(() => Promise.resolve(undefined)),
+      moveCollectionItem: jest.fn(() => Promise.resolve(undefined)),
+      uploadCollectionPoster: jest.fn(() => Promise.resolve(undefined)),
+      uploadCollectionBackground: jest.fn(() => Promise.resolve(undefined)),
     };
 
     const service = new PlexCuratedCollectionsService(
@@ -376,12 +387,22 @@ describe('PlexCuratedCollectionsService rebuild fallback', () => {
     });
 
     expect(plexServer.createCollection).toHaveBeenCalledTimes(2);
-    expect(plexServer.createCollection.mock.calls[0][0]).toMatchObject({
+    const createCollectionCalls = plexServer.createCollection.mock
+      .calls as Array<
+      [
+        {
+          initialItemRatingKey: string | null;
+          type: number;
+          librarySectionKey: string;
+        },
+      ]
+    >;
+    expect(createCollectionCalls[0][0]).toMatchObject({
       initialItemRatingKey: '233616',
       type: 2,
       librarySectionKey: '3',
     });
-    expect(plexServer.createCollection.mock.calls[1][0]).toMatchObject({
+    expect(createCollectionCalls[1][0]).toMatchObject({
       initialItemRatingKey: null,
       type: 2,
       librarySectionKey: '3',
