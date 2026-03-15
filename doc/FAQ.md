@@ -29,6 +29,11 @@ Pick a feature area first, then jump into the full section below.
 > Off-peak missing searches for monitored ARR items.
 > [What does Search Monitored do?](#what-does-search-monitored-do) · [What does the Includes section do?](#what-does-the-includes-section-do) · [When should I use Search Monitored instead of Start search immediately?](#when-should-i-use-search-monitored-instead-of-start-search-immediately)
 
+> ### [TMDB Upcoming Movies](#tmdb-upcoming-movies)
+> TMDB upcoming discovery filters, defaults, routing, and expected outcomes.
+> [How does TMDB Upcoming Movies work?](#how-does-tmdb-upcoming-movies-work) · [What are the defaults if I do not create custom filters?](#what-are-the-defaults-if-i-do-not-create-custom-filters) · [How do I set custom filters on this card?](#how-do-i-set-custom-filters-on-this-card)
+> + 1 more answer in the section below.
+
 > ### [Immaculate Taste Collection](#immaculate-taste-collection)
 > Watch-triggered Immaculate Taste updates and missing-item routing.
 > [What does Immaculate Taste Collection do?](#what-does-immaculate-taste-collection-do) · [What does the Immaculate Taste Refresher toggle do?](#what-does-the-immaculate-taste-refresher-toggle-do) · [What does Fetch Missing items do on this card?](#what-does-fetch-missing-items-do-on-this-card)
@@ -258,6 +263,41 @@ If both are enabled on a scheduled run, Sonarr starts about one hour after the s
 ### When should I use Search Monitored instead of Start search immediately?
 
 Use **Search Monitored** when you want missing searches to happen on a calmer schedule. Use **Start search immediately** only if you want ARR searching to begin as soon as a collection job adds missing titles.
+
+## TMDB Upcoming Movies
+
+Open in app: [Task Manager -> TMDB Upcoming Movies](/task-manager#job-tmdbUpcomingMovies)
+
+### How does TMDB Upcoming Movies work?
+
+This card discovers upcoming movie candidates from TMDB using your configured filter sets, merges and deduplicates matches, and then sends the selected top results to Radarr or Seerr.
+
+You can keep it fully scheduled, run it manually, or combine both. The card also avoids re-sending titles already present in Plex when Plex pre-check data is available.
+
+### What are the defaults if I do not create custom filters?
+
+- A hidden baseline filter is used (no genre, language, where-to-watch, or certification restrictions).
+- Score range defaults to **6-10**.
+- Window defaults to **today through +2 months**.
+- Global cap defaults to **100**.
+- Route defaults to **Radarr** unless you turn on Seerr routing.
+
+### How do I set custom filters on this card?
+
+Open the card, go to **Filter sets**, press **Add filter**, then tune each set.
+
+- Name and enable/disable each filter set independently.
+- Pick **Genres**, **Languages**, and **Where to watch** using top quick picks or search.
+- Add optional **Certifications (US)** and set score min/max.
+- Keep filters focused; multiple broad filters can overlap heavily and reduce unique output.
+
+### What results should I expect after a run?
+
+Each enabled filter gets a share of the global cap, then candidates are merged and ranked (popularity-first, deduped by TMDB id). The final set is sent to your chosen destination.
+
+- If a destination reports "already exists," the job can backfill with reserves.
+- If all custom filters are disabled, the hidden baseline runs instead.
+- Rewind shows per-filter discovered/selected counts and destination outcomes so you can tune filters iteratively.
 
 ## Immaculate Taste Collection
 

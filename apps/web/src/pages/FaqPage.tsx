@@ -547,6 +547,105 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'task-manager-tmdb-upcoming-movies',
+      title: 'TMDB Upcoming Movies',
+      items: [
+        {
+          id: 'task-manager-tmdb-upcoming-how-it-works',
+          question: 'How does TMDB Upcoming Movies work?',
+          answer: (
+            <>
+              <p>
+                This card discovers upcoming movie candidates from TMDB using your configured filter
+                sets, merges and deduplicates matches, and then sends the selected top results to
+                Radarr or Seerr.
+              </p>
+              <p>
+                You can keep it fully scheduled, run it manually, or combine both. The card also avoids
+                re-sending titles already present in Plex when Plex pre-check data is available.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-tmdb-upcoming-defaults',
+          question: 'What are the defaults if I do not create custom filters?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                A hidden baseline filter is used (no genre, language, where-to-watch, or certification
+                restrictions).
+              </li>
+              <li>
+                Score range defaults to <span className="font-semibold text-white/85">6-10</span>.
+              </li>
+              <li>
+                Window defaults to <span className="font-semibold text-white/85">today through +2 months</span>.
+              </li>
+              <li>
+                Global cap defaults to <span className="font-semibold text-white/85">100</span>.
+              </li>
+              <li>
+                Route defaults to <span className="font-semibold text-white/85">Radarr</span> unless
+                you turn on Seerr routing.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'task-manager-tmdb-upcoming-custom-filters',
+          question: 'How do I set custom filters on this card?',
+          answer: (
+            <>
+              <p>
+                Open the card, go to <span className="font-semibold text-white/85">Filter sets</span>,
+                press <span className="font-semibold text-white/85">Add filter</span>, then tune each
+                set.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Name and enable/disable each filter set independently.</li>
+                <li>
+                  Pick <span className="font-semibold text-white/85">Genres</span>,{' '}
+                  <span className="font-semibold text-white/85">Languages</span>, and{' '}
+                  <span className="font-semibold text-white/85">Where to watch</span> using top quick
+                  picks or search.
+                </li>
+                <li>
+                  Add optional <span className="font-semibold text-white/85">Certifications (US)</span>{' '}
+                  and set score min/max.
+                </li>
+                <li>
+                  Keep filters focused; multiple broad filters can overlap heavily and reduce unique
+                  output.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-tmdb-upcoming-expected-results',
+          question: 'What results should I expect after a run?',
+          answer: (
+            <>
+              <p>
+                Each enabled filter gets a share of the global cap, then candidates are merged and
+                ranked (popularity-first, deduped by TMDB id). The final set is sent to your chosen
+                destination.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>If a destination reports “already exists,” the job can backfill with reserves.</li>
+                <li>If all custom filters are disabled, the hidden baseline runs instead.</li>
+                <li>
+                  Rewind shows per-filter discovered/selected counts and destination outcomes so you can
+                  tune filters iteratively.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+      ],
+    },
+    {
       id: 'task-manager-immaculate-taste-collection',
       title: 'Immaculate Taste Collection',
       items: [
@@ -2198,6 +2297,8 @@ export const FaqPage = () => {
     'task-manager-cleanup-after-adding-new-content':
       'Plex-triggered cleanup actions for newly added media.',
     'task-manager-search-monitored': 'Off-peak missing searches for monitored ARR items.',
+    'task-manager-tmdb-upcoming-movies':
+      'TMDB upcoming discovery filters, defaults, routing, and expected outcomes.',
     'task-manager-immaculate-taste-collection':
       'Watch-triggered Immaculate Taste updates and missing-item routing.',
     'task-manager-immaculate-taste-refresher':
@@ -2248,6 +2349,10 @@ export const FaqPage = () => {
     'task-manager-search-monitored': {
       icon: (className) => <Search className={className} />,
       toneClass: 'text-fuchsia-200',
+    },
+    'task-manager-tmdb-upcoming-movies': {
+      icon: (className) => <Film className={className} />,
+      toneClass: 'text-cyan-200',
     },
     'task-manager-immaculate-taste-collection': {
       icon: (className) => <Sparkles className={className} />,

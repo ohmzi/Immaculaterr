@@ -29,6 +29,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
       'TMDB, OpenAI, and Google connectivity checks are now more reliable on DNS/IPv6-problem Docker hosts.',
       'External API tests now retry with explicit IPv4 fallback before failing.',
       'Added a dedicated TrueNAS setup guide with working main-app and HTTPS sidecar YAML.',
+      'Task Manager now includes TMDB Upcoming Movies custom filter sets, including where-to-watch.',
     ],
     sections: [
       {
@@ -45,6 +46,12 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Added a dedicated in-app TrueNAS guide at /setup/truenas with copy-ready YAML for the main app and HTTPS sidecar.',
           'Setup page catalog now links directly to the TrueNAS guide for faster onboarding.',
           'Updated setup docs with TrueNAS GUI flow, local CA certificate collection/trust steps, and HTTPS verification commands.',
+        ],
+      },
+      {
+        title: 'TMDB Upcoming Movies task filters',
+        bullets: [
+          'Added customizable upcoming-movie filter sets with where-to-watch, genre, language, certification, and score controls.',
         ],
       },
     ],

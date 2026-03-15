@@ -28,6 +28,8 @@ Major Features Include
 - **Recommendation engine**:
   - TMDB-powered suggestions
   - Optional - Google + OpenAI 
+- **TMDB Upcoming Movies task filters**:
+  - Build custom filter sets with where-to-watch, genre, language, certification, and score controls.
 - **Keeps a snapshot database:**
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Radarr + Sonarr integration**:
