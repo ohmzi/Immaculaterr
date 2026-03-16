@@ -30,7 +30,7 @@ Pick a feature area first, then jump into the full section below.
 > [What does Search Monitored do?](#what-does-search-monitored-do) · [What does the Includes section do?](#what-does-the-includes-section-do) · [When should I use Search Monitored instead of Start search immediately?](#when-should-i-use-search-monitored-instead-of-start-search-immediately)
 
 > ### [TMDB Upcoming Movies](#tmdb-upcoming-movies)
-> TMDB upcoming discovery filters, defaults, routing, and expected outcomes.
+> What this task does, how each run works, and how to edit filters.
 > [How does TMDB Upcoming Movies work?](#how-does-tmdb-upcoming-movies-work) · [What are the defaults if I do not create custom filters?](#what-are-the-defaults-if-i-do-not-create-custom-filters) · [How do I set custom filters on this card?](#how-do-i-set-custom-filters-on-this-card)
 > + 1 more answer in the section below.
 
@@ -270,34 +270,43 @@ Open in app: [Task Manager -> TMDB Upcoming Movies](/task-manager#job-tmdbUpcomi
 
 ### How does TMDB Upcoming Movies work?
 
-This card discovers upcoming movie candidates from TMDB using your configured filter sets, merges and deduplicates matches, and then sends the selected top results to Radarr or Seerr.
+This task finds upcoming movies from TMDB and routes selected titles to Radarr or Seerr.
 
-You can keep it fully scheduled, run it manually, or combine both. The card also avoids re-sending titles already present in Plex when Plex pre-check data is available.
+Run flow:
+
+1. Every enabled filter set runs a TMDB discover query inside the configured date window.
+2. Results are merged, deduplicated by TMDB id, and ranked by popularity.
+3. The final list is capped by your global limit and then sent to your selected route.
 
 ### What are the defaults if I do not create custom filters?
 
-- A hidden baseline filter is used (no genre, language, where-to-watch, or certification restrictions).
-- Score range defaults to **6-10**.
+- A hidden baseline filter is used (no genre, language, certification, or watch-provider restrictions).
+- Score min defaults to **6** and score max is fixed at **10**.
 - Window defaults to **today through +2 months**.
-- Global cap defaults to **100**.
+- Global limit defaults to **100** (you can raise it up to **1000**).
 - Route defaults to **Radarr** unless you turn on Seerr routing.
 
 ### How do I set custom filters on this card?
 
-Open the card, go to **Filter sets**, press **Add filter**, then tune each set.
+Open the card, go to **Filter sets**, press **Add filter**, then edit that filter.
 
 - Name and enable/disable each filter set independently.
-- Pick **Genres**, **Languages**, and **Where to watch** using top quick picks or search.
-- Add optional **Certifications (US)** and set score min/max.
-- Keep filters focused; multiple broad filters can overlap heavily and reduce unique output.
+- **Add filter** scrolls to the new card and focuses the name field automatically.
+- Only one new pending filter can exist at a time until you click out of that new name field.
+- **Genres** are OR (match any selected genre).
+- **Languages** allow one value per filter (deselect first to switch).
+- **Score min** is editable; score max stays fixed at 10.
+- **Certifications (US)** are optional.
+- **Where to watch** is currently ignored by TMDB Upcoming discovery.
 
 ### What results should I expect after a run?
 
-Each enabled filter gets a share of the global cap, then candidates are merged and ranked (popularity-first, deduped by TMDB id). The final set is sent to your chosen destination.
+Each enabled filter gets part of the global limit. All candidates are then merged, deduplicated, ranked, and routed.
 
 - If a destination reports "already exists," the job can backfill with reserves.
 - If all custom filters are disabled, the hidden baseline runs instead.
-- Rewind shows per-filter discovered/selected counts and destination outcomes so you can tune filters iteratively.
+- Rewind shows per-filter discovered/selected counts and destination outcomes.
+- Rewind keeps the run title as **TMDB Upcoming Movies** for this job.
 
 ## Immaculate Taste Collection
 
