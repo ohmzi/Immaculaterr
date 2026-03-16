@@ -24,7 +24,7 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.1-beta-5',
+    version: '1.7.1-beta-6',
     popupHighlights: [
       'TMDB, OpenAI, and Google connectivity checks are now more reliable on DNS/IPv6-problem Docker hosts.',
       'External API tests now retry with explicit IPv4 fallback before failing.',
