@@ -57,7 +57,7 @@ const DEFAULT_GLOBAL_LIMIT = 100;
 const DEFAULT_WINDOW_MONTHS = 2;
 const DEFAULT_SCORE_MIN = 6;
 const DEFAULT_SCORE_MAX = 10;
-const MAX_GLOBAL_LIMIT = 100;
+const MAX_GLOBAL_LIMIT = 1000;
 const RUNNING_JOB_POLL_MS = 5000;
 const DEFAULT_CERTIFICATION_COUNTRY = 'US';
 const MAX_REPORT_TITLE_ITEMS = 100;
@@ -68,6 +68,7 @@ const DISCOVER_MIN_ITEMS_PER_FILTER = 40;
 const DISCOVER_ITEMS_PER_ALLOCATION = 2;
 const DISCOVER_ALLOCATION_BUFFER = 10;
 const DISCOVER_CHUNK_PAGES = 2;
+const TMDB_UPCOMING_JOB_HEADLINE = 'TMDB Upcoming Movies';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -250,7 +251,7 @@ function normalizeFilter(value: unknown): TmdbUpcomingFilter | null {
   const name = pickString(value, 'name') || id || 'Filter';
   const enabled = pickBool(value, 'enabled') ?? true;
   const genres = normalizeStringArray(value['genres']);
-  const languages = normalizeStringArray(value['languages']);
+  const languages = normalizeStringArray(value['languages']).slice(0, 1);
   const watchProviders = normalizeStringArray(value['watchProviders']);
   const certifications = normalizeStringArray(value['certifications']);
   const scoreMin = clampInt(
@@ -259,14 +260,8 @@ function normalizeFilter(value: unknown): TmdbUpcomingFilter | null {
     10,
     DEFAULT_SCORE_MIN,
   );
-  const scoreMax = clampInt(
-    pickNumber(value, 'scoreMax'),
-    0,
-    10,
-    DEFAULT_SCORE_MAX,
-  );
+  const scoreMax = DEFAULT_SCORE_MAX;
   const lower = Math.min(scoreMin, scoreMax);
-  const upper = Math.max(scoreMin, scoreMax);
   return {
     id,
     name,
@@ -276,7 +271,7 @@ function normalizeFilter(value: unknown): TmdbUpcomingFilter | null {
     watchProviders,
     certifications,
     scoreMin: lower,
-    scoreMax: upper,
+    scoreMax,
   };
 }
 
@@ -536,14 +531,6 @@ export class TmdbUpcomingMoviesJob {
         .map((value) => Number.parseInt(value, 10))
         .filter((value) => Number.isFinite(value) && value > 0)
         .map((value) => Math.trunc(value));
-      const watchProviderIds = Array.from(
-        new Set(
-          filter.watchProviders
-            .map((value) => Number.parseInt(value, 10))
-            .filter((value) => Number.isFinite(value) && value > 0)
-            .map((value) => Math.trunc(value)),
-        ),
-      );
       const allocationForFilter = perFilterAllocation.get(filter.id) ?? 0;
       if (allocationForFilter <= 0) {
         rankedMatchedTmdbIdsByFilter.set(filter.id, []);
@@ -567,8 +554,6 @@ export class TmdbUpcomingMoviesJob {
         toDate: windowEnd,
         genreIds,
         languages: filter.languages,
-        watchProviderIds,
-        watchRegion: DEFAULT_CERTIFICATION_COUNTRY,
         minScore: filter.scoreMin,
         maxScore: filter.scoreMax,
       };
@@ -783,14 +768,7 @@ export class TmdbUpcomingMoviesJob {
       });
     }
 
-    const headline = (() => {
-      if (ctx.dryRun)
-        return `Dry run complete: ${selected.length} upcoming movie(s) selected.`;
-      if (normalized.routeViaSeerr) {
-        return `Seerr route complete: requested ${destinationStats.requested}, exists ${destinationStats.exists}, failed ${destinationStats.failed}.`;
-      }
-      return `Radarr route complete: added ${destinationStats.added}, exists ${destinationStats.exists}, failed ${destinationStats.failed}.`;
-    })();
+    const headline = TMDB_UPCOMING_JOB_HEADLINE;
 
     if (destinationStats.failed > 0) {
       reportIssues.push(

@@ -103,6 +103,7 @@ const TASK_MANAGER_HIDDEN_JOB_IDS = new Set<string>([
 ]);
 
 const TMDB_UPCOMING_DEFAULT_GLOBAL_LIMIT = 100;
+const TMDB_UPCOMING_MAX_GLOBAL_LIMIT = 1000;
 const TMDB_UPCOMING_DEFAULT_WINDOW_MONTHS = 2;
 const TMDB_UPCOMING_DEFAULT_SCORE_MIN = 6;
 const TMDB_UPCOMING_DEFAULT_SCORE_MAX = 10;
@@ -535,7 +536,7 @@ function normalizeTmdbUpcomingSettings(settings: unknown): TmdbUpcomingSettingsD
   const globalLimit = clampNumber(
     Number(readPath(settings, 'jobs.tmdbUpcomingMovies.globalLimit') ?? NaN),
     1,
-    100,
+    TMDB_UPCOMING_MAX_GLOBAL_LIMIT,
     TMDB_UPCOMING_DEFAULT_GLOBAL_LIMIT,
   );
   const legacyReleaseWindowMonths = clampNumber(
@@ -569,19 +570,13 @@ function normalizeTmdbUpcomingSettings(settings: unknown): TmdbUpcomingSettingsD
         .map((entry, index): TmdbUpcomingFilterDraft | null => {
           if (!isPlainObject(entry)) return null;
           const scoreMinRaw = Number(entry.scoreMin ?? NaN);
-          const scoreMaxRaw = Number(entry.scoreMax ?? NaN);
           const scoreMin = clampNumber(
             scoreMinRaw,
             0,
             10,
             TMDB_UPCOMING_DEFAULT_SCORE_MIN,
           );
-          const scoreMax = clampNumber(
-            scoreMaxRaw,
-            0,
-            10,
-            TMDB_UPCOMING_DEFAULT_SCORE_MAX,
-          );
+          const scoreMax = TMDB_UPCOMING_DEFAULT_SCORE_MAX;
           return {
             id:
               (typeof entry.id === 'string' && entry.id.trim()) ||
@@ -592,11 +587,11 @@ function normalizeTmdbUpcomingSettings(settings: unknown): TmdbUpcomingSettingsD
             ),
             enabled: typeof entry.enabled === 'boolean' ? entry.enabled : true,
             genres: normalizeStringArray(entry.genres),
-            languages: normalizeStringArray(entry.languages),
+            languages: normalizeStringArray(entry.languages).slice(0, 1),
             watchProviders: normalizeStringArray(entry.watchProviders),
             certifications: normalizeStringArray(entry.certifications),
-            scoreMin: Math.min(scoreMin, scoreMax),
-            scoreMax: Math.max(scoreMin, scoreMax),
+            scoreMin: Math.min(scoreMin, TMDB_UPCOMING_DEFAULT_SCORE_MAX),
+            scoreMax,
           };
         })
         .filter((entry): entry is TmdbUpcomingFilterDraft => entry !== null)
@@ -764,6 +759,10 @@ export function TaskManagerPage() {
   const tmdbFilterTitleInputRefs = useRef<Record<string, HTMLInputElement | null>>(
     {},
   );
+  const tmdbFilterCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const tmdbPendingNewFilterIdRef = useRef<string | null>(null);
+  const tmdbIgnoreNextAddFilterClickRef = useRef(false);
+  const tmdbAddFilterPointerDownRef = useRef(false);
   const [tmdbWindowStartCalendarOpen, setTmdbWindowStartCalendarOpen] =
     useState(false);
   const [tmdbWindowEndCalendarOpen, setTmdbWindowEndCalendarOpen] =
@@ -919,6 +918,21 @@ export function TaskManagerPage() {
       });
     }, 0);
     return () => window.clearTimeout(timeout);
+  }, [tmdbUpcomingSettingsDraft.filters]);
+  useEffect(() => {
+    const pendingFilterId = tmdbPendingNewFilterIdRef.current;
+    if (!pendingFilterId) return;
+    const stillExists = tmdbUpcomingSettingsDraft.filters.some(
+      (filter) => filter.id === pendingFilterId,
+    );
+    if (stillExists) return;
+    tmdbPendingNewFilterIdRef.current = null;
+    setTmdbFilterTitleEditingById((prev) => {
+      if (!(pendingFilterId in prev)) return prev;
+      const next = { ...prev };
+      delete next[pendingFilterId];
+      return next;
+    });
   }, [tmdbUpcomingSettingsDraft.filters]);
 
   const isRadarrEnabled = (() => {
@@ -2485,7 +2499,7 @@ export function TaskManagerPage() {
       const value = clampNumber(
         Number(event.currentTarget.value),
         1,
-        100,
+        TMDB_UPCOMING_MAX_GLOBAL_LIMIT,
         TMDB_UPCOMING_DEFAULT_GLOBAL_LIMIT,
       );
       updateTmdbUpcomingSettings((prev) => ({ ...prev, globalLimit: value }));
@@ -2603,23 +2617,78 @@ export function TaskManagerPage() {
     },
     [],
   );
+  const revealTmdbUpcomingFilterForTitleEdit = useCallback(
+    (filterId: string) => {
+      const runReveal = () => {
+        const card = tmdbFilterCardRefs.current[filterId];
+        if (card) {
+          card.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        }
+        const input = tmdbFilterTitleInputRefs.current[filterId];
+        if (!input) return;
+        input.focus();
+        const end = input.value.length;
+        try {
+          input.setSelectionRange(0, end);
+        } catch {
+          input.select();
+        }
+      };
+      window.setTimeout(runReveal, 0);
+      window.setTimeout(runReveal, 180);
+    },
+    [],
+  );
+  const handleTmdbAddFilterPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      handleStopPropagationPointer(event);
+      tmdbAddFilterPointerDownRef.current = true;
+    },
+    [handleStopPropagationPointer],
+  );
   const handleAddTmdbUpcomingFilter = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
-      updateTmdbUpcomingSettings((prev) => {
-        const nextName = getNextTmdbUpcomingFilterName(prev.filters);
-        const nextFilter = createDefaultTmdbUpcomingFilter(nextName);
-        setTmdbFilterExpandedById((expandedPrev) => ({
-          ...expandedPrev,
-          [nextFilter.id]: false,
-        }));
-        return {
+      tmdbAddFilterPointerDownRef.current = false;
+      if (tmdbIgnoreNextAddFilterClickRef.current) {
+        tmdbIgnoreNextAddFilterClickRef.current = false;
+        return;
+      }
+      const pendingFilterId = tmdbPendingNewFilterIdRef.current;
+      if (pendingFilterId) {
+        setTmdbFilterExpandedById((prev) => ({
           ...prev,
-          filters: [...prev.filters, nextFilter],
-        };
-      });
+          [pendingFilterId]: true,
+        }));
+        setTmdbFilterTitleEditingById((prev) => ({
+          ...prev,
+          [pendingFilterId]: true,
+        }));
+        revealTmdbUpcomingFilterForTitleEdit(pendingFilterId);
+        return;
+      }
+      const nextFilter = createDefaultTmdbUpcomingFilter(
+        getNextTmdbUpcomingFilterName(tmdbUpcomingSettingsDraftRef.current.filters),
+      );
+      tmdbPendingNewFilterIdRef.current = nextFilter.id;
+      setTmdbFilterExpandedById((prev) => ({
+        ...prev,
+        [nextFilter.id]: true,
+      }));
+      setTmdbFilterTitleEditingById((prev) => ({
+        ...prev,
+        [nextFilter.id]: true,
+      }));
+      updateTmdbUpcomingSettings((prev) => ({
+        ...prev,
+        filters: [...prev.filters, nextFilter],
+      }));
+      revealTmdbUpcomingFilterForTitleEdit(nextFilter.id);
     },
-    [updateTmdbUpcomingSettings],
+    [revealTmdbUpcomingFilterForTitleEdit, updateTmdbUpcomingSettings],
   );
   const handleRemoveTmdbUpcomingFilter = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -2657,7 +2726,11 @@ export function TaskManagerPage() {
         delete next[filterId];
         return next;
       });
+      if (tmdbPendingNewFilterIdRef.current === filterId) {
+        tmdbPendingNewFilterIdRef.current = null;
+      }
       delete tmdbFilterTitleInputRefs.current[filterId];
+      delete tmdbFilterCardRefs.current[filterId];
       setTmdbFilterExpandedById((prev) => {
         if (!(filterId in prev)) return prev;
         const next = { ...prev };
@@ -2701,6 +2774,12 @@ export function TaskManagerPage() {
           delete next[filterId];
           return next;
         });
+        if (tmdbPendingNewFilterIdRef.current === filterId) {
+          tmdbPendingNewFilterIdRef.current = null;
+          if (tmdbAddFilterPointerDownRef.current) {
+            tmdbIgnoreNextAddFilterClickRef.current = true;
+          }
+        }
       }
       updateTmdbUpcomingSettings((prev) => prev);
     },
@@ -2875,6 +2954,10 @@ export function TaskManagerPage() {
           if (filter.id !== filterId) return filter;
           const currentValues = filter[field];
           if (currentValues.includes(value)) return filter;
+          if (field === 'languages') {
+            if (currentValues.length > 0) return filter;
+            return { ...filter, languages: [value] };
+          }
           return {
             ...filter,
             [field]: [...currentValues, value],
@@ -2910,28 +2993,21 @@ export function TaskManagerPage() {
     (event: ChangeEvent<HTMLInputElement>) => {
       event.stopPropagation();
       const filterId = event.currentTarget.dataset.filterId;
-      const scoreField = event.currentTarget.dataset.scoreField;
-      if (!filterId || !scoreField) return;
+      if (!filterId) return;
       const value = clampNumber(
         Number(event.currentTarget.value),
         0,
         10,
-        scoreField === 'min'
-          ? TMDB_UPCOMING_DEFAULT_SCORE_MIN
-          : TMDB_UPCOMING_DEFAULT_SCORE_MAX,
+        TMDB_UPCOMING_DEFAULT_SCORE_MIN,
       );
       updateTmdbUpcomingSettings((prev) => ({
         ...prev,
         filters: prev.filters.map((filter) => {
           if (filter.id !== filterId) return filter;
-          const next =
-            scoreField === 'min'
-              ? { ...filter, scoreMin: value }
-              : { ...filter, scoreMax: value };
           return {
-            ...next,
-            scoreMin: Math.min(next.scoreMin, next.scoreMax),
-            scoreMax: Math.max(next.scoreMin, next.scoreMax),
+            ...filter,
+            scoreMin: Math.min(value, TMDB_UPCOMING_DEFAULT_SCORE_MAX),
+            scoreMax: TMDB_UPCOMING_DEFAULT_SCORE_MAX,
           };
         }),
       }));
@@ -2959,6 +3035,13 @@ export function TaskManagerPage() {
           if (filter.id !== filterId) return filter;
           const currentValues = filter[field];
           const isSelected = currentValues.includes(value);
+          if (field === 'languages') {
+            if (isSelected) {
+              return { ...filter, languages: [] };
+            }
+            if (currentValues.length > 0) return filter;
+            return { ...filter, languages: [value] };
+          }
           return {
             ...filter,
             [field]: isSelected
@@ -4388,13 +4471,13 @@ export function TaskManagerPage() {
                         <div className="p-4 md:p-6">
                           <div className="rounded-2xl border border-white/5 bg-[#0F0B15]/50 p-4 md:p-5 flex flex-col gap-5">
                             {job.id === 'tmdbUpcomingMovies' && (
-                              <div className="rounded-2xl border border-white/5 bg-[#0F0B15]/40 p-5">
-                                <div className="flex flex-col gap-5">
+                              <div className="rounded-2xl border border-white/10 bg-[#0F0B15]/45 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                <div className="flex flex-col gap-6">
                                   <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                                     TMDB upcoming settings
                                   </div>
 
-                                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
                                     <div className="flex min-h-[98px] items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#1a1625]/60 px-4 py-3 md:col-span-1 xl:col-span-4">
                                       <div className="min-w-0">
                                         <div className="text-sm font-semibold text-white">
@@ -4438,13 +4521,18 @@ export function TaskManagerPage() {
                                     </div>
 
                                     <label className="flex min-h-[98px] flex-col justify-between gap-2 rounded-xl border border-white/10 bg-[#1a1625]/60 px-4 py-3 md:col-span-1 xl:col-span-3">
-                                      <span className="text-sm font-semibold text-white">
-                                        Global limit (max 100)
-                                      </span>
+                                      <div className="space-y-1">
+                                        <span className="text-sm font-semibold text-white">
+                                          Global limit
+                                        </span>
+                                        <div className="text-xs text-white/55">
+                                          Total titles to route per run.
+                                        </div>
+                                      </div>
                                       <input
                                         type="number"
                                         min={1}
-                                        max={100}
+                                        max={1000}
                                         value={tmdbUpcomingSettingsDraft.globalLimit}
                                         onChange={handleTmdbUpcomingGlobalLimitChange}
                                         onClick={handleStopPropagation}
@@ -4727,8 +4815,9 @@ export function TaskManagerPage() {
                                       </div>
                                       <button
                                         type="button"
+                                        data-add-tmdb-filter="true"
                                         onClick={handleAddTmdbUpcomingFilter}
-                                        onPointerDown={handleStopPropagationPointer}
+                                        onPointerDown={handleTmdbAddFilterPointerDown}
                                         disabled={tmdbUpcomingSettingsMutation.isPending}
                                         className="rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-60"
                                       >
@@ -4775,9 +4864,14 @@ export function TaskManagerPage() {
                                       const selectedLanguages = tmdbLanguageOptions.filter(
                                         (option) => filter.languages.includes(option.id),
                                       );
-                                      const availableLanguages = tmdbLanguageOptions.filter(
-                                        (option) => !filter.languages.includes(option.id),
-                                      );
+                                      const hasSelectedLanguage =
+                                        selectedLanguages.length > 0;
+                                      const availableLanguages = hasSelectedLanguage
+                                        ? []
+                                        : tmdbLanguageOptions.filter(
+                                            (option) =>
+                                              !filter.languages.includes(option.id),
+                                          );
                                       const languageQuickPicks = pickTopLanguageQuickPicks(
                                         availableLanguages,
                                       );
@@ -4786,7 +4880,8 @@ export function TaskManagerPage() {
                                       const languageSearchQuery = languageSearchValue
                                         .trim()
                                         .toLowerCase();
-                                      const languageSearchResults = languageSearchQuery
+                                      const languageSearchResults =
+                                        !hasSelectedLanguage && languageSearchQuery
                                         ? availableLanguages
                                             .filter((option) =>
                                               option.label
@@ -4795,9 +4890,11 @@ export function TaskManagerPage() {
                                             )
                                             .slice(0, 8)
                                         : [];
-                                      const displayedLanguageOptions = languageSearchQuery
-                                        ? languageSearchResults
-                                        : languageQuickPicks;
+                                      const displayedLanguageOptions = hasSelectedLanguage
+                                        ? []
+                                        : languageSearchQuery
+                                          ? languageSearchResults
+                                          : languageQuickPicks;
                                       const selectedWatchProviders =
                                         tmdbWatchProviderOptions.filter((option) =>
                                           filter.watchProviders.includes(option.id),
@@ -4837,6 +4934,9 @@ export function TaskManagerPage() {
                                       return (
                                         <div
                                           key={filter.id}
+                                          ref={(node) => {
+                                            tmdbFilterCardRefs.current[filter.id] = node;
+                                          }}
                                           className="rounded-2xl border border-white/10 bg-[#1a1625]/60 p-5"
                                         >
                                           <div
@@ -4967,9 +5067,12 @@ export function TaskManagerPage() {
                                                 className="overflow-hidden"
                                               >
                                             <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
-                                            <div className="space-y-2 xl:col-span-6">
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-6">
                                               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                                                 Genres
+                                              </div>
+                                              <div className="text-[11px] text-white/45">
+                                                Match any selected genre.
                                               </div>
                                             <div className="min-h-11 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 py-2">
                                               <div className="flex flex-wrap items-center gap-2">
@@ -5028,9 +5131,12 @@ export function TaskManagerPage() {
                                             </div>
                                             </div>
 
-                                            <div className="space-y-2 xl:col-span-6">
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-6">
                                               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                                                 Languages
+                                              </div>
+                                              <div className="text-[11px] text-white/45">
+                                                Select one language for this filter.
                                               </div>
                                             <div className="min-h-11 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 py-2">
                                               <div className="flex flex-wrap items-center gap-2">
@@ -5061,8 +5167,15 @@ export function TaskManagerPage() {
                                                   }
                                                   onClick={handleStopPropagation}
                                                   onPointerDown={handleStopPropagationPointer}
-                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
-                                                  placeholder="Search and add language"
+                                                  disabled={
+                                                    tmdbUpcomingSettingsMutation.isPending ||
+                                                    hasSelectedLanguage
+                                                  }
+                                                  placeholder={
+                                                    hasSelectedLanguage
+                                                      ? 'Deselect current language to choose another'
+                                                      : 'Search and add language'
+                                                  }
                                                   className="h-8 min-w-[150px] flex-1 border-0 bg-transparent px-1 text-sm text-white placeholder:text-white/35 focus:outline-none"
                                                 />
                                               </div>
@@ -5077,7 +5190,10 @@ export function TaskManagerPage() {
                                                   data-value={option.id}
                                                   onClick={handleAddTmdbUpcomingChip}
                                                   onPointerDown={handleStopPropagationPointer}
-                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                  disabled={
+                                                    tmdbUpcomingSettingsMutation.isPending ||
+                                                    hasSelectedLanguage
+                                                  }
                                                   className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:bg-white/10"
                                                 >
                                                   {option.label}
@@ -5085,15 +5201,17 @@ export function TaskManagerPage() {
                                               ))}
                                               {displayedLanguageOptions.length === 0 && (
                                                 <span className="text-xs text-white/45">
-                                                  {languageSearchQuery
-                                                    ? 'No language matches.'
-                                                    : 'No quick picks left.'}
+                                                  {hasSelectedLanguage
+                                                    ? 'One language only. Deselect it to pick another.'
+                                                    : languageSearchQuery
+                                                      ? 'No language matches.'
+                                                      : 'No quick picks left.'}
                                                 </span>
                                               )}
                                             </div>
                                             </div>
 
-                                            <div className="space-y-2 xl:col-span-6">
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-6">
                                               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                                                 Where to watch
                                               </div>
@@ -5158,7 +5276,7 @@ export function TaskManagerPage() {
                                             </div>
                                             </div>
 
-                                            <div className="space-y-2 xl:col-span-12">
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-8">
                                               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                                                 Certifications (US)
                                               </div>
@@ -5190,41 +5308,23 @@ export function TaskManagerPage() {
                                                 })}
                                               </div>
                                             </div>
-                                          </div>
-
-                                          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                            <label className="flex flex-col gap-1">
-                                              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                                Score min
-                                              </span>
-                                              <input
-                                                type="number"
-                                                min={0}
-                                                max={10}
-                                                data-filter-id={filter.id}
-                                                data-score-field="min"
-                                                value={filter.scoreMin}
-                                                onChange={handleTmdbUpcomingScoreChange}
-                                                onClick={handleStopPropagation}
-                                                className="h-10 rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50"
-                                              />
-                                            </label>
-                                            <label className="flex flex-col gap-1">
-                                              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                                Score max
-                                              </span>
-                                              <input
-                                                type="number"
-                                                min={0}
-                                                max={10}
-                                                data-filter-id={filter.id}
-                                                data-score-field="max"
-                                                value={filter.scoreMax}
-                                                onChange={handleTmdbUpcomingScoreChange}
-                                                onClick={handleStopPropagation}
-                                                className="h-10 rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50"
-                                              />
-                                            </label>
+                                            <div className="rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-4">
+                                              <label className="flex flex-col gap-1">
+                                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                                  Score min
+                                                </span>
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  max={10}
+                                                  data-filter-id={filter.id}
+                                                  value={filter.scoreMin}
+                                                  onChange={handleTmdbUpcomingScoreChange}
+                                                  onClick={handleStopPropagation}
+                                                  className="h-10 rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50"
+                                                />
+                                              </label>
+                                            </div>
                                           </div>
                                               </motion.div>
                                             )}

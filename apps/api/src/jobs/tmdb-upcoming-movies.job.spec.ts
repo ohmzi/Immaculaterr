@@ -200,7 +200,7 @@ describe('TmdbUpcomingMoviesJob', () => {
     );
   });
 
-  it('passes selected watch providers to discover', async () => {
+  it('ignores watch providers, enforces single language, and fixes max score', async () => {
     const { job, prisma, settings, tmdb } = createJob();
     const ctx = createContext({ dryRun: true, trigger: 'manual' });
 
@@ -217,11 +217,11 @@ describe('TmdbUpcomingMoviesJob', () => {
                 id: 'f1',
                 enabled: true,
                 genres: [],
-                languages: [],
+                languages: ['en', 'fr', 'en'],
                 watchProviders: ['8', '337', '8', 'invalid'],
                 certifications: [],
                 scoreMin: 6,
-                scoreMax: 10,
+                scoreMax: 3,
               },
             ],
           },
@@ -239,12 +239,14 @@ describe('TmdbUpcomingMoviesJob', () => {
 
     await job.run(ctx);
 
-    expect(tmdb.discoverUpcomingMovies).toHaveBeenCalledWith(
-      expect.objectContaining({
-        watchProviderIds: [8, 337],
-        watchRegion: 'US',
-      }),
-    );
+    const discoverArgs = tmdb.discoverUpcomingMovies.mock.calls[0]?.[0] as
+      | Record<string, unknown>
+      | undefined;
+    expect(discoverArgs).toBeDefined();
+    expect(discoverArgs).not.toHaveProperty('watchProviderIds');
+    expect(discoverArgs).not.toHaveProperty('watchRegion');
+    expect(discoverArgs?.languages).toEqual(['en']);
+    expect(discoverArgs?.maxScore).toBe(10);
   });
 
   it('counts Radarr existing results as exists (non-fatal)', async () => {

@@ -969,19 +969,6 @@ export class TmdbService {
           .filter(Boolean)
       : [];
     const languageSet = new Set(languageAllowlist);
-    const watchProviderIdsRaw = Array.isArray(params.watchProviderIds)
-      ? params.watchProviderIds
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value) && value > 0)
-          .map((value) => Math.trunc(value))
-      : [];
-    const watchProviderIds = Array.from(new Set(watchProviderIdsRaw));
-    const watchRegion = (
-      typeof params.watchRegion === 'string'
-        ? params.watchRegion.trim().toUpperCase()
-        : 'US'
-    ).slice(0, 2);
-
     const minScoreRaw =
       typeof params.minScore === 'number' && Number.isFinite(params.minScore)
         ? params.minScore
@@ -1014,30 +1001,34 @@ export class TmdbService {
       Math.min(500, Math.trunc(params.startPage ?? 1)),
     );
 
-    const url = new URL('https://api.themoviedb.org/3/discover/movie');
-    url.searchParams.set('primary_release_date.gte', fromDate);
-    url.searchParams.set('primary_release_date.lte', toDate);
-    url.searchParams.set('sort_by', 'popularity.desc');
-    if (genreIds.length) {
-      url.searchParams.set('with_genres', genreIds.join(','));
-    }
-    if (scoreLower !== null) {
-      url.searchParams.set('vote_average.gte', scoreLower.toFixed(1));
-    }
-    if (scoreUpper !== null) {
-      url.searchParams.set('vote_average.lte', scoreUpper.toFixed(1));
-    }
-    if (languageAllowlist.length === 1) {
-      url.searchParams.set('with_original_language', languageAllowlist[0]);
-    }
-    if (watchProviderIds.length) {
-      url.searchParams.set('with_watch_providers', watchProviderIds.join(','));
-      url.searchParams.set('watch_region', watchRegion || 'US');
-    }
+    const buildUpcomingDiscoverUrl = (): URL => {
+      const discoverUrl = new URL(
+        'https://api.themoviedb.org/3/discover/movie',
+      );
+      discoverUrl.searchParams.set('release_date.gte', fromDate);
+      discoverUrl.searchParams.set('release_date.lte', toDate);
+      discoverUrl.searchParams.set('sort_by', 'popularity.desc');
+      if (genreIds.length) {
+        discoverUrl.searchParams.set('with_genres', genreIds.join('|'));
+      }
+      if (scoreLower !== null) {
+        discoverUrl.searchParams.set('vote_average.gte', scoreLower.toFixed(1));
+      }
+      if (scoreUpper !== null) {
+        discoverUrl.searchParams.set('vote_average.lte', scoreUpper.toFixed(1));
+      }
+      if (languageAllowlist.length === 1) {
+        discoverUrl.searchParams.set(
+          'with_original_language',
+          languageAllowlist[0],
+        );
+      }
+      return discoverUrl;
+    };
 
     const rows = await this.pagedResults({
       apiKey,
-      url,
+      url: buildUpcomingDiscoverUrl(),
       includeAdult: false,
       maxItems,
       maxPages,
@@ -1052,6 +1043,18 @@ export class TmdbService {
       if (seen.has(tmdbId)) continue;
       const title = (row.title ?? '').trim();
       if (!title) continue;
+      const releaseDate =
+        typeof row.release_date === 'string' && row.release_date.trim()
+          ? row.release_date.trim()
+          : null;
+      if (
+        !releaseDate ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(releaseDate) ||
+        releaseDate < fromDate ||
+        releaseDate > toDate
+      ) {
+        continue;
+      }
       const originalLanguage =
         typeof row.original_language === 'string' &&
         row.original_language.trim()
@@ -1069,10 +1072,7 @@ export class TmdbService {
       out.push({
         tmdbId,
         title,
-        releaseDate:
-          typeof row.release_date === 'string' && row.release_date.trim()
-            ? row.release_date.trim()
-            : null,
+        releaseDate,
         voteAverage:
           typeof row.vote_average === 'number' &&
           Number.isFinite(row.vote_average)
