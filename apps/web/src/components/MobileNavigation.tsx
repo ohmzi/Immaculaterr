@@ -412,9 +412,10 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
           {/* Logo */}
           <motion.button
             onClick={goHome}
-            animate={{ opacity: isSearchOpen ? 0 : 1 }}
+            initial={false}
+            animate={{ x: isSearchOpen ? -200 : 0, opacity: isSearchOpen ? 0 : 1 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className={`flex min-w-0 items-center gap-2 touch-manipulation transition-all duration-300 active:scale-95 active:opacity-70 ${
+            className={`flex min-w-0 items-center gap-2 touch-manipulation transition-transform duration-300 active:scale-95 active:opacity-70 ${
               isSearchOpen ? 'pointer-events-none' : ''
             }`}
           >

@@ -2791,7 +2791,7 @@ export const FaqPage = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.94 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="fixed bottom-28 right-4 z-20 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-[#0F0B15]/90 text-[#facc15] shadow-[0_0_24px_rgba(250,204,21,0.18)] backdrop-blur-xl transition hover:bg-[#15101f]/95 hover:text-[#fde68a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#facc15]/40 sm:bottom-8 sm:right-6"
+            className="fixed bottom-28 right-4 z-20 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-[#0F0B15]/90 text-[#facc15] shadow-[0_0_24px_rgba(250,204,21,0.18)] backdrop-blur-xl transition hover:bg-[#15101f]/95 hover:text-[#fde68a] active:scale-95 active:opacity-80 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-[#facc15]/40 sm:bottom-8 sm:right-6"
             aria-label="Scroll to top"
             title="Scroll to top"
           >
