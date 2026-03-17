@@ -31,6 +31,7 @@ type ProfilePatch = {
   name?: string;
   enabled?: boolean;
   sortOrder?: number;
+  scopeAllUsers?: boolean;
   scopePlexUserId?: string | null;
   resetScopeToDefaultNaming?: boolean;
   mediaType?: MediaType;
@@ -67,6 +68,7 @@ export type ImmaculateTasteProfileView = {
   isDefault: boolean;
   enabled: boolean;
   sortOrder: number;
+  scopeAllUsers: boolean;
   mediaType: MediaType;
   matchMode: MatchMode;
   genres: string[];
@@ -527,6 +529,9 @@ export class ImmaculateTasteProfileService {
       }
       if (patch.sortOrder !== undefined) {
         data.sortOrder = Math.max(0, Math.trunc(patch.sortOrder));
+      }
+      if (patch.scopeAllUsers !== undefined) {
+        data.scopeAllUsers = patch.scopeAllUsers === true;
       }
       if (patch.mediaType !== undefined) data.mediaType = patch.mediaType;
       if (patch.matchMode !== undefined) data.matchMode = patch.matchMode;
@@ -1606,7 +1611,9 @@ export class ImmaculateTasteProfileService {
     if (!plexUserId) return null;
     const override =
       profileOverrides.find((item) => item.plexUserId === plexUserId) ?? null;
-    if (!override) return null;
+    if (!override) {
+      return profile.scopeAllUsers ? profile : null;
+    }
     return {
       ...profile,
       mediaType: override.mediaType,
@@ -1828,6 +1835,7 @@ export class ImmaculateTasteProfileService {
       isDefault: row.isDefault,
       enabled: row.enabled,
       sortOrder: row.sortOrder,
+      scopeAllUsers: row.scopeAllUsers,
       mediaType,
       matchMode,
       genres: parseJsonStringArray(row.genres),
@@ -1853,7 +1861,12 @@ export class ImmaculateTasteProfileService {
       profileOverrides.find(
         (candidate) => candidate.plexUserId === params.plexUserId,
       ) ?? null;
-    if (profileOverrides.length > 0 && !override) return null;
+    if (
+      profileOverrides.length > 0 &&
+      !override &&
+      !params.profile.scopeAllUsers
+    )
+      return null;
     const mediaType = normalizeMediaType(
       override?.mediaType ?? params.profile.mediaType,
     );

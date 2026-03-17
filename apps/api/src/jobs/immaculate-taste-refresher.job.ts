@@ -165,6 +165,8 @@ function buildProfileHubOrder(params: {
     const override =
       profile.userOverrides.find((item) => item.plexUserId === plexUserId) ??
       null;
+    if (profile.userOverrides.length > 0 && !override && !profile.scopeAllUsers)
+      continue;
     const scopedMediaType = override?.mediaType ?? profile.mediaType;
     const scopedMovieBaseName =
       override?.movieCollectionBaseName ?? profile.movieCollectionBaseName;

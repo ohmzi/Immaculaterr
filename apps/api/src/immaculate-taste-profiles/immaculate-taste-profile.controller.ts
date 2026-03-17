@@ -141,6 +141,9 @@ export class ImmaculateTasteProfileController {
       ...(Object.prototype.hasOwnProperty.call(body, 'sortOrder')
         ? { sortOrder: asOptionalSortOrder(body['sortOrder']) }
         : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'scopeAllUsers')
+        ? { scopeAllUsers: asOptionalBool(body['scopeAllUsers']) }
+        : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'scopePlexUserId')
         ? { scopePlexUserId: asNullableString(body['scopePlexUserId']) }
         : {}),

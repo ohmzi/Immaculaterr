@@ -126,12 +126,13 @@ model ArrInstance {
 }
 
 model ImmaculateTasteProfile {
-  id        String  @id @default(cuid())
-  userId    String
-  name      String
-  isDefault Boolean @default(false)
-  enabled   Boolean @default(true)
-  sortOrder Int     @default(0)
+  id            String  @id @default(cuid())
+  userId        String
+  name          String
+  isDefault     Boolean @default(false)
+  enabled       Boolean @default(true)
+  sortOrder     Int     @default(0)
+  scopeAllUsers Boolean @default(true)
 
   mediaType      String @default("both")
   matchMode      String @default("all")

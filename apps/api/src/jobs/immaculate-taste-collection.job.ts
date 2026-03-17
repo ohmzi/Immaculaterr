@@ -1619,6 +1619,39 @@ export class ImmaculateTasteCollectionJob {
           );
         }
       }
+
+      const defaultAlreadyRefreshed = movieCollectionSelections.some(
+        (s) => s.collectionProfile.profileId === 'default',
+      );
+      if (!defaultAlreadyRefreshed) {
+        try {
+          await this.immaculateTasteRefresher.run({
+            ...ctx,
+            input: {
+              ...(ctx.input ?? {}),
+              plexUserId,
+              plexUserTitle,
+              pinCollections: true,
+              pinTarget,
+              includeMovies: true,
+              includeTv: false,
+              movieSectionKey,
+              movieLibraryName,
+              profileId: 'default',
+              movieCollectionBaseName: null,
+            },
+          });
+          await ctx.info(
+            'immaculateTastePoints: default collection refresher done (chained)',
+          );
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          await ctx.warn(
+            'immaculateTastePoints: default collection refresher failed (continuing)',
+            { error: msg },
+          );
+        }
+      }
     }
 
     const summary: JsonObject = {
@@ -2953,6 +2986,39 @@ export class ImmaculateTasteCollectionJob {
           );
         }
       }
+
+      const defaultAlreadyRefreshed = showCollectionSelections.some(
+        (s) => s.collectionProfile.profileId === 'default',
+      );
+      if (!defaultAlreadyRefreshed) {
+        try {
+          await this.immaculateTasteRefresher.run({
+            ...ctx,
+            input: {
+              ...(ctx.input ?? {}),
+              plexUserId,
+              plexUserTitle,
+              pinCollections: true,
+              pinTarget,
+              includeMovies: false,
+              includeTv: true,
+              tvSectionKey,
+              tvLibraryName,
+              profileId: 'default',
+              tvCollectionBaseName: null,
+            },
+          });
+          await ctx.info(
+            'immaculateTastePoints(tv): default collection refresher done (chained)',
+          );
+        } catch (err) {
+          const msg = (err as Error)?.message ?? String(err);
+          await ctx.warn(
+            'immaculateTastePoints(tv): default collection refresher failed (continuing)',
+            { error: msg },
+          );
+        }
+      }
     }
 
     const summary: JsonObject = {
@@ -3065,6 +3131,15 @@ export class ImmaculateTasteCollectionJob {
     const admin = await this.plexUsers.ensureAdminPlexUser({
       userId: ctx.userId,
     });
+
+    if (ctx.trigger === 'manual') {
+      return {
+        plexUserId: admin.id,
+        plexUserTitle: admin.plexAccountTitle,
+        pinCollections: true,
+      };
+    }
+
     const plexUserIdRaw =
       typeof input['plexUserId'] === 'string' ? input['plexUserId'].trim() : '';
     const plexUserTitleRaw =

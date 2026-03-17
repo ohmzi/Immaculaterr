@@ -27,6 +27,7 @@ export type ImmaculateTasteProfile = {
   isDefault: boolean;
   enabled: boolean;
   sortOrder: number;
+  scopeAllUsers: boolean;
   mediaType: ImmaculateTasteProfileMediaType;
   matchMode: ImmaculateTasteProfileMatchMode;
   genres: string[];
@@ -77,6 +78,7 @@ export function updateImmaculateTasteProfile(
   body: {
     name?: string;
     enabled?: boolean;
+    scopeAllUsers?: boolean;
     scopePlexUserId?: string | null;
     resetScopeToDefaultNaming?: boolean;
     mediaType?: ImmaculateTasteProfileMediaType;
