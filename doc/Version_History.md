@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.1-beta-5
+1.7.1-beta-7
 ---
 
 - What's new since 1.7.0:
@@ -12,7 +12,8 @@ This file tracks notable changes by version.
   'Added focused test coverage for fallback behavior and non-fallback auth failure handling.',
   'Added a dedicated in-app TrueNAS setup guide at /setup/truenas with copy-ready YAML for the main app and HTTPS sidecar.',
   'Setup page now links directly to the TrueNAS guide for faster navigation.',
-  'Updated setupguide.md with TrueNAS GUI deployment flow, local CA certificate trust steps, and HTTPS verification commands.'
+  'Updated setupguide.md with TrueNAS GUI deployment flow, local CA certificate trust steps, and HTTPS verification commands.',
+  'Task Manager now includes TMDB Upcoming Movies custom filter sets with where-to-watch, genre, language, certification, and score controls.'
 
 
 1.7.0

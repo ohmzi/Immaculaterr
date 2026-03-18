@@ -8,6 +8,7 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
 import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
 import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
+import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 
 @Injectable()
 export class JobsHandlers {
@@ -20,6 +21,7 @@ export class JobsHandlers {
     private readonly basedonLatestWatchedRefresherJob: BasedonLatestWatchedRefresherJob,
     private readonly basedonLatestWatchedCollectionJob: BasedonLatestWatchedCollectionJob,
     private readonly collectionResyncUpgradeJob: CollectionResyncUpgradeJob,
+    private readonly tmdbUpcomingMoviesJob: TmdbUpcomingMoviesJob,
   ) {}
 
   async run(jobId: string, ctx: JobContext): Promise<JobRunResult> {
@@ -28,6 +30,8 @@ export class JobsHandlers {
         return await this.monitorConfirmJob.run(ctx);
       case 'arrMonitoredSearch':
         return await this.arrMonitoredSearchJob.run(ctx);
+      case 'tmdbUpcomingMovies':
+        return await this.tmdbUpcomingMoviesJob.run(ctx);
       case 'mediaAddedCleanup':
         return await this.cleanupAfterAddingNewContentJob.run(ctx);
       case 'immaculateTastePoints':

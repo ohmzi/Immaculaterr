@@ -28,6 +28,8 @@ Major Features Include
 - **Recommendation engine**:
   - TMDB-powered suggestions
   - Optional - Google + OpenAI 
+- **TMDB Upcoming Movies task filters**:
+  - Build custom filter sets with where-to-watch, genre, language, certification, and score controls.
 - **Keeps a snapshot database:**
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Radarr + Sonarr integration**:
@@ -100,10 +102,10 @@ If users browse from other devices, import `/tmp/immaculaterr-local-ca.crt` from
 
 For full setup and update options (including certificate trust), use [`doc/setupguide.md`](setupguide.md).
 
-If you deploy with TrueNAS SCALE Custom Apps, use the TrueNAS section in `setupguide.md`:
+Platform-specific guides are also available:
 
-- Option 1 (recommended): HTTPS sidecar with encrypted secret transport.
-- Option 2 (compatibility): HTTP-only with `SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true` (credentials are sent in plaintext; use only on trusted local networks).
+- [TrueNAS SCALE](setup-truenas.md) — GUI-only Custom Apps with HTTPS and HTTP-only options.
+- [Unraid](setup-unraid.md) — Docker template and compose setup with HTTPS and HTTP-only options.
 
 Development
 ---

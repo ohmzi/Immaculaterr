@@ -184,6 +184,9 @@ const getRunDisplayTitle = (
     if (seedTitle) return `${prefix}: ${seedTitle}${skipped ? ' (ignored)' : ''}`;
     return skipped ? `${prefix} (ignored)` : prefix;
   }
+  if (run.jobId === 'tmdbUpcomingMovies') {
+    return jobNameById.get(run.jobId) ?? run.jobId;
+  }
   if (headline) return toConciseHeadline(headline);
   return jobNameById.get(run.jobId) ?? run.jobId;
 };

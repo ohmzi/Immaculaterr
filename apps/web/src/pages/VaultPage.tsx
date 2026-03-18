@@ -363,7 +363,7 @@ export const SettingsPage = ({
 
     // Signal that we've applied the persisted settings to local state.
     setSettingsHydrated(true);
-  }, [settingsQuery.data?.settings]);
+  }, [settingsQuery.data?.settings, settingsQuery.data?.secretsPresent]);
 
   // If a service is already enabled, we want its card to render expanded immediately (no "pop open"
   // after hydration). We still keep animations for user toggles after the first hydrated paint.
@@ -378,7 +378,7 @@ export const SettingsPage = ({
     // Keep the highlight mounted long enough for the full pulse sequence.
     const t = setTimeout(() => setFlashCard(null), 4200);
     return () => clearTimeout(t);
-  }, [flashCard?.nonce]);
+  }, [flashCard]);
   const renderVaultCardFlash = (id: string) => (
     <AnimatePresence initial={false}>
       {flashCard?.id === id ? (
@@ -489,7 +489,7 @@ export const SettingsPage = ({
     [],
   );
 
-  const buildSecretEnvelope = async (params: {
+  const buildSecretEnvelope = useCallback(async (params: {
     service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'seerr' | 'google' | 'openai';
     secretField: 'token' | 'apiKey';
     value: string;
@@ -503,7 +503,7 @@ export const SettingsPage = ({
         [params.secretField]: params.value,
       },
     });
-  };
+  }, [loadSecretsEnvelopeKey]);
 
   const buildSettingsSecretsEnvelope = async (
     secretsPatch: Record<string, unknown>,
@@ -518,7 +518,7 @@ export const SettingsPage = ({
     });
   };
 
-  const buildArrInstanceApiKeyEnvelope = async (params: {
+  const buildArrInstanceApiKeyEnvelope = useCallback(async (params: {
     service: 'radarr' | 'sonarr';
     operation?: 'create' | 'update';
     value: string;
@@ -532,9 +532,9 @@ export const SettingsPage = ({
         apiKey: params.value,
       },
     });
-  };
+  }, [loadSecretsEnvelopeKey]);
 
-  const callIntegrationTest = async (
+  const callIntegrationTest = useCallback(async (
     integrationId: IntegrationId,
     body?: Record<string, unknown>,
   ) => {
@@ -548,9 +548,9 @@ export const SettingsPage = ({
       }
       throw new Error(`${integrationId} test failed`);
     }
-  };
+  }, []);
 
-  const buildIntegrationSecretPayload = async (params: {
+  const buildIntegrationSecretPayload = useCallback(async (params: {
     service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'seerr' | 'google' | 'openai';
     secretField: 'token' | 'apiKey';
     rawSecret: string;
@@ -570,7 +570,7 @@ export const SettingsPage = ({
       return { secretRef: params.secretRef };
     }
     return {};
-  };
+  }, [buildSecretEnvelope]);
 
   // Service toggle states
   const [radarrEnabled, setRadarrEnabled] = useState(false);
@@ -1252,7 +1252,7 @@ export const SettingsPage = ({
   }, [saveMutation]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testPlexConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
+  const testPlexConnection = useCallback(async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Plex connection...') : undefined;
     const startedAt = Date.now();
     const showError = (message: string, opts?: { immediate?: boolean }) => {
@@ -1303,10 +1303,17 @@ export const SettingsPage = ({
       showError('Plex credentials are incorrect.');
       return false;
     }
-  };
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    plexBaseUrl,
+    plexToken,
+    secretRefs.plex,
+    secretsPresent.plex,
+  ]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testRadarrConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
+  const testRadarrConnection = useCallback(async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Radarr connection...') : undefined;
     const startedAt = Date.now();
     const showError = (message: string, opts?: { immediate?: boolean }) => {
@@ -1375,10 +1382,17 @@ export const SettingsPage = ({
       }
       return false;
     }
-  };
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    radarrApiKey,
+    radarrBaseUrl,
+    secretRefs.radarr,
+    secretsPresent.radarr,
+  ]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testSonarrConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
+  const testSonarrConnection = useCallback(async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Sonarr connection...') : undefined;
     const startedAt = Date.now();
     const showError = (message: string, opts?: { immediate?: boolean }) => {
@@ -1447,10 +1461,17 @@ export const SettingsPage = ({
       }
       return false;
     }
-  };
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    secretRefs.sonarr,
+    secretsPresent.sonarr,
+    sonarrApiKey,
+    sonarrBaseUrl,
+  ]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testSeerrConnection = async (
+  const testSeerrConnection = useCallback(async (
     mode: TestMode = 'manual',
   ): Promise<boolean | null> => {
     const toastId =
@@ -1522,10 +1543,17 @@ export const SettingsPage = ({
       }
       return false;
     }
-  };
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    seerrApiKey,
+    seerrBaseUrl,
+    secretRefs.seerr,
+    secretsPresent.seerr,
+  ]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testTmdbConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
+  const testTmdbConnection = useCallback(async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing TMDB connection...') : undefined;
     const startedAt = Date.now();
     const showError = (message: string, opts?: { immediate?: boolean }) => {
@@ -1576,10 +1604,16 @@ export const SettingsPage = ({
       }
       return false;
     }
-  };
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    secretRefs.tmdb,
+    secretsPresent.tmdb,
+    tmdbApiKey,
+  ]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testGoogleConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
+  const testGoogleConnection = useCallback(async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing Google Search connection...') : undefined;
     const startedAt = Date.now();
     const showError = (message: string, opts?: { immediate?: boolean }) => {
@@ -1636,10 +1670,17 @@ export const SettingsPage = ({
       }
       return false;
     }
-  };
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    googleApiKey,
+    googleSearchEngineId,
+    secretRefs.google,
+    secretsPresent.google,
+  ]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
-  const testOpenAiConnection = async (mode: TestMode = 'manual'): Promise<boolean | null> => {
+  const testOpenAiConnection = useCallback(async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing OpenAI connection...') : undefined;
     const startedAt = Date.now();
     const showError = (message: string, opts?: { immediate?: boolean }) => {
@@ -1692,9 +1733,15 @@ export const SettingsPage = ({
       }
       return false;
     }
-  };
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    openAiApiKey,
+    secretRefs.openai,
+    secretsPresent.openai,
+  ]);
 
-  const runPlexTest = async (mode: TestMode): Promise<boolean | null> => {
+  const runPlexTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++plexTestRunId.current;
     const startedAt = Date.now();
     setPlexIsTesting(true);
@@ -1714,9 +1761,9 @@ export const SettingsPage = ({
     setPlexIsTesting(false);
     if (typeof result === 'boolean') setPlexTestOk(result);
     return typeof result === 'boolean' ? result : null;
-  };
+  }, [testPlexConnection]);
 
-  const runTmdbTest = async (mode: TestMode): Promise<boolean | null> => {
+  const runTmdbTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++tmdbTestRunId.current;
     const startedAt = Date.now();
     setTmdbIsTesting(true);
@@ -1735,9 +1782,9 @@ export const SettingsPage = ({
     setTmdbIsTesting(false);
     if (typeof result === 'boolean') setTmdbTestOk(result);
     return typeof result === 'boolean' ? result : null;
-  };
+  }, [testTmdbConnection]);
 
-  const runRadarrTest = async (mode: TestMode): Promise<boolean | null> => {
+  const runRadarrTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++radarrTestRunId.current;
     const startedAt = Date.now();
     setRadarrIsTesting(true);
@@ -1757,9 +1804,9 @@ export const SettingsPage = ({
     setRadarrIsTesting(false);
     if (typeof result === 'boolean') setRadarrTestOk(result);
     return typeof result === 'boolean' ? result : null;
-  };
+  }, [testRadarrConnection]);
 
-  const runSonarrTest = async (mode: TestMode): Promise<boolean | null> => {
+  const runSonarrTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++sonarrTestRunId.current;
     const startedAt = Date.now();
     setSonarrIsTesting(true);
@@ -1778,9 +1825,9 @@ export const SettingsPage = ({
     setSonarrIsTesting(false);
     if (typeof result === 'boolean') setSonarrTestOk(result);
     return typeof result === 'boolean' ? result : null;
-  };
+  }, [testSonarrConnection]);
 
-  const runSeerrTest = async (mode: TestMode): Promise<boolean | null> => {
+  const runSeerrTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++seerrTestRunId.current;
     const startedAt = Date.now();
     setSeerrIsTesting(true);
@@ -1799,9 +1846,9 @@ export const SettingsPage = ({
     setSeerrIsTesting(false);
     if (typeof result === 'boolean') setSeerrTestOk(result);
     return typeof result === 'boolean' ? result : null;
-  };
+  }, [testSeerrConnection]);
 
-  const runGoogleTest = async (mode: TestMode): Promise<boolean | null> => {
+  const runGoogleTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++googleTestRunId.current;
     const startedAt = Date.now();
     setGoogleIsTesting(true);
@@ -1820,9 +1867,9 @@ export const SettingsPage = ({
     setGoogleIsTesting(false);
     if (typeof result === 'boolean') setGoogleTestOk(result);
     return typeof result === 'boolean' ? result : null;
-  };
+  }, [testGoogleConnection]);
 
-  const runOpenAiTest = async (mode: TestMode): Promise<boolean | null> => {
+  const runOpenAiTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++openAiTestRunId.current;
     const startedAt = Date.now();
     setOpenAiIsTesting(true);
@@ -1841,7 +1888,7 @@ export const SettingsPage = ({
     setOpenAiIsTesting(false);
     if (typeof result === 'boolean') setOpenAiTestOk(result);
     return typeof result === 'boolean' ? result : null;
-  };
+  }, [testOpenAiConnection]);
 
   const additionalArrInstanceStatus = useCallback(
     (instanceId: string, enabled: boolean): StatusPillVariant => {
@@ -2169,6 +2216,13 @@ export const SettingsPage = ({
     googleEnabled,
     openAiEnabled,
     queryClient,
+    runGoogleTest,
+    runOpenAiTest,
+    runPlexTest,
+    runRadarrTest,
+    runSeerrTest,
+    runSonarrTest,
+    testTmdbConnection,
   ]);
 
   useEffect(() => {

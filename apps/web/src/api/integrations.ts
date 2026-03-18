@@ -7,6 +7,19 @@ export type TestSavedIntegrationResponse = {
   [key: string]: unknown;
 };
 
+export type TmdbMovieFilterOption = {
+  id: string;
+  label: string;
+};
+
+export type TmdbMovieFiltersResponse = {
+  ok: true;
+  genres: Array<{ id: number; name: string }>;
+  languages: Array<{ code: string; englishName: string; name: string }>;
+  certifications: Array<{ countryCode: string; certification: string }>;
+  watchProviders: Array<{ id: number; name: string }>;
+};
+
 export function testSavedIntegration(
   integrationId: string,
   body?: Record<string, unknown>,
@@ -23,6 +36,10 @@ export function testSavedIntegration(
         : {}),
     },
   );
+}
+
+export function getTmdbMovieFilters() {
+  return fetchJson<TmdbMovieFiltersResponse>(apiPath('/tmdb/movie-filters'));
 }
 
 export type RadarrOptionsResponse = {

@@ -379,6 +379,38 @@ export const SetupPage = () => {
         },
       ],
     },
+    {
+      id: 'unraid-guide',
+      title: 'Unraid guide',
+      catalogLine:
+        'Open the Unraid setup guide with HTTP-only and HTTPS-sidecar options.',
+      items: [
+        {
+          id: 'unraid-guide-overview',
+          question: 'Need Unraid-specific setup steps?',
+          answer: (
+            <>
+              <p>
+                If you are deploying on Unraid, use the dedicated guide:
+              </p>
+              <p>
+                <Link
+                  to="/setup/unraid"
+                  className="font-semibold text-sky-200 underline decoration-sky-200/40 underline-offset-4 hover:text-white hover:decoration-white/60"
+                >
+                  Open Setup: Unraid
+                </Link>
+              </p>
+              <p>
+                It includes both paths: Option 1 (HTTP-only quick start) and
+                Option 2 (HTTPS sidecar + encrypted secret transport), plus environment variable
+                configuration and verification steps.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
   ];
 
   const cardClass =

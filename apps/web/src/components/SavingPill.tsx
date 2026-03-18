@@ -16,8 +16,10 @@ function useMinDurationFlag(active: boolean, minMs: number) {
 
     if (active) {
       startedAtRef.current = Date.now();
-      setVisible(true);
-      return;
+      const showTimeout = window.setTimeout(() => {
+        setVisible(true);
+      }, 0);
+      return () => window.clearTimeout(showTimeout);
     }
 
     if (!visible) {
@@ -29,9 +31,11 @@ function useMinDurationFlag(active: boolean, minMs: number) {
     const elapsed = Date.now() - startedAt;
     const remaining = minMs - elapsed;
     if (remaining <= 0) {
-      setVisible(false);
-      startedAtRef.current = null;
-      return;
+      const hideTimeout = window.setTimeout(() => {
+        setVisible(false);
+        startedAtRef.current = null;
+      }, 0);
+      return () => window.clearTimeout(hideTimeout);
     }
 
     timeoutRef.current = window.setTimeout(() => {

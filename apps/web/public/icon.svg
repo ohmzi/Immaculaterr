@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="0" fill="#1a1a1a"/>
+  <!-- Screen/Monitor -->
+  <rect x="116" y="120" width="280" height="200" rx="20" fill="none" stroke="#facc15" stroke-width="24"/>
+  <!-- Stand -->
+  <path d="M196 380h120M256 320v60" stroke="#facc15" stroke-width="24" stroke-linecap="round"/>
+  <!-- Magnifying Glass -->
+  <circle cx="224" cy="210" r="48" fill="none" stroke="#facc15" stroke-width="18"/>
+  <path d="M260 246L296 282" stroke="#facc15" stroke-width="18" stroke-linecap="round"/>
+</svg>

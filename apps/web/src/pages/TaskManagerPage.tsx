@@ -5,6 +5,7 @@ import {
   useRef,
   useCallback,
   type ChangeEvent,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -15,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CircleAlert,
   Loader2,
+  Pencil,
   Play,
   X,
   Terminal as TerminalIcon,
@@ -29,10 +31,12 @@ import {
   Zap,
   Sparkles,
   Search,
+  Clapperboard,
+  Trash2,
 } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
-import { testSavedIntegration } from '@/api/integrations';
+import { getTmdbMovieFilters, testSavedIntegration } from '@/api/integrations';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { cn } from '@/components/ui/utils';
@@ -64,6 +68,31 @@ type ScheduleDraft = {
 
 type IntegrationSetupTarget = 'radarr' | 'sonarr' | 'seerr';
 
+type TmdbUpcomingFilterDraft = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  genres: string[];
+  languages: string[];
+  watchProviders: string[];
+  certifications: string[];
+  scoreMin: number;
+  scoreMax: number;
+};
+
+type TmdbUpcomingSettingsDraft = {
+  routeViaSeerr: boolean;
+  globalLimit: number;
+  windowStart: string;
+  windowEnd: string;
+  filters: TmdbUpcomingFilterDraft[];
+};
+
+type TmdbFilterChipOption = {
+  id: string;
+  label: string;
+};
+
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup', // webhook/manual input only
   'immaculateTastePoints', // webhook/manual input only
@@ -72,6 +101,14 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
 const TASK_MANAGER_HIDDEN_JOB_IDS = new Set<string>([
   'collectionResyncUpgrade', // one-time startup migration, not user-managed
 ]);
+
+const TMDB_UPCOMING_DEFAULT_GLOBAL_LIMIT = 100;
+const TMDB_UPCOMING_MAX_GLOBAL_LIMIT = 1000;
+const TMDB_UPCOMING_DEFAULT_WINDOW_MONTHS = 2;
+const TMDB_UPCOMING_DEFAULT_SCORE_MIN = 6;
+const TMDB_UPCOMING_DEFAULT_SCORE_MAX = 10;
+const TMDB_UPCOMING_TOP_LANGUAGE_CODES = ['en', 'zh', 'hi', 'es', 'fr'];
+const TMDB_CALENDAR_WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const DAYS_OF_WEEK: Array<{ value: string; label: string; short: string }> = [
   { value: '0', label: 'Sunday', short: 'Sun' },
@@ -98,6 +135,12 @@ const JOB_CONFIG: Record<
     color: 'text-fuchsia-300',
     description:
       'Runs missing searches for monitored items.',
+  },
+  tmdbUpcomingMovies: {
+    icon: <Clapperboard className="w-8 h-8" />,
+    color: 'text-cyan-300',
+    description:
+      'Discovers upcoming TMDB movies from custom filter sets and routes top picks to Radarr or Seerr.',
   },
   mediaAddedCleanup: {
     icon: <CheckCircle2 className="w-8 h-8" />,
@@ -157,6 +200,86 @@ function readString(obj: unknown, path: string): string {
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
+}
+
+function formatDateLocal(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function parseDateOnly(value: string): Date | null {
+  const trimmed = String(value ?? '').trim();
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+function addMonthsClamped(date: Date, months: number): Date {
+  const source = new Date(date.getTime());
+  const monthIndex = source.getMonth() + Math.trunc(months);
+  const year = source.getFullYear() + Math.floor(monthIndex / 12);
+  const normalizedMonth = ((monthIndex % 12) + 12) % 12;
+  const maxDay = new Date(year, normalizedMonth + 1, 0).getDate();
+  const clampedDay = Math.min(source.getDate(), maxDay);
+  return new Date(
+    year,
+    normalizedMonth,
+    clampedDay,
+    source.getHours(),
+    source.getMinutes(),
+    source.getSeconds(),
+    source.getMilliseconds(),
+  );
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function shiftMonth(date: Date, delta: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
+}
+
+function formatMonthYearLabel(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function buildCalendarMonthCells(month: Date): Array<{
+  value: string;
+  dayOfMonth: number;
+  inCurrentMonth: boolean;
+}> {
+  const monthStart = startOfMonth(month);
+  const gridStart = new Date(
+    monthStart.getFullYear(),
+    monthStart.getMonth(),
+    1 - monthStart.getDay(),
+  );
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(
+      gridStart.getFullYear(),
+      gridStart.getMonth(),
+      gridStart.getDate() + index,
+    );
+    return {
+      value: formatDateLocal(date),
+      dayOfMonth: date.getDate(),
+      inCurrentMonth: date.getMonth() === monthStart.getMonth(),
+    };
+  });
 }
 
 function parseTimeHHMM(time: string): { hour: number; minute: number } | null {
@@ -315,6 +438,174 @@ function calculateNextRuns(draft: ScheduleDraft, count = 5): Date[] {
   return runs;
 }
 
+function createTmdbUpcomingFilterId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `tmdb_filter_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function clampNumber(
+  value: number,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function normalizeStringArray(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function capitalizeFirstNonSpaceCharacter(value: string): string {
+  if (!value) return value;
+  const firstNonSpaceIndex = value.search(/\S/);
+  if (firstNonSpaceIndex < 0) return value;
+  return (
+    value.slice(0, firstNonSpaceIndex) +
+    value.charAt(firstNonSpaceIndex).toUpperCase() +
+    value.slice(firstNonSpaceIndex + 1)
+  );
+}
+
+function pickTopLanguageQuickPicks(
+  options: TmdbFilterChipOption[],
+): TmdbFilterChipOption[] {
+  const preferred = TMDB_UPCOMING_TOP_LANGUAGE_CODES.map((code) =>
+    options.find((option) => option.id.toLowerCase() === code),
+  ).filter((option): option is TmdbFilterChipOption => Boolean(option));
+  if (preferred.length >= 5) return preferred.slice(0, 5);
+
+  const preferredCodes = new Set(
+    preferred.map((option) => option.id.toLowerCase()),
+  );
+  const remainder = options.filter(
+    (option) => !preferredCodes.has(option.id.toLowerCase()),
+  );
+  return [...preferred, ...remainder].slice(0, 5);
+}
+
+function createDefaultTmdbWindowStart(): string {
+  return formatDateLocal(new Date());
+}
+
+function createDefaultTmdbWindowEnd(startDate: string): string {
+  const parsedStart = parseDateOnly(startDate);
+  const sourceDate = parsedStart ?? new Date();
+  return formatDateLocal(
+    addMonthsClamped(sourceDate, TMDB_UPCOMING_DEFAULT_WINDOW_MONTHS),
+  );
+}
+
+function createDefaultTmdbUpcomingFilter(name: string): TmdbUpcomingFilterDraft {
+  return {
+    id: createTmdbUpcomingFilterId(),
+    name: name.trim() || 'Filter',
+    enabled: true,
+    genres: [],
+    languages: [],
+    watchProviders: [],
+    certifications: [],
+    scoreMin: TMDB_UPCOMING_DEFAULT_SCORE_MIN,
+    scoreMax: TMDB_UPCOMING_DEFAULT_SCORE_MAX,
+  };
+}
+
+function getNextTmdbUpcomingFilterName(
+  filters: TmdbUpcomingSettingsDraft['filters'],
+): string {
+  return `Filter ${filters.length + 1}`;
+}
+
+function normalizeTmdbUpcomingSettings(settings: unknown): TmdbUpcomingSettingsDraft {
+  const routeViaSeerr = readBool(settings, 'jobs.tmdbUpcomingMovies.routeViaSeerr') ?? false;
+  const globalLimit = clampNumber(
+    Number(readPath(settings, 'jobs.tmdbUpcomingMovies.globalLimit') ?? NaN),
+    1,
+    TMDB_UPCOMING_MAX_GLOBAL_LIMIT,
+    TMDB_UPCOMING_DEFAULT_GLOBAL_LIMIT,
+  );
+  const legacyReleaseWindowMonths = clampNumber(
+    Number(readPath(settings, 'jobs.tmdbUpcomingMovies.releaseWindowMonths') ?? NaN),
+    1,
+    12,
+    TMDB_UPCOMING_DEFAULT_WINDOW_MONTHS,
+  );
+  const defaultWindowStart = createDefaultTmdbWindowStart();
+  let windowStart = formatDateLocal(
+    parseDateOnly(readString(settings, 'jobs.tmdbUpcomingMovies.windowStart')) ??
+      parseDateOnly(defaultWindowStart) ??
+      new Date(),
+  );
+  let windowEnd = formatDateLocal(
+    parseDateOnly(readString(settings, 'jobs.tmdbUpcomingMovies.windowEnd')) ??
+      addMonthsClamped(
+        parseDateOnly(windowStart) ?? new Date(),
+        legacyReleaseWindowMonths,
+      ),
+  );
+  if (windowEnd < windowStart) {
+    const previousWindowStart = windowStart;
+    windowStart = windowEnd;
+    windowEnd = previousWindowStart;
+  }
+
+  const rawFilters = readPath(settings, 'jobs.tmdbUpcomingMovies.filters');
+  const filters = Array.isArray(rawFilters)
+    ? rawFilters
+        .map((entry, index): TmdbUpcomingFilterDraft | null => {
+          if (!isPlainObject(entry)) return null;
+          const scoreMinRaw = Number(entry.scoreMin ?? NaN);
+          const scoreMin = clampNumber(
+            scoreMinRaw,
+            0,
+            10,
+            TMDB_UPCOMING_DEFAULT_SCORE_MIN,
+          );
+          const scoreMax = TMDB_UPCOMING_DEFAULT_SCORE_MAX;
+          return {
+            id:
+              (typeof entry.id === 'string' && entry.id.trim()) ||
+              createTmdbUpcomingFilterId(),
+            name: capitalizeFirstNonSpaceCharacter(
+              (typeof entry.name === 'string' && entry.name.trim()) ||
+                `Filter ${index + 1}`,
+            ),
+            enabled: typeof entry.enabled === 'boolean' ? entry.enabled : true,
+            genres: normalizeStringArray(entry.genres),
+            languages: normalizeStringArray(entry.languages).slice(0, 1),
+            watchProviders: normalizeStringArray(entry.watchProviders),
+            certifications: normalizeStringArray(entry.certifications),
+            scoreMin: Math.min(scoreMin, TMDB_UPCOMING_DEFAULT_SCORE_MAX),
+            scoreMax,
+          };
+        })
+        .filter((entry): entry is TmdbUpcomingFilterDraft => entry !== null)
+    : [];
+
+  return {
+    routeViaSeerr,
+    globalLimit,
+    windowStart,
+    windowEnd,
+    filters,
+  };
+}
+
 const TASK_MANAGER_AUTO_EXPAND_SEEN_KEY = 'immaculaterr.taskManager.autoExpandSeen.v1';
 
 export function TaskManagerPage() {
@@ -440,18 +731,77 @@ export function TaskManagerPage() {
   const [immaculateApprovalRequired, setImmaculateApprovalRequired] =
     useState(false);
   const [watchedApprovalRequired, setWatchedApprovalRequired] = useState(false);
+  const [tmdbUpcomingSettingsDraft, setTmdbUpcomingSettingsDraft] =
+    useState<TmdbUpcomingSettingsDraft>(() => {
+      const defaultWindowStart = createDefaultTmdbWindowStart();
+      return {
+        routeViaSeerr: false,
+        globalLimit: TMDB_UPCOMING_DEFAULT_GLOBAL_LIMIT,
+        windowStart: defaultWindowStart,
+        windowEnd: createDefaultTmdbWindowEnd(defaultWindowStart),
+        filters: [],
+      };
+    });
+  const [tmdbGenreSearchByFilter, setTmdbGenreSearchByFilter] = useState<
+    Record<string, string>
+  >({});
+  const [tmdbLanguageSearchByFilter, setTmdbLanguageSearchByFilter] = useState<
+    Record<string, string>
+  >({});
+  const [tmdbWatchProviderSearchByFilter, setTmdbWatchProviderSearchByFilter] =
+    useState<Record<string, string>>({});
+  const [tmdbFilterTitleEditingById, setTmdbFilterTitleEditingById] = useState<
+    Record<string, boolean>
+  >({});
+  const [tmdbFilterExpandedById, setTmdbFilterExpandedById] = useState<
+    Record<string, boolean>
+  >({});
+  const tmdbFilterTitleInputRefs = useRef<Record<string, HTMLInputElement | null>>(
+    {},
+  );
+  const tmdbFilterCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const tmdbPendingNewFilterIdRef = useRef<string | null>(null);
+  const tmdbIgnoreNextAddFilterClickRef = useRef(false);
+  const tmdbAddFilterPointerDownRef = useRef(false);
+  const [tmdbWindowStartCalendarOpen, setTmdbWindowStartCalendarOpen] =
+    useState(false);
+  const [tmdbWindowEndCalendarOpen, setTmdbWindowEndCalendarOpen] =
+    useState(false);
+  const [tmdbWindowStartCalendarMonth, setTmdbWindowStartCalendarMonth] =
+    useState<Date>(() => {
+      const defaultStart = createDefaultTmdbWindowStart();
+      return startOfMonth(parseDateOnly(defaultStart) ?? new Date());
+    });
+  const [tmdbWindowEndCalendarMonth, setTmdbWindowEndCalendarMonth] =
+    useState<Date>(() => {
+      const defaultStart = createDefaultTmdbWindowStart();
+      const defaultEnd = createDefaultTmdbWindowEnd(defaultStart);
+      return startOfMonth(parseDateOnly(defaultEnd) ?? new Date());
+    });
+  const tmdbUpcomingSettingsDraftRef = useRef<TmdbUpcomingSettingsDraft>(
+    tmdbUpcomingSettingsDraft,
+  );
+  const tmdbCalendarToday = createDefaultTmdbWindowStart();
+  const tmdbWindowStartCalendarCells = useMemo(
+    () => buildCalendarMonthCells(tmdbWindowStartCalendarMonth),
+    [tmdbWindowStartCalendarMonth],
+  );
+  const tmdbWindowEndCalendarCells = useMemo(
+    () => buildCalendarMonthCells(tmdbWindowEndCalendarMonth),
+    [tmdbWindowEndCalendarMonth],
+  );
 
-  const openIntegrationSetupDialog = (target: IntegrationSetupTarget) => {
+  const openIntegrationSetupDialog = useCallback((target: IntegrationSetupTarget) => {
     setIntegrationSetupTarget(target);
     setIntegrationSetupOpen(true);
-  };
+  }, []);
 
   const closeIntegrationSetupDialog = useCallback(() => {
     setIntegrationSetupOpen(false);
     setIntegrationSetupTarget(null);
   }, []);
 
-  const markAutoExpandSeen = (jobId: string) => {
+  const markAutoExpandSeen = useCallback((jobId: string) => {
     setAutoExpandSeen((prev) => {
       if (prev[jobId] === true) return prev;
       const next = { ...prev, [jobId]: true };
@@ -462,7 +812,7 @@ export function TaskManagerPage() {
       }
       return next;
     });
-  };
+  }, []);
   const centerJobCard = useCallback((jobId: string, behavior: ScrollBehavior) => {
     const el = document.getElementById(`job-${jobId}`);
     if (!el) return;
@@ -498,6 +848,93 @@ export function TaskManagerPage() {
   const publicSettings = settingsQuery.data?.settings;
   const secretsPresent = settingsQuery.data?.secretsPresent ?? {};
 
+  const tmdbMovieFiltersQuery = useQuery({
+    queryKey: ['tmdbMovieFilters'],
+    queryFn: getTmdbMovieFilters,
+    enabled: settingsQuery.status === 'success' && Boolean(secretsPresent.tmdb),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const tmdbUpcomingSettingsMutation = useMutation({
+    mutationFn: async (next: TmdbUpcomingSettingsDraft) =>
+      putSettings({
+        settings: {
+          jobs: {
+            tmdbUpcomingMovies: next,
+          },
+        },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
+
+  useEffect(() => {
+    if (tmdbUpcomingSettingsMutation.isPending) return;
+    const nextDraft = normalizeTmdbUpcomingSettings(publicSettings);
+    const timeout = setTimeout(() => {
+      setTmdbUpcomingSettingsDraft(nextDraft);
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [publicSettings, tmdbUpcomingSettingsMutation.isPending]);
+
+  useEffect(() => {
+    tmdbUpcomingSettingsDraftRef.current = tmdbUpcomingSettingsDraft;
+  }, [tmdbUpcomingSettingsDraft]);
+
+  useEffect(() => {
+    if (!tmdbWindowStartCalendarOpen) return;
+    const selectedStart =
+      parseDateOnly(tmdbUpcomingSettingsDraft.windowStart) ?? new Date();
+    const timeout = window.setTimeout(() => {
+      setTmdbWindowStartCalendarMonth(startOfMonth(selectedStart));
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [tmdbUpcomingSettingsDraft.windowStart, tmdbWindowStartCalendarOpen]);
+
+  useEffect(() => {
+    if (!tmdbWindowEndCalendarOpen) return;
+    const selectedEnd = parseDateOnly(tmdbUpcomingSettingsDraft.windowEnd) ?? new Date();
+    const timeout = window.setTimeout(() => {
+      setTmdbWindowEndCalendarMonth(startOfMonth(selectedEnd));
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [tmdbUpcomingSettingsDraft.windowEnd, tmdbWindowEndCalendarOpen]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setTmdbFilterExpandedById((prev) => {
+        const next: Record<string, boolean> = {};
+        let changed = Object.keys(prev).length !== tmdbUpcomingSettingsDraft.filters.length;
+        for (const filter of tmdbUpcomingSettingsDraft.filters) {
+          const expanded = prev[filter.id] ?? false;
+          next[filter.id] = expanded;
+          if (!changed && prev[filter.id] !== expanded) {
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [tmdbUpcomingSettingsDraft.filters]);
+  useEffect(() => {
+    const pendingFilterId = tmdbPendingNewFilterIdRef.current;
+    if (!pendingFilterId) return;
+    const stillExists = tmdbUpcomingSettingsDraft.filters.some(
+      (filter) => filter.id === pendingFilterId,
+    );
+    if (stillExists) return;
+    tmdbPendingNewFilterIdRef.current = null;
+    setTmdbFilterTitleEditingById((prev) => {
+      if (!(pendingFilterId in prev)) return prev;
+      const next = { ...prev };
+      delete next[pendingFilterId];
+      return next;
+    });
+  }, [tmdbUpcomingSettingsDraft.filters]);
+
   const isRadarrEnabled = (() => {
     const saved = readBool(publicSettings, 'radarr.enabled');
     return (saved ?? Boolean(secretsPresent.radarr)) === true;
@@ -530,12 +967,23 @@ export function TaskManagerPage() {
     if (settingsQuery.status !== 'success') return;
     if (!isRadarrEnabled && !isSonarrEnabled) {
       // Nothing enabled -> don't ping.
-      setArrPing((p) => ({ ...p, loading: false, radarrOk: null, sonarrOk: null, checkedAtMs: Date.now() }));
-      return;
+      const timeout = window.setTimeout(() => {
+        setArrPing((p) => ({
+          ...p,
+          loading: false,
+          radarrOk: null,
+          sonarrOk: null,
+          checkedAtMs: Date.now(),
+        }));
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
 
     let cancelled = false;
-    setArrPing((p) => ({ ...p, loading: true }));
+    const loadingTimeout = window.setTimeout(() => {
+      if (cancelled) return;
+      setArrPing((p) => ({ ...p, loading: true }));
+    }, 0);
 
     const run = async () => {
       const [radarrRes, sonarrRes] = await Promise.allSettled([
@@ -560,6 +1008,7 @@ export function TaskManagerPage() {
     void run();
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingTimeout);
     };
   }, [settingsQuery.status, isRadarrEnabled, isSonarrEnabled]);
   const immaculateIncludeRefresherMutation = useMutation({
@@ -587,7 +1036,10 @@ export function TaskManagerPage() {
       settingsQuery.data?.settings,
       'immaculateTaste.includeRefresherAfterUpdate',
     );
-    setImmaculateIncludeRefresherAfterUpdate(saved ?? true);
+    const timeout = window.setTimeout(() => {
+      setImmaculateIncludeRefresherAfterUpdate(saved ?? true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, immaculateIncludeRefresherMutation.isPending]);
 
   useEffect(() => {
@@ -596,13 +1048,18 @@ export function TaskManagerPage() {
       settingsQuery.data?.settings,
       'jobs.immaculateTastePoints.searchImmediately',
     );
-    setImmaculateStartSearchImmediately(saved ?? false);
+    const timeout = window.setTimeout(() => {
+      setImmaculateStartSearchImmediately(saved ?? false);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, immaculateStartSearchMutation.isPending]);
 
   useEffect(() => {
-    if (immaculateIncludeRefresherMutation.isError) {
+    if (!immaculateIncludeRefresherMutation.isError) return;
+    const timeout = window.setTimeout(() => {
       setImmaculateRefresherDetailsOpen(true);
-    }
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [immaculateIncludeRefresherMutation.isError]);
 
   const webhookAutoRunMutation = useMutation({
@@ -621,17 +1078,20 @@ export function TaskManagerPage() {
     if (!settings) return;
     if (webhookAutoRunMutation.isPending) return;
 
-    setWebhookAutoRun((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const jobId of UNSCHEDULABLE_JOB_IDS) {
-        if (next[jobId] !== undefined) continue;
-        const saved = readBool(settings, `jobs.webhookEnabled.${jobId}`);
-        next[jobId] = saved ?? false;
-        changed = true;
-      }
-      return changed ? next : prev;
-    });
+    const timeout = window.setTimeout(() => {
+      setWebhookAutoRun((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const jobId of UNSCHEDULABLE_JOB_IDS) {
+          if (next[jobId] !== undefined) continue;
+          const saved = readBool(settings, `jobs.webhookEnabled.${jobId}`);
+          next[jobId] = saved ?? false;
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, webhookAutoRunMutation.isPending]);
 
   const arrMonitoredSearchOptionsMutation = useMutation({
@@ -650,8 +1110,11 @@ export function TaskManagerPage() {
     if (!settings) return;
     const includeRadarr = readBool(settings, 'jobs.arrMonitoredSearch.includeRadarr');
     const includeSonarr = readBool(settings, 'jobs.arrMonitoredSearch.includeSonarr');
-    setArrMonitoredIncludeRadarr(includeRadarr ?? true);
-    setArrMonitoredIncludeSonarr(includeSonarr ?? true);
+    const timeout = window.setTimeout(() => {
+      setArrMonitoredIncludeRadarr(includeRadarr ?? true);
+      setArrMonitoredIncludeSonarr(includeSonarr ?? true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, arrMonitoredSearchOptionsMutation.isPending]);
 
   const mediaAddedCleanupFeaturesMutation = useMutation({
@@ -678,15 +1141,18 @@ export function TaskManagerPage() {
     if (mediaAddedCleanupFeaturesMutation.isPending) return;
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
-    setMediaAddedCleanupDeleteDuplicates(
-      readBool(settings, 'jobs.mediaAddedCleanup.features.deleteDuplicates') ?? true,
-    );
-    setMediaAddedCleanupUnmonitorInArr(
-      readBool(settings, 'jobs.mediaAddedCleanup.features.unmonitorInArr') ?? true,
-    );
-    setMediaAddedCleanupRemoveFromWatchlist(
-      readBool(settings, 'jobs.mediaAddedCleanup.features.removeFromWatchlist') ?? true,
-    );
+    const timeout = window.setTimeout(() => {
+      setMediaAddedCleanupDeleteDuplicates(
+        readBool(settings, 'jobs.mediaAddedCleanup.features.deleteDuplicates') ?? true,
+      );
+      setMediaAddedCleanupUnmonitorInArr(
+        readBool(settings, 'jobs.mediaAddedCleanup.features.unmonitorInArr') ?? true,
+      );
+      setMediaAddedCleanupRemoveFromWatchlist(
+        readBool(settings, 'jobs.mediaAddedCleanup.features.removeFromWatchlist') ?? true,
+      );
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, mediaAddedCleanupFeaturesMutation.isPending]);
 
   const fetchMissingMutation = useMutation({
@@ -763,43 +1229,45 @@ export function TaskManagerPage() {
     if (fetchMissingMutation.isPending || seerrModeMutation.isPending) return;
     const settings = settingsQuery.data?.settings;
     if (!settings) return;
+    const timeout = window.setTimeout(() => {
+      setImmaculateFetchMissingRadarr(
+        readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ?? true,
+      );
+      setImmaculateFetchMissingSonarr(
+        readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ?? true,
+      );
+      setImmaculateFetchMissingSeerr(
+        readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
+          false,
+      );
+      setWatchedFetchMissingRadarr(
+        readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
+          true,
+      );
+      setWatchedFetchMissingSonarr(
+        readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
+          true,
+      );
+      setWatchedFetchMissingSeerr(
+        readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.seerr') ??
+          false,
+      );
 
-    setImmaculateFetchMissingRadarr(
-      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.radarr') ?? true,
-    );
-    setImmaculateFetchMissingSonarr(
-      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.sonarr') ?? true,
-    );
-    setImmaculateFetchMissingSeerr(
-      readBool(settings, 'jobs.immaculateTastePoints.fetchMissing.seerr') ??
-        false,
-    );
-    setWatchedFetchMissingRadarr(
-      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.radarr') ??
-        true,
-    );
-    setWatchedFetchMissingSonarr(
-      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.sonarr') ??
-        true,
-    );
-    setWatchedFetchMissingSeerr(
-      readBool(settings, 'jobs.watchedMovieRecommendations.fetchMissing.seerr') ??
-        false,
-    );
+      setImmaculateApprovalRequired(
+        readBool(
+          settings,
+          'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
+        ) ?? false,
+      );
 
-    setImmaculateApprovalRequired(
-      readBool(
-        settings,
-        'jobs.immaculateTastePoints.approvalRequiredFromObservatory',
-      ) ?? false,
-    );
-
-    setWatchedApprovalRequired(
-      readBool(
-        settings,
-        'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
-      ) ?? false,
-    );
+      setWatchedApprovalRequired(
+        readBool(
+          settings,
+          'jobs.watchedMovieRecommendations.approvalRequiredFromObservatory',
+        ) ?? false,
+      );
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [
     settingsQuery.data?.settings,
     fetchMissingMutation.isPending,
@@ -842,19 +1310,59 @@ export function TaskManagerPage() {
   const watchedSeerrModePending =
     seerrModeMutation.isPending &&
     seerrModeMutation.variables?.jobId === 'watchedMovieRecommendations';
+  const tmdbGenreOptions = useMemo<TmdbFilterChipOption[]>(
+    () =>
+      (tmdbMovieFiltersQuery.data?.genres ?? [])
+        .map((entry) => ({
+          id: String(entry.id),
+          label: entry.name,
+        }))
+        .filter((entry) => entry.id.trim() && entry.label.trim()),
+    [tmdbMovieFiltersQuery.data?.genres],
+  );
+  const tmdbLanguageOptions = useMemo<TmdbFilterChipOption[]>(
+    () =>
+      (tmdbMovieFiltersQuery.data?.languages ?? [])
+        .map((entry) => ({
+          id: entry.code,
+          label: entry.englishName?.trim() || entry.name?.trim() || entry.code,
+        }))
+        .filter((entry) => entry.id.trim() && entry.label.trim()),
+    [tmdbMovieFiltersQuery.data?.languages],
+  );
+  const tmdbCertificationOptions = useMemo<TmdbFilterChipOption[]>(
+    () =>
+      (tmdbMovieFiltersQuery.data?.certifications ?? [])
+        .map((entry) => ({
+          id: entry.certification,
+          label: entry.certification,
+        }))
+        .filter((entry) => entry.id.trim() && entry.label.trim()),
+    [tmdbMovieFiltersQuery.data?.certifications],
+  );
+  const tmdbWatchProviderOptions = useMemo<TmdbFilterChipOption[]>(
+    () =>
+      (tmdbMovieFiltersQuery.data?.watchProviders ?? [])
+        .map((entry) => ({
+          id: String(entry.id),
+          label: entry.name,
+        }))
+        .filter((entry) => entry.id.trim() && entry.label.trim()),
+    [tmdbMovieFiltersQuery.data?.watchProviders],
+  );
 
   useEffect(() => {
     if (!flashJob) return;
     // Keep the highlight mounted long enough for the full pulse sequence.
     const t = setTimeout(() => setFlashJob(null), 4200);
     return () => clearTimeout(t);
-  }, [flashJob?.nonce]);
+  }, [flashJob]);
 
   useEffect(() => {
     if (!cardIconPulse) return;
     const t = setTimeout(() => setCardIconPulse(null), 750);
     return () => clearTimeout(t);
-  }, [cardIconPulse?.nonce]);
+  }, [cardIconPulse]);
 
   // Close all popups when clicking outside
   useEffect(() => {
@@ -960,7 +1468,7 @@ export function TaskManagerPage() {
     },
   });
 
-  const clearRunNowTimers = (jobId: string) => {
+  const clearRunNowTimers = useCallback((jobId: string) => {
     const finishTimer = runNowFinishTimersRef.current[jobId];
     if (finishTimer) clearTimeout(finishTimer);
     runNowFinishTimersRef.current[jobId] = null;
@@ -968,20 +1476,22 @@ export function TaskManagerPage() {
     const resetTimer = runNowResetTimersRef.current[jobId];
     if (resetTimer) clearTimeout(resetTimer);
     runNowResetTimersRef.current[jobId] = null;
-  };
+  }, []);
 
-  const startRunNowUi = (jobId: string) => {
+  const startRunNowUi = useCallback((jobId: string) => {
     clearRunNowTimers(jobId);
     setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'running' } }));
-  };
+  }, [clearRunNowTimers]);
 
   // Cleanup timers on unmount (page leave).
   useEffect(() => {
+    const finishTimers = runNowFinishTimersRef.current;
+    const resetTimers = runNowResetTimersRef.current;
     return () => {
-      for (const t of Object.values(runNowFinishTimersRef.current)) {
+      for (const t of Object.values(finishTimers)) {
         if (t) clearTimeout(t);
       }
-      for (const t of Object.values(runNowResetTimersRef.current)) {
+      for (const t of Object.values(resetTimers)) {
         if (t) clearTimeout(t);
       }
     };
@@ -999,29 +1509,31 @@ export function TaskManagerPage() {
 
       // 80% -> 100% (amber), then switch to green (SUCCESS) or red (FAILED).
       clearRunNowTimers(jobId);
-      setRunNowUi((prev) => ({
-        ...prev,
-        [jobId]: { phase: 'finishing', runId: t.runId ?? ui.runId ?? null, result },
-      }));
-
       runNowFinishTimersRef.current[jobId] = setTimeout(() => {
         setRunNowUi((prev) => ({
           ...prev,
-          [jobId]: {
-            phase: 'complete',
-            runId: t.runId ?? ui.runId ?? null,
-            completedAt: Date.now(),
-            result,
-          },
+          [jobId]: { phase: 'finishing', runId: t.runId ?? ui.runId ?? null, result },
         }));
 
-        // Hold "Complete" for 2 minutes, then reset back to "Run Now" (while staying on page).
-        runNowResetTimersRef.current[jobId] = setTimeout(() => {
-          setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'idle' } }));
-        }, 120_000);
-      }, 650);
+        runNowFinishTimersRef.current[jobId] = setTimeout(() => {
+          setRunNowUi((prev) => ({
+            ...prev,
+            [jobId]: {
+              phase: 'complete',
+              runId: t.runId ?? ui.runId ?? null,
+              completedAt: Date.now(),
+              result,
+            },
+          }));
+
+          // Hold "Complete" for 2 minutes, then reset back to "Run Now" (while staying on page).
+          runNowResetTimersRef.current[jobId] = setTimeout(() => {
+            setRunNowUi((prev) => ({ ...prev, [jobId]: { phase: 'idle' } }));
+          }, 120_000);
+        }, 650);
+      }, 0);
     }
-  }, [runNowUi, terminalState]);
+  }, [clearRunNowTimers, runNowUi, terminalState]);
 
   const scheduleMutation = useMutation({
     mutationFn: updateJobSchedule,
@@ -1077,6 +1589,7 @@ export function TaskManagerPage() {
     arrPing.sonarrOk,
     isRadarrEnabled,
     isSonarrEnabled,
+    scheduleMutation,
   ]);
 
   // Check for recent runs on mount and when jobs change
@@ -1192,7 +1705,7 @@ export function TaskManagerPage() {
     return () => {
       timeoutIds.forEach((id) => clearTimeout(id));
     };
-  }, [drafts, visibleJobs]);
+  }, [drafts, scheduleMutation, visibleJobs]);
 
   const integrationSetupMeta = (() => {
     if (integrationSetupTarget === 'radarr') {
@@ -1946,6 +2459,600 @@ export function TaskManagerPage() {
       openIntegrationSetupDialog,
     ],
   );
+  const updateTmdbUpcomingSettings = useCallback(
+    (
+      updater: (prev: TmdbUpcomingSettingsDraft) => TmdbUpcomingSettingsDraft,
+    ) => {
+      const previous = tmdbUpcomingSettingsDraftRef.current;
+      const next = updater(previous);
+      tmdbUpcomingSettingsDraftRef.current = next;
+      setTmdbUpcomingSettingsDraft(next);
+      tmdbUpcomingSettingsMutation.mutate(next, {
+        onError: () => {
+          tmdbUpcomingSettingsDraftRef.current = previous;
+          setTmdbUpcomingSettingsDraft(previous);
+        },
+      });
+    },
+    [tmdbUpcomingSettingsMutation],
+  );
+  const handleToggleTmdbUpcomingRouteViaSeerr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const next = !tmdbUpcomingSettingsDraft.routeViaSeerr;
+      if (next && !canEnableSeerrTaskToggles) {
+        openIntegrationSetupDialog('seerr');
+        return;
+      }
+      updateTmdbUpcomingSettings((prev) => ({ ...prev, routeViaSeerr: next }));
+    },
+    [
+      canEnableSeerrTaskToggles,
+      openIntegrationSetupDialog,
+      tmdbUpcomingSettingsDraft.routeViaSeerr,
+      updateTmdbUpcomingSettings,
+    ],
+  );
+  const handleTmdbUpcomingGlobalLimitChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const value = clampNumber(
+        Number(event.currentTarget.value),
+        1,
+        TMDB_UPCOMING_MAX_GLOBAL_LIMIT,
+        TMDB_UPCOMING_DEFAULT_GLOBAL_LIMIT,
+      );
+      updateTmdbUpcomingSettings((prev) => ({ ...prev, globalLimit: value }));
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const applyTmdbUpcomingWindowStart = useCallback(
+    (nextWindowStart: string) => {
+      updateTmdbUpcomingSettings((prev) => {
+        const parsedStart = parseDateOnly(nextWindowStart);
+        if (!parsedStart) return prev;
+        const normalizedStart = formatDateLocal(parsedStart);
+        const parsedEnd = parseDateOnly(prev.windowEnd);
+        const fallbackEnd = createDefaultTmdbWindowEnd(normalizedStart);
+        const currentWindowEnd = formatDateLocal(
+          parsedEnd ?? parseDateOnly(fallbackEnd) ?? new Date(),
+        );
+        return {
+          ...prev,
+          windowStart: normalizedStart,
+          windowEnd:
+            currentWindowEnd < normalizedStart ? normalizedStart : currentWindowEnd,
+        };
+      });
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const applyTmdbUpcomingWindowEnd = useCallback(
+    (nextWindowEnd: string) => {
+      updateTmdbUpcomingSettings((prev) => {
+        const parsedEnd = parseDateOnly(nextWindowEnd);
+        if (!parsedEnd) return prev;
+        const normalizedEnd = formatDateLocal(parsedEnd);
+        const parsedStart = parseDateOnly(prev.windowStart);
+        const fallbackStart = createDefaultTmdbWindowStart();
+        const currentWindowStart = formatDateLocal(
+          parsedStart ?? parseDateOnly(fallbackStart) ?? new Date(),
+        );
+        return {
+          ...prev,
+          windowStart:
+            normalizedEnd < currentWindowStart ? normalizedEnd : currentWindowStart,
+          windowEnd: normalizedEnd,
+        };
+      });
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const handleTmdbUpcomingWindowStartToday = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      applyTmdbUpcomingWindowStart(createDefaultTmdbWindowStart());
+    },
+    [applyTmdbUpcomingWindowStart],
+  );
+  const handleTmdbUpcomingWindowStartClear = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      applyTmdbUpcomingWindowStart(createDefaultTmdbWindowStart());
+    },
+    [applyTmdbUpcomingWindowStart],
+  );
+  const handleTmdbUpcomingWindowEndToday = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      applyTmdbUpcomingWindowEnd(createDefaultTmdbWindowStart());
+    },
+    [applyTmdbUpcomingWindowEnd],
+  );
+  const handleTmdbUpcomingWindowEndClear = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const currentStart = formatDateLocal(
+        parseDateOnly(tmdbUpcomingSettingsDraftRef.current.windowStart) ?? new Date(),
+      );
+      applyTmdbUpcomingWindowEnd(createDefaultTmdbWindowEnd(currentStart));
+    },
+    [applyTmdbUpcomingWindowEnd],
+  );
+  const handleTmdbUpcomingWindowStartCalendarSelect = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const value = event.currentTarget.dataset.value;
+      if (!value) return;
+      applyTmdbUpcomingWindowStart(value);
+    },
+    [applyTmdbUpcomingWindowStart],
+  );
+  const handleTmdbUpcomingWindowEndCalendarSelect = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const value = event.currentTarget.dataset.value;
+      if (!value) return;
+      applyTmdbUpcomingWindowEnd(value);
+    },
+    [applyTmdbUpcomingWindowEnd],
+  );
+  const handleTmdbUpcomingWindowStartMonthShift = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const delta = Number(event.currentTarget.dataset.delta ?? NaN);
+      if (!Number.isFinite(delta) || delta === 0) return;
+      setTmdbWindowStartCalendarMonth((prev) =>
+        shiftMonth(prev, Math.trunc(delta)),
+      );
+    },
+    [],
+  );
+  const handleTmdbUpcomingWindowEndMonthShift = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const delta = Number(event.currentTarget.dataset.delta ?? NaN);
+      if (!Number.isFinite(delta) || delta === 0) return;
+      setTmdbWindowEndCalendarMonth((prev) => shiftMonth(prev, Math.trunc(delta)));
+    },
+    [],
+  );
+  const revealTmdbUpcomingFilterForTitleEdit = useCallback(
+    (filterId: string) => {
+      const runReveal = () => {
+        const card = tmdbFilterCardRefs.current[filterId];
+        if (card) {
+          card.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        }
+        const input = tmdbFilterTitleInputRefs.current[filterId];
+        if (!input) return;
+        input.focus();
+        const end = input.value.length;
+        try {
+          input.setSelectionRange(0, end);
+        } catch {
+          input.select();
+        }
+      };
+      window.setTimeout(runReveal, 0);
+      window.setTimeout(runReveal, 180);
+    },
+    [],
+  );
+  const handleTmdbAddFilterPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      handleStopPropagationPointer(event);
+      tmdbAddFilterPointerDownRef.current = true;
+    },
+    [handleStopPropagationPointer],
+  );
+  const handleAddTmdbUpcomingFilter = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      tmdbAddFilterPointerDownRef.current = false;
+      if (tmdbIgnoreNextAddFilterClickRef.current) {
+        tmdbIgnoreNextAddFilterClickRef.current = false;
+        return;
+      }
+      const pendingFilterId = tmdbPendingNewFilterIdRef.current;
+      if (pendingFilterId) {
+        setTmdbFilterExpandedById((prev) => ({
+          ...prev,
+          [pendingFilterId]: true,
+        }));
+        setTmdbFilterTitleEditingById((prev) => ({
+          ...prev,
+          [pendingFilterId]: true,
+        }));
+        revealTmdbUpcomingFilterForTitleEdit(pendingFilterId);
+        return;
+      }
+      const nextFilter = createDefaultTmdbUpcomingFilter(
+        getNextTmdbUpcomingFilterName(tmdbUpcomingSettingsDraftRef.current.filters),
+      );
+      tmdbPendingNewFilterIdRef.current = nextFilter.id;
+      setTmdbFilterExpandedById((prev) => ({
+        ...prev,
+        [nextFilter.id]: true,
+      }));
+      setTmdbFilterTitleEditingById((prev) => ({
+        ...prev,
+        [nextFilter.id]: true,
+      }));
+      updateTmdbUpcomingSettings((prev) => ({
+        ...prev,
+        filters: [...prev.filters, nextFilter],
+      }));
+      revealTmdbUpcomingFilterForTitleEdit(nextFilter.id);
+    },
+    [revealTmdbUpcomingFilterForTitleEdit, updateTmdbUpcomingSettings],
+  );
+  const handleRemoveTmdbUpcomingFilter = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      updateTmdbUpcomingSettings((prev) => {
+        const remaining = prev.filters.filter((filter) => filter.id !== filterId);
+        return {
+          ...prev,
+          filters: remaining,
+        };
+      });
+      setTmdbGenreSearchByFilter((prev) => {
+        if (!(filterId in prev)) return prev;
+        const next = { ...prev };
+        delete next[filterId];
+        return next;
+      });
+      setTmdbLanguageSearchByFilter((prev) => {
+        if (!(filterId in prev)) return prev;
+        const next = { ...prev };
+        delete next[filterId];
+        return next;
+      });
+      setTmdbWatchProviderSearchByFilter((prev) => {
+        if (!(filterId in prev)) return prev;
+        const next = { ...prev };
+        delete next[filterId];
+        return next;
+      });
+      setTmdbFilterTitleEditingById((prev) => {
+        if (!(filterId in prev)) return prev;
+        const next = { ...prev };
+        delete next[filterId];
+        return next;
+      });
+      if (tmdbPendingNewFilterIdRef.current === filterId) {
+        tmdbPendingNewFilterIdRef.current = null;
+      }
+      delete tmdbFilterTitleInputRefs.current[filterId];
+      delete tmdbFilterCardRefs.current[filterId];
+      setTmdbFilterExpandedById((prev) => {
+        if (!(filterId in prev)) return prev;
+        const next = { ...prev };
+        delete next[filterId];
+        return next;
+      });
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const handleTmdbUpcomingFilterNameChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      const value = capitalizeFirstNonSpaceCharacter(event.currentTarget.value);
+      setTmdbUpcomingSettingsDraft((prev) => {
+        const next = {
+          ...prev,
+          filters: prev.filters.map((filter) => {
+            if (filter.id !== filterId) return filter;
+            return {
+              ...filter,
+              name: value,
+            };
+          }),
+        };
+        tmdbUpcomingSettingsDraftRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+  const handleTmdbUpcomingFilterNameBlur = useCallback(
+    (event: ReactFocusEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (filterId) {
+        setTmdbFilterTitleEditingById((prev) => {
+          if (!prev[filterId]) return prev;
+          const next = { ...prev };
+          delete next[filterId];
+          return next;
+        });
+        if (tmdbPendingNewFilterIdRef.current === filterId) {
+          tmdbPendingNewFilterIdRef.current = null;
+          if (tmdbAddFilterPointerDownRef.current) {
+            tmdbIgnoreNextAddFilterClickRef.current = true;
+          }
+        }
+      }
+      updateTmdbUpcomingSettings((prev) => prev);
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const handleTmdbUpcomingFilterNameKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.currentTarget.blur();
+        return;
+      }
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      event.currentTarget.blur();
+    },
+    [],
+  );
+  const focusTmdbFilterTitleInput = useCallback((filterId: string) => {
+    const runFocus = () => {
+      const input = tmdbFilterTitleInputRefs.current[filterId];
+      if (!input) return;
+      input.focus();
+      const end = input.value.length;
+      try {
+        input.setSelectionRange(0, end);
+      } catch {
+        input.select();
+      }
+    };
+    setTimeout(runFocus, 0);
+  }, []);
+  const handleStartTmdbUpcomingFilterTitleEdit = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      setTmdbFilterTitleEditingById((prev) => ({
+        ...prev,
+        [filterId]: true,
+      }));
+      focusTmdbFilterTitleInput(filterId);
+    },
+    [focusTmdbFilterTitleInput],
+  );
+  const toggleTmdbUpcomingFilterCollapsed = useCallback((filterId: string) => {
+    const normalizedFilterId = filterId.trim();
+    if (!normalizedFilterId) return;
+    setTmdbFilterExpandedById((prev) => ({
+      ...prev,
+      [normalizedFilterId]: !(prev[normalizedFilterId] ?? false),
+    }));
+  }, []);
+  const handleTmdbUpcomingFilterHeaderClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.stopPropagation();
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-no-filter-toggle="true"]')) return;
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      toggleTmdbUpcomingFilterCollapsed(filterId);
+    },
+    [toggleTmdbUpcomingFilterCollapsed],
+  );
+  const handleTmdbUpcomingFilterHeaderKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-no-filter-toggle="true"]')) return;
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      toggleTmdbUpcomingFilterCollapsed(filterId);
+    },
+    [toggleTmdbUpcomingFilterCollapsed],
+  );
+  const handleTmdbUpcomingGenreSearchChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      const value = event.currentTarget.value;
+      setTmdbGenreSearchByFilter((prev) => ({ ...prev, [filterId]: value }));
+    },
+    [],
+  );
+  const handleTmdbUpcomingGenreSearchKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      setTmdbGenreSearchByFilter((prev) => {
+        if ((prev[filterId] ?? '') === '') return prev;
+        return { ...prev, [filterId]: '' };
+      });
+      event.currentTarget.blur();
+    },
+    [],
+  );
+  const handleTmdbUpcomingLanguageSearchChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      const value = event.currentTarget.value;
+      setTmdbLanguageSearchByFilter((prev) => ({ ...prev, [filterId]: value }));
+    },
+    [],
+  );
+  const handleTmdbUpcomingLanguageSearchKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      setTmdbLanguageSearchByFilter((prev) => {
+        if ((prev[filterId] ?? '') === '') return prev;
+        return { ...prev, [filterId]: '' };
+      });
+      event.currentTarget.blur();
+    },
+    [],
+  );
+  const handleTmdbUpcomingWatchProviderSearchChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      const value = event.currentTarget.value;
+      setTmdbWatchProviderSearchByFilter((prev) => ({ ...prev, [filterId]: value }));
+    },
+    [],
+  );
+  const handleTmdbUpcomingWatchProviderSearchKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      setTmdbWatchProviderSearchByFilter((prev) => {
+        if ((prev[filterId] ?? '') === '') return prev;
+        return { ...prev, [filterId]: '' };
+      });
+      event.currentTarget.blur();
+    },
+    [],
+  );
+  const handleAddTmdbUpcomingChip = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      const field = event.currentTarget.dataset.field;
+      const value = event.currentTarget.dataset.value;
+      if (!filterId || !field || !value) return;
+      if (
+        field !== 'genres' &&
+        field !== 'languages' &&
+        field !== 'watchProviders' &&
+        field !== 'certifications'
+      ) {
+        return;
+      }
+      updateTmdbUpcomingSettings((prev) => ({
+        ...prev,
+        filters: prev.filters.map((filter) => {
+          if (filter.id !== filterId) return filter;
+          const currentValues = filter[field];
+          if (currentValues.includes(value)) return filter;
+          if (field === 'languages') {
+            if (currentValues.length > 0) return filter;
+            return { ...filter, languages: [value] };
+          }
+          return {
+            ...filter,
+            [field]: [...currentValues, value],
+          };
+        }),
+      }));
+
+      if (field === 'genres') {
+        setTmdbGenreSearchByFilter((prev) => ({ ...prev, [filterId]: '' }));
+      } else if (field === 'languages') {
+        setTmdbLanguageSearchByFilter((prev) => ({ ...prev, [filterId]: '' }));
+      } else if (field === 'watchProviders') {
+        setTmdbWatchProviderSearchByFilter((prev) => ({ ...prev, [filterId]: '' }));
+      }
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const handleToggleTmdbUpcomingFilterEnabled = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      updateTmdbUpcomingSettings((prev) => ({
+        ...prev,
+        filters: prev.filters.map((filter) =>
+          filter.id === filterId ? { ...filter, enabled: !filter.enabled } : filter,
+        ),
+      }));
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const handleTmdbUpcomingScoreChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      if (!filterId) return;
+      const value = clampNumber(
+        Number(event.currentTarget.value),
+        0,
+        10,
+        TMDB_UPCOMING_DEFAULT_SCORE_MIN,
+      );
+      updateTmdbUpcomingSettings((prev) => ({
+        ...prev,
+        filters: prev.filters.map((filter) => {
+          if (filter.id !== filterId) return filter;
+          return {
+            ...filter,
+            scoreMin: Math.min(value, TMDB_UPCOMING_DEFAULT_SCORE_MAX),
+            scoreMax: TMDB_UPCOMING_DEFAULT_SCORE_MAX,
+          };
+        }),
+      }));
+    },
+    [updateTmdbUpcomingSettings],
+  );
+  const handleTmdbUpcomingChipToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const filterId = event.currentTarget.dataset.filterId;
+      const field = event.currentTarget.dataset.field;
+      const value = event.currentTarget.dataset.value;
+      if (!filterId || !field || !value) return;
+      if (
+        field !== 'genres' &&
+        field !== 'languages' &&
+        field !== 'watchProviders' &&
+        field !== 'certifications'
+      ) {
+        return;
+      }
+      updateTmdbUpcomingSettings((prev) => ({
+        ...prev,
+        filters: prev.filters.map((filter) => {
+          if (filter.id !== filterId) return filter;
+          const currentValues = filter[field];
+          const isSelected = currentValues.includes(value);
+          if (field === 'languages') {
+            if (isSelected) {
+              return { ...filter, languages: [] };
+            }
+            if (currentValues.length > 0) return filter;
+            return { ...filter, languages: [value] };
+          }
+          return {
+            ...filter,
+            [field]: isSelected
+              ? currentValues.filter((entry) => entry !== value)
+              : [...currentValues, value],
+          };
+        }),
+      }));
+    },
+    [updateTmdbUpcomingSettings],
+  );
   const resolveDraftForJob = useCallback(
     (jobId: string, sourceDrafts: Record<string, ScheduleDraft>) => {
       const job = visibleJobs.find((entry) => entry.id === jobId);
@@ -2356,7 +3463,7 @@ export function TaskManagerPage() {
                   </AnimatePresence>
 
                   <motion.div
-                    layout
+                    layout={false}
                     aria-disabled={arrRequiredJobBlocked ? true : undefined}
                     data-job-id={job.id}
                     data-arr-required-blocked={arrRequiredJobBlocked ? 'true' : 'false'}
@@ -2423,7 +3530,9 @@ export function TaskManagerPage() {
                               (job.id === 'mediaAddedCleanup' &&
                                 mediaAddedCleanupFeaturesMutation.isPending) ||
                               (job.id === 'immaculateTastePoints' &&
-                                immaculateIncludeRefresherMutation.isPending)
+                                immaculateIncludeRefresherMutation.isPending) ||
+                              (job.id === 'tmdbUpcomingMovies' &&
+                                tmdbUpcomingSettingsMutation.isPending)
                             }
                             className="static shrink-0 hidden md:inline-flex"
                           />
@@ -3353,19 +4462,898 @@ export function TaskManagerPage() {
                     {supportsSchedule && isExpanded && draft.enabled && (
                       <motion.div
                         data-no-card-toggle="true"
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{
-                          type: 'spring',
-                          stiffness: 200,
-                          damping: 25,
-                          mass: 0.8
-                        }}
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.16, ease: 'easeOut' }}
                         className="overflow-visible bg-[#0F0B15]/30 border-t border-white/5"
                       >
                         <div className="p-4 md:p-6">
-                          <div className="p-4 rounded-2xl bg-[#0F0B15]/50 border border-white/5 flex flex-col gap-4">
+                          <div className="rounded-2xl border border-white/5 bg-[#0F0B15]/50 p-4 md:p-5 flex flex-col gap-5">
+                            {job.id === 'tmdbUpcomingMovies' && (
+                              <div className="rounded-2xl border border-white/10 bg-[#0F0B15]/45 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                <div className="flex flex-col gap-6">
+                                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                    TMDB upcoming settings
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                                    <div className="flex min-h-[98px] items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#1a1625]/60 px-4 py-3 md:col-span-1 xl:col-span-4">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Route via Seerr
+                                        </div>
+                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                          Disable to send directly to Radarr.
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={tmdbUpcomingSettingsDraft.routeViaSeerr}
+                                        onClick={handleToggleTmdbUpcomingRouteViaSeerr}
+                                        onPointerDown={handleStopPropagationPointer}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          tmdbUpcomingSettingsMutation.isPending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          tmdbUpcomingSettingsDraft.routeViaSeerr
+                                            ? 'bg-cyan-400'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle route via Seerr for TMDB Upcoming Movies"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            tmdbUpcomingSettingsDraft.routeViaSeerr
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {tmdbUpcomingSettingsMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+
+                                    <label className="flex min-h-[98px] flex-col justify-between gap-2 rounded-xl border border-white/10 bg-[#1a1625]/60 px-4 py-3 md:col-span-1 xl:col-span-3">
+                                      <div className="space-y-1">
+                                        <span className="text-sm font-semibold text-white">
+                                          Global limit
+                                        </span>
+                                        <div className="text-xs text-white/55">
+                                          Total titles to route per run.
+                                        </div>
+                                      </div>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        max={1000}
+                                        value={tmdbUpcomingSettingsDraft.globalLimit}
+                                        onChange={handleTmdbUpcomingGlobalLimitChange}
+                                        onClick={handleStopPropagation}
+                                        className="h-10 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50"
+                                      />
+                                    </label>
+
+                                    <div className="flex min-h-[98px] flex-col gap-2 rounded-xl border border-white/10 bg-[#1a1625]/60 px-4 py-3 md:col-span-2 xl:col-span-5">
+                                      <span className="text-sm font-semibold text-white">
+                                        Date timeline
+                                      </span>
+                                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-xs font-semibold text-white/70">
+                                            Start date
+                                          </span>
+                                          <Popover
+                                            open={tmdbWindowStartCalendarOpen}
+                                            onOpenChange={setTmdbWindowStartCalendarOpen}
+                                          >
+                                            <PopoverTrigger asChild>
+                                              <button
+                                                type="button"
+                                                data-no-card-toggle="true"
+                                                onClick={handleStopPropagation}
+                                                onPointerDown={handleStopPropagationPointer}
+                                                disabled={
+                                                  tmdbUpcomingSettingsMutation.isPending
+                                                }
+                                                className="h-10 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 text-left text-sm text-white transition hover:bg-[#0F0B15]/70 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 disabled:opacity-60"
+                                              >
+                                                <span className="flex items-center justify-between gap-2">
+                                                  <span>{tmdbUpcomingSettingsDraft.windowStart}</span>
+                                                  <CalendarDays className="h-4 w-4 text-white/55" />
+                                                </span>
+                                              </button>
+                                            </PopoverTrigger>
+                                            <PopoverContent
+                                              data-no-card-toggle="true"
+                                              align="start"
+                                              className="w-[290px] border-white/10 bg-[#0F0B15] p-3 text-white shadow-2xl"
+                                              onClick={handleStopPropagation}
+                                              onPointerDown={handleStopPropagationPointer}
+                                            >
+                                              <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                  <button
+                                                    type="button"
+                                                    data-delta="-1"
+                                                    onClick={handleTmdbUpcomingWindowStartMonthShift}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10"
+                                                    aria-label="Previous month"
+                                                  >
+                                                    <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+                                                  </button>
+                                                  <div className="text-sm font-semibold text-white">
+                                                    {formatMonthYearLabel(
+                                                      tmdbWindowStartCalendarMonth,
+                                                    )}
+                                                  </div>
+                                                  <button
+                                                    type="button"
+                                                    data-delta="1"
+                                                    onClick={handleTmdbUpcomingWindowStartMonthShift}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10"
+                                                    aria-label="Next month"
+                                                  >
+                                                    <ChevronRight className="h-3.5 w-3.5" />
+                                                  </button>
+                                                </div>
+                                                <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-wide text-white/45">
+                                                  {TMDB_CALENDAR_WEEKDAY_LABELS.map((label) => (
+                                                    <div key={`start-weekday-${label}`}>
+                                                      {label}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                                <div className="grid grid-cols-7 gap-1">
+                                                  {tmdbWindowStartCalendarCells.map((cell) => {
+                                                    const isSelected =
+                                                      cell.value ===
+                                                      tmdbUpcomingSettingsDraft.windowStart;
+                                                    const isToday =
+                                                      cell.value === tmdbCalendarToday;
+                                                    return (
+                                                      <button
+                                                        key={`start-day-${cell.value}`}
+                                                        type="button"
+                                                        data-value={cell.value}
+                                                        onClick={
+                                                          handleTmdbUpcomingWindowStartCalendarSelect
+                                                        }
+                                                        onPointerDown={
+                                                          handleStopPropagationPointer
+                                                        }
+                                                        className={cn(
+                                                          'h-8 rounded-md border text-xs font-medium transition',
+                                                          cell.inCurrentMonth
+                                                            ? 'text-white/85 hover:bg-white/10'
+                                                            : 'text-white/35 hover:bg-white/5',
+                                                          isSelected
+                                                            ? 'border-[#facc15] bg-[#facc15] text-black hover:bg-[#facc15]'
+                                                            : isToday
+                                                              ? 'border-emerald-400/60'
+                                                              : 'border-transparent',
+                                                        )}
+                                                      >
+                                                        {cell.dayOfMonth}
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={handleTmdbUpcomingWindowStartToday}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/10"
+                                                  >
+                                                    Today
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={handleTmdbUpcomingWindowStartClear}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/10"
+                                                  >
+                                                    Clear
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </PopoverContent>
+                                          </Popover>
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-xs font-semibold text-white/70">
+                                            End date
+                                          </span>
+                                          <Popover
+                                            open={tmdbWindowEndCalendarOpen}
+                                            onOpenChange={setTmdbWindowEndCalendarOpen}
+                                          >
+                                            <PopoverTrigger asChild>
+                                              <button
+                                                type="button"
+                                                data-no-card-toggle="true"
+                                                onClick={handleStopPropagation}
+                                                onPointerDown={handleStopPropagationPointer}
+                                                disabled={
+                                                  tmdbUpcomingSettingsMutation.isPending
+                                                }
+                                                className="h-10 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 text-left text-sm text-white transition hover:bg-[#0F0B15]/70 focus:outline-none focus:ring-2 focus:ring-[#facc15]/50 disabled:opacity-60"
+                                              >
+                                                <span className="flex items-center justify-between gap-2">
+                                                  <span>{tmdbUpcomingSettingsDraft.windowEnd}</span>
+                                                  <CalendarDays className="h-4 w-4 text-white/55" />
+                                                </span>
+                                              </button>
+                                            </PopoverTrigger>
+                                            <PopoverContent
+                                              data-no-card-toggle="true"
+                                              align="start"
+                                              className="w-[290px] border-white/10 bg-[#0F0B15] p-3 text-white shadow-2xl"
+                                              onClick={handleStopPropagation}
+                                              onPointerDown={handleStopPropagationPointer}
+                                            >
+                                              <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                  <button
+                                                    type="button"
+                                                    data-delta="-1"
+                                                    onClick={handleTmdbUpcomingWindowEndMonthShift}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10"
+                                                    aria-label="Previous month"
+                                                  >
+                                                    <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+                                                  </button>
+                                                  <div className="text-sm font-semibold text-white">
+                                                    {formatMonthYearLabel(
+                                                      tmdbWindowEndCalendarMonth,
+                                                    )}
+                                                  </div>
+                                                  <button
+                                                    type="button"
+                                                    data-delta="1"
+                                                    onClick={handleTmdbUpcomingWindowEndMonthShift}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10"
+                                                    aria-label="Next month"
+                                                  >
+                                                    <ChevronRight className="h-3.5 w-3.5" />
+                                                  </button>
+                                                </div>
+                                                <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-wide text-white/45">
+                                                  {TMDB_CALENDAR_WEEKDAY_LABELS.map((label) => (
+                                                    <div key={`end-weekday-${label}`}>{label}</div>
+                                                  ))}
+                                                </div>
+                                                <div className="grid grid-cols-7 gap-1">
+                                                  {tmdbWindowEndCalendarCells.map((cell) => {
+                                                    const isSelected =
+                                                      cell.value ===
+                                                      tmdbUpcomingSettingsDraft.windowEnd;
+                                                    const isToday =
+                                                      cell.value === tmdbCalendarToday;
+                                                    return (
+                                                      <button
+                                                        key={`end-day-${cell.value}`}
+                                                        type="button"
+                                                        data-value={cell.value}
+                                                        onClick={
+                                                          handleTmdbUpcomingWindowEndCalendarSelect
+                                                        }
+                                                        onPointerDown={
+                                                          handleStopPropagationPointer
+                                                        }
+                                                        className={cn(
+                                                          'h-8 rounded-md border text-xs font-medium transition',
+                                                          cell.inCurrentMonth
+                                                            ? 'text-white/85 hover:bg-white/10'
+                                                            : 'text-white/35 hover:bg-white/5',
+                                                          isSelected
+                                                            ? 'border-[#facc15] bg-[#facc15] text-black hover:bg-[#facc15]'
+                                                            : isToday
+                                                              ? 'border-emerald-400/60'
+                                                              : 'border-transparent',
+                                                        )}
+                                                      >
+                                                        {cell.dayOfMonth}
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={handleTmdbUpcomingWindowEndToday}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/10"
+                                                  >
+                                                    Today
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={handleTmdbUpcomingWindowEndClear}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/10"
+                                                  >
+                                                    Clear
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </PopoverContent>
+                                          </Popover>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {!secretsPresent.tmdb && (
+                                    <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                                      Configure TMDB in Vault to load filter metadata.
+                                    </div>
+                                  )}
+
+                                  {tmdbMovieFiltersQuery.isError && (
+                                    <div className="flex items-center gap-2 text-sm text-red-300">
+                                      <CircleAlert className="w-4 h-4" />
+                                      {(tmdbMovieFiltersQuery.error as Error).message}
+                                    </div>
+                                  )}
+
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                        Filter sets
+                                      </div>
+                                      <button
+                                        type="button"
+                                        data-add-tmdb-filter="true"
+                                        onClick={handleAddTmdbUpcomingFilter}
+                                        onPointerDown={handleTmdbAddFilterPointerDown}
+                                        disabled={tmdbUpcomingSettingsMutation.isPending}
+                                        className="rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-60"
+                                      >
+                                        Add filter
+                                      </button>
+                                    </div>
+
+                                    {tmdbUpcomingSettingsDraft.filters.length === 0 && (
+                                      <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                                        Using default baseline in the background: no
+                                        genre/language/where-to-watch/certification
+                                        filters, score 6-10, and release window from
+                                        today to the selected end date. Add a filter
+                                        set to override this default behavior.
+                                      </div>
+                                    )}
+
+                                    {tmdbUpcomingSettingsDraft.filters.map((filter, filterIndex) => {
+                                      const selectedGenres = tmdbGenreOptions.filter((option) =>
+                                        filter.genres.includes(option.id),
+                                      );
+                                      const availableGenres = tmdbGenreOptions.filter(
+                                        (option) => !filter.genres.includes(option.id),
+                                      );
+                                      const genreQuickPicks = availableGenres.slice(0, 5);
+                                      const genreSearchValue =
+                                        tmdbGenreSearchByFilter[filter.id] ?? '';
+                                      const genreSearchQuery = genreSearchValue
+                                        .trim()
+                                        .toLowerCase();
+                                      const genreSearchResults = genreSearchQuery
+                                        ? availableGenres
+                                            .filter((option) =>
+                                              option.label
+                                                .toLowerCase()
+                                                .includes(genreSearchQuery),
+                                            )
+                                            .slice(0, 8)
+                                        : [];
+                                      const displayedGenreOptions = genreSearchQuery
+                                        ? genreSearchResults
+                                        : genreQuickPicks;
+
+                                      const selectedLanguages = tmdbLanguageOptions.filter(
+                                        (option) => filter.languages.includes(option.id),
+                                      );
+                                      const hasSelectedLanguage =
+                                        selectedLanguages.length > 0;
+                                      const availableLanguages = hasSelectedLanguage
+                                        ? []
+                                        : tmdbLanguageOptions.filter(
+                                            (option) =>
+                                              !filter.languages.includes(option.id),
+                                          );
+                                      const languageQuickPicks = pickTopLanguageQuickPicks(
+                                        availableLanguages,
+                                      );
+                                      const languageSearchValue =
+                                        tmdbLanguageSearchByFilter[filter.id] ?? '';
+                                      const languageSearchQuery = languageSearchValue
+                                        .trim()
+                                        .toLowerCase();
+                                      const languageSearchResults =
+                                        !hasSelectedLanguage && languageSearchQuery
+                                        ? availableLanguages
+                                            .filter((option) =>
+                                              option.label
+                                                .toLowerCase()
+                                                .includes(languageSearchQuery),
+                                            )
+                                            .slice(0, 8)
+                                        : [];
+                                      const displayedLanguageOptions = hasSelectedLanguage
+                                        ? []
+                                        : languageSearchQuery
+                                          ? languageSearchResults
+                                          : languageQuickPicks;
+                                      const selectedWatchProviders =
+                                        tmdbWatchProviderOptions.filter((option) =>
+                                          filter.watchProviders.includes(option.id),
+                                        );
+                                      const availableWatchProviders =
+                                        tmdbWatchProviderOptions.filter(
+                                          (option) =>
+                                            !filter.watchProviders.includes(option.id),
+                                        );
+                                      const watchProviderQuickPicks =
+                                        availableWatchProviders.slice(0, 5);
+                                      const watchProviderSearchValue =
+                                        tmdbWatchProviderSearchByFilter[filter.id] ?? '';
+                                      const watchProviderSearchQuery =
+                                        watchProviderSearchValue.trim().toLowerCase();
+                                      const watchProviderSearchResults =
+                                        watchProviderSearchQuery
+                                          ? availableWatchProviders
+                                              .filter((option) =>
+                                                option.label
+                                                  .toLowerCase()
+                                                  .includes(watchProviderSearchQuery),
+                                              )
+                                              .slice(0, 8)
+                                          : [];
+                                      const displayedWatchProviderOptions =
+                                        watchProviderSearchQuery
+                                          ? watchProviderSearchResults
+                                          : watchProviderQuickPicks;
+                                      const filterDisplayName =
+                                        filter.name.trim() || `Filter ${filterIndex + 1}`;
+                                      const isFilterExpanded =
+                                        tmdbFilterExpandedById[filter.id] ?? false;
+                                      const isFilterTitleEditing =
+                                        tmdbFilterTitleEditingById[filter.id] ?? false;
+
+                                      return (
+                                        <div
+                                          key={filter.id}
+                                          ref={(node) => {
+                                            tmdbFilterCardRefs.current[filter.id] = node;
+                                          }}
+                                          className="rounded-2xl border border-white/10 bg-[#1a1625]/60 p-5"
+                                        >
+                                          <div
+                                            role="button"
+                                            tabIndex={0}
+                                            data-filter-id={filter.id}
+                                            aria-expanded={isFilterExpanded}
+                                            onClick={handleTmdbUpcomingFilterHeaderClick}
+                                            onKeyDown={handleTmdbUpcomingFilterHeaderKeyDown}
+                                            onPointerDown={handleStopPropagationPointer}
+                                            className={cn(
+                                              'flex flex-wrap items-center justify-between gap-3 py-1 transition-colors',
+                                              tmdbUpcomingSettingsMutation.isPending
+                                                ? 'cursor-default'
+                                                : 'cursor-pointer',
+                                            )}
+                                          >
+                                            <div className="flex min-w-0 items-center gap-2">
+                                              {isFilterTitleEditing ? (
+                                                <input
+                                                  type="text"
+                                                  data-filter-id={filter.id}
+                                                  data-no-filter-toggle="true"
+                                                  ref={(node) => {
+                                                    tmdbFilterTitleInputRefs.current[filter.id] =
+                                                      node;
+                                                  }}
+                                                  value={filter.name}
+                                                  onChange={handleTmdbUpcomingFilterNameChange}
+                                                  onBlur={handleTmdbUpcomingFilterNameBlur}
+                                                  onKeyDown={
+                                                    handleTmdbUpcomingFilterNameKeyDown
+                                                  }
+                                                  onClick={handleStopPropagation}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                  placeholder={`Filter ${filterIndex + 1}`}
+                                                  className="h-9 w-[220px] max-w-full border-0 bg-transparent px-0 text-sm font-semibold text-white placeholder:text-white/35 focus:outline-none"
+                                                />
+                                              ) : (
+                                                <div className="flex min-w-0 items-center gap-1.5">
+                                                  <div className="truncate text-sm font-semibold text-white">
+                                                    {filterDisplayName}
+                                                  </div>
+                                                  {isFilterExpanded ? (
+                                                    <button
+                                                      type="button"
+                                                      data-filter-id={filter.id}
+                                                      data-no-filter-toggle="true"
+                                                      onClick={
+                                                        handleStartTmdbUpcomingFilterTitleEdit
+                                                      }
+                                                      onPointerDown={
+                                                        handleStopPropagationPointer
+                                                      }
+                                                      disabled={
+                                                        tmdbUpcomingSettingsMutation.isPending
+                                                      }
+                                                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-white/55 transition hover:text-white disabled:opacity-50"
+                                                      aria-label={`Edit ${filterDisplayName} name`}
+                                                      title="Edit title"
+                                                    >
+                                                      <Pencil className="h-3.5 w-3.5" />
+                                                    </button>
+                                                  ) : null}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div
+                                              className="flex items-center gap-2"
+                                              data-no-filter-toggle="true"
+                                            >
+                                              <button
+                                                type="button"
+                                                role="switch"
+                                                data-filter-id={filter.id}
+                                                data-no-filter-toggle="true"
+                                                aria-checked={filter.enabled}
+                                                onClick={handleToggleTmdbUpcomingFilterEnabled}
+                                                onPointerDown={handleStopPropagationPointer}
+                                                disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                className={cn(
+                                                  'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                                  filter.enabled
+                                                    ? 'bg-[#facc15]'
+                                                    : 'bg-[#2a2438] border-2 border-white/10',
+                                                )}
+                                                aria-label={`Toggle ${filterDisplayName}`}
+                                              >
+                                                <span
+                                                  className={cn(
+                                                    'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                                    filter.enabled
+                                                      ? 'translate-x-6'
+                                                      : 'translate-x-1',
+                                                  )}
+                                                />
+                                              </button>
+                                              {isFilterExpanded ? (
+                                                <button
+                                                  type="button"
+                                                  data-filter-id={filter.id}
+                                                  data-no-filter-toggle="true"
+                                                  onClick={handleRemoveTmdbUpcomingFilter}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+                                                  aria-label={`Remove ${filterDisplayName}`}
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                              ) : null}
+                                            </div>
+                                          </div>
+
+                                          <AnimatePresence initial={false}>
+                                            {isFilterExpanded && (
+                                              <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{
+                                                  type: 'spring',
+                                                  stiffness: 200,
+                                                  damping: 25,
+                                                  mass: 0.8,
+                                                }}
+                                                className="overflow-hidden"
+                                              >
+                                            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-6">
+                                              <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                                Genres
+                                              </div>
+                                              <div className="text-[11px] text-white/45">
+                                                Match any selected genre.
+                                              </div>
+                                            <div className="min-h-11 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 py-2">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                {selectedGenres.map((option) => (
+                                                  <button
+                                                    key={`${filter.id}-genre-selected-${option.id}`}
+                                                    type="button"
+                                                    data-filter-id={filter.id}
+                                                    data-field="genres"
+                                                    data-value={option.id}
+                                                    onClick={handleTmdbUpcomingChipToggle}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                    className="rounded-full border border-cyan-300/70 bg-cyan-400/20 px-2.5 py-1 text-xs text-cyan-100 transition"
+                                                  >
+                                                    {option.label}
+                                                  </button>
+                                                ))}
+                                                <input
+                                                  type="text"
+                                                  data-filter-id={filter.id}
+                                                  value={genreSearchValue}
+                                                  onChange={handleTmdbUpcomingGenreSearchChange}
+                                                  onKeyDown={handleTmdbUpcomingGenreSearchKeyDown}
+                                                  onClick={handleStopPropagation}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                  placeholder="Search and add genre"
+                                                  className="h-8 min-w-[150px] flex-1 border-0 bg-transparent px-1 text-sm text-white placeholder:text-white/35 focus:outline-none"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 xl:col-span-6">
+                                              {displayedGenreOptions.map((option) => (
+                                                <button
+                                                  key={`${filter.id}-genre-option-${option.id}`}
+                                                  type="button"
+                                                  data-filter-id={filter.id}
+                                                  data-field="genres"
+                                                  data-value={option.id}
+                                                  onClick={handleAddTmdbUpcomingChip}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:bg-white/10"
+                                                >
+                                                  {option.label}
+                                                </button>
+                                              ))}
+                                              {displayedGenreOptions.length === 0 && (
+                                                <span className="text-xs text-white/45">
+                                                  {genreSearchQuery
+                                                    ? 'No genre matches.'
+                                                    : 'No quick picks left.'}
+                                                </span>
+                                              )}
+                                            </div>
+                                            </div>
+
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-6">
+                                              <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                                Languages
+                                              </div>
+                                              <div className="text-[11px] text-white/45">
+                                                Select one language for this filter.
+                                              </div>
+                                            <div className="min-h-11 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 py-2">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                {selectedLanguages.map((option) => (
+                                                  <button
+                                                    key={`${filter.id}-language-selected-${option.id}`}
+                                                    type="button"
+                                                    data-filter-id={filter.id}
+                                                    data-field="languages"
+                                                    data-value={option.id}
+                                                    onClick={handleTmdbUpcomingChipToggle}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                    className="rounded-full border border-cyan-300/70 bg-cyan-400/20 px-2.5 py-1 text-xs text-cyan-100 transition"
+                                                  >
+                                                    {option.label}
+                                                  </button>
+                                                ))}
+                                                <input
+                                                  type="text"
+                                                  data-filter-id={filter.id}
+                                                  value={languageSearchValue}
+                                                  onChange={
+                                                    handleTmdbUpcomingLanguageSearchChange
+                                                  }
+                                                  onKeyDown={
+                                                    handleTmdbUpcomingLanguageSearchKeyDown
+                                                  }
+                                                  onClick={handleStopPropagation}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={
+                                                    tmdbUpcomingSettingsMutation.isPending ||
+                                                    hasSelectedLanguage
+                                                  }
+                                                  placeholder={
+                                                    hasSelectedLanguage
+                                                      ? 'Deselect current language to choose another'
+                                                      : 'Search and add language'
+                                                  }
+                                                  className="h-8 min-w-[150px] flex-1 border-0 bg-transparent px-1 text-sm text-white placeholder:text-white/35 focus:outline-none"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 xl:col-span-6">
+                                              {displayedLanguageOptions.map((option) => (
+                                                <button
+                                                  key={`${filter.id}-language-option-${option.id}`}
+                                                  type="button"
+                                                  data-filter-id={filter.id}
+                                                  data-field="languages"
+                                                  data-value={option.id}
+                                                  onClick={handleAddTmdbUpcomingChip}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={
+                                                    tmdbUpcomingSettingsMutation.isPending ||
+                                                    hasSelectedLanguage
+                                                  }
+                                                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:bg-white/10"
+                                                >
+                                                  {option.label}
+                                                </button>
+                                              ))}
+                                              {displayedLanguageOptions.length === 0 && (
+                                                <span className="text-xs text-white/45">
+                                                  {hasSelectedLanguage
+                                                    ? 'One language only. Deselect it to pick another.'
+                                                    : languageSearchQuery
+                                                      ? 'No language matches.'
+                                                      : 'No quick picks left.'}
+                                                </span>
+                                              )}
+                                            </div>
+                                            </div>
+
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-6">
+                                              <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                                Where to watch
+                                              </div>
+                                            <div className="min-h-11 w-full rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 py-2">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                {selectedWatchProviders.map((option) => (
+                                                  <button
+                                                    key={`${filter.id}-watch-provider-selected-${option.id}`}
+                                                    type="button"
+                                                    data-filter-id={filter.id}
+                                                    data-field="watchProviders"
+                                                    data-value={option.id}
+                                                    onClick={handleTmdbUpcomingChipToggle}
+                                                    onPointerDown={handleStopPropagationPointer}
+                                                    disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                    className="rounded-full border border-cyan-300/70 bg-cyan-400/20 px-2.5 py-1 text-xs text-cyan-100 transition"
+                                                  >
+                                                    {option.label}
+                                                  </button>
+                                                ))}
+                                                <input
+                                                  type="text"
+                                                  data-filter-id={filter.id}
+                                                  value={watchProviderSearchValue}
+                                                  onChange={
+                                                    handleTmdbUpcomingWatchProviderSearchChange
+                                                  }
+                                                  onKeyDown={
+                                                    handleTmdbUpcomingWatchProviderSearchKeyDown
+                                                  }
+                                                  onClick={handleStopPropagation}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                  placeholder="Search and add service"
+                                                  className="h-8 min-w-[150px] flex-1 border-0 bg-transparent px-1 text-sm text-white placeholder:text-white/35 focus:outline-none"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 xl:col-span-6">
+                                              {displayedWatchProviderOptions.map((option) => (
+                                                <button
+                                                  key={`${filter.id}-watch-provider-option-${option.id}`}
+                                                  type="button"
+                                                  data-filter-id={filter.id}
+                                                  data-field="watchProviders"
+                                                  data-value={option.id}
+                                                  onClick={handleAddTmdbUpcomingChip}
+                                                  onPointerDown={handleStopPropagationPointer}
+                                                  disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:bg-white/10"
+                                                >
+                                                  {option.label}
+                                                </button>
+                                              ))}
+                                              {displayedWatchProviderOptions.length === 0 && (
+                                                <span className="text-xs text-white/45">
+                                                  {watchProviderSearchQuery
+                                                    ? 'No service matches.'
+                                                    : 'No quick picks left.'}
+                                                </span>
+                                              )}
+                                            </div>
+                                            </div>
+
+                                            <div className="space-y-2 rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-8">
+                                              <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                                Certifications (US)
+                                              </div>
+                                              <div className="flex flex-wrap gap-2">
+                                                {tmdbCertificationOptions.map((option) => {
+                                                  const selected = filter.certifications.includes(
+                                                    option.id,
+                                                  );
+                                                  return (
+                                                    <button
+                                                      key={`${filter.id}-cert-${option.id}`}
+                                                      type="button"
+                                                      data-filter-id={filter.id}
+                                                      data-field="certifications"
+                                                      data-value={option.id}
+                                                      onClick={handleTmdbUpcomingChipToggle}
+                                                      onPointerDown={handleStopPropagationPointer}
+                                                      disabled={tmdbUpcomingSettingsMutation.isPending}
+                                                      className={cn(
+                                                        'rounded-full border px-2.5 py-1 text-xs transition',
+                                                        selected
+                                                          ? 'border-cyan-300/70 bg-cyan-400/20 text-cyan-100'
+                                                          : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10',
+                                                      )}
+                                                    >
+                                                      {option.label}
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                            </div>
+                                            <div className="rounded-xl border border-white/10 bg-[#0F0B15]/35 p-3 xl:col-span-4">
+                                              <label className="flex flex-col gap-1">
+                                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                                  Score min
+                                                </span>
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  max={10}
+                                                  data-filter-id={filter.id}
+                                                  value={filter.scoreMin}
+                                                  onChange={handleTmdbUpcomingScoreChange}
+                                                  onClick={handleStopPropagation}
+                                                  className="h-10 rounded-lg border border-white/10 bg-[#0F0B15]/60 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#facc15]/50"
+                                                />
+                                              </label>
+                                            </div>
+                                          </div>
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
+                                        </div>
+                                      );
+                                    })}
+
+                                    {tmdbUpcomingSettingsDraft.filters.length > 0 &&
+                                      tmdbUpcomingSettingsDraft.filters.every(
+                                        (filter) => !filter.enabled,
+                                      ) && (
+                                        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                                          All custom filter sets are disabled.
+                                          The hidden default baseline filter will
+                                          be used until you enable a custom filter.
+                                        </div>
+                                      )}
+
+                                    {tmdbUpcomingSettingsMutation.isError && (
+                                      <div className="flex items-center gap-2 text-sm text-red-300">
+                                        <CircleAlert className="w-4 h-4" />
+                                        {(tmdbUpcomingSettingsMutation.error as Error).message}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             {job.id === 'arrMonitoredSearch' && (
                               <div className="rounded-2xl bg-[#0F0B15]/40 border border-white/5 p-4">
                                 <div className="flex flex-col gap-3">

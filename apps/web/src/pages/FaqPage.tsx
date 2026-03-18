@@ -547,6 +547,132 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'task-manager-tmdb-upcoming-movies',
+      title: 'TMDB Upcoming Movies',
+      items: [
+        {
+          id: 'task-manager-tmdb-upcoming-how-it-works',
+          question: 'How does TMDB Upcoming Movies work?',
+          answer: (
+            <>
+              <p>
+                This task finds upcoming movies from TMDB and routes selected titles to Radarr or
+                Seerr.
+              </p>
+              <p>Run flow:</p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>
+                  Every enabled filter set runs a TMDB discover query inside the configured date
+                  window.
+                </li>
+                <li>Results are merged, deduplicated by TMDB id, and ranked by popularity.</li>
+                <li>
+                  The final list is capped by your global limit and then sent to your selected route.
+                </li>
+              </ol>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-tmdb-upcoming-defaults',
+          question: 'What are the defaults if I do not create custom filters?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                A hidden baseline filter is used (no genre, language, certification, or watch-provider
+                restrictions).
+              </li>
+              <li>
+                Score min defaults to <span className="font-semibold text-white/85">6</span> and score
+                max is fixed at <span className="font-semibold text-white/85">10</span>.
+              </li>
+              <li>
+                Window defaults to <span className="font-semibold text-white/85">today through +2 months</span>.
+              </li>
+              <li>
+                Global limit defaults to <span className="font-semibold text-white/85">100</span> (you
+                can raise it up to <span className="font-semibold text-white/85">1000</span>).
+              </li>
+              <li>
+                Route defaults to <span className="font-semibold text-white/85">Radarr</span> unless
+                you turn on Seerr routing.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'task-manager-tmdb-upcoming-custom-filters',
+          question: 'How do I set custom filters on this card?',
+          answer: (
+            <>
+              <p>
+                Open the card, go to <span className="font-semibold text-white/85">Filter sets</span>,
+                press <span className="font-semibold text-white/85">Add filter</span>, then edit that
+                filter.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Name and enable/disable each filter set independently.</li>
+                <li>
+                  When you press <span className="font-semibold text-white/85">Add filter</span>, the UI
+                  scrolls to the new filter and focuses its name so you can rename immediately.
+                </li>
+                <li>
+                  Only one new pending filter can be created at a time until you leave that new filter
+                  name field.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Genres</span> use match-any behavior
+                  (OR): selecting multiple genres matches titles with any selected genre.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Languages</span> allow one language per
+                  filter (deselect first to pick a different one).
+                </li>
+                <li>
+                  Add optional <span className="font-semibold text-white/85">Certifications (US)</span>{' '}
+                  and set score min (score max stays fixed at 10).
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Where to watch</span> values are
+                  currently ignored by TMDB Upcoming discovery (leave them empty for expected
+                  behavior).
+                </li>
+                <li>
+                  Keep filters focused; multiple broad filters can overlap heavily and reduce unique
+                  output.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-tmdb-upcoming-expected-results',
+          question: 'What results should I expect after a run?',
+          answer: (
+            <>
+              <p>
+                Each enabled filter gets part of the global limit. All candidates are then merged,
+                deduplicated, ranked, and routed.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>If a destination reports “already exists,” the job can backfill with reserves.</li>
+                <li>If all custom filters are disabled, the hidden baseline runs instead.</li>
+                <li>
+                  Rewind shows per-filter discovered/selected counts and destination outcomes so you can
+                  tune filters.
+                </li>
+                <li>
+                  Rewind keeps the run title as{' '}
+                  <span className="font-semibold text-white/85">TMDB Upcoming Movies</span> for this
+                  job.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+      ],
+    },
+    {
       id: 'task-manager-immaculate-taste-collection',
       title: 'Immaculate Taste Collection',
       items: [
@@ -2198,6 +2324,8 @@ export const FaqPage = () => {
     'task-manager-cleanup-after-adding-new-content':
       'Plex-triggered cleanup actions for newly added media.',
     'task-manager-search-monitored': 'Off-peak missing searches for monitored ARR items.',
+    'task-manager-tmdb-upcoming-movies':
+      'What this task does, how each run works, and how to edit filters.',
     'task-manager-immaculate-taste-collection':
       'Watch-triggered Immaculate Taste updates and missing-item routing.',
     'task-manager-immaculate-taste-refresher':
@@ -2248,6 +2376,10 @@ export const FaqPage = () => {
     'task-manager-search-monitored': {
       icon: (className) => <Search className={className} />,
       toneClass: 'text-fuchsia-200',
+    },
+    'task-manager-tmdb-upcoming-movies': {
+      icon: (className) => <Film className={className} />,
+      toneClass: 'text-cyan-200',
     },
     'task-manager-immaculate-taste-collection': {
       icon: (className) => <Sparkles className={className} />,
@@ -2659,7 +2791,7 @@ export const FaqPage = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.94 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="fixed bottom-28 right-4 z-20 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-[#0F0B15]/90 text-[#facc15] shadow-[0_0_24px_rgba(250,204,21,0.18)] backdrop-blur-xl transition hover:bg-[#15101f]/95 hover:text-[#fde68a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#facc15]/40 sm:bottom-8 sm:right-6"
+            className="fixed bottom-28 right-4 z-20 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-[#0F0B15]/90 text-[#facc15] shadow-[0_0_24px_rgba(250,204,21,0.18)] backdrop-blur-xl transition hover:bg-[#15101f]/95 hover:text-[#fde68a] active:scale-95 active:opacity-80 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-[#facc15]/40 sm:bottom-8 sm:right-6"
             aria-label="Scroll to top"
             title="Scroll to top"
           >

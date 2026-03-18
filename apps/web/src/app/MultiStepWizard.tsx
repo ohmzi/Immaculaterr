@@ -12,10 +12,8 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
-  Database,
   ExternalLink,
   Globe,
-  HardDrive,
   Key,
   Loader2,
   Server,
@@ -35,7 +33,7 @@ import { getSecretsEnvelopeKey, putSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { SeerrLogo } from '@/components/ArrLogos';
+import { RadarrLogo, SeerrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -512,21 +510,24 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     },
   });
 
-  const toggleWizardLibrarySelection = (librarySectionKey: string, checked: boolean) => {
-    setWizardSelectedLibraryKeys((prev) => {
-      const has = prev.includes(librarySectionKey);
-      if (checked) {
-        if (has) return prev;
-        return [...prev, librarySectionKey];
-      }
-      if (!has) return prev;
-      if (prev.length <= 1) {
-        setLibraryMinDialogOpen(true);
-        return prev;
-      }
-      return prev.filter((key) => key !== librarySectionKey);
-    });
-  };
+  const toggleWizardLibrarySelection = useCallback(
+    (librarySectionKey: string, checked: boolean) => {
+      setWizardSelectedLibraryKeys((prev) => {
+        const has = prev.includes(librarySectionKey);
+        if (checked) {
+          if (has) return prev;
+          return [...prev, librarySectionKey];
+        }
+        if (!has) return prev;
+        if (prev.length <= 1) {
+          setLibraryMinDialogOpen(true);
+          return prev;
+        }
+        return prev.filter((key) => key !== librarySectionKey);
+      });
+    },
+    [],
+  );
 
   const savePlexLibrarySelectionStep = useMutation({
     mutationFn: async () => {
@@ -548,17 +549,20 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     },
   });
 
-  const toggleWizardPlexUserSelection = (plexUserId: string, checked: boolean) => {
-    setWizardSelectedPlexUserIds((prev) => {
-      const has = prev.includes(plexUserId);
-      if (checked) {
-        if (has) return prev;
-        return [...prev, plexUserId];
-      }
-      if (!has) return prev;
-      return prev.filter((id) => id !== plexUserId);
-    });
-  };
+  const toggleWizardPlexUserSelection = useCallback(
+    (plexUserId: string, checked: boolean) => {
+      setWizardSelectedPlexUserIds((prev) => {
+        const has = prev.includes(plexUserId);
+        if (checked) {
+          if (has) return prev;
+          return [...prev, plexUserId];
+        }
+        if (!has) return prev;
+        return prev.filter((id) => id !== plexUserId);
+      });
+    },
+    [],
+  );
 
   const savePlexMonitoringUsersStep = useMutation({
     mutationFn: async () => {
@@ -863,9 +867,9 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     text="TMDB API Key"
                     required
                   />
-                  <RequirementItem icon={<Database className="h-4 w-4 text-zinc-500" />} text="Radarr (optional)" />
-                  <RequirementItem icon={<HardDrive className="h-4 w-4 text-zinc-500" />} text="Sonarr (optional)" />
-                  <RequirementItem icon={<Server className="h-4 w-4 text-zinc-500" />} text="Seerr (optional)" />
+                  <RequirementItem icon={<RadarrLogo className="h-4 w-4 opacity-80" />} text="Radarr (optional)" />
+                  <RequirementItem icon={<SonarrLogo className="h-4 w-4 opacity-80" />} text="Sonarr (optional)" />
+                  <RequirementItem icon={<SeerrLogo className="h-4 w-4 opacity-80" />} text="Seerr (optional)" />
                   <RequirementItem icon={<Globe className="h-4 w-4 text-zinc-500" />} text="Other services (optional)" />
                 </ul>
               </div>

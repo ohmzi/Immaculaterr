@@ -26,6 +26,7 @@ import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
 import { CollectionResyncUpgradeService } from './collection-resync-upgrade.service';
 import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
 import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immaculate-taste-profile.module';
+import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immac
     ImmaculateTasteCollectionJob,
     ImmaculateTasteRefresherJob,
     CollectionResyncUpgradeJob,
+    TmdbUpcomingMoviesJob,
     CollectionResyncUpgradeService,
   ],
   exports: [JobsService],

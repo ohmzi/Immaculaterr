@@ -29,6 +29,11 @@ Pick a feature area first, then jump into the full section below.
 > Off-peak missing searches for monitored ARR items.
 > [What does Search Monitored do?](#what-does-search-monitored-do) · [What does the Includes section do?](#what-does-the-includes-section-do) · [When should I use Search Monitored instead of Start search immediately?](#when-should-i-use-search-monitored-instead-of-start-search-immediately)
 
+> ### [TMDB Upcoming Movies](#tmdb-upcoming-movies)
+> What this task does, how each run works, and how to edit filters.
+> [How does TMDB Upcoming Movies work?](#how-does-tmdb-upcoming-movies-work) · [What are the defaults if I do not create custom filters?](#what-are-the-defaults-if-i-do-not-create-custom-filters) · [How do I set custom filters on this card?](#how-do-i-set-custom-filters-on-this-card)
+> + 1 more answer in the section below.
+
 > ### [Immaculate Taste Collection](#immaculate-taste-collection)
 > Watch-triggered Immaculate Taste updates and missing-item routing.
 > [What does Immaculate Taste Collection do?](#what-does-immaculate-taste-collection-do) · [What does the Immaculate Taste Refresher toggle do?](#what-does-the-immaculate-taste-refresher-toggle-do) · [What does Fetch Missing items do on this card?](#what-does-fetch-missing-items-do-on-this-card)
@@ -258,6 +263,50 @@ If both are enabled on a scheduled run, Sonarr starts about one hour after the s
 ### When should I use Search Monitored instead of Start search immediately?
 
 Use **Search Monitored** when you want missing searches to happen on a calmer schedule. Use **Start search immediately** only if you want ARR searching to begin as soon as a collection job adds missing titles.
+
+## TMDB Upcoming Movies
+
+Open in app: [Task Manager -> TMDB Upcoming Movies](/task-manager#job-tmdbUpcomingMovies)
+
+### How does TMDB Upcoming Movies work?
+
+This task finds upcoming movies from TMDB and routes selected titles to Radarr or Seerr.
+
+Run flow:
+
+1. Every enabled filter set runs a TMDB discover query inside the configured date window.
+2. Results are merged, deduplicated by TMDB id, and ranked by popularity.
+3. The final list is capped by your global limit and then sent to your selected route.
+
+### What are the defaults if I do not create custom filters?
+
+- A hidden baseline filter is used (no genre, language, certification, or watch-provider restrictions).
+- Score min defaults to **6** and score max is fixed at **10**.
+- Window defaults to **today through +2 months**.
+- Global limit defaults to **100** (you can raise it up to **1000**).
+- Route defaults to **Radarr** unless you turn on Seerr routing.
+
+### How do I set custom filters on this card?
+
+Open the card, go to **Filter sets**, press **Add filter**, then edit that filter.
+
+- Name and enable/disable each filter set independently.
+- **Add filter** scrolls to the new card and focuses the name field automatically.
+- Only one new pending filter can exist at a time until you click out of that new name field.
+- **Genres** are OR (match any selected genre).
+- **Languages** allow one value per filter (deselect first to switch).
+- **Score min** is editable; score max stays fixed at 10.
+- **Certifications (US)** are optional.
+- **Where to watch** is currently ignored by TMDB Upcoming discovery.
+
+### What results should I expect after a run?
+
+Each enabled filter gets part of the global limit. All candidates are then merged, deduplicated, ranked, and routed.
+
+- If a destination reports "already exists," the job can backfill with reserves.
+- If all custom filters are disabled, the hidden baseline runs instead.
+- Rewind shows per-filter discovered/selected counts and destination outcomes.
+- Rewind keeps the run title as **TMDB Upcoming Movies** for this job.
 
 ## Immaculate Taste Collection
 

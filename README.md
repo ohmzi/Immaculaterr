@@ -53,6 +53,9 @@
   - Filter by genre and audio language per profile to include or exclude exactly what you want
   - Better matching means fewer unwanted titles and more accurate recommendations
 
+- **TMDB Upcoming Movies task filters**
+  - Build custom filter sets with where-to-watch, genre, language, certification, and score controls
+
 - **Personalized rows for every viewer**
   - Each person on your Plex gets their own curated rows (e.g. *Based on your recently watched — Jane*)
   - Viewing history is kept separate, so one person's habits don't affect anyone else's recommendations
