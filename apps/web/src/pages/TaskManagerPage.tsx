@@ -154,6 +154,12 @@ const JOB_CONFIG: Record<
     description:
       'Off-peak refresh for “Recently Watched” and “Change of Taste” collections.',
   },
+  freshOutOfTheOven: {
+    icon: <Clapperboard className="w-8 h-8" />,
+    color: 'text-orange-300',
+    description:
+      'Builds a last-3-months recent-release movie baseline and refreshes each user’s unseen collection.',
+  },
   immaculateTastePoints: {
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-yellow-300',

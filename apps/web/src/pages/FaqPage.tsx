@@ -956,6 +956,56 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'task-manager-fresh-out-of-the-oven',
+      title: 'Fresh Out Of The Oven',
+      items: [
+        {
+          id: 'task-manager-fresh-out-of-the-oven-what-does',
+          question: 'What does Fresh Out Of The Oven do?',
+          answer: (
+            <>
+              <p>
+                It builds a shared movie baseline from your selected Plex movie libraries using TMDB
+                release dates for the last 3 months, then filters that baseline per Plex user so each
+                viewer only gets movies they have not already watched.
+              </p>
+              <p>
+                Each user gets their own Plex collection, and the task refreshes that unseen list every
+                run before rebuilding and reshuffling the row.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-fresh-out-of-the-oven-pinning',
+          question: 'Where does Fresh Out Of The Oven pin in Plex?',
+          answer: (
+            <>
+              <p>
+                Admin gets this row on Plex Home only. Shared users get it on Shared Home only.
+              </p>
+              <p>
+                It does not pin to Library Recommended, and within Immaculaterr-managed movie rows it
+                is kept after Recently Watched, Change of Taste, and Immaculate Taste.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-fresh-out-of-the-oven-default',
+          question: 'What is a good default setup for Fresh Out Of The Oven?',
+          answer: (
+            <p>
+              Daily off-peak is a good default because it keeps new releases flowing in while removing
+              anything a user has already watched. If you prefer manual control, leave the schedule off
+              and use <span className="font-semibold text-white/85">Run now</span> after big library
+              updates.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
       id: 'recommendations',
       title: 'Recommendations',
       items: [
@@ -2334,6 +2384,8 @@ export const FaqPage = () => {
       'Watch-triggered recommendation generation from your latest watch.',
     'task-manager-based-on-latest-watched-refresher':
       'Off-peak refreshes for latest-watched recommendation rows.',
+    'task-manager-fresh-out-of-the-oven':
+      'Recent-release movie rows filtered per Plex user by what they have already watched.',
     recommendations: 'Seeds, generated lists, and how recommendation rows refresh over time.',
     'plex-library-selection': 'Which Plex libraries can participate in manual and automatic runs.',
     'plex-user-monitoring': 'How viewer-specific datasets, monitoring, and row pinning work.',
@@ -2396,6 +2448,10 @@ export const FaqPage = () => {
     'task-manager-based-on-latest-watched-refresher': {
       icon: (className) => <RotateCcw className={className} />,
       toneClass: 'text-violet-200',
+    },
+    'task-manager-fresh-out-of-the-oven': {
+      icon: (className) => <Film className={className} />,
+      toneClass: 'text-orange-200',
     },
     recommendations: {
       icon: (className) => <Film className={className} />,

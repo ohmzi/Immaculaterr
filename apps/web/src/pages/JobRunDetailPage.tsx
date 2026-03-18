@@ -223,7 +223,11 @@ function getProgressPlan(jobId: string): ProgressPlan | null {
   }
 
   // Refresher-style jobs: fewer, high-signal stages (movie → TV)
-  if (id === 'immaculateTasteRefresher' || id === 'recentlyWatchedRefresher') {
+  if (
+    id === 'immaculateTasteRefresher' ||
+    id === 'recentlyWatchedRefresher' ||
+    id === 'freshOutOfTheOven'
+  ) {
     return {
       total: 4,
       getStage: ({ stepId, progress }) => {

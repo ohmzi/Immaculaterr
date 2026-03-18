@@ -52,6 +52,10 @@ Pick a feature area first, then jump into the full section below.
 > Off-peak refreshes for latest-watched recommendation rows.
 > [What does Based on Latest Watched Refresher do?](#what-does-based-on-latest-watched-refresher-do) · [When should I use this refresher instead of the collection card?](#when-should-i-use-this-refresher-instead-of-the-collection-card) · [What is a good default setup for Based on Latest Watched Refresher?](#what-is-a-good-default-setup-for-based-on-latest-watched-refresher)
 
+> ### [Fresh Out Of The Oven](#fresh-out-of-the-oven)
+> Per-user unseen recent-release movie rows for the last 3 months.
+> [What does Fresh Out Of The Oven do?](#what-does-fresh-out-of-the-oven-do) · [Where does Fresh Out Of The Oven pin in Plex?](#where-does-fresh-out-of-the-oven-pin-in-plex) · [What is a good default setup for Fresh Out Of The Oven?](#what-is-a-good-default-setup-for-fresh-out-of-the-oven)
+
 > ### [Recommendations](#recommendations)
 > Seeds, generated lists, and how recommendation rows refresh over time.
 > [What does Recommendations control?](#what-does-recommendations-control) · [What does "Plex-Triggered Auto-Run" mean?](#what-does-plex-triggered-auto-run-mean) · [How can I run a job manually?](#how-can-i-run-a-job-manually)
@@ -418,6 +422,26 @@ Use the refresher when you want the saved latest-watched datasets to catch up an
 ### What is a good default setup for Based on Latest Watched Refresher?
 
 If you want regular background upkeep, enable the schedule and keep it off-peak. If not, leave it off and run it manually when you want a refresh.
+
+## Fresh Out Of The Oven
+
+Open in app: [Task Manager -> Fresh Out Of The Oven](/task-manager#job-freshOutOfTheOven)
+
+### What does Fresh Out Of The Oven do?
+
+It builds a shared movie baseline from your selected Plex movie libraries using TMDB release dates for the last 3 months, then filters that baseline per Plex user so each viewer only gets movies they have not already watched.
+
+Each user gets their own Plex collection, and the task refreshes that unseen list every run before rebuilding and reshuffling the row.
+
+### Where does Fresh Out Of The Oven pin in Plex?
+
+Admin gets this row on Plex Home only. Shared users get it on Shared Home only.
+
+It does not pin to Library Recommended, and within Immaculaterr-managed movie rows it is kept after Recently Watched, Change of Taste, and Immaculate Taste.
+
+### What is a good default setup for Fresh Out Of The Oven?
+
+Daily off-peak is a good default because it keeps new releases flowing in while removing anything a user has already watched. If you prefer manual control, leave the schedule off and use **Run now** after big library updates.
 
 ## Recommendations
 

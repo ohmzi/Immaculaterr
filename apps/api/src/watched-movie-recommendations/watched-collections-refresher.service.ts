@@ -14,17 +14,33 @@ import {
 } from '../plex/plex-collections.utils';
 import { PlexServerService } from '../plex/plex-server.service';
 
-const MOVIE_COLLECTIONS = [
+const DEFAULT_MOVIE_COLLECTIONS = [
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
   CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
 ] as const;
 
-const TV_COLLECTIONS = [
+const DEFAULT_TV_COLLECTIONS = [
   RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
   CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
 ] as const;
 
 type PlexLibrarySection = { key: string; title: string; type?: string };
+type PinVisibilityProfile = 'default' | 'home_only' | 'shared_home_only';
+
+function normalizeCollectionBaseNames(
+  collectionNames: readonly string[] | undefined,
+  fallback: readonly string[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of collectionNames ?? fallback) {
+    const collectionName = String(raw ?? '').trim();
+    if (!collectionName || seen.has(collectionName)) continue;
+    seen.add(collectionName);
+    out.push(collectionName);
+  }
+  return out;
+}
 
 function shuffleInPlace<T>(arr: T[]) {
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -58,7 +74,12 @@ export class WatchedCollectionsRefresherService {
     /**
      * Max items per Plex collection (applies after shuffling).
      */
-    limit: number;
+    limit?: number | null;
+    movieCollectionBaseNames?: readonly string[];
+    tvCollectionBaseNames?: readonly string[];
+    movieCollectionHubOrder?: readonly string[];
+    tvCollectionHubOrder?: readonly string[];
+    pinVisibilityProfile?: PinVisibilityProfile;
     /**
      * Restrict refresh to a single library section key (movie or tv) when called from the collection job.
      * If omitted, all libraries passed in are refreshed (used by the nightly refresher).
@@ -66,10 +87,36 @@ export class WatchedCollectionsRefresherService {
     scope?: { librarySectionKey: string; mode: 'movie' | 'tv' } | null;
   }): Promise<JsonObject> {
     const { ctx } = params;
-    const limit = Math.max(1, Math.min(200, Math.trunc(params.limit || 15)));
+    const limit =
+      typeof params.limit === 'number' && Number.isFinite(params.limit)
+        ? Math.max(1, Math.min(200, Math.trunc(params.limit)))
+        : null;
     const scope = params.scope ?? null;
     const pinCollections = params.pinCollections ?? true;
     const pinTarget = params.pinTarget ?? 'admin';
+    const movieCollectionBaseNames = normalizeCollectionBaseNames(
+      params.movieCollectionBaseNames,
+      DEFAULT_MOVIE_COLLECTIONS,
+    );
+    const tvCollectionBaseNames = normalizeCollectionBaseNames(
+      params.tvCollectionBaseNames,
+      DEFAULT_TV_COLLECTIONS,
+    );
+    const movieCollectionHubOrder = Array.from(
+      params.movieCollectionHubOrder ??
+        buildUserCollectionHubOrder(
+          CURATED_MOVIE_COLLECTION_HUB_ORDER,
+          params.plexUserTitle,
+        ),
+    );
+    const tvCollectionHubOrder = Array.from(
+      params.tvCollectionHubOrder ??
+        buildUserCollectionHubOrder(
+          CURATED_TV_COLLECTION_HUB_ORDER,
+          params.plexUserTitle,
+        ),
+    );
+    const pinVisibilityProfile = params.pinVisibilityProfile ?? 'default';
 
     const movieSections =
       scope?.mode === 'movie'
@@ -94,7 +141,10 @@ export class WatchedCollectionsRefresherService {
       pinCollections,
       pinTarget,
       movieSections,
+      collectionNames: movieCollectionBaseNames,
+      collectionHubOrder: movieCollectionHubOrder,
       limit,
+      pinVisibilityProfile,
     });
     const tv = await this.refreshTvCollections({
       ctx,
@@ -106,7 +156,10 @@ export class WatchedCollectionsRefresherService {
       pinCollections,
       pinTarget,
       tvSections,
+      collectionNames: tvCollectionBaseNames,
+      collectionHubOrder: tvCollectionHubOrder,
       limit,
+      pinVisibilityProfile,
     });
 
     return { limit, movie, tv };
@@ -122,7 +175,10 @@ export class WatchedCollectionsRefresherService {
     pinCollections: boolean;
     pinTarget: 'admin' | 'friends';
     movieSections: PlexLibrarySection[];
-    limit: number;
+    collectionNames: string[];
+    collectionHubOrder: string[];
+    limit: number | null;
+    pinVisibilityProfile: PinVisibilityProfile;
   }): Promise<JsonObject> {
     const {
       ctx,
@@ -134,14 +190,13 @@ export class WatchedCollectionsRefresherService {
       pinCollections,
       pinTarget,
       movieSections,
+      collectionNames,
+      collectionHubOrder,
       limit,
+      pinVisibilityProfile,
     } = params;
 
     const outByLibrary: JsonObject[] = [];
-    const collectionHubOrder = buildUserCollectionHubOrder(
-      CURATED_MOVIE_COLLECTION_HUB_ORDER,
-      plexUserTitle,
-    );
 
     for (const sec of movieSections) {
       // Build tmdbId -> (ratingKey,title) map for this library.
@@ -159,7 +214,7 @@ export class WatchedCollectionsRefresherService {
       }
 
       const perCollection: JsonObject[] = [];
-      for (const collectionName of MOVIE_COLLECTIONS) {
+      for (const collectionName of collectionNames) {
         // Activate pending items that are now in Plex.
         const pending =
           await this.prisma.watchedMovieRecommendationLibrary.findMany({
@@ -207,7 +262,7 @@ export class WatchedCollectionsRefresherService {
         shuffleInPlace(activeTmdbIds);
 
         const desiredItems = activeTmdbIds
-          .slice(0, limit)
+          .slice(0, limit ?? activeTmdbIds.length)
           .map((id) => tmdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
@@ -232,6 +287,7 @@ export class WatchedCollectionsRefresherService {
               },
               pinCollections,
               pinTarget,
+              pinVisibilityProfile,
               collectionHubOrder,
             })
           : null;
@@ -254,7 +310,7 @@ export class WatchedCollectionsRefresherService {
     }
 
     return {
-      collections: Array.from(MOVIE_COLLECTIONS),
+      collections: collectionNames,
       byLibrary: outByLibrary,
     };
   }
@@ -269,7 +325,10 @@ export class WatchedCollectionsRefresherService {
     pinCollections: boolean;
     pinTarget: 'admin' | 'friends';
     tvSections: PlexLibrarySection[];
-    limit: number;
+    collectionNames: string[];
+    collectionHubOrder: string[];
+    limit: number | null;
+    pinVisibilityProfile: PinVisibilityProfile;
   }): Promise<JsonObject> {
     const {
       ctx,
@@ -281,14 +340,13 @@ export class WatchedCollectionsRefresherService {
       pinCollections,
       pinTarget,
       tvSections,
+      collectionNames,
+      collectionHubOrder,
       limit,
+      pinVisibilityProfile,
     } = params;
 
     const outByLibrary: JsonObject[] = [];
-    const collectionHubOrder = buildUserCollectionHubOrder(
-      CURATED_TV_COLLECTION_HUB_ORDER,
-      plexUserTitle,
-    );
 
     for (const sec of tvSections) {
       // Build tvdbId -> (ratingKey,title) map for this library.
@@ -306,7 +364,7 @@ export class WatchedCollectionsRefresherService {
       }
 
       const perCollection: JsonObject[] = [];
-      for (const collectionName of TV_COLLECTIONS) {
+      for (const collectionName of collectionNames) {
         const pending =
           await this.prisma.watchedShowRecommendationLibrary.findMany({
             where: {
@@ -352,7 +410,7 @@ export class WatchedCollectionsRefresherService {
         shuffleInPlace(activeTvdbIds);
 
         const desiredItems = activeTvdbIds
-          .slice(0, limit)
+          .slice(0, limit ?? activeTvdbIds.length)
           .map((id) => tvdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
@@ -377,6 +435,7 @@ export class WatchedCollectionsRefresherService {
               },
               pinCollections,
               pinTarget,
+              pinVisibilityProfile,
               collectionHubOrder,
             })
           : null;
@@ -398,6 +457,6 @@ export class WatchedCollectionsRefresherService {
       });
     }
 
-    return { collections: Array.from(TV_COLLECTIONS), byLibrary: outByLibrary };
+    return { collections: collectionNames, byLibrary: outByLibrary };
   }
 }

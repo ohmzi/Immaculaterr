@@ -3,10 +3,12 @@ import { PrismaService } from '../db/prisma.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
 import { ImmaculateTasteShowCollectionService } from '../immaculate-taste-collection/immaculate-taste-show-collection.service';
 import {
+  buildFreshOutMovieCollectionHubOrder,
   buildUserCollectionHubOrder,
   buildUserCollectionName,
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
   hasSameCuratedCollectionBase,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
@@ -65,6 +67,36 @@ function isImmaculateBaseCollection(params: {
   );
   const legacy = normalizeCollectionTitle(IMMACULATE_LEGACY_BASE_COLLECTION);
   return candidate === target || candidate === legacy;
+}
+
+function isFreshOutMovieBaseCollection(collectionBaseName: string): boolean {
+  return (
+    normalizeCollectionTitle(collectionBaseName) ===
+    normalizeCollectionTitle(FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME)
+  );
+}
+
+function resolveMovieCollectionHubOrder(params: {
+  collectionBaseName: string;
+  plexUserTitle: string | null;
+}): string[] {
+  if (isFreshOutMovieBaseCollection(params.collectionBaseName)) {
+    return buildFreshOutMovieCollectionHubOrder(params.plexUserTitle);
+  }
+  return buildUserCollectionHubOrder(
+    CURATED_MOVIE_COLLECTION_HUB_ORDER,
+    params.plexUserTitle,
+  );
+}
+
+function resolvePinVisibilityProfile(params: {
+  collectionBaseName: string;
+  pinTarget: 'admin' | 'friends';
+}): 'default' | 'home_only' | 'shared_home_only' {
+  if (!isFreshOutMovieBaseCollection(params.collectionBaseName)) {
+    return 'default';
+  }
+  return params.pinTarget === 'friends' ? 'shared_home_only' : 'home_only';
 }
 
 function sectionTypeToMediaType(
@@ -1640,10 +1672,14 @@ export class CollectionResyncUpgradeJob {
                   CURATED_TV_COLLECTION_HUB_ORDER,
                   plexUserTitle,
                 )
-              : buildUserCollectionHubOrder(
-                  CURATED_MOVIE_COLLECTION_HUB_ORDER,
+              : resolveMovieCollectionHubOrder({
+                  collectionBaseName: item.collectionBaseName,
                   plexUserTitle,
-                );
+                });
+          const pinVisibilityProfile = resolvePinVisibilityProfile({
+            collectionBaseName: item.collectionBaseName,
+            pinTarget: item.pinTarget,
+          });
           await this.runWithRetry({
             source: 'plex',
             operation: 'recreate_collection',
@@ -1663,6 +1699,7 @@ export class CollectionResyncUpgradeJob {
                 randomizeOrder: false,
                 pinCollections: true,
                 pinTarget: item.pinTarget,
+                pinVisibilityProfile,
                 collectionHubOrder,
               });
             },
@@ -1972,9 +2009,12 @@ export class CollectionResyncUpgradeJob {
             select: { tmdbId: true, collectionName: true },
             orderBy: [{ updatedAt: 'desc' }, { tmdbId: 'asc' }],
           });
+        const limit = isFreshOutMovieBaseCollection(item.collectionBaseName)
+          ? activeRows.length
+          : params.watchedLimit;
         const limited = activeRows
           .filter((row) => hasMatchingMovieBase(row.collectionName))
-          .slice(0, params.watchedLimit);
+          .slice(0, limit);
         for (const row of limited) {
           const mapped = movieMap.get(row.tmdbId);
           if (!mapped) continue;

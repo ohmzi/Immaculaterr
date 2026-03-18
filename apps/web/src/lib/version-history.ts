@@ -24,14 +24,25 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.1-beta-7',
+    version: '1.7.1-beta-8',
     popupHighlights: [
+      'Fresh Out Of The Oven adds per-user unseen recent-release movie rows for the last 3 months.',
+      'Fresh Out Of The Oven now has its own Task Manager card with Run Now plus schedule controls.',
+      'Fresh Out Of The Oven pins to Home for admin and Shared Home for shared users.',
       'TMDB, OpenAI, and Google connectivity checks are now more reliable on DNS/IPv6-problem Docker hosts.',
       'External API tests now retry with explicit IPv4 fallback before failing.',
       'Added a dedicated TrueNAS setup guide with working main-app and HTTPS sidecar YAML.',
-      'Task Manager now includes TMDB Upcoming Movies custom filter sets, including where-to-watch.',
     ],
     sections: [
+      {
+        title: 'Fresh Out Of The Oven task',
+        bullets: [
+          'Added a per-user recent-release movie collection built from the last 3 months of library titles.',
+          'Each user only sees titles they have not watched, while the shared recent-release baseline stays user-independent.',
+          'Fresh Out Of The Oven pins to Home for admin, Shared Home for shared users, and stays last within Immaculaterr-managed movie rows.',
+          'Task Manager now includes a Fresh Out Of The Oven job with Run Now plus optional schedule enablement.',
+        ],
+      },
       {
         title: 'Integration connectivity hardening',
         bullets: [

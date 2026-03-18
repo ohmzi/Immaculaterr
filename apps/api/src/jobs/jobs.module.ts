@@ -26,6 +26,7 @@ import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
 import { CollectionResyncUpgradeService } from './collection-resync-upgrade.service';
 import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
 import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immaculate-taste-profile.module';
+import { FreshOutOfTheOvenJob } from './fresh-out-of-the-oven.job';
 import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 
 @Module({
@@ -57,6 +58,7 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
     BasedonLatestWatchedRefresherJob,
     ImmaculateTasteCollectionJob,
     ImmaculateTasteRefresherJob,
+    FreshOutOfTheOvenJob,
     CollectionResyncUpgradeJob,
     TmdbUpcomingMoviesJob,
     CollectionResyncUpgradeService,

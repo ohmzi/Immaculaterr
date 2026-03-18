@@ -19,6 +19,8 @@ type PinCuratedCollectionHubsParams = {
   librarySectionKey: string;
   mediaType: 'movie' | 'tv';
   pinTarget: 'admin' | 'friends';
+  primaryCollectionName?: string;
+  pinVisibilityProfile?: 'default' | 'home_only' | 'shared_home_only';
   collectionHubOrder: string[];
   preferredHubTargets?: Array<{
     collectionName: string;
@@ -32,10 +34,21 @@ async function callPinCuratedCollectionHubs(
 ) {
   const internal = service as unknown as {
     pinCuratedCollectionHubs: (
-      params: PinCuratedCollectionHubsParams,
+      params: PinCuratedCollectionHubsParams & {
+        primaryCollectionName: string;
+        primaryPinVisibilityProfile:
+          | 'default'
+          | 'home_only'
+          | 'shared_home_only';
+      },
     ) => Promise<void>;
   };
-  await internal.pinCuratedCollectionHubs(params);
+  await internal.pinCuratedCollectionHubs({
+    ...params,
+    primaryCollectionName:
+      params.primaryCollectionName ?? params.collectionHubOrder[0] ?? '',
+    primaryPinVisibilityProfile: params.pinVisibilityProfile ?? 'default',
+  });
 }
 
 function createCollectionArtworkStub() {
@@ -192,6 +205,158 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
       identifier: 'hub-32',
       after: null,
     });
+  });
+
+  it('supports home-only visibility overrides for admin and shared users', async () => {
+    const plexServer = {
+      listCollectionsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          {
+            ratingKey: '71',
+            title: 'Fresh Out Of The Oven (Alice)',
+          },
+        ]),
+      ),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
+      getCollectionHubIdentifier: jest.fn(() => Promise.resolve('hub-71')),
+      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
+    };
+
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
+    );
+    const ctx = createTestCtx();
+
+    await callPinCuratedCollectionHubs(service, {
+      ctx,
+      baseUrl: 'http://plex.local:32400',
+      token: 'token',
+      librarySectionKey: '1',
+      mediaType: 'movie',
+      pinTarget: 'admin',
+      pinVisibilityProfile: 'home_only',
+      collectionHubOrder: ['Fresh Out Of The Oven (Alice)'],
+    });
+    await callPinCuratedCollectionHubs(service, {
+      ctx,
+      baseUrl: 'http://plex.local:32400',
+      token: 'token',
+      librarySectionKey: '1',
+      mediaType: 'movie',
+      pinTarget: 'friends',
+      pinVisibilityProfile: 'shared_home_only',
+      collectionHubOrder: ['Fresh Out Of The Oven (Alice)'],
+    });
+
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        promotedToRecommended: 0,
+        promotedToOwnHome: 1,
+        promotedToSharedHome: 0,
+      }),
+    );
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        promotedToRecommended: 0,
+        promotedToOwnHome: 0,
+        promotedToSharedHome: 1,
+      }),
+    );
+  });
+
+  it('keeps other curated rows on default visibility when Fresh Out is ordered last', async () => {
+    const plexServer = {
+      listCollectionsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          {
+            ratingKey: '81',
+            title: 'Based on your recently watched Movie (Alice)',
+          },
+          { ratingKey: '82', title: 'Change of Movie Taste (Alice)' },
+          {
+            ratingKey: '83',
+            title: 'Inspired by your Immaculate Taste in Movies (Alice)',
+          },
+          {
+            ratingKey: '84',
+            title: 'Fresh Out Of The Oven (Alice)',
+          },
+        ]),
+      ),
+      setCollectionHubVisibility: jest.fn(() => Promise.resolve(undefined)),
+      getCollectionHubIdentifier: jest.fn(
+        (args: { collectionRatingKey: string }) =>
+          Promise.resolve(`hub-${args.collectionRatingKey}`),
+      ),
+      moveHubRow: jest.fn(() => Promise.resolve(undefined)),
+    };
+
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
+    );
+    const ctx = createTestCtx();
+
+    await callPinCuratedCollectionHubs(service, {
+      ctx,
+      baseUrl: 'http://plex.local:32400',
+      token: 'token',
+      librarySectionKey: '1',
+      mediaType: 'movie',
+      pinTarget: 'friends',
+      primaryCollectionName: 'Fresh Out Of The Oven (Alice)',
+      pinVisibilityProfile: 'shared_home_only',
+      collectionHubOrder: [
+        'Based on your recently watched Movie (Alice)',
+        'Change of Movie Taste (Alice)',
+        'Inspired by your Immaculate Taste in Movies (Alice)',
+        'Fresh Out Of The Oven (Alice)',
+      ],
+    });
+
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        promotedToRecommended: 1,
+        promotedToOwnHome: 0,
+        promotedToSharedHome: 1,
+      }),
+    );
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        promotedToRecommended: 1,
+        promotedToOwnHome: 0,
+        promotedToSharedHome: 1,
+      }),
+    );
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        promotedToRecommended: 1,
+        promotedToOwnHome: 0,
+        promotedToSharedHome: 1,
+      }),
+    );
+    expect(plexServer.setCollectionHubVisibility).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        promotedToRecommended: 0,
+        promotedToOwnHome: 0,
+        promotedToSharedHome: 1,
+      }),
+    );
   });
 
   it('retries hub target resolution when a freshly rebuilt collection is not visible on first list call', async () => {

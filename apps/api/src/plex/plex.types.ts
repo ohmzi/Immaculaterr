@@ -11,4 +11,6 @@ export type PlexSharedServerUser = {
   plexAccountTitle: string | null;
   username: string | null;
   email: string | null;
+  accessToken?: string | null;
+  isHomeUser: boolean;
 };

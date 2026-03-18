@@ -25,6 +25,8 @@ Major Features Include
   - Inspired by your Immaculate Taste (long term collection)
   - Based on your recently watched (refreshes on every watch)
   - Change of Taste (refreshes on every watch)
+  - Fresh Out Of The Oven (recent-release movies you have not watched yet, per Plex user)
+  - Fresh Out Of The Oven (last 3 months, unseen per Plex user)
 - **Recommendation engine**:
   - TMDB-powered suggestions
   - Optional - Google + OpenAI 

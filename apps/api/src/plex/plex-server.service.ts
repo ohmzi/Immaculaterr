@@ -13,6 +13,8 @@ type PlexMetadata = Record<string, unknown> & {
   title?: string;
   year?: number | string;
   addedAt?: number | string;
+  viewCount?: number | string;
+  lastViewedAt?: number | string;
   Guid?: unknown;
   Media?: unknown;
   parentIndex?: number | string;
@@ -1476,6 +1478,54 @@ export class PlexServerService {
     }
 
     return out;
+  }
+
+  async listWatchedMovieTmdbIdsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<number[]> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 1,
+      includeGuids: true,
+      timeoutMs: 60000,
+    });
+
+    const watchedTmdbIds = new Set<number>();
+    for (const item of items) {
+      const viewCountRaw = item.viewCount;
+      const viewCount =
+        typeof viewCountRaw === 'number'
+          ? viewCountRaw
+          : typeof viewCountRaw === 'string' && viewCountRaw.trim()
+            ? Number.parseInt(viewCountRaw.trim(), 10)
+            : NaN;
+      const lastViewedAtRaw = item.lastViewedAt;
+      const lastViewedAt =
+        typeof lastViewedAtRaw === 'number'
+          ? lastViewedAtRaw
+          : typeof lastViewedAtRaw === 'string' && lastViewedAtRaw.trim()
+            ? Number.parseInt(lastViewedAtRaw.trim(), 10)
+            : NaN;
+      if (
+        (!Number.isFinite(viewCount) || viewCount <= 0) &&
+        (!Number.isFinite(lastViewedAt) || lastViewedAt <= 0)
+      ) {
+        continue;
+      }
+
+      const tmdbId = item.Guid
+        ? (extractIdsFromGuids(item.Guid, 'tmdb')[0] ?? null)
+        : null;
+      if (!tmdbId) continue;
+      watchedTmdbIds.add(tmdbId);
+    }
+
+    return Array.from(watchedTmdbIds);
   }
 
   async listShowsWithTvdbIdsForSectionKey(params: {

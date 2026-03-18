@@ -12,6 +12,7 @@ import { CryptoService } from '../crypto/crypto.service';
 import {
   CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
   CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+  FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
@@ -57,6 +58,7 @@ const RESET_PLEX_COLLECTION_TITLE_KEYWORDS = [
   'Change of Movie Taste',
   'Based on your recently watched',
   'Change of Taste',
+  'Fresh Out Of The Oven',
 ] as const;
 
 function sha256Hex(input: string) {
@@ -812,6 +814,9 @@ export class AuthService {
     await this.runResetDeleteStep('watchedShowRecommendationLibrary', () =>
       this.prisma.watchedShowRecommendationLibrary.deleteMany(),
     );
+    await this.runResetDeleteStep('freshReleaseMovieLibrary', () =>
+      this.prisma.freshReleaseMovieLibrary.deleteMany(),
+    );
     await this.runResetDeleteStep('immaculateTasteMovieLibrary', () =>
       this.prisma.immaculateTasteMovieLibrary.deleteMany(),
     );
@@ -1054,6 +1059,7 @@ export class AuthService {
       RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
       CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
       CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+      FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
     ]) {
       addBaseName(baseName);
       addTitle(baseName);

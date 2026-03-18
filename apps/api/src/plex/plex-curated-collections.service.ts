@@ -16,10 +16,16 @@ import {
 } from './plex-collections.utils';
 
 type PinTarget = 'admin' | 'friends';
+type PinVisibilityProfile = 'default' | 'home_only' | 'shared_home_only';
 type PreferredHubTarget = {
   collectionName: string;
   collectionKey: string;
 };
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return 'Unknown error';
+}
 
 @Injectable()
 export class PlexCuratedCollectionsService {
@@ -53,6 +59,7 @@ export class PlexCuratedCollectionsService {
     };
     pinCollections?: boolean;
     pinTarget?: PinTarget;
+    pinVisibilityProfile?: PinVisibilityProfile;
     collectionHubOrder?: string[];
     preferredHubTargets?: PreferredHubTarget[];
   }): Promise<JsonObject> {
@@ -71,6 +78,7 @@ export class PlexCuratedCollectionsService {
       artworkTarget,
       pinCollections = true,
       pinTarget = 'admin',
+      pinVisibilityProfile = 'default',
       collectionHubOrder,
       preferredHubTargets = [],
     } = params;
@@ -745,7 +753,7 @@ export class PlexCuratedCollectionsService {
           {
             collectionName,
             plexCollectionKey,
-            error: (lastErr as Error)?.message ?? String(lastErr),
+            error: toErrorMessage(lastErr),
           },
         );
       } else if (collectionItemsSource !== 'plex') {
@@ -803,6 +811,8 @@ export class PlexCuratedCollectionsService {
           librarySectionKey: movieSectionKey,
           mediaType,
           pinTarget,
+          primaryCollectionName: collectionName,
+          primaryPinVisibilityProfile: pinVisibilityProfile,
           collectionHubOrder:
             collectionHubOrder ??
             Array.from(CURATED_MOVIE_COLLECTION_HUB_ORDER),
@@ -924,6 +934,8 @@ export class PlexCuratedCollectionsService {
     librarySectionKey: string;
     mediaType: 'movie' | 'tv';
     pinTarget: PinTarget;
+    primaryCollectionName: string;
+    primaryPinVisibilityProfile: PinVisibilityProfile;
     collectionHubOrder: string[];
     preferredHubTargets?: PreferredHubTarget[];
   }): Promise<void> {
@@ -934,6 +946,8 @@ export class PlexCuratedCollectionsService {
       librarySectionKey,
       mediaType,
       pinTarget,
+      primaryCollectionName,
+      primaryPinVisibilityProfile,
       collectionHubOrder,
       preferredHubTargets = [],
     } = params;
@@ -943,8 +957,38 @@ export class PlexCuratedCollectionsService {
       mediaType,
     });
 
-    const targetVisibility =
-      pinTarget === 'friends'
+    const resolveTargetVisibility = (requestedCollectionName: string) => {
+      const visibilityProfile = hasSameCuratedCollectionBase({
+        left: requestedCollectionName,
+        right: primaryCollectionName,
+        mediaType,
+      })
+        ? primaryPinVisibilityProfile
+        : 'default';
+
+      if (visibilityProfile === 'home_only') {
+        return pinTarget === 'friends'
+          ? {
+              promotedToRecommended: 0,
+              promotedToOwnHome: 0,
+              promotedToSharedHome: 1,
+            }
+          : {
+              promotedToRecommended: 0,
+              promotedToOwnHome: 1,
+              promotedToSharedHome: 0,
+            };
+      }
+
+      if (visibilityProfile === 'shared_home_only') {
+        return {
+          promotedToRecommended: 0,
+          promotedToOwnHome: 0,
+          promotedToSharedHome: 1,
+        };
+      }
+
+      return pinTarget === 'friends'
         ? {
             // Non-admin users: pin to Friends' Home + Library Recommended.
             promotedToRecommended: 1,
@@ -957,6 +1001,7 @@ export class PlexCuratedCollectionsService {
             promotedToOwnHome: 1,
             promotedToSharedHome: 0,
           };
+    };
 
     const stats = {
       requested: requestedOrder.length,
@@ -1145,6 +1190,9 @@ export class PlexCuratedCollectionsService {
     });
 
     for (const target of targetMatches) {
+      const targetVisibility = resolveTargetVisibility(
+        target.requestedCollectionName,
+      );
       try {
         await this.plexServer.setCollectionHubVisibility({
           baseUrl,

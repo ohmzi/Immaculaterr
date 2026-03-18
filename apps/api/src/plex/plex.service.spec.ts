@@ -293,6 +293,106 @@ describe('PlexService.listSharedUsersForServer', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('preserves access tokens returned by shared-user discovery', async () => {
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    fetchMock
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            users: [
+              {
+                userID: 11,
+                friendlyName: 'Roommate',
+                accessToken: 'friend-token',
+              },
+            ],
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({ users: [] }),
+        }),
+      );
+
+    const service = new PlexService();
+    const users = await service.listSharedUsersWithAccessTokensForServer({
+      plexToken: 'token',
+      machineIdentifier: 'machine-id',
+    });
+
+    expect(users).toEqual([
+      expect.objectContaining({
+        plexAccountId: 11,
+        plexAccountTitle: 'Roommate',
+        accessToken: 'friend-token',
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves a Plex Home access token through the switch endpoint when discovery omits it', async () => {
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    fetchMock
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: false,
+          status: 404,
+          body: 'not found',
+          contentType: 'text/plain',
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: false,
+          status: 404,
+          body: 'not found',
+          contentType: 'text/plain',
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            users: [{ id: 99, friendlyName: 'Home User' }],
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            user: { id: 99, authToken: 'home-user-token' },
+          }),
+        }),
+      );
+
+    const service = new PlexService();
+    const users = await service.listSharedUsersWithAccessTokensForServer({
+      plexToken: 'token',
+      machineIdentifier: 'machine-id',
+    });
+
+    expect(users).toEqual([
+      expect.objectContaining({
+        plexAccountId: 99,
+        plexAccountTitle: 'Home User',
+        accessToken: 'home-user-token',
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
   it('returns home users when shared users endpoints fail', async () => {
     const fetchMock = jest.fn();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -336,6 +436,70 @@ describe('PlexService.listSharedUsersForServer', () => {
         plexAccountTitle: 'Home User',
       }),
     ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('PlexService.listSharedUsersWithAccessTokensForServer', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  it('resolves missing Plex Home user tokens via the switch endpoint', async () => {
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    fetchMock
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            users: [{ userID: 11, friendlyName: 'Roommate' }],
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            users: [{ id: 22, friendlyName: 'Kid Profile' }],
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            user: {
+              id: 22,
+              friendlyName: 'Kid Profile',
+              authToken: 'kid-token',
+            },
+          }),
+        }),
+      );
+
+    const service = new PlexService();
+    const users = await service.listSharedUsersWithAccessTokensForServer({
+      plexToken: 'token',
+      machineIdentifier: 'machine-id',
+    });
+
+    expect(users).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          plexAccountId: 22,
+          plexAccountTitle: 'Kid Profile',
+          accessToken: 'kid-token',
+        }),
+      ]),
+    );
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

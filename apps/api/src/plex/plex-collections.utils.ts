@@ -16,6 +16,8 @@ export const CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME =
   'Change of Movie Taste';
 export const IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME =
   'Inspired by your Immaculate Taste in Movies';
+export const FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME =
+  'Fresh Out Of The Oven';
 
 export const RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME =
   'Based on your recently watched Show';
@@ -27,6 +29,11 @@ export const CURATED_MOVIE_COLLECTION_HUB_ORDER = [
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
   CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
+] as const;
+
+export const FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_HUB_ORDER = [
+  ...CURATED_MOVIE_COLLECTION_HUB_ORDER,
+  FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
 ] as const;
 
 export const CURATED_TV_COLLECTION_HUB_ORDER = [
@@ -56,6 +63,7 @@ const CURATED_BASE_HINTS = {
   immaculateTasteMovies: 'inspired by your immaculate taste in movies',
   immaculateTasteShows: 'inspired by your immaculate taste in shows',
   immaculateTasteLegacy: 'inspired by your immaculate taste',
+  freshOutOfTheOven: 'fresh out of the oven',
 } as const;
 
 const CURATED_ORDER_LOOKUP = {
@@ -121,6 +129,7 @@ export function stripUserCollectionSuffix(collectionName: string): string {
       'change of show taste',
       'change of taste',
       'inspired by your immaculate taste',
+      'fresh out of the oven',
     ];
     const looksLikeBase = (value: string) => {
       const lower = value.toLowerCase();
@@ -173,6 +182,12 @@ function normalizeCuratedBaseName(params: {
       return params.mediaType === 'tv'
         ? IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME
         : IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME;
+    }
+    if (
+      params.mediaType === 'movie' &&
+      value.includes(CURATED_BASE_HINTS.freshOutOfTheOven)
+    ) {
+      return FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME;
     }
     if (value.includes(CURATED_BASE_HINTS.recentlyWatchedMovie)) {
       return RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME;
@@ -259,4 +274,13 @@ export function buildUserCollectionHubOrder(
   plexUserTitle?: string | null,
 ): string[] {
   return baseNames.map((name) => buildUserCollectionName(name, plexUserTitle));
+}
+
+export function buildFreshOutMovieCollectionHubOrder(
+  plexUserTitle?: string | null,
+): string[] {
+  return buildUserCollectionHubOrder(
+    FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_HUB_ORDER,
+    plexUserTitle,
+  );
 }

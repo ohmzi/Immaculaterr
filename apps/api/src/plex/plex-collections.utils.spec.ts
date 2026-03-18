@@ -25,6 +25,12 @@ describe('plex-collections utils', () => {
         mediaType: 'movie',
       }),
     ).toBe('Inspired by your Immaculate Taste in Movies');
+    expect(
+      resolveCuratedCollectionBaseName({
+        collectionName: 'Fresh Out Of The Oven (Dana)',
+        mediaType: 'movie',
+      }),
+    ).toBe('Fresh Out Of The Oven');
   });
 
   it('ranks movie and tv curated collection order as recently watched -> change -> immaculate', () => {
@@ -113,6 +119,24 @@ describe('plex-collections utils', () => {
       'Change of Movie Taste (Alice)',
       'Kids Movie Picks',
       'Anime Night',
+    ]);
+  });
+
+  it('places Fresh Out after the default movie rows when explicitly included', () => {
+    const sorted = sortCollectionNamesByCuratedBaseOrder({
+      mediaType: 'movie',
+      collectionNames: [
+        'Fresh Out Of The Oven (Alice)',
+        'Inspired by your Immaculate Taste in Movies (Alice)',
+        'Based on your recently watched Movie (Alice)',
+        'Change of Movie Taste (Alice)',
+      ],
+    });
+    expect(sorted).toEqual([
+      'Based on your recently watched Movie (Alice)',
+      'Change of Movie Taste (Alice)',
+      'Inspired by your Immaculate Taste in Movies (Alice)',
+      'Fresh Out Of The Oven (Alice)',
     ]);
   });
 });
