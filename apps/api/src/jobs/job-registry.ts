@@ -69,6 +69,13 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
       'Refreshes and reshuffles curated Plex collections for all users across their movie and TV libraries.',
     defaultScheduleCron: '0 2 * * *', // 2am daily (disabled by default)
   },
+  {
+    id: 'freshOutOfTheOven',
+    name: 'Fresh Out Of The Oven',
+    description:
+      'Builds a recent-release movie baseline for the last 3 months and refreshes per-user unseen Plex collections across shared and admin homes.',
+    defaultScheduleCron: '30 2 * * *', // 2:30am daily (disabled by default)
+  },
 ];
 
 export function findJobDefinition(

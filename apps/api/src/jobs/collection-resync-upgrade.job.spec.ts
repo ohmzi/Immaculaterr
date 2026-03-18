@@ -1,8 +1,10 @@
 import {
+  buildFreshOutMovieCollectionHubOrder,
   buildUserCollectionHubOrder,
   CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
+  FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
@@ -649,6 +651,86 @@ describe('CollectionResyncUpgradeJob', () => {
     ]);
   });
 
+  it('does not cap Fresh Out Of The Oven during upgrade replay item selection', async () => {
+    const settings = createSettingStore();
+    const activeRows = Array.from({ length: 18 }, (_, index) => ({
+      collectionName: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+      tmdbId: index + 1,
+    }));
+
+    const prisma = {
+      ...settings.prisma,
+      watchedMovieRecommendationLibrary: {
+        findMany: jest.fn(({ where }: { where: { status?: string } }) =>
+          Promise.resolve(where?.status === 'pending' ? [] : activeRows),
+        ),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+      watchedShowRecommendationLibrary: {
+        findMany: jest.fn(() => Promise.resolve([])),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+    };
+    const plexServer = {
+      listMoviesWithTmdbIdsForSectionKey: jest.fn(() =>
+        Promise.resolve(
+          activeRows.map((row) => ({
+            tmdbId: row.tmdbId,
+            ratingKey: `movie-${row.tmdbId}`,
+            title: `Movie ${row.tmdbId}`,
+          })),
+        ),
+      ),
+    };
+
+    const job = new CollectionResyncUpgradeJob(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      plexServer as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const buildDesiredItemsForQueueItem = (
+      job as unknown as {
+        buildDesiredItemsForQueueItem: (params: {
+          item: CollectionResyncQueueItem;
+          dryRun: boolean;
+          watchedLimit: number;
+          movieIndexBySection: Map<
+            string,
+            Map<number, { ratingKey: string; title: string }>
+          >;
+          tvIndexBySection: Map<
+            string,
+            Map<number, { ratingKey: string; title: string }>
+          >;
+          plexBaseUrl: string;
+          plexToken: string;
+        }) => Promise<Array<{ ratingKey: string; title: string }>>;
+      }
+    ).buildDesiredItemsForQueueItem.bind(job);
+
+    const desired = await buildDesiredItemsForQueueItem({
+      item: createQueueItem({
+        plexUserId: 'u-1',
+        mediaType: 'movie',
+        librarySectionKey: 'movie-lib',
+        collectionBaseName: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+      }),
+      dryRun: false,
+      watchedLimit: 15,
+      movieIndexBySection: new Map(),
+      tvIndexBySection: new Map(),
+      plexBaseUrl: 'http://plex.local:32400',
+      plexToken: 'token',
+    });
+
+    expect(desired).toHaveLength(18);
+  });
+
   it('rebuilds with pinned curated hub order during upgrade replay', async () => {
     const settings = createSettingStore();
     const item = createQueueItem({
@@ -781,6 +863,137 @@ describe('CollectionResyncUpgradeJob', () => {
           CURATED_MOVIE_COLLECTION_HUB_ORDER,
           'Alice',
         ),
+      }),
+    );
+  });
+
+  it('rebuilds Fresh Out Of The Oven with home/shared-home visibility and four-row movie order', async () => {
+    const settings = createSettingStore();
+    const item = createQueueItem({
+      plexUserId: 'u-3',
+      mediaType: 'movie',
+      librarySectionKey: 'movie-lib',
+      collectionBaseName: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+    });
+    item.targetCollectionName = `${FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME} (Alice)`;
+    item.pinTarget = 'admin';
+    item.sourceTable = 'WatchedMovieRecommendationLibrary';
+
+    const prisma = {
+      ...settings.prisma,
+      watchedMovieRecommendationLibrary: {
+        findMany: jest.fn(({ where }: { where: { status?: string } }) =>
+          Promise.resolve(
+            where?.status === 'pending'
+              ? []
+              : [
+                  {
+                    collectionName:
+                      FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+                    tmdbId: 11,
+                  },
+                ],
+          ),
+        ),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+      watchedShowRecommendationLibrary: {
+        findMany: jest.fn(() => Promise.resolve([])),
+        updateMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+    };
+
+    const plexServer = {
+      listMoviesWithTmdbIdsForSectionKey: jest.fn(() =>
+        Promise.resolve([
+          { tmdbId: 11, ratingKey: 'movie-11', title: 'Movie Eleven' },
+        ]),
+      ),
+      findCollectionRatingKey: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('collection-11'),
+      getCollectionItems: jest.fn(() =>
+        Promise.resolve([{ ratingKey: 'movie-11', title: 'Movie Eleven' }]),
+      ),
+    };
+    const plexCurated = {
+      rebuildMovieCollection: jest.fn(() => Promise.resolve({})),
+    };
+
+    const job = new CollectionResyncUpgradeJob(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      plexServer as never,
+      plexCurated as never,
+      {} as never,
+      {} as never,
+    );
+    const recreateCollectionsSequentially = (
+      job as unknown as {
+        recreateCollectionsSequentially: (params: {
+          ctx: JobContext;
+          state: Record<string, unknown>;
+          plexBaseUrl: string;
+          plexToken: string;
+          machineIdentifier: string;
+          watchedLimit: number;
+        }) => Promise<Record<string, unknown>>;
+      }
+    ).recreateCollectionsSequentially.bind(job);
+
+    const state = {
+      queue: [item],
+      itemProgress: {
+        [item.key]: {
+          phase: 'captured',
+          source: 'immaculaterr',
+          attempts: 0,
+          lastError: null,
+          updatedAt: '2026-02-28T00:00:00.000Z',
+          capturedAt: '2026-02-28T00:00:00.000Z',
+          deletedAt: null,
+          recreatedAt: null,
+          verifiedAt: null,
+          doneAt: null,
+        },
+      },
+      deleteQueue: [],
+      deleteProgress: {},
+      deletedCollections: [],
+      preRefreshUserTitles: {},
+      failures: [],
+      phases: {
+        queueBuiltAt: null,
+        captureCompletedAt: null,
+        deleteCompletedAt: null,
+        recreateCompletedAt: null,
+        finalizedAt: null,
+      },
+      version: 1,
+      startedAt: '2026-02-28T00:00:00.000Z',
+      updatedAt: '2026-02-28T00:00:00.000Z',
+      adminUserId: 'admin',
+      snapshot: null,
+    };
+
+    await recreateCollectionsSequentially({
+      ctx: createCtx(),
+      state,
+      plexBaseUrl: 'http://plex.local:32400',
+      plexToken: 'token',
+      machineIdentifier: 'machine-1',
+      watchedLimit: 15,
+    });
+
+    expect(plexCurated.rebuildMovieCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionName: `${FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME} (Alice)`,
+        pinTarget: 'admin',
+        pinVisibilityProfile: 'home_only',
+        collectionHubOrder: buildFreshOutMovieCollectionHubOrder('Alice'),
       }),
     );
   });

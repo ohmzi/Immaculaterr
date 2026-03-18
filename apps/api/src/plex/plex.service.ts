@@ -44,6 +44,11 @@ function toStringSafe(value: unknown): string {
   return '';
 }
 
+function readAccessTokenSafe(value: unknown): string | null {
+  const token = toStringSafe(value);
+  return token ? token : null;
+}
+
 function toIntSafe(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value))
     return Math.trunc(value);
@@ -172,6 +177,18 @@ function normalizeSharedServerUser(
     rawTitle ||
     email ||
     null;
+  const accessToken =
+    readAccessTokenSafe(raw['authToken']) ??
+    readAccessTokenSafe(raw['authenticationToken']) ??
+    readAccessTokenSafe(raw['accessToken']) ??
+    readAccessTokenSafe(raw['access_token']) ??
+    (nestedUser ? readAccessTokenSafe(nestedUser['authToken']) : null) ??
+    (nestedUser
+      ? readAccessTokenSafe(nestedUser['authenticationToken'])
+      : null) ??
+    (nestedUser ? readAccessTokenSafe(nestedUser['accessToken']) : null) ??
+    (nestedUser ? readAccessTokenSafe(nestedUser['access_token']) : null) ??
+    null;
 
   if (!plexAccountTitle && plexAccountId === null) return null;
 
@@ -180,6 +197,35 @@ function normalizeSharedServerUser(
     plexAccountTitle,
     username,
     email,
+    accessToken,
+    isHomeUser: false,
+  };
+}
+
+function pickPreferredSharedUserText(
+  existing: string | null,
+  incoming: string | null,
+): string | null {
+  if (!incoming) return existing;
+  if (!existing) return incoming;
+  if (incoming.length > existing.length) return incoming;
+  return existing;
+}
+
+function mergeSharedServerUsers(
+  existing: PlexSharedServerUser,
+  incoming: PlexSharedServerUser,
+): PlexSharedServerUser {
+  return {
+    plexAccountId: existing.plexAccountId ?? incoming.plexAccountId,
+    plexAccountTitle: pickPreferredSharedUserText(
+      existing.plexAccountTitle,
+      incoming.plexAccountTitle,
+    ),
+    username: pickPreferredSharedUserText(existing.username, incoming.username),
+    email: pickPreferredSharedUserText(existing.email, incoming.email),
+    accessToken: existing.accessToken ?? incoming.accessToken ?? null,
+    isHomeUser: Boolean(existing.isHomeUser || incoming.isHomeUser),
   };
 }
 
@@ -187,7 +233,7 @@ function dedupeSharedServerUsers(
   users: PlexSharedServerUser[],
 ): PlexSharedServerUser[] {
   const out: PlexSharedServerUser[] = [];
-  const seen = new Set<string>();
+  const indexByKey = new Map<string, number>();
   for (const user of users) {
     const titleKey = (user.plexAccountTitle ?? '').trim().toLowerCase();
     const usernameKey = (user.username ?? '').trim().toLowerCase();
@@ -202,9 +248,16 @@ function dedupeSharedServerUsers(
             : emailKey
               ? `email:${emailKey}`
               : '';
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(user);
+    if (!key) continue;
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex === undefined) {
+      indexByKey.set(key, out.length);
+      out.push(user);
+      continue;
+    }
+    const existing = out[existingIndex];
+    if (!existing) continue;
+    out[existingIndex] = mergeSharedServerUsers(existing, user);
   }
   return out;
 }
@@ -214,6 +267,7 @@ function parseSharedUsersPayload(payload: unknown): PlexSharedServerUser[] {
   collectCandidateUserObjects(payload, candidates, hasUserLikeKey, 0);
   const normalized = candidates
     .map((row) => normalizeSharedServerUser(row))
+    .map((row) => (row ? { ...row, isHomeUser: false } : null))
     .filter((row): row is PlexSharedServerUser => Boolean(row));
   return dedupeSharedServerUsers(normalized);
 }
@@ -223,6 +277,7 @@ function parseHomeUsersPayload(payload: unknown): PlexSharedServerUser[] {
   collectCandidateUserObjects(payload, candidates, hasHomeUserLikeKey, 0);
   const normalized = candidates
     .map((row) => normalizeSharedServerUser(row))
+    .map((row) => (row ? { ...row, isHomeUser: true } : null))
     .filter((row): row is PlexSharedServerUser => Boolean(row));
   return dedupeSharedServerUsers(normalized);
 }
@@ -586,6 +641,131 @@ export class PlexService {
     throw new BadGatewayException(
       `Plex shared users lookup failed for machineIdentifier=${machineIdentifier}: ${reason}`,
     );
+  }
+
+  async listSharedUsersWithAccessTokensForServer(params: {
+    plexToken: string;
+    machineIdentifier: string;
+  }): Promise<PlexSharedServerUser[]> {
+    const users = await this.listSharedUsersForServer(params);
+    if (!users.length) return users;
+
+    const usersWithResolvedTokens = await Promise.all(
+      users.map(async (user) => {
+        if (user.accessToken) return user;
+        if (!user.isHomeUser || user.plexAccountId === null) return user;
+        const accessToken = await this.resolveHomeUserAccessToken({
+          plexToken: params.plexToken,
+          plexAccountId: user.plexAccountId,
+        }).catch(() => null);
+        return accessToken ? { ...user, accessToken } : user;
+      }),
+    );
+
+    return dedupeSharedServerUsers(usersWithResolvedTokens);
+  }
+
+  private async resolveHomeUserAccessToken(params: {
+    plexToken: string;
+    plexAccountId: number;
+  }): Promise<string | null> {
+    const { plexToken, plexAccountId } = params;
+    if (
+      !plexToken.trim() ||
+      !Number.isFinite(plexAccountId) ||
+      plexAccountId <= 0
+    )
+      return null;
+
+    const endpoints = [
+      `https://plex.tv/api/home/users/${encodeURIComponent(String(Math.trunc(plexAccountId)))}/switch`,
+      `https://plex.tv/api/v2/home/users/${encodeURIComponent(String(Math.trunc(plexAccountId)))}/switch`,
+    ];
+
+    for (const url of endpoints) {
+      const safeUrl = sanitizeUrlForLogs(url);
+      const startedAt = Date.now();
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            ...this.getPlexHeaders(),
+            Accept: 'application/json, text/xml;q=0.9, application/xml;q=0.8',
+            'X-Plex-Token': plexToken,
+          },
+        });
+
+        const raw = await res.text().catch(() => '');
+        const ms = Date.now() - startedAt;
+        if (!res.ok) {
+          this.logger.warn(
+            `Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${raw}`.trim(),
+          );
+          continue;
+        }
+
+        this.logger.log(
+          `Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms)`,
+        );
+
+        const body = raw.trim();
+        if (!body) continue;
+
+        let parsed: unknown = null;
+        const contentType = res.headers.get('content-type') ?? '';
+        const looksJson = body.startsWith('{') || body.startsWith('[');
+        const looksXml = body.startsWith('<');
+
+        if (contentType.includes('json') || looksJson) {
+          try {
+            parsed = JSON.parse(body) as unknown;
+          } catch {
+            parsed = null;
+          }
+        }
+        if ((contentType.includes('xml') || looksXml) && parsed === null) {
+          try {
+            parsed = xmlParser.parse(body) as unknown;
+          } catch {
+            parsed = null;
+          }
+        }
+
+        const userRows = parsed ? parseSharedUsersPayload(parsed) : [];
+        const matchingUser =
+          userRows.find((user) => user.accessToken) ??
+          userRows.find(
+            (user) =>
+              user.plexAccountId !== null &&
+              user.plexAccountId === Math.trunc(plexAccountId),
+          ) ??
+          null;
+        if (matchingUser?.accessToken) {
+          return matchingUser.accessToken;
+        }
+
+        if (parsed && isPlainObject(parsed)) {
+          const directToken =
+            readAccessTokenSafe(parsed['authToken']) ??
+            readAccessTokenSafe(parsed['authenticationToken']) ??
+            readAccessTokenSafe(parsed['accessToken']) ??
+            readAccessTokenSafe(parsed['access_token']) ??
+            (isPlainObject(parsed['user'])
+              ? (readAccessTokenSafe(parsed['user']['authToken']) ??
+                readAccessTokenSafe(parsed['user']['authenticationToken']) ??
+                readAccessTokenSafe(parsed['user']['accessToken']) ??
+                readAccessTokenSafe(parsed['user']['access_token']))
+              : null);
+          if (directToken) return directToken;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Plex.tv HTTP POST ${safeUrl} -> FAILED: ${(err as Error)?.message ?? String(err)}`,
+        );
+      }
+    }
+
+    return null;
   }
 
   private async fetchUsersFromEndpoints(params: {

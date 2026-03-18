@@ -8,6 +8,7 @@ import { ImmaculateTasteRefresherJob } from './immaculate-taste-refresher.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
 import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-collection.job';
 import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
+import { FreshOutOfTheOvenJob } from './fresh-out-of-the-oven.job';
 import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class JobsHandlers {
     private readonly basedonLatestWatchedRefresherJob: BasedonLatestWatchedRefresherJob,
     private readonly basedonLatestWatchedCollectionJob: BasedonLatestWatchedCollectionJob,
     private readonly collectionResyncUpgradeJob: CollectionResyncUpgradeJob,
+    private readonly freshOutOfTheOvenJob: FreshOutOfTheOvenJob,
     private readonly tmdbUpcomingMoviesJob: TmdbUpcomingMoviesJob,
   ) {}
 
@@ -42,6 +44,8 @@ export class JobsHandlers {
         return await this.basedonLatestWatchedCollectionJob.run(ctx);
       case 'recentlyWatchedRefresher':
         return await this.basedonLatestWatchedRefresherJob.run(ctx);
+      case 'freshOutOfTheOven':
+        return await this.freshOutOfTheOvenJob.run(ctx);
       case 'collectionResyncUpgrade':
         return await this.collectionResyncUpgradeJob.run(ctx);
       default:

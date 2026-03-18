@@ -31,6 +31,7 @@ export const FAQ_SECTION_BY_TASK_MANAGER_CARD_ID = {
   immaculateTasteRefresher: 'task-manager-immaculate-taste-refresher',
   watchedMovieRecommendations: 'task-manager-based-on-latest-watched-collection',
   recentlyWatchedRefresher: 'task-manager-based-on-latest-watched-refresher',
+  freshOutOfTheOven: 'task-manager-fresh-out-of-the-oven',
 } as const;
 
 export type TaskManagerFeatureCardId = keyof typeof FAQ_SECTION_BY_TASK_MANAGER_CARD_ID;

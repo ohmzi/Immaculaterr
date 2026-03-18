@@ -381,11 +381,15 @@ export class IntegrationsController {
     if (!sectionKeys.length) return emptyResult;
 
     const [
+      freshReleaseMovieDeletedRes,
       immaculateMovieDeletedRes,
       immaculateTvDeletedRes,
       watchedMovieDeletedRes,
       watchedTvDeletedRes,
     ] = await this.prisma.$transaction([
+      this.prisma.freshReleaseMovieLibrary.deleteMany({
+        where: { librarySectionKey: { in: sectionKeys } },
+      }),
       this.prisma.immaculateTasteMovieLibrary.deleteMany({
         where: { librarySectionKey: { in: sectionKeys } },
       }),
@@ -444,6 +448,7 @@ export class IntegrationsController {
       }
     }
 
+    const freshReleaseMovieDeleted = freshReleaseMovieDeletedRes.count;
     const immaculateMovieDeleted = immaculateMovieDeletedRes.count;
     const immaculateTvDeleted = immaculateTvDeletedRes.count;
     const watchedMovieDeleted = watchedMovieDeletedRes.count;
@@ -452,11 +457,13 @@ export class IntegrationsController {
     return {
       deselectedSectionKeys: sectionKeys,
       db: {
+        freshReleaseMovieDeleted,
         immaculateMovieDeleted,
         immaculateTvDeleted,
         watchedMovieDeleted,
         watchedTvDeleted,
         totalDeleted:
+          freshReleaseMovieDeleted +
           immaculateMovieDeleted +
           immaculateTvDeleted +
           watchedMovieDeleted +
