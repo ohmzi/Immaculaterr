@@ -1408,10 +1408,30 @@ export function TaskManagerPage() {
     refetchOnWindowFocus: false,
   });
   const visibleJobs = useMemo(
-    () =>
-      (jobsQuery.data?.jobs ?? []).filter(
+    () => {
+      const filteredJobs = (jobsQuery.data?.jobs ?? []).filter(
         (job) => !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
-      ),
+      );
+      const freshOutOfTheOvenJob = filteredJobs.find(
+        (job) => job.id === 'freshOutOfTheOven',
+      );
+      if (!freshOutOfTheOvenJob) return filteredJobs;
+
+      const jobsWithoutFreshOutOfTheOven = filteredJobs.filter(
+        (job) => job.id !== 'freshOutOfTheOven',
+      );
+      const tmdbUpcomingMoviesIndex = jobsWithoutFreshOutOfTheOven.findIndex(
+        (job) => job.id === 'tmdbUpcomingMovies',
+      );
+      if (tmdbUpcomingMoviesIndex === -1) return filteredJobs;
+
+      jobsWithoutFreshOutOfTheOven.splice(
+        tmdbUpcomingMoviesIndex + 1,
+        0,
+        freshOutOfTheOvenJob,
+      );
+      return jobsWithoutFreshOutOfTheOven;
+    },
     [jobsQuery.data?.jobs],
   );
   useEffect(() => {
