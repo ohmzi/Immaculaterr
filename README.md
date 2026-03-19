@@ -53,8 +53,11 @@
   - Filter by genre and audio language per profile to include or exclude exactly what you want
   - Better matching means fewer unwanted titles and more accurate recommendations
 
-- **TMDB Upcoming Movies task filters**
-  - Build custom filter sets with where-to-watch, genre, language, certification, and score controls
+- **Fresh Out Of The Oven task**
+  - Builds a per-user recent-release movie row from the last 3 months, showing only titles that user has not watched yet
+
+- **TMDB Upcoming Movie task**
+  - Build custom filter sets with where-to-watch, genre, language, certification, and score controls, then route top picks to Radarr or Seerr
 
 - **Personalized rows for every viewer**
   - Each person on your Plex gets their own curated rows (e.g. *Based on your recently watched — Jane*)
