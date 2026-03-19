@@ -300,14 +300,12 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
-      - name: Prepare release notes (custom format)
+      - name: Prepare release notes (version history highlights)
         shell: bash
         env:
           VERSION: ${{ needs.build-and-push.outputs.version }}
           REPO: ${{ github.repository }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
@@ -319,126 +317,27 @@ jobs:
             } || true
           )"
 
-          if [ -n "${PREV_TAG}" ]; then
-            RANGE_SPEC="${PREV_TAG}..HEAD"
-          else
-            RANGE_SPEC=""
+          FEATURE_LINES_FILE="$(mktemp)"
+          trap 'rm -f "${FEATURE_LINES_FILE}"' EXIT
+
+          if ! node scripts/generate-release-feature-lines.mjs --version "${VERSION}" > "${FEATURE_LINES_FILE}"; then
+            echo "- ${PR_TITLE}" > "${FEATURE_LINES_FILE}"
           fi
 
-          CHANGES_FILE="$(mktemp)"
-          PRIORITY_CHANGES_FILE="$(mktemp)"
-          SECONDARY_CHANGES_FILE="$(mktemp)"
-          trap 'rm -f "${CHANGES_FILE}" "${PRIORITY_CHANGES_FILE}" "${SECONDARY_CHANGES_FILE}"' EXIT
-
-          normalize_subject() {
-            local value
-            value="$(printf '%s' "$1" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-            value="$(printf '%s' "${value}" | sed -E 's/^[[:alpha:]][[:alnum:]_-]*(\([^)]+\))?!?:[[:space:]]*//')"
-            value="$(printf '%s' "${value}" | sed -E 's/[[:space:]]+/ /g')"
-            printf '%s' "${value}"
-          }
-
-          is_noise_subject() {
-            local raw_lc
-            raw_lc="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-            case "${raw_lc}" in
-              chore\(badges\):*|chore:\ bump\ version*|docs:*|doc:*|ci:*|build:*)
-                return 0
-                ;;
-            esac
-            return 1
-          }
-
-          append_unique_change() {
-            local line="$1"
-            local target_file="$2"
-            [ -n "${line}" ] || return 0
-            if ! grep -Fxq -- "${line}" "${target_file}" 2>/dev/null; then
-              printf '%s\n' "${line}" >> "${target_file}"
-            fi
-          }
-
-          if [ -n "${RANGE_SPEC}" ]; then
-            COMMIT_SUBJECTS="$(git log --no-merges --pretty=format:'%s' "${RANGE_SPEC}" || true)"
-          else
-            COMMIT_SUBJECTS="$(git log --no-merges --pretty=format:'%s' -n 30 || true)"
-          fi
-
-          while IFS= read -r raw_subject; do
-            [ -n "${raw_subject}" ] || continue
-            normalized_subject="$(normalize_subject "${raw_subject}")"
-            [ -n "${normalized_subject}" ] || continue
-
-            if printf '%s' "${raw_subject}" | grep -Eiq '^(feat|fix|sec|security|perf|refactor)(\([^)]+\))?!?:'; then
-              append_unique_change "${normalized_subject}" "${PRIORITY_CHANGES_FILE}"
-            elif ! is_noise_subject "${raw_subject}"; then
-              append_unique_change "${normalized_subject}" "${SECONDARY_CHANGES_FILE}"
-            fi
-          done <<< "${COMMIT_SUBJECTS}"
-
-          MAX_TOP_CHANGES=5
-          MIN_TOP_CHANGES=3
-          top_count=0
-
-          append_bullets_from_file() {
-            local source_file="$1"
-            while IFS= read -r line; do
-              [ -n "${line}" ] || continue
-              printf -- '- %s\n' "${line}" >> "${CHANGES_FILE}"
-              top_count=$((top_count + 1))
-              if [ "${top_count}" -ge "${MAX_TOP_CHANGES}" ]; then
-                return 0
-              fi
-            done < "${source_file}"
-          }
-
-          append_bullets_from_file "${PRIORITY_CHANGES_FILE}"
-          if [ "${top_count}" -lt "${MAX_TOP_CHANGES}" ]; then
-            append_bullets_from_file "${SECONDARY_CHANGES_FILE}"
-          fi
-
-          if [ "${top_count}" -lt "${MIN_TOP_CHANGES}" ] && [ -n "${PR_BODY:-}" ]; then
-            while IFS= read -r pr_bullet; do
-              normalized_pr_bullet="$(normalize_subject "${pr_bullet}")"
-              [ -n "${normalized_pr_bullet}" ] || continue
-              if ! grep -Fxq -- "- ${normalized_pr_bullet}" "${CHANGES_FILE}" 2>/dev/null; then
-                printf -- '- %s\n' "${normalized_pr_bullet}" >> "${CHANGES_FILE}"
-                top_count=$((top_count + 1))
-              fi
-              if [ "${top_count}" -ge "${MAX_TOP_CHANGES}" ]; then
-                break
-              fi
-            done < <(
-              printf '%s\n' "${PR_BODY}" \
-                | sed 's/\r$//' \
-                | awk '/^[-*] / { sub(/^[-*] /, ""); print }'
-            )
-          fi
-
-          if [ ! -s "${CHANGES_FILE}" ]; then
-            {
-              echo "- ${PR_TITLE}"
-              echo "- Merged pull request [#${PR_NUMBER}](https://github.com/${REPO}/pull/${PR_NUMBER})"
-            } > "${CHANGES_FILE}"
-            top_count=2
-          else
-            top_count="$(wc -l < "${CHANGES_FILE}" | tr -d ' ')"
+          if [ ! -s "${FEATURE_LINES_FILE}" ]; then
+            echo "- ${PR_TITLE}" > "${FEATURE_LINES_FILE}"
           fi
 
           if [ -n "${PREV_TAG}" ]; then
             CHANGELOG_URL="https://github.com/${REPO}/compare/${PREV_TAG}..v${VERSION}"
-            TOP_CHANGES_HEADING="## Top ${top_count} changes since ${PREV_TAG}"
           else
             CHANGELOG_URL="https://github.com/${REPO}/releases/tag/v${VERSION}"
-            TOP_CHANGES_HEADING="## Top ${top_count} changes"
           fi
 
           cat > RELEASE_NOTES.md <<EOF
-          ## What's Changed
+          ## What's New
 
-          ${TOP_CHANGES_HEADING}
-
-          $(cat "${CHANGES_FILE}")
+          $(cat "${FEATURE_LINES_FILE}")
 
           **Full Changelog**: ${CHANGELOG_URL}
 

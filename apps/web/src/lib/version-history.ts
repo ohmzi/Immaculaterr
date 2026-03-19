@@ -26,12 +26,10 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.1',
     popupHighlights: [
-      'Fresh Out Of The Oven adds per-user unseen recent-release movie rows for the last 3 months.',
-      'Fresh Out Of The Oven now has its own Task Manager card with Run Now plus schedule controls.',
-      'Fresh Out Of The Oven pins to Home for admin and Shared Home for shared users.',
-      'TMDB, OpenAI, and Google connectivity checks are now more reliable on DNS/IPv6-problem Docker hosts.',
-      'External API tests now retry with explicit IPv4 fallback before failing.',
-      'Added a dedicated TrueNAS setup guide with working main-app and HTTPS sidecar YAML.',
+      'Fresh Out Of The Oven now builds per-user recent-release movie rows and includes a dedicated Task Manager card.',
+      'TMDB Upcoming Movie task adds customizable filter sets and routes top picks to Radarr or Seerr.',
+      'TMDB, OpenAI, and Google tests now retry with explicit IPv4 fallback when Docker DNS/IPv6 is unstable.',
+      'Setup guidance now includes both TrueNAS and Unraid paths with HTTPS and certificate trust steps.',
     ],
     sections: [
       {
@@ -44,6 +42,14 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         ],
       },
       {
+        title: 'TMDB Upcoming Movie task',
+        bullets: [
+          'Added customizable filter sets with where-to-watch, genre, language, certification, and score controls.',
+          'Each filter set can be tuned independently so upcoming picks match different preferences or use cases.',
+          'Top picks can route directly to Radarr by default or through Seerr when route-via-Seerr is enabled.',
+        ],
+      },
+      {
         title: 'Integration connectivity hardening',
         bullets: [
           'TMDB, OpenAI, and Google now retry with explicit IPv4 fallback when normal requests fail due to DNS/IPv6 network issues.',
@@ -52,17 +58,11 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         ],
       },
       {
-        title: 'TrueNAS setup and HTTPS guidance',
+        title: 'TrueNAS and Unraid setup guidance',
         bullets: [
-          'Added a dedicated in-app TrueNAS guide at /setup/truenas with copy-ready YAML for the main app and HTTPS sidecar.',
-          'Setup page catalog now links directly to the TrueNAS guide for faster onboarding.',
-          'Updated setup docs with TrueNAS GUI flow, local CA certificate collection/trust steps, and HTTPS verification commands.',
-        ],
-      },
-      {
-        title: 'TMDB Upcoming Movies task filters',
-        bullets: [
-          'Added customizable upcoming-movie filter sets with where-to-watch, genre, language, certification, and score controls.',
+          'Added dedicated in-app setup guides at /setup/truenas and /setup/unraid with copy-ready app and HTTPS-sidecar examples.',
+          'Setup page catalog now links directly to both TrueNAS and Unraid guides for faster onboarding.',
+          'Updated setup docs with TrueNAS and Unraid deployment flows, local CA trust steps, and HTTPS verification commands.',
         ],
       },
     ],
