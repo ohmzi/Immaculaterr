@@ -35,28 +35,30 @@
 ## What it does
 
 - **Watches Plex activity and reacts right away**
-  When someone watches a movie or episode, Immaculaterr can trigger the matching workflows automatically instead of waiting for the next full run.
+  When someone (admin or shared user) watches a movie or show episode, Immaculaterr will trigger the task to automatically create collections and pin them on top on Home screen so user can then get better suggestion and also fresh looking homescreen like Netflix.
+
+- **Collections Built by Immaculaterr**
+  - `Immaculate Taste` for your long-term observation and suggestions
+  - `Based on your recently watched` for quick post-watch collection, updates after every newly watched media
+  - `Change of Taste` same as Based on your recently watched but polar opposite of those suggestions so may be provide different kind of suggestions
+  - You can run multiple `Immaculate Taste` profiles side by side, each with its own download route, folder, naming rules, and fallback naming, such as have a seperate collection for Animation, Action, Specific Language, keep default collection on or turn it off. Lots of ways to modify the Immaculate Taste collection. 
+
+- **Lets you create multiple profiles for Immaculate Taste**
+  - You can run multiple `Immaculate Taste` profiles side by side, each with its own download route, folder, naming rules, and fallback naming. 
+  - Filter by genre and audio language per profile to narrow or expand what gets recommended. You can add different collections on homescreen for specific genre like Animation Only or Comedy and Family Movies Collection or Specific Language only Collection. Design the homescreen as you wish to see it.
+  - The better you tune these profile, The Better matching means fewer unwanted titles and more useful suggestions
 
 - **Runs background jobs on a schedule**
-  It can refresh rows, fetch new content, and keep your Plex home screen moving even when nobody is actively watching.
-
-- **Builds your main taste-based collections**
-  - `Immaculate Taste` for your long-term preferences
-  - `Based on your recently watched` for quick post-watch updates
-  - `Change of Taste` for recommendations that intentionally branch out
-  - You can run multiple `Immaculate Taste` profiles side by side, each with its own download route, folder, naming rules, and fallback naming
-
-- **Lets you tune each taste profile**
-  - Filter by genre and audio language per profile to narrow or expand what gets recommended
-  - Better matching means fewer unwanted titles and more useful suggestions
+  - It refreshs suggestion rows, fetch new content, and keep your Plex home screen moving even when nobody is actively watching.
+  - Never have stale looking homescreen again.
 
 - **Builds a Fresh Out Of The Oven row**
-  - Creates a recent-release movie row for each user using titles from the last 3 months
+  - Creates a recent-release movie row on homescreen of the movies that have been released last 3 months
   - Only shows movies that specific user has not watched yet
 
 - **Builds a TMDB Upcoming Movie row**
-  - Pulls upcoming movie picks from TMDB and turns them into a usable row or request flow
-  - You can shape the results with filters like where-to-watch, genre, language, certification, and score
+  - Pulls upcoming movie picks from TMDB. So your collection is always upto date with the latest movies and shows being released. 
+  - You can shape the results with filters like streaming service, genre, language, and score
   - Top matches can be sent to Radarr directly or routed through Seerr
 
 - **Keeps recommendations personal for every viewer**
