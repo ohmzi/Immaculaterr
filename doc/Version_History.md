@@ -7,17 +7,23 @@ This file tracks notable changes by version.
 ---
 
 - What's new since 1.7.0:
-- Fresh Out Of The Oven adds a per-user recent-release movie collection built from the last 3 months of library titles.
-- Each user only sees titles they have not watched, while the shared recent-release baseline stays user-independent.
-- Fresh Out Of The Oven pins to Home for admin, Shared Home for shared users, and stays last within Immaculaterr-managed movie rows.
-- Task Manager now includes a Fresh Out Of The Oven job with Run Now plus optional schedule enablement.
-- TMDB, OpenAI, and Google now retry with explicit IPv4 fallback when normal requests fail due to DNS/IPv6 network issues.
-- This improves API-key validation reliability in Docker environments with unstable resolver behavior.
-- Added focused test coverage for fallback behavior and non-fallback auth failure handling.
-- Added a dedicated in-app TrueNAS setup guide at `/setup/truenas` with copy-ready YAML for the main app and HTTPS sidecar.
-- Setup page now links directly to the TrueNAS guide for faster navigation.
-- Updated `setupguide.md` with TrueNAS GUI deployment flow, local CA certificate trust steps, and HTTPS verification commands.
-- Task Manager now includes TMDB Upcoming Movies custom filter sets with where-to-watch, genre, language, certification, and score controls.
+- Fresh Out Of The Oven task:
+  - Added a per-user recent-release movie collection built from the last 3 months of library titles.
+  - Each user only sees titles they have not watched, while the shared recent-release baseline stays user-independent.
+  - Fresh Out Of The Oven pins to Home for admin, Shared Home for shared users, and stays last within Immaculaterr-managed movie rows.
+  - Task Manager now includes a Fresh Out Of The Oven job with Run Now plus optional schedule enablement.
+- TMDB Upcoming Movie task:
+  - Added customizable filter sets with where-to-watch, genre, language, certification, and score controls.
+  - Each filter set can be tuned independently so upcoming picks match different preferences or use cases.
+  - Top picks can route directly to Radarr by default or through Seerr when route-via-Seerr is enabled.
+- Integration connectivity hardening:
+  - TMDB, OpenAI, and Google now retry with explicit IPv4 fallback when normal requests fail due to DNS/IPv6 network issues.
+  - This improves API-key validation reliability in Docker environments with unstable resolver behavior.
+  - Added focused test coverage for fallback behavior and non-fallback auth failure handling.
+- TrueNAS and Unraid setup guidance:
+  - Added dedicated in-app setup guides at `/setup/truenas` and `/setup/unraid` with copy-ready app and HTTPS-sidecar examples.
+  - Setup page now links directly to both guides for faster navigation.
+  - Updated setup docs with TrueNAS and Unraid deployment flows, local CA trust steps, and HTTPS verification commands.
 
 
 1.7.0

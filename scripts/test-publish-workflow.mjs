@@ -107,24 +107,24 @@ const requiredSnippets = [
     snippet: withWorkflowExpression("needs.build-and-push.outputs.is_beta != 'true'"),
   },
   {
-    name: "release notes include what's changed heading",
-    snippet: "## What's Changed",
+    name: 'release notes step uses version history highlights mode',
+    snippet: 'Prepare release notes (version history highlights)',
+  },
+  {
+    name: 'release notes generate feature lines from version history',
+    snippet: 'node scripts/generate-release-feature-lines.mjs --version "${VERSION}"',
+  },
+  {
+    name: "release notes include what's new heading",
+    snippet: "## What's New",
   },
   {
     name: 'release notes include full changelog link',
     snippet: '**Full Changelog**:',
   },
   {
-    name: 'release notes build top changes heading',
-    snippet: 'TOP_CHANGES_HEADING="## Top ${top_count} changes since ${PREV_TAG}"',
-  },
-  {
-    name: 'release notes cap top changes at five',
-    snippet: 'MAX_TOP_CHANGES=5',
-  },
-  {
-    name: 'release notes require at least three top changes when available',
-    snippet: 'MIN_TOP_CHANGES=3',
+    name: 'release notes fallback to PR title when feature lines are unavailable',
+    snippet: 'echo "- ${PR_TITLE}" > "${FEATURE_LINES_FILE}"',
   },
   {
     name: 'release notes include updating heading',
