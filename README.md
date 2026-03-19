@@ -34,75 +34,74 @@
 
 ## What it does
 
-- **Reacts to Plex activity in real time**
-  Watches your Plex library and automatically triggers smart workflows when you watch TV shows or  Movies.
+- **Watches Plex activity and reacts right away**
+  When someone watches a movie or episode, Immaculaterr can trigger the matching workflows automatically instead of waiting for the next full run.
 
-- **Runs scheduled tasks**
-  Fetches new content and refreshes your Plex home screen in the background on a schedule, to freshen up your plex home screens.
+- **Runs background jobs on a schedule**
+  It can refresh rows, fetch new content, and keep your Plex home screen moving even when nobody is actively watching.
 
-- **Builds curated movie and TV collections**
-  - A long-term collection based on your overall taste (Immaculate Taste)
-  - A collection based on what you've watched recently (refreshes after every watch)
-  - A "Change of Taste" collection that also refreshes after every watch
+- **Builds your main taste-based collections**
+  - `Immaculate Taste` for your long-term preferences
+  - `Based on your recently watched` for quick post-watch updates
+  - `Change of Taste` for recommendations that intentionally branch out
+  - You can run multiple `Immaculate Taste` profiles side by side, each with its own download route, folder, naming rules, and fallback naming
 
-- **Supports multiple taste profiles running side by side**
-  - Run several Immaculate Taste profiles at once, each with its own download route, folder, and naming settings
-  - Naming stays consistent across profiles thanks to per-profile overrides and fallbacks
+- **Lets you tune each taste profile**
+  - Filter by genre and audio language per profile to narrow or expand what gets recommended
+  - Better matching means fewer unwanted titles and more useful suggestions
 
-- **Smarter filtering per profile**
-  - Filter by genre and audio language per profile to include or exclude exactly what you want
-  - Better matching means fewer unwanted titles and more accurate recommendations
+- **Builds a Fresh Out Of The Oven row**
+  - Creates a recent-release movie row for each user using titles from the last 3 months
+  - Only shows movies that specific user has not watched yet
 
-- **Fresh Out Of The Oven task**
-  - Builds a per-user recent-release movie row from the last 3 months, showing only titles that user has not watched yet
+- **Builds a TMDB Upcoming Movie row**
+  - Pulls upcoming movie picks from TMDB and turns them into a usable row or request flow
+  - You can shape the results with filters like where-to-watch, genre, language, certification, and score
+  - Top matches can be sent to Radarr directly or routed through Seerr
 
-- **TMDB Upcoming Movie task**
-  - Build custom filter sets with where-to-watch, genre, language, certification, and score controls, then route top picks to Radarr or Seerr
+- **Keeps recommendations personal for every viewer**
+  - Each Plex user gets their own rows, such as *Based on your recently watched — Jane*
+  - Watch history stays separate, so one person's habits do not affect anyone else's results
 
-- **Personalized rows for every viewer**
-  - Each person on your Plex gets their own curated rows (e.g. *Based on your recently watched — Jane*)
-  - Viewing history is kept separate, so one person's habits don't affect anyone else's recommendations
-
-- **Pins collections to the right place based on role**
+- **Pins rows where Plex will actually show them**
   - Admin rows appear in Library Recommended and Home
-  - Shared user rows appear in Friends Home *(current Plex limitation for non-admins)*
+  - Shared-user rows appear in Friends Home *(current Plex limitation for non-admins)*
 
-- **Powered by multiple recommendation sources**
-  Uses TMDB by default, with optional Google and OpenAI support.
+- **Uses more than one recommendation source**
+  TMDB is the default source, with optional Google and OpenAI support when you want broader or more refined results.
 
-- **Remembers what's been recommended**
-  Keeps a local database so it can detect when a previously suggested title finally lands in your Plex library.
+- **Remembers what it already suggested**
+  A local database tracks previous recommendations so Immaculaterr can avoid repeats and notice when a suggested title finally lands in your Plex library.
 
-- **Lets you control which libraries are included**
-  - Pick your movie and TV libraries during setup, or adjust anytime from Command Center
+- **Lets you choose which libraries take part**
+  - Pick your movie and TV libraries during setup, then change them later from Command Center if needed
   - New libraries are included automatically unless you turn them off
-  - If a library is unavailable during a run, that part is skipped cleanly and noted in the report — nothing breaks
+  - If a library is unavailable during a run, that part is skipped and noted in the report instead of breaking the whole job
 
-- **Smart refresh scoping**
-  - When a collection triggers a refresh, it stays focused on that viewer and library
-  - Scheduled or manual full runs process all eligible users and libraries in a consistent order, with the admin handled last
+- **Refreshes only what needs refreshing**
+  - Watch-triggered updates stay scoped to the right viewer and library
+  - Scheduled or manual full runs still process all eligible users and libraries in a consistent order, with the admin handled last
 
-- **Sends content directly to Radarr and Sonarr**
-  When Seerr is off, missing titles go straight to your download apps.
+- **Sends missing titles to your download stack**
+  - When Seerr is off, missing movies and shows can go straight to Radarr and Sonarr
+  - If you prefer an approval flow, you can enable Seerr on a per-task basis instead of using one global setting
+  - Different tasks can use different routing flows, and you can clear all Seerr requests at once from Command Center when needed
 
-- **Observatory — approve and manage suggestions**
-  - Swipe to approve download requests *(optional approval mode)*
-  - Swipe left to reject a suggestion and stop it from appearing again — reset your rejected list anytime from Command Center
+- **Includes Observatory for managing suggestions**
+  - Swipe to approve download requests when approval mode is on
+  - Swipe left to reject a title and keep it from coming back
+  - Clear rejected items later from Command Center whenever you want a reset
 
-- **Custom posters for your collections**
-  - Upload your own poster for any collection Immaculaterr creates
-  - Preview and upload from Command Center — posters are saved and survive app restarts and updates
+- **Supports custom posters for generated collections**
+  - Upload your own posters for any collection Immaculaterr creates
+  - Preview and manage them from Command Center
+  - Posters are stored so they survive restarts and updates
 
-- **Optional Seerr routing**
-  - Send missing content requests through Seerr instead of directly to your download apps
-  - Toggle it per task, so different tasks can use different flows
-  - Clear all Seerr requests at once from Command Center when needed
+- **Keeps a full report of every run**
+  Every job includes step-by-step logs, metrics, and history so you can see what ran, what was skipped, and why.
 
-- **Detailed job reports and logs**
-  Step-by-step breakdown of every run, with metrics and full history.
-
-- **Full visibility and control**
-  Manage users, datasets, and resets from Command Center. Clear reporting shows exactly what ran, what was skipped, and why.
+- **Puts management in Command Center**
+  Manage users, datasets, resets, posters, rejected items, and request cleanup from one place.
 
 - **Coming soon**
   - Discovering content from film industries around the world
