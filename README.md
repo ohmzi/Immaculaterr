@@ -35,7 +35,9 @@
 ## What it does
 
 - **Watches Plex activity and reacts right away**
-  When someone (admin or shared user) watches a movie or show episode, Immaculaterr will trigger the task to automatically create collections and pin them on top on Home screen so user can then get better suggestion and also fresh looking homescreen like Netflix.
+  - When a movie or show episode is watched, Immaculaterr observes that from Plex will trigger the task to automatically create Collections.
+  - Pins these Collections them on top on Homescreen so user can then get better suggestion and also fresh looking Homescreen like Netflix.
+  - If any movie or show that TMDB suggestion, thats not already in library, Immaculaterr then sends request to downloan to Seerr/Radarr/Sonarr.
 
 - **Collections Built by Immaculaterr**
   - `Immaculate Taste` for your long-term observation and suggestions
