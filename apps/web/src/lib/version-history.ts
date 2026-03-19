@@ -24,7 +24,7 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.1-beta-8',
+    version: '1.7.1',
     popupHighlights: [
       'Fresh Out Of The Oven adds per-user unseen recent-release movie rows for the last 3 months.',
       'Fresh Out Of The Oven now has its own Task Manager card with Run Now plus schedule controls.',
