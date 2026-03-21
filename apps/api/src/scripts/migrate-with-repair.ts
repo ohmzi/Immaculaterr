@@ -3,6 +3,10 @@ import { existsSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 
 const TARGET_MIGRATION = '20260224090000_auth_security_hardening';
+const IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION =
+  '20260316200000_add_scope_all_users_to_taste_profile';
+const FRESH_RELEASE_CACHE_MIGRATION =
+  '20260317120000_fresh_out_of_the_oven_recent_release_cache';
 const PRISMA_BIN_CANDIDATES = [
   './apps/api/node_modules/.bin/prisma',
   './node_modules/.bin/prisma',
@@ -11,7 +15,7 @@ const PRISMA_SCHEMA_CANDIDATES = [
   'apps/api/prisma/schema.prisma',
   'prisma/schema.prisma',
 ];
-const TARGET_MIGRATION_STATUS_QUERY = [
+const MIGRATION_STATUS_QUERY = [
   'SELECT "finished_at", "rolled_back_at"',
   '   FROM "_prisma_migrations"',
   '  WHERE "migration_name" = ?',
@@ -156,6 +160,8 @@ const ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_GENRES_COLUMN_SQL =
   'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "excludedGenres" TEXT NOT NULL DEFAULT \'[]\'';
 const ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL =
   'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "excludedAudioLanguages" TEXT NOT NULL DEFAULT \'[]\'';
+const ADD_IMMACULATE_TASTE_PROFILE_SCOPE_ALL_USERS_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteProfile" ADD COLUMN "scopeAllUsers" BOOLEAN NOT NULL DEFAULT true';
 const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_RADARR_INSTANCE_ID_COLUMN_SQL =
   'ALTER TABLE "ImmaculateTasteProfileUserOverride" ADD COLUMN "radarrInstanceId" TEXT';
 const ADD_IMMACULATE_TASTE_PROFILE_OVERRIDE_SONARR_INSTANCE_ID_COLUMN_SQL =
@@ -271,6 +277,10 @@ const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_POINTS_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_librarySectionKey_points_idx" ON "ImmaculateTasteShowLibrary"("plexUserId", "librarySectionKey", "points")';
 const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_VOTE_AVG_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_plexUserId_librarySectionKey_tmdbVoteAvg_idx" ON "ImmaculateTasteShowLibrary"("plexUserId", "librarySectionKey", "tmdbVoteAvg")';
+const CREATE_FRESH_RELEASE_MOVIE_LIBRARY_RELEASE_DATE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "FreshReleaseMovieLibrary_librarySectionKey_releaseDate_idx" ON "FreshReleaseMovieLibrary"("librarySectionKey", "releaseDate")';
+const CREATE_FRESH_RELEASE_MOVIE_LIBRARY_LAST_CHECKED_AT_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "FreshReleaseMovieLibrary_librarySectionKey_lastCheckedAt_idx" ON "FreshReleaseMovieLibrary"("librarySectionKey", "lastCheckedAt")';
 
 type TableInfoRow = {
   name: string;
@@ -280,6 +290,12 @@ type MigrationStatusRow = {
   finished_at: number | null;
   rolled_back_at: number | null;
 };
+type MigrationRecordState =
+  | 'migrations_table_missing'
+  | 'not_recorded'
+  | 'applied'
+  | 'failed'
+  | 'rolled_back';
 type SqliteMasterRow = {
   name: string;
 };
@@ -344,19 +360,42 @@ async function tableExists(
 async function hasFailedTargetMigration(
   prisma: PrismaClient,
 ): Promise<boolean> {
+  return (await migrationRecordState(prisma, TARGET_MIGRATION)) === 'failed';
+}
+
+async function migrationRecordState(
+  prisma: PrismaClient,
+  migrationName: string,
+): Promise<MigrationRecordState> {
   let rows: MigrationStatusRow[];
   try {
     rows = await prisma.$queryRawUnsafe<MigrationStatusRow[]>(
-      TARGET_MIGRATION_STATUS_QUERY,
-      TARGET_MIGRATION,
+      MIGRATION_STATUS_QUERY,
+      migrationName,
     );
   } catch (err) {
-    if (isMissingMigrationsTableError(err)) return false;
+    if (isMissingMigrationsTableError(err)) return 'migrations_table_missing';
     throw err;
   }
 
-  if (rows.length === 0) return false;
-  return rows[0].finished_at == null && rows[0].rolled_back_at == null;
+  if (rows.length === 0) return 'not_recorded';
+  if (rows[0].finished_at != null) return 'applied';
+  if (rows[0].rolled_back_at != null) return 'rolled_back';
+  return 'failed';
+}
+
+function resolveMigrationAsApplied(migrationName: string): void {
+  runPrisma(
+    ['migrate', 'resolve', '--applied', migrationName],
+    `prisma migrate resolve --applied ${migrationName}`,
+  );
+}
+
+function resolveMigrationAsRolledBack(migrationName: string): void {
+  runPrisma(
+    ['migrate', 'resolve', '--rolled-back', migrationName],
+    `prisma migrate resolve --rolled-back ${migrationName}`,
+  );
 }
 
 async function normalizeLegacySessionTimestamps(prisma: PrismaClient) {
@@ -404,17 +443,11 @@ function shouldRepairPartialSessionSchema(
 
 function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
   if (sessionSchemaUpgraded) {
-    runPrisma(
-      ['migrate', 'resolve', '--applied', TARGET_MIGRATION],
-      'prisma migrate resolve --applied',
-    );
+    resolveMigrationAsApplied(TARGET_MIGRATION);
     return;
   }
 
-  runPrisma(
-    ['migrate', 'resolve', '--rolled-back', TARGET_MIGRATION],
-    'prisma migrate resolve --rolled-back',
-  );
+  resolveMigrationAsRolledBack(TARGET_MIGRATION);
 }
 
 async function withSqliteForeignKeysDisabled(
@@ -450,6 +483,57 @@ async function repairFailedMigrationIfNeeded(
   }
 
   resolveTargetMigrationState(isSessionSchemaUpgraded(sessionInfo));
+}
+
+async function repairMarch2026MigrationEdgeCases(
+  prisma: PrismaClient,
+): Promise<void> {
+  // These repairs only apply to databases that already have core tables.
+  if (!(await tableExists(prisma, 'User'))) return;
+
+  const profileTableName = 'ImmaculateTasteProfile';
+  if (!(await tableExists(prisma, profileTableName))) {
+    await prisma.$executeRawUnsafe(CREATE_IMMACULATE_TASTE_PROFILE_TABLE_SQL);
+  }
+
+  const profileColumns = await tableInfo(prisma, profileTableName);
+  const hasScopeAllUsers = hasColumn(profileColumns, 'scopeAllUsers');
+  const scopeMigrationState = await migrationRecordState(
+    prisma,
+    IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION,
+  );
+
+  if (hasScopeAllUsers) {
+    if (
+      scopeMigrationState !== 'applied' &&
+      scopeMigrationState !== 'migrations_table_missing'
+    ) {
+      resolveMigrationAsApplied(IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION);
+    }
+  } else if (scopeMigrationState === 'failed') {
+    resolveMigrationAsRolledBack(IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION);
+  }
+
+  const freshReleaseTableName = 'FreshReleaseMovieLibrary';
+  const freshReleaseTableExists = await tableExists(
+    prisma,
+    freshReleaseTableName,
+  );
+  const freshReleaseMigrationState = await migrationRecordState(
+    prisma,
+    FRESH_RELEASE_CACHE_MIGRATION,
+  );
+
+  if (freshReleaseTableExists) {
+    if (
+      freshReleaseMigrationState !== 'applied' &&
+      freshReleaseMigrationState !== 'migrations_table_missing'
+    ) {
+      resolveMigrationAsApplied(FRESH_RELEASE_CACHE_MIGRATION);
+    }
+  } else if (freshReleaseMigrationState === 'failed') {
+    resolveMigrationAsRolledBack(FRESH_RELEASE_CACHE_MIGRATION);
+  }
 }
 
 async function ensureArrInstanceSchema(prisma: PrismaClient): Promise<void> {
@@ -583,6 +667,20 @@ async function ensureImmaculateTasteLibrarySchema(
   }
 }
 
+async function ensureFreshReleaseMovieLibrarySchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const tableName = 'FreshReleaseMovieLibrary';
+  if (!(await tableExists(prisma, tableName))) return;
+
+  await prisma.$executeRawUnsafe(
+    CREATE_FRESH_RELEASE_MOVIE_LIBRARY_RELEASE_DATE_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_FRESH_RELEASE_MOVIE_LIBRARY_LAST_CHECKED_AT_INDEX_SQL,
+  );
+}
+
 async function ensureImmaculateTasteProfileSchema(
   prisma: PrismaClient,
 ): Promise<void> {
@@ -605,6 +703,11 @@ async function ensureImmaculateTasteProfileSchema(
   if (!hasColumn(profileColumns, 'excludedAudioLanguages')) {
     await prisma.$executeRawUnsafe(
       ADD_IMMACULATE_TASTE_PROFILE_EXCLUDED_AUDIO_LANGUAGES_COLUMN_SQL,
+    );
+  }
+  if (!hasColumn(profileColumns, 'scopeAllUsers')) {
+    await prisma.$executeRawUnsafe(
+      ADD_IMMACULATE_TASTE_PROFILE_SCOPE_ALL_USERS_COLUMN_SQL,
     );
   }
   if (!hasColumn(profileColumns, 'radarrInstanceId')) {
@@ -674,11 +777,13 @@ async function main() {
   const prisma = new PrismaClient();
   try {
     await repairFailedMigrationIfNeeded(prisma);
+    await repairMarch2026MigrationEdgeCases(prisma);
 
     runPrisma(['migrate', 'deploy'], 'prisma migrate deploy');
     await ensureArrInstanceSchema(prisma);
     await ensureImmaculateTasteProfileSchema(prisma);
     await ensureImmaculateTasteLibrarySchema(prisma);
+    await ensureFreshReleaseMovieLibrarySchema(prisma);
   } finally {
     await prisma.$disconnect();
   }
