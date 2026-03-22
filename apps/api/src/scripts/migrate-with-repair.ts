@@ -22,6 +22,13 @@ const MIGRATION_STATUS_QUERY = [
   '  ORDER BY "started_at" DESC',
   '  LIMIT 1',
 ].join('\n');
+const FAILED_MIGRATIONS_QUERY = [
+  'SELECT "migration_name", "started_at"',
+  '   FROM "_prisma_migrations"',
+  '  WHERE "finished_at" IS NULL',
+  '    AND "rolled_back_at" IS NULL',
+  '  ORDER BY "started_at" DESC',
+].join('\n');
 const NORMALIZE_LEGACY_SESSION_TIMESTAMPS_SQL = [
   'UPDATE "Session"',
   '   SET "lastSeenAt" = datetime(CAST("lastSeenAt" AS INTEGER) / 1000, \'unixepoch\')',
@@ -290,6 +297,10 @@ type MigrationStatusRow = {
   finished_at: number | null;
   rolled_back_at: number | null;
 };
+type FailedMigrationRow = {
+  migration_name: string;
+  started_at: string | null;
+};
 type MigrationRecordState =
   | 'migrations_table_missing'
   | 'not_recorded'
@@ -305,6 +316,16 @@ function isMissingMigrationsTableError(err: unknown): boolean {
     err instanceof Error &&
     err.message.includes('no such table: _prisma_migrations')
   );
+}
+
+function logRepair(message: string): void {
+  console.log(`[migrate-with-repair] ${message}`);
+}
+
+function describeDatabaseTarget(): string {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) return 'DATABASE_URL is not set';
+  return databaseUrl;
 }
 
 function resolveExistingPath(paths: string[], kind: string): string {
@@ -384,14 +405,65 @@ async function migrationRecordState(
   return 'failed';
 }
 
-function resolveMigrationAsApplied(migrationName: string): void {
+async function failedMigrationRows(
+  prisma: PrismaClient,
+): Promise<FailedMigrationRow[]> {
+  try {
+    return await prisma.$queryRawUnsafe<FailedMigrationRow[]>(
+      FAILED_MIGRATIONS_QUERY,
+    );
+  } catch (err) {
+    if (isMissingMigrationsTableError(err)) return [];
+    throw err;
+  }
+}
+
+export async function logFailedMigrationDiagnostics(
+  prisma: PrismaClient,
+): Promise<void> {
+  const rows = await failedMigrationRows(prisma);
+  if (rows.length === 0) {
+    logRepair(
+      'No unresolved rows were found in _prisma_migrations after prisma migrate deploy failed.',
+    );
+    return;
+  }
+
+  const failedNames = rows.map((row) => row.migration_name).join(', ');
+  console.error(
+    `[migrate-with-repair] Failed Prisma migrations still blocking deploy: ${failedNames}`,
+  );
+  for (const row of rows) {
+    const startedAt = row.started_at ? ` (started ${row.started_at})` : '';
+    console.error(
+      `[migrate-with-repair] - ${row.migration_name}${startedAt}`,
+    );
+  }
+  console.error(
+    '[migrate-with-repair] No additional automatic repair is available for the remaining failed migrations. Inspect the schema state and use `prisma migrate resolve` manually if needed.',
+  );
+}
+
+function resolveMigrationAsApplied(
+  migrationName: string,
+  reason?: string,
+): void {
+  const reasonSuffix = reason ? ` (${reason})` : '';
+  logRepair(`Resolving migration as applied: ${migrationName}${reasonSuffix}`);
   runPrisma(
     ['migrate', 'resolve', '--applied', migrationName],
     `prisma migrate resolve --applied ${migrationName}`,
   );
 }
 
-function resolveMigrationAsRolledBack(migrationName: string): void {
+function resolveMigrationAsRolledBack(
+  migrationName: string,
+  reason?: string,
+): void {
+  const reasonSuffix = reason ? ` (${reason})` : '';
+  logRepair(
+    `Resolving migration as rolled back: ${migrationName}${reasonSuffix}`,
+  );
   runPrisma(
     ['migrate', 'resolve', '--rolled-back', migrationName],
     `prisma migrate resolve --rolled-back ${migrationName}`,
@@ -443,11 +515,17 @@ function shouldRepairPartialSessionSchema(
 
 function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
   if (sessionSchemaUpgraded) {
-    resolveMigrationAsApplied(TARGET_MIGRATION);
+    resolveMigrationAsApplied(
+      TARGET_MIGRATION,
+      'Session schema already reflects auth security hardening',
+    );
     return;
   }
 
-  resolveMigrationAsRolledBack(TARGET_MIGRATION);
+  resolveMigrationAsRolledBack(
+    TARGET_MIGRATION,
+    'Session schema still needs auth security hardening migration rerun',
+  );
 }
 
 async function withSqliteForeignKeysDisabled(
@@ -485,7 +563,7 @@ async function repairFailedMigrationIfNeeded(
   resolveTargetMigrationState(isSessionSchemaUpgraded(sessionInfo));
 }
 
-async function repairMarch2026MigrationEdgeCases(
+export async function repairMarch2026MigrationEdgeCases(
   prisma: PrismaClient,
 ): Promise<void> {
   // These repairs only apply to databases that already have core tables.
@@ -508,10 +586,19 @@ async function repairMarch2026MigrationEdgeCases(
       scopeMigrationState !== 'applied' &&
       scopeMigrationState !== 'migrations_table_missing'
     ) {
-      resolveMigrationAsApplied(IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION);
+      resolveMigrationAsApplied(
+        IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION,
+        'ImmaculateTasteProfile.scopeAllUsers already exists',
+      );
     }
-  } else if (scopeMigrationState === 'failed') {
-    resolveMigrationAsRolledBack(IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION);
+  } else if (
+    scopeMigrationState === 'failed' ||
+    scopeMigrationState === 'applied'
+  ) {
+    resolveMigrationAsRolledBack(
+      IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION,
+      'ImmaculateTasteProfile.scopeAllUsers is still missing',
+    );
   }
 
   const freshReleaseTableName = 'FreshReleaseMovieLibrary';
@@ -529,10 +616,19 @@ async function repairMarch2026MigrationEdgeCases(
       freshReleaseMigrationState !== 'applied' &&
       freshReleaseMigrationState !== 'migrations_table_missing'
     ) {
-      resolveMigrationAsApplied(FRESH_RELEASE_CACHE_MIGRATION);
+      resolveMigrationAsApplied(
+        FRESH_RELEASE_CACHE_MIGRATION,
+        'FreshReleaseMovieLibrary already exists',
+      );
     }
-  } else if (freshReleaseMigrationState === 'failed') {
-    resolveMigrationAsRolledBack(FRESH_RELEASE_CACHE_MIGRATION);
+  } else if (
+    freshReleaseMigrationState === 'failed' ||
+    freshReleaseMigrationState === 'applied'
+  ) {
+    resolveMigrationAsRolledBack(
+      FRESH_RELEASE_CACHE_MIGRATION,
+      'FreshReleaseMovieLibrary is still missing',
+    );
   }
 }
 
@@ -773,13 +869,19 @@ async function ensureImmaculateTasteProfileSchema(
   );
 }
 
-async function main() {
+export async function main() {
+  logRepair(`Using database target: ${describeDatabaseTarget()}`);
   const prisma = new PrismaClient();
   try {
     await repairFailedMigrationIfNeeded(prisma);
     await repairMarch2026MigrationEdgeCases(prisma);
 
-    runPrisma(['migrate', 'deploy'], 'prisma migrate deploy');
+    try {
+      runPrisma(['migrate', 'deploy'], 'prisma migrate deploy');
+    } catch (err) {
+      await logFailedMigrationDiagnostics(prisma);
+      throw err;
+    }
     await ensureArrInstanceSchema(prisma);
     await ensureImmaculateTasteProfileSchema(prisma);
     await ensureImmaculateTasteLibrarySchema(prisma);
@@ -789,9 +891,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(
-    `[migrate-with-repair] ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
-  );
-  process.exit(1);
-});
+if (require.main === module) {
+  void main().catch((err) => {
+    console.error(
+      `[migrate-with-repair] ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+    );
+    process.exit(1);
+  });
+}
