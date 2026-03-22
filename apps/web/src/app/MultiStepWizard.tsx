@@ -285,6 +285,51 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     [buildIntegrationSecretEnvelope],
   );
 
+  const testSeerrWithSecretCompatibility = useCallback(
+    async (params: { baseUrl: string; apiKey: string }) => {
+      const normalizedBaseUrl = params.baseUrl.trim();
+      const normalizedApiKey = params.apiKey.trim();
+      const webCryptoFallbackError =
+        'WebCrypto is not available in this browser.';
+      const compatibilityHint = buildWebCryptoCompatibilityHint();
+
+      try {
+        const apiKeyEnvelope = await buildIntegrationSecretEnvelope({
+          service: 'seerr',
+          secretField: 'apiKey',
+          value: normalizedApiKey,
+        });
+        await testSavedIntegration('seerr', {
+          baseUrl: normalizedBaseUrl,
+          apiKeyEnvelope,
+        });
+        return;
+      } catch (error) {
+        if (!isWebCryptoUnavailableError(error)) throw error;
+      }
+
+      try {
+        await testSavedIntegration('seerr', {
+          baseUrl: normalizedBaseUrl,
+          apiKey: normalizedApiKey,
+        });
+      } catch (fallbackError) {
+        if (
+          fallbackError instanceof ApiError &&
+          String(fallbackError.message ?? '')
+            .toLowerCase()
+            .includes('plaintext secret transport is disabled')
+        ) {
+          throw new Error(
+            `${webCryptoFallbackError} ${compatibilityHint} If needed, set SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true on the API as a compatibility fallback.`,
+          );
+        }
+        throw fallbackError;
+      }
+    },
+    [buildIntegrationSecretEnvelope],
+  );
+
   const getCurrentStepIndex = () => STEP_ORDER.indexOf(currentStep);
   const canGoBack = getCurrentStepIndex() > 0;
 
@@ -660,14 +705,21 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
       toast.info('Validating Seerr credentials...');
       try {
-        const apiKeyEnvelope = await buildIntegrationSecretEnvelope({
-          service: 'seerr',
-          secretField: 'apiKey',
-          value: apiKey,
-        });
-        await testSavedIntegration('seerr', { baseUrl, apiKeyEnvelope });
-      } catch {
-        throw new Error('Seerr credentials are incorrect.');
+        await testSeerrWithSecretCompatibility({ baseUrl, apiKey });
+      } catch (error) {
+        const rawMessage = String((error as Error)?.message ?? '').trim();
+        const msg = rawMessage.toLowerCase();
+        if (
+          msg.includes('http 401') ||
+          msg.includes('http 403') ||
+          msg.includes('unauthorized')
+        ) {
+          throw new Error('Seerr credentials are incorrect.');
+        }
+        if (rawMessage) {
+          throw new Error(rawMessage);
+        }
+        throw new Error('Couldn’t connect to Seerr.');
       }
 
       await putSettingsWithSecretsCompatibility({
