@@ -40,6 +40,8 @@
     "concurrently": "^9.1.2"
   },
   "overrides": {
+    "file-type": "21.3.2",
+    "flatted": "3.4.2",
     "diff": "4.0.4",
     "multer": "2.1.1",
     "terser-webpack-plugin": "5.3.17"
