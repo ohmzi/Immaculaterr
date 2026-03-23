@@ -24,7 +24,7 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.2-beta-1',
+    version: '1.7.2-beta-2',
     popupHighlights: [
       'Fresh Out Of The Oven now builds per-user recent-release movie rows and includes a dedicated Task Manager card.',
       'TMDB Upcoming Movie task adds customizable filter sets and routes top picks to Radarr or Seerr.',

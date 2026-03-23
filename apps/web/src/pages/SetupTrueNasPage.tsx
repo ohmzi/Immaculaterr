@@ -12,7 +12,7 @@ import {
 const TRUENAS_MAIN_APP_HTTPS_YAML = [
   'services:',
   '  immaculaterr:',
-  '    image: ohmzii/immaculaterr:v1.7.2-beta-1',
+  '    image: ohmzii/immaculaterr:v1.7.2-beta-2',
   '    platform: linux/amd64',
   '    pull_policy: always',
   '    privileged: false',
@@ -48,7 +48,7 @@ const TRUENAS_MAIN_APP_HTTPS_YAML = [
 const TRUENAS_MAIN_APP_HTTP_COMPAT_YAML = [
   'services:',
   '  immaculaterr:',
-  '    image: ohmzii/immaculaterr:v1.7.2-beta-1',
+  '    image: ohmzii/immaculaterr:v1.7.2-beta-2',
   '    platform: linux/amd64',
   '    pull_policy: always',
   '    privileged: false',
