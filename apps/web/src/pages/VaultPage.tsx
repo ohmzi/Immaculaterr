@@ -57,6 +57,11 @@ import {
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 
 const MASKED_SECRET = '*******';
+
+function isWebCryptoUnavailableError(error: unknown): boolean {
+  const message = String((error as Error)?.message ?? '').toLowerCase();
+  return message.includes('webcrypto is not available');
+}
 type IntegrationId =
   | 'plex'
   | 'radarr'
@@ -558,13 +563,18 @@ export const SettingsPage = ({
   }) => {
     const trimmedSecret = params.rawSecret.trim();
     if (trimmedSecret) {
-      return {
-        [`${params.secretField}Envelope`]: await buildSecretEnvelope({
-          service: params.service,
-          secretField: params.secretField,
-          value: trimmedSecret,
-        }),
-      };
+      try {
+        return {
+          [`${params.secretField}Envelope`]: await buildSecretEnvelope({
+            service: params.service,
+            secretField: params.secretField,
+            value: trimmedSecret,
+          }),
+        };
+      } catch (error) {
+        if (!isWebCryptoUnavailableError(error)) throw error;
+        return { [params.secretField]: trimmedSecret };
+      }
     }
     if (params.secretRef) {
       return { secretRef: params.secretRef };
@@ -1022,13 +1032,22 @@ export const SettingsPage = ({
         });
       }
 
-      const secretsEnvelope = Object.keys(secretsPatch).length
-        ? await buildSettingsSecretsEnvelope(secretsPatch)
-        : undefined;
+      const hasSecrets = Object.keys(secretsPatch).length > 0;
+      let secretsEnvelope: Awaited<ReturnType<typeof buildSettingsSecretsEnvelope>> | undefined;
+      let plaintextSecretsFallback: Record<string, unknown> | undefined;
+      if (hasSecrets) {
+        try {
+          secretsEnvelope = await buildSettingsSecretsEnvelope(secretsPatch);
+        } catch (envelopeError) {
+          if (!isWebCryptoUnavailableError(envelopeError)) throw envelopeError;
+          plaintextSecretsFallback = secretsPatch;
+        }
+      }
 
       return await putSettings({
         settings: Object.keys(settingsPatch).length ? settingsPatch : undefined,
-        secretsEnvelope,
+        ...(secretsEnvelope ? { secretsEnvelope } : {}),
+        ...(plaintextSecretsFallback ? { secrets: plaintextSecretsFallback } : {}),
       });
     },
     onSuccess: async () => {
