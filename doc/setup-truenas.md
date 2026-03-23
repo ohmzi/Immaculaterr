@@ -24,7 +24,7 @@ In TrueNAS: **Apps -> Discover Apps -> Custom App** (name: `immaculaterr`), then
 ```yaml
 services:
   immaculaterr:
-    image: ohmzii/immaculaterr:v1.7.2-beta-1
+    image: ohmzii/immaculaterr:v1.7.2-beta-2
     platform: linux/amd64
     pull_policy: always
     privileged: false
@@ -159,7 +159,7 @@ Create only one Custom App named `immaculaterr` and use:
 ```yaml
 services:
   immaculaterr:
-    image: ohmzii/immaculaterr:v1.7.2-beta-1
+    image: ohmzii/immaculaterr:v1.7.2-beta-2
     platform: linux/amd64
     pull_policy: always
     privileged: false
