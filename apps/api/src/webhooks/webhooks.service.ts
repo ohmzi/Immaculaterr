@@ -1,7 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+
+const WEBHOOK_DEDUP_DEFAULT_WINDOW_MS = 30_000;
+const WEBHOOK_DEDUP_CLEANUP_INTERVAL_MS = 60_000;
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -41,6 +49,33 @@ function truncate(value: string, max: number) {
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
+  private readonly dedupStore = new Map<string, number>();
+  private dedupLastCleanupMs = Date.now();
+  private readonly dedupWindowMs = parsePositiveInt(
+    process.env.WEBHOOK_DEDUP_WINDOW_MS,
+    WEBHOOK_DEDUP_DEFAULT_WINDOW_MS,
+  );
+
+  isDuplicatePayload(payloadRaw: string): boolean {
+    const now = Date.now();
+    this.cleanupDedupStore(now);
+    const hash = createHash('sha256').update(payloadRaw).digest('hex');
+    const existing = this.dedupStore.get(hash);
+    if (existing && now - existing < this.dedupWindowMs) {
+      this.logger.log(`Plex webhook deduplicated (hash=${hash.slice(0, 12)}…)`);
+      return true;
+    }
+    this.dedupStore.set(hash, now);
+    return false;
+  }
+
+  private cleanupDedupStore(now: number): void {
+    if (now - this.dedupLastCleanupMs < WEBHOOK_DEDUP_CLEANUP_INTERVAL_MS) return;
+    this.dedupLastCleanupMs = now;
+    for (const [key, ts] of this.dedupStore.entries()) {
+      if (now - ts >= this.dedupWindowMs) this.dedupStore.delete(key);
+    }
+  }
 
   async persistPlexWebhookEvent(event: unknown) {
     const baseDir = join(this.getDataDir(), 'webhooks', 'plex');
@@ -191,16 +226,8 @@ export class WebhooksService {
       ` persisted=${JSON.stringify(params.persistedPath)}`,
     ].join('');
 
-    // Avoid spamming info logs for chatty events; keep it readable on /logs.
-    const eventLower = plexEvent.toLowerCase();
-    const level: 'debug' | 'info' =
-      eventLower === 'media.scrobble' || eventLower === 'library.new'
-        ? 'info'
-        : 'debug';
-
     const msg = `${base}${meta}${tail}`.trim();
-    if (level === 'info') this.logger.log(msg);
-    else this.logger.debug(msg);
+    this.logger.log(msg);
   }
 
   logPlexWebhookAutomation(params: {

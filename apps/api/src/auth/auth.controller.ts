@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Logger,
   Post,
@@ -418,6 +419,9 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('reset-dev is disabled in production');
+    }
     await this.authService.resetAllData();
     const sid = this.authService.readSessionIdFromRequest(req);
     if (sid) await this.authService.logout(sid).catch(() => undefined);

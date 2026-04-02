@@ -163,6 +163,8 @@ export class WebhooksController {
       }
     }
 
+    const deduplicated = this.webhooksService.isDuplicatePayload(payloadRaw);
+
     const event = {
       receivedAt: new Date().toISOString(),
       payload,
@@ -188,6 +190,10 @@ export class WebhooksController {
             : null,
       },
     });
+
+    if (deduplicated) {
+      return { ok: true, ...persisted, triggered: false, deduplicated: true };
+    }
 
     // Trigger watched automation on scrobble(movie|episode).
     // NOTE: Plex webhooks can be noisy; we keep the conditions strict.

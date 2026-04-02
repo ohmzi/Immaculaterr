@@ -5,11 +5,11 @@ import {
   Get,
   Param,
   Post,
-  Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthUser } from '../auth/auth.types';
 import { CollectionsService } from './collections.service';
-import type { AuthenticatedRequest } from '../auth/auth.types';
 
 type CreateCollectionBody = {
   name?: unknown;
@@ -61,11 +61,11 @@ export class CollectionsController {
 
   @Post(':collectionId/items')
   async addItem(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Param('collectionId') collectionId: string,
     @Body() body: AddItemBody,
   ) {
-    const userId = req.user.id;
+    const userId = user.id;
     const title = typeof body?.title === 'string' ? body.title : undefined;
     const ratingKey =
       typeof body?.ratingKey === 'string' ? body.ratingKey : undefined;
@@ -90,11 +90,11 @@ export class CollectionsController {
 
   @Post(':collectionId/import-json')
   async importJson(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Param('collectionId') collectionId: string,
     @Body() body: ImportJsonBody,
   ) {
-    const userId = req.user.id;
+    const userId = user.id;
     const json = typeof body?.json === 'string' ? body.json : '';
     const result = await this.collections.importFromJson({
       userId,

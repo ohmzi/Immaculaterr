@@ -19,11 +19,17 @@ import {
   API_DOCS_PATH,
   API_GLOBAL_PREFIX,
   API_PREFIX_PATH,
+  API_RATE_LIMIT_DEFAULT_MAX,
+  API_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  AUTH_RATE_LIMIT_DEFAULT_GET_MAX,
   AUTH_RATE_LIMIT_DEFAULT_LOGIN_MAX,
   AUTH_RATE_LIMIT_DEFAULT_REGISTER_MAX,
   AUTH_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  AUTH_RATE_LIMIT_GET_ROUTES,
   AUTH_RATE_LIMIT_ROUTES,
   HTTP_SLOW_REQUEST_THRESHOLD_MS,
+  WEBHOOK_RATE_LIMIT_DEFAULT_MAX,
+  WEBHOOK_RATE_LIMIT_DEFAULT_WINDOW_MS,
   WEBHOOKS_PLEX_ALIAS_PREFIX,
   WEBHOOKS_PLEX_CANONICAL_PREFIX,
 } from './app.constants';
@@ -102,6 +108,12 @@ async function bootstrap() {
     );
   }
 
+  if (!process.env.PLEX_WEBHOOK_SECRET?.trim()) {
+    bootstrapLogger.warn(
+      'PLEX_WEBHOOK_SECRET is not set — the Plex webhook endpoint will accept unauthenticated requests.',
+    );
+  }
+
   // Reverse-proxy correctness (req.ip, req.secure, etc.). Configurable via TRUST_PROXY.
   // Defaults to 1 hop in production to support typical single reverse-proxy deployments.
   const trustProxy =
@@ -165,6 +177,25 @@ async function bootstrap() {
     createOriginCheckMiddleware({ allowedOrigins: corsOrigins }),
   );
 
+  // Global API rate limit (in-memory, per-IP, all methods).
+  const apiRateLimitMax = parsePositiveIntegerEnv(
+    process.env.API_RATE_LIMIT_MAX,
+    API_RATE_LIMIT_DEFAULT_MAX,
+  );
+  const apiRateLimitWindowMs = parsePositiveIntegerEnv(
+    process.env.API_RATE_LIMIT_WINDOW_MS,
+    API_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  );
+  app.use(
+    API_PREFIX_PATH,
+    createIpRateLimitMiddleware({
+      windowMs: apiRateLimitWindowMs,
+      max: apiRateLimitMax,
+      keyPrefix: 'api_global',
+      methods: [],
+    }),
+  );
+
   // Auth rate limiting (in-memory, per-IP).
   const authRateLimitWindowMs = parsePositiveIntegerEnv(
     process.env.AUTH_RATE_LIMIT_WINDOW_MS,
@@ -224,6 +255,42 @@ async function bootstrap() {
     );
   }
 
+  // Auth GET rate limiting (recon-sensitive endpoints).
+  const authGetMax = parsePositiveIntegerEnv(
+    process.env.AUTH_RATE_LIMIT_MAX_GET,
+    AUTH_RATE_LIMIT_DEFAULT_GET_MAX,
+  );
+  for (const [key, path] of Object.entries(AUTH_RATE_LIMIT_GET_ROUTES)) {
+    app.use(
+      path,
+      createIpRateLimitMiddleware({
+        windowMs: authRateLimitWindowMs,
+        max: authGetMax,
+        keyPrefix: `auth_get_${key}`,
+        methods: ['GET'],
+      }),
+    );
+  }
+
+  // Webhook rate limiting (in-memory, per-IP).
+  const webhookRateLimitMax = parsePositiveIntegerEnv(
+    process.env.WEBHOOK_RATE_LIMIT_MAX,
+    WEBHOOK_RATE_LIMIT_DEFAULT_MAX,
+  );
+  const webhookRateLimitWindowMs = parsePositiveIntegerEnv(
+    process.env.WEBHOOK_RATE_LIMIT_WINDOW_MS,
+    WEBHOOK_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  );
+  app.use(
+    WEBHOOKS_PLEX_CANONICAL_PREFIX,
+    createIpRateLimitMiddleware({
+      windowMs: webhookRateLimitWindowMs,
+      max: webhookRateLimitMax,
+      keyPrefix: 'webhook_plex',
+      methods: ['POST'],
+    }),
+  );
+
   // Lightweight request logging (only warnings/errors/slow requests)
   const httpLoggingEnabled =
     process.env.HTTP_LOGGING === 'true' ||
@@ -247,10 +314,15 @@ async function bootstrap() {
     });
   }
 
+  const isProduction = process.env.NODE_ENV === 'production';
   const swaggerEnabled =
-    process.env.SWAGGER_ENABLED === 'true' ||
-    process.env.NODE_ENV !== 'production';
+    process.env.SWAGGER_ENABLED === 'true' || !isProduction;
   if (swaggerEnabled) {
+    if (isProduction) {
+      bootstrapLogger.warn(
+        'Swagger UI is enabled in production (SWAGGER_ENABLED=true). Disable it if this is not intentional.',
+      );
+    }
     const meta = readAppMeta();
     const config = new DocumentBuilder()
       .setTitle('Immaculaterr API')
@@ -259,7 +331,6 @@ async function bootstrap() {
       .build();
 
     const document = SwaggerModule.createDocument(app, config);
-    // Note: Swagger routes are not affected by Nest's globalPrefix; include it explicitly.
     SwaggerModule.setup(API_DOCS_PATH, app, document, {
       swaggerOptions: {
         persistAuthorization: true,

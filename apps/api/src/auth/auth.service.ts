@@ -584,8 +584,26 @@ export class AuthService {
     const newPassword = params.newPassword;
     this.assertValidPasswordChangeInputs(currentPassword, newPassword);
     const user = await this.findPasswordChangeUserOrThrow(params.userId);
-    await this.assertCurrentPasswordValid(user.passwordHash, currentPassword);
+
+    const assessment = this.authThrottle.assess({
+      username: user.username,
+      ip: params.ip,
+    });
+    this.assertNotLocked(assessment);
+
+    const verified = await verifyPassword(user.passwordHash, currentPassword);
+    if (!verified.ok) {
+      this.authThrottle.recordFailure({
+        username: user.username,
+        ip: params.ip,
+        userAgent: params.userAgent,
+        reason: 'change_password_invalid_current',
+      });
+      throw new UnauthorizedException('Current password is invalid');
+    }
+
     await this.updatePasswordAndRevokeSessions(user.id, newPassword);
+    this.authThrottle.recordSuccess({ username: user.username, ip: params.ip });
 
     this.logger.log(
       `auth: password changed userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
