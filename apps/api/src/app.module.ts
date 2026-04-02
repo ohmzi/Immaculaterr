@@ -17,8 +17,9 @@ import { CryptoModule } from './crypto/crypto.module';
 import { SettingsModule } from './settings/settings.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AuthModule } from './auth/auth.module';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthGuard } from './auth/auth.guard';
+import { SessionRollingInterceptor } from './auth/session-rolling.interceptor';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { CollectionsModule } from './collections/collections.module';
 import { LogsModule } from './logs/logs.module';
@@ -71,6 +72,10 @@ const staticImports = existsSync(webDistPath)
     {
       provide: APP_GUARD,
       useExisting: AuthGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useExisting: SessionRollingInterceptor,
     },
   ],
 })

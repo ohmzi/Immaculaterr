@@ -48,7 +48,7 @@ import {
 
 const SESSION_COOKIE = 'tcp_session';
 const SESSION_COOKIE_PAYLOAD_PREFIX = 'sid:v1:';
-const DEFAULT_SESSION_MAX_AGE_MS = 24 * 60 * 60_000;
+const DEFAULT_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const DEFAULT_PASSWORD_PROOF_ITERATIONS = 210_000;
 const MIN_RECOVERY_ANSWER_LENGTH = 2;
 const MIN_PASSWORD_LENGTH = 10;
@@ -562,8 +562,12 @@ export class AuthService {
       return null;
     }
 
+    const newExpiresAt = new Date(now.getTime() + this.getSessionMaxAgeMs());
     await this.prisma.session
-      .update({ where: { id: hashed }, data: { lastSeenAt: now } })
+      .update({
+        where: { id: hashed },
+        data: { lastSeenAt: now, expiresAt: newExpiresAt },
+      })
       .catch(() => undefined);
 
     return {

@@ -26,7 +26,7 @@ export class AuthGuard implements CanActivate {
 
     const req = context
       .switchToHttp()
-      .getRequest<Request & { user?: AuthUser }>();
+      .getRequest<Request & { user?: AuthUser; sessionId?: string }>();
     const sid = this.authService.readSessionIdFromRequest(req);
     if (!sid) {
       throw new UnauthorizedException('Not logged in');
@@ -38,6 +38,7 @@ export class AuthGuard implements CanActivate {
     }
 
     req.user = user;
+    req.sessionId = sid;
     return true;
   }
 }
