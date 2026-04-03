@@ -15,6 +15,7 @@ import { AuthService } from './auth.service';
 import type { AuthenticatedRequest } from './auth.types';
 import { Public } from './public.decorator';
 import { AUTH_CREDENTIAL_ENVELOPE_PURPOSES } from '../app.constants';
+import { maskUsername, maskIp } from '../log.utils';
 import {
   LoginDto,
   LoginChallengeDto,
@@ -150,7 +151,7 @@ export class AuthController {
     });
     this.setSessionCookie(req, res, result.sessionId);
     this.logger.log(
-      `auth: login proof success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(meta.ip)}`,
+      `auth: login proof success userId=${result.user.id} username=${JSON.stringify(maskUsername(result.user.username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     return { ok: true, user: result.user };
   }
@@ -182,7 +183,7 @@ export class AuthController {
     const meta = this.getRequestMeta(req);
 
     this.logger.log(
-      `auth: register attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} ua=${JSON.stringify(meta.userAgent)}`,
+      `auth: register attempt username=${JSON.stringify(maskUsername(username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     await this.authService.registerAdmin({
       username,
@@ -202,7 +203,7 @@ export class AuthController {
     });
     this.setSessionCookie(req, res, login.sessionId);
     this.logger.log(
-      `auth: register success userId=${login.user.id} username=${JSON.stringify(login.user.username)} ip=${JSON.stringify(meta.ip)}`,
+      `auth: register success userId=${login.user.id} username=${JSON.stringify(maskUsername(login.user.username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     return { ok: true, user: login.user };
   }
@@ -225,7 +226,7 @@ export class AuthController {
     const meta = this.getRequestMeta(req);
 
     this.logger.log(
-      `auth: login attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} ua=${JSON.stringify(meta.userAgent)}`,
+      `auth: login attempt username=${JSON.stringify(maskUsername(username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     try {
       const result = await this.authService.login({
@@ -237,13 +238,13 @@ export class AuthController {
       });
       this.setSessionCookie(req, res, result.sessionId);
       this.logger.log(
-        `auth: login success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(meta.ip)}`,
+        `auth: login success userId=${result.user.id} username=${JSON.stringify(maskUsername(result.user.username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
       );
       return { ok: true, user: result.user };
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
       this.logger.warn(
-        `auth: login failed username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} error=${JSON.stringify(msg)}`,
+        `auth: login failed username=${JSON.stringify(maskUsername(username))} ip=${JSON.stringify(maskIp(meta.ip))} error=${JSON.stringify(msg)}`,
       );
       throw err;
     }
@@ -256,7 +257,7 @@ export class AuthController {
     this.clearSessionCookie(req, res);
     const ip = req.ip ?? null;
     this.logger.log(
-      `auth: logout ip=${JSON.stringify(ip)} hadSession=${Boolean(sid)}`,
+      `auth: logout ip=${JSON.stringify(maskIp(ip))} hadSession=${Boolean(sid)}`,
     );
     return { ok: true };
   }
@@ -270,7 +271,7 @@ export class AuthController {
     this.clearSessionCookie(req, res);
     const ip = req.ip ?? null;
     this.logger.log(
-      `auth: logout all userId=${req.user.id} ip=${JSON.stringify(ip)}`,
+      `auth: logout all userId=${req.user.id} ip=${JSON.stringify(maskIp(ip))}`,
     );
     return { ok: true };
   }

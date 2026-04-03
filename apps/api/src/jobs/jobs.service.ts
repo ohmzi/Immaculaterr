@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { CronTime } from 'cron';
 import { PrismaService } from '../db/prisma.service';
 import { JOB_RUN_TIMEOUT_MS } from '../app.constants';
+import { errToMessage } from '../log.utils';
 import { findJobDefinition, JOB_DEFINITIONS } from './job-registry';
 import { JobsHandlers } from './jobs.handlers';
 import type { JobReportV1 } from './job-report-v1';
@@ -17,11 +18,6 @@ import type {
   JobRunTrigger,
   JsonObject,
 } from './jobs.types';
-
-function errToMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
 
 function toIsoString(value: unknown): string | null {
   if (value instanceof Date) return value.toISOString();

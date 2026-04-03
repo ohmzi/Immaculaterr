@@ -8,6 +8,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import { PrismaService } from '../db/prisma.service';
 import { JOB_DEFINITIONS, findJobDefinition } from './job-registry';
+import { truncateErrorMessage } from '../log.utils';
 import { JobsService } from './jobs.service';
 
 const REGISTRY_PREFIX = 'job:';
@@ -144,7 +145,7 @@ export class JobsScheduler implements OnModuleInit {
               });
             } catch (err) {
               this.logger.error(
-                `Scheduled job failed jobId=${jobId}: ${(err as Error)?.message ?? String(err)}`,
+                `Scheduled job failed jobId=${jobId}: ${truncateErrorMessage(err)}`,
               );
             }
           },
@@ -160,7 +161,7 @@ export class JobsScheduler implements OnModuleInit {
         );
       } catch (err) {
         this.logger.error(
-          `Failed to schedule jobId=${jobId} cron=${cron}: ${(err as Error)?.message ?? String(err)}`,
+          `Failed to schedule jobId=${jobId} cron=${cron}: ${truncateErrorMessage(err)}`,
         );
       }
     }

@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { XMLParser } from 'fast-xml-parser';
 import { randomUUID } from 'node:crypto';
 import { PlexPin, PlexSharedServerUser } from './plex.types';
+import { sanitizeUrlForLogs, truncateForLog } from '../log.utils';
+import { LOG_BODY_MAX_LENGTH } from '../app.constants';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -10,28 +12,6 @@ const xmlParser = new XMLParser({
   allowBooleanAttributes: true,
   processEntities: false,
 });
-
-function sanitizeUrlForLogs(raw: string): string {
-  try {
-    const u = new URL(raw);
-    u.username = '';
-    u.password = '';
-    for (const k of [
-      'X-Plex-Token',
-      'x-plex-token',
-      'token',
-      'authToken',
-      'auth_token',
-      'plexToken',
-      'plex_token',
-    ]) {
-      if (u.searchParams.has(k)) u.searchParams.set(k, 'REDACTED');
-    }
-    return u.toString();
-  } catch {
-    return raw;
-  }
-}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -450,10 +430,10 @@ export class PlexService {
       const body = await res.text().catch(() => '');
       const ms = Date.now() - startedAt;
       this.logger.warn(
-        `Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+        `Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim(),
       );
       throw new BadGatewayException(
-        `Plex PIN create failed: HTTP ${res.status} ${body}`.trim(),
+        `Plex PIN create failed: HTTP ${res.status}`.trim(),
       );
     }
 
@@ -491,10 +471,10 @@ export class PlexService {
       const body = await res.text().catch(() => '');
       const ms = Date.now() - startedAt;
       this.logger.warn(
-        `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+        `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim(),
       );
       throw new BadGatewayException(
-        `Plex PIN check failed: HTTP ${res.status} ${body}`.trim(),
+        `Plex PIN check failed: HTTP ${res.status}`.trim(),
       );
     }
 
@@ -584,10 +564,10 @@ export class PlexService {
       const body = await res.text().catch(() => '');
       const ms = Date.now() - startedAt;
       this.logger.warn(
-        `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+        `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim(),
       );
       throw new BadGatewayException(
-        `Plex whoami failed: HTTP ${res.status} ${body}`.trim(),
+        `Plex whoami failed: HTTP ${res.status}`.trim(),
       );
     }
 
@@ -699,7 +679,7 @@ export class PlexService {
         const ms = Date.now() - startedAt;
         if (!res.ok) {
           this.logger.warn(
-            `Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${raw}`.trim(),
+            `Plex.tv HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(raw, LOG_BODY_MAX_LENGTH)}`.trim(),
           );
           continue;
         }
@@ -796,7 +776,7 @@ export class PlexService {
 
         if (!res.ok) {
           this.logger.warn(
-            `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${raw}`.trim(),
+            `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(raw, LOG_BODY_MAX_LENGTH)}`.trim(),
           );
           errors.push(`HTTP ${res.status} ${safeUrl}`);
           continue;
@@ -884,7 +864,7 @@ export class PlexService {
 
         if (!res.ok) {
           this.logger.warn(
-            `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${raw}`.trim(),
+            `Plex.tv HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(raw, LOG_BODY_MAX_LENGTH)}`.trim(),
           );
           errors.push(`HTTP ${res.status} ${safeUrl}`);
           continue;

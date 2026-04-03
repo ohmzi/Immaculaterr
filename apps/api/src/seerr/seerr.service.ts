@@ -1,4 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { truncateForLog } from '../log.utils';
+import { LOG_BODY_MAX_LENGTH } from '../app.constants';
 
 export type SeerrRequestStatus = 'requested' | 'exists' | 'failed';
 
@@ -136,7 +138,7 @@ export class SeerrService {
 
         const body = await res.text().catch(() => '');
         this.logger.warn(
-          `Seerr request delete failed (${requestId}): HTTP ${res.status} ${body}`.trim(),
+          `Seerr request delete failed (${requestId}): HTTP ${res.status} ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim(),
         );
         failedRequestIds.push(requestId);
       } catch (err) {

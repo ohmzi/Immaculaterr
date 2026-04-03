@@ -20,7 +20,7 @@ export async function readApiError(res: Response) {
       if (typeof maybeMessage === 'string') return { message: maybeMessage, body };
       if (Array.isArray(maybeMessage)) return { message: maybeMessage.join('; '), body };
     }
-    return { message: JSON.stringify(body), body };
+    return { message: `HTTP ${res.status}`, body };
   }
 
   const text = await res.text().catch(() => '');

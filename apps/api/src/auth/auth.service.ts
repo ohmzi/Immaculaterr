@@ -45,6 +45,7 @@ import {
   PASSWORD_RECOVERY_RESET_QUESTION_COUNT,
   PASSWORD_RECOVERY_SECURITY_QUESTIONS,
 } from '../app.constants';
+import { maskUsername, maskIp } from '../log.utils';
 
 const SESSION_COOKIE = 'tcp_session';
 const SESSION_COOKIE_PAYLOAD_PREFIX = 'sid:v1:';
@@ -610,7 +611,7 @@ export class AuthService {
     this.authThrottle.recordSuccess({ username: user.username, ip: params.ip });
 
     this.logger.log(
-      `auth: password changed userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth: password changed userId=${user.id} username=${JSON.stringify(maskUsername(user.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     return { ok: true } as const;
@@ -674,7 +675,7 @@ export class AuthService {
     });
 
     this.logger.log(
-      `auth: password recovery updated userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth: password recovery updated userId=${user.id} username=${JSON.stringify(maskUsername(user.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     return { ok: true } as const;
@@ -771,7 +772,7 @@ export class AuthService {
       ip: params.ip,
     });
     this.logger.log(
-      `auth: password reset with recovery success userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth: password reset with recovery success userId=${user.id} username=${JSON.stringify(maskUsername(user.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     return { ok: true } as const;
@@ -2005,7 +2006,7 @@ export class AuthService {
       ip: params.ip,
     });
     this.logger.warn(
-      `auth: password reset failed username=${JSON.stringify(params.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)} reason=${JSON.stringify(params.reason)} attemptsRemaining=${assessment.attemptsRemaining} retryAt=${JSON.stringify(assessment.retryAt)}`,
+      `auth: password reset failed username=${JSON.stringify(maskUsername(params.username))} ip=${JSON.stringify(maskIp(params.ip))} reason=${JSON.stringify(params.reason)} attemptsRemaining=${assessment.attemptsRemaining} retryAt=${JSON.stringify(assessment.retryAt)}`,
     );
     if (!assessment.allowed) {
       return this.tooManyPasswordResetAttemptsFailure(assessment);
@@ -2156,7 +2157,7 @@ export class AuthService {
     if (ok) return;
 
     this.logger.warn(
-      `auth captcha required username=${JSON.stringify(params.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth captcha required username=${JSON.stringify(maskUsername(params.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     throw new UnauthorizedException({

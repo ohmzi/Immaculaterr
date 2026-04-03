@@ -28,11 +28,13 @@ import {
   AUTH_RATE_LIMIT_GET_ROUTES,
   AUTH_RATE_LIMIT_ROUTES,
   HTTP_SLOW_REQUEST_THRESHOLD_MS,
+  LOG_ERROR_MESSAGE_MAX_LENGTH,
   WEBHOOK_RATE_LIMIT_DEFAULT_MAX,
   WEBHOOK_RATE_LIMIT_DEFAULT_WINDOW_MS,
   WEBHOOKS_PLEX_ALIAS_PREFIX,
   WEBHOOKS_PLEX_CANONICAL_PREFIX,
 } from './app.constants';
+import { sanitizePathForLog, truncateForLog } from './log.utils';
 
 function ensureLegacyGlobals() {
   const g = globalThis as Record<string, unknown>;
@@ -86,10 +88,14 @@ async function bootstrap() {
   const bootstrapLogger = new Logger('Bootstrap');
 
   process.on('unhandledRejection', (reason) => {
-    bootstrapLogger.error(`Unhandled rejection: ${String(reason)}`);
+    bootstrapLogger.error(
+      `Unhandled rejection: ${truncateForLog(String(reason), LOG_ERROR_MESSAGE_MAX_LENGTH)}`,
+    );
   });
   process.on('uncaughtException', (err) => {
-    bootstrapLogger.error(`Uncaught exception: ${err?.stack ?? String(err)}`);
+    bootstrapLogger.error(
+      `Uncaught exception: ${truncateForLog(err?.stack ?? String(err), LOG_ERROR_MESSAGE_MAX_LENGTH)}`,
+    );
     process.exit(1);
   });
 
@@ -304,7 +310,7 @@ async function bootstrap() {
       res.on('finish', () => {
         const ms = Number(process.hrtime.bigint() - start) / 1e6;
         const status = res.statusCode;
-        const path = req.originalUrl || req.url;
+        const path = sanitizePathForLog(req.originalUrl || req.url);
         const msg = `${req.method} ${path} -> ${status} ${ms.toFixed(0)}ms`;
 
         if (status >= 500) httpLogger.error(msg);
@@ -366,6 +372,11 @@ async function bootstrap() {
 }
 void bootstrap().catch((err) => {
   const logger = new Logger('Bootstrap');
-  logger.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
+  logger.error(
+    truncateForLog(
+      err instanceof Error ? (err.stack ?? err.message) : String(err),
+      LOG_ERROR_MESSAGE_MAX_LENGTH,
+    ),
+  );
   process.exit(1);
 });

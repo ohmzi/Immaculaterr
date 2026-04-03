@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../db/prisma.service';
+import { maskUsername, maskIp, truncateForLog } from '../log.utils';
 
 type AttemptKey = string;
 
@@ -128,7 +129,7 @@ export class AuthThrottleService implements OnModuleInit {
     const assessment = this.toAssessment({ lockUntilMs, now, failures });
 
     this.logger.warn(
-      `auth throttle failure username=${JSON.stringify(params.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)} reason=${JSON.stringify(params.reason)} failures=${failures} lockUntil=${JSON.stringify(assessment.retryAt)}`,
+      `auth throttle failure username=${JSON.stringify(maskUsername(params.username))} ip=${JSON.stringify(maskIp(params.ip))} ua=${JSON.stringify(truncateForLog(params.userAgent ?? '', 80))} reason=${JSON.stringify(params.reason)} failures=${failures} lockUntil=${JSON.stringify(assessment.retryAt)}`,
     );
 
     return assessment;
