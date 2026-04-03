@@ -42,3 +42,4 @@ config/config.local.yml
 /data-backup-*/huntarr/config/backups/
 /data-backup-*/huntarr/config/logs/
 /data-backup-*/huntarr/config/tmdb_cache/
+/AGENTS.md
