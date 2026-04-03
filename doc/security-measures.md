@@ -179,7 +179,21 @@ Example environment files are provided for both development and Docker deploymen
 
 ## Security Testing
 
-The project includes an automated security pipeline that runs:
+### CI Enforcement (every PR)
+
+The `ci-quality-security` GitHub Actions workflow is a required merge gate on `develop` and `master`. Every pull request must pass:
+
+- **Lint** -- `npm run lint` across both workspaces
+- **Build** -- `npm run build` (TypeScript + Vite)
+- **Unit tests** -- `npm run test`, including all Jest security specs in `apps/api/src/tests/security/`
+- **AJV safety check** -- `npm run security:check:ajv` blocks `$data: true` patterns repo-wide
+- **Dependency audit** -- `npm run security:audit:prod` at `--audit-level=high` for production deps
+
+PRs with high-severity production vulnerabilities, broken builds, or failing security tests cannot merge.
+
+### Local Security Pipeline (manual, comprehensive)
+
+The full local pentest pipeline (`npm run security:all`) provides deeper coverage beyond CI:
 
 - **Static analysis** (Semgrep) for code-level vulnerabilities
 - **Dependency auditing** (npm audit) for known vulnerable packages
@@ -189,6 +203,10 @@ The project includes an automated security pipeline that runs:
 - **TLS testing** (testssl.sh) for HTTPS configuration issues
 - **API fuzzing** (Schemathesis) for unexpected input handling
 - **Cypress security specs** for auth, session, CSRF, header, and upload protections
+
+### Pre-Deploy Gate
+
+Before Docker container deployment, `npm run security:ci` runs the CI-level checks locally. This ensures the same quality and security standards enforced in CI are verified before any local deploy.
 
 ---
 
