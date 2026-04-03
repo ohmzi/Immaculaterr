@@ -297,6 +297,7 @@ export class MonitorConfirmJob {
     let radarrKeptMonitored = 0;
     let radarrMissingTmdbId = 0;
     const radarrSample: string[] = [];
+    const radarrVerifyIds: number[] = [];
     if (radarrConfigured) {
       await ctx.info('radarr: loading monitored movies');
       setProgress({
@@ -368,6 +369,9 @@ export class MonitorConfirmJob {
 
           if (success) {
             radarrUnmonitored += 1;
+            // #region agent log
+            if (radarrVerifyIds.length < 3) radarrVerifyIds.push(movie.id);
+            // #endregion
           } else {
             radarrSkippedPathConflicts += 1;
             await ctx.warn(
@@ -423,6 +427,34 @@ export class MonitorConfirmJob {
         skippedPathConflicts: radarrSkippedPathConflicts,
         dryRun: ctx.dryRun,
       });
+
+      // #region agent log
+      if (!ctx.dryRun && radarrVerifyIds.length > 0) {
+        const verifyResults: Record<string, unknown>[] = [];
+        for (const movieId of radarrVerifyIds) {
+          const fresh = await this.radarr.getMovieById({
+            baseUrl: radarrBaseUrl as string,
+            apiKey: radarrApiKey as string,
+            movieId,
+          });
+          verifyResults.push({
+            movieId,
+            title: fresh?.title ?? '?',
+            monitoredNow: fresh?.monitored ?? null,
+            monitoredType: typeof fresh?.monitored,
+          });
+        }
+        const allConfirmedFalse = verifyResults.every(
+          (r) => r.monitoredNow === false,
+        );
+        await ctx.info('radarr: DEBUG post-unmonitor verification', {
+          samplesChecked: verifyResults.length,
+          results: verifyResults,
+          allConfirmedUnmonitored: allConfirmedFalse,
+        });
+        fetch('http://127.0.0.1:7932/ingest/9ba3b437-d7c2-4121-bb0a-891129481e24', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '331d80' }, body: JSON.stringify({ sessionId: '331d80', location: 'monitor-confirm.job.ts:radarr-verify', message: 'Post-unmonitor verification', data: { results: verifyResults, allConfirmedFalse }, timestamp: Date.now() }) }).catch(() => {});
+      }
+      // #endregion
     } else {
       await ctx.info('radarr: skipped (not configured)');
     }
