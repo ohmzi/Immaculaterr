@@ -32,6 +32,8 @@ Your session lasts up to **30 days** by default. Every time you use the app, the
 
 Changing your password or using "log out everywhere" immediately invalidates all existing sessions.
 
+Expired sessions are automatically purged from the database every hour to prevent stale data accumulation.
+
 ---
 
 ## Encrypted Credential Transport
@@ -39,6 +41,8 @@ Changing your password or using "log out everywhere" immediately invalidates all
 When your browser supports it (HTTPS or localhost), Immaculaterr encrypts your username and password **before** they leave the browser using a combination of **RSA-OAEP** and **AES-GCM** — the same standards used in banking and government systems. This is an extra layer of protection on top of HTTPS.
 
 If the browser doesn't support WebCrypto (rare), the app falls back to standard HTTPS-protected JSON.
+
+The RSA key pair used for credential transport is automatically generated on first startup and persisted to `APP_DATA_DIR/credential-envelope.pem` with owner-only permissions (chmod 600). This ensures the same key is reused across restarts while keeping it protected on disk.
 
 ---
 
@@ -65,8 +69,10 @@ Multiple layers of rate limiting protect the app from automated attacks:
 
 - **Global API rate limits** — All API endpoints are rate-limited per IP address.
 - **Auth-specific limits** — Login, registration, and password recovery have stricter, separate limits.
-- **Progressive lockout** — Repeated failed login attempts trigger escalating lockout periods that double with each failure.
+- **Progressive lockout** — Repeated failed login attempts trigger escalating lockout periods that double with each failure. Lockout state is persisted to the database so it survives restarts — an attacker cannot clear lockouts by restarting the server.
 - **Optional CAPTCHA** — After a configurable number of failed attempts, CAPTCHA verification can be required.
+
+Stale lockout entries are automatically purged from the database every hour to keep the table clean.
 
 ---
 
@@ -76,7 +82,7 @@ Every response from the server includes a set of security headers that instruct 
 
 | Protection | What It Does |
 |------------|-------------|
-| Content Security Policy | Restricts where scripts, styles, and connections can load from |
+| Content Security Policy | Restricts where scripts, styles, fonts, and connections can load from — limited to `'self'` only |
 | X-Frame-Options: DENY | Prevents the app from being embedded in iframes (clickjacking protection) |
 | X-Content-Type-Options | Stops browsers from guessing file types (MIME sniffing protection) |
 | Referrer-Policy | Limits what URL information is shared when navigating away |
@@ -84,11 +90,15 @@ Every response from the server includes a set of security headers that instruct 
 | Permissions-Policy | Restricts access to browser features the app doesn't need |
 | Cache-Control: no-store | Prevents sensitive API responses from being cached |
 
+The Content Security Policy is tightened so that `font-src` and `connect-src` are restricted to `'self'` only. All fonts are self-hosted (no external CDN requests), and the API only connects to its own origin, preventing data exfiltration via injected scripts.
+
 ---
 
-## Origin Validation
+## Origin Validation and CSRF Protection
 
 State-changing requests (POST, PUT, PATCH, DELETE) to the API are checked against the server's own hostname. If the request's `Origin` header doesn't match, it's rejected — an additional safeguard against cross-site request forgery.
+
+When the `Origin` header is absent (some clients and proxies strip it), the middleware requires an `X-Requested-With` header instead. The web frontend sends `X-Requested-With: XMLHttpRequest` on all requests automatically. Requests missing both headers are rejected with a 403 response, closing a gap where origin-less requests could bypass CSRF checks.
 
 ---
 
@@ -108,6 +118,8 @@ The Docker image follows hardening best practices:
 - Data files and encryption keys are set to **owner-only permissions** (chmod 600/700).
 - The master key supports **Docker secrets** for secure injection without environment variable exposure.
 - Pre-migration database backups are created automatically with restricted permissions.
+- **Source maps are disabled** in the production API build, preventing server-side code from being reconstructable from deployed artifacts.
+- The Vite dev server restricts `allowedHosts` to `localhost`, `127.0.0.1`, and `.local` domains by default, with an optional `WEB_ALLOWED_HOSTS` override for custom setups.
 
 ---
 
@@ -120,6 +132,48 @@ When you log out, the app:
 3. Wipes **all** client-side storage — localStorage, sessionStorage, Cache Storage, and IndexedDB.
 
 Changing your password invalidates **all** active sessions across all devices.
+
+---
+
+## Webhook Secret Management
+
+The Plex webhook endpoint is protected by a shared secret. If no `PLEX_WEBHOOK_SECRET` is set via environment variable, the app automatically generates a cryptographically random 32-byte secret on first startup and persists it to `APP_DATA_DIR/webhook-secret` with owner-only permissions (chmod 600). The secret is loaded from this file on subsequent restarts. Administrators can retrieve the active secret via the authenticated `GET /api/webhooks/secret` endpoint.
+
+---
+
+## Request Validation
+
+All API request bodies are validated through a global **NestJS ValidationPipe** with the following protections:
+
+- **Whitelist mode** — Properties not declared in the endpoint's DTO (Data Transfer Object) are silently stripped, preventing mass-assignment attacks.
+- **Forbid non-whitelisted** — Requests containing unexpected properties are rejected outright with a 400 error.
+- **Type transformation** — Incoming values are automatically coerced to their declared types (string, number, boolean).
+
+Every controller endpoint that accepts a request body has a corresponding typed DTO with explicit validation decorators. Endpoints that handle dynamic or user-defined structures (settings, observatory decisions, integration test payloads) use permissive decorators on those specific fields while still enforcing the overall body shape.
+
+---
+
+## Self-Hosted Assets
+
+All external CDN dependencies have been removed:
+
+- **Google Fonts** (Michroma and Montserrat) are self-hosted as WOFF2 files under `public/fonts/`, eliminating external network requests during page load.
+- This prevents third-party font CDNs from tracking users and allows the tightened `font-src 'self'` CSP directive.
+
+---
+
+## Timing-Safe Comparisons
+
+Security-sensitive string comparisons (debugger token verification, credential checks) use constant-time comparison functions to prevent timing side-channel attacks. This ensures an attacker cannot infer partial matches by measuring response times.
+
+---
+
+## Environment Configuration
+
+Example environment files are provided for both development and Docker deployments:
+
+- **`apps/api/.env.example`** — Documents all security-relevant API environment variables including master key, CORS origins, trust proxy, rate limits, Argon2 tuning, CAPTCHA, and session configuration.
+- **`docker/immaculaterr/.env.example`** — Documents Docker-specific variables including master key (with Docker secrets support), Caddy/TLS settings, and webhook secret.
 
 ---
 

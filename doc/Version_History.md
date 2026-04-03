@@ -7,6 +7,19 @@ This file tracks notable changes by version.
 ---
 
 - What's new since 1.7.1:
+- Security hardening (beta-6):
+  - CSRF protection strengthened: state-changing requests without an Origin header now require an X-Requested-With header; the web frontend sends it automatically on all requests.
+  - Expired sessions are automatically purged from the database every hour.
+  - Credential envelope RSA key is auto-generated on first startup and persisted to APP_DATA_DIR with owner-only file permissions (chmod 600).
+  - Plex webhook secret is auto-generated when PLEX_WEBHOOK_SECRET is not set and persisted to APP_DATA_DIR; retrievable via authenticated GET /api/webhooks/secret.
+  - API production builds no longer emit source maps.
+  - Vite dev server allowedHosts restricted to localhost, 127.0.0.1, and .local by default.
+  - Content Security Policy tightened: font-src and connect-src restricted to 'self' only.
+  - Google Fonts (Michroma, Montserrat) self-hosted as local WOFF2 files, removing external CDN dependency.
+  - Authentication lockout state persisted to SQLite so lockouts survive server restarts; stale entries purged hourly.
+  - Global ValidationPipe with whitelist and forbidNonWhitelisted enforces typed DTOs on all controller request bodies.
+  - Timing-safe comparison used for debugger token verification.
+  - Added .env.example files documenting security-relevant environment variables for API and Docker deployments.
 - Profile-aware recommendation filtering:
   - TMDB recommendations are validated against each profile's genre and language include/exclude rules before points are applied.
   - Filtering uses existing TMDB detail responses so there are no additional API requests per recommendation.
