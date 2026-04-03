@@ -12,11 +12,12 @@ import {
   hasSameCuratedCollectionBase,
   normalizeCollectionTitle,
   resolveCuratedCollectionBaseName,
+  resolveCuratedCollectionPinVisibility,
   sortCollectionNamesByCuratedBaseOrder,
+  type PinVisibilityProfile,
 } from './plex-collections.utils';
 
 type PinTarget = 'admin' | 'friends';
-type PinVisibilityProfile = 'default' | 'home_only' | 'shared_home_only';
 type PreferredHubTarget = {
   collectionName: string;
   collectionKey: string;
@@ -958,13 +959,21 @@ export class PlexCuratedCollectionsService {
     });
 
     const resolveTargetVisibility = (requestedCollectionName: string) => {
-      const visibilityProfile = hasSameCuratedCollectionBase({
-        left: requestedCollectionName,
-        right: primaryCollectionName,
+      const curatedOverride = resolveCuratedCollectionPinVisibility({
+        collectionName: requestedCollectionName,
         mediaType,
-      })
-        ? primaryPinVisibilityProfile
-        : 'default';
+        pinTarget,
+      });
+
+      const visibilityProfile: PinVisibilityProfile =
+        curatedOverride ??
+        (hasSameCuratedCollectionBase({
+          left: requestedCollectionName,
+          right: primaryCollectionName,
+          mediaType,
+        })
+          ? primaryPinVisibilityProfile
+          : 'default');
 
       if (visibilityProfile === 'home_only') {
         return pinTarget === 'friends'

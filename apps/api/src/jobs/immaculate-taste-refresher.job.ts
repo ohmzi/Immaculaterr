@@ -4,6 +4,7 @@ import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.
 import {
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   buildImmaculateCollectionName,
@@ -622,6 +623,10 @@ export class ImmaculateTasteRefresherJob {
       ...(movieProfileHubOrder.length
         ? movieProfileHubOrder
         : [plexMovieCollectionName]),
+      buildUserCollectionName(
+        FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+        plexUserTitle,
+      ),
     ]);
     const tvCollectionHubOrder = dedupeCollectionNames([
       buildUserCollectionName(
