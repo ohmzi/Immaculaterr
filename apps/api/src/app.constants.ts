@@ -78,4 +78,7 @@ export const WEBHOOKS_PLEX_ALIAS_PREFIX = '/webhooks/plex';
 export const WEBHOOKS_PLEX_CANONICAL_PREFIX = `${API_PREFIX_PATH}/webhooks/plex`;
 
 export const PLEX_OAUTH_POLL_HEADER = 'x-immaculaterr-oauth-poll';
+
+/** Months behind "today" for Immaculate Taste collection ordering (recent-release slot). */
+export const IMMACULATE_TASTE_RECENT_RELEASE_MONTHS = 3;
 export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';

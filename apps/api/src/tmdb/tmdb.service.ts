@@ -28,6 +28,7 @@ type TmdbMovieDetails = {
   genres?: Array<{ id?: unknown; name?: unknown }>;
   vote_count?: number;
   vote_average?: number;
+  original_language?: string;
 };
 
 type TmdbTvSearchResult = {
@@ -54,6 +55,7 @@ type TmdbTvDetails = {
   vote_count?: number;
   vote_average?: number;
   external_ids?: TmdbTvExternalIds;
+  original_language?: string;
 };
 
 type TmdbPagedResponse = {
@@ -508,6 +510,10 @@ export class TmdbService {
       vote_count: Number.isFinite(voteCount)
         ? Math.max(0, Math.trunc(voteCount))
         : undefined,
+      original_language:
+        typeof rec['original_language'] === 'string'
+          ? rec['original_language']
+          : undefined,
     };
   }
 
@@ -587,6 +593,10 @@ export class TmdbService {
       vote_count: Number.isFinite(voteCount)
         ? Math.max(0, Math.trunc(voteCount))
         : undefined,
+      original_language:
+        typeof rec['original_language'] === 'string'
+          ? rec['original_language']
+          : undefined,
       ...(external_ids ? { external_ids } : {}),
     };
   }
@@ -620,6 +630,9 @@ export class TmdbService {
   async getMovieVoteStats(params: { apiKey: string; tmdbId: number }): Promise<{
     vote_average: number | null;
     vote_count: number | null;
+    release_date: string | null;
+    genre_names: string[];
+    original_language: string | null;
   } | null> {
     const details = await this.getMovie({
       apiKey: params.apiKey,
@@ -638,12 +651,42 @@ export class TmdbService {
         ? Math.max(0, Math.trunc(details.vote_count))
         : null;
 
-    return { vote_average, vote_count };
+    const release_date =
+      typeof details.release_date === 'string' && details.release_date.trim()
+        ? details.release_date.trim()
+        : null;
+
+    const genre_names = Array.isArray(details.genres)
+      ? details.genres
+          .map((g) =>
+            g && typeof g === 'object' && typeof g.name === 'string'
+              ? g.name.trim()
+              : '',
+          )
+          .filter(Boolean)
+      : [];
+
+    const original_language =
+      typeof details.original_language === 'string' &&
+      details.original_language.trim()
+        ? details.original_language.trim()
+        : null;
+
+    return {
+      vote_average,
+      vote_count,
+      release_date,
+      genre_names,
+      original_language,
+    };
   }
 
   async getTvVoteStats(params: { apiKey: string; tmdbId: number }): Promise<{
     vote_average: number | null;
     vote_count: number | null;
+    first_air_date: string | null;
+    genre_names: string[];
+    original_language: string | null;
   } | null> {
     const details = await this.getTv({
       apiKey: params.apiKey,
@@ -662,7 +705,35 @@ export class TmdbService {
         ? Math.max(0, Math.trunc(details.vote_count))
         : null;
 
-    return { vote_average, vote_count };
+    const first_air_date =
+      typeof details.first_air_date === 'string' &&
+      details.first_air_date.trim()
+        ? details.first_air_date.trim()
+        : null;
+
+    const genre_names = Array.isArray(details.genres)
+      ? details.genres
+          .map((g) =>
+            g && typeof g === 'object' && typeof g.name === 'string'
+              ? g.name.trim()
+              : '',
+          )
+          .filter(Boolean)
+      : [];
+
+    const original_language =
+      typeof details.original_language === 'string' &&
+      details.original_language.trim()
+        ? details.original_language.trim()
+        : null;
+
+    return {
+      vote_average,
+      vote_count,
+      first_air_date,
+      genre_names,
+      original_language,
+    };
   }
 
   async getMovieGenres(params: {

@@ -19,9 +19,10 @@ export function createIpRateLimitMiddleware(options: IpRateLimitOptions) {
   const max = Number.isFinite(options.max) ? options.max : 10;
   const keyPrefix = options.keyPrefix ?? 'iprl';
   const methodsList = options.methods ?? ['POST'];
-  const methods = methodsList.length > 0
-    ? new Set(methodsList.map((m) => m.toUpperCase()))
-    : null;
+  const methods =
+    methodsList.length > 0
+      ? new Set(methodsList.map((m) => m.toUpperCase()))
+      : null;
 
   // In-memory store. Suitable for single-instance deployments.
   const store = new Map<string, RateLimitEntry>();

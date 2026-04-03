@@ -70,7 +70,8 @@ export class WebhooksService {
   }
 
   private cleanupDedupStore(now: number): void {
-    if (now - this.dedupLastCleanupMs < WEBHOOK_DEDUP_CLEANUP_INTERVAL_MS) return;
+    if (now - this.dedupLastCleanupMs < WEBHOOK_DEDUP_CLEANUP_INTERVAL_MS)
+      return;
     this.dedupLastCleanupMs = now;
     for (const [key, ts] of this.dedupStore.entries()) {
       if (now - ts >= this.dedupWindowMs) this.dedupStore.delete(key);

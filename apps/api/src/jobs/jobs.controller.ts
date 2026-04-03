@@ -104,10 +104,7 @@ export class JobsController {
   }
 
   @Get('runs/:runId')
-  async getRun(
-    @CurrentUser() user: AuthUser,
-    @Param('runId') runId: string,
-  ) {
+  async getRun(@CurrentUser() user: AuthUser, @Param('runId') runId: string) {
     const userId = user.id;
     const run = await this.jobsService.getRun({ userId, runId });
     return { run };

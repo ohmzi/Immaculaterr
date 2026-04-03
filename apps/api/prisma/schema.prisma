@@ -361,6 +361,8 @@ model ImmaculateTasteMovieLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  releaseDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToRadarrAt   DateTime?
@@ -381,6 +383,7 @@ model ImmaculateTasteMovieLibrary {
   @@index([plexUserId, librarySectionKey, status])
   @@index([plexUserId, librarySectionKey, points])
   @@index([plexUserId, librarySectionKey, tmdbVoteAvg])
+  @@index([releaseDate])
 }
 
 // Library-specific points dataset for "Based on Latest Watched" collections (movies).
@@ -472,6 +475,8 @@ model ImmaculateTasteShowLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  firstAirDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToRadarrAt   DateTime?
@@ -493,6 +498,7 @@ model ImmaculateTasteShowLibrary {
   @@index([plexUserId, librarySectionKey, status])
   @@index([plexUserId, librarySectionKey, points])
   @@index([plexUserId, librarySectionKey, tmdbVoteAvg])
+  @@index([firstAirDate])
 }
 
 model WatchedShowRecommendation {

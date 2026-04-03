@@ -435,9 +435,7 @@ export async function logFailedMigrationDiagnostics(
   );
   for (const row of rows) {
     const startedAt = row.started_at ? ` (started ${row.started_at})` : '';
-    console.error(
-      `[migrate-with-repair] - ${row.migration_name}${startedAt}`,
-    );
+    console.error(`[migrate-with-repair] - ${row.migration_name}${startedAt}`);
   }
   console.error(
     '[migrate-with-repair] No additional automatic repair is available for the remaining failed migrations. Inspect the schema state and use `prisma migrate resolve` manually if needed.',
