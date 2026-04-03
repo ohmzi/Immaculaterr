@@ -19,13 +19,7 @@ import {
   PLEX_OAUTH_POLL_HEADER,
   PLEX_OAUTH_POLL_HEADER_VALUE,
 } from '../app.constants';
-
-type TestPlexServerBody = {
-  baseUrl?: unknown;
-  token?: unknown;
-  tokenEnvelope?: unknown;
-  secretRef?: unknown;
-};
+import { TestPlexServerDto } from '../shared/dto/test-connection.dto';
 
 const HTTP_BASE_URL_PREFIX = /^https?:\/\//i;
 const HTTP_PROTOCOL = /^https?:$/i;
@@ -149,7 +143,7 @@ export class PlexController {
   @Post('test')
   async test(
     @Req() req: AuthenticatedRequest,
-    @Body() body: TestPlexServerBody,
+    @Body() body: TestPlexServerDto,
   ) {
     const baseUrl = normalizeHttpBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({

@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
@@ -108,12 +108,6 @@ async function bootstrap() {
     );
   }
 
-  if (!process.env.PLEX_WEBHOOK_SECRET?.trim()) {
-    bootstrapLogger.warn(
-      'PLEX_WEBHOOK_SECRET is not set — the Plex webhook endpoint will accept unauthenticated requests.',
-    );
-  }
-
   // Reverse-proxy correctness (req.ip, req.secure, etc.). Configurable via TRUST_PROXY.
   // Defaults to 1 hop in production to support typical single reverse-proxy deployments.
   const trustProxy =
@@ -126,6 +120,14 @@ async function bootstrap() {
       httpAdapter.getInstance() as { set?: (k: string, v: unknown) => void }
     )?.set?.('trust proxy', trustProxy);
   }
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   app.use(securityHeadersMiddleware);
   app.use(privateCacheMiddleware);

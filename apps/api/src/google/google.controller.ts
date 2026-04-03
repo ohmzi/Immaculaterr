@@ -8,15 +8,7 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
 import { GoogleService } from './google.service';
-
-type TestGoogleBody = {
-  apiKey?: unknown;
-  apiKeyEnvelope?: unknown;
-  secretRef?: unknown;
-  cseId?: unknown;
-  numResults?: unknown;
-  query?: unknown;
-};
+import { TestGoogleDto } from '../shared/dto/test-connection.dto';
 
 function parseString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -46,7 +38,7 @@ export class GoogleController {
   ) {}
 
   @Post('test')
-  async test(@Req() req: AuthenticatedRequest, @Body() body: TestGoogleBody) {
+  async test(@Req() req: AuthenticatedRequest, @Body() body: TestGoogleDto) {
     const input = await this.resolveTestInput(req.user.id, body);
     this.assertRequiredTestInput(input);
     return this.googleService.testConnection(input);
@@ -54,7 +46,7 @@ export class GoogleController {
 
   private async resolveTestInput(
     userId: string,
-    body: TestGoogleBody,
+    body: TestGoogleDto,
   ): Promise<{
     apiKey: string;
     cseId: string;

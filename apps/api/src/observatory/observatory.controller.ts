@@ -12,6 +12,10 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ObservatoryService } from './observatory.service';
+import {
+  ObservatoryDecisionsDto,
+  ObservatoryApplyDto,
+} from './dto/observatory.dto';
 
 type ListMode = 'pendingApproval' | 'review';
 
@@ -61,12 +65,7 @@ export class ObservatoryController {
   @Post('decisions')
   async recordDecisions(
     @Req() req: AuthenticatedRequest,
-    @Body()
-    body: {
-      librarySectionKey?: unknown;
-      mediaType?: unknown;
-      decisions?: unknown;
-    },
+    @Body() body: ObservatoryDecisionsDto,
   ) {
     const librarySectionKey =
       typeof body.librarySectionKey === 'string'
@@ -92,11 +91,7 @@ export class ObservatoryController {
   @Post('apply')
   async apply(
     @Req() req: AuthenticatedRequest,
-    @Body()
-    body: {
-      librarySectionKey?: unknown;
-      mediaType?: unknown;
-    },
+    @Body() body: ObservatoryApplyDto,
   ) {
     const librarySectionKey =
       typeof body.librarySectionKey === 'string'

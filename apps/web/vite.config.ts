@@ -11,11 +11,12 @@ export default defineConfig({
     },
   },
   server: {
-    // Allow any Host header (useful behind reverse proxies / custom domains).
-    // WARNING: this disables Vite's DNS-rebinding protection for the dev server.
-    allowedHosts: true,
-    // Allow accessing the dev UI from other devices (phones/tablets) on the LAN.
-    // Note: use http://<server-ip>:5858 from other devices (not localhost).
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '.local',
+      ...(process.env.WEB_ALLOWED_HOSTS?.split(',').map((h) => h.trim()).filter(Boolean) ?? []),
+    ],
     host: '0.0.0.0',
     port: Number.parseInt(process.env.WEB_PORT ?? '5858', 10),
     strictPort: true,
@@ -30,7 +31,11 @@ export default defineConfig({
     },
   },
   preview: {
-    // Same rationale as `server.allowedHosts`.
-    allowedHosts: true,
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '.local',
+      ...(process.env.WEB_ALLOWED_HOSTS?.split(',').map((h) => h.trim()).filter(Boolean) ?? []),
+    ],
   },
 });

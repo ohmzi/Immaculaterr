@@ -8,10 +8,10 @@ function buildCsp(req: Request): string {
     "frame-ancestors 'none'",
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
-    "font-src 'self' data:",
+    "font-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' http: https: ws: wss:",
+    "connect-src 'self'",
     "worker-src 'self' blob:",
   ];
 

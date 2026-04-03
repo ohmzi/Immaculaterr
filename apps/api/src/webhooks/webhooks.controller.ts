@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Post,
   Req,
   UnauthorizedException,
@@ -21,6 +22,7 @@ import { isPlexUserExcludedFromMonitoring } from '../plex/plex-user-selection.ut
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
+import { WebhookSecretService } from './webhook-secret.service';
 import { WebhooksService } from './webhooks.service';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -78,10 +80,6 @@ function safeEquals(a: string, b: string): boolean {
   return timingSafeEqual(aBuf, bBuf);
 }
 
-function readConfiguredWebhookSecret(): string {
-  return process.env.PLEX_WEBHOOK_SECRET?.trim() || '';
-}
-
 function readQueryWebhookSecret(req: Request): string | null {
   const queryToken = req.query?.['token'];
   return typeof queryToken === 'string' ? readTrimmedSecret(queryToken) : null;
@@ -94,8 +92,7 @@ function readWebhookSecretCandidate(req: Request): string | null {
   return headerSecret ?? readQueryWebhookSecret(req);
 }
 
-function verifyWebhookSecret(req: Request): void {
-  const configuredSecret = readConfiguredWebhookSecret();
+function verifyWebhookSecret(req: Request, configuredSecret: string): void {
   if (!configuredSecret) return;
   const candidateSecret = readWebhookSecretCandidate(req);
   if (candidateSecret && safeEquals(configuredSecret, candidateSecret)) return;
@@ -106,12 +103,19 @@ function verifyWebhookSecret(req: Request): void {
 export class WebhooksController {
   constructor(
     private readonly webhooksService: WebhooksService,
+    private readonly webhookSecret: WebhookSecretService,
     private readonly jobsService: JobsService,
     private readonly authService: AuthService,
     private readonly settingsService: SettingsService,
     private readonly plexUsers: PlexUsersService,
     private readonly plexAnalytics: PlexAnalyticsService,
   ) {}
+
+  @Get('secret')
+  getWebhookSecret() {
+    const secret = this.webhookSecret.getSecret();
+    return { secret: secret || null };
+  }
 
   @Post('plex')
   @Public()
@@ -127,7 +131,7 @@ export class WebhooksController {
     @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Array<Express.Multer.File>,
   ) {
-    verifyWebhookSecret(req);
+    verifyWebhookSecret(req, this.webhookSecret.getSecret());
 
     const payloadRaw = body.payload;
     if (typeof payloadRaw !== 'string') {

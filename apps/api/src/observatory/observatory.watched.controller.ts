@@ -10,6 +10,10 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ObservatoryService } from './observatory.service';
+import {
+  ObservatoryWatchedDecisionsDto,
+  ObservatoryApplyDto,
+} from './dto/observatory.dto';
 
 type ListMode = 'pendingApproval' | 'review';
 type CollectionKind = 'recentlyWatched' | 'changeOfTaste';
@@ -84,13 +88,7 @@ export class WatchedObservatoryController {
   @Post('decisions')
   async recordDecisions(
     @Req() req: AuthenticatedRequest,
-    @Body()
-    body: {
-      librarySectionKey?: unknown;
-      mediaType?: unknown;
-      collectionKind?: unknown;
-      decisions?: unknown;
-    },
+    @Body() body: ObservatoryWatchedDecisionsDto,
   ) {
     const librarySectionKey =
       typeof body.librarySectionKey === 'string'
@@ -126,11 +124,7 @@ export class WatchedObservatoryController {
   @Post('apply')
   async apply(
     @Req() req: AuthenticatedRequest,
-    @Body()
-    body: {
-      librarySectionKey?: unknown;
-      mediaType?: unknown;
-    },
+    @Body() body: ObservatoryApplyDto,
   ) {
     const librarySectionKey =
       typeof body.librarySectionKey === 'string'

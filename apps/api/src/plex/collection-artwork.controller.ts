@@ -24,6 +24,7 @@ import {
   type CollectionArtworkMediaType,
   type CollectionArtworkTargetKind,
 } from './collection-artwork.service';
+import { DeleteArtworkOverrideDto } from './dto/collection-artwork.dto';
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -148,13 +149,7 @@ export class CollectionArtworkController {
   @Delete('override')
   async deleteOverride(
     @Req() req: AuthenticatedRequest,
-    @Body()
-    body: {
-      plexUserId?: unknown;
-      mediaType?: unknown;
-      targetKind?: unknown;
-      targetId?: unknown;
-    },
+    @Body() body: DeleteArtworkOverrideDto,
   ) {
     await this.assertAdminSession(req.user.id);
 

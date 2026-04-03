@@ -27,6 +27,10 @@ import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { immaculateTasteResetMarkerKey } from './immaculate-taste-reset';
+import {
+  ResetCollectionDto,
+  ResetUserCollectionDto,
+} from './dto/taste-collection.dto';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -152,17 +156,6 @@ function watchedCollectionBaseNamesForMediaType(
     'Change of Taste',
   ];
 }
-
-type ResetBody = {
-  mediaType?: unknown;
-  librarySectionKey?: unknown;
-};
-
-type ResetUserBody = {
-  plexUserId?: unknown;
-  mediaType?: unknown;
-  includeWatchedCollections?: unknown;
-};
 
 @Controller('immaculate-taste')
 @ApiTags('immaculate-taste')
@@ -395,7 +388,7 @@ export class ImmaculateTasteController {
   @Post('collections/reset')
   async resetCollection(
     @Req() req: AuthenticatedRequest,
-    @Body() body: ResetBody,
+    @Body() body: ResetCollectionDto,
   ) {
     const userId = req.user.id;
     await this.assertAdminSession(userId);
@@ -525,7 +518,7 @@ export class ImmaculateTasteController {
   @Post('collections/reset-user')
   async resetUserCollections(
     @Req() req: AuthenticatedRequest,
-    @Body() body: ResetUserBody,
+    @Body() body: ResetUserCollectionDto,
   ) {
     const userId = req.user.id;
     await this.assertAdminSession(userId);

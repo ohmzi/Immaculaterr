@@ -18,6 +18,10 @@ import {
   ArrInstanceService,
   type ArrInstanceType,
 } from './arr-instance.service';
+import {
+  CreateArrInstanceDto,
+  UpdateArrInstanceDto,
+} from './dto/arr-instance.dto';
 
 type ArrInstanceUpdatePatch = {
   name?: string;
@@ -28,10 +32,6 @@ type ArrInstanceUpdatePatch = {
   qualityProfileId?: number | null;
   tagId?: number | null;
   sortOrder?: number;
-};
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 };
 
 const asString = (value: unknown): string => {
@@ -71,12 +71,6 @@ const asArrType = (value: string): ArrInstanceType => {
   const lowered = value.trim().toLowerCase();
   if (lowered === 'radarr' || lowered === 'sonarr') return lowered;
   throw new BadRequestException('type must be "radarr" or "sonarr"');
-};
-
-const asBodyObject = (body: unknown): Record<string, unknown> => {
-  if (!isPlainObject(body))
-    throw new BadRequestException('body must be an object');
-  return body;
 };
 
 const normalizeHttpUrlOrEmpty = (value: string): string => {
@@ -196,8 +190,11 @@ export class ArrInstanceController {
   }
 
   @Post()
-  async create(@Req() req: AuthenticatedRequest, @Body() body: unknown) {
-    const bodyObject = asBodyObject(body);
+  async create(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: CreateArrInstanceDto,
+  ) {
+    const bodyObject = body as unknown as Record<string, unknown>;
     const type = asArrType(asString(bodyObject['type']));
     const baseUrl = asString(bodyObject['baseUrl']);
     if (!baseUrl) throw new BadRequestException('baseUrl is required');
@@ -225,9 +222,9 @@ export class ArrInstanceController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: unknown,
+    @Body() body: UpdateArrInstanceDto,
   ) {
-    const bodyObject = asBodyObject(body);
+    const bodyObject = body as unknown as Record<string, unknown>;
     const userId = req.user.id;
     const current = await this.arrInstances.getOwnedDbInstance(userId, id);
     const type = asArrType(current.type);

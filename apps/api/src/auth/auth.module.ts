@@ -8,6 +8,7 @@ import { AuthThrottleService } from './auth-throttle.service';
 import { CaptchaService } from './captcha.service';
 import { CredentialEnvelopeService } from './credential-envelope.service';
 import { PasswordProofService } from './password-proof.service';
+import { SessionCleanupService } from './session-cleanup.service';
 import { SessionRollingInterceptor } from './session-rolling.interceptor';
 
 @Module({
@@ -21,6 +22,7 @@ import { SessionRollingInterceptor } from './session-rolling.interceptor';
     CredentialEnvelopeService,
     PasswordProofService,
     PlexServerService,
+    SessionCleanupService,
     SessionRollingInterceptor,
   ],
   exports: [

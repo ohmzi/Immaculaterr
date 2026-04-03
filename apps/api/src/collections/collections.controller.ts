@@ -3,19 +3,11 @@ import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/auth.types';
 import { CollectionsService } from './collections.service';
-
-type CreateCollectionBody = {
-  name?: unknown;
-};
-
-type AddItemBody = {
-  title?: unknown;
-  ratingKey?: unknown;
-};
-
-type ImportJsonBody = {
-  json?: unknown;
-};
+import {
+  CreateCollectionDto,
+  AddCollectionItemDto,
+  ImportCollectionJsonDto,
+} from './dto/collections.dto';
 
 @Controller('collections')
 @ApiTags('collections')
@@ -28,7 +20,7 @@ export class CollectionsController {
   }
 
   @Post()
-  async create(@Body() body: CreateCollectionBody) {
+  async create(@Body() body: CreateCollectionDto) {
     const name = typeof body?.name === 'string' ? body.name : '';
     return {
       ok: true,
@@ -56,7 +48,7 @@ export class CollectionsController {
   async addItem(
     @CurrentUser() user: AuthUser,
     @Param('collectionId') collectionId: string,
-    @Body() body: AddItemBody,
+    @Body() body: AddCollectionItemDto,
   ) {
     const userId = user.id;
     const title = typeof body?.title === 'string' ? body.title : undefined;
@@ -85,7 +77,7 @@ export class CollectionsController {
   async importJson(
     @CurrentUser() user: AuthUser,
     @Param('collectionId') collectionId: string,
-    @Body() body: ImportJsonBody,
+    @Body() body: ImportCollectionJsonDto,
   ) {
     const userId = user.id;
     const json = typeof body?.json === 'string' ? body.json : '';

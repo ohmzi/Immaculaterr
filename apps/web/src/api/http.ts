@@ -31,6 +31,10 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
   const res = await fetch(input, {
     credentials: 'include',
     ...init,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
     const { message, body } = await readApiError(res);

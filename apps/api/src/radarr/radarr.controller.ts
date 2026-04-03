@@ -8,13 +8,7 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
 import { RadarrService } from './radarr.service';
-
-type TestConnectionBody = {
-  baseUrl?: unknown;
-  apiKey?: unknown;
-  apiKeyEnvelope?: unknown;
-  secretRef?: unknown;
-};
+import { TestConnectionDto } from '../shared/dto/test-connection.dto';
 
 const HTTP_BASE_URL_PREFIX = /^https?:\/\//i;
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
@@ -53,7 +47,7 @@ export class RadarrController {
   @Post('test')
   async test(
     @Req() req: AuthenticatedRequest,
-    @Body() body: TestConnectionBody,
+    @Body() body: TestConnectionDto,
   ) {
     const baseUrl = normalizeHttpBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({

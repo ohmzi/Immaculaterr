@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
+import { PrismaService } from '../db/prisma.service';
 
 type AttemptKey = string;
 
@@ -33,7 +35,7 @@ function isoFromMs(ms: number | null): string | null {
 }
 
 @Injectable()
-export class AuthThrottleService {
+export class AuthThrottleService implements OnModuleInit {
   private readonly logger = new Logger(AuthThrottleService.name);
 
   private readonly store = new Map<AttemptKey, AttemptState>();
@@ -60,6 +62,14 @@ export class AuthThrottleService {
     process.env.AUTH_CAPTCHA_AFTER_FAILURES,
     3,
   );
+
+  private static readonly DB_CLEANUP_INTERVAL_MS = 3_600_000; // hourly
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    await this.loadFromDb();
+  }
 
   assess(params: { username: string; ip: string | null }): ThrottleAssessment {
     const now = Date.now();
@@ -106,12 +116,15 @@ export class AuthThrottleService {
       this.computeFailureState(prev, now);
     const lastFailureAtMs = now;
 
-    this.store.set(key, {
+    const state: AttemptState = {
       failures,
       firstFailureAtMs,
       lastFailureAtMs,
       lockUntilMs,
-    });
+    };
+    this.store.set(key, state);
+    void this.persistToDb(key, state);
+
     const assessment = this.toAssessment({ lockUntilMs, now, failures });
 
     this.logger.warn(
@@ -124,6 +137,7 @@ export class AuthThrottleService {
   recordSuccess(params: { username: string; ip: string | null }): void {
     const key = this.buildKey(params.username, params.ip);
     this.store.delete(key);
+    void this.deleteFromDb(key);
   }
 
   private buildKey(username: string, ip: string | null): AttemptKey {
@@ -186,5 +200,90 @@ export class AuthThrottleService {
       captchaRequired:
         this.captchaEnabled && params.failures >= this.captchaThreshold,
     };
+  }
+
+  private async loadFromDb(): Promise<void> {
+    try {
+      const now = Date.now();
+      const rows = await this.prisma.loginThrottle.findMany();
+      let loaded = 0;
+      for (const row of rows) {
+        const lockUntilMs = row.lockUntil.getTime();
+        const lastFailureAtMs = row.lastFailureAt.getTime();
+        const lockExpired = lockUntilMs <= now;
+        const windowExpired = now - lastFailureAtMs > this.windowMs;
+        if (lockExpired && windowExpired) continue;
+        this.store.set(row.key, {
+          failures: row.failures,
+          firstFailureAtMs: row.firstFailureAt.getTime(),
+          lastFailureAtMs,
+          lockUntilMs,
+        });
+        loaded += 1;
+      }
+      if (loaded > 0) {
+        this.logger.log(`Loaded ${loaded} active lockout(s) from database`);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to load throttle state from DB: ${(err as Error)?.message ?? String(err)}`,
+      );
+    }
+  }
+
+  private async persistToDb(key: string, state: AttemptState): Promise<void> {
+    try {
+      await this.prisma.loginThrottle.upsert({
+        where: { key },
+        create: {
+          key,
+          failures: state.failures,
+          firstFailureAt: new Date(state.firstFailureAtMs),
+          lastFailureAt: new Date(state.lastFailureAtMs),
+          lockUntil: new Date(state.lockUntilMs || 0),
+        },
+        update: {
+          failures: state.failures,
+          firstFailureAt: new Date(state.firstFailureAtMs),
+          lastFailureAt: new Date(state.lastFailureAtMs),
+          lockUntil: new Date(state.lockUntilMs || 0),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist throttle state: ${(err as Error)?.message ?? String(err)}`,
+      );
+    }
+  }
+
+  private async deleteFromDb(key: string): Promise<void> {
+    try {
+      await this.prisma.loginThrottle.deleteMany({ where: { key } });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete throttle state: ${(err as Error)?.message ?? String(err)}`,
+      );
+    }
+  }
+
+  @Interval(AuthThrottleService.DB_CLEANUP_INTERVAL_MS)
+  async purgeStaleThrottleRows() {
+    try {
+      const now = new Date();
+      const windowCutoff = new Date(Date.now() - this.windowMs);
+      const { count } = await this.prisma.loginThrottle.deleteMany({
+        where: {
+          lockUntil: { lt: now },
+          lastFailureAt: { lt: windowCutoff },
+        },
+      });
+      if (count > 0) {
+        this.logger.log(`Purged ${count} stale throttle row(s)`);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Throttle DB cleanup failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    }
   }
 }

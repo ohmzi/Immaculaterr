@@ -16,17 +16,7 @@ import type { AuthUser } from '../auth/auth.types';
 import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
 import type { JsonObject } from './jobs.types';
-
-type RunJobBody = {
-  dryRun?: unknown;
-  input?: unknown;
-};
-
-type UpsertScheduleBody = {
-  cron?: unknown;
-  enabled?: unknown;
-  timezone?: unknown;
-};
+import { RunJobDto, UpsertScheduleDto } from './dto/jobs.dto';
 
 @Controller('jobs')
 @ApiTags('jobs')
@@ -47,7 +37,7 @@ export class JobsController {
   async runJob(
     @CurrentUser() user: AuthUser,
     @Param('jobId') jobId: string,
-    @Body() body: RunJobBody,
+    @Body() body: RunJobDto,
   ) {
     const userId = user.id;
     const dryRun = Boolean(body?.dryRun);
@@ -136,7 +126,7 @@ export class JobsController {
   async upsertSchedule(
     @CurrentUser() user: AuthUser,
     @Param('jobId') jobId: string,
-    @Body() body: UpsertScheduleBody,
+    @Body() body: UpsertScheduleDto,
   ) {
     const cron = typeof body?.cron === 'string' ? body.cron.trim() : '';
     const enabled = body?.enabled === undefined ? true : Boolean(body.enabled);

@@ -9,13 +9,7 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
 import { SeerrService } from './seerr.service';
-
-type TestConnectionBody = {
-  baseUrl?: unknown;
-  apiKey?: unknown;
-  apiKeyEnvelope?: unknown;
-  secretRef?: unknown;
-};
+import { TestConnectionDto } from '../shared/dto/test-connection.dto';
 
 function normalizeHttpBaseUrl(raw: unknown): string {
   const baseUrlRaw = requireBaseUrl(raw);
@@ -73,7 +67,7 @@ export class SeerrController {
   @Post('test')
   async test(
     @Req() req: AuthenticatedRequest,
-    @Body() body: TestConnectionBody,
+    @Body() body: TestConnectionDto,
   ) {
     const baseUrl = normalizeHttpBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({

@@ -15,51 +15,19 @@ import { AuthService } from './auth.service';
 import type { AuthenticatedRequest } from './auth.types';
 import { Public } from './public.decorator';
 import { AUTH_CREDENTIAL_ENVELOPE_PURPOSES } from '../app.constants';
+import {
+  LoginDto,
+  LoginChallengeDto,
+  LoginProofDto,
+  ChangePasswordDto,
+  ConfigureRecoveryDto,
+  ResetQuestionsDto,
+  ResetPasswordDto,
+} from './dto/auth.dto';
 
 type BootstrapResponse = {
   needsAdminSetup: boolean;
   onboardingComplete: boolean;
-};
-
-type LoginBody = {
-  username?: unknown;
-  password?: unknown;
-  credentialEnvelope?: unknown;
-  captchaToken?: unknown;
-  recoveryAnswers?: unknown;
-};
-
-type LoginChallengeBody = {
-  username?: unknown;
-};
-
-type LoginProofBody = {
-  challengeId?: unknown;
-  proof?: unknown;
-  captchaToken?: unknown;
-};
-
-type ChangePasswordBody = {
-  currentPassword?: unknown;
-  newPassword?: unknown;
-  captchaToken?: unknown;
-};
-
-type ConfigureRecoveryBody = {
-  currentPassword?: unknown;
-  recoveryAnswers?: unknown;
-  credentialEnvelope?: unknown;
-};
-
-type ResetQuestionsBody = {
-  username?: unknown;
-};
-
-type ResetPasswordBody = {
-  challengeId?: unknown;
-  newPassword?: unknown;
-  answers?: unknown;
-  credentialEnvelope?: unknown;
 };
 
 type RequestMeta = {
@@ -150,7 +118,7 @@ export class AuthController {
 
   @Public()
   @Post('login-challenge')
-  async loginChallenge(@Body() body: LoginChallengeBody, @Req() req: Request) {
+  async loginChallenge(@Body() body: LoginChallengeDto, @Req() req: Request) {
     const username = readString(body?.username);
     const meta = this.getRequestMeta(req);
 
@@ -164,7 +132,7 @@ export class AuthController {
   @Public()
   @Post('login-proof')
   async loginProof(
-    @Body() body: LoginProofBody,
+    @Body() body: LoginProofDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -190,7 +158,7 @@ export class AuthController {
   @Public()
   @Post('register')
   async register(
-    @Body() body: LoginBody,
+    @Body() body: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -242,7 +210,7 @@ export class AuthController {
   @Public()
   @Post('login')
   async login(
-    @Body() body: LoginBody,
+    @Body() body: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -310,7 +278,7 @@ export class AuthController {
   @Post('change-password')
   async changePassword(
     @Req() req: AuthenticatedRequest,
-    @Body() body: ChangePasswordBody,
+    @Body() body: ChangePasswordDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const currentPassword = readString(body?.currentPassword);
@@ -339,7 +307,7 @@ export class AuthController {
   @Post('recovery/configure')
   async configureRecovery(
     @Req() req: AuthenticatedRequest,
-    @Body() body: ConfigureRecoveryBody,
+    @Body() body: ConfigureRecoveryDto,
   ) {
     const envelopePayload = this.resolveEnvelopePayload(
       body?.credentialEnvelope,
@@ -369,7 +337,7 @@ export class AuthController {
   @Public()
   @Post('recovery/reset-questions')
   async createRecoveryResetQuestions(
-    @Body() body: ResetQuestionsBody,
+    @Body() body: ResetQuestionsDto,
     @Req() req: Request,
   ) {
     const username = readString(body?.username);
@@ -383,7 +351,7 @@ export class AuthController {
   @Public()
   @Post('recovery/reset-password')
   async resetPasswordWithRecovery(
-    @Body() body: ResetPasswordBody,
+    @Body() body: ResetPasswordDto,
     @Req() req: Request,
   ) {
     const envelopePayload = this.resolveEnvelopePayload(
@@ -430,7 +398,7 @@ export class AuthController {
   }
 
   private resolveCredentialBody(
-    body: LoginBody,
+    body: LoginDto,
     envelopePayload: Record<string, unknown> | null = null,
   ): {
     username: string;
@@ -513,7 +481,7 @@ export class AuthController {
     return { username, password };
   }
 
-  private resolvePlainCredentials(body: LoginBody): {
+  private resolvePlainCredentials(body: LoginDto): {
     username: string;
     password: string;
   } {

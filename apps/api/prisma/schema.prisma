@@ -82,6 +82,15 @@ model UserRecovery {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model LoginThrottle {
+  key            String   @id
+  failures       Int
+  firstFailureAt DateTime
+  lastFailureAt  DateTime
+  lockUntil      DateTime
+  updatedAt      DateTime @updatedAt
+}
+
 model PlexUser {
   id               String   @id @default(cuid())
   plexAccountId    Int?

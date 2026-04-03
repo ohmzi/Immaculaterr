@@ -8,12 +8,7 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
 import { OpenAiService } from './openai.service';
-
-type TestOpenAiBody = {
-  apiKey?: unknown;
-  apiKeyEnvelope?: unknown;
-  secretRef?: unknown;
-};
+import { TestApiKeyDto } from '../shared/dto/test-connection.dto';
 
 @Controller('openai')
 export class OpenAiController {
@@ -23,7 +18,7 @@ export class OpenAiController {
   ) {}
 
   @Post('test')
-  async test(@Req() req: AuthenticatedRequest, @Body() body: TestOpenAiBody) {
+  async test(@Req() req: AuthenticatedRequest, @Body() body: TestApiKeyDto) {
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: req.user.id,
       service: 'openai',
