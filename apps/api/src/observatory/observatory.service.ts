@@ -329,51 +329,6 @@ export class ObservatoryService {
               profileId: DEFAULT_PROFILE_ID,
               downloadApproval: { not: 'rejected' },
             },
-      orderBy:
-        params.mode === 'pendingApproval'
-          ? [{ updatedAt: 'desc' }]
-          : [{ points: 'desc' }, { updatedAt: 'desc' }],
-      take: 300,
-    });
-
-    // Best-effort: backfill poster paths for a small subset.
-    if (tmdbApiKey) {
-      const missing = rows.filter((r) => !r.tmdbPosterPath).slice(0, 20);
-      await Promise.all(
-        missing.map(async (r) => {
-          const details = await this.tmdb
-            .getMovie({ apiKey: tmdbApiKey, tmdbId: r.tmdbId })
-            .catch(() => null);
-          const posterPath = readPosterPath(details);
-          if (!posterPath) return;
-          await this.prisma.immaculateTasteMovieLibrary
-            .update({
-              where: {
-                plexUserId_librarySectionKey_profileId_tmdbId: {
-                  plexUserId,
-                  librarySectionKey: params.librarySectionKey,
-                  profileId: DEFAULT_PROFILE_ID,
-                  tmdbId: r.tmdbId,
-                },
-              },
-              data: { tmdbPosterPath: posterPath },
-            })
-            .catch(() => null);
-        }),
-      );
-    }
-
-    // Re-read poster paths for the ones we might have updated.
-    const out = await this.prisma.immaculateTasteMovieLibrary.findMany({
-      where: {
-        plexUserId,
-        librarySectionKey: params.librarySectionKey,
-        profileId: DEFAULT_PROFILE_ID,
-        tmdbId: { in: rows.map((r) => r.tmdbId) },
-        ...(params.mode === 'pendingApproval'
-          ? { status: 'pending', downloadApproval: 'pending' }
-          : { downloadApproval: { not: 'rejected' } }),
-      },
       select: {
         tmdbId: true,
         title: true,
@@ -386,14 +341,43 @@ export class ObservatoryService {
       },
       orderBy:
         params.mode === 'pendingApproval'
-          ? [{ sentToRadarrAt: 'desc' }, { tmdbId: 'desc' }]
-          : [{ points: 'desc' }, { tmdbId: 'desc' }],
+          ? [{ updatedAt: 'desc' }]
+          : [{ points: 'desc' }, { updatedAt: 'desc' }],
+      take: 300,
     });
+
+    if (tmdbApiKey) {
+      const missing = rows.filter((r) => !r.tmdbPosterPath).slice(0, 20);
+      if (missing.length) {
+        void Promise.all(
+          missing.map(async (r) => {
+            const details = await this.tmdb
+              .getMovie({ apiKey: tmdbApiKey, tmdbId: r.tmdbId })
+              .catch(() => null);
+            const posterPath = readPosterPath(details);
+            if (!posterPath) return;
+            await this.prisma.immaculateTasteMovieLibrary
+              .update({
+                where: {
+                  plexUserId_librarySectionKey_profileId_tmdbId: {
+                    plexUserId,
+                    librarySectionKey: params.librarySectionKey,
+                    profileId: DEFAULT_PROFILE_ID,
+                    tmdbId: r.tmdbId,
+                  },
+                },
+                data: { tmdbPosterPath: posterPath },
+              })
+              .catch(() => null);
+          }),
+        );
+      }
+    }
 
     return {
       ok: true,
       mode: params.mode,
-      items: out.map((r) => ({
+      items: rows.map((r) => ({
         id: r.tmdbId,
         mediaType: 'movie' as const,
         title: r.title ?? null,
@@ -447,53 +431,6 @@ export class ObservatoryService {
               profileId: DEFAULT_PROFILE_ID,
               downloadApproval: { not: 'rejected' },
             },
-      orderBy:
-        params.mode === 'pendingApproval'
-          ? [{ updatedAt: 'desc' }]
-          : [{ points: 'desc' }, { updatedAt: 'desc' }],
-      take: 300,
-    });
-
-    if (tmdbApiKey) {
-      const missing = rows
-        .filter((r) => !r.tmdbPosterPath && r.tmdbId)
-        .slice(0, 20);
-      await Promise.all(
-        missing.map(async (r) => {
-          const tmdbId = typeof r.tmdbId === 'number' ? r.tmdbId : null;
-          if (!tmdbId) return;
-          const details = await this.tmdb
-            .getTv({ apiKey: tmdbApiKey, tmdbId })
-            .catch(() => null);
-          const posterPath = readPosterPath(details);
-          if (!posterPath) return;
-          await this.prisma.immaculateTasteShowLibrary
-            .update({
-              where: {
-                plexUserId_librarySectionKey_profileId_tvdbId: {
-                  plexUserId,
-                  librarySectionKey: params.librarySectionKey,
-                  profileId: DEFAULT_PROFILE_ID,
-                  tvdbId: r.tvdbId,
-                },
-              },
-              data: { tmdbPosterPath: posterPath },
-            })
-            .catch(() => null);
-        }),
-      );
-    }
-
-    const out = await this.prisma.immaculateTasteShowLibrary.findMany({
-      where: {
-        plexUserId,
-        librarySectionKey: params.librarySectionKey,
-        profileId: DEFAULT_PROFILE_ID,
-        tvdbId: { in: rows.map((r) => r.tvdbId) },
-        ...(params.mode === 'pendingApproval'
-          ? { status: 'pending', downloadApproval: 'pending' }
-          : { downloadApproval: { not: 'rejected' } }),
-      },
       select: {
         tvdbId: true,
         tmdbId: true,
@@ -507,14 +444,47 @@ export class ObservatoryService {
       },
       orderBy:
         params.mode === 'pendingApproval'
-          ? [{ sentToSonarrAt: 'desc' }, { tvdbId: 'desc' }]
-          : [{ points: 'desc' }, { tvdbId: 'desc' }],
+          ? [{ updatedAt: 'desc' }]
+          : [{ points: 'desc' }, { updatedAt: 'desc' }],
+      take: 300,
     });
+
+    if (tmdbApiKey) {
+      const missing = rows
+        .filter((r) => !r.tmdbPosterPath && r.tmdbId)
+        .slice(0, 20);
+      if (missing.length) {
+        void Promise.all(
+          missing.map(async (r) => {
+            const tmdbId = typeof r.tmdbId === 'number' ? r.tmdbId : null;
+            if (!tmdbId) return;
+            const details = await this.tmdb
+              .getTv({ apiKey: tmdbApiKey, tmdbId })
+              .catch(() => null);
+            const posterPath = readPosterPath(details);
+            if (!posterPath) return;
+            await this.prisma.immaculateTasteShowLibrary
+              .update({
+                where: {
+                  plexUserId_librarySectionKey_profileId_tvdbId: {
+                    plexUserId,
+                    librarySectionKey: params.librarySectionKey,
+                    profileId: DEFAULT_PROFILE_ID,
+                    tvdbId: r.tvdbId,
+                  },
+                },
+                data: { tmdbPosterPath: posterPath },
+              })
+              .catch(() => null);
+          }),
+        );
+      }
+    }
 
     return {
       ok: true,
       mode: params.mode,
-      items: out.map((r) => ({
+      items: rows.map((r) => ({
         id: r.tvdbId,
         mediaType: 'tv' as const,
         tmdbId: r.tmdbId ?? null,
@@ -574,50 +544,6 @@ export class ObservatoryService {
               collectionName,
               downloadApproval: { not: 'rejected' },
             },
-      orderBy:
-        params.mode === 'pendingApproval'
-          ? [{ updatedAt: 'desc' }]
-          : [{ tmdbVoteAvg: 'desc' }, { updatedAt: 'desc' }],
-      take: 300,
-    });
-
-    // Best-effort: backfill poster paths for a small subset.
-    if (tmdbApiKey) {
-      const missing = rows.filter((r) => !r.tmdbPosterPath).slice(0, 20);
-      await Promise.all(
-        missing.map(async (r) => {
-          const details = await this.tmdb
-            .getMovie({ apiKey: tmdbApiKey, tmdbId: r.tmdbId })
-            .catch(() => null);
-          const posterPath = readPosterPath(details);
-          if (!posterPath) return;
-          await this.prisma.watchedMovieRecommendationLibrary
-            .update({
-              where: {
-                plexUserId_collectionName_librarySectionKey_tmdbId: {
-                  plexUserId,
-                  collectionName,
-                  librarySectionKey: params.librarySectionKey,
-                  tmdbId: r.tmdbId,
-                },
-              },
-              data: { tmdbPosterPath: posterPath },
-            })
-            .catch(() => null);
-        }),
-      );
-    }
-
-    const out = await this.prisma.watchedMovieRecommendationLibrary.findMany({
-      where: {
-        plexUserId,
-        librarySectionKey: params.librarySectionKey,
-        collectionName,
-        tmdbId: { in: rows.map((r) => r.tmdbId) },
-        ...(params.mode === 'pendingApproval'
-          ? { status: 'pending', downloadApproval: 'pending' }
-          : { downloadApproval: { not: 'rejected' } }),
-      },
       select: {
         tmdbId: true,
         title: true,
@@ -629,15 +555,44 @@ export class ObservatoryService {
       },
       orderBy:
         params.mode === 'pendingApproval'
-          ? [{ sentToRadarrAt: 'desc' }, { tmdbId: 'desc' }]
-          : [{ tmdbVoteAvg: 'desc' }, { tmdbId: 'desc' }],
+          ? [{ updatedAt: 'desc' }]
+          : [{ tmdbVoteAvg: 'desc' }, { updatedAt: 'desc' }],
+      take: 300,
     });
+
+    if (tmdbApiKey) {
+      const missing = rows.filter((r) => !r.tmdbPosterPath).slice(0, 20);
+      if (missing.length) {
+        void Promise.all(
+          missing.map(async (r) => {
+            const details = await this.tmdb
+              .getMovie({ apiKey: tmdbApiKey, tmdbId: r.tmdbId })
+              .catch(() => null);
+            const posterPath = readPosterPath(details);
+            if (!posterPath) return;
+            await this.prisma.watchedMovieRecommendationLibrary
+              .update({
+                where: {
+                  plexUserId_collectionName_librarySectionKey_tmdbId: {
+                    plexUserId,
+                    collectionName,
+                    librarySectionKey: params.librarySectionKey,
+                    tmdbId: r.tmdbId,
+                  },
+                },
+                data: { tmdbPosterPath: posterPath },
+              })
+              .catch(() => null);
+          }),
+        );
+      }
+    }
 
     return {
       ok: true,
       mode: params.mode,
       collectionKind: params.collectionKind,
-      items: out.map((r) => ({
+      items: rows.map((r) => ({
         id: r.tmdbId,
         mediaType: 'movie' as const,
         title: r.title ?? null,
@@ -696,53 +651,6 @@ export class ObservatoryService {
               collectionName,
               downloadApproval: { not: 'rejected' },
             },
-      orderBy:
-        params.mode === 'pendingApproval'
-          ? [{ updatedAt: 'desc' }]
-          : [{ tmdbVoteAvg: 'desc' }, { updatedAt: 'desc' }],
-      take: 300,
-    });
-
-    if (tmdbApiKey) {
-      const missing = rows
-        .filter((r) => !r.tmdbPosterPath && r.tmdbId)
-        .slice(0, 20);
-      await Promise.all(
-        missing.map(async (r) => {
-          const tmdbId = typeof r.tmdbId === 'number' ? r.tmdbId : null;
-          if (!tmdbId) return;
-          const details = await this.tmdb
-            .getTv({ apiKey: tmdbApiKey, tmdbId })
-            .catch(() => null);
-          const posterPath = readPosterPath(details);
-          if (!posterPath) return;
-          await this.prisma.watchedShowRecommendationLibrary
-            .update({
-              where: {
-                plexUserId_collectionName_librarySectionKey_tvdbId: {
-                  plexUserId,
-                  collectionName,
-                  librarySectionKey: params.librarySectionKey,
-                  tvdbId: r.tvdbId,
-                },
-              },
-              data: { tmdbPosterPath: posterPath },
-            })
-            .catch(() => null);
-        }),
-      );
-    }
-
-    const out = await this.prisma.watchedShowRecommendationLibrary.findMany({
-      where: {
-        plexUserId,
-        librarySectionKey: params.librarySectionKey,
-        collectionName,
-        tvdbId: { in: rows.map((r) => r.tvdbId) },
-        ...(params.mode === 'pendingApproval'
-          ? { status: 'pending', downloadApproval: 'pending' }
-          : { downloadApproval: { not: 'rejected' } }),
-      },
       select: {
         tvdbId: true,
         tmdbId: true,
@@ -755,15 +663,48 @@ export class ObservatoryService {
       },
       orderBy:
         params.mode === 'pendingApproval'
-          ? [{ sentToSonarrAt: 'desc' }, { tvdbId: 'desc' }]
-          : [{ tmdbVoteAvg: 'desc' }, { tvdbId: 'desc' }],
+          ? [{ updatedAt: 'desc' }]
+          : [{ tmdbVoteAvg: 'desc' }, { updatedAt: 'desc' }],
+      take: 300,
     });
+
+    if (tmdbApiKey) {
+      const missing = rows
+        .filter((r) => !r.tmdbPosterPath && r.tmdbId)
+        .slice(0, 20);
+      if (missing.length) {
+        void Promise.all(
+          missing.map(async (r) => {
+            const tmdbId = typeof r.tmdbId === 'number' ? r.tmdbId : null;
+            if (!tmdbId) return;
+            const details = await this.tmdb
+              .getTv({ apiKey: tmdbApiKey, tmdbId })
+              .catch(() => null);
+            const posterPath = readPosterPath(details);
+            if (!posterPath) return;
+            await this.prisma.watchedShowRecommendationLibrary
+              .update({
+                where: {
+                  plexUserId_collectionName_librarySectionKey_tvdbId: {
+                    plexUserId,
+                    collectionName,
+                    librarySectionKey: params.librarySectionKey,
+                    tvdbId: r.tvdbId,
+                  },
+                },
+                data: { tmdbPosterPath: posterPath },
+              })
+              .catch(() => null);
+          }),
+        );
+      }
+    }
 
     return {
       ok: true,
       mode: params.mode,
       collectionKind: params.collectionKind,
-      items: out.map((r) => ({
+      items: rows.map((r) => ({
         id: r.tvdbId,
         mediaType: 'tv' as const,
         tmdbId: r.tmdbId ?? null,

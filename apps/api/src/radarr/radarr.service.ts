@@ -211,19 +211,6 @@ export class RadarrService {
         );
       }
 
-      // #region agent log
-      const resBody = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
-      const resMonitored = resBody ? resBody['monitored'] : undefined;
-      if (typeof resMonitored === 'boolean' && resMonitored !== monitored) {
-        this.logger.warn(
-          `setMovieMonitored: Radarr response monitored=${resMonitored} expected=${monitored} movie=${movie.id}`,
-        );
-      }
-      // #endregion
-
       return true;
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
