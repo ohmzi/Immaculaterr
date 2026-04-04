@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.3
+1.7.4-beta-1
 ---
 
 - What's new since 1.7.1:
