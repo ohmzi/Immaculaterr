@@ -566,6 +566,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 </label>
                 <input
                   id="username"
+                  name="username"
                   autoComplete="username"
                   autoCapitalize="none"
                   spellCheck={false}
@@ -588,6 +589,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 <div className="relative">
                   <input
                     id="password"
+                    name="password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                     value={password}
@@ -622,6 +624,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   </label>
                   <input
                     id="confirm-password"
+                    name="confirm-password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password"
                     value={confirmPassword}
@@ -726,6 +729,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 </label>
                 <input
                   id="reset-username"
+                  name="username"
+                  autoComplete="username"
                   value={resetUsername}
                   onChange={handleResetUsernameChange}
                   autoCapitalize="none"
@@ -778,6 +783,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     </label>
                     <input
                       id="reset-new-password"
+                      name="new-password"
                       type="password"
                       autoComplete="new-password"
                       value={resetNewPassword}
@@ -795,6 +801,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     </label>
                     <input
                       id="reset-new-password-confirm"
+                      name="new-password-confirm"
                       type="password"
                       autoComplete="new-password"
                       value={resetConfirmPassword}
