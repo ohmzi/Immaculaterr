@@ -81,8 +81,13 @@ RUN npm i -g --no-audit --no-fund tar@7.5.10 minimatch@10.2.4 \
 # flagged by image scanners due to the Go stdlib version used to build the
 # Debian package). The entrypoint uses built-in tools (`setpriv`/`runuser`/`su`)
 # to switch users after doing one-time permission fixes on the mounted data volume.
-# NOTE: Do not install distro OpenSSL in the runtime image; we rely on the Node
-# base image defaults to reduce exposure to OpenSSL CVEs from apt packages.
+
+# Prisma's query engine links against system libssl at runtime. Without the
+# openssl package, Prisma cannot detect the host OpenSSL version and falls back
+# to openssl-1.1.x (wrong for bookworm/libssl3), emitting noisy warnings on
+# every startup.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
 

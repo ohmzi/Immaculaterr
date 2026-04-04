@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 
 const TARGET_MIGRATION = '20260224090000_auth_security_hardening';
+const CREATE_TASTE_PROFILES_MIGRATION =
+  '20260310120000_create_immaculate_taste_profiles';
 const IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION =
   '20260316200000_add_scope_all_users_to_taste_profile';
 const FRESH_RELEASE_CACHE_MIGRATION =
@@ -568,8 +570,15 @@ export async function repairMarch2026MigrationEdgeCases(
   if (!(await tableExists(prisma, 'User'))) return;
 
   const profileTableName = 'ImmaculateTasteProfile';
-  if (!(await tableExists(prisma, profileTableName))) {
+  const profileExistedBeforeRepair = await tableExists(
+    prisma,
+    profileTableName,
+  );
+  if (!profileExistedBeforeRepair) {
     await prisma.$executeRawUnsafe(CREATE_IMMACULATE_TASTE_PROFILE_TABLE_SQL);
+    await prisma.$executeRawUnsafe(
+      ADD_IMMACULATE_TASTE_PROFILE_SCOPE_ALL_USERS_COLUMN_SQL,
+    );
   }
 
   const profileColumns = await tableInfo(prisma, profileTableName);
@@ -578,6 +587,21 @@ export async function repairMarch2026MigrationEdgeCases(
     prisma,
     IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION,
   );
+
+  const createProfilesMigrationState = await migrationRecordState(
+    prisma,
+    CREATE_TASTE_PROFILES_MIGRATION,
+  );
+  if (
+    createProfilesMigrationState === 'failed' ||
+    (profileExistedBeforeRepair &&
+      createProfilesMigrationState === 'not_recorded')
+  ) {
+    resolveMigrationAsApplied(
+      CREATE_TASTE_PROFILES_MIGRATION,
+      'ImmaculateTasteProfile already exists',
+    );
+  }
 
   if (hasScopeAllUsers) {
     if (
