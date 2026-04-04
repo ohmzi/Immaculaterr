@@ -11,8 +11,12 @@ RUN npm i -g --no-audit --no-fund tar@7.5.10 minimatch@10.2.4 \
   && cp -a /usr/local/lib/node_modules/minimatch /usr/local/lib/node_modules/npm/node_modules/minimatch \
   && npm cache clean --force
 
-# Keep builder image minimal; do not install distro OpenSSL packages.
-# Prisma may log OpenSSL detection warnings during generate, but generation works.
+# Prisma uses the `openssl` CLI to detect the host OpenSSL version at generate
+# time and selects the matching query-engine binary. Without it, Prisma defaults
+# to openssl-1.1.x which is wrong for bookworm (libssl3 / OpenSSL 3.0.x) and
+# produces a runtime engine mismatch on ARM64.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 
 # 1) Install deps (cached)
 COPY package.json package-lock.json ./

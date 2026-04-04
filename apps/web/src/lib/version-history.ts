@@ -24,7 +24,7 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.3',
+    version: '1.7.4-beta-1',
     popupHighlights: [
       'Recommendations now respect each profile\'s genre and language rules so unrelated titles are filtered before scoring.',
       'Sessions last 30 days with a rolling window, and API rate limiting protects auth, webhooks, and general endpoints.',
