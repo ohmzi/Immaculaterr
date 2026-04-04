@@ -51,6 +51,12 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
         mockState.tables.add('ImmaculateTasteProfile');
         mockState.columns.ImmaculateTasteProfile = ['id'];
       }
+      if (
+        sql.includes('ADD COLUMN "scopeAllUsers"') &&
+        mockState.columns.ImmaculateTasteProfile
+      ) {
+        mockState.columns.ImmaculateTasteProfile.push('scopeAllUsers');
+      }
     }),
     $queryRawUnsafe: jest.fn(async (query: string, ...params: unknown[]) => {
       if (query.includes('FROM sqlite_master')) {
@@ -226,6 +232,69 @@ describe('scripts/migrate-with-repair', () => {
         env: process.env,
         stdio: 'inherit',
       }),
+    );
+  });
+
+  it('skips all repairs when User table does not exist (fresh database)', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(),
+    });
+
+    await repairMarch2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  it('creates ImmaculateTasteProfile with scopeAllUsers and resolves both migrations when table is missing', async () => {
+    const prisma = createPrismaMock({
+      migrationRows: {
+        '20260316200000_add_scope_all_users_to_taste_profile': [
+          { finished_at: null, rolled_back_at: null },
+        ],
+      },
+      tables: new Set(['User']),
+    });
+
+    await repairMarch2026MigrationEdgeCases(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE "ImmaculateTasteProfile"'),
+    );
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('ADD COLUMN "scopeAllUsers"'),
+    );
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--applied',
+        '20260316200000_add_scope_all_users_to_taste_profile',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('resolves create_immaculate_taste_profiles migration as applied when table pre-exists but migration is unrecorded', async () => {
+    const prisma = createPrismaMock({
+      columns: {
+        ImmaculateTasteProfile: ['id', 'scopeAllUsers'],
+      },
+      tables: new Set(['User', 'ImmaculateTasteProfile']),
+    });
+
+    await repairMarch2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--applied',
+        '20260310120000_create_immaculate_taste_profiles',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
     );
   });
 
