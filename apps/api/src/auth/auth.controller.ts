@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Logger,
   Post,
@@ -14,51 +15,20 @@ import { AuthService } from './auth.service';
 import type { AuthenticatedRequest } from './auth.types';
 import { Public } from './public.decorator';
 import { AUTH_CREDENTIAL_ENVELOPE_PURPOSES } from '../app.constants';
+import { maskUsername, maskIp } from '../log.utils';
+import {
+  LoginDto,
+  LoginChallengeDto,
+  LoginProofDto,
+  ChangePasswordDto,
+  ConfigureRecoveryDto,
+  ResetQuestionsDto,
+  ResetPasswordDto,
+} from './dto/auth.dto';
 
 type BootstrapResponse = {
   needsAdminSetup: boolean;
   onboardingComplete: boolean;
-};
-
-type LoginBody = {
-  username?: unknown;
-  password?: unknown;
-  credentialEnvelope?: unknown;
-  captchaToken?: unknown;
-  recoveryAnswers?: unknown;
-};
-
-type LoginChallengeBody = {
-  username?: unknown;
-};
-
-type LoginProofBody = {
-  challengeId?: unknown;
-  proof?: unknown;
-  captchaToken?: unknown;
-};
-
-type ChangePasswordBody = {
-  currentPassword?: unknown;
-  newPassword?: unknown;
-  captchaToken?: unknown;
-};
-
-type ConfigureRecoveryBody = {
-  currentPassword?: unknown;
-  recoveryAnswers?: unknown;
-  credentialEnvelope?: unknown;
-};
-
-type ResetQuestionsBody = {
-  username?: unknown;
-};
-
-type ResetPasswordBody = {
-  challengeId?: unknown;
-  newPassword?: unknown;
-  answers?: unknown;
-  credentialEnvelope?: unknown;
 };
 
 type RequestMeta = {
@@ -149,7 +119,7 @@ export class AuthController {
 
   @Public()
   @Post('login-challenge')
-  async loginChallenge(@Body() body: LoginChallengeBody, @Req() req: Request) {
+  async loginChallenge(@Body() body: LoginChallengeDto, @Req() req: Request) {
     const username = readString(body?.username);
     const meta = this.getRequestMeta(req);
 
@@ -163,7 +133,7 @@ export class AuthController {
   @Public()
   @Post('login-proof')
   async loginProof(
-    @Body() body: LoginProofBody,
+    @Body() body: LoginProofDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -181,7 +151,7 @@ export class AuthController {
     });
     this.setSessionCookie(req, res, result.sessionId);
     this.logger.log(
-      `auth: login proof success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(meta.ip)}`,
+      `auth: login proof success userId=${result.user.id} username=${JSON.stringify(maskUsername(result.user.username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     return { ok: true, user: result.user };
   }
@@ -189,7 +159,7 @@ export class AuthController {
   @Public()
   @Post('register')
   async register(
-    @Body() body: LoginBody,
+    @Body() body: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -213,7 +183,7 @@ export class AuthController {
     const meta = this.getRequestMeta(req);
 
     this.logger.log(
-      `auth: register attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} ua=${JSON.stringify(meta.userAgent)}`,
+      `auth: register attempt username=${JSON.stringify(maskUsername(username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     await this.authService.registerAdmin({
       username,
@@ -233,7 +203,7 @@ export class AuthController {
     });
     this.setSessionCookie(req, res, login.sessionId);
     this.logger.log(
-      `auth: register success userId=${login.user.id} username=${JSON.stringify(login.user.username)} ip=${JSON.stringify(meta.ip)}`,
+      `auth: register success userId=${login.user.id} username=${JSON.stringify(maskUsername(login.user.username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     return { ok: true, user: login.user };
   }
@@ -241,7 +211,7 @@ export class AuthController {
   @Public()
   @Post('login')
   async login(
-    @Body() body: LoginBody,
+    @Body() body: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -256,7 +226,7 @@ export class AuthController {
     const meta = this.getRequestMeta(req);
 
     this.logger.log(
-      `auth: login attempt username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} ua=${JSON.stringify(meta.userAgent)}`,
+      `auth: login attempt username=${JSON.stringify(maskUsername(username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
     );
     try {
       const result = await this.authService.login({
@@ -268,13 +238,13 @@ export class AuthController {
       });
       this.setSessionCookie(req, res, result.sessionId);
       this.logger.log(
-        `auth: login success userId=${result.user.id} username=${JSON.stringify(result.user.username)} ip=${JSON.stringify(meta.ip)}`,
+        `auth: login success userId=${result.user.id} username=${JSON.stringify(maskUsername(result.user.username))} ip=${JSON.stringify(maskIp(meta.ip))}`,
       );
       return { ok: true, user: result.user };
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
       this.logger.warn(
-        `auth: login failed username=${JSON.stringify(username.trim())} ip=${JSON.stringify(meta.ip)} error=${JSON.stringify(msg)}`,
+        `auth: login failed username=${JSON.stringify(maskUsername(username))} ip=${JSON.stringify(maskIp(meta.ip))} error=${JSON.stringify(msg)}`,
       );
       throw err;
     }
@@ -287,7 +257,7 @@ export class AuthController {
     this.clearSessionCookie(req, res);
     const ip = req.ip ?? null;
     this.logger.log(
-      `auth: logout ip=${JSON.stringify(ip)} hadSession=${Boolean(sid)}`,
+      `auth: logout ip=${JSON.stringify(maskIp(ip))} hadSession=${Boolean(sid)}`,
     );
     return { ok: true };
   }
@@ -301,7 +271,7 @@ export class AuthController {
     this.clearSessionCookie(req, res);
     const ip = req.ip ?? null;
     this.logger.log(
-      `auth: logout all userId=${req.user.id} ip=${JSON.stringify(ip)}`,
+      `auth: logout all userId=${req.user.id} ip=${JSON.stringify(maskIp(ip))}`,
     );
     return { ok: true };
   }
@@ -309,7 +279,7 @@ export class AuthController {
   @Post('change-password')
   async changePassword(
     @Req() req: AuthenticatedRequest,
-    @Body() body: ChangePasswordBody,
+    @Body() body: ChangePasswordDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const currentPassword = readString(body?.currentPassword);
@@ -338,7 +308,7 @@ export class AuthController {
   @Post('recovery/configure')
   async configureRecovery(
     @Req() req: AuthenticatedRequest,
-    @Body() body: ConfigureRecoveryBody,
+    @Body() body: ConfigureRecoveryDto,
   ) {
     const envelopePayload = this.resolveEnvelopePayload(
       body?.credentialEnvelope,
@@ -368,7 +338,7 @@ export class AuthController {
   @Public()
   @Post('recovery/reset-questions')
   async createRecoveryResetQuestions(
-    @Body() body: ResetQuestionsBody,
+    @Body() body: ResetQuestionsDto,
     @Req() req: Request,
   ) {
     const username = readString(body?.username);
@@ -382,7 +352,7 @@ export class AuthController {
   @Public()
   @Post('recovery/reset-password')
   async resetPasswordWithRecovery(
-    @Body() body: ResetPasswordBody,
+    @Body() body: ResetPasswordDto,
     @Req() req: Request,
   ) {
     const envelopePayload = this.resolveEnvelopePayload(
@@ -418,6 +388,9 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('reset-dev is disabled in production');
+    }
     await this.authService.resetAllData();
     const sid = this.authService.readSessionIdFromRequest(req);
     if (sid) await this.authService.logout(sid).catch(() => undefined);
@@ -426,7 +399,7 @@ export class AuthController {
   }
 
   private resolveCredentialBody(
-    body: LoginBody,
+    body: LoginDto,
     envelopePayload: Record<string, unknown> | null = null,
   ): {
     username: string;
@@ -509,7 +482,7 @@ export class AuthController {
     return { username, password };
   }
 
-  private resolvePlainCredentials(body: LoginBody): {
+  private resolvePlainCredentials(body: LoginDto): {
     username: string;
     password: string;
   } {

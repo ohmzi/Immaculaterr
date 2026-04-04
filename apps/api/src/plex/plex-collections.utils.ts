@@ -284,3 +284,20 @@ export function buildFreshOutMovieCollectionHubOrder(
     plexUserTitle,
   );
 }
+
+export type PinVisibilityProfile = 'default' | 'home_only' | 'shared_home_only';
+
+export function resolveCuratedCollectionPinVisibility(params: {
+  collectionName: string;
+  mediaType: CuratedMediaType;
+  pinTarget: 'admin' | 'friends';
+}): PinVisibilityProfile | null {
+  const baseName = resolveCuratedCollectionBaseName({
+    collectionName: params.collectionName,
+    mediaType: params.mediaType,
+  });
+  if (baseName === FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME) {
+    return params.pinTarget === 'friends' ? 'shared_home_only' : 'home_only';
+  }
+  return null;
+}

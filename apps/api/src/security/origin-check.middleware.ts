@@ -47,8 +47,16 @@ export function createOriginCheckMiddleware(options: OriginCheckOptions = {}) {
     if (!STATE_CHANGING_METHODS.has(req.method.toUpperCase())) return next();
 
     const originHeader = req.headers.origin;
-    if (typeof originHeader !== 'string' || originHeader.trim() === '')
-      return next();
+    if (typeof originHeader !== 'string' || originHeader.trim() === '') {
+      const xrw = req.headers['x-requested-with'];
+      if (typeof xrw === 'string' && xrw.trim()) return next();
+      res.status(403).json({
+        statusCode: 403,
+        message: 'Forbidden',
+        error: 'Missing Origin or X-Requested-With',
+      });
+      return;
+    }
 
     let originUrl: URL;
     try {

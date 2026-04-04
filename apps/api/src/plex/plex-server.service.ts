@@ -1,6 +1,8 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { XMLParser } from 'fast-xml-parser';
 import { normalizeCollectionTitle } from './plex-collections.utils';
+import { sanitizeUrlForLogs, truncateForLog } from '../log.utils';
+import { LOG_BODY_MAX_LENGTH } from '../app.constants';
 
 type PlexSection = {
   key: string;
@@ -192,31 +194,6 @@ function asPlexPartArray(value: unknown): Array<Record<string, unknown>> {
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-}
-
-function sanitizeUrlForLogs(raw: string): string {
-  try {
-    const u = new URL(raw);
-    // Never log credentials if someone configured baseUrl as http(s)://user:pass@host
-    u.username = '';
-    u.password = '';
-
-    // Defensive: if any token-like query params appear, redact them.
-    for (const k of [
-      'X-Plex-Token',
-      'x-plex-token',
-      'token',
-      'authToken',
-      'auth_token',
-      'plexToken',
-      'plex_token',
-    ]) {
-      if (u.searchParams.has(k)) u.searchParams.set(k, 'REDACTED');
-    }
-    return u.toString();
-  } catch {
-    return raw;
-  }
 }
 
 function extractFirstInt(value: string): number | null {
@@ -2413,10 +2390,10 @@ export class PlexServerService {
 
       if (!res.ok) {
         this.logger.warn(
-          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${text}`.trim(),
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(text, LOG_BODY_MAX_LENGTH)}`.trim(),
         );
         throw new BadGatewayException(
-          `Plex request failed: POST ${url} -> HTTP ${res.status} ${text}`.trim(),
+          `Plex request failed: POST -> HTTP ${res.status}`.trim(),
         );
       }
 
@@ -2561,10 +2538,10 @@ export class PlexServerService {
         const body = await res.text().catch(() => '');
         const ms = Date.now() - startedAt;
         this.logger.warn(
-          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim(),
         );
         throw new BadGatewayException(
-          `Plex upload poster failed: HTTP ${res.status} ${body}`.trim(),
+          `Plex upload poster failed: HTTP ${res.status}`.trim(),
         );
       }
 
@@ -2622,10 +2599,10 @@ export class PlexServerService {
         const body = await res.text().catch(() => '');
         const ms = Date.now() - startedAt;
         this.logger.warn(
-          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+          `Plex HTTP POST ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim(),
         );
         throw new BadGatewayException(
-          `Plex upload art failed: HTTP ${res.status} ${body}`.trim(),
+          `Plex upload art failed: HTTP ${res.status}`.trim(),
         );
       }
 
@@ -2764,10 +2741,10 @@ export class PlexServerService {
         const body = await res.text().catch(() => '');
         const ms = Date.now() - startedAt;
         this.logger.warn(
-          `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms) ${body}`.trim(),
+          `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim(),
         );
         throw new BadGatewayException(
-          `Plex request failed: ${method} ${url} -> HTTP ${res.status} ${body}`.trim(),
+          `Plex request failed: ${method} -> HTTP ${res.status}`.trim(),
         );
       }
 
@@ -2807,10 +2784,10 @@ export class PlexServerService {
 
       if (!res.ok) {
         this.logger.warn(
-          `Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${text}`.trim(),
+          `Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(text, LOG_BODY_MAX_LENGTH)}`.trim(),
         );
         throw new BadGatewayException(
-          `Plex request failed: HTTP ${res.status} ${text}`.trim(),
+          `Plex request failed: HTTP ${res.status}`.trim(),
         );
       }
 

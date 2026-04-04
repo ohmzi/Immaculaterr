@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
@@ -19,14 +19,22 @@ import {
   API_DOCS_PATH,
   API_GLOBAL_PREFIX,
   API_PREFIX_PATH,
+  API_RATE_LIMIT_DEFAULT_MAX,
+  API_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  AUTH_RATE_LIMIT_DEFAULT_GET_MAX,
   AUTH_RATE_LIMIT_DEFAULT_LOGIN_MAX,
   AUTH_RATE_LIMIT_DEFAULT_REGISTER_MAX,
   AUTH_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  AUTH_RATE_LIMIT_GET_ROUTES,
   AUTH_RATE_LIMIT_ROUTES,
   HTTP_SLOW_REQUEST_THRESHOLD_MS,
+  LOG_ERROR_MESSAGE_MAX_LENGTH,
+  WEBHOOK_RATE_LIMIT_DEFAULT_MAX,
+  WEBHOOK_RATE_LIMIT_DEFAULT_WINDOW_MS,
   WEBHOOKS_PLEX_ALIAS_PREFIX,
   WEBHOOKS_PLEX_CANONICAL_PREFIX,
 } from './app.constants';
+import { sanitizePathForLog, truncateForLog } from './log.utils';
 
 function ensureLegacyGlobals() {
   const g = globalThis as Record<string, unknown>;
@@ -80,10 +88,14 @@ async function bootstrap() {
   const bootstrapLogger = new Logger('Bootstrap');
 
   process.on('unhandledRejection', (reason) => {
-    bootstrapLogger.error(`Unhandled rejection: ${String(reason)}`);
+    bootstrapLogger.error(
+      `Unhandled rejection: ${truncateForLog(String(reason), LOG_ERROR_MESSAGE_MAX_LENGTH)}`,
+    );
   });
   process.on('uncaughtException', (err) => {
-    bootstrapLogger.error(`Uncaught exception: ${err?.stack ?? String(err)}`);
+    bootstrapLogger.error(
+      `Uncaught exception: ${truncateForLog(err?.stack ?? String(err), LOG_ERROR_MESSAGE_MAX_LENGTH)}`,
+    );
     process.exit(1);
   });
 
@@ -114,6 +126,14 @@ async function bootstrap() {
       httpAdapter.getInstance() as { set?: (k: string, v: unknown) => void }
     )?.set?.('trust proxy', trustProxy);
   }
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   app.use(securityHeadersMiddleware);
   app.use(privateCacheMiddleware);
@@ -163,6 +183,25 @@ async function bootstrap() {
   app.use(
     API_PREFIX_PATH,
     createOriginCheckMiddleware({ allowedOrigins: corsOrigins }),
+  );
+
+  // Global API rate limit (in-memory, per-IP, all methods).
+  const apiRateLimitMax = parsePositiveIntegerEnv(
+    process.env.API_RATE_LIMIT_MAX,
+    API_RATE_LIMIT_DEFAULT_MAX,
+  );
+  const apiRateLimitWindowMs = parsePositiveIntegerEnv(
+    process.env.API_RATE_LIMIT_WINDOW_MS,
+    API_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  );
+  app.use(
+    API_PREFIX_PATH,
+    createIpRateLimitMiddleware({
+      windowMs: apiRateLimitWindowMs,
+      max: apiRateLimitMax,
+      keyPrefix: 'api_global',
+      methods: [],
+    }),
   );
 
   // Auth rate limiting (in-memory, per-IP).
@@ -224,6 +263,42 @@ async function bootstrap() {
     );
   }
 
+  // Auth GET rate limiting (recon-sensitive endpoints).
+  const authGetMax = parsePositiveIntegerEnv(
+    process.env.AUTH_RATE_LIMIT_MAX_GET,
+    AUTH_RATE_LIMIT_DEFAULT_GET_MAX,
+  );
+  for (const [key, path] of Object.entries(AUTH_RATE_LIMIT_GET_ROUTES)) {
+    app.use(
+      path,
+      createIpRateLimitMiddleware({
+        windowMs: authRateLimitWindowMs,
+        max: authGetMax,
+        keyPrefix: `auth_get_${key}`,
+        methods: ['GET'],
+      }),
+    );
+  }
+
+  // Webhook rate limiting (in-memory, per-IP).
+  const webhookRateLimitMax = parsePositiveIntegerEnv(
+    process.env.WEBHOOK_RATE_LIMIT_MAX,
+    WEBHOOK_RATE_LIMIT_DEFAULT_MAX,
+  );
+  const webhookRateLimitWindowMs = parsePositiveIntegerEnv(
+    process.env.WEBHOOK_RATE_LIMIT_WINDOW_MS,
+    WEBHOOK_RATE_LIMIT_DEFAULT_WINDOW_MS,
+  );
+  app.use(
+    WEBHOOKS_PLEX_CANONICAL_PREFIX,
+    createIpRateLimitMiddleware({
+      windowMs: webhookRateLimitWindowMs,
+      max: webhookRateLimitMax,
+      keyPrefix: 'webhook_plex',
+      methods: ['POST'],
+    }),
+  );
+
   // Lightweight request logging (only warnings/errors/slow requests)
   const httpLoggingEnabled =
     process.env.HTTP_LOGGING === 'true' ||
@@ -235,7 +310,7 @@ async function bootstrap() {
       res.on('finish', () => {
         const ms = Number(process.hrtime.bigint() - start) / 1e6;
         const status = res.statusCode;
-        const path = req.originalUrl || req.url;
+        const path = sanitizePathForLog(req.originalUrl || req.url);
         const msg = `${req.method} ${path} -> ${status} ${ms.toFixed(0)}ms`;
 
         if (status >= 500) httpLogger.error(msg);
@@ -247,10 +322,15 @@ async function bootstrap() {
     });
   }
 
+  const isProduction = process.env.NODE_ENV === 'production';
   const swaggerEnabled =
-    process.env.SWAGGER_ENABLED === 'true' ||
-    process.env.NODE_ENV !== 'production';
+    process.env.SWAGGER_ENABLED === 'true' || !isProduction;
   if (swaggerEnabled) {
+    if (isProduction) {
+      bootstrapLogger.warn(
+        'Swagger UI is enabled in production (SWAGGER_ENABLED=true). Disable it if this is not intentional.',
+      );
+    }
     const meta = readAppMeta();
     const config = new DocumentBuilder()
       .setTitle('Immaculaterr API')
@@ -259,7 +339,6 @@ async function bootstrap() {
       .build();
 
     const document = SwaggerModule.createDocument(app, config);
-    // Note: Swagger routes are not affected by Nest's globalPrefix; include it explicitly.
     SwaggerModule.setup(API_DOCS_PATH, app, document, {
       swaggerOptions: {
         persistAuthorization: true,
@@ -293,6 +372,11 @@ async function bootstrap() {
 }
 void bootstrap().catch((err) => {
   const logger = new Logger('Bootstrap');
-  logger.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
+  logger.error(
+    truncateForLog(
+      err instanceof Error ? (err.stack ?? err.message) : String(err),
+      LOG_ERROR_MESSAGE_MAX_LENGTH,
+    ),
+  );
   process.exit(1);
 });

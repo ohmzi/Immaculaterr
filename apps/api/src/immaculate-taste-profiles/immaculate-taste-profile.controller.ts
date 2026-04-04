@@ -14,13 +14,14 @@ import {
   ImmaculateTasteProfileService,
   type ImmaculateTasteProfileView,
 } from './immaculate-taste-profile.service';
+import {
+  CreateProfileDto,
+  UpdateProfileDto,
+  ReorderProfilesDto,
+} from './dto/taste-profile.dto';
 
 type MediaType = 'movie' | 'show' | 'both';
 type MatchMode = 'all' | 'any';
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -98,27 +99,30 @@ export class ImmaculateTasteProfileController {
   @Post()
   async create(
     @Req() req: AuthenticatedRequest,
-    @Body() body: unknown,
+    @Body() body: CreateProfileDto,
   ): Promise<{ ok: true; profile: ImmaculateTasteProfileView }> {
-    if (!isPlainObject(body))
-      throw new BadRequestException('body must be an object');
-    const name = asString(body['name']);
+    const bodyObject = body as unknown as Record<string, unknown>;
+    const name = asString(bodyObject['name']);
     if (!name) throw new BadRequestException('name is required');
     const profile = await this.profiles.create(req.user.id, {
       name,
-      mediaType: asMediaType(body['mediaType']),
-      matchMode: asMatchMode(body['matchMode']),
-      genres: asStringList(body['genres']),
-      audioLanguages: asStringList(body['audioLanguages']),
-      excludedGenres: asStringList(body['excludedGenres']),
-      excludedAudioLanguages: asStringList(body['excludedAudioLanguages']),
-      radarrInstanceId: asNullableString(body['radarrInstanceId']),
-      sonarrInstanceId: asNullableString(body['sonarrInstanceId']),
-      movieCollectionBaseName: asNullableString(
-        body['movieCollectionBaseName'],
+      mediaType: asMediaType(bodyObject['mediaType']),
+      matchMode: asMatchMode(bodyObject['matchMode']),
+      genres: asStringList(bodyObject['genres']),
+      audioLanguages: asStringList(bodyObject['audioLanguages']),
+      excludedGenres: asStringList(bodyObject['excludedGenres']),
+      excludedAudioLanguages: asStringList(
+        bodyObject['excludedAudioLanguages'],
       ),
-      showCollectionBaseName: asNullableString(body['showCollectionBaseName']),
-      enabled: asOptionalBool(body['enabled']),
+      radarrInstanceId: asNullableString(bodyObject['radarrInstanceId']),
+      sonarrInstanceId: asNullableString(bodyObject['sonarrInstanceId']),
+      movieCollectionBaseName: asNullableString(
+        bodyObject['movieCollectionBaseName'],
+      ),
+      showCollectionBaseName: asNullableString(
+        bodyObject['showCollectionBaseName'],
+      ),
+      enabled: asOptionalBool(bodyObject['enabled']),
     });
     return { ok: true, profile };
   }
@@ -127,75 +131,83 @@ export class ImmaculateTasteProfileController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: unknown,
+    @Body() body: UpdateProfileDto,
   ): Promise<{ ok: true; profile: ImmaculateTasteProfileView }> {
-    if (!isPlainObject(body))
-      throw new BadRequestException('body must be an object');
+    const bodyObject = body as unknown as Record<string, unknown>;
     const profile = await this.profiles.update(req.user.id, id, {
-      ...(Object.prototype.hasOwnProperty.call(body, 'name')
-        ? { name: asString(body['name']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'name')
+        ? { name: asString(bodyObject['name']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'enabled')
-        ? { enabled: asOptionalBool(body['enabled']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'enabled')
+        ? { enabled: asOptionalBool(bodyObject['enabled']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'sortOrder')
-        ? { sortOrder: asOptionalSortOrder(body['sortOrder']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'sortOrder')
+        ? { sortOrder: asOptionalSortOrder(bodyObject['sortOrder']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'scopeAllUsers')
-        ? { scopeAllUsers: asOptionalBool(body['scopeAllUsers']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'scopeAllUsers')
+        ? { scopeAllUsers: asOptionalBool(bodyObject['scopeAllUsers']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'scopePlexUserId')
-        ? { scopePlexUserId: asNullableString(body['scopePlexUserId']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'scopePlexUserId')
+        ? { scopePlexUserId: asNullableString(bodyObject['scopePlexUserId']) }
         : {}),
       ...(Object.prototype.hasOwnProperty.call(
-        body,
+        bodyObject,
         'resetScopeToDefaultNaming',
       )
         ? {
             resetScopeToDefaultNaming: asOptionalBool(
-              body['resetScopeToDefaultNaming'],
+              bodyObject['resetScopeToDefaultNaming'],
             ),
           }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'mediaType')
-        ? { mediaType: asMediaType(body['mediaType']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'mediaType')
+        ? { mediaType: asMediaType(bodyObject['mediaType']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'matchMode')
-        ? { matchMode: asMatchMode(body['matchMode']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'matchMode')
+        ? { matchMode: asMatchMode(bodyObject['matchMode']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'genres')
-        ? { genres: asStringList(body['genres']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'genres')
+        ? { genres: asStringList(bodyObject['genres']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'audioLanguages')
-        ? { audioLanguages: asStringList(body['audioLanguages']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'audioLanguages')
+        ? { audioLanguages: asStringList(bodyObject['audioLanguages']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'excludedGenres')
-        ? { excludedGenres: asStringList(body['excludedGenres']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'excludedGenres')
+        ? { excludedGenres: asStringList(bodyObject['excludedGenres']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'excludedAudioLanguages')
+      ...(Object.prototype.hasOwnProperty.call(
+        bodyObject,
+        'excludedAudioLanguages',
+      )
         ? {
             excludedAudioLanguages: asStringList(
-              body['excludedAudioLanguages'],
+              bodyObject['excludedAudioLanguages'],
             ),
           }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'radarrInstanceId')
-        ? { radarrInstanceId: asNullableString(body['radarrInstanceId']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'radarrInstanceId')
+        ? { radarrInstanceId: asNullableString(bodyObject['radarrInstanceId']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'sonarrInstanceId')
-        ? { sonarrInstanceId: asNullableString(body['sonarrInstanceId']) }
+      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'sonarrInstanceId')
+        ? { sonarrInstanceId: asNullableString(bodyObject['sonarrInstanceId']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'movieCollectionBaseName')
+      ...(Object.prototype.hasOwnProperty.call(
+        bodyObject,
+        'movieCollectionBaseName',
+      )
         ? {
             movieCollectionBaseName: asNullableString(
-              body['movieCollectionBaseName'],
+              bodyObject['movieCollectionBaseName'],
             ),
           }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'showCollectionBaseName')
+      ...(Object.prototype.hasOwnProperty.call(
+        bodyObject,
+        'showCollectionBaseName',
+      )
         ? {
             showCollectionBaseName: asNullableString(
-              body['showCollectionBaseName'],
+              bodyObject['showCollectionBaseName'],
             ),
           }
         : {}),
@@ -215,11 +227,10 @@ export class ImmaculateTasteProfileController {
   @Put('reorder')
   async reorder(
     @Req() req: AuthenticatedRequest,
-    @Body() body: unknown,
+    @Body() body: ReorderProfilesDto,
   ): Promise<{ ok: true; profiles: ImmaculateTasteProfileView[] }> {
-    if (!isPlainObject(body))
-      throw new BadRequestException('body must be an object');
-    const ids = asStringList(body['ids']);
+    const bodyObject = body as unknown as Record<string, unknown>;
+    const ids = asStringList(bodyObject['ids']);
     if (!ids || !ids.length) {
       throw new BadRequestException('ids must be a non-empty array');
     }

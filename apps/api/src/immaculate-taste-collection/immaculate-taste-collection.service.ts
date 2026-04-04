@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { immaculateTasteResetMarkerKey } from './immaculate-taste-reset';
+import { buildThreeTierOrder } from './immaculate-taste-ordering.utils';
 
 const DEFAULT_MAX_POINTS = 50;
 
@@ -16,12 +17,6 @@ type ThreeTierMovieShuffleParams = {
     tmdbVoteAvg: number | null;
     tmdbVoteCount: number | null;
   }>;
-};
-
-type RatedMovie = {
-  tmdbId: number;
-  tmdbVoteAvg: number | null;
-  tmdbVoteCount: number | null;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
@@ -86,102 +81,6 @@ const normalizeProfileId = (value: unknown): string => {
   if (typeof value !== 'string') return 'default';
   const trimmed = value.trim();
   return trimmed || 'default';
-};
-
-const shuffleInPlace = <T>(arr: T[]) => {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-};
-
-const toUniqueRatedMovies = (
-  movies: ThreeTierMovieShuffleParams['movies'],
-): RatedMovie[] => {
-  const uniq = new Map<number, RatedMovie>();
-  for (const movie of movies ?? []) {
-    const tmdbId = Number.isFinite(movie.tmdbId)
-      ? Math.trunc(movie.tmdbId)
-      : NaN;
-    if (!Number.isFinite(tmdbId) || tmdbId <= 0) continue;
-    if (uniq.has(tmdbId)) continue;
-    uniq.set(tmdbId, {
-      tmdbId,
-      tmdbVoteAvg: movie.tmdbVoteAvg ?? null,
-      tmdbVoteCount: movie.tmdbVoteCount ?? null,
-    });
-  }
-  return Array.from(uniq.values());
-};
-
-const sortByTmdbRating = (movies: RatedMovie[]): RatedMovie[] => {
-  return [...movies].sort((a, b) => {
-    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN)
-      ? Number(a.tmdbVoteAvg)
-      : 0;
-    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN)
-      ? Number(b.tmdbVoteAvg)
-      : 0;
-    if (br !== ar) return br - ar;
-    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN)
-      ? Number(a.tmdbVoteCount)
-      : 0;
-    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN)
-      ? Number(b.tmdbVoteCount)
-      : 0;
-    if (bc !== ac) return bc - ac;
-    return a.tmdbId - b.tmdbId;
-  });
-};
-
-const splitThreeTiers = <T>(items: T[]) => {
-  const n = items.length;
-  const base = Math.floor(n / 3);
-  const rem = n % 3;
-  const highSize = base + (rem > 0 ? 1 : 0);
-  const midSize = base + (rem > 1 ? 1 : 0);
-  return {
-    high: items.slice(0, highSize),
-    mid: items.slice(highSize, highSize + midSize),
-    low: items.slice(highSize + midSize),
-  };
-};
-
-const pickTopTierMovieIds = (tiers: {
-  high: RatedMovie[];
-  mid: RatedMovie[];
-  low: RatedMovie[];
-}): number[] => {
-  const picks: number[] = [];
-  const used = new Set<number>();
-  const pickOne = (tier: RatedMovie[]) => {
-    const pool = tier.filter((m) => !used.has(m.tmdbId));
-    if (!pool.length) return;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    used.add(pick.tmdbId);
-    picks.push(pick.tmdbId);
-  };
-  pickOne(tiers.high);
-  pickOne(tiers.mid);
-  pickOne(tiers.low);
-  shuffleInPlace(picks);
-  return picks;
-};
-
-const buildThreeTierMovieOrder = (
-  params: ThreeTierMovieShuffleParams,
-): number[] => {
-  const sorted = sortByTmdbRating(toUniqueRatedMovies(params.movies));
-  if (!sorted.length) return [];
-  const tiers = splitThreeTiers(sorted);
-  const topPicks = pickTopTierMovieIds(tiers);
-  const used = new Set(topPicks);
-  const remaining = sorted
-    .filter((movie) => !used.has(movie.tmdbId))
-    .map((movie) => movie.tmdbId);
-  shuffleInPlace(remaining);
-  return [...topPicks, ...remaining];
 };
 
 @Injectable()
@@ -786,12 +685,16 @@ export class ImmaculateTasteCollectionService {
     });
   }
 
-  private readonly buildThreeTierTmdbRatingShuffleOrderImpl =
-    buildThreeTierMovieOrder;
-
   buildThreeTierTmdbRatingShuffleOrder(
     params: ThreeTierMovieShuffleParams,
   ): number[] {
-    return this.buildThreeTierTmdbRatingShuffleOrderImpl(params);
+    return buildThreeTierOrder({
+      items: (params.movies ?? []).map((m) => ({
+        id: m.tmdbId,
+        tmdbVoteAvg: m.tmdbVoteAvg ?? null,
+        tmdbVoteCount: m.tmdbVoteCount ?? null,
+        releaseDate: null,
+      })),
+    });
   }
 }

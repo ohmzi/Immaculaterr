@@ -23,6 +23,7 @@ import { CollectionArtworkService } from '../plex/collection-artwork.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
+import { errToMessage } from '../log.utils';
 
 type MediaType = 'movie' | 'show' | 'both';
 type MatchMode = 'all' | 'any';
@@ -190,11 +191,6 @@ type EffectiveCollectionScope = {
   showBaseName: string;
   datasetId: string;
 };
-
-function errToMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);

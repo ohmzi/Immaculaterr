@@ -2,6 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../db/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { errToMessage, truncateForLog } from '../log.utils';
+import { LOG_BODY_MAX_LENGTH } from '../app.constants';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -25,11 +27,6 @@ function pickString(obj: Record<string, unknown>, path: string): string {
 function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   const v = pick(obj, path);
   return typeof v === 'boolean' ? v : null;
-}
-
-function errToMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
 }
 
 function normalizeHttpUrl(raw: string): string {
@@ -361,7 +358,8 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       }
 
       const body = await res.text().catch(() => '');
-      const msg = `HTTP ${res.status} ${body}`.trim();
+      const msg =
+        `HTTP ${res.status} ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}`.trim();
       st.consecutiveFails += 1;
       st.lastError = msg;
 

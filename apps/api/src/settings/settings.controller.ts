@@ -11,12 +11,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { SettingsService } from './settings.service';
 import type { AuthenticatedRequest } from '../auth/auth.types';
-
-type UpdateSettingsBody = {
-  settings?: unknown;
-  secrets?: unknown;
-  secretsEnvelope?: unknown;
-};
+import { UpdateSettingsDto } from './dto/settings.dto';
 
 type ParsedUpdateSettingsBody = {
   settingsPatch?: Record<string, unknown>;
@@ -39,7 +34,7 @@ const parseObjectPatch = (
 };
 
 const parseUpdateSettingsBody = (
-  body: UpdateSettingsBody,
+  body: UpdateSettingsDto,
 ): ParsedUpdateSettingsBody => ({
   settingsPatch: parseObjectPatch(body?.settings, 'settings'),
   secretsPatch: parseObjectPatch(body?.secrets, 'secrets'),
@@ -113,10 +108,7 @@ export class SettingsController {
   };
 
   @Put()
-  async put(
-    @Req() req: AuthenticatedRequest,
-    @Body() body: UpdateSettingsBody,
-  ) {
+  async put(@Req() req: AuthenticatedRequest, @Body() body: UpdateSettingsDto) {
     const userId = req.user.id;
     const updates = parseUpdateSettingsBody(body);
     await this.applyUpdatePatches(userId, updates);

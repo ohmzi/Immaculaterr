@@ -1,6 +1,7 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { XMLParser } from 'fast-xml-parser';
+import { sanitizeUrlForLogs } from '../log.utils';
 
 type PlexXml = {
   MediaContainer?: Record<string, unknown>;
@@ -62,28 +63,6 @@ function toInt(value: unknown): number | null {
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-}
-
-function sanitizeUrlForLogs(raw: string): string {
-  try {
-    const u = new URL(raw);
-    u.username = '';
-    u.password = '';
-    for (const k of [
-      'X-Plex-Token',
-      'x-plex-token',
-      'token',
-      'authToken',
-      'auth_token',
-      'plexToken',
-      'plex_token',
-    ]) {
-      if (u.searchParams.has(k)) u.searchParams.set(k, 'REDACTED');
-    }
-    return u.toString();
-  } catch {
-    return raw;
-  }
 }
 
 function normTitle(s: string): string {

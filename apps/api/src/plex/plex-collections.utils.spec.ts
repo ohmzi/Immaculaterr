@@ -2,6 +2,7 @@ import {
   curatedCollectionOrderIndex,
   hasSameCuratedCollectionBase,
   resolveCuratedCollectionBaseName,
+  resolveCuratedCollectionPinVisibility,
   sortCollectionNamesByCuratedBaseOrder,
 } from './plex-collections.utils';
 
@@ -120,6 +121,65 @@ describe('plex-collections utils', () => {
       'Kids Movie Picks',
       'Anime Night',
     ]);
+  });
+
+  describe('resolveCuratedCollectionPinVisibility', () => {
+    it('returns home_only for Fresh Out when pinTarget is admin', () => {
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Fresh Out Of The Oven (Alice)',
+          mediaType: 'movie',
+          pinTarget: 'admin',
+        }),
+      ).toBe('home_only');
+    });
+
+    it('returns shared_home_only for Fresh Out when pinTarget is friends', () => {
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Fresh Out Of The Oven (Bob)',
+          mediaType: 'movie',
+          pinTarget: 'friends',
+        }),
+      ).toBe('shared_home_only');
+    });
+
+    it('returns null for non-Fresh-Out curated collections', () => {
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Based on your recently watched Movie (Alice)',
+          mediaType: 'movie',
+          pinTarget: 'admin',
+        }),
+      ).toBeNull();
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Change of Movie Taste (Alice)',
+          mediaType: 'movie',
+          pinTarget: 'friends',
+        }),
+      ).toBeNull();
+    });
+
+    it('returns null for unknown collection names', () => {
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Kids Movie Picks',
+          mediaType: 'movie',
+          pinTarget: 'admin',
+        }),
+      ).toBeNull();
+    });
+
+    it('returns null for Fresh Out base name with tv mediaType', () => {
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Fresh Out Of The Oven (Alice)',
+          mediaType: 'tv',
+          pinTarget: 'admin',
+        }),
+      ).toBeNull();
+    });
   });
 
   it('places Fresh Out after the default movie rows when explicitly included', () => {

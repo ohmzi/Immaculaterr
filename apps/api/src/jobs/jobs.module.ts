@@ -15,6 +15,7 @@ import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
 import { JobsHandlers } from './jobs.handlers';
 import { JobsRetentionService } from './jobs-retention.service';
+import { JobsWatchdogService } from './jobs-watchdog.service';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
@@ -51,6 +52,7 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
     JobsScheduler,
     JobsHandlers,
     JobsRetentionService,
+    JobsWatchdogService,
     MonitorConfirmJob,
     ArrMonitoredSearchJob,
     CleanupAfterAddingNewContentJob,

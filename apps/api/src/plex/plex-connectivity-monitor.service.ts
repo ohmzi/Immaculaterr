@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../db/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from './plex-server.service';
+import { errToMessage } from '../log.utils';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -21,11 +22,6 @@ function pick(obj: Record<string, unknown>, path: string): unknown {
 function pickString(obj: Record<string, unknown>, path: string): string {
   const v = pick(obj, path);
   return typeof v === 'string' ? v.trim() : '';
-}
-
-function errToMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
 }
 
 type PlexConnectivityStatus =

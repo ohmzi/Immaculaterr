@@ -25,6 +25,10 @@ import { issue, metricRow } from './job-report-v1';
 import { withJobRetry, withJobRetryOrNull } from './job-retry';
 import { ArrInstanceService } from '../arr-instances/arr-instance.service';
 import { ImmaculateTasteProfileService } from '../immaculate-taste-profiles/immaculate-taste-profile.service';
+import {
+  filterRecommendationsByProfile,
+  buildLanguageCodeToNameMap,
+} from '../immaculate-taste-collection/immaculate-taste-recommendation-filter.utils';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -911,7 +915,12 @@ export class ImmaculateTasteCollectionJob {
     // --- Resolve TMDB ids + ratings for BOTH in-Plex and missing titles (so we can persist pending suggestions)
     const tmdbDetailsCache = new Map<
       number,
-      { vote_average: number | null; vote_count: number | null }
+      {
+        vote_average: number | null;
+        vote_count: number | null;
+        genre_names: string[];
+        original_language: string | null;
+      }
     >();
     const getVoteStats = async (tmdbId: number) => {
       const cached = tmdbDetailsCache.get(tmdbId) ?? null;
@@ -924,6 +933,8 @@ export class ImmaculateTasteCollectionJob {
       const normalized = {
         vote_average: vote?.vote_average ?? null,
         vote_count: vote?.vote_count ?? null,
+        genre_names: vote?.genre_names ?? [],
+        original_language: vote?.original_language ?? null,
       };
       tmdbDetailsCache.set(tmdbId, normalized);
       return normalized;
@@ -933,6 +944,8 @@ export class ImmaculateTasteCollectionJob {
       title: string;
       tmdbVoteAvg: number | null;
       tmdbVoteCount: number | null;
+      genreNames: string[];
+      originalLanguage: string | null;
       inPlex: boolean;
     }> = [];
 
@@ -982,6 +995,8 @@ export class ImmaculateTasteCollectionJob {
         title,
         tmdbVoteAvg: cached.vote_average,
         tmdbVoteCount: cached.vote_count,
+        genreNames: cached.genre_names,
+        originalLanguage: cached.original_language,
         inPlex: true,
       });
     }
@@ -1011,6 +1026,8 @@ export class ImmaculateTasteCollectionJob {
         title: resolved.title,
         tmdbVoteAvg: resolved.vote_average,
         tmdbVoteCount: resolved.vote_count,
+        genreNames: cached.genre_names,
+        originalLanguage: cached.original_language,
         inPlex: false,
       });
     }
@@ -1378,6 +1395,13 @@ export class ImmaculateTasteCollectionJob {
       }
     }
 
+    // --- Build language code-to-name lookup (one TMDB call per job run) ---
+    const tmdbLanguages = await withJobRetryOrNull(
+      () => this.tmdb.getLanguages({ apiKey: tmdbApiKey }),
+      { ctx, label: 'tmdb: get languages for profile filtering' },
+    );
+    const languageCodeToName = buildLanguageCodeToNameMap(tmdbLanguages ?? []);
+
     // --- Update points dataset (DB) ---
     const pointsByProfile: Array<{
       profileId: string;
@@ -1398,12 +1422,30 @@ export class ImmaculateTasteCollectionJob {
       }
     } else {
       for (const selection of movieCollectionSelections) {
+        const { kept: profileFiltered, dropped: profileDropped } =
+          filterRecommendationsByProfile({
+            items: suggestedForPoints,
+            profile: selection.profile,
+            languageCodeToName,
+          });
+        if (profileDropped > 0) {
+          await ctx.info(
+            'immaculateTastePoints: profile genre/language filter applied',
+            {
+              profileId: selection.profile.id,
+              profileName: selection.profile.name,
+              kept: profileFiltered.length,
+              dropped: profileDropped,
+              total: suggestedForPoints.length,
+            },
+          );
+        }
         const points = await this.immaculateTaste.applyPointsUpdate({
           ctx,
           plexUserId,
           librarySectionKey: movieSectionKey,
           profileId: selection.collectionProfile.profileId,
-          suggested: suggestedForPoints,
+          suggested: profileFiltered,
           maxPoints,
         });
         pointsByProfile.push({
@@ -2314,6 +2356,8 @@ export class ImmaculateTasteCollectionJob {
         year: number | null;
         vote_average: number | null;
         vote_count: number | null;
+        genre_names: string[];
+        original_language: string | null;
       } | null
     >();
     const getMatch = async (title: string) => {
@@ -2335,6 +2379,8 @@ export class ImmaculateTasteCollectionJob {
       title: string;
       tmdbVoteAvg: number | null;
       tmdbVoteCount: number | null;
+      genreNames: string[];
+      originalLanguage: string | null;
       inPlex: boolean;
     }> = [];
 
@@ -2350,6 +2396,8 @@ export class ImmaculateTasteCollectionJob {
         title: string;
         vote_average: number | null;
         vote_count: number | null;
+        genre_names: string[];
+        original_language: string | null;
       },
       inPlex: boolean,
     ) => {
@@ -2360,6 +2408,8 @@ export class ImmaculateTasteCollectionJob {
         title: match.title,
         tmdbVoteAvg: match.vote_average,
         tmdbVoteCount: match.vote_count,
+        genreNames: match.genre_names,
+        originalLanguage: match.original_language,
         inPlex,
       });
     };
@@ -2736,6 +2786,15 @@ export class ImmaculateTasteCollectionJob {
       }
     }
 
+    // --- Build language code-to-name lookup (one TMDB call per job run) ---
+    const tvTmdbLanguages = await withJobRetryOrNull(
+      () => this.tmdb.getLanguages({ apiKey: tmdbApiKey }),
+      { ctx, label: 'tmdb: get languages for tv profile filtering' },
+    );
+    const tvLanguageCodeToName = buildLanguageCodeToNameMap(
+      tvTmdbLanguages ?? [],
+    );
+
     // --- Update points dataset (DB) ---
     const pointsByProfile: Array<{
       profileId: string;
@@ -2756,12 +2815,30 @@ export class ImmaculateTasteCollectionJob {
       }
     } else {
       for (const selection of showCollectionSelections) {
+        const { kept: profileFiltered, dropped: profileDropped } =
+          filterRecommendationsByProfile({
+            items: suggestedForPoints,
+            profile: selection.profile,
+            languageCodeToName: tvLanguageCodeToName,
+          });
+        if (profileDropped > 0) {
+          await ctx.info(
+            'immaculateTastePoints(tv): profile genre/language filter applied',
+            {
+              profileId: selection.profile.id,
+              profileName: selection.profile.name,
+              kept: profileFiltered.length,
+              dropped: profileDropped,
+              total: suggestedForPoints.length,
+            },
+          );
+        }
         const points = await this.immaculateTasteTv.applyPointsUpdate({
           ctx,
           plexUserId,
           librarySectionKey: tvSectionKey,
           profileId: selection.collectionProfile.profileId,
-          suggested: suggestedForPoints,
+          suggested: profileFiltered,
           maxPoints,
         });
         pointsByProfile.push({
@@ -3512,6 +3589,8 @@ export class ImmaculateTasteCollectionJob {
     year: number | null;
     vote_average: number | null;
     vote_count: number | null;
+    genre_names: string[];
+    original_language: string | null;
   } | null> {
     const results = await withJobRetryOrNull(
       () =>
@@ -3572,6 +3651,22 @@ export class ImmaculateTasteCollectionJob {
         ? Math.max(0, Math.trunc(voteCountRaw))
         : null;
 
+    const genre_names = Array.isArray(details?.genres)
+      ? details.genres
+          .map((g) =>
+            g && typeof g === 'object' && typeof g.name === 'string'
+              ? g.name.trim()
+              : '',
+          )
+          .filter(Boolean)
+      : [];
+
+    const original_language =
+      typeof details?.original_language === 'string' &&
+      details.original_language.trim()
+        ? details.original_language.trim()
+        : null;
+
     return {
       tmdbId: best.id,
       tvdbId,
@@ -3579,6 +3674,8 @@ export class ImmaculateTasteCollectionJob {
       year: Number.isFinite(year) ? year : null,
       vote_average,
       vote_count,
+      genre_names,
+      original_language,
     };
   }
 }

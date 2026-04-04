@@ -1,7 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { truncateForLog } from '../log.utils';
+
+const WEBHOOK_DEDUP_DEFAULT_WINDOW_MS = 30_000;
+const WEBHOOK_DEDUP_CLEANUP_INTERVAL_MS = 60_000;
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -32,15 +41,37 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
   return null;
 }
 
-function truncate(value: string, max: number) {
-  const s = value.trim();
-  if (s.length <= max) return s;
-  return `${s.slice(0, Math.max(0, max - 1))}…`;
-}
-
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
+  private readonly dedupStore = new Map<string, number>();
+  private dedupLastCleanupMs = Date.now();
+  private readonly dedupWindowMs = parsePositiveInt(
+    process.env.WEBHOOK_DEDUP_WINDOW_MS,
+    WEBHOOK_DEDUP_DEFAULT_WINDOW_MS,
+  );
+
+  isDuplicatePayload(payloadRaw: string): boolean {
+    const now = Date.now();
+    this.cleanupDedupStore(now);
+    const hash = createHash('sha256').update(payloadRaw).digest('hex');
+    const existing = this.dedupStore.get(hash);
+    if (existing && now - existing < this.dedupWindowMs) {
+      this.logger.log(`Plex webhook deduplicated (hash=${hash.slice(0, 12)}…)`);
+      return true;
+    }
+    this.dedupStore.set(hash, now);
+    return false;
+  }
+
+  private cleanupDedupStore(now: number): void {
+    if (now - this.dedupLastCleanupMs < WEBHOOK_DEDUP_CLEANUP_INTERVAL_MS)
+      return;
+    this.dedupLastCleanupMs = now;
+    for (const [key, ts] of this.dedupStore.entries()) {
+      if (now - ts >= this.dedupWindowMs) this.dedupStore.delete(key);
+    }
+  }
 
   async persistPlexWebhookEvent(event: unknown) {
     const baseDir = join(this.getDataDir(), 'webhooks', 'plex');
@@ -133,15 +164,15 @@ export class WebhooksService {
       plexEvent || '(unknown)',
       mediaType ? `type=${mediaType}` : null,
       serverTitle
-        ? `server=${JSON.stringify(truncate(serverTitle, 60))}`
+        ? `server=${JSON.stringify(truncateForLog(serverTitle, 60))}`
         : null,
       serverUuid ? `uuid=${serverUuid}` : null,
       accountTitle
-        ? `user=${JSON.stringify(truncate(accountTitle, 40))}`
+        ? `user=${JSON.stringify(truncateForLog(accountTitle, 40))}`
         : null,
       playerTitle || playerProduct || playerPlatform
         ? `player=${JSON.stringify(
-            truncate(
+            truncateForLog(
               [playerTitle, playerProduct, playerPlatform]
                 .filter(Boolean)
                 .join(' / '),
@@ -151,7 +182,7 @@ export class WebhooksService {
         : null,
       playerState ? `state=${playerState}` : null,
       libraryTitle
-        ? `library=${JSON.stringify(truncate(libraryTitle, 60))}`
+        ? `library=${JSON.stringify(truncateForLog(libraryTitle, 60))}`
         : libraryId !== null
           ? `libraryId=${libraryId}`
           : null,
@@ -167,9 +198,9 @@ export class WebhooksService {
               const s = parentIndex !== null ? `S${parentIndex}` : '';
               const e = index !== null ? `E${index}` : '';
               const se = s || e ? ` ${[s, e].filter(Boolean).join('')}` : '';
-              return ` • ${truncate(show, 60)}${se} — ${truncate(title || '(episode)', 80)}`;
+              return ` • ${truncateForLog(show, 60)}${se} — ${truncateForLog(title || '(episode)', 80)}`;
             }
-            const t = truncate(title || grandparentTitle, 90);
+            const t = truncateForLog(title || grandparentTitle, 90);
             const y = year ? ` (${year})` : '';
             return ` • ${t}${y}`;
           })()
@@ -177,7 +208,7 @@ export class WebhooksService {
 
     const ids = [
       ratingKey ? `ratingKey=${ratingKey}` : null,
-      guid ? `guid=${truncate(guid, 120)}` : null,
+      guid ? `guid=${truncateForLog(guid, 120)}` : null,
       typeof viewOffset === 'number' ? `viewOffsetMs=${viewOffset}` : null,
       typeof duration === 'number' ? `durationMs=${duration}` : null,
     ]
@@ -191,16 +222,8 @@ export class WebhooksService {
       ` persisted=${JSON.stringify(params.persistedPath)}`,
     ].join('');
 
-    // Avoid spamming info logs for chatty events; keep it readable on /logs.
-    const eventLower = plexEvent.toLowerCase();
-    const level: 'debug' | 'info' =
-      eventLower === 'media.scrobble' || eventLower === 'library.new'
-        ? 'info'
-        : 'debug';
-
     const msg = `${base}${meta}${tail}`.trim();
-    if (level === 'info') this.logger.log(msg);
-    else this.logger.debug(msg);
+    this.logger.log(msg);
   }
 
   logPlexWebhookAutomation(params: {
@@ -224,9 +247,9 @@ export class WebhooksService {
 
     const parts: string[] = [];
     parts.push(`Plex automation: ${ev}${type ? ` type=${type}` : ''}`);
-    if (seed) parts.push(`seed=${JSON.stringify(truncate(seed, 80))}`);
+    if (seed) parts.push(`seed=${JSON.stringify(truncateForLog(seed, 80))}`);
     if (plexUserTitle)
-      parts.push(`user=${JSON.stringify(truncate(plexUserTitle, 40))}`);
+      parts.push(`user=${JSON.stringify(truncateForLog(plexUserTitle, 40))}`);
     if (plexUserId) parts.push(`plexUserId=${plexUserId}`);
     if (Object.keys(runs).length) {
       parts.push(`runs=${JSON.stringify(runs)}`);
@@ -262,10 +285,12 @@ export class WebhooksService {
       `Plex automation (${source}):`,
       `${plexEvent}`,
       `type=${mediaType}`,
-      `noticed user=${JSON.stringify(truncate(plexUserTitle, 40))}`,
+      `noticed user=${JSON.stringify(truncateForLog(plexUserTitle, 40))}`,
       `(plexUserId=${plexUserId})`,
       'is toggled off by admin, so no task was triggered.',
-      seedTitle ? `seed=${JSON.stringify(truncate(seedTitle, 80))}` : null,
+      seedTitle
+        ? `seed=${JSON.stringify(truncateForLog(seedTitle, 80))}`
+        : null,
     ].filter(Boolean);
 
     this.logger.log(parts.join(' '));

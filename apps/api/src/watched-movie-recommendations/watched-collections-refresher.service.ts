@@ -5,8 +5,8 @@ import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.
 import {
   CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
   CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
-  CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_HUB_ORDER,
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
   RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
   buildUserCollectionHubOrder,
@@ -105,7 +105,7 @@ export class WatchedCollectionsRefresherService {
     const movieCollectionHubOrder = Array.from(
       params.movieCollectionHubOrder ??
         buildUserCollectionHubOrder(
-          CURATED_MOVIE_COLLECTION_HUB_ORDER,
+          FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_HUB_ORDER,
           params.plexUserTitle,
         ),
     );

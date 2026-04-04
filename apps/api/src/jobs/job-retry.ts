@@ -1,4 +1,5 @@
 import type { JobContext, JsonObject } from './jobs.types';
+import { errToMessage } from '../log.utils';
 
 export type JobRetryOptions = {
   label: string;
@@ -10,11 +11,6 @@ export type JobRetryOptions = {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function errToMessage(err: unknown): string {
-  if (err instanceof Error) return err.message || err.name;
-  return String(err);
 }
 
 export async function withJobRetry<T>(

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { TmdbService } from '../tmdb/tmdb.service';
+import { buildThreeTierOrder } from './immaculate-taste-ordering.utils';
 
 const DEFAULT_MAX_POINTS = 50;
 
@@ -11,12 +12,6 @@ type ThreeTierShowShuffleParams = {
     tmdbVoteAvg: number | null;
     tmdbVoteCount: number | null;
   }>;
-};
-
-type RatedShow = {
-  tvdbId: number;
-  tmdbVoteAvg: number | null;
-  tmdbVoteCount: number | null;
 };
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
@@ -51,100 +46,6 @@ const normalizeProfileId = (value: unknown): string => {
   return trimmed || 'default';
 };
 
-const shuffleInPlace = <T>(arr: T[]) => {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-};
-
-const toUniqueRatedShows = (
-  shows: ThreeTierShowShuffleParams['shows'],
-): RatedShow[] => {
-  const uniq = new Map<number, RatedShow>();
-  for (const show of shows ?? []) {
-    const tvdbId = Number.isFinite(show.tvdbId) ? Math.trunc(show.tvdbId) : NaN;
-    if (!Number.isFinite(tvdbId) || tvdbId <= 0) continue;
-    if (uniq.has(tvdbId)) continue;
-    uniq.set(tvdbId, {
-      tvdbId,
-      tmdbVoteAvg: show.tmdbVoteAvg ?? null,
-      tmdbVoteCount: show.tmdbVoteCount ?? null,
-    });
-  }
-  return Array.from(uniq.values());
-};
-
-const sortByTmdbRating = (shows: RatedShow[]): RatedShow[] => {
-  return [...shows].sort((a, b) => {
-    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN)
-      ? Number(a.tmdbVoteAvg)
-      : 0;
-    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN)
-      ? Number(b.tmdbVoteAvg)
-      : 0;
-    if (br !== ar) return br - ar;
-    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN)
-      ? Number(a.tmdbVoteCount)
-      : 0;
-    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN)
-      ? Number(b.tmdbVoteCount)
-      : 0;
-    if (bc !== ac) return bc - ac;
-    return a.tvdbId - b.tvdbId;
-  });
-};
-
-const splitThreeTiers = <T>(items: T[]) => {
-  const n = items.length;
-  const base = Math.floor(n / 3);
-  const rem = n % 3;
-  const highSize = base + (rem > 0 ? 1 : 0);
-  const midSize = base + (rem > 1 ? 1 : 0);
-  return {
-    high: items.slice(0, highSize),
-    mid: items.slice(highSize, highSize + midSize),
-    low: items.slice(highSize + midSize),
-  };
-};
-
-const pickTopTierShowIds = (tiers: {
-  high: RatedShow[];
-  mid: RatedShow[];
-  low: RatedShow[];
-}): number[] => {
-  const picks: number[] = [];
-  const used = new Set<number>();
-  const pickOne = (tier: RatedShow[]) => {
-    const pool = tier.filter((show) => !used.has(show.tvdbId));
-    if (!pool.length) return;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    used.add(pick.tvdbId);
-    picks.push(pick.tvdbId);
-  };
-  pickOne(tiers.high);
-  pickOne(tiers.mid);
-  pickOne(tiers.low);
-  shuffleInPlace(picks);
-  return picks;
-};
-
-const buildThreeTierShowOrder = (
-  params: ThreeTierShowShuffleParams,
-): number[] => {
-  const sorted = sortByTmdbRating(toUniqueRatedShows(params.shows));
-  if (!sorted.length) return [];
-  const tiers = splitThreeTiers(sorted);
-  const topPicks = pickTopTierShowIds(tiers);
-  const used = new Set(topPicks);
-  const remaining = sorted
-    .filter((show) => !used.has(show.tvdbId))
-    .map((show) => show.tvdbId);
-  shuffleInPlace(remaining);
-  return [...topPicks, ...remaining];
-};
-
 @Injectable()
 export class ImmaculateTasteShowCollectionService {
   static readonly DEFAULT_MAX_POINTS = DEFAULT_MAX_POINTS;
@@ -155,9 +56,6 @@ export class ImmaculateTasteShowCollectionService {
   ) {}
 
   private readonly legacyImportImportedCount = 0;
-
-  private readonly buildThreeTierTmdbRatingShuffleOrderImpl =
-    buildThreeTierShowOrder;
 
   // TV has no legacy JSON import (movie-only historical artifact).
   ensureLegacyImported(params: {
@@ -623,6 +521,13 @@ export class ImmaculateTasteShowCollectionService {
   buildThreeTierTmdbRatingShuffleOrder(
     params: ThreeTierShowShuffleParams,
   ): number[] {
-    return this.buildThreeTierTmdbRatingShuffleOrderImpl(params);
+    return buildThreeTierOrder({
+      items: (params.shows ?? []).map((s) => ({
+        id: s.tvdbId,
+        tmdbVoteAvg: s.tmdbVoteAvg ?? null,
+        tmdbVoteCount: s.tmdbVoteCount ?? null,
+        releaseDate: null,
+      })),
+    });
   }
 }

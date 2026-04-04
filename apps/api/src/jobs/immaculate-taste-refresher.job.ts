@@ -4,6 +4,7 @@ import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.
 import {
   CURATED_MOVIE_COLLECTION_HUB_ORDER,
   CURATED_TV_COLLECTION_HUB_ORDER,
+  FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
   buildImmaculateCollectionName,
@@ -27,6 +28,10 @@ import type {
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import { immaculateTasteResetMarkerKey } from '../immaculate-taste-collection/immaculate-taste-reset';
+import {
+  buildImmaculateCollectionOrder,
+  tmdbCalendarDateStringToDate,
+} from '../immaculate-taste-collection/immaculate-taste-ordering.utils';
 import {
   SWEEP_ORDER,
   hasExplicitRefresherScopeInput,
@@ -618,6 +623,10 @@ export class ImmaculateTasteRefresherJob {
       ...(movieProfileHubOrder.length
         ? movieProfileHubOrder
         : [plexMovieCollectionName]),
+      buildUserCollectionName(
+        FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+        plexUserTitle,
+      ),
     ]);
     const tvCollectionHubOrder = dedupeCollectionNames([
       buildUserCollectionName(
@@ -885,6 +894,7 @@ export class ImmaculateTasteRefresherJob {
               points: true,
               tmdbVoteAvg: true,
               tmdbVoteCount: true,
+              releaseDate: true,
             },
           });
 
@@ -905,7 +915,11 @@ export class ImmaculateTasteRefresherJob {
         let tmdbBackfilled = 0;
         const backfillLimit = 200;
         const backfillIds: number[] = activeRows
-          .filter((m) => m.tmdbVoteAvg === null && typeof m.tmdbId === 'number')
+          .filter(
+            (m) =>
+              (m.tmdbVoteAvg === null || m.releaseDate === null) &&
+              typeof m.tmdbId === 'number',
+          )
           .map((m) => Math.trunc(m.tmdbId))
           .slice(0, backfillLimit);
 
@@ -919,7 +933,16 @@ export class ImmaculateTasteRefresherJob {
                   .catch(() => null);
                 const voteAvg = details?.vote_average ?? null;
                 const voteCount = details?.vote_count ?? null;
-                if (voteAvg === null && voteCount === null) return;
+                const releaseDateDb = tmdbCalendarDateStringToDate(
+                  details?.release_date ?? null,
+                );
+                if (
+                  voteAvg === null &&
+                  voteCount === null &&
+                  releaseDateDb === null
+                ) {
+                  return;
+                }
 
                 await this.prisma.immaculateTasteMovieLibrary
                   .update({
@@ -936,6 +959,7 @@ export class ImmaculateTasteRefresherJob {
                       ...(voteCount !== null
                         ? { tmdbVoteCount: voteCount }
                         : {}),
+                      ...(releaseDateDb ? { releaseDate: releaseDateDb } : {}),
                     },
                   })
                   .catch(() => null);
@@ -945,6 +969,7 @@ export class ImmaculateTasteRefresherJob {
                 if (row) {
                   row.tmdbVoteAvg = voteAvg ?? row.tmdbVoteAvg;
                   row.tmdbVoteCount = voteCount ?? row.tmdbVoteCount;
+                  row.releaseDate = releaseDateDb ?? row.releaseDate;
                 }
 
                 tmdbBackfilled += 1;
@@ -963,14 +988,14 @@ export class ImmaculateTasteRefresherJob {
         }
         tmdbBackfilledTotal += tmdbBackfilled;
 
-        const orderedTmdb =
-          this.immaculateTaste.buildThreeTierTmdbRatingShuffleOrder({
-            movies: activeRows.map((m) => ({
-              tmdbId: m.tmdbId,
-              tmdbVoteAvg: m.tmdbVoteAvg ?? null,
-              tmdbVoteCount: m.tmdbVoteCount ?? null,
-            })),
-          });
+        const orderedTmdb = buildImmaculateCollectionOrder({
+          items: activeRows.map((m) => ({
+            id: m.tmdbId,
+            tmdbVoteAvg: m.tmdbVoteAvg ?? null,
+            tmdbVoteCount: m.tmdbVoteCount ?? null,
+            releaseDate: m.releaseDate ?? null,
+          })),
+        });
 
         const desiredInLibrary = orderedTmdb
           .map((id) => tmdbMap.get(id))
@@ -1328,6 +1353,7 @@ export class ImmaculateTasteRefresherJob {
               points: true,
               tmdbVoteAvg: true,
               tmdbVoteCount: true,
+              firstAirDate: true,
             },
           });
 
@@ -1351,7 +1377,8 @@ export class ImmaculateTasteRefresherJob {
           new Set<number>(
             activeRows
               .map((m) =>
-                m.tmdbVoteAvg === null && typeof m.tmdbId === 'number'
+                (m.tmdbVoteAvg === null || m.firstAirDate === null) &&
+                typeof m.tmdbId === 'number'
                   ? Math.trunc(m.tmdbId)
                   : null,
               )
@@ -1369,7 +1396,16 @@ export class ImmaculateTasteRefresherJob {
                   .catch(() => null);
                 const voteAvg = details?.vote_average ?? null;
                 const voteCount = details?.vote_count ?? null;
-                if (voteAvg === null && voteCount === null) return;
+                const firstAirDateDb = tmdbCalendarDateStringToDate(
+                  details?.first_air_date ?? null,
+                );
+                if (
+                  voteAvg === null &&
+                  voteCount === null &&
+                  firstAirDateDb === null
+                ) {
+                  return;
+                }
 
                 await this.prisma.immaculateTasteShowLibrary
                   .updateMany({
@@ -1384,6 +1420,9 @@ export class ImmaculateTasteRefresherJob {
                       ...(voteCount !== null
                         ? { tmdbVoteCount: voteCount }
                         : {}),
+                      ...(firstAirDateDb
+                        ? { firstAirDate: firstAirDateDb }
+                        : {}),
                     },
                   })
                   .catch(() => null);
@@ -1392,6 +1431,7 @@ export class ImmaculateTasteRefresherJob {
                   if (row.tmdbId !== tmdbId) continue;
                   row.tmdbVoteAvg = voteAvg ?? row.tmdbVoteAvg;
                   row.tmdbVoteCount = voteCount ?? row.tmdbVoteCount;
+                  row.firstAirDate = firstAirDateDb ?? row.firstAirDate;
                 }
 
                 tmdbBackfilled += 1;
@@ -1413,15 +1453,15 @@ export class ImmaculateTasteRefresherJob {
         const candidates = activeRows
           .filter((m) => tvdbMap.has(m.tvdbId))
           .map((m) => ({
-            tvdbId: m.tvdbId,
+            id: m.tvdbId,
             tmdbVoteAvg: m.tmdbVoteAvg ?? null,
             tmdbVoteCount: m.tmdbVoteCount ?? null,
+            releaseDate: m.firstAirDate ?? null,
           }));
 
-        const orderedTvdb =
-          this.immaculateTasteTv.buildThreeTierTmdbRatingShuffleOrder({
-            shows: candidates,
-          });
+        const orderedTvdb = buildImmaculateCollectionOrder({
+          items: candidates,
+        });
 
         const desiredInLibrary = orderedTvdb
           .map((id) => tvdbMap.get(id))
@@ -1562,6 +1602,34 @@ export class ImmaculateTasteRefresherJob {
       requestedProfileIdRaw,
       profiles,
     );
+    const profilesForSweep: Array<{ datasetId: string; name: string }> =
+      requestedProfileId
+        ? [
+            {
+              datasetId: requestedProfileId,
+              name:
+                profiles.find(
+                  (p) =>
+                    p.datasetId === requestedProfileId ||
+                    p.id === requestedProfileId,
+                )?.name ?? '',
+            },
+          ]
+        : (() => {
+            const enabled = sortProfilesForHubOrder(
+              profiles.filter((p) => p.enabled),
+            );
+            if (enabled.length) {
+              return enabled.map((p) => ({
+                datasetId: p.datasetId,
+                name: p.name,
+              }));
+            }
+            return [{ datasetId: 'default', name: 'Default' }];
+          })();
+    const libraryProfileWhere = requestedProfileId
+      ? { profileId: requestedProfileId }
+      : {};
     const includeMovies =
       typeof input['includeMovies'] === 'boolean'
         ? input['includeMovies']
@@ -1577,9 +1645,7 @@ export class ImmaculateTasteRefresherJob {
     const userIds = new Set<string>();
     if (includeMovies) {
       const movieRows = await this.prisma.immaculateTasteMovieLibrary.findMany({
-        where: requestedProfileId
-          ? { profileId: requestedProfileId }
-          : undefined,
+        where: libraryProfileWhere,
         select: { plexUserId: true },
         distinct: ['plexUserId'],
       });
@@ -1587,9 +1653,7 @@ export class ImmaculateTasteRefresherJob {
     }
     if (includeTv) {
       const tvRows = await this.prisma.immaculateTasteShowLibrary.findMany({
-        where: requestedProfileId
-          ? { profileId: requestedProfileId }
-          : undefined,
+        where: libraryProfileWhere,
         select: { plexUserId: true },
         distinct: ['plexUserId'],
       });
@@ -1624,6 +1688,10 @@ export class ImmaculateTasteRefresherJob {
         mode: 'sweep',
         sweepOrder: SWEEP_ORDER,
         profileId: requestedProfileId,
+        profileSweepTargets: profilesForSweep.map((p) => ({
+          profileId: p.datasetId,
+          profileName: p.name,
+        })),
         includeMovies,
         includeTv,
         ...(limit !== null ? { limit } : {}),
@@ -1674,6 +1742,10 @@ export class ImmaculateTasteRefresherJob {
     await ctx.info('immaculateTasteRefresher: sweep start', {
       mode: 'sweep',
       profileId: requestedProfileId,
+      profileSweepTargets: profilesForSweep.map((p) => ({
+        profileId: p.datasetId,
+        profileName: p.name,
+      })),
       includeMovies,
       includeTv,
       limit,
@@ -1696,69 +1768,80 @@ export class ImmaculateTasteRefresherJob {
     for (const user of orderedUsers) {
       const userIsAdmin = isAdminUser(user);
       const pinTarget: 'admin' | 'friends' = userIsAdmin ? 'admin' : 'friends';
-      try {
-        const childInput: JsonObject = {
-          plexUserId: user.id,
-          plexUserTitle: user.plexAccountTitle,
-          includeMovies,
-          includeTv,
-          __forceAllLibraries: true,
-          ...(requestedProfileId ? { profileId: requestedProfileId } : {}),
-          ...(limit !== null ? { limit } : {}),
-        };
-        const childRun = await this.run({
-          ...ctx,
-          input: childInput,
-        });
-        const childSummary = isPlainObject(childRun.summary)
-          ? (childRun.summary as Record<string, unknown>)
-          : null;
-        const childRaw =
-          childSummary && isPlainObject(childSummary['raw'])
-            ? childSummary['raw']
-            : null;
+      const profileResults: JsonObject[] = [];
+      let userFailed = false;
 
-        usersSummary.push({
-          plexUserId: user.id,
-          plexUserTitle: user.plexAccountTitle,
-          isAdmin: userIsAdmin,
-          pinTarget,
-          profileId:
-            childRaw && typeof childRaw.profileId === 'string'
-              ? childRaw.profileId
-              : requestedProfileId,
-          profileName:
-            childRaw && typeof childRaw.profileName === 'string'
-              ? childRaw.profileName
-              : null,
-          movie:
-            childRaw && isPlainObject(childRaw['movie'])
-              ? (childRaw['movie'] as JsonObject)
-              : ({ skipped: true, reason: 'missing' } as JsonObject),
-          tv:
-            childRaw && isPlainObject(childRaw['tv'])
-              ? (childRaw['tv'] as JsonObject)
-              : ({ skipped: true, reason: 'missing' } as JsonObject),
-        });
-        usersSucceeded += 1;
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        usersSummary.push({
-          plexUserId: user.id,
-          plexUserTitle: user.plexAccountTitle,
-          isAdmin: userIsAdmin,
-          pinTarget,
-          error: msg,
-        });
-        usersFailed += 1;
-        await ctx.warn(
-          'immaculateTasteRefresher: sweep user failed (continuing)',
-          {
+      for (const sweepProfile of profilesForSweep) {
+        try {
+          const childInput: JsonObject = {
             plexUserId: user.id,
             plexUserTitle: user.plexAccountTitle,
+            includeMovies,
+            includeTv,
+            __forceAllLibraries: true,
+            profileId: sweepProfile.datasetId,
+            ...(limit !== null ? { limit } : {}),
+          };
+          const childRun = await this.run({
+            ...ctx,
+            input: childInput,
+          });
+          const childSummary = isPlainObject(childRun.summary)
+            ? (childRun.summary as Record<string, unknown>)
+            : null;
+          const childRaw =
+            childSummary && isPlainObject(childSummary['raw'])
+              ? childSummary['raw']
+              : null;
+
+          profileResults.push({
+            profileId: sweepProfile.datasetId,
+            profileName: sweepProfile.name.trim()
+              ? sweepProfile.name
+              : childRaw && typeof childRaw.profileName === 'string'
+                ? childRaw.profileName
+                : null,
+            movie:
+              childRaw && isPlainObject(childRaw['movie'])
+                ? (childRaw['movie'] as JsonObject)
+                : ({ skipped: true, reason: 'missing' } as JsonObject),
+            tv:
+              childRaw && isPlainObject(childRaw['tv'])
+                ? (childRaw['tv'] as JsonObject)
+                : ({ skipped: true, reason: 'missing' } as JsonObject),
+          });
+        } catch (err) {
+          userFailed = true;
+          const msg = (err as Error)?.message ?? String(err);
+          profileResults.push({
+            profileId: sweepProfile.datasetId,
+            profileName: sweepProfile.name || null,
             error: msg,
-          },
-        );
+          });
+          await ctx.warn(
+            'immaculateTasteRefresher: sweep profile failed (continuing)',
+            {
+              plexUserId: user.id,
+              plexUserTitle: user.plexAccountTitle,
+              profileId: sweepProfile.datasetId,
+              error: msg,
+            },
+          );
+        }
+      }
+
+      usersSummary.push({
+        plexUserId: user.id,
+        plexUserTitle: user.plexAccountTitle,
+        isAdmin: userIsAdmin,
+        pinTarget,
+        profiles: profileResults,
+      });
+
+      if (userFailed) {
+        usersFailed += 1;
+      } else {
+        usersSucceeded += 1;
       }
     }
 
@@ -1766,6 +1849,10 @@ export class ImmaculateTasteRefresherJob {
       mode: 'sweep',
       sweepOrder: SWEEP_ORDER,
       profileId: requestedProfileId,
+      profileSweepTargets: profilesForSweep.map((p) => ({
+        profileId: p.datasetId,
+        profileName: p.name,
+      })),
       includeMovies,
       includeTv,
       ...(limit !== null ? { limit } : {}),
@@ -2052,6 +2139,83 @@ function buildImmaculateTasteRefresherReport(params: {
         typeof user.error === 'string' && user.error.trim()
           ? user.error.trim()
           : null;
+
+      const profilesRaw = user['profiles'];
+      const nestedProfiles =
+        Array.isArray(profilesRaw) && profilesRaw.length
+          ? profilesRaw.filter(
+              (p): p is Record<string, unknown> =>
+                Boolean(p) && typeof p === 'object' && !Array.isArray(p),
+            )
+          : null;
+
+      if (nestedProfiles && nestedProfiles.length) {
+        for (const pr of nestedProfiles) {
+          const profileId = asTrimmedString(pr.profileId);
+          const profileName = asTrimmedString(pr.profileName);
+          const profileLabel = profileName || profileId || 'profile';
+          const profileError =
+            typeof pr.error === 'string' && pr.error.trim()
+              ? pr.error.trim()
+              : null;
+          const profileSlug = profileId || profileLabel.replace(/\s+/g, '_');
+
+          tasks.push({
+            id: `context_${userId}_${profileSlug}`,
+            title: `Context — ${userTitle} (${profileLabel})`,
+            status: profileError ? 'failed' : 'success',
+            facts: [
+              { label: 'Plex user', value: userTitle },
+              { label: 'Plex user id', value: userId },
+              { label: 'Pin target', value: pinTarget },
+              ...(profileName
+                ? [
+                    {
+                      label: 'Matched Immaculate Taste profile',
+                      value: profileName,
+                    },
+                  ]
+                : []),
+              ...(profileId
+                ? [{ label: 'Profile dataset id', value: profileId }]
+                : []),
+            ],
+          });
+
+          if (profileError) {
+            issues.push(
+              issue('error', `${userTitle} (${profileLabel}): ${profileError}`),
+            );
+            continue;
+          }
+
+          const movie = isPlainObject(pr.movie) ? pr.movie : null;
+          const tv = isPlainObject(pr.tv) ? pr.tv : null;
+
+          if (movie) {
+            addLibraryTasks({
+              prefix: `movie_library_${userId}_${profileSlug}`,
+              titlePrefix: `Movie library (${userTitle} — ${profileLabel}):`,
+              byLibrary: movie.plexByLibrary,
+              sentLabel: 'Sent to Radarr',
+              sentField: 'sentToRadarr',
+              unit: 'movies',
+            });
+          }
+
+          if (tv) {
+            addLibraryTasks({
+              prefix: `tv_library_${userId}_${profileSlug}`,
+              titlePrefix: `TV library (${userTitle} — ${profileLabel}):`,
+              byLibrary: tv.plexByLibrary,
+              sentLabel: 'Sent to Sonarr',
+              sentField: 'sentToSonarr',
+              unit: 'shows',
+            });
+          }
+        }
+        continue;
+      }
 
       tasks.push({
         id: `context_${userId}`,

@@ -8,13 +8,7 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from './sonarr.service';
-
-type TestConnectionBody = {
-  baseUrl?: unknown;
-  apiKey?: unknown;
-  apiKeyEnvelope?: unknown;
-  secretRef?: unknown;
-};
+import { TestConnectionDto } from '../shared/dto/test-connection.dto';
 
 const HTTP_BASE_URL_PREFIX = /^https?:\/\//i;
 const HTTP_PROTOCOL = /^https?:$/i;
@@ -48,7 +42,7 @@ export class SonarrController {
   @Post('test')
   async test(
     @Req() req: AuthenticatedRequest,
-    @Body() body: TestConnectionBody,
+    @Body() body: TestConnectionDto,
   ) {
     const baseUrlRaw = requireBaseUrl(body.baseUrl);
     const resolved = await this.settingsService.resolveServiceSecretInput({

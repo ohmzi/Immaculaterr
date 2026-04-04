@@ -4,32 +4,25 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   Post,
   Put,
-  Req,
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthUser } from '../auth/auth.types';
 import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
-import type { AuthenticatedRequest } from '../auth/auth.types';
 import type { JsonObject } from './jobs.types';
-
-type RunJobBody = {
-  dryRun?: unknown;
-  input?: unknown;
-};
-
-type UpsertScheduleBody = {
-  cron?: unknown;
-  enabled?: unknown;
-  timezone?: unknown;
-};
+import { RunJobDto, UpsertScheduleDto } from './dto/jobs.dto';
 
 @Controller('jobs')
 @ApiTags('jobs')
 export class JobsController {
+  private readonly logger = new Logger(JobsController.name);
+
   constructor(
     private readonly jobsService: JobsService,
     private readonly jobsScheduler: JobsScheduler,
@@ -42,11 +35,11 @@ export class JobsController {
 
   @Post(':jobId/run')
   async runJob(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Param('jobId') jobId: string,
-    @Body() body: RunJobBody,
+    @Body() body: RunJobDto,
   ) {
-    const userId = req.user.id;
+    const userId = user.id;
     const dryRun = Boolean(body?.dryRun);
     const inputRaw = body?.input;
     const input: JsonObject | undefined =
@@ -71,12 +64,12 @@ export class JobsController {
 
   @Get('runs')
   async listRuns(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Query('jobId') jobId?: string,
     @Query('take') takeRaw?: string,
     @Query('skip') skipRaw?: string,
   ) {
-    const userId = req.user.id;
+    const userId = user.id;
     const take = Math.max(
       1,
       Math.min(200, Number.parseInt(takeRaw ?? '50', 10) || 50),
@@ -88,10 +81,10 @@ export class JobsController {
 
   @Delete('runs')
   async clearRuns(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Query('jobId') jobIdRaw?: string,
   ) {
-    const userId = req.user.id;
+    const userId = user.id;
     const jobId =
       typeof jobIdRaw === 'string' && jobIdRaw.trim()
         ? jobIdRaw.trim()
@@ -101,23 +94,20 @@ export class JobsController {
   }
 
   @Get('runs/:runId')
-  async getRun(
-    @Req() req: AuthenticatedRequest,
-    @Param('runId') runId: string,
-  ) {
-    const userId = req.user.id;
+  async getRun(@CurrentUser() user: AuthUser, @Param('runId') runId: string) {
+    const userId = user.id;
     const run = await this.jobsService.getRun({ userId, runId });
     return { run };
   }
 
   @Get('runs/:runId/logs')
   async getRunLogs(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthUser,
     @Param('runId') runId: string,
     @Query('take') takeRaw?: string,
     @Query('skip') skipRaw?: string,
   ) {
-    const userId = req.user.id;
+    const userId = user.id;
     const take = Math.max(
       1,
       Math.min(1000, Number.parseInt(takeRaw ?? '500', 10) || 500),
@@ -134,8 +124,9 @@ export class JobsController {
 
   @Put('schedules/:jobId')
   async upsertSchedule(
+    @CurrentUser() user: AuthUser,
     @Param('jobId') jobId: string,
-    @Body() body: UpsertScheduleBody,
+    @Body() body: UpsertScheduleDto,
   ) {
     const cron = typeof body?.cron === 'string' ? body.cron.trim() : '';
     const enabled = body?.enabled === undefined ? true : Boolean(body.enabled);
@@ -145,6 +136,10 @@ export class JobsController {
         : null;
 
     if (!cron) throw new BadRequestException('cron is required');
+
+    this.logger.log(
+      `Schedule update: jobId=${JSON.stringify(jobId)} userId=${user.id} enabled=${enabled}`,
+    );
 
     const schedule = await this.jobsScheduler.upsertSchedule({
       jobId,

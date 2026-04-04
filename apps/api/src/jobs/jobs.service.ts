@@ -7,6 +7,8 @@ import {
 import { Prisma } from '@prisma/client';
 import { CronTime } from 'cron';
 import { PrismaService } from '../db/prisma.service';
+import { JOB_RUN_TIMEOUT_MS } from '../app.constants';
+import { errToMessage } from '../log.utils';
 import { findJobDefinition, JOB_DEFINITIONS } from './job-registry';
 import { JobsHandlers } from './jobs.handlers';
 import type { JobReportV1 } from './job-report-v1';
@@ -16,11 +18,6 @@ import type {
   JobRunTrigger,
   JsonObject,
 } from './jobs.types';
-
-function errToMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
 
 function toIsoString(value: unknown): string | null {
   if (value instanceof Date) return value.toISOString();
@@ -143,6 +140,7 @@ function extractInputContext(input?: JsonObject): JsonObject | null {
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
   private readonly runningJobIds = new Set<string>();
+  private readonly timedOutRunIds = new Set<string>();
   private static readonly UNSCHEDULABLE_JOB_IDS = new Set<string>([
     // Webhook/manual-input jobs (no schedule support)
     'mediaAddedCleanup',
@@ -475,6 +473,13 @@ export class JobsService {
       // Ensure any in-flight summary writes complete before we persist final status/summary.
       await awaitSummaryWrites();
 
+      if (this.timedOutRunIds.has(runId)) {
+        this.logger.warn(
+          `Job completed after watchdog timeout; skipping status update: jobId=${jobId} runId=${runId}`,
+        );
+        return;
+      }
+
       const liveSummary = ctx.getSummary();
       const liveProgress = getProgressSnapshot(liveSummary);
 
@@ -566,6 +571,13 @@ export class JobsService {
         `Job passed jobId=${jobId} runId=${runId} ms=${ms} dryRun=${ctx.dryRun}`,
       );
     } catch (err) {
+      if (this.timedOutRunIds.has(runId)) {
+        this.logger.warn(
+          `Job errored after watchdog timeout; skipping status update: jobId=${jobId} runId=${runId}`,
+        );
+        return;
+      }
+
       const msg = errToMessage(err);
       await ctx.error('run: failed', { error: msg });
       await this.prisma.jobRun.update({
@@ -584,6 +596,82 @@ export class JobsService {
       );
     } finally {
       this.runningJobIds.delete(jobId);
+      this.timedOutRunIds.delete(runId);
+    }
+  }
+
+  async timeoutRunningJob(params: {
+    runId: string;
+    jobId: string;
+    startedAt: Date;
+  }) {
+    const { runId, jobId, startedAt } = params;
+    const now = new Date();
+    const elapsedMs = now.getTime() - startedAt.getTime();
+    const elapsedMin = Math.round(elapsedMs / 60_000);
+    const limitMin = Math.round(JOB_RUN_TIMEOUT_MS / 60_000);
+
+    const currentRun = await this.prisma.jobRun.findUnique({
+      where: { id: runId },
+      select: { summary: true, status: true },
+    });
+
+    if (!currentRun || currentRun.status !== 'RUNNING') return;
+
+    const lastProgress = getProgressSnapshot(
+      currentRun.summary as JsonObject | null,
+    );
+
+    const message = `Job timed out after ${elapsedMin}m (limit: ${limitMin}m); marking as FAILED.`;
+
+    this.timedOutRunIds.add(runId);
+    this.runningJobIds.delete(jobId);
+
+    const timeoutSummary: JsonObject = {
+      ...((currentRun.summary as Record<string, unknown>) ?? {}),
+      progress: {
+        ...(lastProgress ?? {}),
+        step: 'timed_out',
+        message: `Timed out after ${elapsedMin}m.`,
+        updatedAt: now.toISOString(),
+      },
+    };
+
+    try {
+      await this.prisma.$transaction([
+        this.prisma.jobRun.update({
+          where: { id: runId },
+          data: {
+            status: 'FAILED',
+            finishedAt: now,
+            errorMessage: message,
+            summary: timeoutSummary,
+          },
+        }),
+        this.prisma.jobLogLine.create({
+          data: {
+            runId,
+            level: 'error',
+            message,
+            context: {
+              reason: 'timeout_watchdog',
+              jobId,
+              startedAt: startedAt.toISOString(),
+              timedOutAt: now.toISOString(),
+              elapsedMs,
+              lastProgress: lastProgress ?? null,
+            },
+          },
+        }),
+      ]);
+
+      this.logger.warn(
+        `Watchdog timeout: jobId=${jobId} runId=${runId} elapsed=${elapsedMin}m`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Watchdog timeout DB update failed: jobId=${jobId} runId=${runId}: ${errToMessage(err)}`,
+      );
     }
   }
 

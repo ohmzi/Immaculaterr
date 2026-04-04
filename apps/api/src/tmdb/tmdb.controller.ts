@@ -9,12 +9,7 @@ import {
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { SettingsService } from '../settings/settings.service';
 import { TmdbService } from './tmdb.service';
-
-type TestTmdbBody = {
-  apiKey?: unknown;
-  apiKeyEnvelope?: unknown;
-  secretRef?: unknown;
-};
+import { TestApiKeyDto } from '../shared/dto/test-connection.dto';
 
 @Controller('tmdb')
 export class TmdbController {
@@ -24,7 +19,7 @@ export class TmdbController {
   ) {}
 
   @Post('test')
-  async test(@Req() req: AuthenticatedRequest, @Body() body: TestTmdbBody) {
+  async test(@Req() req: AuthenticatedRequest, @Body() body: TestApiKeyDto) {
     const resolved = await this.settingsService.resolveServiceSecretInput({
       userId: req.user.id,
       service: 'tmdb',

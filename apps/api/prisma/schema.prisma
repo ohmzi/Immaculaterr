@@ -82,6 +82,15 @@ model UserRecovery {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model LoginThrottle {
+  key            String   @id
+  failures       Int
+  firstFailureAt DateTime
+  lastFailureAt  DateTime
+  lockUntil      DateTime
+  updatedAt      DateTime @updatedAt
+}
+
 model PlexUser {
   id               String   @id @default(cuid())
   plexAccountId    Int?
@@ -361,6 +370,8 @@ model ImmaculateTasteMovieLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  releaseDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToRadarrAt   DateTime?
@@ -381,6 +392,7 @@ model ImmaculateTasteMovieLibrary {
   @@index([plexUserId, librarySectionKey, status])
   @@index([plexUserId, librarySectionKey, points])
   @@index([plexUserId, librarySectionKey, tmdbVoteAvg])
+  @@index([releaseDate])
 }
 
 // Library-specific points dataset for "Based on Latest Watched" collections (movies).
@@ -472,6 +484,8 @@ model ImmaculateTasteShowLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  firstAirDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToRadarrAt   DateTime?
@@ -493,6 +507,7 @@ model ImmaculateTasteShowLibrary {
   @@index([plexUserId, librarySectionKey, status])
   @@index([plexUserId, librarySectionKey, points])
   @@index([plexUserId, librarySectionKey, tmdbVoteAvg])
+  @@index([firstAirDate])
 }
 
 model WatchedShowRecommendation {

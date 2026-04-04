@@ -1,7 +1,7 @@
 const mockSpawnSync = jest.fn();
 
 jest.mock('node:child_process', () => ({
-  spawnSync: (...args: unknown[]) => mockSpawnSync(...args),
+  spawnSync: (...args: unknown[]) => mockSpawnSync(...args) as unknown,
 }));
 
 jest.mock('@prisma/client', () => ({
@@ -32,9 +32,7 @@ type PrismaMockState = {
   tables: Set<string>;
 };
 
-function createPrismaMock(
-  state: Partial<PrismaMockState> = {},
-): {
+function createPrismaMock(state: Partial<PrismaMockState> = {}): {
   $executeRawUnsafe: jest.Mock<Promise<void>, [string]>;
   $queryRawUnsafe: jest.Mock<Promise<unknown>, [string, ...unknown[]]>;
 } {

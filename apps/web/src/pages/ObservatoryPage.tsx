@@ -73,6 +73,17 @@ type WatchedUndoState = {
 
 const NOOP = () => undefined;
 
+const LOADING_PLACEHOLDER = (
+  <div className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
+    <div className="absolute inset-0 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-10 w-10 rounded-full border-2 border-white/20 border-t-[#facc15] animate-spin" />
+        <div className="text-white/50 text-sm font-medium">Loading suggestions…</div>
+      </div>
+    </div>
+  </div>
+);
+
 function buildDeck(items: ObservatoryItem[]): CardModel[] {
   return items.map((item) => ({ kind: 'item', item }));
 }
@@ -508,7 +519,7 @@ export function ObservatoryPage() {
             mode: 'pendingApproval',
           });
     },
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
 
@@ -526,7 +537,7 @@ export function ObservatoryPage() {
             mode: 'review',
           });
     },
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
 
@@ -553,7 +564,7 @@ export function ObservatoryPage() {
             collectionKind: watchedCollectionKind,
           });
     },
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
 
@@ -580,7 +591,7 @@ export function ObservatoryPage() {
             collectionKind: watchedCollectionKind,
           });
     },
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
 
@@ -1648,6 +1659,8 @@ export function ObservatoryPage() {
                               );
                             })}
                         </div>
+                      ) : listPendingQuery.isPending || listReviewQuery.isPending ? (
+                        <div className="absolute inset-0">{LOADING_PLACEHOLDER}</div>
                       ) : (
                         <div className="absolute inset-0">
                           <SwipeCard
@@ -1797,6 +1810,8 @@ export function ObservatoryPage() {
                               );
                             })}
                         </div>
+                      ) : listWatchedPendingQuery.isPending || listWatchedReviewQuery.isPending ? (
+                        <div className="absolute inset-0">{LOADING_PLACEHOLDER}</div>
                       ) : (
                         <div className="absolute inset-0">
                           <SwipeCard

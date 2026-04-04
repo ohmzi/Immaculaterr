@@ -3,7 +3,45 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.2-beta-2
+1.7.2
+---
+
+- What's new since 1.7.1:
+- Security hardening (beta-6):
+  - CSRF protection strengthened: state-changing requests without an Origin header now require an X-Requested-With header; the web frontend sends it automatically on all requests.
+  - Expired sessions are automatically purged from the database every hour.
+  - Credential envelope RSA key is auto-generated on first startup and persisted to APP_DATA_DIR with owner-only file permissions (chmod 600).
+  - Plex webhook secret is auto-generated when PLEX_WEBHOOK_SECRET is not set and persisted to APP_DATA_DIR; retrievable via authenticated GET /api/webhooks/secret.
+  - API production builds no longer emit source maps.
+  - Vite dev server allowedHosts restricted to localhost, 127.0.0.1, and .local by default.
+  - Content Security Policy tightened: font-src and connect-src restricted to 'self' only.
+  - Google Fonts (Michroma, Montserrat) self-hosted as local WOFF2 files, removing external CDN dependency.
+  - Authentication lockout state persisted to SQLite so lockouts survive server restarts; stale entries purged hourly.
+  - Global ValidationPipe with whitelist and forbidNonWhitelisted enforces typed DTOs on all controller request bodies.
+  - Timing-safe comparison used for debugger token verification.
+  - Added .env.example files documenting security-relevant environment variables for API and Docker deployments.
+- Profile-aware recommendation filtering:
+  - TMDB recommendations are validated against each profile's genre and language include/exclude rules before points are applied.
+  - Filtering uses existing TMDB detail responses so there are no additional API requests per recommendation.
+  - Profiles configured for specific genres no longer receive unrelated titles that would dilute the collection.
+- Session lifetime and API rate limiting:
+  - Session expiration extended from 24 hours to 30 days with a rolling window that resets on each authenticated request.
+  - Global API rate limit (120 requests per 60 seconds per IP) protects all endpoints.
+  - Per-route throttles on auth, password change, and Plex webhook endpoints add additional safeguards.
+  - Webhook payload deduplication cache prevents duplicate processing within a 30-second window.
+- Unified collection hub order:
+  - Webhook-triggered and Immaculate Taste refresher jobs now include Fresh Out Of The Oven in the movie hub order.
+  - Fresh Out visibility (Home for admin, Shared Home for shared users) is centrally enforced regardless of which job triggers pinning.
+  - Previously Fresh Out could be displaced until its own nightly job ran; now all pinning events assert the correct 4-position order.
+- Secrets and Overseerr compatibility:
+  - Vault page falls back to plaintext when WebCrypto is not available, fixing blank-state issues in certain Docker or non-HTTPS setups.
+  - Overseerr setup wizard now supports plaintext authentication alongside encrypted credential flow.
+- Migration repair and dependency updates:
+  - Migration repair script logs diagnostics for blocked deploys and reconciles stuck migration rows so Prisma can rerun them safely.
+  - Updated fast-xml-parser, file-type, and flatted to patched versions addressing upstream security advisories.
+
+
+1.7.1
 ---
 
 - What's new since 1.7.0:

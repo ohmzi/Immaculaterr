@@ -40,6 +40,11 @@ import {
 import { SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { ArrInstanceService } from '../arr-instances/arr-instance.service';
+import {
+  UpdatePlexLibrariesDto,
+  UpdatePlexMonitoringUsersDto,
+  TestSavedIntegrationDto,
+} from './dto/integrations.dto';
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -237,15 +242,6 @@ function isConnectivityFailure(error: unknown): boolean {
     lower.includes('network')
   );
 }
-
-type UpdatePlexLibrariesBody = {
-  selectedSectionKeys?: unknown;
-  cleanupDeselectedLibraries?: unknown;
-};
-
-type UpdatePlexMonitoringUsersBody = {
-  selectedPlexUserIds?: unknown;
-};
 
 const SERVICE_SECRET_ID_BY_INTEGRATION: Record<string, ServiceSecretId> = {
   plex: 'plex',
@@ -790,7 +786,7 @@ export class IntegrationsController {
   @Put('plex/libraries')
   async savePlexLibraries(
     @Req() req: AuthenticatedRequest,
-    @Body() body: UpdatePlexLibrariesBody,
+    @Body() body: UpdatePlexLibrariesDto,
   ) {
     const bodyObj = isPlainObject(body) ? body : {};
     if (!Array.isArray(bodyObj['selectedSectionKeys'])) {
@@ -926,7 +922,7 @@ export class IntegrationsController {
   @Put('plex/monitoring-users')
   async savePlexMonitoringUsers(
     @Req() req: AuthenticatedRequest,
-    @Body() body: UpdatePlexMonitoringUsersBody,
+    @Body() body: UpdatePlexMonitoringUsersDto,
   ) {
     const bodyObj = isPlainObject(body) ? body : {};
     if (!Array.isArray(bodyObj['selectedPlexUserIds'])) {
@@ -984,7 +980,7 @@ export class IntegrationsController {
   async testSaved(
     @Req() req: AuthenticatedRequest,
     @Param('integrationId') integrationId: string,
-    @Body() body: unknown,
+    @Body() body: TestSavedIntegrationDto,
   ) {
     const userId = req.user.id;
     const { settings, secrets } =
@@ -992,7 +988,7 @@ export class IntegrationsController {
     const integrationKey = integrationId.toLowerCase();
     const context: SavedIntegrationTestContext = {
       userId,
-      bodyObj: isPlainObject(body) ? body : {},
+      bodyObj: body as unknown as Record<string, unknown>,
       settings,
       secrets,
     };

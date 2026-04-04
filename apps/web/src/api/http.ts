@@ -20,7 +20,7 @@ export async function readApiError(res: Response) {
       if (typeof maybeMessage === 'string') return { message: maybeMessage, body };
       if (Array.isArray(maybeMessage)) return { message: maybeMessage.join('; '), body };
     }
-    return { message: JSON.stringify(body), body };
+    return { message: `HTTP ${res.status}`, body };
   }
 
   const text = await res.text().catch(() => '');
@@ -31,6 +31,10 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
   const res = await fetch(input, {
     credentials: 'include',
     ...init,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
     const { message, body } = await readApiError(res);

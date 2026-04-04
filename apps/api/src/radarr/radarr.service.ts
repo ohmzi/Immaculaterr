@@ -1,4 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { truncateForLog } from '../log.utils';
+import { LOG_BODY_MAX_LENGTH } from '../app.constants';
 
 type RadarrSystemStatus = Record<string, unknown>;
 export type RadarrMovie = Record<string, unknown> & {
@@ -201,7 +203,7 @@ export class RadarrService {
           const title =
             typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
           this.logger.warn(
-            `Radarr path validation error for movie ${movie.id} (${title}): ${body}. This may indicate duplicate movies in Radarr with the same path. Skipping this movie.`,
+            `Radarr path validation error for movie ${movie.id} (${title}): ${truncateForLog(body, LOG_BODY_MAX_LENGTH)}. This may indicate duplicate movies in Radarr with the same path. Skipping this movie.`,
           );
           return false;
         }

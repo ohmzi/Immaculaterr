@@ -28,22 +28,27 @@ jobs:
       - name: Evaluate policy
         id: policy
         shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_REF_NAME: ${{ github.ref_name }}
+          PUSH_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-
-          EVENT="${{ github.event_name }}"
 
           BASE_REF=""
           HEAD_REF=""
           SHA=""
 
           if [[ "${EVENT}" == "pull_request" ]]; then
-            BASE_REF="${{ github.event.pull_request.base.ref }}"
-            HEAD_REF="${{ github.event.pull_request.head.ref }}"
-            SHA="${{ github.event.pull_request.head.sha }}"
+            BASE_REF="${PR_BASE_REF}"
+            HEAD_REF="${PR_HEAD_REF}"
+            SHA="${PR_HEAD_SHA}"
           else
-            HEAD_REF="${{ github.ref_name }}"
-            SHA="${{ github.sha }}"
+            HEAD_REF="${PUSH_REF_NAME}"
+            SHA="${PUSH_SHA}"
           fi
 
           echo "event=${EVENT}"
@@ -115,7 +120,9 @@ jobs:
       - name: Enforce policy (PRs into master)
         if: ${{ github.event_name == 'pull_request' && steps.policy.outputs.allowed != 'true' }}
         shell: bash
+        env:
+          REASON: ${{ steps.policy.outputs.reason }}
         run: |
-          echo "${{ steps.policy.outputs.reason }}"
+          echo "${REASON}"
           exit 1
 

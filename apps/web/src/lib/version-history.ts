@@ -24,7 +24,58 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.2-beta-2',
+    version: '1.7.2',
+    popupHighlights: [
+      'Recommendations now respect each profile\'s genre and language rules so unrelated titles are filtered before scoring.',
+      'Sessions last 30 days with a rolling window, and API rate limiting protects auth, webhooks, and general endpoints.',
+      'All pinning jobs now include Fresh Out Of The Oven in the hub order so it stays in position between runs.',
+      'Secrets vault and Overseerr setup work in environments where WebCrypto is unavailable.',
+      'Database migration repair is more resilient with better diagnostics for blocked deploys.',
+    ],
+    sections: [
+      {
+        title: 'Profile-aware recommendation filtering',
+        bullets: [
+          'TMDB recommendations are validated against each Immaculate Taste profile\'s genre and language include/exclude rules before points are applied.',
+          'Filtering uses existing TMDB detail responses so there are no additional API requests per recommendation.',
+          'Profiles configured for specific genres no longer receive unrelated titles that would dilute the collection.',
+        ],
+      },
+      {
+        title: 'Session lifetime and API rate limiting',
+        bullets: [
+          'Session expiration extended from 24 hours to 30 days with a rolling window that resets on each authenticated request.',
+          'Global API rate limit (120 requests per 60 seconds per IP) protects all endpoints.',
+          'Per-route throttles on auth, password change, and Plex webhook endpoints add additional safeguards.',
+          'Webhook payload deduplication cache prevents duplicate processing within a 30-second window.',
+        ],
+      },
+      {
+        title: 'Unified collection hub order',
+        bullets: [
+          'Webhook-triggered and Immaculate Taste refresher jobs now include Fresh Out Of The Oven in the movie hub order.',
+          'Fresh Out visibility (Home for admin, Shared Home for shared users) is centrally enforced regardless of which job triggers pinning.',
+          'Previously Fresh Out could be displaced until its own nightly job ran; now all pinning events assert the correct 4-position order.',
+        ],
+      },
+      {
+        title: 'Secrets and Overseerr compatibility',
+        bullets: [
+          'Vault page falls back to plaintext when WebCrypto is not available, fixing blank-state issues in certain Docker or non-HTTPS setups.',
+          'Overseerr setup wizard now supports plaintext authentication alongside encrypted credential flow.',
+        ],
+      },
+      {
+        title: 'Migration repair and dependency updates',
+        bullets: [
+          'Migration repair script logs diagnostics for blocked deploys and reconciles stuck migration rows so Prisma can rerun them safely.',
+          'Updated fast-xml-parser, file-type, and flatted to patched versions addressing upstream security advisories.',
+        ],
+      },
+    ],
+  },
+  {
+    version: '1.7.1',
     popupHighlights: [
       'Fresh Out Of The Oven now builds per-user recent-release movie rows and includes a dedicated Task Manager card.',
       'TMDB Upcoming Movie task adds customizable filter sets and routes top picks to Radarr or Seerr.',

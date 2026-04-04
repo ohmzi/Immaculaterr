@@ -45,10 +45,11 @@ import {
   PASSWORD_RECOVERY_RESET_QUESTION_COUNT,
   PASSWORD_RECOVERY_SECURITY_QUESTIONS,
 } from '../app.constants';
+import { maskUsername, maskIp } from '../log.utils';
 
 const SESSION_COOKIE = 'tcp_session';
 const SESSION_COOKIE_PAYLOAD_PREFIX = 'sid:v1:';
-const DEFAULT_SESSION_MAX_AGE_MS = 24 * 60 * 60_000;
+const DEFAULT_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const DEFAULT_PASSWORD_PROOF_ITERATIONS = 210_000;
 const MIN_RECOVERY_ANSWER_LENGTH = 2;
 const MIN_PASSWORD_LENGTH = 10;
@@ -562,8 +563,12 @@ export class AuthService {
       return null;
     }
 
+    const newExpiresAt = new Date(now.getTime() + this.getSessionMaxAgeMs());
     await this.prisma.session
-      .update({ where: { id: hashed }, data: { lastSeenAt: now } })
+      .update({
+        where: { id: hashed },
+        data: { lastSeenAt: now, expiresAt: newExpiresAt },
+      })
       .catch(() => undefined);
 
     return {
@@ -584,11 +589,29 @@ export class AuthService {
     const newPassword = params.newPassword;
     this.assertValidPasswordChangeInputs(currentPassword, newPassword);
     const user = await this.findPasswordChangeUserOrThrow(params.userId);
-    await this.assertCurrentPasswordValid(user.passwordHash, currentPassword);
+
+    const assessment = this.authThrottle.assess({
+      username: user.username,
+      ip: params.ip,
+    });
+    this.assertNotLocked(assessment);
+
+    const verified = await verifyPassword(user.passwordHash, currentPassword);
+    if (!verified.ok) {
+      this.authThrottle.recordFailure({
+        username: user.username,
+        ip: params.ip,
+        userAgent: params.userAgent,
+        reason: 'change_password_invalid_current',
+      });
+      throw new UnauthorizedException('Current password is invalid');
+    }
+
     await this.updatePasswordAndRevokeSessions(user.id, newPassword);
+    this.authThrottle.recordSuccess({ username: user.username, ip: params.ip });
 
     this.logger.log(
-      `auth: password changed userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth: password changed userId=${user.id} username=${JSON.stringify(maskUsername(user.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     return { ok: true } as const;
@@ -652,7 +675,7 @@ export class AuthService {
     });
 
     this.logger.log(
-      `auth: password recovery updated userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth: password recovery updated userId=${user.id} username=${JSON.stringify(maskUsername(user.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     return { ok: true } as const;
@@ -749,7 +772,7 @@ export class AuthService {
       ip: params.ip,
     });
     this.logger.log(
-      `auth: password reset with recovery success userId=${user.id} username=${JSON.stringify(user.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth: password reset with recovery success userId=${user.id} username=${JSON.stringify(maskUsername(user.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     return { ok: true } as const;
@@ -1983,7 +2006,7 @@ export class AuthService {
       ip: params.ip,
     });
     this.logger.warn(
-      `auth: password reset failed username=${JSON.stringify(params.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)} reason=${JSON.stringify(params.reason)} attemptsRemaining=${assessment.attemptsRemaining} retryAt=${JSON.stringify(assessment.retryAt)}`,
+      `auth: password reset failed username=${JSON.stringify(maskUsername(params.username))} ip=${JSON.stringify(maskIp(params.ip))} reason=${JSON.stringify(params.reason)} attemptsRemaining=${assessment.attemptsRemaining} retryAt=${JSON.stringify(assessment.retryAt)}`,
     );
     if (!assessment.allowed) {
       return this.tooManyPasswordResetAttemptsFailure(assessment);
@@ -2134,7 +2157,7 @@ export class AuthService {
     if (ok) return;
 
     this.logger.warn(
-      `auth captcha required username=${JSON.stringify(params.username)} ip=${JSON.stringify(params.ip)} ua=${JSON.stringify(params.userAgent)}`,
+      `auth captcha required username=${JSON.stringify(maskUsername(params.username))} ip=${JSON.stringify(maskIp(params.ip))}`,
     );
 
     throw new UnauthorizedException({

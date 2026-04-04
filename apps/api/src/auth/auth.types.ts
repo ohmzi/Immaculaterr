@@ -5,4 +5,7 @@ export type AuthUser = {
   username: string;
 };
 
-export type AuthenticatedRequest = Request & { user: AuthUser };
+export type AuthenticatedRequest = Request & {
+  user: AuthUser;
+  sessionId: string;
+};

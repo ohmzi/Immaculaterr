@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import {
   createDecipheriv,
   createHash,
@@ -9,6 +14,8 @@ import {
   type KeyObject,
   constants as cryptoConstants,
 } from 'node:crypto';
+import { chmod, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 export type CredentialEnvelope = {
   algorithm?: unknown;
@@ -82,30 +89,34 @@ function readEncodedField(input: unknown, field: string): Buffer {
 }
 
 @Injectable()
-export class CredentialEnvelopeService {
+export class CredentialEnvelopeService implements OnModuleInit {
   private readonly logger = new Logger(CredentialEnvelopeService.name);
-  private readonly privateKey: KeyObject;
-  private readonly publicKeyPem: string;
-  private readonly keyId: string;
-  private readonly ephemeral: boolean;
+  private privateKey!: KeyObject;
+  private publicKeyPem!: string;
+  private keyId!: string;
+  private ephemeral!: boolean;
   private readonly maxSkewMs = Number.parseInt(
     process.env.AUTH_CREDENTIAL_ENVELOPE_MAX_SKEW_MS ?? `${5 * 60_000}`,
     10,
   );
 
-  constructor() {
+  private static readonly KEY_FILENAME = 'credential-envelope.pem';
+
+  async onModuleInit() {
     const raw = process.env.AUTH_CREDENTIALS_PRIVATE_KEY?.trim();
     if (raw) {
       this.privateKey = parseEnvPrivateKey(raw);
-      const publicKey = createPublicKey(this.privateKey);
-      const pubDer = publicKey.export({ type: 'spki', format: 'der' });
-      this.publicKeyPem = publicKey
-        .export({ type: 'spki', format: 'pem' })
-        .toString();
-      this.keyId = toBase64Url(
-        createHash('sha256').update(pubDer).digest(),
-      ).slice(0, 24);
+      this.derivePublicFields(this.privateKey);
       this.ephemeral = false;
+      return;
+    }
+
+    const persisted = await this.tryLoadPersistedKey();
+    if (persisted) {
+      this.privateKey = persisted;
+      this.derivePublicFields(persisted);
+      this.ephemeral = false;
+      this.logger.log('Loaded credential envelope key from persisted file.');
       return;
     }
 
@@ -114,18 +125,57 @@ export class CredentialEnvelopeService {
       publicExponent: 0x10001,
     });
     this.privateKey = generated.privateKey;
-    const pubDer = generated.publicKey.export({ type: 'spki', format: 'der' });
-    const keyId = toBase64Url(
-      createHash('sha256').update(pubDer).digest(),
-    ).slice(0, 24);
-    this.publicKeyPem = generated.publicKey
+    this.derivePublicFields(generated.privateKey);
+    this.ephemeral = false;
+
+    await this.persistKey(generated.privateKey);
+    this.logger.log('Generated and persisted new credential envelope key.');
+  }
+
+  private derivePublicFields(privateKey: KeyObject): void {
+    const publicKey = createPublicKey(privateKey);
+    const pubDer = publicKey.export({ type: 'spki', format: 'der' });
+    this.publicKeyPem = publicKey
       .export({ type: 'spki', format: 'pem' })
       .toString();
-    this.keyId = keyId;
-    this.ephemeral = true;
-    this.logger.warn(
-      'AUTH_CREDENTIALS_PRIVATE_KEY is unset; using ephemeral credential envelope key (not stable across restarts/instances).',
-    );
+    this.keyId = toBase64Url(
+      createHash('sha256').update(pubDer).digest(),
+    ).slice(0, 24);
+  }
+
+  private async tryLoadPersistedKey(): Promise<KeyObject | null> {
+    const dataDir = process.env.APP_DATA_DIR?.trim();
+    if (!dataDir) return null;
+    const keyPath = join(dataDir, CredentialEnvelopeService.KEY_FILENAME);
+    try {
+      const pem = await readFile(keyPath, 'utf8');
+      await chmod(keyPath, 0o600).catch(() => undefined);
+      return createPrivateKey(pem.trim());
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (code === 'ENOENT') return null;
+      this.logger.warn(
+        `Failed to load persisted credential envelope key: ${(err as Error)?.message ?? String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  private async persistKey(privateKey: KeyObject): Promise<void> {
+    const dataDir = process.env.APP_DATA_DIR?.trim();
+    if (!dataDir) return;
+    const keyPath = join(dataDir, CredentialEnvelopeService.KEY_FILENAME);
+    try {
+      const pem = privateKey
+        .export({ type: 'pkcs8', format: 'pem' })
+        .toString();
+      await writeFile(keyPath, pem, { encoding: 'utf8', mode: 0o600 });
+      await chmod(keyPath, 0o600).catch(() => undefined);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist credential envelope key: ${(err as Error)?.message ?? String(err)}`,
+      );
+    }
   }
 
   getLoginKey() {
