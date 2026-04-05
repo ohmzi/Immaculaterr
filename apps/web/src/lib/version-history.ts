@@ -24,39 +24,7 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.4-beta-3',
-    popupHighlights: [
-      'Patched the current dependency security alert set and refreshed the Prisma toolchain for the local Docker build.',
-    ],
-    sections: [
-      {
-        title: 'Security dependency refresh',
-        bullets: [
-          'Updated the dependency lockfile to pull in patched versions for the current GitHub security alert chain, including lodash, path-to-regexp, picomatch, handlebars, defu, and Prisma-related packages.',
-          'Aligned prisma and @prisma/client to the same patched release so generated client code stays in sync for source builds.',
-          'No app features or API contracts were intentionally changed as part of this security-focused release.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.7.4-beta-2',
-    popupHighlights: [
-      'Security question dropdowns on Profile and setup wizard now use the dark glass dropdown instead of the native browser select.',
-    ],
-    sections: [
-      {
-        title: 'Recovery question dropdown styling',
-        bullets: [
-          'Replaced native browser select with GlassSelect for password recovery question dropdowns.',
-          'Dropdown options now render with the dark themed glass panel matching the Observatory library selector.',
-          'Applies to the Profile page, setup wizard registration, and any future use of the shared recovery fields component.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.7.4-beta-1',
+    version: '1.7.5',
     popupHighlights: [
       'Recommendations now respect each profile\'s genre and language rules so unrelated titles are filtered before scoring.',
       'Sessions last 30 days with a rolling window, and API rate limiting protects auth, webhooks, and general endpoints.',
