@@ -24,6 +24,22 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.4-beta-2',
+    popupHighlights: [
+      'Security question dropdowns on Profile and setup wizard now use the dark glass dropdown instead of the native browser select.',
+    ],
+    sections: [
+      {
+        title: 'Recovery question dropdown styling',
+        bullets: [
+          'Replaced native browser select with GlassSelect for password recovery question dropdowns.',
+          'Dropdown options now render with the dark themed glass panel matching the Observatory library selector.',
+          'Applies to the Profile page, setup wizard registration, and any future use of the shared recovery fields component.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.4-beta-1',
     popupHighlights: [
       'Recommendations now respect each profile\'s genre and language rules so unrelated titles are filtered before scoring.',

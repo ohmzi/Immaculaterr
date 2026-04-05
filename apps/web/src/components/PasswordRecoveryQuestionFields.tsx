@@ -1,4 +1,7 @@
+import { useCallback } from 'react';
+
 import type { PasswordRecoveryQuestion } from '@/api/auth';
+import { GlassSelect } from '@/components/ui/glass-select';
 import { type PasswordRecoveryAnswerDraft } from '@/lib/password-recovery';
 
 const PASSWORD_RECOVERY_ROW_KEYS = ['first', 'second', 'third'] as const;
@@ -45,6 +48,13 @@ export function PasswordRecoveryQuestionFields(props: {
   } = props;
   const answerRows = toPasswordRecoveryRows(answers);
 
+  const handleQuestionChange = useCallback(
+    (rowIndex: number) => (value: string) => {
+      onQuestionKeyChange(rowIndex, value);
+    },
+    [onQuestionKeyChange],
+  );
+
   return (
     <div className="space-y-4">
       {answerRows.map(({ rowKey, rowIndex, entry }) => {
@@ -56,40 +66,32 @@ export function PasswordRecoveryQuestionFields(props: {
             .filter(Boolean),
         );
 
+        const selectOptions = questions.map((question) => ({
+          value: question.key,
+          label: question.prompt,
+          disabled:
+            selectedInOtherRows.has(question.key) &&
+            question.key !== entry.questionKey,
+        }));
+
         return (
           <div
             key={`${idPrefix}-row-${rowKey}`}
             className="rounded-xl border border-white/10 bg-white/5 p-3"
           >
-            <label
-              htmlFor={`${idPrefix}-question-${rowIndex}`}
+            <div
               className="mb-1 block text-xs font-bold uppercase tracking-wider text-white/60"
             >
               Security question {rowIndex + 1}
-            </label>
-            <select
-              id={`${idPrefix}-question-${rowIndex}`}
+            </div>
+            <GlassSelect
               value={entry.questionKey}
-              onChange={(event) =>
-                onQuestionKeyChange(rowIndex, event.target.value)
-              }
+              placeholder="Select a question"
+              options={selectOptions}
+              onValueChange={handleQuestionChange(rowIndex)}
               disabled={disabled}
-              className={inputClassName}
-            >
-              <option value="">Select a question</option>
-              {questions.map((question) => (
-                <option
-                  key={question.key}
-                  value={question.key}
-                  disabled={
-                    selectedInOtherRows.has(question.key) &&
-                    question.key !== entry.questionKey
-                  }
-                >
-                  {question.prompt}
-                </option>
-              ))}
-            </select>
+              triggerClassName={inputClassName}
+            />
 
             <label
               htmlFor={`${idPrefix}-answer-${rowIndex}`}

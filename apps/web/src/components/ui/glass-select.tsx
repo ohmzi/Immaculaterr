@@ -25,8 +25,9 @@ export function GlassSelect(props: {
   onValueChange: (value: string) => void;
   triggerClassName?: string;
   contentClassName?: string;
+  disabled?: boolean;
 }) {
-  const { value, placeholder, options, onValueChange, triggerClassName, contentClassName } =
+  const { value, placeholder, options, onValueChange, triggerClassName, contentClassName, disabled = false } =
     props;
 
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -99,14 +100,15 @@ export function GlassSelect(props: {
     [onValueChange],
   );
   const handleTriggerClick = useCallback(() => {
+    if (disabled) return;
     setOpen((value) => !value);
-  }, []);
+  }, [disabled]);
 
   const triggerClasses = cn(
-    // Matches our Radix Select trigger "glassy" style.
     'flex items-center justify-between gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white/90 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-2xl backdrop-saturate-150 transition',
     'focus:outline-none focus:ring-2 focus:ring-white/25 focus:ring-offset-0',
     open && 'bg-white/15',
+    disabled && 'opacity-50 cursor-not-allowed',
     triggerClassName,
   );
 
@@ -171,6 +173,7 @@ export function GlassSelect(props: {
         className={triggerClasses}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-disabled={disabled}
         onClick={handleTriggerClick}
       >
         <span className={cn('truncate', selectedLabel ? 'text-white/90' : 'text-white/60')}>
