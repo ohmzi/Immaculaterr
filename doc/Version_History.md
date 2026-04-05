@@ -3,6 +3,14 @@ Version History
 
 This file tracks notable changes by version.
 
+1.7.4-beta-2
+---
+
+- What's new since 1.7.4-beta-1:
+- Recovery question dropdown styling:
+  - Replaced native browser select with GlassSelect for password recovery question dropdowns on Profile page and setup wizard.
+  - Dropdown options now render with the dark themed glass panel matching the Observatory library selector.
+
 1.7.4-beta-1
 ---
 
