@@ -51,6 +51,7 @@ COPY apps/api apps/api
 COPY apps/web apps/web
 RUN npm run build \
   && npm prune --omit=dev --workspaces --include-workspace-root \
+  && mkdir -p apps/api/node_modules \
   && npm cache clean --force
 
 
