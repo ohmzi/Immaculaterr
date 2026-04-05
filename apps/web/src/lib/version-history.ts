@@ -24,6 +24,22 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.4-beta-3',
+    popupHighlights: [
+      'Patched the current dependency security alert set and refreshed the Prisma toolchain for the local Docker build.',
+    ],
+    sections: [
+      {
+        title: 'Security dependency refresh',
+        bullets: [
+          'Updated the dependency lockfile to pull in patched versions for the current GitHub security alert chain, including lodash, path-to-regexp, picomatch, handlebars, defu, and Prisma-related packages.',
+          'Aligned prisma and @prisma/client to the same patched release so generated client code stays in sync for source builds.',
+          'No app features or API contracts were intentionally changed as part of this security-focused release.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.4-beta-2',
     popupHighlights: [
       'Security question dropdowns on Profile and setup wizard now use the dark glass dropdown instead of the native browser select.',

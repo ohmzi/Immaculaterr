@@ -3,6 +3,15 @@ Version History
 
 This file tracks notable changes by version.
 
+1.7.4-beta-3
+---
+
+- What's new since 1.7.4-beta-2:
+- Security dependency refresh:
+  - Updated the dependency lockfile to pull in patched versions for the current GitHub security alert chain, including lodash, path-to-regexp, picomatch, handlebars, defu, and Prisma-related packages.
+  - Aligned prisma and @prisma/client to the same patched release so generated client code stays in sync for source builds.
+  - No app features or API contracts were intentionally changed as part of this security-focused release.
+
 1.7.4-beta-2
 ---
 
