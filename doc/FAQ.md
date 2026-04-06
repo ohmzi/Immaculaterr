@@ -56,6 +56,11 @@ Pick a feature area first, then jump into the full section below.
 > Per-user unseen recent-release movie rows for the last 3 months.
 > [What does Fresh Out Of The Oven do?](#what-does-fresh-out-of-the-oven-do) · [Where does Fresh Out Of The Oven pin in Plex?](#where-does-fresh-out-of-the-oven-pin-in-plex) · [What is a good default setup for Fresh Out Of The Oven?](#what-is-a-good-default-setup-for-fresh-out-of-the-oven)
 
+> ### [Plex Watch History Import](#plex-watch-history-import)
+> Scan your Plex watched history to seed recommendations and build dedicated collections.
+> [What does Plex Watch History Import do?](#what-does-plex-watch-history-import-do) · [What Plex collections does the import affect?](#what-plex-collections-does-the-plex-history-import-affect) · [How do I see which titles were used as seeds?](#how-do-i-see-which-titles-were-used-as-seeds)
+> + 4 more answers in the section below.
+
 > ### [Netflix Watch History Import](#netflix-watch-history-import)
 > Upload a Netflix CSV to seed recommendations from your external watch history.
 > [What does Netflix Watch History Import do?](#what-does-netflix-watch-history-import-do) · [Where do I get the Netflix CSV file?](#where-do-i-get-the-netflix-csv-file) · [What Plex collections does the import affect?](#what-plex-collections-does-the-import-affect)
@@ -455,6 +460,54 @@ It does not pin to Library Recommended, and within Immaculaterr-managed movie ro
 ### What is a good default setup for Fresh Out Of The Oven?
 
 Daily off-peak is a good default because it keeps new releases flowing in while removing anything a user has already watched. If you prefer manual control, leave the schedule off and use **Run now** after big library updates.
+
+## Plex Watch History Import
+
+Open in app: [Task Manager -> Plex Watch History Import](/task-manager#job-importPlexHistory)
+
+### What does Plex Watch History Import do?
+
+It scans your Plex server's watched history and feeds it into the same recommendation pipeline as your normal Plex-triggered activity. The import runs through a multi-phase pipeline:
+
+1. **Fetch** — watched movies and TV shows are retrieved from your Plex server library sections.
+2. **Classification** — each title is looked up via TMDB and classified as a movie or TV show.
+3. **Recommendation generation** — for each classified title (up to 50 per run), similar and change-of-taste recommendations are generated using the same engine as the Plex-triggered flows.
+4. **Aggregation** — all generated recommendations are merged, deduplicated by TMDB ID, and capped to the configured collection limit.
+5. **Plex History collections** — aggregated results are written to dedicated Plex History Picks and Plex History: Change of Taste Plex collections.
+6. **Recently Watched / Change of Taste sync** — the same recommendations are additively injected into the standard Based on your recently watched and Change of Taste collections, preserving any existing rows from Plex-triggered runs.
+7. **Immaculate Taste sync** — the Immaculate Taste points system is updated so your full watch history influences the long-lived taste profile. The next Immaculate Taste Refresher run rebuilds the Plex collection with this data included.
+8. **Plex collection rebuild** — all affected Plex collections are rebuilt, reordered, and pinned.
+
+### What Plex collections does the Plex history import affect?
+
+The import touches several collection families:
+
+- **Plex History Picks** and **Plex History: Change of Taste** — dedicated Plex history collections that are fully replaced each run.
+- **Based on your recently watched Movie/Show** — Plex history recommendations are merged in additively alongside your existing Plex-triggered rows.
+- **Change of Movie/Show Taste** — same additive merge for change-of-taste recommendations.
+- **Immaculate Taste** — the points dataset is updated in the background. The visible Plex collection rebuilds on the next Immaculate Taste Refresher run (scheduled or manual).
+
+Additive means existing rows from Plex-triggered runs are preserved — only genuinely new recommendations are inserted.
+
+### What happens if I run it again?
+
+Titles that were already imported are skipped automatically. Only genuinely new titles from your Plex watch history are processed. The report shows exactly which seed titles were used for recommendations.
+
+### What happens if I have more than 50 watched titles?
+
+Each run processes up to 50 unique classified titles. If your history contains more, the remaining titles stay as pending entries in the database. Run the import again from Task Manager to process the next batch. Already-processed titles are skipped automatically.
+
+### Why are other tasks blocked while the import is running?
+
+The import follows the same one-at-a-time task queue as every other job. Because it makes many TMDB API calls and generates recommendations for every seed, it can take longer than most tasks. While it runs, other tasks queue as **Pending** and auto-start once the import finishes and the 5-minute cooldown expires.
+
+### Can this task run automatically?
+
+No. Plex Watch History Import is manual-only — you must trigger it from the Task Manager card or opt in during onboarding. There is no schedule or Plex-triggered auto-run for this task.
+
+### How do I see which titles were used as seeds?
+
+Open the job report after a run — it includes a Seed Titles section listing every movie and TV show from your watch history that was matched via TMDB and used as a recommendation seed.
 
 ## Netflix Watch History Import
 

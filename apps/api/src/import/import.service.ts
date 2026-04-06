@@ -29,6 +29,25 @@ const SEED_CAP = 50;
 const TMDB_THROTTLE_MS = 200;
 const NETFLIX_IMPORT_SIMILAR_BASE = 'Netflix Import Picks';
 const NETFLIX_IMPORT_CONTRAST_BASE = 'Netflix Import: Change of Taste';
+const PLEX_HISTORY_SIMILAR_BASE = 'Plex History Picks';
+const PLEX_HISTORY_CONTRAST_BASE = 'Plex History: Change of Taste';
+
+function importSourceLabel(source: string): string {
+  if (source === 'plex') return 'Plex History';
+  return 'Netflix Import';
+}
+
+function importSimilarBase(source: string): string {
+  return source === 'plex'
+    ? PLEX_HISTORY_SIMILAR_BASE
+    : NETFLIX_IMPORT_SIMILAR_BASE;
+}
+
+function importContrastBase(source: string): string {
+  return source === 'plex'
+    ? PLEX_HISTORY_CONTRAST_BASE
+    : NETFLIX_IMPORT_CONTRAST_BASE;
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -106,6 +125,210 @@ export class ImportService {
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
   ) {}
+
+  async fetchAndStorePlexHistory(
+    userId: string,
+    ctx: JobContext,
+  ): Promise<void> {
+    const { settings, secrets } =
+      await this.settingsService.getInternalSettings(userId);
+
+    const plexUseHistory = pickBool(settings, 'plex.useHistory') ?? false;
+    if (!plexUseHistory && ctx.trigger !== 'manual') {
+      await ctx.info(
+        'Plex history import is disabled in settings. Enable it in the wizard or run manually.',
+      );
+      return;
+    }
+
+    const plexBaseUrl =
+      pickString(settings, 'plex.baseUrl') ||
+      pickString(settings, 'plex.url') ||
+      '';
+    const plexToken =
+      pickString(secrets, 'plex.token') ||
+      pickString(secrets, 'plexToken') ||
+      '';
+
+    if (!plexBaseUrl || !plexToken) {
+      await ctx.warn('Plex server URL or token not configured — skipping.');
+      return;
+    }
+
+    await ctx.patchSummary({
+      progress: {
+        step: 'phase0_fetch',
+        message: 'Fetching Plex watch history...',
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    const sections = await this.plexServer.getSections({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+    });
+    const librarySelection = resolvePlexLibrarySelection({
+      settings,
+      sections,
+    });
+    const selectedSet = new Set(librarySelection.selectedSectionKeys);
+    const movieLibKeys: string[] = [];
+    const tvLibKeys: string[] = [];
+    for (const lib of librarySelection.eligibleLibraries) {
+      if (!selectedSet.has(lib.key)) continue;
+      if (lib.type === 'movie') movieLibKeys.push(lib.key);
+      else if (lib.type === 'show') tvLibKeys.push(lib.key);
+    }
+
+    if (movieLibKeys.length === 0 && tvLibKeys.length === 0) {
+      await ctx.info('No selected Plex libraries found — nothing to scan.');
+      return;
+    }
+
+    const existingTmdbIds = new Set<number>(
+      (
+        await this.prisma.importedWatchEntry.findMany({
+          where: { userId, source: 'plex' },
+          select: { tmdbId: true },
+        })
+      )
+        .map((e) => e.tmdbId)
+        .filter((id): id is number => id !== null),
+    );
+
+    let totalFound = 0;
+    let newlyInserted = 0;
+    let alreadyImported = 0;
+    const skippedNoTmdb = 0;
+    const failedSections: string[] = [];
+
+    for (const key of movieLibKeys) {
+      const lib = librarySelection.eligibleLibraries.find((l) => l.key === key);
+      const libTitle = lib?.title ?? key;
+      await ctx.patchSummary({
+        progress: {
+          step: 'phase0_fetch',
+          message: `Scanning movie library '${libTitle}'...`,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+
+      try {
+        const watched =
+          await this.plexServer.listWatchedMovieDetailsForSectionKey({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: key,
+          });
+
+        for (const item of watched) {
+          totalFound++;
+          if (existingTmdbIds.has(item.tmdbId)) {
+            alreadyImported++;
+            continue;
+          }
+          existingTmdbIds.add(item.tmdbId);
+          try {
+            await this.prisma.importedWatchEntry.create({
+              data: {
+                userId,
+                source: 'plex',
+                rawTitle: item.title,
+                parsedTitle: item.title,
+                tmdbId: item.tmdbId,
+                mediaType: 'movie',
+                status: 'matched',
+                watchedAt: item.lastViewedAt
+                  ? new Date(item.lastViewedAt * 1000)
+                  : null,
+              },
+            });
+            newlyInserted++;
+          } catch {
+            alreadyImported++;
+          }
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        failedSections.push(`${libTitle}: ${errMsg}`);
+        this.logger.warn(
+          `Failed to scan movie library '${libTitle}': ${errMsg}`,
+        );
+      }
+    }
+
+    for (const key of tvLibKeys) {
+      const lib = librarySelection.eligibleLibraries.find((l) => l.key === key);
+      const libTitle = lib?.title ?? key;
+      await ctx.patchSummary({
+        progress: {
+          step: 'phase0_fetch',
+          message: `Scanning TV library '${libTitle}'...`,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+
+      try {
+        const watched =
+          await this.plexServer.listWatchedShowDetailsForSectionKey({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            librarySectionKey: key,
+          });
+
+        for (const item of watched) {
+          totalFound++;
+          if (existingTmdbIds.has(item.tmdbId)) {
+            alreadyImported++;
+            continue;
+          }
+          existingTmdbIds.add(item.tmdbId);
+          try {
+            await this.prisma.importedWatchEntry.create({
+              data: {
+                userId,
+                source: 'plex',
+                rawTitle: item.title,
+                parsedTitle: item.title,
+                tmdbId: item.tmdbId,
+                tvdbId: item.tvdbId,
+                mediaType: 'tv',
+                status: 'matched',
+                watchedAt: item.lastViewedAt
+                  ? new Date(item.lastViewedAt * 1000)
+                  : null,
+              },
+            });
+            newlyInserted++;
+          } catch {
+            alreadyImported++;
+          }
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        failedSections.push(`${libTitle}: ${errMsg}`);
+        this.logger.warn(`Failed to scan TV library '${libTitle}': ${errMsg}`);
+      }
+    }
+
+    const parts: string[] = [
+      `${totalFound} watched items found`,
+      `${newlyInserted} newly imported`,
+      `${alreadyImported} already imported`,
+    ];
+    if (skippedNoTmdb > 0)
+      parts.push(`${skippedNoTmdb} skipped (no TMDB match)`);
+    if (failedSections.length > 0) {
+      for (const s of failedSections) {
+        await ctx.warn(`Failed to scan: ${s}`);
+      }
+    }
+    await ctx.info(parts.join(', '));
+
+    if (totalFound === 0) {
+      await ctx.info('No watched items found in your Plex libraries.');
+    }
+  }
 
   async parseAndStoreNetflixCsv(
     userId: string,
@@ -214,7 +437,10 @@ export class ImportService {
     return { pending, matched, processed };
   }
 
-  async processImportedEntries(ctx: JobContext): Promise<JobRunResult> {
+  async processImportedEntries(
+    ctx: JobContext,
+    source: string = 'netflix',
+  ): Promise<JobRunResult> {
     const userId = ctx.userId;
     const summary: JsonObject = {
       phase1_classification: {},
@@ -239,12 +465,12 @@ export class ImportService {
         jobId: ctx.jobId,
         dryRun: ctx.dryRun,
         trigger: ctx.trigger,
-        headline: 'Netflix Watch History Import Report',
+        headline: `${importSourceLabel(source)} Watch History Import Report`,
         sections: [],
         tasks: [
           {
             id: 'classification',
-            title: 'Netflix Import — Classification',
+            title: `${importSourceLabel(source)} — Classification`,
             status: 'failed',
             issues: [
               issue('error', 'TMDB API key is required to classify titles'),
@@ -268,7 +494,7 @@ export class ImportService {
     });
 
     const pendingEntries = await this.prisma.importedWatchEntry.findMany({
-      where: { userId, source: 'netflix', status: 'pending' },
+      where: { userId, source, status: 'pending' },
       orderBy: { watchedAt: 'desc' },
     });
 
@@ -357,12 +583,12 @@ export class ImportService {
         jobId: ctx.jobId,
         dryRun: ctx.dryRun,
         trigger: ctx.trigger,
-        headline: 'Netflix Watch History Import Report',
+        headline: `${importSourceLabel(source)} Watch History Import Report`,
         sections: [],
         tasks: [
           {
             id: 'classification',
-            title: 'Netflix Import — Classification',
+            title: `${importSourceLabel(source)} — Classification`,
             status: 'success',
             rows: [
               metricRow({ label: 'Movies', end: movieCount, unit: 'titles' }),
@@ -414,7 +640,7 @@ export class ImportService {
           },
           {
             id: 'recommendations',
-            title: 'Netflix Import — Recommendations',
+            title: `${importSourceLabel(source)} — Recommendations`,
             status: 'skipped',
             issues: [issue('warn', 'Plex not configured')],
           },
@@ -444,12 +670,12 @@ export class ImportService {
         jobId: ctx.jobId,
         dryRun: ctx.dryRun,
         trigger: ctx.trigger,
-        headline: 'Netflix Watch History Import Report',
+        headline: `${importSourceLabel(source)} Watch History Import Report`,
         sections: [],
         tasks: [
           {
             id: 'classification',
-            title: 'Netflix Import — Classification',
+            title: `${importSourceLabel(source)} — Classification`,
             status: 'success',
             rows: [
               metricRow({ label: 'Movies', end: movieCount, unit: 'titles' }),
@@ -463,7 +689,7 @@ export class ImportService {
           },
           {
             id: 'recommendations',
-            title: 'Netflix Import — Recommendations',
+            title: `${importSourceLabel(source)} — Recommendations`,
             status: 'skipped',
             issues: [issue('warn', 'No Plex user configured')],
           },
@@ -521,7 +747,7 @@ export class ImportService {
     });
 
     const allMatchedEntries = await this.prisma.importedWatchEntry.findMany({
-      where: { userId, source: 'netflix', status: 'matched' },
+      where: { userId, source, status: 'matched' },
       orderBy: { watchedAt: 'desc' },
     });
 
@@ -531,10 +757,27 @@ export class ImportService {
     }
     const totalUniqueMatched = allUniqueTmdbIds.size;
 
+    const crossSourceProcessed = new Set<number>(
+      (
+        await this.prisma.importedWatchEntry.findMany({
+          where: {
+            userId,
+            source: { not: source },
+            status: 'processed',
+            tmdbId: { not: null },
+          },
+          select: { tmdbId: true },
+        })
+      )
+        .map((e) => e.tmdbId)
+        .filter((id): id is number => id !== null),
+    );
+
     const seenTmdbIds = new Set<number>();
     const matchedEntries: typeof allMatchedEntries = [];
     for (const entry of allMatchedEntries) {
       if (!entry.tmdbId || seenTmdbIds.has(entry.tmdbId)) continue;
+      if (crossSourceProcessed.has(entry.tmdbId)) continue;
       seenTmdbIds.add(entry.tmdbId);
       matchedEntries.push(entry);
       if (matchedEntries.length >= SEED_CAP) break;
@@ -695,7 +938,7 @@ export class ImportService {
         await this.prisma.importedWatchEntry.updateMany({
           where: {
             userId,
-            source: 'netflix',
+            source,
             tmdbId: entry.tmdbId,
             status: 'matched',
           },
@@ -772,19 +1015,19 @@ export class ImportService {
 
     // Write consolidated snapshots
     const similarMovieCollectionName = buildUserCollectionName(
-      NETFLIX_IMPORT_SIMILAR_BASE,
+      importSimilarBase(source),
       plexUserTitle,
     );
     const contrastMovieCollectionName = buildUserCollectionName(
-      NETFLIX_IMPORT_CONTRAST_BASE,
+      importContrastBase(source),
       plexUserTitle,
     );
     const similarTvCollectionName = buildUserCollectionName(
-      NETFLIX_IMPORT_SIMILAR_BASE,
+      importSimilarBase(source),
       plexUserTitle,
     );
     const contrastTvCollectionName = buildUserCollectionName(
-      NETFLIX_IMPORT_CONTRAST_BASE,
+      importContrastBase(source),
       plexUserTitle,
     );
 
@@ -1029,14 +1272,14 @@ export class ImportService {
           tvSections,
           limit: collectionLimit,
           movieCollectionBaseNames: [
-            NETFLIX_IMPORT_SIMILAR_BASE,
-            NETFLIX_IMPORT_CONTRAST_BASE,
+            importSimilarBase(source),
+            importContrastBase(source),
             RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
             CHANGE_OF_MOVIE_TASTE_COLLECTION_BASE_NAME,
           ],
           tvCollectionBaseNames: [
-            NETFLIX_IMPORT_SIMILAR_BASE,
-            NETFLIX_IMPORT_CONTRAST_BASE,
+            importSimilarBase(source),
+            importContrastBase(source),
             RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
             CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
           ],
@@ -1065,6 +1308,7 @@ export class ImportService {
     // --- Build jobReportV1 ---
     const report = this.buildReport({
       ctx,
+      source,
       pendingCount: pendingEntries.length,
       movieCount,
       tvCount,
@@ -1105,6 +1349,7 @@ export class ImportService {
 
   private buildReport(params: {
     ctx: JobContext;
+    source: string;
     pendingCount: number;
     movieCount: number;
     tvCount: number;
@@ -1149,6 +1394,7 @@ export class ImportService {
   }): JobReportV1 {
     const {
       ctx,
+      source,
       pendingCount,
       movieCount,
       tvCount,
@@ -1182,6 +1428,7 @@ export class ImportService {
       itTvFinal,
     } = params;
 
+    const srcLabel = importSourceLabel(source);
     const tasks: JobReportV1['tasks'] = [];
     const allIssues: JobReportV1['issues'] = [];
 
@@ -1220,14 +1467,14 @@ export class ImportService {
 
     tasks.push({
       id: 'classification',
-      title: 'Netflix Import — Classification',
+      title: `${srcLabel} — Classification`,
       status:
         pendingCount > 0 && unmatchedCount === pendingCount
           ? 'failed'
           : 'success',
       rows: [
         metricRow({
-          label: 'Netflix titles classified',
+          label: `${srcLabel} titles classified`,
           end: pendingCount,
           unit: 'titles',
         }),
@@ -1241,6 +1488,51 @@ export class ImportService {
       ],
       facts: classificationFacts,
     });
+
+    // Task 1b: Seed Titles Found in History
+    const allSeedMovieTitles = movieSeeds.map((s) => s.title).sort();
+    const allSeedTvTitles = tvSeeds.map((s) => s.title).sort();
+    if (allSeedMovieTitles.length || allSeedTvTitles.length) {
+      const seedFacts: Array<{ label: string; value: JsonValue }> = [];
+      if (allSeedMovieTitles.length) {
+        seedFacts.push({
+          label: 'Movie Seeds',
+          value: {
+            count: allSeedMovieTitles.length,
+            unit: 'movies',
+            items: allSeedMovieTitles,
+          },
+        });
+      }
+      if (allSeedTvTitles.length) {
+        seedFacts.push({
+          label: 'TV Seeds',
+          value: {
+            count: allSeedTvTitles.length,
+            unit: 'shows',
+            items: allSeedTvTitles,
+          },
+        });
+      }
+      tasks.push({
+        id: 'seed_titles',
+        title: `${srcLabel} — Seed Titles (${allSeedMovieTitles.length + allSeedTvTitles.length})`,
+        status: 'success',
+        rows: [
+          metricRow({
+            label: 'Movie seeds used',
+            end: allSeedMovieTitles.length,
+            unit: 'titles',
+          }),
+          metricRow({
+            label: 'TV seeds used',
+            end: allSeedTvTitles.length,
+            unit: 'titles',
+          }),
+        ],
+        facts: seedFacts,
+      });
+    }
 
     // Task 2: Movie Seeds & Recommendations
     if (movieSeeds.length) {
@@ -1269,11 +1561,11 @@ export class ImportService {
       }
       tasks.push({
         id: 'movie_seeds',
-        title: `Netflix Import — Movie Recommendations (${movieSeeds.length})`,
+        title: `${srcLabel} — Movie Recommendations (${movieSeeds.length})`,
         status: 'success',
         rows: [
           metricRow({
-            label: 'Netflix titles processed',
+            label: `${srcLabel} titles processed`,
             end: movieSeeds.length,
             unit: 'titles',
           }),
@@ -1319,11 +1611,11 @@ export class ImportService {
       }
       tasks.push({
         id: 'tv_seeds',
-        title: `Netflix Import — TV Recommendations (${tvSeeds.length})`,
+        title: `${srcLabel} — TV Recommendations (${tvSeeds.length})`,
         status: 'success',
         rows: [
           metricRow({
-            label: 'Netflix titles processed',
+            label: `${srcLabel} titles processed`,
             end: tvSeeds.length,
             unit: 'titles',
           }),
@@ -1346,7 +1638,7 @@ export class ImportService {
     if (failedSeeds.length) {
       tasks.push({
         id: 'failed_seeds',
-        title: `Netflix Import — Failed Titles (${failedSeeds.length})`,
+        title: `${srcLabel} — Failed Titles (${failedSeeds.length})`,
         status: 'failed',
         facts: failedSeeds.map((s) => ({
           label: s.title,
@@ -1355,14 +1647,14 @@ export class ImportService {
         issues: failedSeeds.map((s) => issue('warn', `${s.title}: ${s.error}`)),
       });
       for (const s of failedSeeds) {
-        allIssues.push(issue('warn', `Netflix title failed: ${s.title}`));
+        allIssues.push(issue('warn', `${srcLabel} title failed: ${s.title}`));
       }
     }
 
     // Task 4: Aggregation & Deduplication
     tasks.push({
       id: 'aggregation',
-      title: 'Netflix Import — Aggregation & Dedup',
+      title: `${srcLabel} — Aggregation & Dedup`,
       status: 'success',
       rows: [
         metricRow({
@@ -1494,7 +1786,7 @@ export class ImportService {
     }
     tasks.push({
       id: 'plex_collections',
-      title: 'Netflix Import — Plex Collections',
+      title: `${srcLabel} — Plex Collections`,
       status: collectionErrors.length ? 'failed' : 'success',
       rows: [
         metricRow({
@@ -1547,7 +1839,7 @@ export class ImportService {
       }
       tasks.push({
         id: 'recently_watched_sync',
-        title: 'Netflix Import — Recently Watched Sync',
+        title: `${srcLabel} — Recently Watched Sync`,
         status: 'success',
         rows: [
           metricRow({
@@ -1632,7 +1924,7 @@ export class ImportService {
       }
       tasks.push({
         id: 'immaculate_taste_sync',
-        title: 'Netflix Import — Immaculate Taste Sync',
+        title: `${srcLabel} — Immaculate Taste Sync`,
         status: 'success',
         rows: [
           metricRow({
@@ -1655,7 +1947,7 @@ export class ImportService {
       });
     }
 
-    const headline = 'Netflix Watch History Import Report';
+    const headline = `${srcLabel} Watch History Import Report`;
 
     return {
       template: 'jobReportV1',

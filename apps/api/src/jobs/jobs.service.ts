@@ -150,8 +150,9 @@ export class JobsService {
     'watchedMovieRecommendations',
     // One-time startup migration (no schedule support)
     'collectionResyncUpgrade',
-    // Manual-only import job
+    // Manual-only import jobs
     'importNetflixHistory',
+    'importPlexHistory',
   ]);
 
   constructor(

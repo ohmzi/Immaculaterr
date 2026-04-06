@@ -34,6 +34,7 @@ import {
   Clapperboard,
   Trash2,
   FileUp,
+  History,
 } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
@@ -100,9 +101,11 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'immaculateTastePoints', // webhook/manual input only
   'watchedMovieRecommendations', // webhook/manual input only
   'importNetflixHistory', // manual upload only
+  'importPlexHistory', // manual only
 ]);
 const NO_WEBHOOK_JOB_IDS = new Set<string>([
   'importNetflixHistory', // manual upload only, no Plex-triggered auto-run
+  'importPlexHistory', // manual only, no Plex-triggered auto-run
 ]);
 const TASK_MANAGER_HIDDEN_JOB_IDS = new Set<string>([
   'collectionResyncUpgrade', // one-time startup migration, not user-managed
@@ -189,6 +192,12 @@ const JOB_CONFIG: Record<
     color: 'text-red-400',
     description:
       'Classifies uploaded Netflix titles via TMDB, generates recommendations, and creates consolidated Plex collections.',
+  },
+  importPlexHistory: {
+    icon: <History className="w-8 h-8" />,
+    color: 'text-amber-400',
+    description:
+      'Analyzes your Plex watch history, generates recommendations, and creates consolidated Plex collections.',
   },
 };
 
@@ -1446,6 +1455,23 @@ export function TaskManagerPage() {
         0,
         freshOutOfTheOvenJob,
       );
+
+      const plexHistoryJob = jobsWithoutFreshOutOfTheOven.find(
+        (job) => job.id === 'importPlexHistory',
+      );
+      if (plexHistoryJob) {
+        const withoutPlexHistory = jobsWithoutFreshOutOfTheOven.filter(
+          (job) => job.id !== 'importPlexHistory',
+        );
+        const netflixIndex = withoutPlexHistory.findIndex(
+          (job) => job.id === 'importNetflixHistory',
+        );
+        if (netflixIndex !== -1) {
+          withoutPlexHistory.splice(netflixIndex + 1, 0, plexHistoryJob);
+          return withoutPlexHistory;
+        }
+      }
+
       return jobsWithoutFreshOutOfTheOven;
     },
     [jobsQuery.data?.jobs],

@@ -30,6 +30,7 @@ import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immac
 import { FreshOutOfTheOvenJob } from './fresh-out-of-the-oven.job';
 import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
+import { ImportPlexHistoryJob } from './import-plex-history.job';
 import { ImportModule } from '../import/import.module';
 
 @Module({
@@ -67,6 +68,7 @@ import { ImportModule } from '../import/import.module';
     CollectionResyncUpgradeJob,
     TmdbUpcomingMoviesJob,
     ImportNetflixHistoryJob,
+    ImportPlexHistoryJob,
     CollectionResyncUpgradeService,
   ],
   exports: [JobsService],

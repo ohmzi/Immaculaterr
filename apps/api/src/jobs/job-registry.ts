@@ -83,6 +83,13 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
       'Classifies uploaded Netflix titles via TMDB, generates recommendations, and creates consolidated Plex collections.',
     defaultScheduleCron: undefined,
   },
+  {
+    id: 'importPlexHistory',
+    name: 'Plex Watch History Import',
+    description:
+      'Analyzes your Plex watch history, generates recommendations, and creates consolidated Plex collections.',
+    defaultScheduleCron: undefined,
+  },
 ];
 
 export function findJobDefinition(

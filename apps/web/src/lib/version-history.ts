@@ -24,6 +24,61 @@ export function formatDisplayVersion(value: string | null | undefined): string |
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.6',
+    popupHighlights: [
+      'Plex Watch History Import: import your Plex watched history to generate personalized recommendations and Plex collections.',
+      'Netflix Watch History Import: upload a Netflix CSV to classify titles, build recommendations, and sync collections to Plex.',
+      'Smarter collection ordering: already-watched titles are deprioritized and remaining items are shuffled by TMDB rating tiers.',
+      'Global job queue: all jobs now run through a single queue with a 5-minute cooldown so consecutive runs never hammer the Plex API.',
+      'Seed titles in reports: job reports now list exactly which watched titles were used as seeds for recommendation generation.',
+    ],
+    sections: [
+      {
+        title: 'Plex Watch History Import',
+        bullets: [
+          'Fetches watched movies and TV shows directly from your Plex server library sections.',
+          'Classifies each title via TMDB and uses matched entries as seeds for similar and change-of-taste recommendations.',
+          'Creates per-user Plex collections ("Plex History Picks" and "Plex History: Change of Taste") with the top results.',
+          'Opt-in during onboarding or run on demand from the Task Manager.',
+          'Job reports include a seed titles section showing exactly which history titles were matched and used.',
+        ],
+      },
+      {
+        title: 'Netflix Watch History CSV Import',
+        bullets: [
+          'Upload a Netflix viewing-history CSV to import watched titles into Immaculaterr.',
+          'Titles are classified via TMDB and used as seeds for similar and change-of-taste recommendation generation.',
+          'Results sync to per-user Plex collections just like the Plex history import.',
+          'Available during onboarding and as a standalone task in the Task Manager.',
+        ],
+      },
+      {
+        title: 'Watched-status-aware collection ordering',
+        bullets: [
+          'Collection items you have already watched are pushed to the end so unwatched titles surface first.',
+          'Remaining items are sorted into TMDB rating tiers with a shuffle inside each tier for variety.',
+          'Recent-release titles get a dedicated slot near the top of collections.',
+          'Ordering logic is shared across Immaculate Taste refresher, Observatory, collection resync, and watched-collections refresher.',
+        ],
+      },
+      {
+        title: 'Global job queue with cooldown',
+        bullets: [
+          'All jobs now execute through a single global lock instead of per-job locking.',
+          'A 5-minute cooldown between consecutive jobs prevents rapid-fire Plex API calls.',
+          'Queued jobs wait their turn and are drained automatically once the cooldown expires.',
+        ],
+      },
+      {
+        title: 'Report enhancements and bug fixes',
+        bullets: [
+          'Job reports now include a "Seed Titles" section listing every movie and TV show used as a recommendation seed.',
+          'Fixed a bug where Plex history import collections were incorrectly named "Netflix Import" instead of "Plex History".',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.5',
     popupHighlights: [
       'Recommendations now respect each profile\'s genre and language rules so unrelated titles are filtered before scoring.',

@@ -278,6 +278,22 @@ function getProgressPlan(jobId: string): ProgressPlan | null {
     };
   }
 
+  // Plex history import: fetch → recommendations → aggregation → collections
+  if (id === 'importPlexHistory') {
+    return {
+      total: 4,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'phase0_fetch') return 1;
+        if (stepId === 'phase2_recommendations') return 2;
+        if (stepId === 'phase3_aggregation') return 3;
+        if (stepId === 'phase4_collections') return 4;
+        if (stepId === 'done' || stepId === 'failed') return 4;
+        return null;
+      },
+    };
+  }
+
   // Immaculate Taste points job: dataset → recs → Plex
   if (id === 'immaculateTastePoints') {
     return {
@@ -344,7 +360,8 @@ export function JobRunDetailPage() {
   const shouldSortFactItems =
     run?.jobId === 'watchedMovieRecommendations' ||
     run?.jobId === 'immaculateTastePoints' ||
-    run?.jobId === 'importNetflixHistory';
+    run?.jobId === 'importNetflixHistory' ||
+    run?.jobId === 'importPlexHistory';
 
   // The progress bar is a live "while you watch" indicator. Hide it shortly after completion so
   // old reports don't show a permanent "Completed" bar.

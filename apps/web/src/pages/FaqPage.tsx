@@ -7,6 +7,7 @@ import {
   Clock,
   CircleAlert,
   Film,
+  History,
   MonitorPlay,
   RotateCcw,
   Search,
@@ -1024,6 +1025,166 @@ export const FaqPage = () => {
               anything a user has already watched. If you prefer manual control, leave the schedule off
               and use <span className="font-semibold text-white/85">Run now</span> after big library
               updates.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-import-plex-history',
+      title: 'Plex Watch History Import',
+      items: [
+        {
+          id: 'task-manager-import-plex-what-does',
+          question: 'What does Plex Watch History Import do?',
+          answer: (
+            <>
+              <p>
+                It scans your Plex server&apos;s watched history and feeds it into the same
+                recommendation pipeline as your normal Plex-triggered activity. The import runs
+                through a multi-phase pipeline:
+              </p>
+              <ol className="mt-3 space-y-1.5 list-decimal list-inside text-white/60">
+                <li>
+                  <span className="font-semibold text-white/85">Fetch</span> — watched movies and
+                  TV shows are retrieved from your Plex server library sections.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Classification</span> — each title
+                  is looked up via TMDB and classified as a movie or TV show.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Recommendation generation</span> —
+                  for each classified title (up to 50 per run), similar and change-of-taste
+                  recommendations are generated using the same engine as Plex-triggered flows.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Aggregation</span> — all generated
+                  recommendations are merged, deduplicated by TMDB ID, and capped to the configured
+                  collection limit.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Plex History collections</span> —
+                  aggregated results are written to dedicated Plex History Picks and Plex History:
+                  Change of Taste Plex collections.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Recently Watched / Change of Taste sync
+                  </span>{' '}
+                  — the same recommendations are additively injected into the standard Based on your
+                  recently watched and Change of Taste collections, preserving any existing rows from
+                  Plex-triggered runs.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Immaculate Taste sync</span> — the
+                  Immaculate Taste points system is updated so your full watch history influences the
+                  long-lived taste profile. The next Immaculate Taste Refresher run rebuilds the Plex
+                  collection with this data included.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Plex collection rebuild</span> —
+                  all affected Plex collections are rebuilt, reordered, and pinned.
+                </li>
+              </ol>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-import-plex-collections',
+          question: 'What Plex collections does the import affect?',
+          answer: (
+            <>
+              <p>The import touches several collection families:</p>
+              <ul className="mt-3 space-y-1.5 list-disc list-inside text-white/60">
+                <li>
+                  <span className="font-semibold text-white/85">Plex History Picks</span> and{' '}
+                  <span className="font-semibold text-white/85">
+                    Plex History: Change of Taste
+                  </span>{' '}
+                  — dedicated Plex history collections that are fully replaced each run.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Based on your recently watched Movie/Show
+                  </span>{' '}
+                  — Plex history recommendations are merged in additively alongside your existing
+                  Plex-triggered rows.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Change of Movie/Show Taste
+                  </span>{' '}
+                  — same additive merge for change-of-taste recommendations.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Immaculate Taste</span> — the
+                  points dataset is updated in the background. The visible Plex collection rebuilds
+                  on the next Immaculate Taste Refresher run (scheduled or manual).
+                </li>
+              </ul>
+              <p className="mt-3">
+                Additive means existing rows from Plex-triggered runs are preserved — only genuinely
+                new recommendations are inserted.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-import-plex-rerun',
+          question: 'What happens if I run it again?',
+          answer: (
+            <p>
+              Titles that were already imported are skipped automatically. Only genuinely new titles
+              from your Plex watch history are processed. The report shows exactly which seed titles
+              were used for recommendations.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-import-plex-seed-cap',
+          question: 'What happens if I have more than 50 watched titles?',
+          answer: (
+            <p>
+              Each run processes up to 50 unique classified titles. If your history contains more,
+              the remaining titles stay as pending entries in the database. Run the import again from
+              Task Manager to process the next batch. Already-processed titles are skipped
+              automatically.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-import-plex-global-lock',
+          question: 'Why are other tasks blocked while the import is running?',
+          answer: (
+            <p>
+              The import follows the same one-at-a-time task queue as every other job. Because it
+              makes many TMDB API calls and generates recommendations for every seed, it can take
+              longer than most tasks. While it runs, other tasks queue as{' '}
+              <span className="font-semibold text-white/85">Pending</span> and auto-start once the
+              import finishes and the 5-minute cooldown expires.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-import-plex-manual-only',
+          question: 'Can this task run automatically?',
+          answer: (
+            <p>
+              No. Plex Watch History Import is manual-only — you must trigger it from the Task
+              Manager card or opt in during onboarding. There is no schedule or Plex-triggered
+              auto-run for this task.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-import-plex-seed-titles',
+          question: 'How do I see which titles were used as seeds?',
+          answer: (
+            <p>
+              Open the job report after a run — it includes a Seed Titles section listing every
+              movie and TV show from your watch history that was matched via TMDB and used as a
+              recommendation seed.
             </p>
           ),
         },
@@ -2563,6 +2724,8 @@ export const FaqPage = () => {
       'Off-peak refreshes for latest-watched recommendation rows.',
     'task-manager-fresh-out-of-the-oven':
       'Recent-release movie rows filtered per Plex user by what they have already watched.',
+    'task-manager-import-plex-history':
+      'Scan your Plex watched history to seed recommendations and build dedicated collections.',
     'task-manager-import-netflix-history':
       'Upload a Netflix CSV to seed recommendations from your external watch history.',
     recommendations: 'Seeds, generated lists, and how recommendation rows refresh over time.',
@@ -2631,6 +2794,10 @@ export const FaqPage = () => {
     'task-manager-fresh-out-of-the-oven': {
       icon: (className) => <Film className={className} />,
       toneClass: 'text-orange-200',
+    },
+    'task-manager-import-plex-history': {
+      icon: (className) => <History className={className} />,
+      toneClass: 'text-amber-200',
     },
     'task-manager-import-netflix-history': {
       icon: (className) => <Upload className={className} />,
