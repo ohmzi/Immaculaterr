@@ -25,5 +25,6 @@ import { ImportService } from './import.service';
   providers: [ImportService],
   exports: [ImportService],
 })
-// skipcq - NestJS module classes are intentionally empty metadata containers.
-export class ImportModule {}
+export class ImportModule {
+  static readonly moduleId = 'ImportModule';
+}
