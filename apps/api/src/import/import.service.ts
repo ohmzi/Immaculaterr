@@ -1361,7 +1361,7 @@ export class ImportService {
 
   private buildReport(params: {
     ctx: JobContext;
-    source: string;
+    source: ImportSource;
     pendingCount: number;
     movieCount: number;
     tvCount: number;
