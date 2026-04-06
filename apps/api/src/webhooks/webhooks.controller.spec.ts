@@ -3,10 +3,14 @@ import { WebhooksController } from './webhooks.controller';
 describe('WebhooksController user monitoring exclusion', () => {
   function makeController() {
     const webhooksService = {
+      isDuplicatePayload: jest.fn().mockReturnValue(false),
       persistPlexWebhookEvent: jest.fn(),
       logPlexWebhookSummary: jest.fn(),
       logPlexWebhookAutomation: jest.fn(),
       logPlexUserMonitoringSkipped: jest.fn(),
+    };
+    const webhookSecret = {
+      getSecret: jest.fn().mockReturnValue(''),
     };
     const jobsService = {
       runJob: jest.fn(),
@@ -26,6 +30,7 @@ describe('WebhooksController user monitoring exclusion', () => {
 
     const controller = new WebhooksController(
       webhooksService as never,
+      webhookSecret as never,
       jobsService as never,
       authService as never,
       settingsService as never,

@@ -64,9 +64,10 @@ describe('security/auth credential envelope', () => {
     process.env.AUTH_CREDENTIALS_PRIVATE_KEY = originalPrivateKey;
   });
 
-  it('decrypts valid credential envelopes', () => {
+  it('decrypts valid credential envelopes', async () => {
     delete process.env.AUTH_CREDENTIALS_PRIVATE_KEY;
     const service = new CredentialEnvelopeService();
+    await service.onModuleInit();
     const key = service.getLoginKey();
 
     const envelope = makeEnvelope({
@@ -80,9 +81,10 @@ describe('security/auth credential envelope', () => {
     expect(creds).toEqual({ username: 'admin', password: 'super-secret' });
   });
 
-  it('rejects wrong key id', () => {
+  it('rejects wrong key id', async () => {
     delete process.env.AUTH_CREDENTIALS_PRIVATE_KEY;
     const service = new CredentialEnvelopeService();
+    await service.onModuleInit();
     const key = service.getLoginKey();
 
     const envelope = makeEnvelope({

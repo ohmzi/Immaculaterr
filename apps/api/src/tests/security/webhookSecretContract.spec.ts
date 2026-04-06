@@ -11,12 +11,16 @@ describe('security/webhook secret contract', () => {
 
   function makeController() {
     const webhooksService = {
+      isDuplicatePayload: jest.fn().mockReturnValue(false),
       persistPlexWebhookEvent: jest
         .fn()
         .mockResolvedValue({ path: '/tmp/webhook.json' }),
       logPlexWebhookSummary: jest.fn(),
       logPlexWebhookAutomation: jest.fn(),
       logPlexUserMonitoringSkipped: jest.fn(),
+    };
+    const webhookSecret = {
+      getSecret: jest.fn(() => process.env.PLEX_WEBHOOK_SECRET?.trim() ?? ''),
     };
     const jobsService = { runJob: jest.fn() };
     const authService = {
@@ -28,6 +32,7 @@ describe('security/webhook secret contract', () => {
 
     return new WebhooksController(
       webhooksService as never,
+      webhookSecret as never,
       jobsService as never,
       authService as never,
       settingsService as never,
