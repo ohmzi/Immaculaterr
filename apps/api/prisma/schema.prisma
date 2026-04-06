@@ -34,6 +34,7 @@ model User {
   rejectedSuggestions RejectedSuggestion[]
   arrInstances        ArrInstance[]
   immaculateTasteProfiles ImmaculateTasteProfile[]
+  importedWatchEntries ImportedWatchEntry[]
 }
 
 model Session {
@@ -568,6 +569,30 @@ model WatchedShowRecommendationLibrary {
   @@index([plexUserId, librarySectionKey, collectionName, tmdbVoteAvg])
   @@index([plexUserId, librarySectionKey, collectionName, downloadApproval])
   @@index([plexUserId, librarySectionKey, collectionName, sentToSonarrAt])
+}
+
+model ImportedWatchEntry {
+  id          String    @id @default(cuid())
+  userId      String
+  source      String
+  rawTitle    String
+  parsedTitle String
+  watchedAt   DateTime?
+
+  mediaType    String?
+  tmdbId       Int?
+  tvdbId       Int?
+  matchedTitle String?
+  status       String   @default("pending")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, parsedTitle])
+  @@index([userId, source])
+  @@index([userId, status])
 }
 
 // Legacy table preserved by historical migrations (not used by Prisma Client).

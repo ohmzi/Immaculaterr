@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Globe,
   Key,
+  FileUp,
   Loader2,
   Server,
   ShieldCheck,
@@ -34,6 +35,7 @@ import { createPlexPin, checkPlexPin } from '@/api/plex';
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RadarrLogo, SeerrLogo, SonarrLogo } from '@/components/ArrLogos';
+import { NetflixImportUpload } from '@/components/NetflixImportUpload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -49,6 +51,7 @@ type WizardStep =
   | 'seerr'
   | 'google'
   | 'openai'
+  | 'importHistory'
   | 'complete';
 
 const STEP_ORDER: WizardStep[] = [
@@ -62,6 +65,7 @@ const STEP_ORDER: WizardStep[] = [
   'seerr',
   'google',
   'openai',
+  'importHistory',
   'complete',
 ];
 
@@ -92,6 +96,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     'seerr',
     'google',
     'openai',
+    'importHistory',
   ];
 
   // Restore wizard progress from localStorage if available
@@ -1801,6 +1806,65 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                   />
                 </div>
               </div>
+            </WizardSection>
+          </WizardShell>
+        );
+
+      case 'importHistory':
+        return (
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-red-400">Import</span> Watch History
+              </>
+            }
+            subtitle="Optional: upload your Netflix viewing history to kickstart recommendations."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={handleNext}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  Continue <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 ring-1 ring-red-500/20">
+                  <FileUp className="h-5 w-5 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">
+                    Netflix CSV Upload
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    Export from netflix.com/account/getmyinfo
+                  </p>
+                </div>
+              </div>
+              <NetflixImportUpload />
             </WizardSection>
           </WizardShell>
         );

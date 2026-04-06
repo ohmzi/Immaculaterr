@@ -28,6 +28,7 @@ import { ObservatoryModule } from './observatory/observatory.module';
 import { API_STATIC_EXCLUDE_PATH } from './app.constants';
 import { ArrInstanceModule } from './arr-instances/arr-instance.module';
 import { ImmaculateTasteProfileModule } from './immaculate-taste-profiles/immaculate-taste-profile.module';
+import { ImportModule } from './import/import.module';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
 const staticImports = existsSync(webDistPath)
@@ -65,6 +66,7 @@ const staticImports = existsSync(webDistPath)
     TmdbModule,
     OpenAiModule,
     SeerrModule,
+    ImportModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DbModule } from '../db/db.module';
 import { PlexModule } from '../plex/plex.module';
@@ -29,6 +29,8 @@ import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
 import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immaculate-taste-profile.module';
 import { FreshOutOfTheOvenJob } from './fresh-out-of-the-oven.job';
 import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
+import { ImportNetflixHistoryJob } from './import-netflix-history.job';
+import { ImportModule } from '../import/import.module';
 
 @Module({
   imports: [
@@ -44,6 +46,7 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
     ImmaculateTasteProfileModule,
     ImmaculateTasteCollectionModule,
     WatchedMovieRecommendationsModule,
+    forwardRef(() => ImportModule),
     ScheduleModule.forRoot(),
   ],
   controllers: [JobsController],
@@ -63,6 +66,7 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
     FreshOutOfTheOvenJob,
     CollectionResyncUpgradeJob,
     TmdbUpcomingMoviesJob,
+    ImportNetflixHistoryJob,
     CollectionResyncUpgradeService,
   ],
   exports: [JobsService],

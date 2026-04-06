@@ -386,6 +386,30 @@ export const FaqPage = () => {
             </>
           ),
         },
+        {
+          id: 'task-manager-queue-and-cooldown',
+          question: "Why don't tasks run at the same time?",
+          answer: (
+            <>
+              <p>
+                Tasks are intentionally serialized — only one task runs at a time. This prevents
+                multiple jobs from hitting Plex and other external services simultaneously, which can
+                cause errors or rate-limiting.
+              </p>
+              <p>
+                After a task finishes, there is a{' '}
+                <span className="font-semibold text-white/85">5-minute cooldown</span> before the
+                next queued task starts. This gives external services time to recover between jobs.
+              </p>
+              <p>
+                If a task is requested while another is already running or the cooldown is active, it
+                is automatically queued as{' '}
+                <span className="font-semibold text-white/85">Pending</span>. Pending tasks
+                auto-start in order once the cooldown expires — no manual action is needed.
+              </p>
+            </>
+          ),
+        },
       ],
     },
     {
@@ -1000,6 +1024,159 @@ export const FaqPage = () => {
               anything a user has already watched. If you prefer manual control, leave the schedule off
               and use <span className="font-semibold text-white/85">Run now</span> after big library
               updates.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-import-netflix-history',
+      title: 'Netflix Watch History Import',
+      items: [
+        {
+          id: 'task-manager-import-netflix-what-does',
+          question: 'What does Netflix Watch History Import do?',
+          answer: (
+            <>
+              <p>
+                It lets you upload a Netflix viewing-history CSV so that your external watch history
+                feeds into the same recommendation pipeline as your Plex activity. The import runs
+                through a multi-phase pipeline:
+              </p>
+              <ol className="mt-3 space-y-1.5 list-decimal list-inside text-white/60">
+                <li>
+                  <span className="font-semibold text-white/85">Classification</span> — each Netflix
+                  title is looked up via TMDB and classified as a movie or TV show.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Recommendation generation</span> — for
+                  each classified title (up to 50 per run), similar and change-of-taste recommendations
+                  are generated using the same engine as Plex-triggered flows.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Aggregation</span> — all generated
+                  recommendations are merged, deduplicated by TMDB ID, and capped to the configured
+                  collection limit.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Netflix collections</span> — aggregated
+                  results are written to dedicated Netflix Import Picks and Netflix Import: Change of
+                  Taste Plex collections.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Recently Watched / Change of Taste sync</span>{' '}
+                  — the same recommendations are additively injected into the standard Based on your
+                  recently watched and Change of Taste collections, preserving any existing rows from
+                  Plex-triggered runs.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Immaculate Taste sync</span> — the
+                  Immaculate Taste points system is updated so your Netflix history influences the
+                  long-lived taste profile. The next Immaculate Taste Refresher run rebuilds the Plex
+                  collection with this data included.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Plex collection rebuild</span> — all
+                  affected Plex collections are rebuilt, reordered, and pinned.
+                </li>
+              </ol>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-import-netflix-how-csv',
+          question: 'Where do I get the Netflix CSV file?',
+          answer: (
+            <>
+              <p>
+                Log in to Netflix on a browser, go to{' '}
+                <span className="font-semibold text-white/85">Account → Profile → Viewing Activity</span>,
+                then click <span className="font-semibold text-white/85">Download All</span> at the bottom
+                of the page. You will receive a CSV with two columns:{' '}
+                <span className="text-white/85">Title</span> and{' '}
+                <span className="text-white/85">Date</span>.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-import-netflix-collections',
+          question: 'What Plex collections does the import affect?',
+          answer: (
+            <>
+              <p>The import touches several collection families:</p>
+              <ul className="mt-3 space-y-1.5 list-disc list-inside text-white/60">
+                <li>
+                  <span className="font-semibold text-white/85">Netflix Import Picks</span> and{' '}
+                  <span className="font-semibold text-white/85">Netflix Import: Change of Taste</span>{' '}
+                  — dedicated Netflix collections that are fully replaced each run.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Based on your recently watched Movie/Show</span>{' '}
+                  — Netflix recommendations are merged in additively alongside your existing
+                  Plex-triggered rows.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Change of Movie/Show Taste</span>{' '}
+                  — same additive merge for change-of-taste recommendations.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Immaculate Taste</span>{' '}
+                  — the points dataset is updated in the background. The visible Plex collection
+                  rebuilds on the next Immaculate Taste Refresher run (scheduled or manual).
+                </li>
+              </ul>
+              <p className="mt-3">
+                Additive means existing rows from Plex-triggered runs are preserved — only genuinely
+                new recommendations are inserted.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-import-netflix-reupload',
+          question: 'What happens if I upload the same file again?',
+          answer: (
+            <p>
+              Titles that were already imported are skipped automatically. Only genuinely new titles
+              are inserted as pending entries and processed. The response tells you exactly how many
+              were new vs already imported, and no job is enqueued if nothing is new.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-import-netflix-seed-cap',
+          question: 'What happens if I have more than 50 Netflix titles?',
+          answer: (
+            <p>
+              Each run processes up to 50 unique classified titles. If your CSV contains more, the
+              remaining titles stay as pending entries in the database. Re-upload or run the import
+              again from Task Manager to process the next batch. Already-processed titles are skipped
+              automatically, so you can safely re-upload the same file.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-import-netflix-global-lock',
+          question: 'Why are other tasks blocked while the import is running?',
+          answer: (
+            <p>
+              The import follows the same one-at-a-time task queue as every other job. Because it
+              makes many TMDB API calls and generates recommendations for every seed, it can take
+              longer than most tasks. While it runs, other tasks queue as{' '}
+              <span className="font-semibold text-white/85">Pending</span> and auto-start once
+              the import finishes and the 5-minute cooldown expires.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-import-netflix-manual-only',
+          question: 'Can this task run automatically?',
+          answer: (
+            <p>
+              No. Netflix Watch History Import is manual-only — you must upload a CSV each time via
+              the wizard during onboarding or from the Task Manager card. There is no schedule or
+              Plex-triggered auto-run for this task.
             </p>
           ),
         },
@@ -2386,6 +2563,8 @@ export const FaqPage = () => {
       'Off-peak refreshes for latest-watched recommendation rows.',
     'task-manager-fresh-out-of-the-oven':
       'Recent-release movie rows filtered per Plex user by what they have already watched.',
+    'task-manager-import-netflix-history':
+      'Upload a Netflix CSV to seed recommendations from your external watch history.',
     recommendations: 'Seeds, generated lists, and how recommendation rows refresh over time.',
     'plex-library-selection': 'Which Plex libraries can participate in manual and automatic runs.',
     'plex-user-monitoring': 'How viewer-specific datasets, monitoring, and row pinning work.',
@@ -2452,6 +2631,10 @@ export const FaqPage = () => {
     'task-manager-fresh-out-of-the-oven': {
       icon: (className) => <Film className={className} />,
       toneClass: 'text-orange-200',
+    },
+    'task-manager-import-netflix-history': {
+      icon: (className) => <Upload className={className} />,
+      toneClass: 'text-red-200',
     },
     recommendations: {
       icon: (className) => <Film className={className} />,

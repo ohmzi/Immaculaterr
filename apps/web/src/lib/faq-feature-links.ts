@@ -32,6 +32,7 @@ export const FAQ_SECTION_BY_TASK_MANAGER_CARD_ID = {
   watchedMovieRecommendations: 'task-manager-based-on-latest-watched-collection',
   recentlyWatchedRefresher: 'task-manager-based-on-latest-watched-refresher',
   freshOutOfTheOven: 'task-manager-fresh-out-of-the-oven',
+  importNetflixHistory: 'task-manager-import-netflix-history',
 } as const;
 
 export type TaskManagerFeatureCardId = keyof typeof FAQ_SECTION_BY_TASK_MANAGER_CARD_ID;
