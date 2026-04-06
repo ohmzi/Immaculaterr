@@ -1576,8 +1576,8 @@ export class PlexServerService {
     const seenTmdbIds = new Set<number>();
 
     for (const item of items) {
-      const viewCount = PlexServerService.parseIntField(item.viewCount);
-      const lastViewedAt = PlexServerService.parseIntField(item.lastViewedAt);
+      const viewCount = this.parseIntField(item.viewCount);
+      const lastViewedAt = this.parseIntField(item.lastViewedAt);
       if (
         (!Number.isFinite(viewCount) || viewCount <= 0) &&
         (!Number.isFinite(lastViewedAt) || lastViewedAt <= 0)
@@ -1635,8 +1635,8 @@ export class PlexServerService {
     const seenTmdbIds = new Set<number>();
 
     for (const item of items) {
-      const viewCount = PlexServerService.parseIntField(item.viewCount);
-      const lastViewedAt = PlexServerService.parseIntField(item.lastViewedAt);
+      const viewCount = this.parseIntField(item.viewCount);
+      const lastViewedAt = this.parseIntField(item.lastViewedAt);
       if (
         (!Number.isFinite(viewCount) || viewCount <= 0) &&
         (!Number.isFinite(lastViewedAt) || lastViewedAt <= 0)
@@ -1667,7 +1667,7 @@ export class PlexServerService {
     return results;
   }
 
-  private static parseIntField(raw: unknown): number {
+  private parseIntField(raw: unknown): number {
     if (typeof raw === 'number') return raw;
     if (typeof raw === 'string' && raw.trim())
       return Number.parseInt(raw.trim(), 10);

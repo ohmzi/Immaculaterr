@@ -21,18 +21,18 @@ export function shuffleInPlace<T>(arr: T[]): T[] {
   return arr;
 }
 
-function utcCalendarKeyFromDate(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function utcCalendarKeyFromDate(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function addCalendarMonthsUtc(base: Date, deltaMonths: number): Date {
-  const year = base.getUTCFullYear();
-  const month = base.getUTCMonth() + deltaMonths;
-  const day = base.getUTCDate();
-  return new Date(Date.UTC(year, month, day));
+  const y = base.getUTCFullYear();
+  const m = base.getUTCMonth() + deltaMonths;
+  const d = base.getUTCDate();
+  return new Date(Date.UTC(y, m, d));
 }
 
 export function toReleaseCalendarKey(
@@ -60,11 +60,11 @@ export function tmdbCalendarDateStringToDate(
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  const year = Number(trimmed.slice(0, 4));
-  const month = Number(trimmed.slice(5, 7));
-  const day = Number(trimmed.slice(8, 10));
-  if (![year, month, day].every((n) => Number.isFinite(n))) return null;
-  const dt = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const y = Number(trimmed.slice(0, 4));
+  const m = Number(trimmed.slice(5, 7));
+  const d = Number(trimmed.slice(8, 10));
+  if (![y, m, d].every((n) => Number.isFinite(n))) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
   return Number.isFinite(dt.getTime()) ? dt : null;
 }
 
