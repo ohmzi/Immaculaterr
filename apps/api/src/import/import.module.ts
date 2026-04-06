@@ -26,5 +26,5 @@ import { ImportService } from './import.service';
   exports: [ImportService],
 })
 export class ImportModule {
-  static readonly moduleId = 'ImportModule';
+  readonly moduleId = 'ImportModule';
 }
