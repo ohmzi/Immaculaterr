@@ -38,6 +38,13 @@ Major Features Include
   - Seamlessly organizes your media collection and sends movies/series directly to ARR downloaders when Seerr mode is off.
 - **Observatory**:
   - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
+- **Netflix Watch History Import**:
+  - Upload your Netflix viewing activity CSV to classify titles via TMDB, generate recommendations, and write curated Plex collections.
+  - Seed recommendations from day one without waiting for Plex watch events to accumulate.
+- **Plex Watch History Import**:
+  - Opt in during setup or trigger manually from Task Manager to scan your existing Plex watch history.
+  - Watched movies and TV shows are matched to TMDB automatically (no CSV needed), then fed into the recommendation pipeline to build curated Plex collections.
+  - Cross-source dedup ensures titles already processed by Netflix import are not duplicated.
 - **Job reports & logs**:
   - Step-by-step breakdowns, metrics tables, and run history.
 - **More features on the way:**

@@ -101,6 +101,15 @@
   - Preview and manage them from Command Center
   - Posters are stored so they survive restarts and updates
 
+- **Netflix Watch History Import**
+  - Upload your Netflix viewing activity CSV and Immaculaterr classifies each title via TMDB, generates similar and change-of-taste recommendations, and writes the results into Plex collections
+  - Seed recommendations from day one without waiting for Plex watch events to accumulate
+
+- **Plex Watch History Import**
+  - Opt in during setup or trigger manually from Task Manager to scan your existing Plex watch history
+  - Already-watched movies and TV shows are matched to TMDB automatically (no CSV needed), then the same recommendation pipeline builds curated Plex collections from your viewing history
+  - Works alongside Netflix import — titles processed by one source are not duplicated by the other
+
 - **Keeps a full report of every run**
   Every job includes step-by-step logs, metrics, and history so you can see what ran, what was skipped, and why.
 
