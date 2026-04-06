@@ -18,6 +18,7 @@ import {
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexService } from '../plex/plex.service';
+import { buildCollectionOrder } from '../collection-ordering.utils';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import type { JobReportTask, JobReportV1 } from './job-report-v1';
@@ -1946,8 +1947,18 @@ export class CollectionResyncUpgradeJob {
           librarySectionKey: item.librarySectionKey,
           minPoints: 1,
         });
-        for (const row of active) {
-          const mapped = movieMap.get(row.tmdbId);
+        const orderedMovieIds = buildCollectionOrder({
+          items: active
+            .filter((row) => movieMap.has(row.tmdbId))
+            .map((row) => ({
+              id: row.tmdbId,
+              tmdbVoteAvg: row.tmdbVoteAvg ?? null,
+              tmdbVoteCount: row.tmdbVoteCount ?? null,
+              releaseDate: row.releaseDate ?? null,
+            })),
+        });
+        for (const id of orderedMovieIds) {
+          const mapped = movieMap.get(id);
           if (!mapped) continue;
           if (seen.has(mapped.ratingKey)) continue;
           seen.add(mapped.ratingKey);
@@ -2038,8 +2049,18 @@ export class CollectionResyncUpgradeJob {
         librarySectionKey: item.librarySectionKey,
         minPoints: 1,
       });
-      for (const row of active) {
-        const mapped = tvMap.get(row.tvdbId);
+      const orderedShowIds = buildCollectionOrder({
+        items: active
+          .filter((row) => tvMap.has(row.tvdbId))
+          .map((row) => ({
+            id: row.tvdbId,
+            tmdbVoteAvg: row.tmdbVoteAvg ?? null,
+            tmdbVoteCount: row.tmdbVoteCount ?? null,
+            releaseDate: row.firstAirDate ?? null,
+          })),
+      });
+      for (const id of orderedShowIds) {
+        const mapped = tvMap.get(id);
         if (!mapped) continue;
         if (seen.has(mapped.ratingKey)) continue;
         seen.add(mapped.ratingKey);

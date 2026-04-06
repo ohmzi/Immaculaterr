@@ -140,54 +140,10 @@ const getReportHeadline = (run: JobRun): string => {
   return headline ? decodeHtmlEntities(headline) : '';
 };
 
-const truncateTitle = (value: string, max: number): string => {
-  if (value.length <= max) return value;
-  return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
-};
-
-const toConciseHeadline = (headline: string): string => {
-  const withoutProfile = headline
-    .replace(/\s+using profile\s+"[^"]+"\.?$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const normalized = withoutProfile.endsWith('.')
-    ? withoutProfile.slice(0, -1).trimEnd()
-    : withoutProfile;
-  return truncateTitle(normalized, 88);
-};
-
 const getRunDisplayTitle = (
   run: JobRun,
   jobNameById: Map<string, string>,
 ): string => {
-  const headline = getReportHeadline(run);
-  if (run.jobId === 'immaculateTastePoints') {
-    const summary = run.summary;
-    const obj =
-      summary && typeof summary === 'object' && !Array.isArray(summary)
-        ? (summary as Record<string, unknown>)
-        : null;
-    const raw =
-      obj?.template === 'jobReportV1' && isPlainObject(obj.raw)
-        ? (obj.raw as Record<string, unknown>)
-        : obj;
-    const seedTitleRaw = raw ? raw.seedTitle : null;
-    const mediaTypeRaw = raw ? raw.mediaType : null;
-    const skipped = raw?.skipped === true;
-    const seedTitle =
-      typeof seedTitleRaw === 'string'
-        ? decodeHtmlEntities(seedTitleRaw.trim())
-        : '';
-    const mediaType =
-      typeof mediaTypeRaw === 'string' ? mediaTypeRaw.trim().toLowerCase() : '';
-    const prefix = mediaType === 'tv' ? 'Immaculate Taste (TV)' : 'Immaculate Taste';
-    if (seedTitle) return `${prefix}: ${seedTitle}${skipped ? ' (ignored)' : ''}`;
-    return skipped ? `${prefix} (ignored)` : prefix;
-  }
-  if (run.jobId === 'tmdbUpcomingMovies') {
-    return jobNameById.get(run.jobId) ?? run.jobId;
-  }
-  if (headline) return toConciseHeadline(headline);
   return jobNameById.get(run.jobId) ?? run.jobId;
 };
 

@@ -290,6 +290,14 @@ const CREATE_FRESH_RELEASE_MOVIE_LIBRARY_RELEASE_DATE_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "FreshReleaseMovieLibrary_librarySectionKey_releaseDate_idx" ON "FreshReleaseMovieLibrary"("librarySectionKey", "releaseDate")';
 const CREATE_FRESH_RELEASE_MOVIE_LIBRARY_LAST_CHECKED_AT_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "FreshReleaseMovieLibrary_librarySectionKey_lastCheckedAt_idx" ON "FreshReleaseMovieLibrary"("librarySectionKey", "lastCheckedAt")';
+const ADD_WATCHED_MOVIE_RECOMMENDATION_LIBRARY_RELEASE_DATE_COLUMN_SQL =
+  'ALTER TABLE "WatchedMovieRecommendationLibrary" ADD COLUMN "releaseDate" DATETIME';
+const CREATE_WATCHED_MOVIE_RECOMMENDATION_LIBRARY_RELEASE_DATE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "WatchedMovieRecommendationLibrary_releaseDate_idx" ON "WatchedMovieRecommendationLibrary"("releaseDate")';
+const ADD_WATCHED_SHOW_RECOMMENDATION_LIBRARY_FIRST_AIR_DATE_COLUMN_SQL =
+  'ALTER TABLE "WatchedShowRecommendationLibrary" ADD COLUMN "firstAirDate" DATETIME';
+const CREATE_WATCHED_SHOW_RECOMMENDATION_LIBRARY_FIRST_AIR_DATE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "WatchedShowRecommendationLibrary_firstAirDate_idx" ON "WatchedShowRecommendationLibrary"("firstAirDate")';
 
 type TableInfoRow = {
   name: string;
@@ -891,6 +899,36 @@ async function ensureImmaculateTasteProfileSchema(
   );
 }
 
+async function ensureWatchedRecommendationReleaseDateColumns(
+  prisma: PrismaClient,
+): Promise<void> {
+  const movieTable = 'WatchedMovieRecommendationLibrary';
+  if (await tableExists(prisma, movieTable)) {
+    const columns = await tableInfo(prisma, movieTable);
+    if (!hasColumn(columns, 'releaseDate')) {
+      await prisma.$executeRawUnsafe(
+        ADD_WATCHED_MOVIE_RECOMMENDATION_LIBRARY_RELEASE_DATE_COLUMN_SQL,
+      );
+    }
+    await prisma.$executeRawUnsafe(
+      CREATE_WATCHED_MOVIE_RECOMMENDATION_LIBRARY_RELEASE_DATE_INDEX_SQL,
+    );
+  }
+
+  const showTable = 'WatchedShowRecommendationLibrary';
+  if (await tableExists(prisma, showTable)) {
+    const columns = await tableInfo(prisma, showTable);
+    if (!hasColumn(columns, 'firstAirDate')) {
+      await prisma.$executeRawUnsafe(
+        ADD_WATCHED_SHOW_RECOMMENDATION_LIBRARY_FIRST_AIR_DATE_COLUMN_SQL,
+      );
+    }
+    await prisma.$executeRawUnsafe(
+      CREATE_WATCHED_SHOW_RECOMMENDATION_LIBRARY_FIRST_AIR_DATE_INDEX_SQL,
+    );
+  }
+}
+
 export async function main() {
   logRepair(`Using database target: ${describeDatabaseTarget()}`);
   const prisma = new PrismaClient();
@@ -908,6 +946,7 @@ export async function main() {
     await ensureImmaculateTasteProfileSchema(prisma);
     await ensureImmaculateTasteLibrarySchema(prisma);
     await ensureFreshReleaseMovieLibrarySchema(prisma);
+    await ensureWatchedRecommendationReleaseDateColumns(prisma);
   } finally {
     await prisma.$disconnect();
   }

@@ -384,6 +384,9 @@ export class FreshOutOfTheOvenJob {
                     librarySectionKey: section.key,
                     tmdbId: row.tmdbId,
                     title: row.title ?? undefined,
+                    releaseDate: row.releaseDate
+                      ? new Date(`${row.releaseDate}T00:00:00.000Z`)
+                      : undefined,
                     status: 'active',
                     tmdbVoteAvg: row.tmdbVoteAvg ?? undefined,
                     tmdbVoteCount: row.tmdbVoteCount ?? undefined,

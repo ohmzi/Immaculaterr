@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { buildCollectionOrder } from '../collection-ordering.utils';
 import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
@@ -40,16 +41,6 @@ function normalizeCollectionBaseNames(
     out.push(collectionName);
   }
   return out;
-}
-
-function shuffleInPlace<T>(arr: T[]) {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = tmp;
-  }
-  return arr;
 }
 
 @Injectable()
@@ -253,16 +244,27 @@ export class WatchedCollectionsRefresherService {
               librarySectionKey: sec.key,
               status: 'active',
             },
-            select: { tmdbId: true },
+            select: {
+              tmdbId: true,
+              tmdbVoteAvg: true,
+              tmdbVoteCount: true,
+              releaseDate: true,
+            },
           });
 
-        const activeTmdbIds = active
-          .map((a) => a.tmdbId)
-          .filter((id) => tmdbMap.has(id));
-        shuffleInPlace(activeTmdbIds);
+        const orderedIds = buildCollectionOrder({
+          items: active
+            .filter((a) => tmdbMap.has(a.tmdbId))
+            .map((a) => ({
+              id: a.tmdbId,
+              tmdbVoteAvg: a.tmdbVoteAvg ?? null,
+              tmdbVoteCount: a.tmdbVoteCount ?? null,
+              releaseDate: a.releaseDate ?? null,
+            })),
+        });
 
-        const desiredItems = activeTmdbIds
-          .slice(0, limit ?? activeTmdbIds.length)
+        const desiredItems = orderedIds
+          .slice(0, limit ?? orderedIds.length)
           .map((id) => tmdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
@@ -295,7 +297,7 @@ export class WatchedCollectionsRefresherService {
         perCollection.push({
           collectionName,
           activatedNow,
-          active: activeTmdbIds.length,
+          active: orderedIds.length,
           applying: desiredItems.length,
           desiredTitles: desiredItems.map((d) => d.title),
           plex,
@@ -401,16 +403,27 @@ export class WatchedCollectionsRefresherService {
               librarySectionKey: sec.key,
               status: 'active',
             },
-            select: { tvdbId: true },
+            select: {
+              tvdbId: true,
+              tmdbVoteAvg: true,
+              tmdbVoteCount: true,
+              firstAirDate: true,
+            },
           });
 
-        const activeTvdbIds = active
-          .map((a) => a.tvdbId)
-          .filter((id) => tvdbMap.has(id));
-        shuffleInPlace(activeTvdbIds);
+        const orderedIds = buildCollectionOrder({
+          items: active
+            .filter((a) => tvdbMap.has(a.tvdbId))
+            .map((a) => ({
+              id: a.tvdbId,
+              tmdbVoteAvg: a.tmdbVoteAvg ?? null,
+              tmdbVoteCount: a.tmdbVoteCount ?? null,
+              releaseDate: a.firstAirDate ?? null,
+            })),
+        });
 
-        const desiredItems = activeTvdbIds
-          .slice(0, limit ?? activeTvdbIds.length)
+        const desiredItems = orderedIds
+          .slice(0, limit ?? orderedIds.length)
           .map((id) => tvdbMap.get(id))
           .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
 
@@ -443,7 +456,7 @@ export class WatchedCollectionsRefresherService {
         perCollection.push({
           collectionName,
           activatedNow,
-          active: activeTvdbIds.length,
+          active: orderedIds.length,
           applying: desiredItems.length,
           desiredTitles: desiredItems.map((d) => d.title),
           plex,

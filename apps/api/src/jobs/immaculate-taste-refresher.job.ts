@@ -14,6 +14,7 @@ import {
 } from '../plex/plex-collections.utils';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
+import { PlexService } from '../plex/plex.service';
 import { PlexUsersService } from '../plex/plex-users.service';
 import { SettingsService } from '../settings/settings.service';
 import { ImmaculateTasteCollectionService } from '../immaculate-taste-collection/immaculate-taste-collection.service';
@@ -29,9 +30,9 @@ import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import { immaculateTasteResetMarkerKey } from '../immaculate-taste-collection/immaculate-taste-reset';
 import {
-  buildImmaculateCollectionOrder,
+  buildCollectionOrder,
   tmdbCalendarDateStringToDate,
-} from '../immaculate-taste-collection/immaculate-taste-ordering.utils';
+} from '../collection-ordering.utils';
 import {
   SWEEP_ORDER,
   hasExplicitRefresherScopeInput,
@@ -210,6 +211,7 @@ export class ImmaculateTasteRefresherJob {
     private readonly plexServer: PlexServerService,
     private readonly plexCurated: PlexCuratedCollectionsService,
     private readonly plexUsers: PlexUsersService,
+    private readonly plexService: PlexService,
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
     private readonly tmdb: TmdbService,
@@ -988,13 +990,34 @@ export class ImmaculateTasteRefresherJob {
         }
         tmdbBackfilledTotal += tmdbBackfilled;
 
-        const orderedTmdb = buildImmaculateCollectionOrder({
+        let movieWatchedIds: Set<number> | undefined;
+        try {
+          const userToken = await this.resolveUserPlexToken({
+            adminToken: plexToken,
+            plexUserId,
+            machineIdentifier,
+          });
+          if (userToken) {
+            const watchedTmdbIds =
+              await this.plexServer.listWatchedMovieTmdbIdsForSectionKey({
+                baseUrl: plexBaseUrl,
+                token: userToken,
+                librarySectionKey: sec.key,
+              });
+            movieWatchedIds = new Set(watchedTmdbIds);
+          }
+        } catch {
+          // Best-effort: fall back to ordering without watched data.
+        }
+
+        const orderedTmdb = buildCollectionOrder({
           items: activeRows.map((m) => ({
             id: m.tmdbId,
             tmdbVoteAvg: m.tmdbVoteAvg ?? null,
             tmdbVoteCount: m.tmdbVoteCount ?? null,
             releaseDate: m.releaseDate ?? null,
           })),
+          watchedIds: movieWatchedIds,
         });
 
         const desiredInLibrary = orderedTmdb
@@ -1459,8 +1482,29 @@ export class ImmaculateTasteRefresherJob {
             releaseDate: m.firstAirDate ?? null,
           }));
 
-        const orderedTvdb = buildImmaculateCollectionOrder({
+        let tvWatchedIds: Set<number> | undefined;
+        try {
+          const userToken = await this.resolveUserPlexToken({
+            adminToken: plexToken,
+            plexUserId,
+            machineIdentifier,
+          });
+          if (userToken) {
+            const watchedTvdbIds =
+              await this.plexServer.listWatchedShowTvdbIdsForSectionKey({
+                baseUrl: plexBaseUrl,
+                token: userToken,
+                librarySectionKey: sec.key,
+              });
+            tvWatchedIds = new Set(watchedTvdbIds);
+          }
+        } catch {
+          // Best-effort: fall back to ordering without watched data.
+        }
+
+        const orderedTvdb = buildCollectionOrder({
           items: candidates,
+          watchedIds: tvWatchedIds,
         });
 
         const desiredInLibrary = orderedTvdb
@@ -1958,6 +2002,50 @@ export class ImmaculateTasteRefresherJob {
       plexUserTitle: admin.plexAccountTitle,
       pinCollections: true,
     };
+  }
+
+  private async resolveUserPlexToken(params: {
+    adminToken: string;
+    plexUserId: string;
+    machineIdentifier: string;
+  }): Promise<string | null> {
+    const plexUser = await this.plexUsers
+      .getPlexUserById(params.plexUserId)
+      .catch(() => null);
+    if (!plexUser) return params.adminToken;
+    if (plexUser.isAdmin) return params.adminToken;
+
+    try {
+      const shared =
+        await this.plexService.listSharedUsersWithAccessTokensForServer({
+          plexToken: params.adminToken,
+          machineIdentifier: params.machineIdentifier,
+        });
+      const match = shared.find((u) => {
+        const accountId =
+          typeof u.plexAccountId === 'number' &&
+          Number.isFinite(u.plexAccountId)
+            ? u.plexAccountId
+            : null;
+        const title = String(u.plexAccountTitle ?? '')
+          .trim()
+          .toLowerCase();
+        const plexTitle = String(plexUser.plexAccountTitle ?? '')
+          .trim()
+          .toLowerCase();
+        if (
+          accountId !== null &&
+          plexUser.plexAccountId !== null &&
+          accountId === plexUser.plexAccountId
+        ) {
+          return true;
+        }
+        return title && plexTitle && title === plexTitle;
+      });
+      return match?.accessToken ?? params.adminToken;
+    } catch {
+      return params.adminToken;
+    }
   }
 }
 

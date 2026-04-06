@@ -79,8 +79,8 @@ export const WEBHOOKS_PLEX_CANONICAL_PREFIX = `${API_PREFIX_PATH}/webhooks/plex`
 
 export const PLEX_OAUTH_POLL_HEADER = 'x-immaculaterr-oauth-poll';
 
-/** Months behind "today" for Immaculate Taste collection ordering (recent-release slot). */
-export const IMMACULATE_TASTE_RECENT_RELEASE_MONTHS = 3;
+/** Months behind "today" for collection ordering (recent-release slot). */
+export const COLLECTION_RECENT_RELEASE_MONTHS = 3;
 export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';
 
 /** Maximum time a job run may stay in RUNNING before the watchdog marks it FAILED. */

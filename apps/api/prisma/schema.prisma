@@ -409,6 +409,8 @@ model WatchedMovieRecommendationLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  releaseDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToRadarrAt   DateTime?
@@ -429,6 +431,7 @@ model WatchedMovieRecommendationLibrary {
   @@index([plexUserId, librarySectionKey, collectionName, downloadApproval])
   @@index([plexUserId, librarySectionKey, collectionName, sentToRadarrAt])
   @@index([plexUserId, tmdbId])
+  @@index([releaseDate])
 }
 
 model FreshReleaseMovieLibrary {
@@ -549,6 +552,8 @@ model WatchedShowRecommendationLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  firstAirDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToSonarrAt   DateTime?
@@ -569,6 +574,7 @@ model WatchedShowRecommendationLibrary {
   @@index([plexUserId, librarySectionKey, collectionName, tmdbVoteAvg])
   @@index([plexUserId, librarySectionKey, collectionName, downloadApproval])
   @@index([plexUserId, librarySectionKey, collectionName, sentToSonarrAt])
+  @@index([firstAirDate])
 }
 
 model ImportedWatchEntry {
