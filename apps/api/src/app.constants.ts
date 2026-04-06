@@ -86,6 +86,9 @@ export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';
 /** Maximum time a job run may stay in RUNNING before the watchdog marks it FAILED. */
 export const JOB_RUN_TIMEOUT_MS = 30 * 60_000;
 
+/** Minimum delay between consecutive job executions to avoid hammering external APIs. */
+export const QUEUE_COOLDOWN_MS = 5 * 60_000;
+
 /** Cap for third-party HTTP response bodies in log output. */
 export const LOG_BODY_MAX_LENGTH = 200;
 

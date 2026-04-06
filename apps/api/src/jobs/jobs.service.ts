@@ -7,7 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { CronTime } from 'cron';
 import { PrismaService } from '../db/prisma.service';
-import { JOB_RUN_TIMEOUT_MS } from '../app.constants';
+import { JOB_RUN_TIMEOUT_MS, QUEUE_COOLDOWN_MS } from '../app.constants';
 import { errToMessage } from '../log.utils';
 import { findJobDefinition, JOB_DEFINITIONS } from './job-registry';
 import { JobsHandlers } from './jobs.handlers';
@@ -141,6 +141,8 @@ export class JobsService {
   private readonly logger = new Logger(JobsService.name);
   private readonly runningJobIds = new Set<string>();
   private readonly timedOutRunIds = new Set<string>();
+  private lastJobFinishedAt = 0;
+  private cooldownTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly UNSCHEDULABLE_JOB_IDS = new Set<string>([
     // Webhook/manual-input jobs (no schedule support)
     'mediaAddedCleanup',
@@ -148,6 +150,8 @@ export class JobsService {
     'watchedMovieRecommendations',
     // One-time startup migration (no schedule support)
     'collectionResyncUpgrade',
+    // Manual-only import job
+    'importNetflixHistory',
   ]);
 
   constructor(
@@ -204,6 +208,10 @@ export class JobsService {
     if (this.runningJobIds.has(jobId)) {
       throw new ConflictException(`Job already running: ${jobId}`);
     }
+    if (this.runningJobIds.size > 0 || this.isCooldownActive()) {
+      return await this.queueJob({ jobId, trigger, dryRun, userId, input });
+    }
+
     this.runningJobIds.add(jobId);
 
     const run = await this.prisma.jobRun
@@ -282,6 +290,11 @@ export class JobsService {
     const jobId = run.jobId;
     if (this.runningJobIds.has(jobId)) {
       throw new ConflictException(`Job already running: ${jobId}`);
+    }
+    if (this.runningJobIds.size > 0 || this.isCooldownActive()) {
+      throw new ConflictException(
+        'Another job is running or cooldown is active',
+      );
     }
     this.runningJobIds.add(jobId);
 
@@ -597,6 +610,47 @@ export class JobsService {
     } finally {
       this.runningJobIds.delete(jobId);
       this.timedOutRunIds.delete(runId);
+      this.lastJobFinishedAt = Date.now();
+      void this.drainQueuedJobs();
+    }
+  }
+
+  private isCooldownActive(): boolean {
+    return (
+      this.lastJobFinishedAt > 0 &&
+      Date.now() - this.lastJobFinishedAt < QUEUE_COOLDOWN_MS
+    );
+  }
+
+  private scheduleCooldownDrain(delayMs: number): void {
+    if (this.cooldownTimer) return;
+    this.cooldownTimer = setTimeout(() => {
+      this.cooldownTimer = null;
+      void this.drainQueuedJobs();
+    }, delayMs);
+  }
+
+  private async drainQueuedJobs(): Promise<void> {
+    if (this.lastJobFinishedAt > 0) {
+      const elapsed = Date.now() - this.lastJobFinishedAt;
+      if (elapsed < QUEUE_COOLDOWN_MS) {
+        this.scheduleCooldownDrain(QUEUE_COOLDOWN_MS - elapsed);
+        return;
+      }
+    }
+
+    try {
+      const nextPending = await this.prisma.jobRun.findFirst({
+        where: { status: 'PENDING' },
+        orderBy: { startedAt: 'asc' },
+      });
+      if (!nextPending) return;
+      if (this.runningJobIds.has(nextPending.jobId)) return;
+      if (this.runningJobIds.size > 0) return;
+
+      await this.startQueuedJob({ runId: nextPending.id });
+    } catch (err) {
+      this.logger.warn(`drainQueuedJobs failed: ${errToMessage(err)}`);
     }
   }
 
@@ -626,6 +680,7 @@ export class JobsService {
 
     this.timedOutRunIds.add(runId);
     this.runningJobIds.delete(jobId);
+    this.lastJobFinishedAt = Date.now();
 
     const timeoutSummary: JsonObject = {
       ...((currentRun.summary as Record<string, unknown>) ?? {}),
@@ -673,6 +728,8 @@ export class JobsService {
         `Watchdog timeout DB update failed: jobId=${jobId} runId=${runId}: ${errToMessage(err)}`,
       );
     }
+
+    void this.drainQueuedJobs();
   }
 
   async listRuns(params: {
