@@ -104,6 +104,25 @@ describe('netflix-csv.parser', () => {
       expect(entries[0].watchedAt).toBeNull();
     });
 
+    it('rejects malformed non-string CSV lines without iterating their length', () => {
+      const maliciousLine = {
+        length: Number.MAX_SAFE_INTEGER,
+        trim: () => 'Title,Date',
+      };
+      const fakeText = {
+        charCodeAt: () => Number.NaN,
+        slice: () => '',
+        split: () => [maliciousLine],
+      };
+      const fakeBuffer = {
+        toString: () => fakeText,
+      };
+
+      expect(() => parseNetflixCsv(fakeBuffer as unknown as Buffer)).toThrow(
+        'CSV is missing the required "Title" column header',
+      );
+    });
+
     it('handles 2-digit years as 2000+', () => {
       const { entries } = parseNetflixCsv(csv(['Title,Date', 'Movie,1/15/23']));
       expect(entries[0].watchedAt?.getFullYear()).toBe(2023);

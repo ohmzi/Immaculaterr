@@ -75,15 +75,16 @@ function parseDate(raw: string, format: DateFormat): Date | null {
   return new Date(year, month - 1, day);
 }
 
-function parseCsvLine(line: string): string[] {
+function parseCsvLine(line: unknown): string[] {
+  const safeLine = typeof line === 'string' ? line : '';
   const fields: string[] = [];
   let current = '';
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  for (let i = 0; i < safeLine.length; i++) {
+    const ch = safeLine[i];
     if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') {
+      if (ch === '"' && safeLine[i + 1] === '"') {
         current += '"';
         i++;
       } else if (ch === '"') {

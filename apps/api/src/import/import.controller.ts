@@ -24,6 +24,19 @@ function pickString(obj: Record<string, unknown>, path: string): string {
   return typeof cur === 'string' ? cur.trim() : '';
 }
 
+function normalizeUploadedFiles(files: unknown): Array<Express.Multer.File> {
+  if (!Array.isArray(files)) return [];
+
+  return files.filter((file): file is Express.Multer.File => {
+    if (!file || typeof file !== 'object') return false;
+    const candidate = file as Record<string, unknown>;
+    return (
+      typeof candidate.originalname === 'string' &&
+      Buffer.isBuffer(candidate.buffer)
+    );
+  });
+}
+
 @Controller('import')
 export class ImportController {
   constructor(
@@ -40,13 +53,15 @@ export class ImportController {
   )
   async uploadNetflixCsv(
     @Req() req: AuthenticatedRequest,
-    @UploadedFiles() files: Array<Express.Multer.File>,
+    @UploadedFiles() files: unknown,
   ) {
-    if ((files ?? []).length > 1) {
+    const uploadedFiles = normalizeUploadedFiles(files);
+
+    if (uploadedFiles.length > 1) {
       throw new BadRequestException('Only one file can be uploaded at a time');
     }
 
-    const file = (files ?? [])[0] ?? null;
+    const file = uploadedFiles[0] ?? null;
     if (!file) throw new BadRequestException('CSV file is required');
 
     if (!file.originalname.toLowerCase().endsWith('.csv')) {
