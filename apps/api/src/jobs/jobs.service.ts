@@ -99,6 +99,7 @@ function buildQueuedSummary(params: {
     dryRun: params.dryRun,
     trigger: params.trigger,
     ...(inputContext ?? {}),
+    ...(params.input ? { _queuedInput: params.input } : {}),
     progress: {
       step: 'queued',
       message: 'Queued…',
@@ -649,7 +650,16 @@ export class JobsService {
       if (this.runningJobIds.has(nextPending.jobId)) return;
       if (this.runningJobIds.size > 0) return;
 
-      await this.startQueuedJob({ runId: nextPending.id });
+      const restoredInput = isPlainObject(
+        (nextPending.summary as Record<string, unknown>)?._queuedInput,
+      )
+        ? ((nextPending.summary as Record<string, unknown>)
+            ._queuedInput as JsonObject)
+        : undefined;
+      await this.startQueuedJob({
+        runId: nextPending.id,
+        input: restoredInput,
+      });
     } catch (err) {
       this.logger.warn(`drainQueuedJobs failed: ${errToMessage(err)}`);
     }
