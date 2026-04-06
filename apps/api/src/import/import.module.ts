@@ -27,4 +27,8 @@ import { ImportService } from './import.service';
 })
 export class ImportModule {
   readonly moduleId = 'ImportModule';
+
+  getModuleId(): string {
+    return this.moduleId;
+  }
 }

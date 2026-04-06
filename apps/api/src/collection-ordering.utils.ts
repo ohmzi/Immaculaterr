@@ -115,6 +115,37 @@ const resolveRecentReleaseMonths = (
   return COLLECTION_RECENT_RELEASE_MONTHS;
 };
 
+/** Fisher-Yates shuffle that preserves the input array reference. */
+export const shuffleInPlace = <T>(items: T[]): T[] => {
+  for (
+    let currentIndex = items.length - 1;
+    currentIndex > 0;
+    currentIndex -= 1
+  ) {
+    const swapIndex = Math.floor(Math.random() * (currentIndex + 1));
+    [items[currentIndex], items[swapIndex]] = [
+      items[swapIndex],
+      items[currentIndex],
+    ];
+  }
+  return items;
+};
+
+/** Normalizes a Date or date-like string to `YYYY-MM-DD` when valid. */
+export const toReleaseCalendarKey = (
+  value: Date | string | null | undefined,
+): string | null => {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) return null;
+    return utcCalendarKeyFromDate(value);
+  }
+  if (typeof value === 'string') {
+    return parseStringReleaseCalendarKey(value);
+  }
+  return null;
+};
+
 type CollectionLeadPools = {
   currentYearUnwatchedPool: CollectionOrderableItem[];
   recentPool: CollectionOrderableItem[];
@@ -155,37 +186,6 @@ const collectLeadPools = (params: {
   }
 
   return leadPools;
-};
-
-/** Fisher-Yates shuffle that preserves the input array reference. */
-export const shuffleInPlace = <T>(items: T[]): T[] => {
-  for (
-    let currentIndex = items.length - 1;
-    currentIndex > 0;
-    currentIndex -= 1
-  ) {
-    const swapIndex = Math.floor(Math.random() * (currentIndex + 1));
-    [items[currentIndex], items[swapIndex]] = [
-      items[swapIndex],
-      items[currentIndex],
-    ];
-  }
-  return items;
-};
-
-/** Normalizes a Date or date-like string to `YYYY-MM-DD` when valid. */
-export const toReleaseCalendarKey = (
-  value: Date | string | null | undefined,
-): string | null => {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) {
-    if (!Number.isFinite(value.getTime())) return null;
-    return utcCalendarKeyFromDate(value);
-  }
-  if (typeof value === 'string') {
-    return parseStringReleaseCalendarKey(value);
-  }
-  return null;
 };
 
 /** TMDB `YYYY-MM-DD` → UTC noon Date for stable Prisma/sqlite storage. */
