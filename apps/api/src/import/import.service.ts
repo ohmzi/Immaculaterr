@@ -32,18 +32,20 @@ const NETFLIX_IMPORT_CONTRAST_BASE = 'Netflix Import: Change of Taste';
 const PLEX_HISTORY_SIMILAR_BASE = 'Plex History Picks';
 const PLEX_HISTORY_CONTRAST_BASE = 'Plex History: Change of Taste';
 
-function importSourceLabel(source: string): string {
+type ImportSource = 'netflix' | 'plex';
+
+function importSourceLabel(source: ImportSource): string {
   if (source === 'plex') return 'Plex History';
   return 'Netflix Import';
 }
 
-function importSimilarBase(source: string): string {
+function importSimilarBase(source: ImportSource): string {
   return source === 'plex'
     ? PLEX_HISTORY_SIMILAR_BASE
     : NETFLIX_IMPORT_SIMILAR_BASE;
 }
 
-function importContrastBase(source: string): string {
+function importContrastBase(source: ImportSource): string {
   return source === 'plex'
     ? PLEX_HISTORY_CONTRAST_BASE
     : NETFLIX_IMPORT_CONTRAST_BASE;
@@ -439,7 +441,7 @@ export class ImportService {
 
   async processImportedEntries(
     ctx: JobContext,
-    source: string = 'netflix',
+    source: ImportSource = 'netflix',
   ): Promise<JobRunResult> {
     const userId = ctx.userId;
     const summary: JsonObject = {
@@ -774,12 +776,15 @@ export class ImportService {
     );
 
     const seenTmdbIds = new Set<number>();
-    const matchedEntries: typeof allMatchedEntries = [];
+    const matchedEntries: Array<
+      (typeof allMatchedEntries)[number] & { tmdbId: number }
+    > = [];
     for (const entry of allMatchedEntries) {
-      if (!entry.tmdbId || seenTmdbIds.has(entry.tmdbId)) continue;
-      if (crossSourceProcessed.has(entry.tmdbId)) continue;
-      seenTmdbIds.add(entry.tmdbId);
-      matchedEntries.push(entry);
+      const tmdbId = entry.tmdbId;
+      if (!tmdbId || seenTmdbIds.has(tmdbId)) continue;
+      if (crossSourceProcessed.has(tmdbId)) continue;
+      seenTmdbIds.add(tmdbId);
+      matchedEntries.push({ ...entry, tmdbId });
       if (matchedEntries.length >= SEED_CAP) break;
     }
     const remainingAfterThisRun = Math.max(
@@ -887,7 +892,7 @@ export class ImportService {
 
           movieSeeds.push({
             title: seedTitle,
-            tmdbId: entry.tmdbId!,
+            tmdbId: entry.tmdbId,
             similarTitles: [...similar.titles].sort(),
             changeOfTasteTitles: [...contrast.titles].sort(),
           });
@@ -929,7 +934,7 @@ export class ImportService {
 
           tvSeeds.push({
             title: seedTitle,
-            tmdbId: entry.tmdbId!,
+            tmdbId: entry.tmdbId,
             similarTitles: [...similar.titles].sort(),
             changeOfTasteTitles: [...contrast.titles].sort(),
           });
@@ -1148,7 +1153,14 @@ export class ImportService {
       ...movieContrastResolved,
     ];
     const itTvSuggested = [...tvSimilarResolved, ...tvContrastResolved].filter(
-      (r) => r.tvdbId && Number.isFinite(r.tvdbId) && r.tvdbId > 0,
+      (
+        recommendation,
+      ): recommendation is (typeof tvSimilarResolved)[number] & {
+        tvdbId: number;
+      } =>
+        typeof recommendation.tvdbId === 'number' &&
+        Number.isFinite(recommendation.tvdbId) &&
+        recommendation.tvdbId > 0,
     );
 
     const existingItMovieTmdbIds = new Set<number>();
@@ -1192,7 +1204,7 @@ export class ImportService {
           librarySectionKey: libKey,
           profileId: 'default',
           suggested: itTvSuggested.map((r) => ({
-            tvdbId: r.tvdbId!,
+            tvdbId: r.tvdbId,
             tmdbId: r.tmdbId,
             title: r.title,
             tmdbVoteAvg: r.voteAvg,
@@ -1225,10 +1237,10 @@ export class ImportService {
       .filter((r) => existingItMovieTmdbIds.has(r.tmdbId))
       .map((r) => r.title);
     const itTvAdded = itTvSuggested
-      .filter((r) => !existingItTvTvdbIds.has(r.tvdbId!))
+      .filter((r) => !existingItTvTvdbIds.has(r.tvdbId))
       .map((r) => r.title);
     const itTvExisted = itTvSuggested
-      .filter((r) => existingItTvTvdbIds.has(r.tvdbId!))
+      .filter((r) => existingItTvTvdbIds.has(r.tvdbId))
       .map((r) => r.title);
     const itMovieFinal = [...finalItMovieTitlesSet].sort();
     const itTvFinal = [...finalItTvTitlesSet].sort();
@@ -2197,7 +2209,14 @@ export class ImportService {
     });
 
     const withTvdb = items.filter(
-      (i) => i.tvdbId && Number.isFinite(i.tvdbId) && i.tvdbId > 0,
+      (
+        item,
+      ): item is (typeof items)[number] & {
+        tvdbId: number;
+      } =>
+        typeof item.tvdbId === 'number' &&
+        Number.isFinite(item.tvdbId) &&
+        item.tvdbId > 0,
     );
     if (!withTvdb.length) return;
 
@@ -2206,7 +2225,7 @@ export class ImportService {
         plexUserId,
         collectionName,
         librarySectionKey,
-        tvdbId: item.tvdbId!,
+        tvdbId: item.tvdbId,
         tmdbId: item.tmdbId,
         title: item.title,
         status: 'pending' as const,
@@ -2259,7 +2278,14 @@ export class ImportService {
     }>,
   ) {
     const withTvdb = items.filter(
-      (i) => i.tvdbId && Number.isFinite(i.tvdbId) && i.tvdbId > 0,
+      (
+        item,
+      ): item is (typeof items)[number] & {
+        tvdbId: number;
+      } =>
+        typeof item.tvdbId === 'number' &&
+        Number.isFinite(item.tvdbId) &&
+        item.tvdbId > 0,
     );
     if (!withTvdb.length) return;
     const existing =
@@ -2268,14 +2294,14 @@ export class ImportService {
         select: { tvdbId: true },
       });
     const existingIds = new Set(existing.map((e) => e.tvdbId));
-    const newItems = withTvdb.filter((i) => !existingIds.has(i.tvdbId!));
+    const newItems = withTvdb.filter((i) => !existingIds.has(i.tvdbId));
     if (!newItems.length) return;
     await this.prisma.watchedShowRecommendationLibrary.createMany({
       data: newItems.map((item) => ({
         plexUserId,
         collectionName,
         librarySectionKey,
-        tvdbId: item.tvdbId!,
+        tvdbId: item.tvdbId,
         tmdbId: item.tmdbId,
         title: item.title,
         status: 'pending' as const,

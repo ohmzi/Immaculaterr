@@ -211,7 +211,10 @@ describe('ImportService', () => {
           call[0]?.where?.status === 'pending',
       );
       expect(pendingCall).toBeDefined();
-      expect(pendingCall![0].where.source).toBe('plex');
+      if (!pendingCall) {
+        throw new Error('Expected pending query for plex source');
+      }
+      expect(pendingCall[0].where.source).toBe('plex');
     });
 
     it('should default to netflix source when called without source', async () => {
@@ -225,7 +228,10 @@ describe('ImportService', () => {
           call[0]?.where?.status === 'pending',
       );
       expect(pendingCall).toBeDefined();
-      expect(pendingCall![0].where.source).toBe('netflix');
+      if (!pendingCall) {
+        throw new Error('Expected pending query for netflix source');
+      }
+      expect(pendingCall[0].where.source).toBe('netflix');
     });
   });
 });
