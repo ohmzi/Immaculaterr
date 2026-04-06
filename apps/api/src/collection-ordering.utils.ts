@@ -13,122 +13,258 @@ type RatedForTier = {
   tmdbVoteCount: number | null;
 };
 
-export function shuffleInPlace<T>(arr: T[]): T[] {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+const toFinitePositiveId = (value: number): number | null => {
+  const normalizedId = Number.isFinite(value) ? Math.trunc(value) : NaN;
+  if (!Number.isFinite(normalizedId) || normalizedId <= 0) {
+    return null;
   }
-  return arr;
-}
+  return normalizedId;
+};
 
-function utcCalendarKeyFromDate(d: Date): string {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+const toComparableNumber = (value: number | null): number => {
+  return Number.isFinite(value ?? NaN) ? Number(value) : 0;
+};
 
-function addCalendarMonthsUtc(base: Date, deltaMonths: number): Date {
-  const y = base.getUTCFullYear();
-  const m = base.getUTCMonth() + deltaMonths;
-  const d = base.getUTCDate();
-  return new Date(Date.UTC(y, m, d));
-}
+const utcCalendarKeyFromDate = (date: Date): string => {
+  const year = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dayOfMonth = String(date.getUTCDate()).padStart(2, '0');
+  return [year, month, dayOfMonth].join('-');
+};
 
-export function toReleaseCalendarKey(
+const addCalendarMonthsUtc = (base: Date, deltaMonths: number): Date => {
+  const year = base.getUTCFullYear();
+  const month = base.getUTCMonth() + deltaMonths;
+  const dayOfMonth = base.getUTCDate();
+  return new Date(Date.UTC(year, month, dayOfMonth));
+};
+
+const parseCalendarDateParts = (
+  value: string,
+): { year: number; month: number; dayOfMonth: number } | null => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const dayOfMonth = Number(value.slice(8, 10));
+  if (![year, month, dayOfMonth].every(Number.isFinite)) {
+    return null;
+  }
+
+  return {
+    year,
+    month,
+    dayOfMonth,
+  };
+};
+
+const parseStringReleaseCalendarKey = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const parsed = new Date(trimmed);
+  if (!Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+
+  return utcCalendarKeyFromDate(parsed);
+};
+
+const toRatedForTier = (item: CollectionOrderableItem): RatedForTier | null => {
+  const normalizedId = toFinitePositiveId(item.id);
+  if (normalizedId === null) {
+    return null;
+  }
+
+  return {
+    id: normalizedId,
+    tmdbVoteAvg: item.tmdbVoteAvg ?? null,
+    tmdbVoteCount: item.tmdbVoteCount ?? null,
+  };
+};
+
+const dedupeById = (
+  items: CollectionOrderableItem[],
+): CollectionOrderableItem[] => {
+  const seenIds = new Set<number>();
+  const dedupedItems: CollectionOrderableItem[] = [];
+  for (const item of items) {
+    const normalizedId = toFinitePositiveId(item.id);
+    if (normalizedId === null || seenIds.has(normalizedId)) {
+      continue;
+    }
+    seenIds.add(normalizedId);
+    dedupedItems.push(item);
+  }
+  return dedupedItems;
+};
+
+const resolveRecentReleaseMonths = (
+  recentReleaseMonths: number | undefined,
+): number => {
+  if (
+    typeof recentReleaseMonths === 'number' &&
+    Number.isFinite(recentReleaseMonths)
+  ) {
+    return Math.max(1, Math.trunc(recentReleaseMonths));
+  }
+  return COLLECTION_RECENT_RELEASE_MONTHS;
+};
+
+type CollectionLeadPools = {
+  currentYearUnwatchedPool: CollectionOrderableItem[];
+  recentPool: CollectionOrderableItem[];
+};
+
+const collectLeadPools = (params: {
+  items: CollectionOrderableItem[];
+  todayKey: string;
+  cutoffKey: string;
+  yearStartKey: string;
+  watchedIds?: Set<number>;
+}): CollectionLeadPools => {
+  const leadPools: CollectionLeadPools = {
+    currentYearUnwatchedPool: [],
+    recentPool: [],
+  };
+
+  for (const item of params.items) {
+    const normalizedId = toFinitePositiveId(item.id);
+    if (normalizedId === null) {
+      continue;
+    }
+
+    const releaseCalendarKey = toReleaseCalendarKey(item.releaseDate);
+    if (!releaseCalendarKey || releaseCalendarKey > params.todayKey) {
+      continue;
+    }
+
+    if (releaseCalendarKey >= params.cutoffKey) {
+      leadPools.recentPool.push(item);
+    }
+    if (
+      releaseCalendarKey >= params.yearStartKey &&
+      (!params.watchedIds || !params.watchedIds.has(normalizedId))
+    ) {
+      leadPools.currentYearUnwatchedPool.push(item);
+    }
+  }
+
+  return leadPools;
+};
+
+/** Fisher-Yates shuffle that preserves the input array reference. */
+export const shuffleInPlace = <T>(items: T[]): T[] => {
+  for (
+    let currentIndex = items.length - 1;
+    currentIndex > 0;
+    currentIndex -= 1
+  ) {
+    const swapIndex = Math.floor(Math.random() * (currentIndex + 1));
+    [items[currentIndex], items[swapIndex]] = [
+      items[swapIndex],
+      items[currentIndex],
+    ];
+  }
+  return items;
+};
+
+/** Normalizes a Date or date-like string to `YYYY-MM-DD` when valid. */
+export const toReleaseCalendarKey = (
   value: Date | string | null | undefined,
-): string | null {
+): string | null => {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) {
     if (!Number.isFinite(value.getTime())) return null;
     return utcCalendarKeyFromDate(value);
   }
   if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-    const parsed = new Date(trimmed);
-    if (!Number.isFinite(parsed.getTime())) return null;
-    return utcCalendarKeyFromDate(parsed);
+    return parseStringReleaseCalendarKey(value);
   }
   return null;
-}
-
-/** TMDB `YYYY-MM-DD` → UTC noon Date for stable Prisma/sqlite storage. */
-export function tmdbCalendarDateStringToDate(
-  value: string | null | undefined,
-): Date | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  const y = Number(trimmed.slice(0, 4));
-  const m = Number(trimmed.slice(5, 7));
-  const d = Number(trimmed.slice(8, 10));
-  if (![y, m, d].every((n) => Number.isFinite(n))) return null;
-  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  return Number.isFinite(dt.getTime()) ? dt : null;
-}
-
-const toUniqueRated = (items: CollectionOrderableItem[]): RatedForTier[] => {
-  const uniq = new Map<number, RatedForTier>();
-  for (const item of items ?? []) {
-    const id = Number.isFinite(item.id) ? Math.trunc(item.id) : NaN;
-    if (!Number.isFinite(id) || id <= 0) continue;
-    if (uniq.has(id)) continue;
-    uniq.set(id, {
-      id,
-      tmdbVoteAvg: item.tmdbVoteAvg ?? null,
-      tmdbVoteCount: item.tmdbVoteCount ?? null,
-    });
-  }
-  return Array.from(uniq.values());
 };
 
+/** TMDB `YYYY-MM-DD` → UTC noon Date for stable Prisma/sqlite storage. */
+export const tmdbCalendarDateStringToDate = (
+  value: string | null | undefined,
+): Date | null => {
+  if (typeof value !== 'string') return null;
+  const dateParts = parseCalendarDateParts(value.trim());
+  if (!dateParts) return null;
+
+  const { year, month, dayOfMonth } = dateParts;
+  const normalizedDate = new Date(
+    Date.UTC(year, month - 1, dayOfMonth, 12, 0, 0),
+  );
+  return Number.isFinite(normalizedDate.getTime()) ? normalizedDate : null;
+};
+
+const toUniqueRated = (items: CollectionOrderableItem[]): RatedForTier[] => {
+  const uniqueRatedItems = new Map<number, RatedForTier>();
+  for (const item of items) {
+    const ratedItem = toRatedForTier(item);
+    if (!ratedItem || uniqueRatedItems.has(ratedItem.id)) {
+      continue;
+    }
+    uniqueRatedItems.set(ratedItem.id, ratedItem);
+  }
+  return Array.from(uniqueRatedItems.values());
+};
+
+/** Sorts candidates by TMDB average rating, then vote count, then stable id. */
 export const sortByTmdbRating = (items: RatedForTier[]): RatedForTier[] => {
-  return [...items].sort((a, b) => {
-    const ar = Number.isFinite(a.tmdbVoteAvg ?? NaN)
-      ? Number(a.tmdbVoteAvg)
-      : 0;
-    const br = Number.isFinite(b.tmdbVoteAvg ?? NaN)
-      ? Number(b.tmdbVoteAvg)
-      : 0;
-    if (br !== ar) return br - ar;
-    const ac = Number.isFinite(a.tmdbVoteCount ?? NaN)
-      ? Number(a.tmdbVoteCount)
-      : 0;
-    const bc = Number.isFinite(b.tmdbVoteCount ?? NaN)
-      ? Number(b.tmdbVoteCount)
-      : 0;
-    if (bc !== ac) return bc - ac;
-    return a.id - b.id;
+  return [...items].sort((leftItem, rightItem) => {
+    const ratingDifference =
+      toComparableNumber(rightItem.tmdbVoteAvg) -
+      toComparableNumber(leftItem.tmdbVoteAvg);
+    if (ratingDifference !== 0) return ratingDifference;
+
+    const voteCountDifference =
+      toComparableNumber(rightItem.tmdbVoteCount) -
+      toComparableNumber(leftItem.tmdbVoteCount);
+    if (voteCountDifference !== 0) return voteCountDifference;
+
+    return leftItem.id - rightItem.id;
   });
 };
 
+/** Splits a list into high/mid/low tiers with any remainder kept near the top. */
 export const splitThreeTiers = <T>(items: T[]) => {
-  const n = items.length;
-  const base = Math.floor(n / 3);
-  const rem = n % 3;
-  const highSize = base + (rem > 0 ? 1 : 0);
-  const midSize = base + (rem > 1 ? 1 : 0);
+  const itemCount = items.length;
+  const baseTierSize = Math.floor(itemCount / 3);
+  const remainder = itemCount % 3;
+  const highTierSize = baseTierSize + (remainder > 0 ? 1 : 0);
+  const middleTierSize = baseTierSize + (remainder > 1 ? 1 : 0);
   return {
-    high: items.slice(0, highSize),
-    mid: items.slice(highSize, highSize + midSize),
-    low: items.slice(highSize + midSize),
+    high: items.slice(0, highTierSize),
+    mid: items.slice(highTierSize, highTierSize + middleTierSize),
+    low: items.slice(highTierSize + middleTierSize),
   };
 };
 
+/** Picks one unique id from each tier, then shuffles those lead ids. */
 export const pickTopTierIds = (tiers: {
   high: RatedForTier[];
   mid: RatedForTier[];
   low: RatedForTier[];
 }): number[] => {
   const picks: number[] = [];
-  const used = new Set<number>();
-  const pickOne = (tier: RatedForTier[]) => {
-    const pool = tier.filter((row) => !used.has(row.id));
-    if (!pool.length) return;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    used.add(pick.id);
-    picks.push(pick.id);
+  const usedIds = new Set<number>();
+  const pickOne = (tier: RatedForTier[]): void => {
+    const availableItems = tier.filter((row) => !usedIds.has(row.id));
+    if (!availableItems.length) {
+      return;
+    }
+
+    const pickedItem =
+      availableItems[Math.floor(Math.random() * availableItems.length)];
+    usedIds.add(pickedItem.id);
+    picks.push(pickedItem.id);
+    return;
   };
   pickOne(tiers.high);
   pickOne(tiers.mid);
@@ -141,20 +277,20 @@ export const pickTopTierIds = (tiers: {
  * Three-tier TMDB rating shuffle on `items` (deduped by `id`).
  * Preserves legacy behavior used by movie (`tmdbId`) and TV (`tvdbId`) callers.
  */
-export function buildThreeTierOrder(params: {
+export const buildThreeTierOrder = (params: {
   items: CollectionOrderableItem[];
-}): number[] {
+}): number[] => {
   const sorted = sortByTmdbRating(toUniqueRated(params.items));
   if (!sorted.length) return [];
   const tiers = splitThreeTiers(sorted);
-  const topPicks = pickTopTierIds(tiers);
-  const used = new Set(topPicks);
+  const topTierIds = pickTopTierIds(tiers);
+  const usedIds = new Set(topTierIds);
   const remaining = sorted
-    .filter((row) => !used.has(row.id))
+    .filter((row) => !usedIds.has(row.id))
     .map((row) => row.id);
   shuffleInPlace(remaining);
-  return [...topPicks, ...remaining];
-}
+  return [...topTierIds, ...remaining];
+};
 
 /**
  * Universal collection ordering.
@@ -163,63 +299,33 @@ export function buildThreeTierOrder(params: {
  * Fallback: any item released within the last N months.
  * Remaining items: three-tier TMDB rating shuffle.
  */
-export function buildCollectionOrder(params: {
+export const buildCollectionOrder = (params: {
   items: CollectionOrderableItem[];
   watchedIds?: Set<number>;
   now?: Date;
   recentReleaseMonths?: number;
-}): number[] {
+}): number[] => {
   if (!toUniqueRated(params.items).length) return [];
 
   const now = params.now ?? new Date();
-  const recentMonths =
-    typeof params.recentReleaseMonths === 'number' &&
-    Number.isFinite(params.recentReleaseMonths)
-      ? Math.max(1, Math.trunc(params.recentReleaseMonths))
-      : COLLECTION_RECENT_RELEASE_MONTHS;
+  const recentMonths = resolveRecentReleaseMonths(params.recentReleaseMonths);
 
   const todayKey = utcCalendarKeyFromDate(now);
   const cutoffKey = utcCalendarKeyFromDate(
     addCalendarMonthsUtc(now, -recentMonths),
   );
   const currentYear = now.getUTCFullYear();
-  const yearStartKey = `${currentYear}-01-01`;
+  const yearStartKey = [String(currentYear), '01', '01'].join('-');
 
-  const recentPool: CollectionOrderableItem[] = [];
-  const currentYearUnwatchedPool: CollectionOrderableItem[] = [];
-  const watchedIds = params.watchedIds;
-
-  for (const item of params.items ?? []) {
-    const id = Number.isFinite(item.id) ? Math.trunc(item.id) : NaN;
-    if (!Number.isFinite(id) || id <= 0) continue;
-    const key = toReleaseCalendarKey(item.releaseDate);
-    if (!key || key > todayKey) continue;
-
-    if (key >= cutoffKey) {
-      recentPool.push(item);
-    }
-    if (key >= yearStartKey && (!watchedIds || !watchedIds.has(id))) {
-      currentYearUnwatchedPool.push(item);
-    }
-  }
-
-  const dedup = (
-    pool: CollectionOrderableItem[],
-  ): CollectionOrderableItem[] => {
-    const seen = new Set<number>();
-    const out: CollectionOrderableItem[] = [];
-    for (const item of pool) {
-      const id = Math.trunc(item.id);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      out.push(item);
-    }
-    return out;
-  };
-
-  const currentYearDeduped = dedup(currentYearUnwatchedPool);
-  const recentDeduped = dedup(recentPool);
-
+  const leadPools = collectLeadPools({
+    items: params.items,
+    todayKey,
+    cutoffKey,
+    yearStartKey,
+    watchedIds: params.watchedIds,
+  });
+  const currentYearDeduped = dedupeById(leadPools.currentYearUnwatchedPool);
+  const recentDeduped = dedupeById(leadPools.recentPool);
   const pickPool = currentYearDeduped.length
     ? currentYearDeduped
     : recentDeduped;
@@ -228,11 +334,11 @@ export function buildCollectionOrder(params: {
     return buildThreeTierOrder({ items: params.items });
   }
 
-  const first = pickPool[Math.floor(Math.random() * pickPool.length)];
-  const firstId = Math.trunc(first.id);
-  const restItems = (params.items ?? []).filter(
+  const firstItem = pickPool[Math.floor(Math.random() * pickPool.length)];
+  const firstId = Math.trunc(firstItem.id);
+  const restItems = params.items.filter(
     (item) => Math.trunc(item.id) !== firstId,
   );
 
   return [firstId, ...buildThreeTierOrder({ items: restItems })];
-}
+};
