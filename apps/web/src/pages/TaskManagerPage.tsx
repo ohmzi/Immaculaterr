@@ -137,13 +137,13 @@ const JOB_CONFIG: Record<
 > = {
   monitorConfirm: {
     icon: <MonitorPlay className="w-8 h-8" />,
-    color: 'text-blue-400',
+    color: 'text-emerald-300',
     description:
       'Keeps Radarr movies and Sonarr episodes in sync with what’s already in Plex.',
   },
   unmonitorConfirm: {
     icon: <MonitorPlay className="w-8 h-8" />,
-    color: 'text-emerald-300',
+    color: 'text-red-300',
     description:
       'Cross-checks Radarr unmonitored movies against Plex and re-monitors anything Plex does not actually have.',
   },
