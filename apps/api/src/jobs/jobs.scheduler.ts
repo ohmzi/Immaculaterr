@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   OnModuleInit,
@@ -65,7 +66,7 @@ export class JobsScheduler implements OnModuleInit {
         false,
         timezone ?? undefined,
       );
-      validationJob.stop();
+      void validationJob.stop();
     } catch (err) {
       throw new BadRequestException(
         `Invalid cron expression: ${(err as Error)?.message ?? String(err)}`,
@@ -114,7 +115,7 @@ export class JobsScheduler implements OnModuleInit {
                   `Skipping scheduled run; schedule disabled jobId=${jobId}`,
                 );
                 try {
-                  job.stop();
+                  void job.stop();
                 } catch {
                   // ignore
                 }
@@ -144,6 +145,12 @@ export class JobsScheduler implements OnModuleInit {
                 userId,
               });
             } catch (err) {
+              if (err instanceof ConflictException) {
+                this.logger.debug(
+                  `Skipping scheduled run; already queued or running jobId=${jobId}`,
+                );
+                return;
+              }
               this.logger.error(
                 `Scheduled job failed jobId=${jobId}: ${truncateErrorMessage(err)}`,
               );
@@ -155,7 +162,7 @@ export class JobsScheduler implements OnModuleInit {
         );
 
         this.schedulerRegistry.addCronJob(name, job);
-        job.start();
+        void job.start();
         this.logger.log(
           `Scheduled ${jobId} cron=${cron} tz=${timezone ?? 'local'}`,
         );

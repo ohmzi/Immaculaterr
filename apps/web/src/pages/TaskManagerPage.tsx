@@ -1435,7 +1435,8 @@ export function TaskManagerPage() {
   const visibleJobs = useMemo(
     () => {
       const filteredJobs = (jobsQuery.data?.jobs ?? []).filter(
-        (job) => !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
+        (job) =>
+          job.visibleInTaskManager && !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
       );
       const freshOutOfTheOvenJob = filteredJobs.find(
         (job) => job.id === 'freshOutOfTheOven',
@@ -1684,13 +1685,20 @@ export function TaskManagerPage() {
               ...prev,
               [job.id]: { status: 'running', runId: latestRun.id },
             }));
-          } else if (latestRun.status === 'SUCCESS' || latestRun.status === 'FAILED') {
+          } else if (
+            latestRun.status === 'SUCCESS' ||
+            latestRun.status === 'FAILED' ||
+            latestRun.status === 'CANCELLED'
+          ) {
             setTerminalState((prev) => ({
               ...prev,
               [job.id]: {
                 status: 'completed',
                 runId: latestRun.id,
-                result: latestRun.status === 'FAILED' ? 'FAILED' : 'SUCCESS',
+                result:
+                  latestRun.status === 'FAILED' || latestRun.status === 'CANCELLED'
+                    ? 'FAILED'
+                    : 'SUCCESS',
               },
             }));
           }
@@ -1723,13 +1731,20 @@ export function TaskManagerPage() {
           if (latestRun.id !== state.runId) continue;
 
           // Update terminal state if job completed
-          if (latestRun.status === 'SUCCESS' || latestRun.status === 'FAILED') {
+          if (
+            latestRun.status === 'SUCCESS' ||
+            latestRun.status === 'FAILED' ||
+            latestRun.status === 'CANCELLED'
+          ) {
             setTerminalState((prev) => ({
               ...prev,
               [jobId]: {
                 status: 'completed',
                 runId: latestRun.id,
-                result: latestRun.status === 'FAILED' ? 'FAILED' : 'SUCCESS',
+                result:
+                  latestRun.status === 'FAILED' || latestRun.status === 'CANCELLED'
+                    ? 'FAILED'
+                    : 'SUCCESS',
               },
             }));
           }

@@ -201,6 +201,7 @@ enum JobRunStatus {
   RUNNING
   SUCCESS
   FAILED
+  CANCELLED
 }
 
 enum JobRunTrigger {
@@ -226,14 +227,35 @@ model JobRun {
   dryRun       Boolean       @default(false)
   status       JobRunStatus
   startedAt    DateTime      @default(now())
+  queuedAt     DateTime      @default(now())
+  executionStartedAt DateTime?
   finishedAt   DateTime?
+  input        Json?
   summary      Json?
+  queueFingerprint String?
+  claimedAt    DateTime?
+  heartbeatAt  DateTime?
+  workerId     String?
   errorMessage String?
 
   logs JobLogLine[]
 
   @@index([jobId, startedAt])
   @@index([userId, startedAt])
+  @@index([status, queuedAt, id])
+  @@index([status, executionStartedAt])
+  @@index([status, queueFingerprint, queuedAt])
+  @@index([userId, status, queuedAt])
+}
+
+model JobQueueState {
+  id            String   @id
+  activeRunId    String?
+  cooldownUntil  DateTime?
+  paused         Boolean  @default(false)
+  pauseReason    String?
+  version        Int      @default(0)
+  updatedAt      DateTime @updatedAt
 }
 
 model JobLogLine {

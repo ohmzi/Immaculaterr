@@ -19,27 +19,40 @@ export function normalizeVersion(value: string | null | undefined): string | nul
 export function formatDisplayVersion(value: string | null | undefined): string | null {
   const normalized = normalizeVersion(value);
   if (!normalized) return null;
-  return normalized.replace(/-beta\b/i, ' beta');
+  return normalized
+    .replace(/-beta-(\d+)\b/i, ' beta $1')
+    .replace(/-beta\b/i, ' beta');
+}
+
+export function splitVersionHistoryLabel(
+  value: string,
+): { feature: string; detail: string } | null {
+  const idx = value.indexOf(':');
+  if (idx <= 0 || idx > 40) return null;
+  const feature = value.slice(0, idx).trim();
+  const detail = value.slice(idx + 1).trim();
+  if (!feature || !detail) return null;
+  return { feature, detail };
 }
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.6-beta-1',
+    version: '1.7.6-beta-2',
     popupHighlights: [
       'Plex Watch History Import: import your Plex watched history to generate personalized recommendations and Plex collections.',
       'Netflix Watch History Import: upload a Netflix CSV to classify titles, build recommendations, and sync collections to Plex.',
       'Smarter collection ordering: already-watched titles are deprioritized and remaining items are shuffled by TMDB rating tiers.',
-      'Global job queue: all jobs now run through a single queue with a 5-minute cooldown so consecutive runs never hammer the Plex API.',
-      'Seed titles in reports: job reports now list exactly which watched titles were used as seeds for recommendation generation.',
+      'Global queue and Rewind overhaul: jobs now use a restart-safe FIFO queue with a 1-minute cooldown, live ETA/status in Rewind, and cleaner duplicate-run handling.',
+      'Reports and reliability fixes: profile actions now show in Rewind, queued vs started times are clearer, and Plex history collections keep the right name.',
     ],
     sections: [
       {
         title: 'Plex Watch History Import',
         bullets: [
           'Fetches watched movies and TV shows directly from your Plex server library sections.',
-          'Classifies each title via TMDB and uses matched entries as seeds for similar and change-of-taste recommendations.',
+          'Classifies matched titles via TMDB and uses them as seeds for similar and change-of-taste recommendations.',
           'Creates per-user Plex collections ("Plex History Picks" and "Plex History: Change of Taste") with the top results.',
-          'Opt-in during onboarding or run on demand from the Task Manager.',
+          'Available during onboarding and on demand from the Task Manager.',
           'Job reports include a seed titles section showing exactly which history titles were matched and used.',
         ],
       },
@@ -50,29 +63,34 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Titles are classified via TMDB and used as seeds for similar and change-of-taste recommendation generation.',
           'Results sync to per-user Plex collections just like the Plex history import.',
           'Available during onboarding and as a standalone task in the Task Manager.',
+          'Import validation is stricter and follow-up reports keep the source and seed-title context intact.',
         ],
       },
       {
         title: 'Watched-status-aware collection ordering',
         bullets: [
           'Collection items you have already watched are pushed to the end so unwatched titles surface first.',
-          'Remaining items are sorted into TMDB rating tiers with a shuffle inside each tier for variety.',
+          'Remaining items are grouped into TMDB rating tiers with a shuffle inside each tier for variety.',
           'Recent-release titles get a dedicated slot near the top of collections.',
           'Ordering logic is shared across Immaculate Taste refresher, Observatory, collection resync, and watched-collections refresher.',
         ],
       },
       {
-        title: 'Global job queue with cooldown',
+        title: 'Global job queue, Rewind, and recovery',
         bullets: [
-          'All jobs now execute through a single global lock instead of per-job locking.',
-          'A 5-minute cooldown between consecutive jobs prevents rapid-fire Plex API calls.',
-          'Queued jobs wait their turn and are drained automatically once the cooldown expires.',
+          'All jobs now run through one persisted FIFO queue shared across manual, scheduled, webhook, and polling triggers.',
+          'Queued runs survive restarts, stale workers are recovered automatically, and duplicate auto-runs are skipped cleanly instead of colliding.',
+          'The queue now enforces a 1-minute cooldown between runs plus global and per-job backlog caps to protect Plex and upstream services.',
+          'Rewind now shows live pending and running work with queued timestamps, ETA, blocked reason, delayed-run hints, and cancelled status.',
         ],
       },
       {
-        title: 'Report enhancements and bug fixes',
+        title: 'Reports, audit trail, and bug fixes',
         bullets: [
-          'Job reports now include a "Seed Titles" section listing every movie and TV show used as a recommendation seed.',
+          'Job detail pages now distinguish queued time from actual execution start time for clearer troubleshooting.',
+          'Rewind can clear terminal history without removing pending or running queue items.',
+          'Immaculate Taste profile actions are now recorded in Rewind for auditability.',
+          'Job reports continue to include a "Seed Titles" section listing every movie and TV show used as a recommendation seed.',
           'Fixed a bug where Plex history import collections were incorrectly named "Netflix Import" instead of "Plex History".',
         ],
       },

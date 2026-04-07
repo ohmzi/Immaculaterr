@@ -118,17 +118,7 @@ export class ImportController {
         });
         jobId = run.id;
       } catch {
-        try {
-          const queuedRun = await this.jobsService.queueJob({
-            jobId: 'importNetflixHistory',
-            trigger: 'manual',
-            dryRun: false,
-            userId: req.user.id,
-          });
-          jobId = queuedRun.id;
-        } catch {
-          // Job already queued or running
-        }
+        // Ignore enqueue failures here so the import upload result still returns.
       }
     }
 

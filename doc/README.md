@@ -21,6 +21,10 @@ Major Features Include
   - Automatically reacts to Plex library activity and runs smart workflows in real time.
 - **Scheduler automation**:
   - Off hours fetching media or refreshing the Plex home screen.
+- **Shared persisted job queue**:
+  - Manual runs, schedules, Plex webhooks, and Plex polling all feed into one FIFO queue.
+  - After each run, Immaculaterr waits about 1 minute before the next queued job starts so Plex and upstream services get a breather.
+  - Pending work survives restarts, duplicate auto-runs are skipped cleanly, and Rewind shows queued/running status with ETA context.
 - **Curated Movies and TV Shows collections**:
   - Inspired by your Immaculate Taste (long term collection)
   - Based on your recently watched (refreshes on every watch)
@@ -46,7 +50,7 @@ Major Features Include
   - Watched movies and TV shows are matched to TMDB automatically (no CSV needed), then fed into the recommendation pipeline to build curated Plex collections.
   - Cross-source dedup ensures titles already processed by Netflix import are not duplicated.
 - **Job reports & logs**:
-  - Step-by-step breakdowns, metrics tables, and run history.
+  - Step-by-step breakdowns, metrics tables, run history, and live queue visibility in Rewind.
 - **More features on the way:**
   - Discovering Media from film industries around the world
   - Email reports on media server health

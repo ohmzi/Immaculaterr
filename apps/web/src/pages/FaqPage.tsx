@@ -398,15 +398,29 @@ export const FaqPage = () => {
                 cause errors or rate-limiting.
               </p>
               <p>
+                Manual runs, schedules, Plex-triggered jobs, and Plex polling all feed into the same
+                persisted FIFO queue.
+              </p>
+              <p>
                 After a task finishes, there is a{' '}
-                <span className="font-semibold text-white/85">5-minute cooldown</span> before the
-                next queued task starts. This gives external services time to recover between jobs.
+                <span className="font-semibold text-white/85">1-minute cooldown</span> before the
+                next queued task starts. This gives Plex and upstream services a short recovery window
+                between runs.
               </p>
               <p>
                 If a task is requested while another is already running or the cooldown is active, it
                 is automatically queued as{' '}
                 <span className="font-semibold text-white/85">Pending</span>. Pending tasks
                 auto-start in order once the cooldown expires — no manual action is needed.
+              </p>
+              <p>
+                Rewind now shows the live queue state, including queued time, ETA, blocked reason,
+                delayed-run hints, and whether a hidden/internal task is currently ahead of you in
+                line.
+              </p>
+              <p>
+                If the app restarts, pending work stays queued and previously running work is marked
+                failed so the queue can recover cleanly instead of getting stuck.
               </p>
             </>
           ),
@@ -1158,11 +1172,12 @@ export const FaqPage = () => {
           question: 'Why are other tasks blocked while the import is running?',
           answer: (
             <p>
-              The import follows the same one-at-a-time task queue as every other job. Because it
+              The import follows the same shared job queue as every other task. Because it
               makes many TMDB API calls and generates recommendations for every seed, it can take
               longer than most tasks. While it runs, other tasks queue as{' '}
               <span className="font-semibold text-white/85">Pending</span> and auto-start once the
-              import finishes and the 5-minute cooldown expires.
+              import finishes and the 1-minute cooldown expires. Rewind shows the live queue state
+              and ETA while you wait.
             </p>
           ),
         },
@@ -1322,11 +1337,12 @@ export const FaqPage = () => {
           question: 'Why are other tasks blocked while the import is running?',
           answer: (
             <p>
-              The import follows the same one-at-a-time task queue as every other job. Because it
+              The import follows the same shared job queue as every other task. Because it
               makes many TMDB API calls and generates recommendations for every seed, it can take
               longer than most tasks. While it runs, other tasks queue as{' '}
               <span className="font-semibold text-white/85">Pending</span> and auto-start once
-              the import finishes and the 5-minute cooldown expires.
+              the import finishes and the 1-minute cooldown expires. Rewind shows the live queue
+              state and ETA while you wait.
             </p>
           ),
         },

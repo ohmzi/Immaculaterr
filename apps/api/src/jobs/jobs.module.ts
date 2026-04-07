@@ -32,6 +32,7 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
 import { ImportModule } from '../import/import.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { ImportModule } from '../import/import.module';
     ImmaculateTasteCollectionModule,
     WatchedMovieRecommendationsModule,
     forwardRef(() => ImportModule),
+    AuthModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [JobsController],

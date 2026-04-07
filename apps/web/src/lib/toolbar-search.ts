@@ -178,7 +178,10 @@ export function useToolbarSearchTargets() {
   const taskTargets = useMemo(
     () =>
       (jobsQuery.data?.jobs ?? [])
-        .filter((job) => !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id))
+        .filter(
+          (job) =>
+            job.visibleInTaskManager && !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
+        )
         .map((job) =>
           createToolbarSearchTarget({
             id: `job-${job.id}`,
