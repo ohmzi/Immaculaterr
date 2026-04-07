@@ -98,12 +98,14 @@ type TmdbFilterChipOption = {
 
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup', // webhook/manual input only
+  'unmonitorConfirm', // manual only
   'immaculateTastePoints', // webhook/manual input only
   'watchedMovieRecommendations', // webhook/manual input only
   'importNetflixHistory', // manual upload only
   'importPlexHistory', // manual only
 ]);
 const NO_WEBHOOK_JOB_IDS = new Set<string>([
+  'unmonitorConfirm', // manual only, no Plex-triggered auto-run
   'importNetflixHistory', // manual upload only, no Plex-triggered auto-run
   'importPlexHistory', // manual only, no Plex-triggered auto-run
 ]);
@@ -138,6 +140,12 @@ const JOB_CONFIG: Record<
     color: 'text-blue-400',
     description:
       'Keeps Radarr/Sonarr monitoring in sync with what’s already in Plex.',
+  },
+  unmonitorConfirm: {
+    icon: <MonitorPlay className="w-8 h-8" />,
+    color: 'text-emerald-300',
+    description:
+      'Cross-checks Radarr unmonitored movies against Plex and re-monitors anything Plex does not actually have.',
   },
   arrMonitoredSearch: {
     icon: <Search className="w-8 h-8" />,

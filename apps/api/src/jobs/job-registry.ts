@@ -225,6 +225,16 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     estimateKeyBuilder: buildDefaultEstimateKey,
   }),
   defineJob({
+    id: 'unmonitorConfirm',
+    name: 'Confirm Unmonitored',
+    description:
+      'Checks Radarr unmonitored movies against Plex movie libraries and re-monitors anything that is not actually present in Plex.',
+    defaultScheduleCron: undefined,
+    defaultEstimatedRuntimeMs: 20 * 60_000,
+    dedupePolicy: 'none',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+  }),
+  defineJob({
     id: 'mediaAddedCleanup',
     name: 'Cleanup After Adding New Content',
     description:

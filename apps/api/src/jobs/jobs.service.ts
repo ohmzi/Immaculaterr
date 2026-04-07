@@ -331,6 +331,7 @@ export class JobsService implements OnModuleInit {
   private pumpChain: Promise<void> = Promise.resolve();
   private static readonly UNSCHEDULABLE_JOB_IDS = new Set<string>([
     'mediaAddedCleanup',
+    'unmonitorConfirm',
     'immaculateTastePoints',
     'watchedMovieRecommendations',
     'collectionResyncUpgrade',

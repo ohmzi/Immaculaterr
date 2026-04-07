@@ -20,6 +20,10 @@ Pick a feature area first, then jump into the full section below.
 > Keep ARR monitoring aligned with what already exists in Plex.
 > [What does Confirm Monitored do?](#what-does-confirm-monitored-do) · [When should I use Confirm Monitored?](#when-should-i-use-confirm-monitored) · [Does Confirm Monitored have any special settings?](#does-confirm-monitored-have-any-special-settings)
 
+> ### [Confirm Unmonitored](#confirm-unmonitored)
+> Verify Radarr unmonitored movies still exist in Plex and re-monitor anything missing.
+> [What does Confirm Unmonitored do?](#what-does-confirm-unmonitored-do) · [When should I use Confirm Unmonitored?](#when-should-i-use-confirm-unmonitored) · [Does Confirm Unmonitored have any special settings?](#does-confirm-unmonitored-have-any-special-settings)
+
 > ### [Cleanup After Adding New Content](#cleanup-after-adding-new-content)
 > Plex-triggered cleanup actions for newly added media.
 > [What does Cleanup After Adding New Content do?](#what-does-cleanup-after-adding-new-content-do) · [What do the cleanup toggles mean?](#what-do-the-cleanup-toggles-mean) · [What is the difference between Plex-Triggered Auto-Run and Run now for this card?](#what-is-the-difference-between-plex-triggered-auto-run-and-run-now-for-this-card)
@@ -249,6 +253,24 @@ If you want it running in the background, just enable its schedule and keep it o
 ### Does Confirm Monitored have any special settings?
 
 No. This card is intentionally simple: schedule it if you want automation, or use **Run now** when you want an immediate pass. It still needs Radarr or Sonarr to be available.
+
+## Confirm Unmonitored
+
+Open in app: [Task Manager -> Confirm Unmonitored](/task-manager#job-unmonitorConfirm)
+
+### What does Confirm Unmonitored do?
+
+It checks Radarr movies that are already marked unmonitored and verifies they really exist in Plex. If a movie is unmonitored in Radarr but missing from every Plex movie library, this task re-monitors it so Radarr can pay attention to it again.
+
+### When should I use Confirm Unmonitored?
+
+Use it after library rebuilds, large cleanups, storage moves, or anytime you suspect Radarr has stale unmonitored state.
+
+It is especially useful when you have a very large collection and want a deliberate maintenance pass instead of letting missing titles stay unmonitored quietly.
+
+### Does Confirm Unmonitored have any special settings?
+
+No. This card is intentionally manual-only. Use **Run now** when you want a full cross-check across all Plex movie libraries. It needs Plex and Radarr configured, and the report shows what stayed unmonitored, what was re-monitored, and what was skipped.
 
 ## Cleanup After Adding New Content
 

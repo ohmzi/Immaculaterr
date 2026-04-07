@@ -471,6 +471,51 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'task-manager-confirm-unmonitored',
+      title: 'Confirm Unmonitored',
+      items: [
+        {
+          id: 'task-manager-confirm-unmonitored-what-does',
+          question: 'What does Confirm Unmonitored do?',
+          answer: (
+            <p>
+              It checks Radarr movies that are already marked unmonitored and verifies they really
+              exist in Plex. If a movie is unmonitored in Radarr but missing from every Plex movie
+              library, this task re-monitors it so Radarr can pay attention to it again.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-confirm-unmonitored-when-use',
+          question: 'When should I use Confirm Unmonitored?',
+          answer: (
+            <>
+              <p>
+                Use it after library rebuilds, large cleanups, storage moves, or anytime you suspect
+                Radarr has stale unmonitored state.
+              </p>
+              <p>
+                It is especially useful when you have a very large collection and want a deliberate
+                maintenance pass instead of letting missing titles stay unmonitored quietly.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-confirm-unmonitored-settings',
+          question: 'Does Confirm Unmonitored have any special settings?',
+          answer: (
+            <p>
+              No. This card is intentionally manual-only. Use{' '}
+              <span className="font-semibold text-white/85">Run now</span> when you want a full
+              cross-check across all Plex movie libraries. It needs Plex and Radarr configured, and
+              the report shows what stayed unmonitored, what was re-monitored, and what was skipped.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
       id: 'task-manager-cleanup-after-adding-new-content',
       title: 'Cleanup After Adding New Content',
       items: [
@@ -2725,6 +2770,8 @@ export const FaqPage = () => {
       'How jobs run, what the main controls mean, and how to keep automation simple.',
     'task-manager-confirm-monitored':
       'Keep ARR monitoring aligned with what already exists in Plex.',
+    'task-manager-confirm-unmonitored':
+      'Verify Radarr unmonitored movies still exist in Plex and re-monitor anything missing.',
     'task-manager-cleanup-after-adding-new-content':
       'Plex-triggered cleanup actions for newly added media.',
     'task-manager-search-monitored': 'Off-peak missing searches for monitored ARR items.',
@@ -2778,6 +2825,10 @@ export const FaqPage = () => {
     'task-manager-confirm-monitored': {
       icon: (className) => <MonitorPlay className={className} />,
       toneClass: 'text-blue-300',
+    },
+    'task-manager-confirm-unmonitored': {
+      icon: (className) => <MonitorPlay className={className} />,
+      toneClass: 'text-emerald-300',
     },
     'task-manager-cleanup-after-adding-new-content': {
       icon: (className) => <CheckCircle2 className={className} />,
