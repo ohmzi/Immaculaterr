@@ -28,13 +28,15 @@ type SonarrMock = Pick<
 
 function createContext(dryRun = false): JobContext {
   let currentSummary: JsonObject | null = null;
-  const setSummary = jest.fn(async (summary: JsonObject | null) => {
+  const setSummary = jest.fn((summary: JsonObject | null) => {
     currentSummary = summary;
+    return Promise.resolve();
   });
-  const patchSummary = jest.fn(async (patch: JsonObject) => {
+  const patchSummary = jest.fn((patch: JsonObject) => {
     currentSummary = { ...(currentSummary ?? {}), ...patch };
+    return Promise.resolve();
   });
-  const log = jest.fn(async () => undefined);
+  const log = jest.fn(() => Promise.resolve());
 
   return {
     jobId: 'monitorConfirm',
@@ -124,7 +126,9 @@ describe('MonitorConfirmJob', () => {
     expect(rawSonarr.configured).toBe(false);
     expect(
       issues.some((i) =>
-        String(i.message ?? '').includes('MissingEpisodeSearch was not queued'),
+        (typeof i.message === 'string' ? i.message : '').includes(
+          'MissingEpisodeSearch was not queued',
+        ),
       ),
     ).toBe(false);
   });
@@ -167,7 +171,9 @@ describe('MonitorConfirmJob', () => {
     expect(rawSonarr.configured).toBe(false);
     expect(
       issues.some((i) =>
-        String(i.message ?? '').includes('MissingEpisodeSearch was not queued'),
+        (typeof i.message === 'string' ? i.message : '').includes(
+          'MissingEpisodeSearch was not queued',
+        ),
       ),
     ).toBe(false);
   });
@@ -209,5 +215,115 @@ describe('MonitorConfirmJob', () => {
     expect(sonarr.searchMonitoredEpisodes).toHaveBeenCalledTimes(1);
     expect(rawRadarr.configured).toBe(false);
     expect(rawSonarr.configured).toBe(true);
+  });
+
+  it('only unmonitors Sonarr episodes that Plex already has and leaves series monitoring unchanged', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false);
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex.local:32400' },
+        sonarr: { baseUrl: 'http://sonarr.local:8989' },
+      },
+      secrets: {
+        plex: { token: 'plex-token' },
+        'plex.token': 'plex-token',
+        sonarr: { apiKey: 'sonarr-key' },
+        'sonarr.apiKey': 'sonarr-key',
+      },
+    });
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(
+      new Map<number, string[]>([[42, ['show-1']]]),
+    );
+    plex.getEpisodesSet.mockResolvedValue(new Set(['1:1', '1:2']));
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      {
+        id: 1,
+        title: 'Existing Show',
+        tvdbId: 42,
+        monitored: true,
+        seasons: [{ seasonNumber: 1, monitored: true }],
+      },
+    ]);
+    sonarr.getEpisodesBySeries.mockResolvedValue([
+      { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: true },
+      { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: true },
+    ]);
+    sonarr.setEpisodeMonitored.mockResolvedValue(true);
+    sonarr.searchMonitoredEpisodes.mockResolvedValue(true);
+
+    const result = await job.run(ctx);
+    const report = result.summary as unknown as Record<string, unknown>;
+    const raw = report.raw as Record<string, unknown>;
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(2);
+    expect(sonarr.setEpisodeMonitored).toHaveBeenNthCalledWith(1, {
+      baseUrl: 'http://sonarr.local:8989',
+      apiKey: 'sonarr-key',
+      episode: { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: true },
+      monitored: false,
+    });
+    expect(sonarr.setEpisodeMonitored).toHaveBeenNthCalledWith(2, {
+      baseUrl: 'http://sonarr.local:8989',
+      apiKey: 'sonarr-key',
+      episode: { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: true },
+      monitored: false,
+    });
+    expect(sonarr.updateSeries).not.toHaveBeenCalled();
+    expect(rawSonarr.episodesInPlex).toBe(2);
+    expect(rawSonarr.episodesUnmonitored).toBe(2);
+    expect(rawSonarr.seasonsUnmonitored).toBe(0);
+    expect(rawSonarr.seriesUnmonitored).toBe(0);
+  });
+
+  it('does not unmonitor Sonarr items when Plex has the show but no episodes', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false);
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex.local:32400' },
+        sonarr: { baseUrl: 'http://sonarr.local:8989' },
+      },
+      secrets: {
+        plex: { token: 'plex-token' },
+        'plex.token': 'plex-token',
+        sonarr: { apiKey: 'sonarr-key' },
+        'sonarr.apiKey': 'sonarr-key',
+      },
+    });
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(
+      new Map<number, string[]>([[42, ['show-1']]]),
+    );
+    plex.getEpisodesSet.mockResolvedValue(new Set());
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'Metadata Only Show', tvdbId: 42, monitored: true },
+    ]);
+    sonarr.getEpisodesBySeries.mockResolvedValue([
+      { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: true },
+      { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: true },
+    ]);
+    sonarr.searchMonitoredEpisodes.mockResolvedValue(true);
+
+    const result = await job.run(ctx);
+    const report = result.summary as unknown as Record<string, unknown>;
+    const raw = report.raw as Record<string, unknown>;
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+
+    expect(sonarr.setEpisodeMonitored).not.toHaveBeenCalled();
+    expect(sonarr.updateSeries).not.toHaveBeenCalled();
+    expect(rawSonarr.episodesInPlex).toBe(0);
+    expect(rawSonarr.episodesUnmonitored).toBe(0);
+    expect(rawSonarr.seasonsUnmonitored).toBe(0);
+    expect(rawSonarr.seriesUnmonitored).toBe(0);
+    expect(rawSonarr.seriesWithMissing).toBe(1);
   });
 });

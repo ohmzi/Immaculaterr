@@ -2,11 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
-import {
-  SonarrService,
-  type SonarrEpisode,
-  type SonarrSeries,
-} from '../sonarr/sonarr.service';
+import { SonarrService, type SonarrEpisode } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
@@ -500,8 +496,8 @@ export class MonitorConfirmJob {
     let sonarrEpisodesInPlex = 0;
     let sonarrEpisodesUnmonitored = 0;
     let sonarrSeriesWithMissing = 0;
-    let sonarrSeriesUnmonitored = 0;
-    let sonarrSeasonsUnmonitored = 0;
+    const sonarrSeriesUnmonitored = 0;
+    const sonarrSeasonsUnmonitored = 0;
     let sonarrSeriesProcessed = 0;
     let sonarrEpisodesMonitoredBefore = 0;
     let sonarrSearchQueued: boolean | null = null;
@@ -585,11 +581,8 @@ export class MonitorConfirmJob {
         }
 
         let hasMissing = false;
-        const completeSeasons: number[] = [];
-        const incompleteSeasons: number[] = [];
 
         for (const [season, seasonEpisodes] of episodesBySeason.entries()) {
-          let seasonMissing = 0;
           const seasonEpisodesToUnmonitor: SonarrEpisode[] = [];
 
           // Process all episodes in the season (matching Python script logic)
@@ -609,7 +602,6 @@ export class MonitorConfirmJob {
                 seasonEpisodesToUnmonitor.push(ep);
               }
             } else {
-              seasonMissing += 1;
               hasMissing = true;
             }
           }
@@ -645,60 +637,10 @@ export class MonitorConfirmJob {
               dryRun: ctx.dryRun,
             });
           }
-
-          // Check if season is complete (all episodes in Plex)
-          if (seasonMissing === 0 && seasonEpisodes.length > 0) {
-            completeSeasons.push(season);
-          } else if (seasonMissing > 0) {
-            incompleteSeasons.push(season);
-          }
         }
 
         if (hasMissing) {
           sonarrSeriesWithMissing += 1;
-        }
-
-        // Season/series unmonitoring (via series update)
-        const updatedSeries: SonarrSeries = { ...series };
-        const seasons = Array.isArray(series.seasons)
-          ? series.seasons.map((s) => ({ ...s }))
-          : [];
-        let changedSeries = false;
-
-        for (const seasonNum of completeSeasons) {
-          const seasonObj = seasons.find(
-            (s) => toInt(s.seasonNumber) === seasonNum,
-          );
-          if (seasonObj?.monitored) {
-            seasonObj.monitored = false;
-            sonarrSeasonsUnmonitored += 1;
-            changedSeries = true;
-          }
-        }
-
-        const seriesComplete =
-          incompleteSeasons.length === 0 && completeSeasons.length > 0;
-        if (seriesComplete && updatedSeries.monitored) {
-          updatedSeries.monitored = false;
-          sonarrSeriesUnmonitored += 1;
-          changedSeries = true;
-        }
-
-        if (changedSeries) {
-          updatedSeries.seasons = seasons;
-          if (!ctx.dryRun) {
-            await this.sonarr.updateSeries({
-              baseUrl: sonarrBaseUrl as string,
-              apiKey: sonarrApiKey as string,
-              series: updatedSeries,
-            });
-          }
-          await ctx.info('sonarr: updated series monitoring', {
-            title,
-            completeSeasons,
-            seriesComplete,
-            dryRun: ctx.dryRun,
-          });
         }
 
         if (

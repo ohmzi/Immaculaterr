@@ -218,7 +218,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'monitorConfirm',
     name: 'Confirm Monitored',
     description:
-      'Unmonitor items already present in Plex and optionally trigger Sonarr MissingEpisodeSearch.',
+      'Unmonitor monitored Radarr movies and Sonarr episodes already present in Plex, then optionally trigger Sonarr MissingEpisodeSearch.',
     defaultScheduleCron: '0 1 * * *',
     defaultEstimatedRuntimeMs: 12 * 60_000,
     dedupePolicy: 'schedule_singleton',
