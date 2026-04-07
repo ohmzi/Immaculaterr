@@ -3,6 +3,35 @@ Version History
 
 This file tracks notable changes by version.
 
+1.7.6-beta-1
+---
+
+- What's new since 1.7.5:
+- Plex Watch History Import:
+  - Fetches watched movies and TV shows directly from your Plex server library sections.
+  - Classifies each title via TMDB and uses matched entries as seeds for similar and change-of-taste recommendations.
+  - Creates per-user Plex collections ("Plex History Picks" and "Plex History: Change of Taste") with the top results.
+  - Opt-in during onboarding or run on demand from the Task Manager.
+  - Job reports include a seed titles section showing exactly which history titles were matched and used.
+- Netflix Watch History CSV Import:
+  - Upload a Netflix viewing-history CSV to import watched titles into Immaculaterr.
+  - Titles are classified via TMDB and used as seeds for similar and change-of-taste recommendation generation.
+  - Results sync to per-user Plex collections just like the Plex history import.
+  - Available during onboarding and as a standalone task in the Task Manager.
+- Watched-status-aware collection ordering:
+  - Collection items you have already watched are pushed to the end so unwatched titles surface first.
+  - Remaining items are sorted into TMDB rating tiers with a shuffle inside each tier for variety.
+  - Recent-release titles get a dedicated slot near the top of collections.
+  - Ordering logic is shared across Immaculate Taste refresher, Observatory, collection resync, and watched-collections refresher.
+- Global job queue with cooldown:
+  - All jobs now execute through a single global lock instead of per-job locking.
+  - A 5-minute cooldown between consecutive jobs prevents rapid-fire Plex API calls.
+  - Queued jobs wait their turn and are drained automatically once the cooldown expires.
+- Report enhancements and bug fixes:
+  - Job reports now include a "Seed Titles" section listing every movie and TV show used as a recommendation seed.
+  - Fixed a bug where Plex history import collections were incorrectly named "Netflix Import" instead of "Plex History".
+
+
 1.7.5
 ---
 

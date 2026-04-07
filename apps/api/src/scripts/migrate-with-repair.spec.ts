@@ -1,7 +1,12 @@
 const mockSpawnSync = jest.fn();
+const mockExistsSync = jest.fn(() => true);
 
 jest.mock('node:child_process', () => ({
   spawnSync: (...args: unknown[]) => mockSpawnSync(...args) as unknown,
+}));
+
+jest.mock('node:fs', () => ({
+  existsSync: (...args: unknown[]) => mockExistsSync(...args),
 }));
 
 jest.mock('@prisma/client', () => ({
@@ -46,7 +51,7 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
   };
 
   return {
-    $executeRawUnsafe: jest.fn(async (sql: string) => {
+    $executeRawUnsafe: jest.fn((sql: string) => {
       if (sql.includes('CREATE TABLE "ImmaculateTasteProfile"')) {
         mockState.tables.add('ImmaculateTasteProfile');
         mockState.columns.ImmaculateTasteProfile = ['id'];
@@ -57,17 +62,22 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
       ) {
         mockState.columns.ImmaculateTasteProfile.push('scopeAllUsers');
       }
+      return Promise.resolve();
     }),
-    $queryRawUnsafe: jest.fn(async (query: string, ...params: unknown[]) => {
+    $queryRawUnsafe: jest.fn((query: string, ...params: unknown[]) => {
       if (query.includes('FROM sqlite_master')) {
         const table = String(params[0]);
-        return mockState.tables.has(table) ? [{ name: table }] : [];
+        return Promise.resolve(
+          mockState.tables.has(table) ? [{ name: table }] : [],
+        );
       }
 
       const tableInfoMatch = query.match(/^PRAGMA table_info\("(.+)"\)$/);
       if (tableInfoMatch) {
         const table = tableInfoMatch[1];
-        return (mockState.columns[table] ?? []).map((name) => ({ name }));
+        return Promise.resolve(
+          (mockState.columns[table] ?? []).map((name) => ({ name })),
+        );
       }
 
       if (
@@ -75,17 +85,17 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
         query.includes('WHERE "migration_name" = ?')
       ) {
         const migrationName = String(params[0]);
-        return mockState.migrationRows[migrationName] ?? [];
+        return Promise.resolve(mockState.migrationRows[migrationName] ?? []);
       }
 
       if (
         query.includes('FROM "_prisma_migrations"') &&
         query.includes('WHERE "finished_at" IS NULL')
       ) {
-        return mockState.failedMigrations;
+        return Promise.resolve(mockState.failedMigrations);
       }
 
-      throw new Error(`Unexpected query in test: ${query}`);
+      return Promise.reject(new Error(`Unexpected query in test: ${query}`));
     }),
   };
 }
@@ -93,6 +103,8 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
 describe('scripts/migrate-with-repair', () => {
   beforeEach(() => {
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockExistsSync.mockReset();
+    mockExistsSync.mockReturnValue(true);
     mockSpawnSync.mockReset();
     mockSpawnSync.mockReturnValue({ status: 0 });
   });

@@ -34,6 +34,7 @@ model User {
   rejectedSuggestions RejectedSuggestion[]
   arrInstances        ArrInstance[]
   immaculateTasteProfiles ImmaculateTasteProfile[]
+  importedWatchEntries ImportedWatchEntry[]
 }
 
 model Session {
@@ -408,6 +409,8 @@ model WatchedMovieRecommendationLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  releaseDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToRadarrAt   DateTime?
@@ -428,6 +431,7 @@ model WatchedMovieRecommendationLibrary {
   @@index([plexUserId, librarySectionKey, collectionName, downloadApproval])
   @@index([plexUserId, librarySectionKey, collectionName, sentToRadarrAt])
   @@index([plexUserId, tmdbId])
+  @@index([releaseDate])
 }
 
 model FreshReleaseMovieLibrary {
@@ -548,6 +552,8 @@ model WatchedShowRecommendationLibrary {
   tmdbVoteAvg   Float?
   tmdbVoteCount Int?
 
+  firstAirDate DateTime?
+
   // Observatory approvals (optional): gate ARR requests behind user swipes.
   downloadApproval DownloadApprovalStatus @default(none)
   sentToSonarrAt   DateTime?
@@ -568,6 +574,31 @@ model WatchedShowRecommendationLibrary {
   @@index([plexUserId, librarySectionKey, collectionName, tmdbVoteAvg])
   @@index([plexUserId, librarySectionKey, collectionName, downloadApproval])
   @@index([plexUserId, librarySectionKey, collectionName, sentToSonarrAt])
+  @@index([firstAirDate])
+}
+
+model ImportedWatchEntry {
+  id          String    @id @default(cuid())
+  userId      String
+  source      String
+  rawTitle    String
+  parsedTitle String
+  watchedAt   DateTime?
+
+  mediaType    String?
+  tmdbId       Int?
+  tvdbId       Int?
+  matchedTitle String?
+  status       String   @default("pending")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, parsedTitle])
+  @@index([userId, source])
+  @@index([userId, status])
 }
 
 // Legacy table preserved by historical migrations (not used by Prisma Client).

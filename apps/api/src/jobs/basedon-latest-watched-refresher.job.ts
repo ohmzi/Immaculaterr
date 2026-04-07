@@ -887,6 +887,20 @@ function buildRecentlyWatchedRefresherReport(params: {
             ? (asNum(col.sentToRadarr) ?? 0)
             : (asNum(col.sentToSonarr) ?? 0);
 
+        const plexItems = plex ? asStringArray(plex.collectionItems) : [];
+        const facts: Array<{ label: string; value: JsonValue }> = [];
+        if (plexItems.length) {
+          facts.push({
+            label: 'Collection order',
+            value: {
+              count: plexItems.length,
+              unit: params.prefix === 'tv' ? 'shows' : 'movies',
+              items: plexItems,
+              order: 'plex',
+            },
+          });
+        }
+
         tasks.push({
           id: `${params.userPrefix}${params.prefix}_${librarySectionKey}_${collectionName}`,
           title: `${params.titlePrefix} ${library}${params.userSuffix} — ${collectionName}`,
@@ -914,6 +928,7 @@ function buildRecentlyWatchedRefresherReport(params: {
               unit: 'items',
             }),
           ],
+          facts: facts.length ? facts : undefined,
         });
       }
     }

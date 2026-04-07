@@ -864,6 +864,9 @@ export class AuthService {
     await this.runResetDeleteStep('immaculateTasteProfile', () =>
       this.prisma.immaculateTasteProfile.deleteMany(),
     );
+    await this.runResetDeleteStep('importedWatchEntry', () =>
+      this.prisma.importedWatchEntry.deleteMany(),
+    );
     await this.runResetDeleteStep('rejectedSuggestion', () =>
       this.prisma.rejectedSuggestion.deleteMany(),
     );

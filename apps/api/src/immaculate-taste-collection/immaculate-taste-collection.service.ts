@@ -7,17 +7,8 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { immaculateTasteResetMarkerKey } from './immaculate-taste-reset';
-import { buildThreeTierOrder } from './immaculate-taste-ordering.utils';
 
 const DEFAULT_MAX_POINTS = 50;
-
-type ThreeTierMovieShuffleParams = {
-  movies: Array<{
-    tmdbId: number;
-    tmdbVoteAvg: number | null;
-    tmdbVoteCount: number | null;
-  }>;
-};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -682,19 +673,6 @@ export class ImmaculateTasteCollectionService {
       },
       orderBy: [{ points: 'desc' }, { updatedAt: 'desc' }],
       ...(take ? { take } : {}),
-    });
-  }
-
-  buildThreeTierTmdbRatingShuffleOrder(
-    params: ThreeTierMovieShuffleParams,
-  ): number[] {
-    return buildThreeTierOrder({
-      items: (params.movies ?? []).map((m) => ({
-        id: m.tmdbId,
-        tmdbVoteAvg: m.tmdbVoteAvg ?? null,
-        tmdbVoteCount: m.tmdbVoteCount ?? null,
-        releaseDate: null,
-      })),
     });
   }
 }

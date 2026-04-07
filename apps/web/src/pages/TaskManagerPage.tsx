@@ -33,9 +33,12 @@ import {
   Search,
   Clapperboard,
   Trash2,
+  FileUp,
+  History,
 } from 'lucide-react';
 
 import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
+import { NetflixImportUpload } from '@/components/NetflixImportUpload';
 import { getTmdbMovieFilters, testSavedIntegration } from '@/api/integrations';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -97,6 +100,12 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup', // webhook/manual input only
   'immaculateTastePoints', // webhook/manual input only
   'watchedMovieRecommendations', // webhook/manual input only
+  'importNetflixHistory', // manual upload only
+  'importPlexHistory', // manual only
+]);
+const NO_WEBHOOK_JOB_IDS = new Set<string>([
+  'importNetflixHistory', // manual upload only, no Plex-triggered auto-run
+  'importPlexHistory', // manual only, no Plex-triggered auto-run
 ]);
 const TASK_MANAGER_HIDDEN_JOB_IDS = new Set<string>([
   'collectionResyncUpgrade', // one-time startup migration, not user-managed
@@ -177,6 +186,18 @@ const JOB_CONFIG: Record<
     color: 'text-violet-400',
     description:
       'Generates fresh recommendations after you finish a movie.',
+  },
+  importNetflixHistory: {
+    icon: <FileUp className="w-8 h-8" />,
+    color: 'text-red-400',
+    description:
+      'Classifies uploaded Netflix titles via TMDB, generates recommendations, and creates consolidated Plex collections.',
+  },
+  importPlexHistory: {
+    icon: <History className="w-8 h-8" />,
+    color: 'text-amber-400',
+    description:
+      'Analyzes your Plex watch history, generates recommendations, and creates consolidated Plex collections.',
   },
 };
 
@@ -682,6 +703,10 @@ export function TaskManagerPage() {
   const [movieSeedError, setMovieSeedError] = useState<string | null>(null);
   const movieSeedTitleRef = useRef<HTMLInputElement | null>(null);
   const resetMovieSeedDialogOnCloseRef = useRef(false);
+
+  // Netflix import dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importDialogDone, setImportDialogDone] = useState(false);
 
   // Immaculate Taste flow config (persisted in Settings)
   const settingsQuery = useQuery({
@@ -1430,6 +1455,23 @@ export function TaskManagerPage() {
         0,
         freshOutOfTheOvenJob,
       );
+
+      const plexHistoryJob = jobsWithoutFreshOutOfTheOven.find(
+        (job) => job.id === 'importPlexHistory',
+      );
+      if (plexHistoryJob) {
+        const withoutPlexHistory = jobsWithoutFreshOutOfTheOven.filter(
+          (job) => job.id !== 'importPlexHistory',
+        );
+        const netflixIndex = withoutPlexHistory.findIndex(
+          (job) => job.id === 'importNetflixHistory',
+        );
+        if (netflixIndex !== -1) {
+          withoutPlexHistory.splice(netflixIndex + 1, 0, plexHistoryJob);
+          return withoutPlexHistory;
+        }
+      }
+
       return jobsWithoutFreshOutOfTheOven;
     },
     [jobsQuery.data?.jobs],
@@ -2116,6 +2158,12 @@ export function TaskManagerPage() {
         setMovieSeedError(null);
         setMovieSeedDialogJobId(jobId);
         setMovieSeedDialogOpen(true);
+        return;
+      }
+
+      if (jobId === 'importNetflixHistory') {
+        setImportDialogDone(false);
+        setImportDialogOpen(true);
         return;
       }
 
@@ -3371,9 +3419,12 @@ export function TaskManagerPage() {
                   : null;
 
               const runUiState = runNowUi[job.id] ?? { phase: 'idle' as const };
-              const runUiActive = runUiState.phase !== 'idle';
-              const runUiProgressPct =
-                runUiState.phase === 'running'
+              const jobAlreadyRunning =
+                terminalState[job.id]?.status === 'running' && runUiState.phase === 'idle';
+              const runUiActive = runUiState.phase !== 'idle' || !!jobAlreadyRunning;
+              const runUiProgressPct = jobAlreadyRunning
+                ? 80
+                : runUiState.phase === 'running'
                   ? 80
                   : runUiState.phase === 'finishing' || runUiState.phase === 'complete'
                     ? 100
@@ -3384,8 +3435,9 @@ export function TaskManagerPage() {
                     ? 'bg-red-500/90'
                     : 'bg-emerald-500/90'
                   : 'bg-[#facc15]/90';
-              const runUiLabel =
-                runUiState.phase === 'running'
+              const runUiLabel = jobAlreadyRunning
+                ? 'Running…'
+                : runUiState.phase === 'running'
                   ? 'Running…'
                   : runUiState.phase === 'finishing'
                     ? 'Finalizing…'
@@ -3606,6 +3658,15 @@ export function TaskManagerPage() {
                             />
                           </button>
                         </div>
+                      ) : NO_WEBHOOK_JOB_IDS.has(job.id) ? (
+                        <div className="flex w-[5.25rem] shrink-0 flex-col items-center justify-center gap-1 md:self-center">
+                          <span className="block text-center text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                            Manual
+                          </span>
+                          <span className="block text-center text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                            Only
+                          </span>
+                        </div>
                       ) : (
                         <div className="flex w-[5.25rem] shrink-0 flex-col items-center gap-2 md:self-center">
                           <div className="flex w-full flex-col items-center gap-0.5 leading-none">
@@ -3756,7 +3817,7 @@ export function TaskManagerPage() {
                                 exit={{ y: -10, opacity: 0 }}
                                 transition={{ duration: 0.18, ease: 'easeOut' }}
                               >
-                                {runUiState.phase === 'idle' ? (
+                                {runUiState.phase === 'idle' && !jobAlreadyRunning ? (
                                   <Play className="w-4 h-4 mr-2 fill-current text-[#facc15]" />
                                 ) : runUiState.phase === 'complete' ? (
                                   runUiState.result === 'FAILED' ? (
@@ -3770,7 +3831,7 @@ export function TaskManagerPage() {
                                 <span
                                   className={cn(
                                     'font-bold',
-                                    runUiState.phase === 'idle'
+                                    runUiState.phase === 'idle' && !jobAlreadyRunning
                                       ? 'text-white'
                                       : runUiState.phase === 'complete'
                                         ? 'text-white'
@@ -5926,10 +5987,17 @@ export function TaskManagerPage() {
                   <button
                     type="button"
                     onClick={submitMovieSeedRun}
-                    className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2"
-                    disabled={runMutation.isPending}
+                    className={cn(
+                      'h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98] flex items-center justify-center gap-2',
+                      'disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-[0_0_20px_rgba(250,204,21,0.25)]',
+                    )}
+                    disabled={
+                      runMutation.isPending ||
+                      terminalState[movieSeedDialogJobId ?? '']?.status === 'running'
+                    }
                   >
-                    {runMutation.isPending ? (
+                    {runMutation.isPending ||
+                    terminalState[movieSeedDialogJobId ?? '']?.status === 'running' ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Running…
@@ -6120,6 +6188,81 @@ export function TaskManagerPage() {
         cancelText="Close"
         variant="primary"
       />
+
+      {/* Netflix Import - Upload Dialog */}
+      <AnimatePresence>
+        {importDialogOpen && (
+          <motion.div
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setImportDialogOpen(false)}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+              onClick={(e: ReactMouseEvent) => e.stopPropagation()}
+              className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-red-500/10 overflow-hidden p-6 sm:p-7"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
+                    Import
+                  </div>
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                    Import Watch History
+                  </h2>
+                  <p className="mt-1 text-sm text-white/60">
+                    Upload your Netflix CSV to seed recommendations, or re-upload to process more
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setImportDialogOpen(false)}
+                  className="shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 transition active:scale-[0.98] flex items-center justify-center"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mt-6">
+                <NetflixImportUpload
+                  compact
+                  onSuccess={(uploadResult) => {
+                    setImportDialogDone(true);
+                    startRunNowUi('importNetflixHistory');
+                    setTerminalState((prev) => ({
+                      ...prev,
+                      importNetflixHistory: {
+                        status: 'running',
+                        runId: uploadResult.jobId ?? undefined,
+                      },
+                    }));
+                  }}
+                />
+              </div>
+
+              {importDialogDone && (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setImportDialogOpen(false)}
+                    className="h-12 rounded-full px-6 bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] hover:shadow-[0_0_28px_rgba(250,204,21,0.35)] hover:scale-[1.02] transition active:scale-[0.98]"
+                  >
+                    OK
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

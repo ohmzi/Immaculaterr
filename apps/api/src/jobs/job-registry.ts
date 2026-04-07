@@ -76,6 +76,20 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
       'Builds a recent-release movie baseline for the last 3 months and refreshes per-user unseen Plex collections across shared and admin homes.',
     defaultScheduleCron: '30 2 * * *', // 2:30am daily (disabled by default)
   },
+  {
+    id: 'importNetflixHistory',
+    name: 'Netflix Watch History Import',
+    description:
+      'Classifies uploaded Netflix titles via TMDB, generates recommendations, and creates consolidated Plex collections.',
+    defaultScheduleCron: undefined,
+  },
+  {
+    id: 'importPlexHistory',
+    name: 'Plex Watch History Import',
+    description:
+      'Analyzes your Plex watch history, generates recommendations, and creates consolidated Plex collections.',
+    defaultScheduleCron: undefined,
+  },
 ];
 
 export function findJobDefinition(

@@ -39,6 +39,7 @@ describe('IntegrationsController plex libraries', () => {
 
     const prisma = {
       $transaction: jest.fn(),
+      freshReleaseMovieLibrary: { deleteMany: jest.fn() },
       immaculateTasteMovieLibrary: { deleteMany: jest.fn() },
       immaculateTasteShowLibrary: { deleteMany: jest.fn() },
       watchedMovieRecommendationLibrary: { deleteMany: jest.fn() },
@@ -223,7 +224,13 @@ describe('IntegrationsController plex libraries', () => {
         librarySelection: { excludedSectionKeys: ['2'] },
       },
     });
-    const mockedTx = [{ count: 11 }, { count: 7 }, { count: 5 }, { count: 3 }];
+    const mockedTx = [
+      { count: 13 },
+      { count: 11 },
+      { count: 7 },
+      { count: 5 },
+      { count: 3 },
+    ];
     prisma.$transaction.mockResolvedValue(mockedTx);
     plexServer.listCollectionsForSectionKey.mockResolvedValue([
       { ratingKey: '101', title: 'Inspired by your Immaculate Taste (Admin)' },
@@ -236,6 +243,9 @@ describe('IntegrationsController plex libraries', () => {
       { selectedSectionKeys: ['1'] },
     );
 
+    expect(prisma.freshReleaseMovieLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { librarySectionKey: { in: ['2'] } },
+    });
     expect(prisma.immaculateTasteMovieLibrary.deleteMany).toHaveBeenCalledWith({
       where: { librarySectionKey: { in: ['2'] } },
     });

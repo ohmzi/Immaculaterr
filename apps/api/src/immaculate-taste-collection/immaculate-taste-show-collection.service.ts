@@ -2,17 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../db/prisma.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 import { TmdbService } from '../tmdb/tmdb.service';
-import { buildThreeTierOrder } from './immaculate-taste-ordering.utils';
 
 const DEFAULT_MAX_POINTS = 50;
-
-type ThreeTierShowShuffleParams = {
-  shows: Array<{
-    tvdbId: number;
-    tmdbVoteAvg: number | null;
-    tmdbVoteCount: number | null;
-  }>;
-};
 
 const chunk = <T>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -515,19 +506,6 @@ export class ImmaculateTasteShowCollectionService {
       },
       orderBy: [{ points: 'desc' }, { updatedAt: 'desc' }],
       ...(take ? { take } : {}),
-    });
-  }
-
-  buildThreeTierTmdbRatingShuffleOrder(
-    params: ThreeTierShowShuffleParams,
-  ): number[] {
-    return buildThreeTierOrder({
-      items: (params.shows ?? []).map((s) => ({
-        id: s.tvdbId,
-        tmdbVoteAvg: s.tmdbVoteAvg ?? null,
-        tmdbVoteCount: s.tmdbVoteCount ?? null,
-        releaseDate: null,
-      })),
     });
   }
 }

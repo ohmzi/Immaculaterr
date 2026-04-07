@@ -10,6 +10,8 @@ import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-coll
 import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
 import { FreshOutOfTheOvenJob } from './fresh-out-of-the-oven.job';
 import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
+import { ImportNetflixHistoryJob } from './import-netflix-history.job';
+import { ImportPlexHistoryJob } from './import-plex-history.job';
 
 @Injectable()
 export class JobsHandlers {
@@ -24,6 +26,8 @@ export class JobsHandlers {
     private readonly collectionResyncUpgradeJob: CollectionResyncUpgradeJob,
     private readonly freshOutOfTheOvenJob: FreshOutOfTheOvenJob,
     private readonly tmdbUpcomingMoviesJob: TmdbUpcomingMoviesJob,
+    private readonly importNetflixHistoryJob: ImportNetflixHistoryJob,
+    private readonly importPlexHistoryJob: ImportPlexHistoryJob,
   ) {}
 
   async run(jobId: string, ctx: JobContext): Promise<JobRunResult> {
@@ -48,6 +52,10 @@ export class JobsHandlers {
         return await this.freshOutOfTheOvenJob.run(ctx);
       case 'collectionResyncUpgrade':
         return await this.collectionResyncUpgradeJob.run(ctx);
+      case 'importNetflixHistory':
+        return await this.importNetflixHistoryJob.run(ctx);
+      case 'importPlexHistory':
+        return await this.importPlexHistoryJob.run(ctx);
       default:
         throw new Error(`No handler registered for jobId=${jobId}`);
     }

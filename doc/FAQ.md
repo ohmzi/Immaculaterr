@@ -14,7 +14,7 @@ Pick a feature area first, then jump into the full section below.
 > ### [Task Manager](#task-manager)
 > How jobs run, what the main controls mean, and how to keep automation simple.
 > [What is Task Manager for?](#what-is-task-manager-for) · [How do I keep Task Manager simple by default?](#how-do-i-keep-task-manager-simple-by-default) · [What is the difference between manual runs, Plex-Triggered Auto-Run, and Scheduled Auto-Run?](#what-is-the-difference-between-manual-runs-plex-triggered-auto-run-and-scheduled-auto-run)
-> + 3 more answers in the section below.
+> + 4 more answers in the section below.
 
 > ### [Confirm Monitored](#confirm-monitored)
 > Keep ARR monitoring aligned with what already exists in Plex.
@@ -55,6 +55,16 @@ Pick a feature area first, then jump into the full section below.
 > ### [Fresh Out Of The Oven](#fresh-out-of-the-oven)
 > Per-user unseen recent-release movie rows for the last 3 months.
 > [What does Fresh Out Of The Oven do?](#what-does-fresh-out-of-the-oven-do) · [Where does Fresh Out Of The Oven pin in Plex?](#where-does-fresh-out-of-the-oven-pin-in-plex) · [What is a good default setup for Fresh Out Of The Oven?](#what-is-a-good-default-setup-for-fresh-out-of-the-oven)
+
+> ### [Plex Watch History Import](#plex-watch-history-import)
+> Scan your Plex watched history to seed recommendations and build dedicated collections.
+> [What does Plex Watch History Import do?](#what-does-plex-watch-history-import-do) · [What Plex collections does the import affect?](#what-plex-collections-does-the-plex-history-import-affect) · [How do I see which titles were used as seeds?](#how-do-i-see-which-titles-were-used-as-seeds)
+> + 4 more answers in the section below.
+
+> ### [Netflix Watch History Import](#netflix-watch-history-import)
+> Upload a Netflix CSV to seed recommendations from your external watch history.
+> [What does Netflix Watch History Import do?](#what-does-netflix-watch-history-import-do) · [Where do I get the Netflix CSV file?](#where-do-i-get-the-netflix-csv-file) · [What Plex collections does the import affect?](#what-plex-collections-does-the-import-affect)
+> + 4 more answers in the section below.
 
 > ### [Recommendations](#recommendations)
 > Seeds, generated lists, and how recommendation rows refresh over time.
@@ -207,6 +217,14 @@ Some jobs depend on Radarr, Sonarr, or Seerr being configured and reachable.
 
 - **Confirm Monitored** and **Search Monitored** can block the whole card if ARR is not ready.
 - Other cards usually stay usable, but trying to enable a missing integration toggle opens a setup shortcut to Vault.
+
+### Why don't tasks run at the same time?
+
+Tasks are intentionally serialized — only one task runs at a time. This prevents multiple jobs from hitting Plex and other external services simultaneously, which can cause errors or rate-limiting.
+
+After a task finishes, there is a **5-minute cooldown** before the next queued task starts. This gives external services time to recover between jobs.
+
+If a task is requested while another is already running or the cooldown is active, it is automatically queued as **Pending**. Pending tasks auto-start in order once the cooldown expires — no manual action is needed.
 
 ## Confirm Monitored
 
@@ -442,6 +460,101 @@ It does not pin to Library Recommended, and within Immaculaterr-managed movie ro
 ### What is a good default setup for Fresh Out Of The Oven?
 
 Daily off-peak is a good default because it keeps new releases flowing in while removing anything a user has already watched. If you prefer manual control, leave the schedule off and use **Run now** after big library updates.
+
+## Plex Watch History Import
+
+Open in app: [Task Manager -> Plex Watch History Import](/task-manager#job-importPlexHistory)
+
+### What does Plex Watch History Import do?
+
+It scans your Plex server's watched history and feeds it into the same recommendation pipeline as your normal Plex-triggered activity. The import runs through a multi-phase pipeline:
+
+1. **Fetch** — watched movies and TV shows are retrieved from your Plex server library sections.
+2. **Classification** — each title is looked up via TMDB and classified as a movie or TV show.
+3. **Recommendation generation** — for each classified title (up to 50 per run), similar and change-of-taste recommendations are generated using the same engine as the Plex-triggered flows.
+4. **Aggregation** — all generated recommendations are merged, deduplicated by TMDB ID, and capped to the configured collection limit.
+5. **Plex History collections** — aggregated results are written to dedicated Plex History Picks and Plex History: Change of Taste Plex collections.
+6. **Recently Watched / Change of Taste sync** — the same recommendations are additively injected into the standard Based on your recently watched and Change of Taste collections, preserving any existing rows from Plex-triggered runs.
+7. **Immaculate Taste sync** — the Immaculate Taste points system is updated so your full watch history influences the long-lived taste profile. The next Immaculate Taste Refresher run rebuilds the Plex collection with this data included.
+8. **Plex collection rebuild** — all affected Plex collections are rebuilt, reordered, and pinned.
+
+### What Plex collections does the Plex history import affect?
+
+The import touches several collection families:
+
+- **Plex History Picks** and **Plex History: Change of Taste** — dedicated Plex history collections that are fully replaced each run.
+- **Based on your recently watched Movie/Show** — Plex history recommendations are merged in additively alongside your existing Plex-triggered rows.
+- **Change of Movie/Show Taste** — same additive merge for change-of-taste recommendations.
+- **Immaculate Taste** — the points dataset is updated in the background. The visible Plex collection rebuilds on the next Immaculate Taste Refresher run (scheduled or manual).
+
+Additive means existing rows from Plex-triggered runs are preserved — only genuinely new recommendations are inserted.
+
+### What happens if I run it again?
+
+Titles that were already imported are skipped automatically. Only genuinely new titles from your Plex watch history are processed. The report shows exactly which seed titles were used for recommendations.
+
+### What happens if I have more than 50 watched titles?
+
+Each run processes up to 50 unique classified titles. If your history contains more, the remaining titles stay as pending entries in the database. Run the import again from Task Manager to process the next batch. Already-processed titles are skipped automatically.
+
+### Why are other tasks blocked while the import is running?
+
+The import follows the same one-at-a-time task queue as every other job. Because it makes many TMDB API calls and generates recommendations for every seed, it can take longer than most tasks. While it runs, other tasks queue as **Pending** and auto-start once the import finishes and the 5-minute cooldown expires.
+
+### Can this task run automatically?
+
+No. Plex Watch History Import is manual-only — you must trigger it from the Task Manager card or opt in during onboarding. There is no schedule or Plex-triggered auto-run for this task.
+
+### How do I see which titles were used as seeds?
+
+Open the job report after a run — it includes a Seed Titles section listing every movie and TV show from your watch history that was matched via TMDB and used as a recommendation seed.
+
+## Netflix Watch History Import
+
+Open in app: [Task Manager -> Netflix Watch History Import](/task-manager#job-importNetflixHistory)
+
+### What does Netflix Watch History Import do?
+
+It lets you upload a Netflix viewing-history CSV so that your external watch history feeds into the same recommendation pipeline as your Plex activity. The import runs through a multi-phase pipeline:
+
+1. **Classification** — each Netflix title is looked up via TMDB and classified as a movie or TV show.
+2. **Recommendation generation** — for each classified title (up to 50 per run), similar and change-of-taste recommendations are generated using the same engine as the Plex-triggered flows.
+3. **Aggregation** — all generated recommendations are merged, deduplicated by TMDB ID, and capped to the configured collection limit.
+4. **Netflix collections** — aggregated results are written to dedicated Netflix Import Picks and Netflix Import: Change of Taste Plex collections.
+5. **Recently Watched / Change of Taste sync** — the same recommendations are additively injected into the standard Based on your recently watched and Change of Taste collections, preserving any existing rows from Plex-triggered runs.
+6. **Immaculate Taste sync** — the Immaculate Taste points system is updated so your Netflix history influences the long-lived taste profile. The next Immaculate Taste Refresher run rebuilds the Plex collection with this data included.
+7. **Plex collection rebuild** — all affected Plex collections are rebuilt, reordered, and pinned.
+
+### Where do I get the Netflix CSV file?
+
+Log in to Netflix on a browser, go to **Account → Profile → Viewing Activity**, then click **Download All** at the bottom of the page. You will receive a CSV with two columns: `Title` and `Date`. Upload this file as-is — the parser handles date formats, TV episode stripping, and deduplication automatically. One file at a time, up to 5 MB.
+
+### What Plex collections does the import affect?
+
+The import touches several collection families:
+
+- **Netflix Import Picks** and **Netflix Import: Change of Taste** — dedicated Netflix collections that are fully replaced each run.
+- **Based on your recently watched Movie/Show** — Netflix recommendations are merged in additively alongside your existing Plex-triggered rows.
+- **Change of Movie/Show Taste** — same additive merge for change-of-taste recommendations.
+- **Immaculate Taste** — the points dataset is updated in the background. The visible Plex collection rebuilds on the next Immaculate Taste Refresher run (scheduled or manual).
+
+Additive means existing rows from Plex-triggered runs are preserved — only genuinely new recommendations are inserted.
+
+### What happens if I upload the same file again?
+
+Titles that were already imported are skipped automatically. Only genuinely new titles are inserted as pending entries and processed. The response tells you exactly how many were new vs already imported, and no job is enqueued if nothing is new.
+
+### What happens if I have more than 50 Netflix titles?
+
+Each run processes up to 50 unique classified titles. If your CSV contains more, the remaining titles stay as pending entries in the database. Re-upload or run the import again from Task Manager to process the next batch. Already-processed titles are skipped automatically, so you can safely re-upload the same file.
+
+### Why are other tasks blocked while the import is running?
+
+The import follows the same one-at-a-time task queue as every other job. Because it makes many TMDB API calls and generates recommendations for every seed, it can take longer than most tasks. While it runs, other tasks queue as **Pending** and auto-start once the import finishes and the 5-minute cooldown expires.
+
+### Can this task run automatically?
+
+No. Netflix Watch History Import is manual-only — you must upload a CSV each time via the wizard during onboarding or from the Task Manager card. There is no schedule or Plex-triggered auto-run for this task.
 
 ## Recommendations
 

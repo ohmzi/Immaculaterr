@@ -79,12 +79,15 @@ export const WEBHOOKS_PLEX_CANONICAL_PREFIX = `${API_PREFIX_PATH}/webhooks/plex`
 
 export const PLEX_OAUTH_POLL_HEADER = 'x-immaculaterr-oauth-poll';
 
-/** Months behind "today" for Immaculate Taste collection ordering (recent-release slot). */
-export const IMMACULATE_TASTE_RECENT_RELEASE_MONTHS = 3;
+/** Months behind "today" for collection ordering (recent-release slot). */
+export const COLLECTION_RECENT_RELEASE_MONTHS = 3;
 export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';
 
 /** Maximum time a job run may stay in RUNNING before the watchdog marks it FAILED. */
 export const JOB_RUN_TIMEOUT_MS = 30 * 60_000;
+
+/** Minimum delay between consecutive job executions to avoid hammering external APIs. */
+export const QUEUE_COOLDOWN_MS = 5 * 60_000;
 
 /** Cap for third-party HTTP response bodies in log output. */
 export const LOG_BODY_MAX_LENGTH = 200;

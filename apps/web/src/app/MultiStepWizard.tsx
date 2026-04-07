@@ -14,7 +14,9 @@ import {
   CheckCircle2,
   ExternalLink,
   Globe,
+  History,
   Key,
+  FileUp,
   Loader2,
   Server,
   ShieldCheck,
@@ -34,6 +36,8 @@ import { createPlexPin, checkPlexPin } from '@/api/plex';
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RadarrLogo, SeerrLogo, SonarrLogo } from '@/components/ArrLogos';
+import { runJob } from '@/api/jobs';
+import { NetflixImportUpload } from '@/components/NetflixImportUpload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,12 +47,14 @@ type WizardStep =
   | 'plex'
   | 'plexLibraries'
   | 'plexUsers'
+  | 'plexHistory'
   | 'tmdb'
   | 'radarr'
   | 'sonarr'
   | 'seerr'
   | 'google'
   | 'openai'
+  | 'importHistory'
   | 'complete';
 
 const STEP_ORDER: WizardStep[] = [
@@ -56,12 +62,14 @@ const STEP_ORDER: WizardStep[] = [
   'plex',
   'plexLibraries',
   'plexUsers',
+  'plexHistory',
   'tmdb',
   'radarr',
   'sonarr',
   'seerr',
   'google',
   'openai',
+  'importHistory',
   'complete',
 ];
 
@@ -86,12 +94,14 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     'plex',
     'plexLibraries',
     'plexUsers',
+    'plexHistory',
     'tmdb',
     'radarr',
     'sonarr',
     'seerr',
     'google',
     'openai',
+    'importHistory',
   ];
 
   // Restore wizard progress from localStorage if available
@@ -156,6 +166,26 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   // OpenAI state
   const [openAiApiKey, setOpenAiApiKey] = useState('');
+
+  // Plex History state
+  const [plexUseHistory, setPlexUseHistory] = useState(false);
+  const [plexHistorySettingsLoaded, setPlexHistorySettingsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (currentStep !== 'plexHistory' || plexHistorySettingsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getPublicSettings } = await import('@/api/settings');
+        const res = await getPublicSettings();
+        if (cancelled) return;
+        const plex = res.settings?.plex as Record<string, unknown> | undefined;
+        if (plex?.useHistory === true) setPlexUseHistory(true);
+      } catch { /* ignore — toggle defaults to off */ }
+      if (!cancelled) setPlexHistorySettingsLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [currentStep, plexHistorySettingsLoaded]);
 
   const loadSecretsEnvelopeKey = useCallback(
     async () => await getSecretsEnvelopeKey(),
@@ -947,9 +977,12 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
             title={
               <>
                 <span className="text-yellow-400">Plex</span> Configuration
+                <span className="ml-2 inline-flex rounded-full bg-red-500/15 px-2 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wider text-red-300">
+                  Required
+                </span>
               </>
             }
-            subtitle="Connect your media server to enable library synchronization and automation."
+            subtitle="Plex is required for Immaculaterr to manage your library, build collections, and deliver recommendations. Connect your server to continue."
             progress={{
               stepNumber: coreStepNumber,
               stepTotal: coreStepTotal,
@@ -1304,6 +1337,90 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
           </WizardShell>
         );
 
+      case 'plexHistory':
+        return (
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-emerald-400">Use</span> Your Plex History
+              </>
+            }
+            subtitle="Let us analyze what you've already watched on Plex to create better recommendations and smarter collections — or start completely fresh."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  disabled={!canGoBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  onClick={async () => {
+                    await putSettings({ settings: { plex: { useHistory: plexUseHistory } } });
+                    handleNext();
+                  }}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  Continue <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
+              <div className="flex flex-col items-center gap-6 py-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                  <History className="h-8 w-8 text-emerald-400" />
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={plexUseHistory}
+                  aria-label="Use Plex watch history"
+                  tabIndex={0}
+                  onClick={() => setPlexUseHistory((v) => !v)}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      setPlexUseHistory((v) => !v);
+                    }
+                  }}
+                  className={`
+                    relative flex h-14 w-[10rem] items-center rounded-full px-1.5 transition-colors duration-200
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0b12]
+                    ${plexUseHistory ? 'bg-emerald-500/20 ring-1 ring-emerald-500/40' : 'bg-white/10 ring-1 ring-white/10'}
+                  `}
+                >
+                  <span
+                    className={`
+                      flex h-11 w-11 items-center justify-center rounded-full shadow-md transition-all duration-200
+                      ${plexUseHistory ? 'translate-x-[6.25rem] bg-emerald-500' : 'translate-x-0 bg-zinc-500'}
+                    `}
+                  >
+                    <span className="text-xs font-bold text-white">
+                      {plexUseHistory ? 'On' : 'Off'}
+                    </span>
+                  </span>
+                </button>
+
+                <p className="max-w-sm text-center text-sm text-zinc-400">
+                  {plexUseHistory
+                    ? 'Your Plex watch history will be used as seeds for smarter recommendations from day one.'
+                    : 'Start fresh — recommendations will be built from scratch as you use the app.'}
+                </p>
+              </div>
+            </WizardSection>
+          </WizardShell>
+        );
+
       case 'tmdb':
         return (
           <WizardShell
@@ -1311,9 +1428,12 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
             title={
               <>
                 <span className="text-yellow-400">TMDB</span> Configuration
+                <span className="ml-2 inline-flex rounded-full bg-red-500/15 px-2 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wider text-red-300">
+                  Required
+                </span>
               </>
             }
-            subtitle="Add your TMDB API key to enrich your library with high-quality metadata."
+            subtitle="A TMDB API key is required for Immaculaterr to identify titles, fetch metadata, and generate recommendations. Add your key to continue."
             progress={{
               stepNumber: coreStepNumber,
               stepTotal: coreStepTotal,
@@ -1805,6 +1925,87 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
           </WizardShell>
         );
 
+      case 'importHistory':
+        return (
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-red-400">Import</span> Watch History
+              </>
+            }
+            subtitle="Optional: upload your Netflix viewing history to kickstart recommendations."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    if (plexUseHistory) {
+                      runJob('importPlexHistory', false).catch(() => {
+                        toast.warning('Plex history import could not be started — you can run it later from Task Manager.');
+                      });
+                    }
+                    handleSkip();
+                  }}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (plexUseHistory) {
+                      runJob('importPlexHistory', false).catch(() => {
+                        toast.warning('Plex history import could not be started — you can run it later from Task Manager.');
+                      });
+                    }
+                    handleNext();
+                  }}
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  Continue <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 ring-1 ring-red-500/20">
+                  <FileUp className="h-5 w-5 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">
+                    Netflix CSV Upload
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    Export from netflix.com/account/getmyinfo
+                  </p>
+                </div>
+              </div>
+              <NetflixImportUpload
+                onSuccess={() => {
+                  if (plexUseHistory) {
+                    runJob('importPlexHistory', false).catch(() => {
+                      toast.warning('Plex history import could not be started — you can run it later from Task Manager.');
+                    });
+                  }
+                }}
+              />
+            </WizardSection>
+          </WizardShell>
+        );
+
       case 'complete':
         return (
           <div className="relative -mx-4 -my-4 overflow-hidden text-center sm:-mx-6 sm:-my-6">
@@ -1821,9 +2022,14 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                 <CheckCircle2 className="h-10 w-10 text-emerald-400" />
               </div>
               <h1 className="mb-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Setup Complete!</h1>
-              <p className="mb-10 max-w-md text-zinc-400">
+              <p className="mb-4 max-w-md text-zinc-400">
                 Your Immaculaterr instance is now configured and ready to use.
               </p>
+              {plexUseHistory && (
+                <p className="mb-6 max-w-md text-sm text-emerald-400/80">
+                  Your Plex history import is running in the background.
+                </p>
+              )}
               <Button
                 onClick={submitWizardCompletion}
                 size="lg"

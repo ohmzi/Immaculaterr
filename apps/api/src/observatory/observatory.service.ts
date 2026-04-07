@@ -29,6 +29,7 @@ import { SettingsService } from '../settings/settings.service';
 import { type SonarrSeries, SonarrService } from '../sonarr/sonarr.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
+import { buildCollectionOrder } from '../collection-ordering.utils';
 
 type ListMode = 'pendingApproval' | 'review';
 type WatchedCollectionKind = 'recentlyWatched' | 'changeOfTaste';
@@ -1976,14 +1977,14 @@ export class ObservatoryService {
       profileId: DEFAULT_PROFILE_ID,
       minPoints: 1,
     });
-    const orderedIds =
-      this.immaculateMovies.buildThreeTierTmdbRatingShuffleOrder({
-        movies: activeRows.map((m) => ({
-          tmdbId: m.tmdbId,
-          tmdbVoteAvg: m.tmdbVoteAvg ?? null,
-          tmdbVoteCount: m.tmdbVoteCount ?? null,
-        })),
-      });
+    const orderedIds = buildCollectionOrder({
+      items: activeRows.map((m) => ({
+        id: m.tmdbId,
+        tmdbVoteAvg: m.tmdbVoteAvg ?? null,
+        tmdbVoteCount: m.tmdbVoteCount ?? null,
+        releaseDate: m.releaseDate ?? null,
+      })),
+    });
     const desiredItems = orderedIds
       .map((id) => tmdbToItem.get(id))
       .filter((v): v is { ratingKey: string; title: string } => Boolean(v));
@@ -2210,11 +2211,12 @@ export class ObservatoryService {
       profileId: DEFAULT_PROFILE_ID,
       minPoints: 1,
     });
-    const orderedIds = this.immaculateTv.buildThreeTierTmdbRatingShuffleOrder({
-      shows: activeRows.map((s) => ({
-        tvdbId: s.tvdbId,
+    const orderedIds = buildCollectionOrder({
+      items: activeRows.map((s) => ({
+        id: s.tvdbId,
         tmdbVoteAvg: s.tmdbVoteAvg ?? null,
         tmdbVoteCount: s.tmdbVoteCount ?? null,
+        releaseDate: s.firstAirDate ?? null,
       })),
     });
     const desiredItems = orderedIds

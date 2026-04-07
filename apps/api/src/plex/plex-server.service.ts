@@ -1505,6 +1505,175 @@ export class PlexServerService {
     return Array.from(watchedTmdbIds);
   }
 
+  async listWatchedShowTvdbIdsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<number[]> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 2,
+      includeGuids: true,
+      timeoutMs: 60000,
+    });
+
+    const watchedTvdbIds = new Set<number>();
+    for (const item of items) {
+      const viewCountRaw = item.viewCount;
+      const viewCount =
+        typeof viewCountRaw === 'number'
+          ? viewCountRaw
+          : typeof viewCountRaw === 'string' && viewCountRaw.trim()
+            ? Number.parseInt(viewCountRaw.trim(), 10)
+            : NaN;
+      const lastViewedAtRaw = item.lastViewedAt;
+      const lastViewedAt =
+        typeof lastViewedAtRaw === 'number'
+          ? lastViewedAtRaw
+          : typeof lastViewedAtRaw === 'string' && lastViewedAtRaw.trim()
+            ? Number.parseInt(lastViewedAtRaw.trim(), 10)
+            : NaN;
+      if (
+        (!Number.isFinite(viewCount) || viewCount <= 0) &&
+        (!Number.isFinite(lastViewedAt) || lastViewedAt <= 0)
+      ) {
+        continue;
+      }
+
+      const tvdbId = item.Guid
+        ? (extractIdsFromGuids(item.Guid, 'tvdb')[0] ?? null)
+        : null;
+      if (!tvdbId) continue;
+      watchedTvdbIds.add(tvdbId);
+    }
+
+    return Array.from(watchedTvdbIds);
+  }
+
+  async listWatchedMovieDetailsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<Array<{ tmdbId: number; title: string; lastViewedAt?: number }>> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 1,
+      includeGuids: true,
+      timeoutMs: 60000,
+    });
+
+    const results: Array<{
+      tmdbId: number;
+      title: string;
+      lastViewedAt?: number;
+    }> = [];
+    const seenTmdbIds = new Set<number>();
+
+    for (const item of items) {
+      const viewCount = this.parseIntField(item.viewCount);
+      const lastViewedAt = this.parseIntField(item.lastViewedAt);
+      if (
+        (!Number.isFinite(viewCount) || viewCount <= 0) &&
+        (!Number.isFinite(lastViewedAt) || lastViewedAt <= 0)
+      ) {
+        continue;
+      }
+
+      const tmdbId = item.Guid
+        ? (extractIdsFromGuids(item.Guid, 'tmdb')[0] ?? null)
+        : null;
+      if (!tmdbId || seenTmdbIds.has(tmdbId)) continue;
+      seenTmdbIds.add(tmdbId);
+
+      const title = typeof item.title === 'string' ? item.title : '';
+      results.push({
+        tmdbId,
+        title,
+        ...(Number.isFinite(lastViewedAt) && lastViewedAt > 0
+          ? { lastViewedAt }
+          : {}),
+      });
+    }
+
+    return results;
+  }
+
+  async listWatchedShowDetailsForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<
+    Array<{
+      tmdbId: number;
+      tvdbId: number | null;
+      title: string;
+      lastViewedAt?: number;
+    }>
+  > {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 2,
+      includeGuids: true,
+      timeoutMs: 60000,
+    });
+
+    const results: Array<{
+      tmdbId: number;
+      tvdbId: number | null;
+      title: string;
+      lastViewedAt?: number;
+    }> = [];
+    const seenTmdbIds = new Set<number>();
+
+    for (const item of items) {
+      const viewCount = this.parseIntField(item.viewCount);
+      const lastViewedAt = this.parseIntField(item.lastViewedAt);
+      if (
+        (!Number.isFinite(viewCount) || viewCount <= 0) &&
+        (!Number.isFinite(lastViewedAt) || lastViewedAt <= 0)
+      ) {
+        continue;
+      }
+
+      const tmdbId = item.Guid
+        ? (extractIdsFromGuids(item.Guid, 'tmdb')[0] ?? null)
+        : null;
+      if (!tmdbId || seenTmdbIds.has(tmdbId)) continue;
+      seenTmdbIds.add(tmdbId);
+
+      const tvdbId = item.Guid
+        ? (extractIdsFromGuids(item.Guid, 'tvdb')[0] ?? null)
+        : null;
+      const title = typeof item.title === 'string' ? item.title : '';
+      results.push({
+        tmdbId,
+        tvdbId,
+        title,
+        ...(Number.isFinite(lastViewedAt) && lastViewedAt > 0
+          ? { lastViewedAt }
+          : {}),
+      });
+    }
+
+    return results;
+  }
+
+  private parseIntField(raw: unknown): number {
+    if (typeof raw === 'number') return raw;
+    if (typeof raw === 'string' && raw.trim())
+      return Number.parseInt(raw.trim(), 10);
+    return NaN;
+  }
+
   async listShowsWithTvdbIdsForSectionKey(params: {
     baseUrl: string;
     token: string;

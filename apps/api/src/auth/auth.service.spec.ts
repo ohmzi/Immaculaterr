@@ -45,6 +45,9 @@ function createPrismaMock() {
       findMany: jest.fn(),
       deleteMany: deleteMany(),
     },
+    freshReleaseMovieLibrary: {
+      deleteMany: deleteMany(),
+    },
     immaculateTasteMovieLibrary: {
       deleteMany: deleteMany(),
     },
@@ -70,6 +73,9 @@ function createPrismaMock() {
     },
     immaculateTasteProfile: {
       findMany: jest.fn(),
+      deleteMany: deleteMany(),
+    },
+    importedWatchEntry: {
       deleteMany: deleteMany(),
     },
     rejectedSuggestion: {
