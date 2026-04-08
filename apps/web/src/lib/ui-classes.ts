@@ -3,7 +3,7 @@
 
 import appBgUrl from '../assets/app-bg.jpg';
 
-export const APP_BG_IMAGE_URL = appBgUrl;
+export const APP_BG_IMAGE_URL = `${appBgUrl}?v=${encodeURIComponent(__APP_ASSET_VERSION__)}`;
 
 // Bright top-left highlight (uniform across pages).
 export const APP_BG_HIGHLIGHT_CLASS =

@@ -1,9 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
+
+const appVersionSource = readFileSync(
+  fileURLToPath(new URL('../api/src/version.ts', import.meta.url)),
+  'utf8',
+);
+const appVersionMatch = appVersionSource.match(/APP_VERSION = '([^']+)'/);
+const appAssetVersion = appVersionMatch?.[1] ?? 'dev';
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_ASSET_VERSION__: JSON.stringify(appAssetVersion),
+  },
   plugins: [react()],
   resolve: {
     alias: {
