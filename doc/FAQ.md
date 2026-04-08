@@ -20,6 +20,10 @@ Pick a feature area first, then jump into the full section below.
 > Keep ARR monitoring aligned with what already exists in Plex.
 > [What does Confirm Monitored do?](#what-does-confirm-monitored-do) · [When should I use Confirm Monitored?](#when-should-i-use-confirm-monitored) · [Does Confirm Monitored have any special settings?](#does-confirm-monitored-have-any-special-settings)
 
+> ### [Confirm Unmonitored](#confirm-unmonitored)
+> Verify Radarr unmonitored movies still exist in Plex and re-monitor anything missing.
+> [What does Confirm Unmonitored do?](#what-does-confirm-unmonitored-do) · [When should I use Confirm Unmonitored?](#when-should-i-use-confirm-unmonitored) · [Does Confirm Unmonitored have any special settings?](#does-confirm-unmonitored-have-any-special-settings)
+
 > ### [Cleanup After Adding New Content](#cleanup-after-adding-new-content)
 > Plex-triggered cleanup actions for newly added media.
 > [What does Cleanup After Adding New Content do?](#what-does-cleanup-after-adding-new-content-do) · [What do the cleanup toggles mean?](#what-do-the-cleanup-toggles-mean) · [What is the difference between Plex-Triggered Auto-Run and Run now for this card?](#what-is-the-difference-between-plex-triggered-auto-run-and-run-now-for-this-card)
@@ -222,9 +226,15 @@ Some jobs depend on Radarr, Sonarr, or Seerr being configured and reachable.
 
 Tasks are intentionally serialized — only one task runs at a time. This prevents multiple jobs from hitting Plex and other external services simultaneously, which can cause errors or rate-limiting.
 
-After a task finishes, there is a **5-minute cooldown** before the next queued task starts. This gives external services time to recover between jobs.
+Manual runs, schedules, Plex-triggered jobs, and Plex polling all feed into the same persisted FIFO queue.
+
+After a task finishes, there is a **1-minute cooldown** before the next queued task starts. This gives Plex and upstream services a short recovery window between runs.
 
 If a task is requested while another is already running or the cooldown is active, it is automatically queued as **Pending**. Pending tasks auto-start in order once the cooldown expires — no manual action is needed.
+
+Rewind now shows the live queue state, including queued time, ETA, blocked reason, delayed-run hints, and whether a hidden/internal task is currently ahead of you in line.
+
+If the app restarts, pending work stays queued and previously running work is marked failed so the queue can recover cleanly instead of getting stuck.
 
 ## Confirm Monitored
 
@@ -232,7 +242,7 @@ Open in app: [Task Manager -> Confirm Monitored](/task-manager#job-monitorConfir
 
 ### What does Confirm Monitored do?
 
-It keeps ARR monitoring aligned with what already exists in Plex. In simple English: if Plex already has the item, this task helps stop Radarr or Sonarr from still treating it like something that needs attention.
+It keeps ARR monitoring aligned with what already exists in Plex. In simple English: if Plex already has the movie or the episode, this task helps stop Radarr or Sonarr from still treating that specific item like something that needs attention.
 
 ### When should I use Confirm Monitored?
 
@@ -243,6 +253,24 @@ If you want it running in the background, just enable its schedule and keep it o
 ### Does Confirm Monitored have any special settings?
 
 No. This card is intentionally simple: schedule it if you want automation, or use **Run now** when you want an immediate pass. It still needs Radarr or Sonarr to be available.
+
+## Confirm Unmonitored
+
+Open in app: [Task Manager -> Confirm Unmonitored](/task-manager#job-unmonitorConfirm)
+
+### What does Confirm Unmonitored do?
+
+It checks Radarr movies that are already marked unmonitored and verifies they really exist in Plex. If a movie is unmonitored in Radarr but missing from every Plex movie library, this task re-monitors it so Radarr can pay attention to it again.
+
+### When should I use Confirm Unmonitored?
+
+Use it after library rebuilds, large cleanups, storage moves, or anytime you suspect Radarr has stale unmonitored state.
+
+It is especially useful when you have a very large collection and want a deliberate maintenance pass instead of letting missing titles stay unmonitored quietly.
+
+### Does Confirm Unmonitored have any special settings?
+
+No. This card is intentionally manual-only. Use **Run now** when you want a full cross-check across all Plex movie libraries. It needs Plex and Radarr configured, and the report shows what stayed unmonitored, what was re-monitored, and what was skipped.
 
 ## Cleanup After Adding New Content
 
@@ -499,7 +527,7 @@ Each run processes up to 50 unique classified titles. If your history contains m
 
 ### Why are other tasks blocked while the import is running?
 
-The import follows the same one-at-a-time task queue as every other job. Because it makes many TMDB API calls and generates recommendations for every seed, it can take longer than most tasks. While it runs, other tasks queue as **Pending** and auto-start once the import finishes and the 5-minute cooldown expires.
+The import follows the same shared job queue as every other task. Because it makes many TMDB API calls and generates recommendations for every seed, it can take longer than most tasks. While it runs, other tasks queue as **Pending** and auto-start once the import finishes and the 1-minute cooldown expires. Rewind shows the live queue state and ETA while you wait.
 
 ### Can this task run automatically?
 
@@ -550,7 +578,7 @@ Each run processes up to 50 unique classified titles. If your CSV contains more,
 
 ### Why are other tasks blocked while the import is running?
 
-The import follows the same one-at-a-time task queue as every other job. Because it makes many TMDB API calls and generates recommendations for every seed, it can take longer than most tasks. While it runs, other tasks queue as **Pending** and auto-start once the import finishes and the 5-minute cooldown expires.
+The import follows the same shared job queue as every other task. Because it makes many TMDB API calls and generates recommendations for every seed, it can take longer than most tasks. While it runs, other tasks queue as **Pending** and auto-start once the import finishes and the 1-minute cooldown expires. Rewind shows the live queue state and ETA while you wait.
 
 ### Can this task run automatically?
 

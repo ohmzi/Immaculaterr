@@ -90,10 +90,14 @@ function buildJsonPreview(value: string, visibleLines: number): { text: string; 
 
 function statusPill(status: string) {
   switch (status) {
+    case 'PENDING':
+      return 'bg-sky-500/15 text-sky-200 border border-sky-500/25';
     case 'SUCCESS':
       return 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25';
     case 'FAILED':
       return 'bg-red-500/15 text-red-200 border border-red-500/25';
+    case 'CANCELLED':
+      return 'bg-white/10 text-white/70 border border-white/15';
     case 'RUNNING':
       return 'bg-amber-500/15 text-amber-200 border border-amber-500/25';
     default:
@@ -341,18 +345,22 @@ export function JobRunDetailPage() {
     enabled: Boolean(runId),
     refetchInterval: (q) => {
       const data = q.state.data as { run: { status?: string } } | undefined;
-      return data?.run?.status === 'RUNNING' ? 2000 : false;
+      return data?.run?.status === 'RUNNING' || data?.run?.status === 'PENDING'
+        ? 2000
+        : false;
     },
     refetchOnWindowFocus: false,
   });
 
   const isRunning = runQuery.data?.run?.status === 'RUNNING';
+  const isPendingOrRunning =
+    isRunning || runQuery.data?.run?.status === 'PENDING';
 
   const logsQuery = useQuery({
     queryKey: ['jobRunLogs', runId],
     queryFn: () => getRunLogs({ runId, take: 1000 }),
     enabled: Boolean(runId),
-    refetchInterval: isRunning ? 2000 : false,
+    refetchInterval: isPendingOrRunning ? 2000 : false,
     refetchOnWindowFocus: false,
   });
 
@@ -635,9 +643,17 @@ export function JobRunDetailPage() {
 
                   <div className="text-sm text-white/70 mb-4 space-y-1">
                     <div>
-                      <span className="text-white/80 font-semibold">Started:</span>{' '}
-                      {new Date(run.startedAt).toLocaleString()}
+                      <span className="text-white/80 font-semibold">Queued:</span>{' '}
+                      {new Date(run.queuedAt || run.startedAt).toLocaleString()}
                     </div>
+                    {run.executionStartedAt ? (
+                      <div>
+                        <span className="text-white/80 font-semibold">
+                          Started:
+                        </span>{' '}
+                        {new Date(run.executionStartedAt).toLocaleString()}
+                      </div>
+                    ) : null}
                     {run.finishedAt ? (
                       <div>
                         <span className="text-white/80 font-semibold">Finished:</span>{' '}
@@ -741,7 +757,10 @@ export function JobRunDetailPage() {
                             ? Math.max(0, Math.min(100, (progressCurrent / progressTotal) * 100))
                             : null;
 
-                        const isFinished = run.status === 'SUCCESS' || run.status === 'FAILED';
+                        const isFinished =
+                          run.status === 'SUCCESS' ||
+                          run.status === 'FAILED' ||
+                          run.status === 'CANCELLED';
                         const displayProgressMessage = (() => {
                           if (!isFinished) return progressMessage;
                           if (run.status === 'FAILED')

@@ -54,6 +54,11 @@
   - It refreshs suggestion rows, fetch new content, and keep your Plex home screen moving even when nobody is actively watching.
   - Never have stale looking homescreen again.
 
+- **Queues jobs safely instead of stampeding Plex**
+  - Manual runs, schedules, Plex webhooks, and Plex polling all feed into one persisted FIFO queue.
+  - After each run, Immaculaterr waits about 1 minute before starting the next queued job so Plex and upstream services get a breather.
+  - Pending work survives restarts, duplicate auto-runs are skipped cleanly, and Rewind shows queued/running status with ETA context.
+
 - **Builds a Fresh Out Of The Oven row**
   - Creates a recent-release movie row on homescreen of the movies that have been released last 3 months
   - Only shows movies that specific user has not watched yet

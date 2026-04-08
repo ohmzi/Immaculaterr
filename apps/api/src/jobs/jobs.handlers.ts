@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { JobContext, JobRunResult } from './jobs.types';
 import { MonitorConfirmJob } from './monitor-confirm.job';
+import { UnmonitorConfirmJob } from './unmonitor-confirm.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
@@ -17,6 +18,7 @@ import { ImportPlexHistoryJob } from './import-plex-history.job';
 export class JobsHandlers {
   constructor(
     private readonly monitorConfirmJob: MonitorConfirmJob,
+    private readonly unmonitorConfirmJob: UnmonitorConfirmJob,
     private readonly arrMonitoredSearchJob: ArrMonitoredSearchJob,
     private readonly cleanupAfterAddingNewContentJob: CleanupAfterAddingNewContentJob,
     private readonly immaculateTasteCollectionJob: ImmaculateTasteCollectionJob,
@@ -34,6 +36,8 @@ export class JobsHandlers {
     switch (jobId) {
       case 'monitorConfirm':
         return await this.monitorConfirmJob.run(ctx);
+      case 'unmonitorConfirm':
+        return await this.unmonitorConfirmJob.run(ctx);
       case 'arrMonitoredSearch':
         return await this.arrMonitoredSearchJob.run(ctx);
       case 'tmdbUpcomingMovies':

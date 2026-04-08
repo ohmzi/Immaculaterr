@@ -27,9 +27,20 @@ export class JobsWatchdogService {
       const stuckRuns = await this.prisma.jobRun.findMany({
         where: {
           status: 'RUNNING',
-          startedAt: { lt: cutoff },
+          OR: [
+            { executionStartedAt: { lt: cutoff } },
+            {
+              executionStartedAt: null,
+              startedAt: { lt: cutoff },
+            },
+          ],
         },
-        select: { id: true, jobId: true, startedAt: true },
+        select: {
+          id: true,
+          jobId: true,
+          startedAt: true,
+          executionStartedAt: true,
+        },
       });
 
       if (!stuckRuns.length) return;
@@ -38,7 +49,7 @@ export class JobsWatchdogService {
         await this.jobsService.timeoutRunningJob({
           runId: run.id,
           jobId: run.jobId,
-          startedAt: run.startedAt,
+          startedAt: run.executionStartedAt ?? run.startedAt,
         });
       }
 

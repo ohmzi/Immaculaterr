@@ -14,32 +14,10 @@ export function VersionHistoryPage() {
   const titleIconGlowControls = useAnimation();
 
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+    'rounded-[32px] border border-white/10 bg-[#0b0c0f]/65 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl lg:p-8';
+  const sectionCardClass =
+    'rounded-2xl border border-white/8 bg-white/[0.035] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]';
 
-  const splitFeatureDetail = (
-    value: string,
-  ): { feature: string; detail: string } | null => {
-    const idx = value.indexOf(':');
-    if (idx <= 0) return null;
-    const feature = value.slice(0, idx).trim();
-    const detail = value.slice(idx + 1).trim();
-    if (!feature || !detail) return null;
-    return { feature, detail };
-  };
-
-  const renderFeatureDetail = (
-    value: string,
-    classes: { feature: string; detail: string },
-  ) => {
-    const parsed = splitFeatureDetail(value);
-    if (!parsed) return value;
-    return (
-      <>
-        <span className={classes.feature}>{parsed.feature}:</span>{' '}
-        <span className={classes.detail}>{parsed.detail}</span>
-      </>
-    );
-  };
   const handleAnimateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
@@ -119,39 +97,63 @@ export function VersionHistoryPage() {
           </div>
 
           <div className="space-y-6">
-            {VERSION_HISTORY_ENTRIES.map((entry) => (
+            {VERSION_HISTORY_ENTRIES.map((entry, entryIndex) => (
               <div key={entry.version} className={cardClass}>
-                <div className="text-2xl font-black tracking-tight text-white">
-                  V{formatDisplayVersion(entry.version) ?? entry.version}
+                <div className="flex flex-col gap-4 border-b border-white/8 pb-5 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-amber-200/60">
+                      Release Line
+                    </div>
+                    <div className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
+                      V{formatDisplayVersion(entry.version) ?? entry.version}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {entryIndex === 0 ? (
+                      <span className="rounded-full border border-[#facc15]/35 bg-[#facc15]/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#facc15]">
+                        Current Highlights
+                      </span>
+                    ) : null}
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/60">
+                      {entry.sections.length} section{entry.sections.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="mt-4 space-y-3 text-sm leading-relaxed text-white/75">
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
                   {entry.sections.map((section, sectionIndex) => (
                     <div
                       key={`${entry.version}-${section.title}`}
-                      className={sectionIndex ? 'pt-2' : ''}
+                      className={[
+                        sectionCardClass,
+                        entry.sections.length % 2 === 1 &&
+                        sectionIndex === entry.sections.length - 1
+                          ? 'md:col-span-2'
+                          : '',
+                      ].join(' ')}
                     >
-                      <div className="font-semibold text-white/90">
-                        {(() => {
-                          const parsed = splitFeatureDetail(section.title);
-                          if (!parsed) {
-                            return <span className="text-[#facc15]">{section.title}</span>;
-                          }
-                          return (
-                            <>
-                              <span className="text-[#facc15]">{parsed.feature}:</span>{' '}
-                              <span className="text-white/90">{parsed.detail}</span>
-                            </>
-                          );
-                        })()}
+                      <div className="mb-3 flex items-start gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#facc15] shadow-[0_0_12px_rgba(250,204,21,0.45)]"
+                        />
+                        <div className="min-w-0">
+                          <div className="font-semibold tracking-tight text-white">
+                            <span className="text-[#facc15]">{section.title}</span>
+                          </div>
+                        </div>
                       </div>
-                      <ul className="mt-1 list-disc space-y-1 pl-5">
+                      <ul className="space-y-2">
                         {section.bullets.map((bullet) => (
-                          <li key={`${entry.version}-${section.title}-${bullet}`}>
-                            {renderFeatureDetail(bullet, {
-                              feature: 'text-[#facc15] font-medium',
-                              detail: 'text-white/75',
-                            })}
+                          <li
+                            key={`${entry.version}-${section.title}-${bullet}`}
+                            className="flex items-start gap-3 text-sm leading-relaxed text-white/74"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="mt-[0.55rem] h-1.5 w-1.5 shrink-0 rounded-full bg-white/30"
+                            />
+                            <span>{bullet}</span>
                           </li>
                         ))}
                       </ul>

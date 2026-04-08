@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
   Post,
@@ -388,8 +389,12 @@ export class WebhooksController {
                 });
                 runs.immaculateTastePoints = run.id;
               } catch (err) {
-                errors.immaculateTastePoints =
-                  (err as Error)?.message ?? String(err);
+                if (err instanceof ConflictException) {
+                  skipped.immaculateTastePoints = 'already_queued_or_running';
+                } else {
+                  errors.immaculateTastePoints =
+                    (err as Error)?.message ?? String(err);
+                }
               }
             }
 
@@ -515,6 +520,20 @@ export class WebhooksController {
             runs: { mediaAddedCleanup: run.id },
           };
         } catch (err) {
+          if (err instanceof ConflictException) {
+            this.webhooksService.logPlexWebhookAutomation({
+              plexEvent,
+              mediaType,
+              seedTitle: title || undefined,
+              skipped: { mediaAddedCleanup: 'already_queued_or_running' },
+            });
+            return {
+              ok: true,
+              ...persisted,
+              triggered: false,
+              skipped: { mediaAddedCleanup: 'already_queued_or_running' },
+            };
+          }
           const msg = (err as Error)?.message ?? String(err);
           this.webhooksService.logPlexWebhookAutomation({
             plexEvent,

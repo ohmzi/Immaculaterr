@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { AuthService } from '../auth/auth.service';
 import { JobsService } from '../jobs/jobs.service';
@@ -70,20 +75,6 @@ type SessionSnapshot = PlexNowPlayingSession & {
 };
 
 type CollectionJobId = 'watchedMovieRecommendations' | 'immaculateTastePoints';
-
-type PendingCollectionRun = {
-  runId: string;
-  jobId: CollectionJobId;
-  adminUserId: string;
-  plexUserId: string;
-  plexUserTitle: string;
-  input: JsonObject;
-  mediaType: string;
-  seedTitle: string;
-  sessionAutomationId: string;
-  enqueuedAtMs: number;
-  attempt: number;
-};
 
 type SessionCollectionJobStatus =
   | 'idle'
@@ -173,18 +164,6 @@ export class PlexPollingService implements OnModuleInit {
     }
   >();
 
-  // Polling-only cooldown/queue for the two collection jobs.
-  // This does NOT affect other jobs/triggers.
-  private static readonly COLLECTION_COOLDOWN_MS = 10 * 60_000;
-  private readonly collectionCooldownUntilByPlexUser = new Map<
-    string,
-    number
-  >();
-  private readonly pendingCollectionRunsByPlexUser = new Map<
-    string,
-    PendingCollectionRun[]
-  >();
-
   private lastRecentlyAddedPollAtMs: number | null = null;
   private lastSeenAddedAtSec: number | null = null;
   private lastLibraryNewTriggeredAtMs: number | null = null;
@@ -220,13 +199,6 @@ export class PlexPollingService implements OnModuleInit {
   }
 
   private lastPolledAtMs: number | null = null;
-
-  private setCollectionCooldown(params: { plexUserId: string; nowMs: number }) {
-    this.collectionCooldownUntilByPlexUser.set(
-      params.plexUserId,
-      params.nowMs + PlexPollingService.COLLECTION_COOLDOWN_MS,
-    );
-  }
 
   private buildSessionAutomationId(params: {
     sessionKey: string;
@@ -327,276 +299,6 @@ export class PlexPollingService implements OnModuleInit {
     }
   }
 
-  private async enqueueCollectionRun(
-    params: Omit<PendingCollectionRun, 'runId'> & { runId?: string },
-  ): Promise<{ queued: boolean; runId: string | null; error: string | null }> {
-    const queue =
-      this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
-    const exists = queue.some(
-      (run) =>
-        run.jobId === params.jobId &&
-        run.sessionAutomationId === params.sessionAutomationId,
-    );
-    if (exists) return { queued: false, runId: null, error: null };
-
-    let runId = params.runId?.trim() ?? '';
-    if (!runId) {
-      try {
-        const queuedRun = await this.jobsService.queueJob({
-          jobId: params.jobId,
-          trigger: 'auto',
-          dryRun: false,
-          userId: params.adminUserId,
-          input: params.input,
-        });
-        runId = queuedRun.id;
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        this.logger.warn(
-          `Failed to persist queued run jobId=${params.jobId} plexUserId=${params.plexUserId}: ${msg}`,
-        );
-        return { queued: false, runId: null, error: msg };
-      }
-    }
-
-    queue.push({
-      ...params,
-      runId,
-    });
-    queue.sort((a, b) => a.enqueuedAtMs - b.enqueuedAtMs);
-    this.pendingCollectionRunsByPlexUser.set(params.plexUserId, queue);
-    this.setSessionJobStatus(
-      params.sessionAutomationId,
-      params.jobId,
-      'queued',
-      params.enqueuedAtMs,
-    );
-    return { queued: true, runId, error: null };
-  }
-
-  private dequeueNextPendingCollectionRun(params: { plexUserId: string }) {
-    const queue =
-      this.pendingCollectionRunsByPlexUser.get(params.plexUserId) ?? [];
-    if (!queue.length) {
-      this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
-      return null;
-    }
-
-    while (queue.length) {
-      const run = queue.shift();
-      if (!run) continue;
-      const state = this.getSessionJobStatus(
-        run.sessionAutomationId,
-        run.jobId,
-      );
-      if (state === 'success' || state === 'running') continue;
-
-      if (!queue.length)
-        this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
-      else this.pendingCollectionRunsByPlexUser.set(params.plexUserId, queue);
-      return run;
-    }
-
-    this.pendingCollectionRunsByPlexUser.delete(params.plexUserId);
-    return null;
-  }
-
-  private async runCollectionJobNow(params: {
-    jobId: CollectionJobId;
-    runId?: string;
-    adminUserId: string;
-    input: JsonObject;
-    sessionAutomationId: string;
-    nowMs: number;
-  }) {
-    this.setSessionJobStatus(
-      params.sessionAutomationId,
-      params.jobId,
-      'running',
-      params.nowMs,
-    );
-    try {
-      const run = params.runId
-        ? await this.jobsService.startQueuedJob({
-            runId: params.runId,
-            input: params.input,
-          })
-        : await this.jobsService.runJob({
-            jobId: params.jobId,
-            trigger: 'auto',
-            dryRun: false,
-            userId: params.adminUserId,
-            input: params.input,
-          });
-      this.setSessionJobStatus(
-        params.sessionAutomationId,
-        params.jobId,
-        'success',
-        Date.now(),
-      );
-      return { runId: run.id, error: null };
-    } catch (err) {
-      const msg = (err as Error)?.message ?? String(err);
-      this.setSessionJobStatus(
-        params.sessionAutomationId,
-        params.jobId,
-        'failed',
-        Date.now(),
-      );
-      return { runId: null, error: msg };
-    }
-  }
-
-  private async flushPendingCollectionRuns(params: {
-    plexUserId: string;
-    settings: Record<string, unknown>;
-  }) {
-    const now = Date.now();
-    const cooldownUntil =
-      this.collectionCooldownUntilByPlexUser.get(params.plexUserId) ?? 0;
-    if (now < cooldownUntil) return;
-
-    const pending = this.dequeueNextPendingCollectionRun({
-      plexUserId: params.plexUserId,
-    });
-    if (!pending) return;
-
-    const watchedEnabled =
-      pickBool(
-        params.settings,
-        'jobs.webhookEnabled.watchedMovieRecommendations',
-      ) ?? false;
-    const immaculateEnabled =
-      pickBool(params.settings, 'jobs.webhookEnabled.immaculateTastePoints') ??
-      false;
-
-    const enabled =
-      pending.jobId === 'watchedMovieRecommendations'
-        ? watchedEnabled
-        : immaculateEnabled;
-    if (!enabled) {
-      await this.jobsService.failQueuedJob({
-        runId: pending.runId,
-        errorMessage: 'Queued run dropped because the job is disabled.',
-      });
-      this.setSessionJobStatus(
-        pending.sessionAutomationId,
-        pending.jobId,
-        'failed',
-        now,
-      );
-      this.webhooksService.logPlexWebhookAutomation({
-        plexEvent: 'plexPolling.cooldown',
-        mediaType: pending.mediaType,
-        seedTitle: pending.seedTitle,
-        plexUserId: pending.plexUserId,
-        plexUserTitle: pending.plexUserTitle,
-        skipped: { [pending.jobId]: 'cooldown_pending_dropped_disabled' },
-      });
-      return;
-    }
-
-    const userMonitoringExcluded = isPlexUserExcludedFromMonitoring({
-      settings: params.settings,
-      plexUserId: pending.plexUserId,
-    });
-    if (userMonitoringExcluded) {
-      await this.jobsService.failQueuedJob({
-        runId: pending.runId,
-        errorMessage:
-          'Queued run dropped because Plex user monitoring is toggled off by admin.',
-      });
-      this.setSessionJobStatus(
-        pending.sessionAutomationId,
-        pending.jobId,
-        'success',
-        now,
-      );
-      this.webhooksService.logPlexUserMonitoringSkipped({
-        source: 'plexPolling',
-        plexEvent: 'media.scrobble',
-        mediaType: pending.mediaType,
-        plexUserId: pending.plexUserId,
-        plexUserTitle: pending.plexUserTitle,
-        seedTitle: pending.seedTitle,
-      });
-      this.webhooksService.logPlexWebhookAutomation({
-        plexEvent: 'plexPolling.cooldown',
-        mediaType: pending.mediaType,
-        seedTitle: pending.seedTitle,
-        plexUserId: pending.plexUserId,
-        plexUserTitle: pending.plexUserTitle,
-        skipped: {
-          [pending.jobId]: 'cooldown_pending_dropped_user_toggled_off_by_admin',
-        },
-      });
-      return;
-    }
-
-    // Apply cooldown once we decide to run (regardless of success/failure), to protect Plex.
-    this.setCollectionCooldown({ plexUserId: pending.plexUserId, nowMs: now });
-    const result = await this.runCollectionJobNow({
-      jobId: pending.jobId,
-      runId: pending.runId,
-      adminUserId: pending.adminUserId,
-      input: pending.input,
-      sessionAutomationId: pending.sessionAutomationId,
-      nowMs: now,
-    });
-    if (result.runId) {
-      this.webhooksService.logPlexWebhookAutomation({
-        plexEvent: 'plexPolling.cooldown',
-        mediaType: pending.mediaType,
-        seedTitle: pending.seedTitle,
-        plexUserId: pending.plexUserId,
-        plexUserTitle: pending.plexUserTitle,
-        runs: { [pending.jobId]: result.runId },
-      });
-      return;
-    }
-
-    const errors: Record<string, string> = {};
-    errors[pending.jobId] = result.error ?? 'unknown_error';
-    const skipped: Record<string, string> = {};
-    let requeued = false;
-    if (pending.attempt < PlexPollingService.MAX_COLLECTION_JOB_ATTEMPTS) {
-      const nextAttempt = pending.attempt + 1;
-      const queued = await this.enqueueCollectionRun({
-        ...pending,
-        enqueuedAtMs: Date.now(),
-        attempt: nextAttempt,
-      });
-      if (queued.queued) {
-        requeued = true;
-        skipped[pending.jobId] = `retry_queued_attempt_${nextAttempt}`;
-      } else if (queued.error) {
-        errors[pending.jobId] =
-          `${errors[pending.jobId]} | retry_queue_failed: ${queued.error}`;
-      }
-    }
-
-    if (!requeued) {
-      const failReason =
-        pending.attempt >= PlexPollingService.MAX_COLLECTION_JOB_ATTEMPTS
-          ? `Queued run failed after ${pending.attempt} attempt(s): ${errors[pending.jobId]}`
-          : `Queued run failed before start: ${errors[pending.jobId]}`;
-      await this.jobsService.failQueuedJob({
-        runId: pending.runId,
-        errorMessage: failReason,
-      });
-    }
-
-    this.webhooksService.logPlexWebhookAutomation({
-      plexEvent: 'plexPolling.cooldown',
-      mediaType: pending.mediaType,
-      seedTitle: pending.seedTitle,
-      plexUserId: pending.plexUserId,
-      plexUserTitle: pending.plexUserTitle,
-      ...(Object.keys(skipped).length ? { skipped } : {}),
-      errors,
-    });
-  }
-
   private async pollOnce() {
     if (!this.enabled) return;
 
@@ -611,17 +313,6 @@ export class PlexPollingService implements OnModuleInit {
     const { settings, secrets } = await this.settingsService
       .getInternalSettings(userId)
       .catch(() => ({ settings: {}, secrets: {} }));
-
-    // Drain any pending collection runs even if no active sessions exist.
-    const pendingPlexUsers = Array.from(
-      this.pendingCollectionRunsByPlexUser.keys(),
-    );
-    for (const plexUserId of pendingPlexUsers) {
-      await this.flushPendingCollectionRuns({
-        plexUserId,
-        settings: settings as Record<string, unknown>,
-      });
-    }
 
     const baseUrl = pickString(
       settings as Record<string, unknown>,
@@ -1596,98 +1287,63 @@ export class PlexPollingService implements OnModuleInit {
     }
     if (!jobsToHandle.length) return next;
 
-    // Shared cooldown for collection jobs (polling-only).
-    const cooldownUntil =
-      this.collectionCooldownUntilByPlexUser.get(plexUserId) ?? 0;
-    const cooldownActive = now < cooldownUntil;
-
     const enqueue = async (params: {
       jobId: CollectionJobId;
       input: JsonObject;
       reason: string;
     }) => {
-      const queued = await this.enqueueCollectionRun({
-        jobId: params.jobId,
-        adminUserId: userId,
-        plexUserId,
-        plexUserTitle,
-        input: params.input,
-        mediaType: snap.type,
-        seedTitle,
-        sessionAutomationId,
-        enqueuedAtMs: now,
-        attempt: 1,
-      });
+      try {
+        const run = await this.jobsService.runJob({
+          jobId: params.jobId,
+          trigger: 'auto',
+          dryRun: false,
+          userId,
+          input: params.input,
+        });
+        runs[params.jobId] = run.id;
+        this.setSessionJobStatus(
+          sessionAutomationId,
+          params.jobId,
+          'queued',
+          now,
+        );
+      } catch (error) {
+        if (error instanceof ConflictException) {
+          skipped[params.jobId] = params.reason || 'already_queued_or_running';
+          this.setSessionJobStatus(
+            sessionAutomationId,
+            params.jobId,
+            'queued',
+            now,
+          );
+        } else {
+          errors[params.jobId] = (error as Error)?.message ?? String(error);
+          this.setSessionJobStatus(
+            sessionAutomationId,
+            params.jobId,
+            'failed',
+            now,
+          );
+        }
+      }
+
       if (params.jobId === 'watchedMovieRecommendations') {
-        if (queued.queued) {
-          skipped.watchedMovieRecommendations = params.reason;
-          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-        } else if (queued.error) {
-          errors.watchedMovieRecommendations = `queue_failed: ${queued.error}`;
-        } else {
-          skipped.watchedMovieRecommendations = 'already_queued_or_processed';
-          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-        }
+        next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
       } else {
-        if (queued.queued) {
-          skipped.immaculateTastePoints = params.reason;
-          next = {
-            ...next,
-            immaculateTriggered: true,
-            immaculateTriggeredAtMs: now,
-          };
-        } else if (queued.error) {
-          errors.immaculateTastePoints = `queue_failed: ${queued.error}`;
-        } else {
-          skipped.immaculateTastePoints = 'already_queued_or_processed';
-          next = {
-            ...next,
-            immaculateTriggered: true,
-            immaculateTriggeredAtMs: now,
-          };
-        }
+        next = {
+          ...next,
+          immaculateTriggered: true,
+          immaculateTriggeredAtMs: now,
+        };
       }
     };
 
-    if (cooldownActive) {
-      for (const job of jobsToHandle) {
-        await enqueue({
-          jobId: job.jobId,
-          input: job.input,
-          reason: 'cooldown_pending',
-        });
-      }
-    } else {
-      const [first, ...rest] = jobsToHandle;
-      if (first) {
-        const result = await this.runCollectionJobNow({
-          jobId: first.jobId,
-          adminUserId: userId,
-          input: first.input,
-          sessionAutomationId,
-          nowMs: now,
-        });
-        if (result.runId) runs[first.jobId] = result.runId;
-        else if (result.error) errors[first.jobId] = result.error;
-
-        if (first.jobId === 'watchedMovieRecommendations') {
-          next = { ...next, watchedTriggered: true, watchedTriggeredAtMs: now };
-        } else {
-          next = {
-            ...next,
-            immaculateTriggered: true,
-            immaculateTriggeredAtMs: now,
-          };
-        }
-        this.setCollectionCooldown({ plexUserId, nowMs: now });
-      }
-      for (const job of rest) {
-        await enqueue({
-          jobId: job.jobId,
-          input: job.input,
-          reason: 'queued_after_first_run',
-        });
-      }
+    for (const job of jobsToHandle) {
+      await enqueue({
+        jobId: job.jobId,
+        input: job.input,
+        reason: 'already_queued_or_running',
+      });
     }
 
     this.webhooksService.logPlexWebhookAutomation({

@@ -398,15 +398,29 @@ export const FaqPage = () => {
                 cause errors or rate-limiting.
               </p>
               <p>
+                Manual runs, schedules, Plex-triggered jobs, and Plex polling all feed into the same
+                persisted FIFO queue.
+              </p>
+              <p>
                 After a task finishes, there is a{' '}
-                <span className="font-semibold text-white/85">5-minute cooldown</span> before the
-                next queued task starts. This gives external services time to recover between jobs.
+                <span className="font-semibold text-white/85">1-minute cooldown</span> before the
+                next queued task starts. This gives Plex and upstream services a short recovery window
+                between runs.
               </p>
               <p>
                 If a task is requested while another is already running or the cooldown is active, it
                 is automatically queued as{' '}
                 <span className="font-semibold text-white/85">Pending</span>. Pending tasks
                 auto-start in order once the cooldown expires — no manual action is needed.
+              </p>
+              <p>
+                Rewind now shows the live queue state, including queued time, ETA, blocked reason,
+                delayed-run hints, and whether a hidden/internal task is currently ahead of you in
+                line.
+              </p>
+              <p>
+                If the app restarts, pending work stays queued and previously running work is marked
+                failed so the queue can recover cleanly instead of getting stuck.
               </p>
             </>
           ),
@@ -423,8 +437,8 @@ export const FaqPage = () => {
           answer: (
             <p>
               It keeps ARR monitoring aligned with what already exists in Plex. In simple English: if
-              Plex already has the item, this task helps stop Radarr or Sonarr from still treating it
-              like something that needs attention.
+              Plex already has the movie or the episode, this task helps stop Radarr or Sonarr from
+              still treating that specific item like something that needs attention.
             </p>
           ),
         },
@@ -451,6 +465,51 @@ export const FaqPage = () => {
               No. This card is intentionally simple: schedule it if you want automation, or use{' '}
               <span className="font-semibold text-white/85">Run now</span> when you want an immediate
               pass. It still needs Radarr or Sonarr to be available.
+            </p>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-confirm-unmonitored',
+      title: 'Confirm Unmonitored',
+      items: [
+        {
+          id: 'task-manager-confirm-unmonitored-what-does',
+          question: 'What does Confirm Unmonitored do?',
+          answer: (
+            <p>
+              It checks Radarr movies that are already marked unmonitored and verifies they really
+              exist in Plex. If a movie is unmonitored in Radarr but missing from every Plex movie
+              library, this task re-monitors it so Radarr can pay attention to it again.
+            </p>
+          ),
+        },
+        {
+          id: 'task-manager-confirm-unmonitored-when-use',
+          question: 'When should I use Confirm Unmonitored?',
+          answer: (
+            <>
+              <p>
+                Use it after library rebuilds, large cleanups, storage moves, or anytime you suspect
+                Radarr has stale unmonitored state.
+              </p>
+              <p>
+                It is especially useful when you have a very large collection and want a deliberate
+                maintenance pass instead of letting missing titles stay unmonitored quietly.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-confirm-unmonitored-settings',
+          question: 'Does Confirm Unmonitored have any special settings?',
+          answer: (
+            <p>
+              No. This card is intentionally manual-only. Use{' '}
+              <span className="font-semibold text-white/85">Run now</span> when you want a full
+              cross-check across all Plex movie libraries. It needs Plex and Radarr configured, and
+              the report shows what stayed unmonitored, what was re-monitored, and what was skipped.
             </p>
           ),
         },
@@ -1158,11 +1217,12 @@ export const FaqPage = () => {
           question: 'Why are other tasks blocked while the import is running?',
           answer: (
             <p>
-              The import follows the same one-at-a-time task queue as every other job. Because it
+              The import follows the same shared job queue as every other task. Because it
               makes many TMDB API calls and generates recommendations for every seed, it can take
               longer than most tasks. While it runs, other tasks queue as{' '}
               <span className="font-semibold text-white/85">Pending</span> and auto-start once the
-              import finishes and the 5-minute cooldown expires.
+              import finishes and the 1-minute cooldown expires. Rewind shows the live queue state
+              and ETA while you wait.
             </p>
           ),
         },
@@ -1322,11 +1382,12 @@ export const FaqPage = () => {
           question: 'Why are other tasks blocked while the import is running?',
           answer: (
             <p>
-              The import follows the same one-at-a-time task queue as every other job. Because it
+              The import follows the same shared job queue as every other task. Because it
               makes many TMDB API calls and generates recommendations for every seed, it can take
               longer than most tasks. While it runs, other tasks queue as{' '}
               <span className="font-semibold text-white/85">Pending</span> and auto-start once
-              the import finishes and the 5-minute cooldown expires.
+              the import finishes and the 1-minute cooldown expires. Rewind shows the live queue
+              state and ETA while you wait.
             </p>
           ),
         },
@@ -2709,6 +2770,8 @@ export const FaqPage = () => {
       'How jobs run, what the main controls mean, and how to keep automation simple.',
     'task-manager-confirm-monitored':
       'Keep ARR monitoring aligned with what already exists in Plex.',
+    'task-manager-confirm-unmonitored':
+      'Verify Radarr unmonitored movies still exist in Plex and re-monitor anything missing.',
     'task-manager-cleanup-after-adding-new-content':
       'Plex-triggered cleanup actions for newly added media.',
     'task-manager-search-monitored': 'Off-peak missing searches for monitored ARR items.',
@@ -2762,6 +2825,10 @@ export const FaqPage = () => {
     'task-manager-confirm-monitored': {
       icon: (className) => <MonitorPlay className={className} />,
       toneClass: 'text-blue-300',
+    },
+    'task-manager-confirm-unmonitored': {
+      icon: (className) => <MonitorPlay className={className} />,
+      toneClass: 'text-emerald-300',
     },
     'task-manager-cleanup-after-adding-new-content': {
       icon: (className) => <CheckCircle2 className={className} />,

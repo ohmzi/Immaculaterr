@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Logger,
   Param,
@@ -12,11 +13,17 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { AuthService } from '../auth/auth.service';
 import type { AuthUser } from '../auth/auth.types';
 import { JobsScheduler } from './jobs.scheduler';
 import { JobsService } from './jobs.service';
 import type { JsonObject } from './jobs.types';
-import { RunJobDto, UpsertScheduleDto } from './dto/jobs.dto';
+import {
+  CancelRunDto,
+  QueuePauseDto,
+  RunJobDto,
+  UpsertScheduleDto,
+} from './dto/jobs.dto';
 
 @Controller('jobs')
 @ApiTags('jobs')
@@ -26,6 +33,7 @@ export class JobsController {
   constructor(
     private readonly jobsService: JobsService,
     private readonly jobsScheduler: JobsScheduler,
+    private readonly authService: AuthService,
   ) {}
 
   @Get()
@@ -100,6 +108,23 @@ export class JobsController {
     return { run };
   }
 
+  @Post('runs/:runId/cancel')
+  async cancelRun(
+    @CurrentUser() user: AuthUser,
+    @Param('runId') runId: string,
+    @Body() body: CancelRunDto,
+  ) {
+    const run = await this.jobsService.cancelPendingRun({
+      userId: user.id,
+      runId,
+      reason:
+        typeof body?.reason === 'string' && body.reason.trim()
+          ? body.reason.trim()
+          : undefined,
+    });
+    return { ok: true, run };
+  }
+
   @Get('runs/:runId/logs')
   async getRunLogs(
     @CurrentUser() user: AuthUser,
@@ -120,6 +145,33 @@ export class JobsController {
       skip,
     });
     return { logs };
+  }
+
+  @Get('queue')
+  async getQueue(@CurrentUser() user: AuthUser) {
+    return await this.jobsService.getQueueSnapshot({ userId: user.id });
+  }
+
+  @Post('queue/pause')
+  async pauseQueue(@CurrentUser() user: AuthUser, @Body() body: QueuePauseDto) {
+    await this.assertAdminUser(user.id);
+    const state = await this.jobsService.pauseQueue({
+      actorUserId: user.id,
+      reason:
+        typeof body?.reason === 'string' && body.reason.trim()
+          ? body.reason.trim()
+          : undefined,
+    });
+    return { ok: true, state };
+  }
+
+  @Post('queue/resume')
+  async resumeQueue(@CurrentUser() user: AuthUser) {
+    await this.assertAdminUser(user.id);
+    const state = await this.jobsService.resumeQueue({
+      actorUserId: user.id,
+    });
+    return { ok: true, state };
   }
 
   @Put('schedules/:jobId')
@@ -149,5 +201,12 @@ export class JobsController {
     });
 
     return { ok: true, schedule };
+  }
+
+  private async assertAdminUser(userId: string) {
+    const adminUserId = await this.authService.getFirstAdminUserId();
+    if (!adminUserId || adminUserId !== userId) {
+      throw new ForbiddenException('Admin access required');
+    }
   }
 }

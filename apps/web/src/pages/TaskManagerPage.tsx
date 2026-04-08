@@ -98,12 +98,14 @@ type TmdbFilterChipOption = {
 
 const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'mediaAddedCleanup', // webhook/manual input only
+  'unmonitorConfirm', // manual only
   'immaculateTastePoints', // webhook/manual input only
   'watchedMovieRecommendations', // webhook/manual input only
   'importNetflixHistory', // manual upload only
   'importPlexHistory', // manual only
 ]);
 const NO_WEBHOOK_JOB_IDS = new Set<string>([
+  'unmonitorConfirm', // manual only, no Plex-triggered auto-run
   'importNetflixHistory', // manual upload only, no Plex-triggered auto-run
   'importPlexHistory', // manual only, no Plex-triggered auto-run
 ]);
@@ -135,9 +137,15 @@ const JOB_CONFIG: Record<
 > = {
   monitorConfirm: {
     icon: <MonitorPlay className="w-8 h-8" />,
-    color: 'text-blue-400',
+    color: 'text-emerald-300',
     description:
-      'Keeps Radarr/Sonarr monitoring in sync with what’s already in Plex.',
+      'Keeps Radarr movies and Sonarr episodes in sync with what’s already in Plex.',
+  },
+  unmonitorConfirm: {
+    icon: <MonitorPlay className="w-8 h-8" />,
+    color: 'text-red-300',
+    description:
+      'Cross-checks Radarr unmonitored movies against Plex and re-monitors anything Plex does not actually have.',
   },
   arrMonitoredSearch: {
     icon: <Search className="w-8 h-8" />,
@@ -1435,7 +1443,8 @@ export function TaskManagerPage() {
   const visibleJobs = useMemo(
     () => {
       const filteredJobs = (jobsQuery.data?.jobs ?? []).filter(
-        (job) => !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
+        (job) =>
+          job.visibleInTaskManager && !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
       );
       const freshOutOfTheOvenJob = filteredJobs.find(
         (job) => job.id === 'freshOutOfTheOven',
@@ -1684,13 +1693,20 @@ export function TaskManagerPage() {
               ...prev,
               [job.id]: { status: 'running', runId: latestRun.id },
             }));
-          } else if (latestRun.status === 'SUCCESS' || latestRun.status === 'FAILED') {
+          } else if (
+            latestRun.status === 'SUCCESS' ||
+            latestRun.status === 'FAILED' ||
+            latestRun.status === 'CANCELLED'
+          ) {
             setTerminalState((prev) => ({
               ...prev,
               [job.id]: {
                 status: 'completed',
                 runId: latestRun.id,
-                result: latestRun.status === 'FAILED' ? 'FAILED' : 'SUCCESS',
+                result:
+                  latestRun.status === 'FAILED' || latestRun.status === 'CANCELLED'
+                    ? 'FAILED'
+                    : 'SUCCESS',
               },
             }));
           }
@@ -1723,13 +1739,20 @@ export function TaskManagerPage() {
           if (latestRun.id !== state.runId) continue;
 
           // Update terminal state if job completed
-          if (latestRun.status === 'SUCCESS' || latestRun.status === 'FAILED') {
+          if (
+            latestRun.status === 'SUCCESS' ||
+            latestRun.status === 'FAILED' ||
+            latestRun.status === 'CANCELLED'
+          ) {
             setTerminalState((prev) => ({
               ...prev,
               [jobId]: {
                 status: 'completed',
                 runId: latestRun.id,
-                result: latestRun.status === 'FAILED' ? 'FAILED' : 'SUCCESS',
+                result:
+                  latestRun.status === 'FAILED' || latestRun.status === 'CANCELLED'
+                    ? 'FAILED'
+                    : 'SUCCESS',
               },
             }));
           }

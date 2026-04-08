@@ -1,6 +1,9 @@
 import { motion, AnimatePresence } from 'motion/react';
 
-import type { VersionHistoryEntry } from '@/lib/version-history';
+import {
+  splitVersionHistoryLabel,
+  type VersionHistoryEntry,
+} from '@/lib/version-history';
 
 export function WhatsNewModal(props: {
   open: boolean;
@@ -14,15 +17,6 @@ export function WhatsNewModal(props: {
     entry?.popupHighlights && entry.popupHighlights.length > 0
       ? entry.popupHighlights
       : (entry?.sections ?? []).map((section) => section.title).slice(0, 5);
-
-  const splitHighlight = (line: string): { feature: string; detail: string } | null => {
-    const idx = line.indexOf(':');
-    if (idx <= 0) return null;
-    const feature = line.slice(0, idx).trim();
-    const detail = line.slice(idx + 1).trim();
-    if (!feature || !detail) return null;
-    return { feature, detail };
-  };
 
   return (
     <AnimatePresence>
@@ -73,7 +67,7 @@ export function WhatsNewModal(props: {
                     />
                     <p className="text-sm leading-relaxed text-white/80">
                       {(() => {
-                        const parsed = splitHighlight(line);
+                        const parsed = splitVersionHistoryLabel(line);
                         if (!parsed) return line;
                         return (
                           <>

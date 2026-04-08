@@ -24,6 +24,7 @@ export const COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION = Object.fromEntries(
 
 export const FAQ_SECTION_BY_TASK_MANAGER_CARD_ID = {
   monitorConfirm: 'task-manager-confirm-monitored',
+  unmonitorConfirm: 'task-manager-confirm-unmonitored',
   mediaAddedCleanup: 'task-manager-cleanup-after-adding-new-content',
   arrMonitoredSearch: 'task-manager-search-monitored',
   tmdbUpcomingMovies: 'task-manager-tmdb-upcoming-movies',

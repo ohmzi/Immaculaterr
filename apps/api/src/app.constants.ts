@@ -87,7 +87,22 @@ export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';
 export const JOB_RUN_TIMEOUT_MS = 30 * 60_000;
 
 /** Minimum delay between consecutive job executions to avoid hammering external APIs. */
-export const QUEUE_COOLDOWN_MS = 5 * 60_000;
+export const QUEUE_COOLDOWN_MS = 60_000;
+
+/** Maximum queued backlog across the global FIFO queue. */
+export const MAX_PENDING_RUNS_GLOBAL = 500;
+
+/** Maximum queued backlog for a single job id. */
+export const MAX_PENDING_RUNS_PER_JOB = 25;
+
+/** How often the queue worker refreshes the active run lease. */
+export const JOB_QUEUE_HEARTBEAT_MS = 15 * 1000;
+
+/** How long a lease may go without a heartbeat before it is considered stale. */
+export const JOB_QUEUE_HEARTBEAT_LEASE_MS = 45 * 1000;
+
+/** Fallback poll interval for the persisted queue pump. */
+export const JOB_QUEUE_PUMP_INTERVAL_MS = 10 * 1000;
 
 /** Cap for third-party HTTP response bodies in log output. */
 export const LOG_BODY_MAX_LENGTH = 200;

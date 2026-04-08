@@ -11,7 +11,14 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { clearRuns, listJobs, listRuns, type JobRun } from '@/api/jobs';
+import {
+  clearRuns,
+  getQueueSnapshot,
+  listJobs,
+  listRuns,
+  type JobQueueRun,
+  type JobRun,
+} from '@/api/jobs';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -34,6 +41,8 @@ const statusPill = (status: string) => {
       return 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25';
     case 'FAILED':
       return 'bg-red-500/15 text-red-200 border border-red-500/25';
+    case 'CANCELLED':
+      return 'bg-white/10 text-white/70 border border-white/10';
     case 'RUNNING':
       return 'bg-amber-500/15 text-amber-200 border border-amber-500/25';
     case 'PENDING':
@@ -43,37 +52,19 @@ const statusPill = (status: string) => {
   }
 };
 
-const durationMs = (run: JobRun): number | null => {
-  if (!run.finishedAt) return null;
-  const a = Date.parse(run.startedAt);
-  const b = Date.parse(run.finishedAt);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return Math.max(0, b - a);
+type RewindRun = JobRun & Partial<JobQueueRun>;
+
+const getRunTimestamp = (run: Pick<JobRun, 'queuedAt' | 'startedAt'>): string => {
+  return run.queuedAt || run.startedAt;
 };
 
-const PENDING_QUEUE_SLOT_MS = 10 * 60_000;
-
-const estimatePendingRemainingMs = (
-  run: JobRun,
-  allRuns: JobRun[],
-): number | null => {
-  if (run.status !== 'PENDING') return null;
-  const queuedAt = Date.parse(run.startedAt);
-  if (!Number.isFinite(queuedAt)) return null;
-
-  const pendingForJob = allRuns
-    .filter((r) => r.jobId === run.jobId && r.status === 'PENDING')
-    .sort((a, b) => {
-      const at = Date.parse(a.startedAt);
-      const bt = Date.parse(b.startedAt);
-      if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt;
-      return a.id.localeCompare(b.id);
-    });
-  const position = pendingForJob.findIndex((r) => r.id === run.id);
-  if (position < 0) return null;
-
-  const estimatedStartAt = queuedAt + (position + 1) * PENDING_QUEUE_SLOT_MS;
-  return Math.max(0, estimatedStartAt - Date.now());
+const durationMs = (run: RewindRun): number | null => {
+  const startedAt = Date.parse(run.executionStartedAt ?? run.startedAt);
+  if (!Number.isFinite(startedAt)) return null;
+  if (!run.finishedAt) return null;
+  const finishedAt = Date.parse(run.finishedAt);
+  if (!Number.isFinite(finishedAt)) return null;
+  return Math.max(0, finishedAt - startedAt);
 };
 
 const formatDuration = (ms: number): string => {
@@ -87,19 +78,58 @@ const formatDuration = (ms: number): string => {
   return `${h}h ${mm}m`;
 };
 
-const formatRemaining = (ms: number): string => {
+const formatRemaining = (ms: number, prefix = '~'): string => {
   if (ms < 30_000) return 'starting soon';
   const minutes = Math.ceil(ms / 60_000);
-  if (minutes < 60) return `~${minutes}m remaining`;
+  if (minutes < 60) return `${prefix}${minutes}m remaining`;
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
-  return rem ? `~${hours}h ${rem}m remaining` : `~${hours}h remaining`;
+  return rem ? `${prefix}${hours}h ${rem}m remaining` : `${prefix}${hours}h remaining`;
 };
 
-const formatRunDuration = (run: JobRun, allRuns: JobRun[]): string => {
-  if (run.status === 'PENDING') {
-    const remainingMs = estimatePendingRemainingMs(run, allRuns);
-    return remainingMs === null ? '—' : formatRemaining(remainingMs);
+const describeQueuedState = (run: RewindRun): string => {
+  if (run.status !== 'PENDING' && run.status !== 'RUNNING') return '';
+  if (run.blockedReason === 'queue_paused') return 'Queue paused';
+  if (run.estimateState === 'delayed') return 'Taking longer than usual';
+  if (run.status === 'RUNNING' && typeof run.estimatedRuntimeMs === 'number') {
+    const startedAtMs = Date.parse(run.executionStartedAt ?? run.startedAt);
+    const elapsedMs = Number.isFinite(startedAtMs)
+      ? Math.max(0, Date.now() - startedAtMs)
+      : 0;
+    return formatRemaining(
+      Math.max(0, run.estimatedRuntimeMs - elapsedMs),
+      run.etaConfidence === 'fallback' ? 'Approx. ' : '~',
+    );
+  }
+  if (typeof run.estimatedWaitMs === 'number') {
+    return formatRemaining(
+      run.estimatedWaitMs,
+      run.etaConfidence === 'fallback' ? 'Approx. ' : '~',
+    );
+  }
+  return 'Estimate unavailable';
+};
+
+const describeBlockedReason = (run: RewindRun): string => {
+  if (run.status !== 'PENDING' && run.status !== 'RUNNING') return '';
+  switch (run.blockedReason) {
+    case 'hidden_blocker_ahead':
+      return 'Blocked by other queued work';
+    case 'queue_paused':
+      return 'Queue paused';
+    case 'cooldown':
+      return 'Cooling down between runs';
+    case 'waiting_for_active_run':
+      return 'Waiting for the current run to finish';
+    default:
+      return '';
+  }
+};
+
+const formatRunDuration = (run: RewindRun): string => {
+  if (run.status === 'PENDING' || run.status === 'RUNNING') {
+    const queuedState = describeQueuedState(run);
+    if (queuedState) return queuedState;
   }
   const ms = durationMs(run);
   return ms === null ? '—' : formatDuration(ms);
@@ -141,10 +171,10 @@ const getReportHeadline = (run: JobRun): string => {
 };
 
 const getRunDisplayTitle = (
-  run: JobRun,
+  run: RewindRun,
   jobNameById: Map<string, string>,
 ): string => {
-  return jobNameById.get(run.jobId) ?? run.jobId;
+  return run.rewindDisplayName || run.jobName || jobNameById.get(run.jobId) || run.jobId;
 };
 
 const getPlexUserContext = (
@@ -288,8 +318,54 @@ export const RewindPage = () => {
     retry: false,
   });
 
+  const queueQuery = useQuery({
+    queryKey: ['jobQueue', 'rewind'],
+    queryFn: getQueueSnapshot,
+    staleTime: 2_000,
+    refetchInterval: 3_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const runs = useMemo(() => {
+    const historyRuns = historyQuery.data?.runs ?? [];
+    const liveRunsById = new Map<string, RewindRun>();
+
+    const activeRun = queueQuery.data?.activeRun;
+    if (activeRun && activeRun.id) {
+      liveRunsById.set(activeRun.id, activeRun);
+    }
+
+    for (const pendingRun of queueQuery.data?.pendingRuns ?? []) {
+      if (!pendingRun.id) continue;
+      liveRunsById.set(pendingRun.id, pendingRun);
+    }
+
+    const merged = historyRuns.map((run) => {
+      const liveRun = liveRunsById.get(run.id);
+      if (!liveRun) return run;
+      liveRunsById.delete(run.id);
+      return {
+        ...run,
+        ...liveRun,
+        summary: run.summary,
+        errorMessage: run.errorMessage ?? liveRun.errorMessage,
+      };
+    });
+
+    merged.push(...Array.from(liveRunsById.values()));
+
+    return merged.sort((left, right) => {
+      const leftTime = Date.parse(getRunTimestamp(left));
+      const rightTime = Date.parse(getRunTimestamp(right));
+      if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+        return rightTime - leftTime;
+      }
+      return right.id.localeCompare(left.id);
+    });
+  }, [historyQuery.data?.runs, queueQuery.data?.activeRun, queueQuery.data?.pendingRuns]);
+
   const filtered = useMemo(() => {
-    const runs = historyQuery.data?.runs ?? [];
     const query = q.trim().toLowerCase();
     return runs.filter((r) => {
       if (jobId && r.jobId !== jobId) return false;
@@ -305,15 +381,14 @@ export const RewindPage = () => {
         `${r.jobId} ${headline} ${r.status} ${r.errorMessage ?? ''} ${issueSummary(r)} ${userKey} ${plexUserTitle} ${media.label}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [historyQuery.data?.runs, jobId, status, plexUserFilter, mediaTypeFilter, q]);
+  }, [runs, jobId, status, plexUserFilter, mediaTypeFilter, q]);
 
   const jobNameById = useMemo(() => {
     const jobs = jobsQuery.data?.jobs ?? [];
-    return new Map(jobs.map((j) => [j.id, j.name] as const));
+    return new Map(jobs.map((job) => [job.id, job.rewindDisplayName || job.name] as const));
   }, [jobsQuery.data?.jobs]);
 
   const plexUserOptions = useMemo(() => {
-    const runs = historyQuery.data?.runs ?? [];
     const byKey = new Map<string, { id: string; title: string }>();
     for (const run of runs) {
       const { plexUserId, plexUserTitle } = getPlexUserContext(run);
@@ -329,12 +404,23 @@ export const RewindPage = () => {
     return Array.from(byKey.values()).sort((a, b) =>
       a.title.localeCompare(b.title),
     );
-  }, [historyQuery.data?.runs]);
+  }, [runs]);
+
+  const clearableRunsCount = useMemo(
+    () =>
+      (historyQuery.data?.runs ?? []).filter((run) =>
+        run.status === 'SUCCESS' ||
+        run.status === 'FAILED' ||
+        run.status === 'CANCELLED',
+      ).length,
+    [historyQuery.data?.runs],
+  );
 
   const clearAllMutation = useMutation({
     mutationFn: async () => clearRuns(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['jobRuns', 'rewind'] });
+      await queryClient.invalidateQueries({ queryKey: ['jobQueue', 'rewind'] });
       setClearAllOpen(false);
     },
   });
@@ -378,7 +464,7 @@ export const RewindPage = () => {
     setMobileFiltersOpen((prev) => !prev);
   }, []);
   const handleClearAllRequest = useCallback(() => {
-    const total = historyQuery.data?.runs?.length ?? 0;
+    const total = clearableRunsCount;
     if (!total) return;
     const isCoarsePointer =
       typeof window !== 'undefined' &&
@@ -393,7 +479,7 @@ export const RewindPage = () => {
     }
 
     setClearAllOpen(true);
-  }, [clearAllMutation, historyQuery.data?.runs]);
+  }, [clearAllMutation, clearableRunsCount]);
 
   const cardClass =
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
@@ -439,6 +525,7 @@ export const RewindPage = () => {
             <SelectItem value="RUNNING">RUNNING</SelectItem>
             <SelectItem value="SUCCESS">SUCCESS</SelectItem>
             <SelectItem value="FAILED">FAILED</SelectItem>
+            <SelectItem value="CANCELLED">CANCELLED</SelectItem>
             <SelectItem value="PENDING">PENDING</SelectItem>
           </SelectContent>
         </Select>
@@ -555,21 +642,21 @@ export const RewindPage = () => {
               </Link>
             </div>
 
-            {historyQuery.isLoading ? (
+            {historyQuery.isLoading || queueQuery.isLoading ? (
               <div className={cardClass}>
                 <div className="flex items-center gap-2 text-white">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <div className="text-lg font-semibold">Loading history…</div>
                 </div>
               </div>
-            ) : historyQuery.error ? (
+            ) : historyQuery.error || queueQuery.error ? (
               <div className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}>
                 <div className="flex items-start gap-3">
                   <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
                   <div className="min-w-0">
                     <div className="text-white font-semibold">Failed to load history</div>
                     <div className="text-sm text-white/70">
-                      {(historyQuery.error as Error).message}
+                      {((historyQuery.error ?? queueQuery.error) as Error).message}
                     </div>
                   </div>
                 </div>
@@ -616,6 +703,31 @@ export const RewindPage = () => {
                   {mobileFiltersOpen ? <div className="mt-6">{filtersForm}</div> : null}
                 </div>
 
+                {queueQuery.data?.paused || queueQuery.data?.activeRun?.redacted ? (
+                  <div className={`${cardClass} border-sky-400/20 bg-sky-500/10`}>
+                    <div className="flex items-start gap-3">
+                      <CircleAlert className="mt-0.5 h-5 w-5 text-sky-200" />
+                      <div className="min-w-0 text-sm text-sky-100/90">
+                        {queueQuery.data?.paused ? (
+                          <div>
+                            Queue is paused.
+                            {queueQuery.data.pauseReason
+                              ? ` ${queueQuery.data.pauseReason}`
+                              : ''}
+                          </div>
+                        ) : null}
+                        {queueQuery.data?.activeRun?.redacted ? (
+                          <div>
+                            {queueQuery.data.activeRun.rewindDisplayName} is currently
+                            blocking the queue. Your ETA still includes that work, but
+                            its details stay hidden.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className={cardClass}>
                   <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
                     <div className="min-w-0">
@@ -628,17 +740,14 @@ export const RewindPage = () => {
                     <button
                       type="button"
                       onClick={handleClearAllRequest}
-                      disabled={
-                        clearAllMutation.isPending ||
-                        !(historyQuery.data?.runs?.length ?? 0)
-                      }
+                      disabled={clearAllMutation.isPending || clearableRunsCount === 0}
                       className={[
                         'inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation',
                         'w-full sm:w-auto',
                         'border',
                         clearAllMutation.isPending
                           ? 'border-red-500/15 bg-red-500/10 text-red-100/70 cursor-not-allowed'
-                          : (historyQuery.data?.runs?.length ?? 0) > 0
+                          : clearableRunsCount > 0
                             ? 'border-red-500/25 bg-red-500/10 text-red-100 hover:bg-red-500/15'
                             : 'border-white/10 bg-white/5 text-white/40 cursor-not-allowed',
                       ].join(' ')}
@@ -667,16 +776,14 @@ export const RewindPage = () => {
                           const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                           const userLabel = plexUserTitle || plexUserId;
                           const media = getMediaTypeContext(run);
-                          const durationLabel = formatRunDuration(
-                            run,
-                            historyQuery.data?.runs ?? [],
-                          );
+                          const durationLabel = formatRunDuration(run);
                           const errorText = issueSummary(run);
                           const errorPreview = errorText
                             ? errorText.length > 140
                               ? `${errorText.slice(0, 140)}…`
                               : errorText
                             : '';
+                          const pendingNote = describeBlockedReason(run);
                           return (
                             <Link
                               key={run.id}
@@ -690,7 +797,7 @@ export const RewindPage = () => {
                                   </div>
                                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60 font-mono">
                                     <span className="whitespace-nowrap">
-                                      {new Date(run.startedAt).toLocaleString()}
+                                      {new Date(getRunTimestamp(run)).toLocaleString()}
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
@@ -730,6 +837,10 @@ export const RewindPage = () => {
                                 <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200/80 font-mono break-words [overflow-wrap:anywhere]">
                                   {errorPreview}
                                 </div>
+                              ) : pendingNote ? (
+                                <div className="mt-3 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/85 font-mono break-words [overflow-wrap:anywhere]">
+                                  {pendingNote}
+                                </div>
                               ) : null}
                             </Link>
                           );
@@ -738,7 +849,17 @@ export const RewindPage = () => {
 
                       {/* Desktop: table */}
                       <div className="hidden sm:block overflow-auto rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
-                        <table className="w-full text-sm">
+                        <table className="min-w-[1040px] w-full table-fixed text-sm">
+                          <colgroup>
+                            <col className="w-[17%]" />
+                            <col className="w-[24%]" />
+                            <col className="w-[13%]" />
+                            <col className="w-[8%]" />
+                            <col className="w-[10%]" />
+                            <col className="w-[8%]" />
+                            <col className="w-[9%]" />
+                            <col className="w-[11%]" />
+                          </colgroup>
                           <thead className="bg-white/5 text-left text-xs text-white/60">
                             <tr>
                               <th className="px-3 py-3">Time</th>
@@ -757,10 +878,7 @@ export const RewindPage = () => {
                               const { plexUserId, plexUserTitle } = getPlexUserContext(run);
                               const userLabel = plexUserTitle || plexUserId || '—';
                               const media = getMediaTypeContext(run);
-                              const durationLabel = formatRunDuration(
-                                run,
-                                historyQuery.data?.runs ?? [],
-                              );
+                              const durationLabel = formatRunDuration(run);
                               return (
                                 <tr
                                   key={run.id}
@@ -769,13 +887,17 @@ export const RewindPage = () => {
                                   <td className="px-3 py-3 whitespace-nowrap">
                                     <Link
                                       className="font-mono text-xs text-white/80 underline-offset-4 hover:underline"
-                              to={`/rewind/${run.id}`}
+                                      to={`/rewind/${run.id}`}
                                     >
-                                      {new Date(run.startedAt).toLocaleString()}
+                                      {new Date(getRunTimestamp(run)).toLocaleString()}
                                     </Link>
                                   </td>
-                                  <td className="px-3 py-3 text-white/85">{displayTitle}</td>
-                                  <td className="px-3 py-3 text-white/70">{userLabel}</td>
+                                  <td className="px-3 py-3 text-white/85">
+                                    <div className="break-words leading-relaxed">{displayTitle}</div>
+                                  </td>
+                                  <td className="px-3 py-3 text-white/70">
+                                    <div className="break-words">{userLabel}</div>
+                                  </td>
                                   <td className="px-3 py-3 text-white/70">{media.label}</td>
                                   <td className="px-3 py-3">
                                     <span
@@ -793,11 +915,12 @@ export const RewindPage = () => {
                                   <td className="px-3 py-3 text-white/60">
                                     {durationLabel}
                                   </td>
-                                  <td className="px-3 py-3 text-red-200/80">
+                                  <td className="px-3 py-3 text-xs leading-relaxed text-red-200/80">
                                     {(() => {
-                                      const msg = issueSummary(run);
+                                      const msg =
+                                        issueSummary(run) || describeBlockedReason(run);
                                       if (!msg) return '';
-                                      return msg.length > 80 ? `${msg.slice(0, 80)}…` : msg;
+                                      return msg.length > 56 ? `${msg.slice(0, 56)}…` : msg;
                                     })()}
                                   </td>
                                 </tr>
@@ -826,10 +949,12 @@ export const RewindPage = () => {
           <>
             This will delete{' '}
             <span className="text-white font-semibold">
-              {(historyQuery.data?.runs?.length ?? 0).toLocaleString()}
+              {clearableRunsCount.toLocaleString()}
             </span>{' '}
-            run(s) and their logs.
-            <div className="mt-2 text-xs text-white/55">This cannot be undone.</div>
+            terminal run(s) and their logs.
+            <div className="mt-2 text-xs text-white/55">
+              Pending and running work stays in the queue.
+            </div>
           </>
         }
         confirmText="Clear all"

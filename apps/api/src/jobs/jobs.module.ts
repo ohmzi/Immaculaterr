@@ -17,6 +17,7 @@ import { JobsHandlers } from './jobs.handlers';
 import { JobsRetentionService } from './jobs-retention.service';
 import { JobsWatchdogService } from './jobs-watchdog.service';
 import { MonitorConfirmJob } from './monitor-confirm.job';
+import { UnmonitorConfirmJob } from './unmonitor-confirm.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
@@ -32,6 +33,7 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
 import { ImportModule } from '../import/import.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -48,6 +50,7 @@ import { ImportModule } from '../import/import.module';
     ImmaculateTasteCollectionModule,
     WatchedMovieRecommendationsModule,
     forwardRef(() => ImportModule),
+    AuthModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [JobsController],
@@ -58,6 +61,7 @@ import { ImportModule } from '../import/import.module';
     JobsRetentionService,
     JobsWatchdogService,
     MonitorConfirmJob,
+    UnmonitorConfirmJob,
     ArrMonitoredSearchJob,
     CleanupAfterAddingNewContentJob,
     BasedonLatestWatchedCollectionJob,

@@ -23,3 +23,15 @@ export class UpsertScheduleDto {
   @IsString()
   timezone?: string;
 }
+
+export class CancelRunDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+export class QueuePauseDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
