@@ -192,3 +192,20 @@ volumes:
 ```
 
 Open: `http://192.168.122.179:5454`
+
+Updating
+---
+
+TrueNAS Custom Apps use `pull_policy: always`, so recreating the app pulls the latest image automatically.
+
+1. Go to **Apps → Installed Applications**.
+2. Click the three-dot menu on the **immaculaterr** app, then **Edit**.
+3. Click **Save** without changing anything. TrueNAS will repull the image and recreate the container.
+4. If you use the HTTPS sidecar (`immaculaterr-https`), you only need to update the main app. The Caddy sidecar rarely needs updating.
+
+After updating, verify:
+
+```bash
+curl -I http://<truenas-ip>:5454
+curl -I https://immaculaterr.local:5464   # if using HTTPS sidecar
+```
