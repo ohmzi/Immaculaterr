@@ -147,76 +147,18 @@
 
 ### Installation 
 
-#### HTTP-only install/update (required)
-Option A (Docker Hub):
-```bash
-IMM_IMAGE="ohmzii/immaculaterr:latest"
-APP_PORT=5454
-
-docker pull "$IMM_IMAGE"
-docker rm -f Immaculaterr 2>/dev/null || true
-
-docker run -d \
-  --name Immaculaterr \
-  -p ${APP_PORT}:${APP_PORT} \
-  -e HOST=0.0.0.0 \
-  -e PORT=${APP_PORT} \
-  -e TRUST_PROXY=1 \
-  -e APP_DATA_DIR=/data \
-  -e DATABASE_URL=file:/data/tcp.sqlite \
-  -v immaculaterr-data:/data \
-  --restart unless-stopped \
-  "$IMM_IMAGE"
-```
-
-Option B (GHCR):
+#### HTTPS installation which includes sidecar
+(restart your browser after installation)
 ```bash
 IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
-APP_PORT=5454
 
 docker pull "$IMM_IMAGE"
-docker rm -f Immaculaterr 2>/dev/null || true
-
-docker run -d \
-  --name Immaculaterr \
-  -p ${APP_PORT}:${APP_PORT} \
-  -e HOST=0.0.0.0 \
-  -e PORT=${APP_PORT} \
-  -e TRUST_PROXY=1 \
-  -e APP_DATA_DIR=/data \
-  -e DATABASE_URL=file:/data/tcp.sqlite \
-  -v immaculaterr-data:/data \
-  --restart unless-stopped \
-  "$IMM_IMAGE"
-```
-
-#### Optional HTTPS sidecar (can run anytime later)
-
-Restart the browser after running this:
-
-```bash
-set -euo pipefail
-
-mkdir -p "$HOME/immaculaterr"
-
-curl -fsSL -o "$HOME/immaculaterr/caddy-entrypoint.sh" \
-  "https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh"
-curl -fsSL -o "$HOME/immaculaterr/install-local-ca.sh" \
-  "https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh"
-chmod +x "$HOME/immaculaterr/caddy-entrypoint.sh" "$HOME/immaculaterr/install-local-ca.sh"
-
-# Needed so install-local-ca.sh can import trust into Firefox profiles.
-if ! command -v certutil >/dev/null 2>&1; then
-  sudo apt-get update
-  sudo apt-get install -y libnss3-tools
-fi
-
 docker pull caddy:2.8.4-alpine
 docker rm -f ImmaculaterrHttps 2>/dev/null || true
+docker rm -f Immaculaterr 2>/dev/null || true
 
-# Keep named volumes stable so certs persist across restarts.
-docker volume create immaculaterr-caddy-data >/dev/null
-docker volume create immaculaterr-caddy-config >/dev/null
+docker volume create immaculaterr-caddy-data >/dev/null 2>&1 || true
+docker volume create immaculaterr-caddy-config >/dev/null 2>&1 || true
 
 docker run -d \
   --name ImmaculaterrHttps \
@@ -234,21 +176,51 @@ docker run -d \
   caddy:2.8.4-alpine \
   /bin/sh /etc/caddy/caddy-entrypoint.sh
 
-# Trust the current Caddy local CA.
-"$HOME/immaculaterr/install-local-ca.sh"
+docker run -d \
+  --name Immaculaterr \
+  -p 5454:5454 \
+  -e HOST=0.0.0.0 \
+  -e PORT=5454 \
+  -e TRUST_PROXY=1 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  "$IMM_IMAGE"
+```
 
-# Quick verify.
-curl -I https://localhost:5464
+#### HTTP only installation
+
+```bash
+IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
+
+docker pull "$IMM_IMAGE"
+docker rm -f ImmaculaterrHttps 2>/dev/null || true
+docker rm -f Immaculaterr 2>/dev/null || true
+
+docker run -d \
+  --name Immaculaterr \
+  -p 5454:5454 \
+  -e HOST=0.0.0.0 \
+  -e PORT=5454 \
+  -e TRUST_PROXY=1 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  "$IMM_IMAGE"
 ```
 ## 
 
 ## Access after installation
-- HTTP app (available after the required install step):
-  - `http://localhost:5454/`
-  - `http://<server-ip>:5454/`
-- HTTPS sidecar (available only if you ran the optional HTTPS command):
+- HTTPS port (available only if you ran the HTTPS installation guide):
   - `https://localhost:5464/`
   - `https://<server-ip>:5464/`
+  
+- HTTP port:
+  - `http://localhost:5454/`
+  - `http://<server-ip>:5454/`
+
 - Available ports:
   - `5454/tcp`: Immaculaterr HTTP
   - `5464/tcp`: Immaculaterr HTTPS sidecar (optional)
