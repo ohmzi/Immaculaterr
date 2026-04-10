@@ -37,7 +37,7 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.6-beta-3',
+    version: '1.7.6',
     popupHighlights: [
       'Plex Watch History Import: import your Plex watched history to generate personalized recommendations and Plex collections.',
       'Netflix Watch History Import: upload a Netflix CSV to classify titles, build recommendations, and sync collections to Plex.',
