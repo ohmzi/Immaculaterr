@@ -35,6 +35,7 @@ services:
     container_name: Immaculaterr
     image: ohmzii/immaculaterr:latest
     network_mode: host
+    # Port mapping is ignored by Docker in host mode, but kept for Unraid UI visibility.
     ports:
       - "5454:5454"
     environment:
@@ -76,6 +77,7 @@ services:
     container_name: Immaculaterr
     image: ohmzii/immaculaterr:latest
     network_mode: host
+    # Port mapping is ignored by Docker in host mode, but kept for Unraid UI visibility.
     ports:
       - "5455:5455"
     environment:
@@ -170,3 +172,30 @@ Run without `-k`. A successful response confirms certificate trust is configured
 
 - Open `https://<server-ip>:5464` for encrypted access.
 - HTTP on `http://<server-ip>:5454` also works (Caddy proxies both).
+
+Updating
+---
+
+### Unraid Docker UI
+
+1. Go to the **Docker** tab.
+2. Click **Check for Updates** (or wait for the automatic check).
+3. If an update is available for the Immaculaterr container, click **Update**.
+4. The container will pull the latest image and recreate automatically.
+
+### Docker Compose
+
+If you installed with docker compose:
+
+```bash
+cd /mnt/user/appdata/immaculaterr
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+If you use the HTTPS sidecar, the Caddy container rarely needs updating. To update both:
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
