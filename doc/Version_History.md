@@ -3,7 +3,7 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.6-beta-3
+1.7.6
 ---
 
 - What's new since 1.7.5:
@@ -41,7 +41,7 @@ This file tracks notable changes by version.
 ---
 
 - What's new since 1.7.1:
-- Security hardening (beta-6):
+- Security hardening:
   - CSRF protection strengthened: state-changing requests without an Origin header now require an X-Requested-With header; the web frontend sends it automatically on all requests.
   - Expired sessions are automatically purged from the database every hour.
   - Credential envelope RSA key is auto-generated on first startup and persisted to APP_DATA_DIR with owner-only file permissions (chmod 600).
