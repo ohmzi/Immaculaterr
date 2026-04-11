@@ -266,6 +266,16 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     estimateKeyBuilder: buildDefaultEstimateKey,
   }),
   defineJob({
+    id: 'rottenTomatoesUpcomingMovies',
+    name: 'Rotten Tomatoes Upcoming Movies',
+    description:
+      'Scrapes fixed Rotten Tomatoes upcoming and newest movie pages, deduplicates safe matches, and routes them to Radarr or Seerr.',
+    defaultScheduleCron: '0 5 * * 0',
+    defaultEstimatedRuntimeMs: 14 * 60_000,
+    dedupePolicy: 'schedule_singleton',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+  }),
+  defineJob({
     id: 'immaculateTastePoints',
     name: 'Immaculate Taste Collection',
     description:

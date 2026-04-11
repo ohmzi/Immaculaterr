@@ -28,6 +28,7 @@ export const FAQ_SECTION_BY_TASK_MANAGER_CARD_ID = {
   mediaAddedCleanup: 'task-manager-cleanup-after-adding-new-content',
   arrMonitoredSearch: 'task-manager-search-monitored',
   tmdbUpcomingMovies: 'task-manager-tmdb-upcoming-movies',
+  rottenTomatoesUpcomingMovies: 'task-manager-rotten-tomatoes-upcoming-movies',
   immaculateTastePoints: 'task-manager-immaculate-taste-collection',
   immaculateTasteRefresher: 'task-manager-immaculate-taste-refresher',
   watchedMovieRecommendations: 'task-manager-based-on-latest-watched-collection',

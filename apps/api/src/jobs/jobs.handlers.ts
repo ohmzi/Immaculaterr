@@ -11,6 +11,7 @@ import { BasedonLatestWatchedCollectionJob } from './basedon-latest-watched-coll
 import { CollectionResyncUpgradeJob } from './collection-resync-upgrade.job';
 import { FreshOutOfTheOvenJob } from './fresh-out-of-the-oven.job';
 import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
+import { RottenTomatoesUpcomingMoviesJob } from './rotten-tomatoes-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
 
@@ -28,6 +29,7 @@ export class JobsHandlers {
     private readonly collectionResyncUpgradeJob: CollectionResyncUpgradeJob,
     private readonly freshOutOfTheOvenJob: FreshOutOfTheOvenJob,
     private readonly tmdbUpcomingMoviesJob: TmdbUpcomingMoviesJob,
+    private readonly rottenTomatoesUpcomingMoviesJob: RottenTomatoesUpcomingMoviesJob,
     private readonly importNetflixHistoryJob: ImportNetflixHistoryJob,
     private readonly importPlexHistoryJob: ImportPlexHistoryJob,
   ) {}
@@ -42,6 +44,8 @@ export class JobsHandlers {
         return await this.arrMonitoredSearchJob.run(ctx);
       case 'tmdbUpcomingMovies':
         return await this.tmdbUpcomingMoviesJob.run(ctx);
+      case 'rottenTomatoesUpcomingMovies':
+        return await this.rottenTomatoesUpcomingMoviesJob.run(ctx);
       case 'mediaAddedCleanup':
         return await this.cleanupAfterAddingNewContentJob.run(ctx);
       case 'immaculateTastePoints':

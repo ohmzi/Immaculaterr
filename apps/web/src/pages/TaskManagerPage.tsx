@@ -91,6 +91,10 @@ type TmdbUpcomingSettingsDraft = {
   filters: TmdbUpcomingFilterDraft[];
 };
 
+type RottenTomatoesUpcomingSettingsDraft = {
+  routeViaSeerr: boolean;
+};
+
 type TmdbFilterChipOption = {
   id: string;
   label: string;
@@ -158,6 +162,12 @@ const JOB_CONFIG: Record<
     color: 'text-cyan-300',
     description:
       'Discovers upcoming TMDB movies from custom filter sets and routes top picks to Radarr or Seerr.',
+  },
+  rottenTomatoesUpcomingMovies: {
+    icon: <Clapperboard className="w-8 h-8" />,
+    color: 'text-rose-300',
+    description:
+      'Scrapes fixed Rotten Tomatoes upcoming and newest movie pages, deduplicates safe matches, and routes them to Radarr or Seerr.',
   },
   mediaAddedCleanup: {
     icon: <CheckCircle2 className="w-8 h-8" />,
@@ -641,6 +651,16 @@ function normalizeTmdbUpcomingSettings(settings: unknown): TmdbUpcomingSettingsD
   };
 }
 
+function normalizeRottenTomatoesUpcomingSettings(
+  settings: unknown,
+): RottenTomatoesUpcomingSettingsDraft {
+  return {
+    routeViaSeerr:
+      readBool(settings, 'jobs.rottenTomatoesUpcomingMovies.routeViaSeerr') ??
+      false,
+  };
+}
+
 const TASK_MANAGER_AUTO_EXPAND_SEEN_KEY = 'immaculaterr.taskManager.autoExpandSeen.v1';
 
 export function TaskManagerPage() {
@@ -781,6 +801,12 @@ export function TaskManagerPage() {
         filters: [],
       };
     });
+  const [
+    rottenTomatoesUpcomingSettingsDraft,
+    setRottenTomatoesUpcomingSettingsDraft,
+  ] = useState<RottenTomatoesUpcomingSettingsDraft>({
+    routeViaSeerr: false,
+  });
   const [tmdbGenreSearchByFilter, setTmdbGenreSearchByFilter] = useState<
     Record<string, string>
   >({});
@@ -820,6 +846,10 @@ export function TaskManagerPage() {
   const tmdbUpcomingSettingsDraftRef = useRef<TmdbUpcomingSettingsDraft>(
     tmdbUpcomingSettingsDraft,
   );
+  const rottenTomatoesUpcomingSettingsDraftRef =
+    useRef<RottenTomatoesUpcomingSettingsDraft>(
+      rottenTomatoesUpcomingSettingsDraft,
+    );
   const tmdbCalendarToday = createDefaultTmdbWindowStart();
   const tmdbWindowStartCalendarCells = useMemo(
     () => buildCalendarMonthCells(tmdbWindowStartCalendarMonth),
@@ -908,6 +938,19 @@ export function TaskManagerPage() {
       queryClient.setQueryData(['publicSettings'], data);
     },
   });
+  const rottenTomatoesUpcomingSettingsMutation = useMutation({
+    mutationFn: async (next: RottenTomatoesUpcomingSettingsDraft) =>
+      putSettings({
+        settings: {
+          jobs: {
+            rottenTomatoesUpcomingMovies: next,
+          },
+        },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
 
   useEffect(() => {
     if (tmdbUpcomingSettingsMutation.isPending) return;
@@ -917,10 +960,22 @@ export function TaskManagerPage() {
     }, 0);
     return () => clearTimeout(timeout);
   }, [publicSettings, tmdbUpcomingSettingsMutation.isPending]);
+  useEffect(() => {
+    if (rottenTomatoesUpcomingSettingsMutation.isPending) return;
+    const nextDraft = normalizeRottenTomatoesUpcomingSettings(publicSettings);
+    const timeout = setTimeout(() => {
+      setRottenTomatoesUpcomingSettingsDraft(nextDraft);
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [publicSettings, rottenTomatoesUpcomingSettingsMutation.isPending]);
 
   useEffect(() => {
     tmdbUpcomingSettingsDraftRef.current = tmdbUpcomingSettingsDraft;
   }, [tmdbUpcomingSettingsDraft]);
+  useEffect(() => {
+    rottenTomatoesUpcomingSettingsDraftRef.current =
+      rottenTomatoesUpcomingSettingsDraft;
+  }, [rottenTomatoesUpcomingSettingsDraft]);
 
   useEffect(() => {
     if (!tmdbWindowStartCalendarOpen) return;
@@ -1446,30 +1501,44 @@ export function TaskManagerPage() {
         (job) =>
           job.visibleInTaskManager && !TASK_MANAGER_HIDDEN_JOB_IDS.has(job.id),
       );
-      const freshOutOfTheOvenJob = filteredJobs.find(
-        (job) => job.id === 'freshOutOfTheOven',
+      const targetOrder = [
+        'tmdbUpcomingMovies',
+        'rottenTomatoesUpcomingMovies',
+        'freshOutOfTheOven',
+      ] as const;
+      const orderedTargetJobs = targetOrder
+        .map((jobId) => filteredJobs.find((job) => job.id === jobId))
+        .filter((job): job is (typeof filteredJobs)[number] => Boolean(job));
+      const jobsWithoutUpcomingGroup = filteredJobs.filter(
+        (job) => !targetOrder.includes(job.id as (typeof targetOrder)[number]),
       );
-      if (!freshOutOfTheOvenJob) return filteredJobs;
+      if (orderedTargetJobs.length > 0) {
+        const firstUpcomingIndex = filteredJobs.findIndex(
+          (job) => targetOrder.includes(job.id as (typeof targetOrder)[number]),
+        );
+        if (firstUpcomingIndex !== -1) {
+          jobsWithoutUpcomingGroup.splice(
+            firstUpcomingIndex,
+            0,
+            ...orderedTargetJobs,
+          );
+        } else {
+          const monitorIndex = jobsWithoutUpcomingGroup.findIndex(
+            (job) => job.id === 'arrMonitoredSearch',
+          );
+          jobsWithoutUpcomingGroup.splice(
+            monitorIndex === -1 ? jobsWithoutUpcomingGroup.length : monitorIndex + 1,
+            0,
+            ...orderedTargetJobs,
+          );
+        }
+      }
 
-      const jobsWithoutFreshOutOfTheOven = filteredJobs.filter(
-        (job) => job.id !== 'freshOutOfTheOven',
-      );
-      const tmdbUpcomingMoviesIndex = jobsWithoutFreshOutOfTheOven.findIndex(
-        (job) => job.id === 'tmdbUpcomingMovies',
-      );
-      if (tmdbUpcomingMoviesIndex === -1) return filteredJobs;
-
-      jobsWithoutFreshOutOfTheOven.splice(
-        tmdbUpcomingMoviesIndex + 1,
-        0,
-        freshOutOfTheOvenJob,
-      );
-
-      const plexHistoryJob = jobsWithoutFreshOutOfTheOven.find(
+      const plexHistoryJob = jobsWithoutUpcomingGroup.find(
         (job) => job.id === 'importPlexHistory',
       );
       if (plexHistoryJob) {
-        const withoutPlexHistory = jobsWithoutFreshOutOfTheOven.filter(
+        const withoutPlexHistory = jobsWithoutUpcomingGroup.filter(
           (job) => job.id !== 'importPlexHistory',
         );
         const netflixIndex = withoutPlexHistory.findIndex(
@@ -1481,7 +1550,7 @@ export function TaskManagerPage() {
         }
       }
 
-      return jobsWithoutFreshOutOfTheOven;
+      return jobsWithoutUpcomingGroup;
     },
     [jobsQuery.data?.jobs],
   );
@@ -2573,6 +2642,25 @@ export function TaskManagerPage() {
     },
     [tmdbUpcomingSettingsMutation],
   );
+  const updateRottenTomatoesUpcomingSettings = useCallback(
+    (
+      updater: (
+        prev: RottenTomatoesUpcomingSettingsDraft,
+      ) => RottenTomatoesUpcomingSettingsDraft,
+    ) => {
+      const previous = rottenTomatoesUpcomingSettingsDraftRef.current;
+      const next = updater(previous);
+      rottenTomatoesUpcomingSettingsDraftRef.current = next;
+      setRottenTomatoesUpcomingSettingsDraft(next);
+      rottenTomatoesUpcomingSettingsMutation.mutate(next, {
+        onError: () => {
+          rottenTomatoesUpcomingSettingsDraftRef.current = previous;
+          setRottenTomatoesUpcomingSettingsDraft(previous);
+        },
+      });
+    },
+    [rottenTomatoesUpcomingSettingsMutation],
+  );
   const handleToggleTmdbUpcomingRouteViaSeerr = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -2588,6 +2676,26 @@ export function TaskManagerPage() {
       openIntegrationSetupDialog,
       tmdbUpcomingSettingsDraft.routeViaSeerr,
       updateTmdbUpcomingSettings,
+    ],
+  );
+  const handleToggleRottenTomatoesUpcomingRouteViaSeerr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const next = !rottenTomatoesUpcomingSettingsDraft.routeViaSeerr;
+      if (next && !canEnableSeerrTaskToggles) {
+        openIntegrationSetupDialog('seerr');
+        return;
+      }
+      updateRottenTomatoesUpcomingSettings((prev) => ({
+        ...prev,
+        routeViaSeerr: next,
+      }));
+    },
+    [
+      canEnableSeerrTaskToggles,
+      openIntegrationSetupDialog,
+      rottenTomatoesUpcomingSettingsDraft.routeViaSeerr,
+      updateRottenTomatoesUpcomingSettings,
     ],
   );
   const handleTmdbUpcomingGlobalLimitChange = useCallback(
@@ -3505,12 +3613,19 @@ export function TaskManagerPage() {
               const nextRunsOpen = nextRunsPopup[job.id] ?? false;
               const timePickerIsOpen = timePickerOpen[job.id] ?? false;
               const supportsSchedule = !UNSCHEDULABLE_JOB_IDS.has(job.id);
+              const showsAdvancedTaskSettingsWhenDisabled =
+                job.id === 'tmdbUpcomingMovies' ||
+                job.id === 'rottenTomatoesUpcomingMovies';
               const webhookEnabled =
                 webhookAutoRun[job.id] ??
                 (readBool(settingsQuery.data?.settings, `jobs.webhookEnabled.${job.id}`) ??
                   false);
               const iconPulseActive = cardIconPulse?.jobId === job.id;
               const isExpanded = expandedCards[job.id] ?? false;
+              const showSchedulerDrawer =
+                supportsSchedule &&
+                isExpanded &&
+                (draft.enabled || showsAdvancedTaskSettingsWhenDisabled);
               const mediaAddedCleanupAllDisabled =
                 !mediaAddedCleanupDeleteDuplicates &&
                 !mediaAddedCleanupUnmonitorInArr &&
@@ -3633,7 +3748,9 @@ export function TaskManagerPage() {
                               (job.id === 'immaculateTastePoints' &&
                                 immaculateIncludeRefresherMutation.isPending) ||
                               (job.id === 'tmdbUpcomingMovies' &&
-                                tmdbUpcomingSettingsMutation.isPending)
+                                tmdbUpcomingSettingsMutation.isPending) ||
+                              (job.id === 'rottenTomatoesUpcomingMovies' &&
+                                rottenTomatoesUpcomingSettingsMutation.isPending)
                             }
                             className="static shrink-0 hidden md:inline-flex"
                           />
@@ -4569,7 +4686,7 @@ export function TaskManagerPage() {
 
                   {/* Scheduler Drawer */}
                   <AnimatePresence initial={false}>
-                    {supportsSchedule && isExpanded && draft.enabled && (
+                    {showSchedulerDrawer && (
                       <motion.div
                         data-no-card-toggle="true"
                         initial={{ opacity: 0, y: -4 }}
@@ -5461,6 +5578,75 @@ export function TaskManagerPage() {
                                       </div>
                                     )}
                                   </div>
+                                </div>
+                              </div>
+                            )}
+                            {job.id === 'rottenTomatoesUpcomingMovies' && (
+                              <div className="rounded-2xl border border-white/10 bg-[#0F0B15]/45 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                <div className="flex flex-col gap-4">
+                                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                    Rotten Tomatoes upcoming settings
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-4">
+                                    <div className="flex min-h-[98px] items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#1a1625]/60 px-4 py-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Route via Seerr
+                                        </div>
+                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                          Enable to request matched movies in Seerr instead of
+                                          adding them directly to Radarr.
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={
+                                          rottenTomatoesUpcomingSettingsDraft.routeViaSeerr
+                                        }
+                                        onClick={
+                                          handleToggleRottenTomatoesUpcomingRouteViaSeerr
+                                        }
+                                        onPointerDown={handleStopPropagationPointer}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          rottenTomatoesUpcomingSettingsMutation.isPending
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                          rottenTomatoesUpcomingSettingsDraft.routeViaSeerr
+                                            ? 'bg-cyan-400'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle route via Seerr for Rotten Tomatoes Upcoming Movies"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            rottenTomatoesUpcomingSettingsDraft.routeViaSeerr
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {rottenTomatoesUpcomingSettingsMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {rottenTomatoesUpcomingSettingsMutation.isError && (
+                                    <div className="flex items-center gap-2 text-sm text-red-300">
+                                      <CircleAlert className="w-4 h-4" />
+                                      {
+                                        (
+                                          rottenTomatoesUpcomingSettingsMutation.error as Error
+                                        ).message
+                                      }
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )}

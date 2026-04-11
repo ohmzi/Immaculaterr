@@ -36,6 +36,10 @@ Major Features Include
   - Optional - Google + OpenAI 
 - **TMDB Upcoming Movies task filters**:
   - Build custom filter sets with where-to-watch, genre, language, certification, and score controls.
+- **Rotten Tomatoes Upcoming Movies task**:
+  - Scrapes fixed Rotten Tomatoes upcoming and newest movie pages, deduplicates safe matches, and routes them to Radarr or Seerr.
+  - Includes a `Route via Seerr` toggle in Task Manager. Off adds matched movies to Radarr; on requests matched movies in Seerr instead.
+  - Matching still uses the same conservative Radarr lookup step first, so only safe title/year matches are routed.
 - **Keeps a snapshot database:**
   - Recommmended database for refresher task to monitor titles as they become available in Plex.
 - **Radarr + Sonarr integration**:
