@@ -11,6 +11,8 @@ const FRESH_RELEASE_CACHE_MIGRATION =
   '20260317120000_fresh_out_of_the_oven_recent_release_cache';
 const IMPORTED_WATCH_ENTRY_MIGRATION =
   '20260405092958_add_imported_watch_entry';
+const AUTO_RUN_MEDIA_HISTORY_MIGRATION =
+  '20260411120000_add_auto_run_media_history';
 const PRISMA_BIN_CANDIDATES = [
   './apps/api/node_modules/.bin/prisma',
   './node_modules/.bin/prisma',
@@ -135,6 +137,29 @@ const CREATE_IMPORTED_WATCH_ENTRY_STATUS_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "ImportedWatchEntry_userId_status_idx" ON "ImportedWatchEntry"("userId", "status")';
 const CREATE_IMPORTED_WATCH_ENTRY_UNIQUE_PARSED_TITLE_INDEX_SQL =
   'CREATE UNIQUE INDEX IF NOT EXISTS "ImportedWatchEntry_userId_source_parsedTitle_key" ON "ImportedWatchEntry"("userId", "source", "parsedTitle")';
+const CREATE_AUTO_RUN_MEDIA_HISTORY_TABLE_SQL = [
+  'CREATE TABLE "AutoRunMediaHistory" (',
+  '  "id" TEXT NOT NULL PRIMARY KEY,',
+  '  "jobId" TEXT NOT NULL,',
+  '  "mediaFingerprint" TEXT NOT NULL,',
+  '  "plexUserId" TEXT NOT NULL,',
+  '  "mediaType" TEXT NOT NULL,',
+  '  "librarySectionKey" TEXT NOT NULL,',
+  '  "seedRatingKey" TEXT,',
+  '  "showRatingKey" TEXT,',
+  '  "seedTitle" TEXT,',
+  '  "seedYear" INTEGER,',
+  '  "seasonNumber" INTEGER,',
+  '  "episodeNumber" INTEGER,',
+  '  "source" TEXT NOT NULL,',
+  '  "firstRunId" TEXT NOT NULL,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
+  ')',
+].join('\n');
+const CREATE_AUTO_RUN_MEDIA_HISTORY_UNIQUE_INDEX_SQL =
+  'CREATE UNIQUE INDEX IF NOT EXISTS "AutoRunMediaHistory_jobId_mediaFingerprint_key" ON "AutoRunMediaHistory"("jobId", "mediaFingerprint")';
+const CREATE_AUTO_RUN_MEDIA_HISTORY_LOOKUP_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "AutoRunMediaHistory_jobId_plexUserId_librarySectionKey_createdAt_idx" ON "AutoRunMediaHistory"("jobId", "plexUserId", "librarySectionKey", "createdAt")';
 const CREATE_IMMACULATE_TASTE_PROFILE_TABLE_SQL = [
   'CREATE TABLE "ImmaculateTasteProfile" (',
   '  "id" TEXT NOT NULL PRIMARY KEY,',
@@ -700,27 +725,47 @@ export async function repairApril2026MigrationEdgeCases(
     prisma,
     'ImportedWatchEntry',
   );
+  const autoRunMediaHistoryExists = await tableExists(
+    prisma,
+    'AutoRunMediaHistory',
+  );
 
-  if (!arrInstanceExists && !importedWatchEntryExists) {
-    return;
+  if (arrInstanceExists || importedWatchEntryExists) {
+    await ensureImportedWatchEntrySchema(prisma);
+
+    const importedWatchEntryMigrationState = await migrationRecordState(
+      prisma,
+      IMPORTED_WATCH_ENTRY_MIGRATION,
+    );
+    if (
+      importedWatchEntryMigrationState !== 'applied' &&
+      importedWatchEntryMigrationState !== 'migrations_table_missing'
+    ) {
+      resolveMigrationAsApplied(
+        IMPORTED_WATCH_ENTRY_MIGRATION,
+        importedWatchEntryExists
+          ? 'ImportedWatchEntry already exists'
+          : 'ArrInstance already exists; ImportedWatchEntry was provisioned by repair',
+      );
+    }
   }
 
-  await ensureImportedWatchEntrySchema(prisma);
+  if (autoRunMediaHistoryExists) {
+    await ensureAutoRunMediaHistorySchema(prisma);
 
-  const importedWatchEntryMigrationState = await migrationRecordState(
-    prisma,
-    IMPORTED_WATCH_ENTRY_MIGRATION,
-  );
-  if (
-    importedWatchEntryMigrationState !== 'applied' &&
-    importedWatchEntryMigrationState !== 'migrations_table_missing'
-  ) {
-    resolveMigrationAsApplied(
-      IMPORTED_WATCH_ENTRY_MIGRATION,
-      importedWatchEntryExists
-        ? 'ImportedWatchEntry already exists'
-        : 'ArrInstance already exists; ImportedWatchEntry was provisioned by repair',
+    const autoRunMediaHistoryMigrationState = await migrationRecordState(
+      prisma,
+      AUTO_RUN_MEDIA_HISTORY_MIGRATION,
     );
+    if (
+      autoRunMediaHistoryMigrationState !== 'applied' &&
+      autoRunMediaHistoryMigrationState !== 'migrations_table_missing'
+    ) {
+      resolveMigrationAsApplied(
+        AUTO_RUN_MEDIA_HISTORY_MIGRATION,
+        'AutoRunMediaHistory already exists',
+      );
+    }
   }
 }
 
@@ -770,6 +815,22 @@ async function ensureImportedWatchEntrySchema(
   await prisma.$executeRawUnsafe(CREATE_IMPORTED_WATCH_ENTRY_STATUS_INDEX_SQL);
   await prisma.$executeRawUnsafe(
     CREATE_IMPORTED_WATCH_ENTRY_UNIQUE_PARSED_TITLE_INDEX_SQL,
+  );
+}
+
+async function ensureAutoRunMediaHistorySchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const tableName = 'AutoRunMediaHistory';
+  if (!(await tableExists(prisma, tableName))) {
+    await prisma.$executeRawUnsafe(CREATE_AUTO_RUN_MEDIA_HISTORY_TABLE_SQL);
+  }
+
+  await prisma.$executeRawUnsafe(
+    CREATE_AUTO_RUN_MEDIA_HISTORY_UNIQUE_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_AUTO_RUN_MEDIA_HISTORY_LOOKUP_INDEX_SQL,
   );
 }
 
@@ -1022,6 +1083,7 @@ export async function main() {
     }
     await ensureArrInstanceSchema(prisma);
     await ensureImportedWatchEntrySchema(prisma);
+    await ensureAutoRunMediaHistorySchema(prisma);
     await ensureImmaculateTasteProfileSchema(prisma);
     await ensureImmaculateTasteLibrarySchema(prisma);
     await ensureFreshReleaseMovieLibrarySchema(prisma);

@@ -37,7 +37,7 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.7',
+    version: '1.7.7-beta-1',
     popupHighlights: [
       'Rotten Tomatoes Upcoming Movies adds a fixed-source movie discovery task that routes safe matches to Radarr or Seerr.',
       'Plex watched auto-runs now skip repeat watches of the same exact movie or episode after a successful run, while manual and scheduled runs stay available.',

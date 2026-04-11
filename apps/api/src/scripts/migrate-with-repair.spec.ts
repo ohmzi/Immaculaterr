@@ -61,6 +61,10 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
         mockState.tables.add('ImportedWatchEntry');
         mockState.columns.ImportedWatchEntry = ['id'];
       }
+      if (sql.includes('CREATE TABLE "AutoRunMediaHistory"')) {
+        mockState.tables.add('AutoRunMediaHistory');
+        mockState.columns.AutoRunMediaHistory = ['id'];
+      }
       if (
         sql.includes('ADD COLUMN "scopeAllUsers"') &&
         mockState.columns.ImmaculateTasteProfile
@@ -377,6 +381,25 @@ describe('scripts/migrate-with-repair', () => {
         sql.includes('"ImportedWatchEntry"'),
       ),
     ).toBe(false);
+  });
+
+  it('resolves the auto-run media history migration as applied when the table pre-exists', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(['User', 'AutoRunMediaHistory']),
+    });
+
+    await repairApril2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--applied',
+        '20260411120000_add_auto_run_media_history',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
   });
 
   it('logs the exact failed migration names that still block deploy', async () => {

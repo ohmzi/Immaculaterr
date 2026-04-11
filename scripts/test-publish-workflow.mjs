@@ -120,7 +120,19 @@ const requiredSnippets = [
   },
   {
     name: 'release notes include full changelog link',
-    snippet: '**Full Changelog**:',
+    snippet: 'Full Changelog:',
+  },
+  {
+    name: 'release notes include NAS/Unraid update note',
+    snippet: 'If you are running NAS or Unraid please check their specific documentation for update',
+  },
+  {
+    name: 'release notes include NAS link',
+    snippet: '[NAS](https://github.com/ohmzi/Immaculaterr/blob/master/doc/setup-truenas.md)',
+  },
+  {
+    name: 'release notes include Unraid link',
+    snippet: '[Unraid](https://github.com/ohmzi/Immaculaterr/blob/master/doc/setup-unraid.md)',
   },
   {
     name: 'release notes fallback to PR title when feature lines are unavailable',
@@ -135,8 +147,8 @@ const requiredSnippets = [
     snippet: '### Docker',
   },
   {
-    name: 'release notes include required HTTP-only label',
-    snippet: 'HTTP-only update (required)',
+    name: 'release notes include https-with-sidecar label',
+    snippet: 'HTTPS update which includes sidecar',
   },
   {
     name: 'release notes include ghcr latest image variable',
@@ -163,8 +175,8 @@ const requiredSnippets = [
     snippet: '-e TRUST_PROXY=1 \\',
   },
   {
-    name: 'release notes include optional HTTPS sidecar label',
-    snippet: 'Optional HTTPS sidecar (can run anytime later)',
+    name: 'release notes include http-only label',
+    snippet: 'HTTP-only update',
   },
   {
     name: 'release notes include sidecar container name',
@@ -209,7 +221,7 @@ const requiredSnippets = [
   },
   {
     name: 'release notes include portainer recreate flow',
-    snippet: '1. In Portainer: **Containers** → select **Immaculaterr**',
+    snippet: '1. In Portainer: **Containers** -> select **Immaculaterr**',
   },
 ];
 

@@ -1,5 +1,5 @@
--- CreateTable
-CREATE TABLE "AutoRunMediaHistory" (
+-- CreateTable (idempotent: supports reruns after partial SQLite recovery)
+CREATE TABLE IF NOT EXISTS "AutoRunMediaHistory" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "jobId" TEXT NOT NULL,
     "mediaFingerprint" TEXT NOT NULL,
@@ -17,8 +17,6 @@ CREATE TABLE "AutoRunMediaHistory" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "AutoRunMediaHistory_jobId_mediaFingerprint_key" ON "AutoRunMediaHistory"("jobId", "mediaFingerprint");
+CREATE UNIQUE INDEX IF NOT EXISTS "AutoRunMediaHistory_jobId_mediaFingerprint_key" ON "AutoRunMediaHistory"("jobId", "mediaFingerprint");
 
--- CreateIndex
-CREATE INDEX "AutoRunMediaHistory_jobId_plexUserId_librarySectionKey_createdAt_idx" ON "AutoRunMediaHistory"("jobId", "plexUserId", "librarySectionKey", "createdAt");
+CREATE INDEX IF NOT EXISTS "AutoRunMediaHistory_jobId_plexUserId_librarySectionKey_createdAt_idx" ON "AutoRunMediaHistory"("jobId", "plexUserId", "librarySectionKey", "createdAt");
