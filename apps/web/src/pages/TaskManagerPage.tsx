@@ -191,7 +191,7 @@ const JOB_CONFIG: Record<
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-yellow-300',
     description:
-      'Updates your Immaculate Taste collection after you finish watching, and can send missing titles to Radarr/Sonarr/Seerr.',
+      'Updates your Immaculate Taste collection after a newly completed movie or episode, and can send missing titles to Radarr/Sonarr/Seerr.',
   },
   immaculateTasteRefresher: {
     icon: <RotateCw className="w-8 h-8" />,
@@ -203,7 +203,7 @@ const JOB_CONFIG: Record<
     icon: <Sparkles className="w-8 h-8" />,
     color: 'text-violet-400',
     description:
-      'Generates fresh recommendations after you finish a movie.',
+      'Generates fresh recommendations after a newly completed movie or episode.',
   },
   importNetflixHistory: {
     icon: <FileUp className="w-8 h-8" />,
@@ -6255,8 +6255,8 @@ export function TaskManagerPage() {
                     </h2>
                     <p className="mt-2 text-sm text-white/70 leading-relaxed">
                       This will tell Radarr/Sonarr to start searching as soon as titles are added by
-                      the Immaculate Taste job (after each watch event). If you prefer off-peak
-                      execution, schedule the monitored search instead.
+                      the Immaculate Taste job after a newly completed movie or episode. If you
+                      prefer off-peak execution, schedule the monitored search instead.
                     </p>
                   </div>
                   <button

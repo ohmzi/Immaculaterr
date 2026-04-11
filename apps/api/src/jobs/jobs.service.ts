@@ -28,6 +28,10 @@ import {
   IMMACULATE_TASTE_PROFILE_ACTION_JOB_ID,
   JOB_DEFINITIONS,
 } from './job-registry';
+import {
+  buildAutoRunMediaHistoryPayload,
+  DURABLE_AUTO_RUN_JOB_ID_SET,
+} from './auto-run-media';
 import { JobsHandlers } from './jobs.handlers';
 import type { JobReportV1 } from './job-report-v1';
 import type {
@@ -145,6 +149,8 @@ type EstimateHistoryEntry = {
 
 type EstimateHistoryGroups = Map<string, EstimateHistoryEntry[]>;
 
+type EnqueueConflictReason = 'already_processed' | 'already_queued_or_running';
+
 function toIsoString(value: unknown): string | null {
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'string') return value.trim() ? value.trim() : null;
@@ -211,6 +217,58 @@ function evaluateJobReportFailure(report: JobReportV1): {
   return {
     failed: true,
     reason: `Job reported failed task(s): ${parts.join(' | ')}${more}`,
+  };
+}
+
+function buildEnqueueConflictException(
+  reason: EnqueueConflictReason,
+): ConflictException {
+  return new ConflictException({
+    reason,
+    message:
+      reason === 'already_processed'
+        ? 'Job already processed for this media.'
+        : 'Job already queued or running',
+  });
+}
+
+function shouldUseDurableAutoRunDedupe(params: {
+  jobId: string;
+  trigger: JobRunTrigger;
+  dryRun: boolean;
+}) {
+  return (
+    params.trigger === 'auto' &&
+    !params.dryRun &&
+    DURABLE_AUTO_RUN_JOB_ID_SET.has(params.jobId)
+  );
+}
+
+function isRunSummaryMarkedSkipped(summary: JsonObject | null | undefined) {
+  if (!summary) return false;
+  if (summary['skipped'] === true) return true;
+  const raw = summary['raw'];
+  return isPlainObject(raw) && raw['skipped'] === true;
+}
+
+function buildDurableAutoRunHistoryRecord(params: {
+  runId: string;
+  jobId: string;
+  trigger: JobRunTrigger;
+  dryRun: boolean;
+  input?: JsonObject | null;
+  summary?: JsonObject | null;
+}) {
+  if (!shouldUseDurableAutoRunDedupe(params)) return null;
+  if (isRunSummaryMarkedSkipped(params.summary)) return null;
+
+  const payload = buildAutoRunMediaHistoryPayload(params.input ?? null);
+  if (!payload) return null;
+
+  return {
+    ...payload,
+    jobId: params.jobId,
+    firstRunId: params.runId,
   };
 }
 
@@ -940,7 +998,32 @@ export class JobsService implements OnModuleInit {
             trigger: params.trigger,
             reason: 'already_queued_or_running',
           });
-          throw new ConflictException('Job already queued or running');
+          throw buildEnqueueConflictException('already_queued_or_running');
+        }
+      }
+
+      const durableHistory =
+        shouldUseDurableAutoRunDedupe(params) &&
+        params.input &&
+        buildAutoRunMediaHistoryPayload(params.input);
+      if (durableHistory) {
+        const existing = await tx.autoRunMediaHistory.findUnique({
+          where: {
+            jobId_mediaFingerprint: {
+              jobId: params.jobId,
+              mediaFingerprint: durableHistory.mediaFingerprint,
+            },
+          },
+          select: { id: true },
+        });
+        if (existing) {
+          this.logQueueDecision('enqueue_deduped', {
+            jobId: params.jobId,
+            trigger: params.trigger,
+            reason: 'already_processed',
+            mediaFingerprint: durableHistory.mediaFingerprint,
+          });
+          throw buildEnqueueConflictException('already_processed');
         }
       }
 
@@ -960,8 +1043,9 @@ export class JobsService implements OnModuleInit {
             jobId: params.jobId,
             trigger: params.trigger,
             queueFingerprint,
+            reason: 'already_queued_or_running',
           });
-          throw new ConflictException('Job already queued or running');
+          throw buildEnqueueConflictException('already_queued_or_running');
         }
       }
 
@@ -1279,6 +1363,12 @@ export class JobsService implements OnModuleInit {
           context: reportFailure.reason
             ? { reason: reportFailure.reason }
             : undefined,
+          runContext: {
+            jobId: run.jobId,
+            trigger: run.trigger,
+            dryRun: run.dryRun,
+            input: ctx.input ?? null,
+          },
         });
 
         const ms = finishedAt.getTime() - executionStartedAt.getTime();
@@ -1302,6 +1392,12 @@ export class JobsService implements OnModuleInit {
         finishedAt,
         summary: finalSummary,
         errorMessage: null,
+        runContext: {
+          jobId: run.jobId,
+          trigger: run.trigger,
+          dryRun: run.dryRun,
+          input: ctx.input ?? null,
+        },
       });
 
       const ms = finishedAt.getTime() - executionStartedAt.getTime();
@@ -1330,6 +1426,12 @@ export class JobsService implements OnModuleInit {
         finishedAt,
         summary: ctx.getSummary() ?? null,
         errorMessage: message,
+        runContext: {
+          jobId: run.jobId,
+          trigger: run.trigger,
+          dryRun: run.dryRun,
+          input: ctx.input ?? null,
+        },
       });
 
       const ms = finishedAt.getTime() - executionStartedAt.getTime();
@@ -1355,14 +1457,32 @@ export class JobsService implements OnModuleInit {
     errorMessage?: string | null;
     message?: string;
     context?: JsonObject;
+    runContext?: {
+      jobId: string;
+      trigger: JobRunTrigger;
+      dryRun: boolean;
+      input?: JsonObject | null;
+    };
   }) {
     const cooldownUntil =
       params.status === 'CANCELLED'
         ? null
         : new Date(params.finishedAt.getTime() + QUEUE_COOLDOWN_MS);
 
-    const [runResult] = await this.prisma.$transaction([
-      this.prisma.jobRun.updateMany({
+    const durableHistoryRecord =
+      params.status === 'SUCCESS' && params.runContext
+        ? buildDurableAutoRunHistoryRecord({
+            runId: params.runId,
+            jobId: params.runContext.jobId,
+            trigger: params.runContext.trigger,
+            dryRun: params.runContext.dryRun,
+            input: params.runContext.input ?? null,
+            summary: params.summary ?? null,
+          })
+        : null;
+
+    const runResult = await this.prisma.$transaction(async (tx) => {
+      const updatedRun = await tx.jobRun.updateMany({
         where: { id: params.runId, status: 'RUNNING' },
         data: {
           status: params.status,
@@ -1370,28 +1490,44 @@ export class JobsService implements OnModuleInit {
           summary: params.summary ?? Prisma.DbNull,
           errorMessage: params.errorMessage ?? null,
         },
-      }),
-      this.prisma.jobQueueState.update({
+      });
+
+      await tx.jobQueueState.update({
         where: { id: GLOBAL_QUEUE_STATE_ID },
         data: {
           activeRunId: null,
           cooldownUntil,
           version: { increment: 1 },
         },
-      }),
-      ...(params.message
-        ? [
-            this.prisma.jobLogLine.create({
-              data: {
-                runId: params.runId,
-                level: params.status === 'SUCCESS' ? 'info' : 'error',
-                message: params.message,
-                context: params.context ?? Prisma.DbNull,
-              },
-            }),
-          ]
-        : []),
-    ]);
+      });
+
+      if (params.message) {
+        await tx.jobLogLine.create({
+          data: {
+            runId: params.runId,
+            level: params.status === 'SUCCESS' ? 'info' : 'error',
+            message: params.message,
+            context: params.context ?? Prisma.DbNull,
+          },
+        });
+      }
+
+      if (updatedRun.count > 0 && durableHistoryRecord) {
+        await tx.autoRunMediaHistory.upsert({
+          where: {
+            jobId_mediaFingerprint: {
+              jobId: durableHistoryRecord.jobId,
+              mediaFingerprint: durableHistoryRecord.mediaFingerprint,
+            },
+          },
+          update: {},
+          create: durableHistoryRecord,
+        });
+      }
+
+      return updatedRun;
+    });
+
     return runResult.count > 0;
   }
 

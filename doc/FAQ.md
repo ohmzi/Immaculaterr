@@ -642,6 +642,7 @@ Plex-Triggered Auto-Run means the job waits for Plex activity instead of a clock
 
 - These jobs do not run on a timer. They wait for the matching Plex event.
 - **Watched trigger (~60% / ~70%)**: these are default Plex polling thresholds—~60% for "Based on your recently watched" and ~70% for Immaculate Taste. Immaculate Taste can also trigger via Plex webhooks at Plex scrobble timing.
+- **Repeat-watch dedupe**: once one of these auto-runs completes successfully for the same Plex user, library, and exact movie/episode, repeated watches of that same item are skipped automatically. Manual runs still work any time.
 - **New content trigger**: when a new movie or show episode is added, the cleanup task can trigger to scan for duplicates.
 
 You can still run these tasks manually any time from Task Manager.

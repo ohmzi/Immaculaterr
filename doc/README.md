@@ -27,8 +27,8 @@ Major Features Include
   - Pending work survives restarts, duplicate auto-runs are skipped cleanly, and Rewind shows queued/running status with ETA context.
 - **Curated Movies and TV Shows collections**:
   - Inspired by your Immaculate Taste (long term collection)
-  - Based on your recently watched (refreshes on every watch)
-  - Change of Taste (refreshes on every watch)
+  - Based on your recently watched (auto-refreshes for newly completed movies/episodes)
+  - Change of Taste (auto-refreshes for newly completed movies/episodes)
   - Fresh Out Of The Oven (recent-release movies you have not watched yet, per Plex user)
   - Fresh Out Of The Oven (last 3 months, unseen per Plex user)
 - **Recommendation engine**:

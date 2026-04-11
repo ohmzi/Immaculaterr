@@ -16,6 +16,7 @@ import type { Express } from 'express';
 import type { Request } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/public.decorator';
+import { buildAutoRunMediaFingerprint } from '../jobs/auto-run-media';
 import { JobsService } from '../jobs/jobs.service';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
 import { isPlexLibrarySectionExcluded } from '../plex/plex-library-selection.utils';
@@ -59,6 +60,14 @@ function pickNumber(obj: Record<string, unknown>, path: string): number | null {
 function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   const v = pick(obj, path);
   return typeof v === 'boolean' ? v : null;
+}
+
+function readConflictReason(error: unknown): string | null {
+  if (!(error instanceof ConflictException)) return null;
+  const response = error.getResponse();
+  if (!isPlainObject(response)) return null;
+  const reason = response['reason'];
+  return typeof reason === 'string' && reason.trim() ? reason.trim() : null;
 }
 
 function readSingleHeader(value: string | string[] | undefined): string | null {
@@ -304,6 +313,14 @@ export class WebhooksController {
                 : {}),
               persistedPath: persisted.path,
             } as const;
+            const autoRunMediaFingerprint =
+              buildAutoRunMediaFingerprint(payloadInput);
+            const runInput = autoRunMediaFingerprint
+              ? {
+                  ...payloadInput,
+                  autoRunMediaFingerprint,
+                }
+              : payloadInput;
 
             const runs: Record<string, string> = {};
             const errors: Record<string, string> = {};
@@ -385,12 +402,13 @@ export class WebhooksController {
                   trigger: 'auto',
                   dryRun: false,
                   userId,
-                  input: payloadInput,
+                  input: runInput,
                 });
                 runs.immaculateTastePoints = run.id;
               } catch (err) {
-                if (err instanceof ConflictException) {
-                  skipped.immaculateTastePoints = 'already_queued_or_running';
+                const conflictReason = readConflictReason(err);
+                if (conflictReason) {
+                  skipped.immaculateTastePoints = conflictReason;
                 } else {
                   errors.immaculateTastePoints =
                     (err as Error)?.message ?? String(err);

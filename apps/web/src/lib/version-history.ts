@@ -37,6 +37,33 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.7',
+    popupHighlights: [
+      'Rotten Tomatoes Upcoming Movies adds a fixed-source movie discovery task that routes safe matches to Radarr or Seerr.',
+      'Plex watched auto-runs now skip repeat watches of the same exact movie or episode after a successful run, while manual and scheduled runs stay available.',
+    ],
+    sections: [
+      {
+        title: 'Rotten Tomatoes Upcoming Movies',
+        bullets: [
+          'Adds a new Task Manager job that scrapes fixed Rotten Tomatoes upcoming and newest movie pages.',
+          'Deduplicates discovered titles, applies conservative title-and-year matching, and only routes safe matches onward.',
+          'Can send matched movies directly to Radarr or, when enabled, route them through Seerr instead.',
+          'Reports include discovery, routing, and skip details so you can see exactly what happened during the run.',
+        ],
+      },
+      {
+        title: 'Durable repeat-watch dedupe for Plex auto-runs',
+        bullets: [
+          'Based on your recently watched and Change of Taste now remember successful auto-runs per Plex user, library, and exact movie or episode.',
+          'Repeat scrobbles of the same item are skipped as already processed instead of re-running the same automation again.',
+          'The same durable dedupe applies across Plex polling and the existing Immaculate Taste webhook trigger so both paths stay aligned.',
+          'Manual and scheduled runs still work normally, and only new successful auto-runs start building this dedupe history.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.6',
     popupHighlights: [
       'Plex Watch History Import: import your Plex watched history to generate personalized recommendations and Plex collections.',
@@ -401,8 +428,8 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         title: 'Curated Movies and TV Shows collections',
         bullets: [
           'Inspired by your Immaculate Taste (long term collection)',
-          'Based on your recently watched (refreshes on every watch)',
-          'Change of Taste (refreshes on every watch)',
+          'Based on your recently watched (auto-refreshes for newly completed movies/episodes)',
+          'Change of Taste (auto-refreshes for newly completed movies/episodes)',
         ],
       },
       {

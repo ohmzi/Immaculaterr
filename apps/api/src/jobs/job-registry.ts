@@ -115,6 +115,11 @@ function buildWebhookFingerprint(
   const input = params.input ?? null;
   if (!input) return null;
 
+  const autoRunMediaFingerprint = pickString(input, 'autoRunMediaFingerprint');
+  if (autoRunMediaFingerprint) {
+    return `${params.jobId}|media:${autoRunMediaFingerprint}|dryRun:${params.dryRun ? '1' : '0'}`;
+  }
+
   const sessionAutomationId = pickString(input, 'sessionAutomationId');
   if (sessionAutomationId) {
     return `${params.jobId}|session:${sessionAutomationId}|dryRun:${params.dryRun ? '1' : '0'}`;
@@ -279,7 +284,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'immaculateTastePoints',
     name: 'Immaculate Taste Collection',
     description:
-      'Triggered by Plex webhooks when a movie is finished. Updates the Immaculate Taste points dataset and optionally sends missing movies to Radarr.',
+      'Triggered by Plex watch activity for newly completed movies or episodes. Updates the Immaculate Taste points dataset and optionally sends missing titles to Radarr, Sonarr, or Seerr.',
     defaultScheduleCron: undefined,
     defaultEstimatedRuntimeMs: 12 * 60_000,
     dedupePolicy: 'queue_fingerprint',
@@ -300,7 +305,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'watchedMovieRecommendations',
     name: 'Based on Latest Watched Collection',
     description:
-      'Triggered by Plex webhooks when a movie is finished. Generates recommendations and rebuilds curated Plex collections in the same Plex movie library you watched from.',
+      'Triggered by Plex watch activity for newly completed movies or episodes. Generates recommendations and rebuilds curated Plex collections in the same Plex library you watched from.',
     defaultScheduleCron: undefined,
     defaultEstimatedRuntimeMs: 12 * 60_000,
     dedupePolicy: 'queue_fingerprint',

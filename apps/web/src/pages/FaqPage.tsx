@@ -1554,6 +1554,12 @@ export const FaqPage = () => {
                   at Plex scrobble timing.
                 </li>
                 <li>
+                  <span className="font-semibold text-white/85">Repeat-watch dedupe:</span> once one
+                  of these auto-runs completes successfully for the same Plex user, library, and
+                  exact movie/episode, repeated watches of that same item are skipped automatically.
+                  Manual runs still work any time.
+                </li>
+                <li>
                   <span className="font-semibold text-white/85">New content trigger:</span> when a
                   new movie or show episode is added, the cleanup task can trigger to scan for
                   duplicates.

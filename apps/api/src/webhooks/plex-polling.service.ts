@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { AuthService } from '../auth/auth.service';
+import { buildAutoRunMediaFingerprint } from '../jobs/auto-run-media';
 import { JobsService } from '../jobs/jobs.service';
 import type { JsonObject } from '../jobs/jobs.types';
 import { PlexAnalyticsService } from '../plex/plex-analytics.service';
@@ -45,6 +46,14 @@ function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
+function readConflictReason(error: unknown): string | null {
+  if (!(error instanceof ConflictException)) return null;
+  const response = error.getResponse();
+  if (!isPlainObject(response)) return null;
+  const reason = response['reason'];
+  return typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+}
+
 function parseBoolEnv(raw: string | undefined, defaultValue: boolean): boolean {
   const v = raw?.trim().toLowerCase();
   if (!v) return defaultValue;
@@ -80,6 +89,7 @@ type SessionCollectionJobStatus =
   | 'idle'
   | 'queued'
   | 'running'
+  | 'processed'
   | 'success'
   | 'failed';
 
@@ -280,7 +290,12 @@ export class PlexPollingService implements OnModuleInit {
     jobId: CollectionJobId,
   ) {
     const status = this.getSessionJobStatus(sessionAutomationId, jobId);
-    return status !== 'queued' && status !== 'running' && status !== 'success';
+    return (
+      status !== 'queued' &&
+      status !== 'running' &&
+      status !== 'processed' &&
+      status !== 'success'
+    );
   }
 
   private pruneSessionAutomationState(nowMs: number) {
@@ -1245,12 +1260,15 @@ export class PlexPollingService implements OnModuleInit {
       sessionAutomationId,
       forceBothAtNinetyPercent,
     } as const;
+    const autoRunMediaFingerprint = buildAutoRunMediaFingerprint(payloadInput);
     const watchedInput = {
       ...payloadInput,
+      ...(autoRunMediaFingerprint ? { autoRunMediaFingerprint } : {}),
       threshold: this.watchedScrobbleThreshold,
     } as const;
     const immaculateInput = {
       ...payloadInput,
+      ...(autoRunMediaFingerprint ? { autoRunMediaFingerprint } : {}),
       threshold: this.immaculateScrobbleThreshold,
     } as const;
 
@@ -1308,12 +1326,13 @@ export class PlexPollingService implements OnModuleInit {
           now,
         );
       } catch (error) {
-        if (error instanceof ConflictException) {
-          skipped[params.jobId] = params.reason || 'already_queued_or_running';
+        const conflictReason = readConflictReason(error);
+        if (conflictReason) {
+          skipped[params.jobId] = conflictReason;
           this.setSessionJobStatus(
             sessionAutomationId,
             params.jobId,
-            'queued',
+            conflictReason === 'already_processed' ? 'processed' : 'queued',
             now,
           );
         } else {
