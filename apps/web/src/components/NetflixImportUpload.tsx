@@ -2,8 +2,31 @@ import { useCallback, useRef, useState, type DragEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, FileUp, Loader2, CheckCircle2 } from 'lucide-react';
 import { uploadNetflixCsv, type ImportUploadResponse } from '@/api/import';
+import { ApiError } from '@/api/http';
 
 type UploadState = 'idle' | 'dragging' | 'uploading' | 'success' | 'error';
+
+function looksLikeHtml(text: string): boolean {
+  const trimmed = text.trimStart().toLowerCase();
+  return (
+    trimmed.startsWith('<!doctype') ||
+    trimmed.startsWith('<html') ||
+    trimmed.startsWith('<body')
+  );
+}
+
+function getUploadErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 504) {
+      return 'The server timed out while starting the import. Please try again once the app is responsive.';
+    }
+    if (typeof error.body === 'string' && looksLikeHtml(error.body)) {
+      return `The import failed with HTTP ${error.status}. Please try again.`;
+    }
+  }
+
+  return error instanceof Error ? error.message : 'Upload failed';
+}
 
 export function NetflixImportUpload({
   onSuccess,
@@ -27,7 +50,7 @@ export function NetflixImportUpload({
     },
     onError: (err) => {
       setState('error');
-      setErrorMessage(err instanceof Error ? err.message : 'Upload failed');
+      setErrorMessage(getUploadErrorMessage(err));
     },
   });
 

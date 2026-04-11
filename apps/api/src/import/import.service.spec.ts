@@ -36,6 +36,7 @@ describe('ImportService', () => {
       importedWatchEntry: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({}),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         count: jest.fn().mockResolvedValue(0),
         groupBy: jest.fn().mockResolvedValue([]),
@@ -196,6 +197,79 @@ describe('ImportService', () => {
 
       expect(prisma.importedWatchEntry.create).toHaveBeenCalledTimes(1);
       expect(ctx.warn).toHaveBeenCalledWith(expect.stringContaining('Films'));
+    });
+  });
+
+  describe('parseAndStoreNetflixCsv', () => {
+    it('batches new titles after filtering out already imported entries', async () => {
+      prisma.importedWatchEntry.findMany.mockResolvedValueOnce([
+        { parsedTitle: 'The Matrix' },
+      ]);
+      prisma.importedWatchEntry.createMany.mockResolvedValueOnce({ count: 2 });
+
+      const result = await service.parseAndStoreNetflixCsv(
+        'test-user-id',
+        Buffer.from(
+          [
+            'Title,Date',
+            'The Matrix,1/1/24',
+            'Inception,1/2/24',
+            'Breaking Bad: Season 1,1/3/24',
+          ].join('\n'),
+        ),
+      );
+
+      expect(prisma.importedWatchEntry.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            userId: 'test-user-id',
+            source: 'netflix',
+            parsedTitle: 'Inception',
+            status: 'pending',
+          }),
+          expect.objectContaining({
+            userId: 'test-user-id',
+            source: 'netflix',
+            parsedTitle: 'Breaking Bad',
+            status: 'pending',
+          }),
+        ],
+      });
+      expect(result).toEqual({
+        totalRawRows: 3,
+        totalUnique: 3,
+        newlyInserted: 2,
+        alreadyImported: 1,
+      });
+    });
+
+    it('falls back to row-by-row inserts when a batch hits a unique race', async () => {
+      prisma.importedWatchEntry.createMany.mockRejectedValueOnce({
+        code: 'P2002',
+      });
+      prisma.importedWatchEntry.create
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce({ code: 'P2002' });
+
+      const result = await service.parseAndStoreNetflixCsv(
+        'test-user-id',
+        Buffer.from(
+          [
+            'Title,Date',
+            'Inception,1/2/24',
+            'Breaking Bad: Season 1,1/3/24',
+          ].join('\n'),
+        ),
+      );
+
+      expect(prisma.importedWatchEntry.createMany).toHaveBeenCalledTimes(1);
+      expect(prisma.importedWatchEntry.create).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({
+        totalRawRows: 2,
+        totalUnique: 2,
+        newlyInserted: 1,
+        alreadyImported: 1,
+      });
     });
   });
 

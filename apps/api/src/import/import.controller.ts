@@ -106,11 +106,12 @@ export class ImportController {
     }
 
     let jobId: string | null = null;
-    const hasWork = await this.importService.hasUnprocessedEntries(req.user.id);
+    const counts = await this.importService.getEntryCounts(req.user.id);
+    const hasWork = counts.pending > 0 || counts.matched > 0;
 
     if (hasWork) {
       try {
-        const run = await this.jobsService.runJob({
+        const run = await this.jobsService.queueJob({
           jobId: 'importNetflixHistory',
           trigger: 'manual',
           dryRun: false,
@@ -121,8 +122,6 @@ export class ImportController {
         // Ignore enqueue failures here so the import upload result still returns.
       }
     }
-
-    const counts = await this.importService.getEntryCounts(req.user.id);
 
     return {
       totalRawRows: result.totalRawRows,
