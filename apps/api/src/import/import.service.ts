@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { RecommendationsService } from '../recommendations/recommendations.service';
@@ -27,6 +28,7 @@ import { metricRow, issue } from '../jobs/job-report-v1';
 
 const SEED_CAP = 50;
 const TMDB_THROTTLE_MS = 200;
+const NETFLIX_IMPORT_DB_BATCH_SIZE = 200;
 const NETFLIX_IMPORT_SIMILAR_BASE = 'Netflix Import Picks';
 const NETFLIX_IMPORT_CONTRAST_BASE = 'Netflix Import: Change of Taste';
 const PLEX_HISTORY_SIMILAR_BASE = 'Plex History Picks';
@@ -94,6 +96,20 @@ function normalizeHttpUrl(raw: string): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  const knownError = error as Prisma.PrismaClientKnownRequestError | undefined;
+  const code = knownError?.code;
+  return code === 'P2002';
 }
 
 export type ImportUploadResult = {
@@ -350,22 +366,59 @@ export class ImportService {
       };
     }
 
+    const existingParsedTitles = new Set<string>();
+    for (const batch of chunk(
+      entries.map((entry) => entry.parsedTitle),
+      NETFLIX_IMPORT_DB_BATCH_SIZE,
+    )) {
+      const existingEntries = await this.prisma.importedWatchEntry.findMany({
+        where: {
+          userId,
+          source: 'netflix',
+          parsedTitle: { in: batch },
+        },
+        select: { parsedTitle: true },
+      });
+      for (const entry of existingEntries) {
+        existingParsedTitles.add(entry.parsedTitle);
+      }
+    }
+
+    const rowsToInsert = entries
+      .filter((entry) => !existingParsedTitles.has(entry.parsedTitle))
+      .map((entry) => ({
+        userId,
+        source: 'netflix' as const,
+        rawTitle: entry.rawTitle,
+        parsedTitle: entry.parsedTitle,
+        watchedAt: entry.watchedAt,
+        status: 'pending' as const,
+      }));
+
     let newlyInserted = 0;
-    for (const e of entries) {
+    for (const batch of chunk(rowsToInsert, NETFLIX_IMPORT_DB_BATCH_SIZE)) {
       try {
-        await this.prisma.importedWatchEntry.create({
-          data: {
-            userId,
-            source: 'netflix',
-            rawTitle: e.rawTitle,
-            parsedTitle: e.parsedTitle,
-            watchedAt: e.watchedAt,
-            status: 'pending',
-          },
+        const result = await this.prisma.importedWatchEntry.createMany({
+          data: batch,
         });
-        newlyInserted++;
-      } catch {
-        // Unique constraint violation — title already imported
+        newlyInserted += result.count;
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
+
+        for (const row of batch) {
+          try {
+            await this.prisma.importedWatchEntry.create({
+              data: row,
+            });
+            newlyInserted++;
+          } catch (createError) {
+            if (!isUniqueConstraintError(createError)) {
+              throw createError;
+            }
+          }
+        }
       }
     }
 
@@ -407,17 +460,6 @@ export class ImportService {
   async hasPendingEntries(userId: string): Promise<boolean> {
     const count = await this.prisma.importedWatchEntry.count({
       where: { userId, source: 'netflix', status: 'pending' },
-    });
-    return count > 0;
-  }
-
-  async hasUnprocessedEntries(userId: string): Promise<boolean> {
-    const count = await this.prisma.importedWatchEntry.count({
-      where: {
-        userId,
-        source: 'netflix',
-        status: { in: ['pending', 'matched'] },
-      },
     });
     return count > 0;
   }
