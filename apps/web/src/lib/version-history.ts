@@ -37,12 +37,22 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.7-beta-1',
+    version: '1.7.7-beta-2',
     popupHighlights: [
+      'Netflix CSV imports now batch database writes before queueing follow-up processing, which reduces SQLite contention on larger uploads.',
+      'Netflix import errors now fall back to a friendly message instead of surfacing raw proxy HTML when an upstream timeout page is returned.',
       'Rotten Tomatoes Upcoming Movies adds a fixed-source movie discovery task that routes safe matches to Radarr or Seerr.',
       'Plex watched auto-runs now skip repeat watches of the same exact movie or episode after a successful run, while manual and scheduled runs stay available.',
     ],
     sections: [
+      {
+        title: 'Netflix import reliability',
+        bullets: [
+          'Batches Netflix CSV persistence before queueing follow-up processing so larger imports stop hammering SQLite one row at a time.',
+          'Keeps duplicate detection intact while falling back safely if a concurrent insert races the batch write.',
+          'Shows a friendlier import error instead of raw proxy HTML when an upstream timeout page is returned.',
+        ],
+      },
       {
         title: 'Rotten Tomatoes Upcoming Movies',
         bullets: [

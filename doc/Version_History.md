@@ -3,10 +3,15 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.7-beta-1
+1.7.7-beta-2
 ---
 
-- What's new since 1.7.6:
+- What's new since 1.7.7-beta-1:
+- Netflix import reliability:
+  - Batches Netflix CSV persistence before queueing follow-up processing so larger imports stop hammering SQLite one row at a time.
+  - Preserves duplicate detection while falling back safely if a concurrent insert races the batch write.
+  - Returns a friendlier import error in the UI instead of surfacing raw proxy HTML when an upstream timeout page is encountered.
+- Existing beta 1 changes:
 - Rotten Tomatoes Upcoming Movies:
   - Adds a new Task Manager job that scrapes fixed Rotten Tomatoes upcoming and newest movie pages.
   - Deduplicates discovered titles, applies conservative title-and-year matching, and only routes safe matches onward.
