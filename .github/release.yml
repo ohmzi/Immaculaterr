@@ -4,45 +4,45 @@ changelog:
       labels:
         - "*"
   template: |
-    ## What's Changed
+    ## What's New
 
     $CHANGES
 
-    **Full Changelog**: https://github.com/ohmzi/Immaculaterr/compare/<previous-tag>..<new-tag>
+    Full Changelog: https://github.com/ohmzi/Immaculaterr/compare/<previous-tag>..<new-tag>
+
+    If you are running NAS or Unraid please check their specific documentation for update
+    [NAS](https://github.com/ohmzi/Immaculaterr/blob/master/doc/setup-truenas.md)
+    [Unraid](https://github.com/ohmzi/Immaculaterr/blob/master/doc/setup-unraid.md)
 
     ## Updating
 
     ### Docker
 
-    HTTP-only update (required)
+    HTTPS update which includes sidecar
 
     ```bash
-    docker pull ohmzii/immaculaterr:latest
+    set -euo pipefail
 
-    docker rm -f Immaculaterr 2>/dev/null || true
+    IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
 
-    docker run -d \
-      --name Immaculaterr \
-      --network host \
-      -e HOST=0.0.0.0 \
-      -e PORT=5454 \
-      -e APP_DATA_DIR=/data \
-      -e DATABASE_URL=file:/data/tcp.sqlite \
-      -v immaculaterr-data:/data \
-      --restart unless-stopped \
-      ohmzii/immaculaterr:latest
-    ```
-
-    Optional HTTPS sidecar (can run anytime later)
-
-    ```bash
     mkdir -p ~/immaculaterr
     curl -fsSL -o ~/immaculaterr/caddy-entrypoint.sh \
       "https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh"
-    chmod +x ~/immaculaterr/caddy-entrypoint.sh
+    curl -fsSL -o ~/immaculaterr/install-local-ca.sh \
+      "https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh"
+    chmod +x ~/immaculaterr/caddy-entrypoint.sh ~/immaculaterr/install-local-ca.sh
 
+    if ! command -v certutil >/dev/null 2>&1; then
+      sudo apt-get update
+      sudo apt-get install -y libnss3-tools
+    fi
+
+    docker pull "$IMM_IMAGE"
     docker pull caddy:2.8.4-alpine
     docker rm -f ImmaculaterrHttps 2>/dev/null || true
+    docker rm -f Immaculaterr 2>/dev/null || true
+    docker volume create immaculaterr-caddy-data >/dev/null 2>&1 || true
+    docker volume create immaculaterr-caddy-config >/dev/null 2>&1 || true
 
     docker run -d \
       --name ImmaculaterrHttps \
@@ -59,11 +59,50 @@ changelog:
       --restart unless-stopped \
       caddy:2.8.4-alpine \
       /bin/sh /etc/caddy/caddy-entrypoint.sh
+
+    docker run -d \
+      --name Immaculaterr \
+      -p 5454:5454 \
+      -e HOST=0.0.0.0 \
+      -e PORT=5454 \
+      -e TRUST_PROXY=1 \
+      -e APP_DATA_DIR=/data \
+      -e DATABASE_URL=file:/data/tcp.sqlite \
+      -v immaculaterr-data:/data \
+      --restart unless-stopped \
+      "$IMM_IMAGE"
+
+    "$HOME/immaculaterr/install-local-ca.sh"
+
+    curl -I https://localhost:5464
+    ```
+
+    HTTP-only update
+
+    ```bash
+    IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
+    APP_PORT=5454
+
+    docker pull "$IMM_IMAGE"
+    docker rm -f ImmaculaterrHttps 2>/dev/null || true
+    docker rm -f Immaculaterr 2>/dev/null || true
+
+    docker run -d \
+      --name Immaculaterr \
+      -p ${APP_PORT}:${APP_PORT} \
+      -e HOST=0.0.0.0 \
+      -e PORT=${APP_PORT} \
+      -e TRUST_PROXY=1 \
+      -e APP_DATA_DIR=/data \
+      -e DATABASE_URL=file:/data/tcp.sqlite \
+      -v immaculaterr-data:/data \
+      --restart unless-stopped \
+      "$IMM_IMAGE"
     ```
 
     ### Portainer
 
-    1. In Portainer: **Containers** → select **Immaculaterr**
+    1. In Portainer: **Containers** -> select **Immaculaterr**
     2. Click **Recreate**
     3. Enable **Re-pull image**
     4. Click **Recreate**

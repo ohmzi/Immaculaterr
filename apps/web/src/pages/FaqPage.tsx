@@ -757,6 +757,105 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'task-manager-rotten-tomatoes-upcoming-movies',
+      title: 'Rotten Tomatoes Upcoming Movies',
+      items: [
+        {
+          id: 'task-manager-rotten-tomatoes-upcoming-how-it-works',
+          question: 'How does Rotten Tomatoes Upcoming Movies work?',
+          answer: (
+            <>
+              <p>
+                This task scrapes fixed Rotten Tomatoes upcoming and newest movie pages, merges the
+                results, and routes safe matches to Radarr or, when enabled, to Seerr.
+              </p>
+              <p>Run flow:</p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>Immaculaterr fetches each built-in Rotten Tomatoes source page.</li>
+                <li>
+                  Movie cards are parsed from the page HTML, then deduplicated by normalized title and
+                  year.
+                </li>
+                <li>
+                  Radarr is checked once up front, then each candidate is matched conservatively before
+                  it is added to Radarr or requested in Seerr.
+                </li>
+              </ol>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-rotten-tomatoes-upcoming-sources',
+          question: 'What sources does it check?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>One Rotten Tomatoes in-theaters newest page.</li>
+              <li>
+                Eleven Rotten Tomatoes at-home newest pages for Fandango at Home, Apple TV+, Netflix,
+                Prime Video, Disney+, Max, Peacock, Hulu, Paramount+, AMC+, and Acorn TV.
+              </li>
+              <li>
+                These URLs are fixed in code for this task, so there is no custom source editor on the
+                card.
+              </li>
+              <li>
+                If one source page fails, the run keeps going and reports that source as skipped.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'task-manager-rotten-tomatoes-upcoming-route-via-seerr',
+          question: 'What does the Route via Seerr toggle do?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                When the toggle is off, matched movies are added directly to Radarr with the app’s
+                saved Radarr defaults.
+              </li>
+              <li>
+                When the toggle is on, matched movies are requested in Seerr instead of being added
+                directly to Radarr.
+              </li>
+              <li>
+                Rotten Tomatoes titles are still matched conservatively through Radarr lookup first,
+                so Seerr requests only happen for safe title and year matches.
+              </li>
+              <li>
+                If Seerr routing is enabled but Seerr is not configured, discovery still completes and
+                the destination step is marked skipped.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'task-manager-rotten-tomatoes-upcoming-results',
+          question: 'What results should I expect after a run?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                Movies already present in Radarr, or already present/requested in Seerr, are counted as
+                existing instead of surfacing as hard failures.
+              </li>
+              <li>
+                If Radarr is not configured, discovery still completes and the destination step is
+                marked skipped. If Seerr routing is enabled but Seerr is not configured, the routing
+                step is skipped too.
+              </li>
+              <li>
+                Rewind shows source-page counts plus destination outcomes for attempted, requested or
+                added, existing, failed, and skipped movies.
+              </li>
+              <li>
+                This task does not use TMDB filters. Seerr routing is optional, but safe matching still
+                relies on Radarr lookup.
+              </li>
+            </ul>
+          ),
+        },
+      ],
+    },
+    {
       id: 'task-manager-immaculate-taste-collection',
       title: 'Immaculate Taste Collection',
       items: [
@@ -1453,6 +1552,12 @@ export const FaqPage = () => {
                   these are default Plex polling thresholds—~60% for "Based on your recently watched"
                   and ~70% for Immaculate Taste. Immaculate Taste can also trigger via Plex webhooks
                   at Plex scrobble timing.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Repeat-watch dedupe:</span> once one
+                  of these auto-runs completes successfully for the same Plex user, library, and
+                  exact movie/episode, repeated watches of that same item are skipped automatically.
+                  Manual runs still work any time.
                 </li>
                 <li>
                   <span className="font-semibold text-white/85">New content trigger:</span> when a
@@ -2777,6 +2882,8 @@ export const FaqPage = () => {
     'task-manager-search-monitored': 'Off-peak missing searches for monitored ARR items.',
     'task-manager-tmdb-upcoming-movies':
       'What this task does, how each run works, and how to edit filters.',
+    'task-manager-rotten-tomatoes-upcoming-movies':
+      'Fixed-source Rotten Tomatoes discovery that routes safe matches to Radarr or Seerr.',
     'task-manager-immaculate-taste-collection':
       'Watch-triggered Immaculate Taste updates and missing-item routing.',
     'task-manager-immaculate-taste-refresher':
@@ -2841,6 +2948,10 @@ export const FaqPage = () => {
     'task-manager-tmdb-upcoming-movies': {
       icon: (className) => <Film className={className} />,
       toneClass: 'text-cyan-200',
+    },
+    'task-manager-rotten-tomatoes-upcoming-movies': {
+      icon: (className) => <Film className={className} />,
+      toneClass: 'text-rose-200',
     },
     'task-manager-immaculate-taste-collection': {
       icon: (className) => <Sparkles className={className} />,

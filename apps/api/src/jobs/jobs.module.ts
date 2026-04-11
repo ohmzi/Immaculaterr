@@ -30,6 +30,7 @@ import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
 import { ImmaculateTasteProfileModule } from '../immaculate-taste-profiles/immaculate-taste-profile.module';
 import { FreshOutOfTheOvenJob } from './fresh-out-of-the-oven.job';
 import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
+import { RottenTomatoesUpcomingMoviesJob } from './rotten-tomatoes-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
 import { ImportModule } from '../import/import.module';
@@ -71,6 +72,7 @@ import { AuthModule } from '../auth/auth.module';
     FreshOutOfTheOvenJob,
     CollectionResyncUpgradeJob,
     TmdbUpcomingMoviesJob,
+    RottenTomatoesUpcomingMoviesJob,
     ImportNetflixHistoryJob,
     ImportPlexHistoryJob,
     CollectionResyncUpgradeService,

@@ -5,8 +5,9 @@
   - The primary key for the `ImmaculateTasteShowLibrary` table will be changed. If it partially fails, the table could be left without primary key constraint.
 
 */
--- CreateTable
-CREATE TABLE "ArrInstance" (
+-- CreateTable (idempotent: existing SQLite installs may already have
+-- ArrInstance provisioned by migrate-with-repair before this migration runs)
+CREATE TABLE IF NOT EXISTS "ArrInstance" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "userId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
@@ -23,8 +24,8 @@ CREATE TABLE "ArrInstance" (
     CONSTRAINT "ArrInstance_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
--- CreateTable
-CREATE TABLE "ImportedWatchEntry" (
+-- CreateTable (idempotent: supports reruns after partial SQLite recovery)
+CREATE TABLE IF NOT EXISTS "ImportedWatchEntry" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "userId" TEXT NOT NULL,
     "source" TEXT NOT NULL,
@@ -111,17 +112,12 @@ CREATE INDEX "ImmaculateTasteShowLibrary_firstAirDate_idx" ON "ImmaculateTasteSh
 PRAGMA foreign_keys=ON;
 PRAGMA defer_foreign_keys=OFF;
 
--- CreateIndex
-CREATE INDEX "ArrInstance_userId_type_idx" ON "ArrInstance"("userId", "type");
+CREATE INDEX IF NOT EXISTS "ArrInstance_userId_type_idx" ON "ArrInstance"("userId", "type");
 
--- CreateIndex
-CREATE UNIQUE INDEX "ArrInstance_userId_type_name_key" ON "ArrInstance"("userId", "type", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "ArrInstance_userId_type_name_key" ON "ArrInstance"("userId", "type", "name");
 
--- CreateIndex
-CREATE INDEX "ImportedWatchEntry_userId_source_idx" ON "ImportedWatchEntry"("userId", "source");
+CREATE INDEX IF NOT EXISTS "ImportedWatchEntry_userId_source_idx" ON "ImportedWatchEntry"("userId", "source");
 
--- CreateIndex
-CREATE INDEX "ImportedWatchEntry_userId_status_idx" ON "ImportedWatchEntry"("userId", "status");
+CREATE INDEX IF NOT EXISTS "ImportedWatchEntry_userId_status_idx" ON "ImportedWatchEntry"("userId", "status");
 
--- CreateIndex
-CREATE UNIQUE INDEX "ImportedWatchEntry_userId_source_parsedTitle_key" ON "ImportedWatchEntry"("userId", "source", "parsedTitle");
+CREATE UNIQUE INDEX IF NOT EXISTS "ImportedWatchEntry_userId_source_parsedTitle_key" ON "ImportedWatchEntry"("userId", "source", "parsedTitle");

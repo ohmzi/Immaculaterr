@@ -38,6 +38,10 @@ Pick a feature area first, then jump into the full section below.
 > [How does TMDB Upcoming Movies work?](#how-does-tmdb-upcoming-movies-work) · [What are the defaults if I do not create custom filters?](#what-are-the-defaults-if-i-do-not-create-custom-filters) · [How do I set custom filters on this card?](#how-do-i-set-custom-filters-on-this-card)
 > + 1 more answer in the section below.
 
+> ### [Rotten Tomatoes Upcoming Movies](#rotten-tomatoes-upcoming-movies)
+> Fixed-source Rotten Tomatoes discovery that routes safe matches to Radarr or Seerr.
+> [How does Rotten Tomatoes Upcoming Movies work?](#how-does-rotten-tomatoes-upcoming-movies-work) · [What sources does it check?](#what-sources-does-it-check) · [What does the Route via Seerr toggle do?](#what-does-the-route-via-seerr-toggle-do) · [What results should I expect after a run?](#what-results-should-i-expect-after-a-run)
+
 > ### [Immaculate Taste Collection](#immaculate-taste-collection)
 > Watch-triggered Immaculate Taste updates and missing-item routing.
 > [What does Immaculate Taste Collection do?](#what-does-immaculate-taste-collection-do) · [What does the Immaculate Taste Refresher toggle do?](#what-does-the-immaculate-taste-refresher-toggle-do) · [What does Fetch Missing items do on this card?](#what-does-fetch-missing-items-do-on-this-card)
@@ -358,6 +362,41 @@ Each enabled filter gets part of the global limit. All candidates are then merge
 - Rewind shows per-filter discovered/selected counts and destination outcomes.
 - Rewind keeps the run title as **TMDB Upcoming Movies** for this job.
 
+## Rotten Tomatoes Upcoming Movies
+
+Open in app: [Task Manager -> Rotten Tomatoes Upcoming Movies](/task-manager#job-rottenTomatoesUpcomingMovies)
+
+### How does Rotten Tomatoes Upcoming Movies work?
+
+This task scrapes fixed Rotten Tomatoes upcoming and newest movie pages, merges the results, and routes safe matches to Radarr or, when enabled, to Seerr.
+
+Run flow:
+
+1. Immaculaterr fetches each built-in Rotten Tomatoes source page.
+2. Movie cards are parsed from the page HTML, then deduplicated by normalized title and year.
+3. Radarr is checked once up front, then each candidate is matched conservatively before it is added to Radarr or requested in Seerr.
+
+### What sources does it check?
+
+- One Rotten Tomatoes in-theaters newest page.
+- Eleven Rotten Tomatoes at-home newest pages for Fandango at Home, Apple TV+, Netflix, Prime Video, Disney+, Max, Peacock, Hulu, Paramount+, AMC+, and Acorn TV.
+- These URLs are fixed in code for this task, so there is no custom source editor on the card.
+- If one source page fails, the run keeps going and reports that source as skipped.
+
+### What does the Route via Seerr toggle do?
+
+- When the toggle is off, matched movies are added directly to Radarr with the app's saved Radarr defaults.
+- When the toggle is on, matched movies are requested in Seerr instead of being added directly to Radarr.
+- Rotten Tomatoes titles are still matched conservatively through Radarr lookup first, so Seerr requests only happen for safe title and year matches.
+- If Seerr routing is enabled but Seerr is not configured, discovery still completes and the destination step is marked skipped.
+
+### What results should I expect after a run?
+
+- Movies already present in Radarr, or already present/requested in Seerr, are counted as existing instead of surfacing as hard failures.
+- If Radarr is not configured, discovery still completes and the destination step is marked skipped. If Seerr routing is enabled but Seerr is not configured, the routing step is skipped too.
+- Rewind shows source-page counts plus destination outcomes for attempted, requested or added, existing, failed, and skipped movies.
+- This task does not use TMDB filters. Seerr routing is optional, but safe matching still relies on Radarr lookup.
+
 ## Immaculate Taste Collection
 
 Open in app: [Task Manager -> Immaculate Taste Collection](/task-manager#job-immaculateTastePoints)
@@ -603,6 +642,7 @@ Plex-Triggered Auto-Run means the job waits for Plex activity instead of a clock
 
 - These jobs do not run on a timer. They wait for the matching Plex event.
 - **Watched trigger (~60% / ~70%)**: these are default Plex polling thresholds—~60% for "Based on your recently watched" and ~70% for Immaculate Taste. Immaculate Taste can also trigger via Plex webhooks at Plex scrobble timing.
+- **Repeat-watch dedupe**: once one of these auto-runs completes successfully for the same Plex user, library, and exact movie/episode, repeated watches of that same item are skipped automatically. Manual runs still work any time.
 - **New content trigger**: when a new movie or show episode is added, the cleanup task can trigger to scan for duplicates.
 
 You can still run these tasks manually any time from Task Manager.

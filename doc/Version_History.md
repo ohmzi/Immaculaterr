@@ -3,6 +3,22 @@ Version History
 
 This file tracks notable changes by version.
 
+1.7.7-beta-1
+---
+
+- What's new since 1.7.6:
+- Rotten Tomatoes Upcoming Movies:
+  - Adds a new Task Manager job that scrapes fixed Rotten Tomatoes upcoming and newest movie pages.
+  - Deduplicates discovered titles, applies conservative title-and-year matching, and only routes safe matches onward.
+  - Can send matched movies directly to Radarr or, when enabled, route them through Seerr instead.
+  - Reports include discovery, routing, and skip details so you can see exactly what happened during the run.
+- Durable repeat-watch dedupe for Plex auto-runs:
+  - Based on your recently watched and Change of Taste now remember successful auto-runs per Plex user, library, and exact movie or episode.
+  - Repeat scrobbles of the same item are skipped as already processed instead of re-running the same automation again.
+  - The same durable dedupe applies across Plex polling and the existing Immaculate Taste webhook trigger so both paths stay aligned.
+  - Manual and scheduled runs still work normally, and only new successful auto-runs start building this dedupe history.
+
+
 1.7.6
 ---
 
@@ -196,8 +212,8 @@ This file tracks notable changes by version.
   - Off hours fetching media or refreshing the Plex home screen.
 - Curated Movies and TV Shows collections:
   - Inspired by your Immaculate Taste (long term collection)
-  - Based on your recently watched (refreshes on every watch)
-  - Change of Taste (refreshes on every watch)
+  - Based on your recently watched (auto-refreshes for newly completed movies/episodes)
+  - Change of Taste (auto-refreshes for newly completed movies/episodes)
 - Recommendation engine:
   - TMDB-powered suggestions
   - Optional - Google + OpenAI

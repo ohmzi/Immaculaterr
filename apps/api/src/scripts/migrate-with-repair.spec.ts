@@ -17,6 +17,7 @@ jest.mock('@prisma/client', () => ({
 
 import {
   logFailedMigrationDiagnostics,
+  repairApril2026MigrationEdgeCases,
   repairMarch2026MigrationEdgeCases,
 } from './migrate-with-repair';
 
@@ -55,6 +56,14 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
       if (sql.includes('CREATE TABLE "ImmaculateTasteProfile"')) {
         mockState.tables.add('ImmaculateTasteProfile');
         mockState.columns.ImmaculateTasteProfile = ['id'];
+      }
+      if (sql.includes('CREATE TABLE "ImportedWatchEntry"')) {
+        mockState.tables.add('ImportedWatchEntry');
+        mockState.columns.ImportedWatchEntry = ['id'];
+      }
+      if (sql.includes('CREATE TABLE "AutoRunMediaHistory"')) {
+        mockState.tables.add('AutoRunMediaHistory');
+        mockState.columns.AutoRunMediaHistory = ['id'];
       }
       if (
         sql.includes('ADD COLUMN "scopeAllUsers"') &&
@@ -305,6 +314,89 @@ describe('scripts/migrate-with-repair', () => {
         'resolve',
         '--applied',
         '20260310120000_create_immaculate_taste_profiles',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('creates ImportedWatchEntry and resolves the April migration as applied when ArrInstance pre-exists', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(['User', 'ArrInstance']),
+    });
+
+    await repairApril2026MigrationEdgeCases(prisma as never);
+
+    expect(
+      prisma.$executeRawUnsafe.mock.calls.some(
+        ([sql]) =>
+          sql.includes('CREATE TABLE') && sql.includes('"ImportedWatchEntry"'),
+      ),
+    ).toBe(true);
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--applied',
+        '20260405092958_add_imported_watch_entry',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('resolves the April migration as applied when ImportedWatchEntry already exists but the row is failed', async () => {
+    const prisma = createPrismaMock({
+      migrationRows: {
+        '20260405092958_add_imported_watch_entry': [
+          { finished_at: null, rolled_back_at: null },
+        ],
+      },
+      tables: new Set(['User', 'ImportedWatchEntry']),
+    });
+
+    await repairApril2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--applied',
+        '20260405092958_add_imported_watch_entry',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('skips April imported watch repair when the legacy tables are absent', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(['User']),
+    });
+
+    await repairApril2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).not.toHaveBeenCalled();
+    expect(
+      prisma.$executeRawUnsafe.mock.calls.some(([sql]) =>
+        sql.includes('"ImportedWatchEntry"'),
+      ),
+    ).toBe(false);
+  });
+
+  it('resolves the auto-run media history migration as applied when the table pre-exists', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(['User', 'AutoRunMediaHistory']),
+    });
+
+    await repairApril2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--applied',
+        '20260411120000_add_auto_run_media_history',
       ]),
       expect.objectContaining({ env: process.env, stdio: 'inherit' }),
     );
