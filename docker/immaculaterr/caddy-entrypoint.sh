@@ -91,16 +91,15 @@ sort -u "$TMP_HOSTS" > "$TMP_HOSTS_SORTED" || true
 
 local_http_site_addrs=''
 local_https_site_addrs=''
+if is_true "$IMM_ENABLE_HTTP"; then
+  # Keep the local HTTP origin host-header agnostic so reverse proxies such as
+  # Cloudflare Tunnel can forward requests without needing every public hostname
+  # to be declared here. This preserves the prior "app on :5454" behavior.
+  local_http_site_addrs="http://:${IMM_HTTP_PORT}"
+fi
+
 while IFS= read -r host; do
   [ -z "$host" ] && continue
-  if is_true "$IMM_ENABLE_HTTP"; then
-    http_addr="http://${host}:${IMM_HTTP_PORT}"
-    if [ -z "$local_http_site_addrs" ]; then
-      local_http_site_addrs="$http_addr"
-    else
-      local_http_site_addrs="$local_http_site_addrs, $http_addr"
-    fi
-  fi
   if is_true "$IMM_ENABLE_HTTPS"; then
     https_addr="https://${host}:${IMM_HTTPS_PORT}"
     if [ -z "$local_https_site_addrs" ]; then
@@ -141,6 +140,19 @@ if [ -n "$local_https_site_addrs" ]; then
 
 ${local_https_site_addrs} {
   tls internal
+  import common_proxy
+}
+EOF
+  has_site='true'
+fi
+
+if is_true "$IMM_ENABLE_HTTPS"; then
+  cat >> "$CONFIG_FILE" <<EOF
+
+https://:${IMM_HTTPS_PORT} {
+  tls internal {
+    on_demand
+  }
   import common_proxy
 }
 EOF
