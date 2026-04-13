@@ -3684,7 +3684,7 @@ function asNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-function buildImmaculateTastePointsReport(params: {
+export function buildImmaculateTastePointsReport(params: {
   ctx: JobContext;
   raw: JsonObject;
 }): JobReportV1 {
@@ -3754,17 +3754,30 @@ function buildImmaculateTastePointsReport(params: {
       : null;
   const refresherCollectionFacts: Array<{ label: string; value: JsonValue }> =
     [];
+  const collectionAdditionFacts: Array<{ label: string; value: JsonValue }> =
+    [];
+  const collectionAdditionsByLibrary: JsonObject[] = [];
   const refresherRaw =
     refresherObj &&
     refresherObj.template === 'jobReportV1' &&
     isPlainObject(refresherObj.raw)
       ? refresherObj.raw
       : null;
-  const appendRefresherCollectionFacts = (
-    side: Record<string, unknown> | null,
-    labelPrefix: string,
-    unit: string,
-  ) => {
+  const refresherByProfileRaw = Array.isArray(raw.refresherByProfile)
+    ? raw.refresherByProfile.filter((entry): entry is JsonObject =>
+        isPlainObject(entry),
+      )
+    : [];
+  const appendRefresherCollectionFacts = (params: {
+    side: Record<string, unknown> | null;
+    labelPrefix: string;
+    unit: string;
+    mediaType: 'movie' | 'tv';
+    profileLabel?: string;
+    profileId?: string;
+    collectionProfileId?: string;
+  }) => {
+    const { side, labelPrefix, unit, mediaType, profileLabel } = params;
     const byLibraryRaw = side?.plexByLibrary;
     const byLibrary = Array.isArray(byLibraryRaw)
       ? byLibraryRaw.filter(
@@ -3773,16 +3786,24 @@ function buildImmaculateTastePointsReport(params: {
         )
       : [];
     for (const lib of byLibrary) {
-      const libraryLabel = String(lib.library ?? lib.title ?? 'Library').trim();
+      const libraryLabel =
+        asTrimmedString(lib.library ?? lib.title) || 'Library';
       const plex = isPlainObject(lib.plex) ? lib.plex : null;
+      const collectionName = asTrimmedString(side?.collectionName);
       const collectionItemsSource = plex
-        ? String(plex.collectionItemsSource ?? '').trim()
+        ? asTrimmedString(plex.collectionItemsSource)
         : '';
       const plexItems = plex ? asStringArray(plex.collectionItems) : [];
+      const newCollectionItems = plex
+        ? uniqueStrings(asStringArray(plex.newCollectionItems))
+        : [];
       if (!plexItems.length) continue;
-      const label = libraryLabel
-        ? `${labelPrefix} — ${libraryLabel}`
+      const scopedLabelPrefix = profileLabel
+        ? `${labelPrefix} (${profileLabel})`
         : labelPrefix;
+      const label = libraryLabel
+        ? `${scopedLabelPrefix} — ${libraryLabel}`
+        : scopedLabelPrefix;
       refresherCollectionFacts.push({
         label,
         value: {
@@ -3795,15 +3816,92 @@ function buildImmaculateTastePointsReport(params: {
               : 'plex',
         },
       });
+
+      if (newCollectionItems.length) {
+        collectionAdditionFacts.push({
+          label,
+          value: {
+            count: newCollectionItems.length,
+            unit,
+            items: newCollectionItems,
+            order: 'plex',
+          },
+        });
+        collectionAdditionsByLibrary.push({
+          mediaType,
+          profileLabel: profileLabel ?? null,
+          profileId: params.profileId ?? null,
+          collectionProfileId: params.collectionProfileId ?? null,
+          library: libraryLabel || null,
+          collectionName: collectionName || null,
+          count: newCollectionItems.length,
+          unit,
+          items: newCollectionItems,
+        });
+      }
     }
   };
-  if (refresherRaw) {
-    const movieSide = isPlainObject(refresherRaw.movie)
-      ? refresherRaw.movie
+  const appendRefresherReportFacts = (params: {
+    refresherRaw: Record<string, unknown>;
+    profileLabel?: string;
+    profileId?: string;
+    collectionProfileId?: string;
+  }) => {
+    const movieSide = isPlainObject(params.refresherRaw.movie)
+      ? params.refresherRaw.movie
       : null;
-    const tvSide = isPlainObject(refresherRaw.tv) ? refresherRaw.tv : null;
-    appendRefresherCollectionFacts(movieSide, 'Movie collection', 'movies');
-    appendRefresherCollectionFacts(tvSide, 'TV collection', 'shows');
+    const tvSide = isPlainObject(params.refresherRaw.tv)
+      ? params.refresherRaw.tv
+      : null;
+    appendRefresherCollectionFacts({
+      side: movieSide,
+      labelPrefix: 'Movie collection',
+      unit: 'movies',
+      mediaType: 'movie',
+      profileLabel: params.profileLabel,
+      profileId: params.profileId,
+      collectionProfileId: params.collectionProfileId,
+    });
+    appendRefresherCollectionFacts({
+      side: tvSide,
+      labelPrefix: 'TV collection',
+      unit: 'shows',
+      mediaType: 'tv',
+      profileLabel: params.profileLabel,
+      profileId: params.profileId,
+      collectionProfileId: params.collectionProfileId,
+    });
+  };
+  if (refresherByProfileRaw.length) {
+    const includeProfileLabel = refresherByProfileRaw.length > 1;
+    for (const entry of refresherByProfileRaw) {
+      const profileLabel = includeProfileLabel
+        ? asTrimmedString(entry['profileName']) ||
+          asTrimmedString(entry['profileDatasetId']) ||
+          asTrimmedString(entry['profileId'])
+        : '';
+      const entryRefresher: unknown = entry['refresher'];
+      const profileRefresher = isPlainObject(entryRefresher)
+        ? entryRefresher
+        : null;
+      const profileRefresherRawValue = profileRefresher?.['raw'];
+      const profileRefresherRaw =
+        profileRefresher &&
+        profileRefresher['template'] === 'jobReportV1' &&
+        isPlainObject(profileRefresherRawValue)
+          ? profileRefresherRawValue
+          : null;
+      if (!profileRefresherRaw) continue;
+      appendRefresherReportFacts({
+        refresherRaw: profileRefresherRaw,
+        profileLabel: profileLabel || undefined,
+        profileId: asTrimmedString(entry['profileId']) || undefined,
+        collectionProfileId:
+          asTrimmedString(entry['collectionProfileId']) || undefined,
+      });
+    }
+  } else if (refresherRaw) {
+    appendRefresherReportFacts({ refresherRaw });
   }
 
   const issues = [
@@ -3821,9 +3919,9 @@ function buildImmaculateTastePointsReport(params: {
       : []),
   ];
 
-  const rawMediaType = String((raw as Record<string, unknown>).mediaType ?? '')
-    .trim()
-    .toLowerCase();
+  const rawMediaType = asTrimmedString(
+    (raw as Record<string, unknown>).mediaType,
+  ).toLowerCase();
   const normalizedMediaType =
     rawMediaType === 'tv' || rawMediaType === 'movie' ? rawMediaType : '';
   const mode: 'tv' | 'movie' =
@@ -3831,6 +3929,14 @@ function buildImmaculateTastePointsReport(params: {
       ? 'tv'
       : 'movie';
   const rawWithMediaType = { ...raw, mediaType: mode } as JsonObject;
+  const rawWithCollectionAdditions = {
+    ...rawWithMediaType,
+    collectionAdditionsByLibrary,
+    collectionAdditionsTotal: collectionAdditionsByLibrary.reduce(
+      (sum, row) => sum + (asNum(row.count) ?? 0),
+      0,
+    ),
+  } as JsonObject;
   const skipped = raw.skipped === true;
   const skipReason = asTrimmedString(raw.reason);
   const normalizeTitle = (value: string) =>
@@ -3851,9 +3957,9 @@ function buildImmaculateTastePointsReport(params: {
   );
   const excludedByRejectListCount =
     asNum(raw.excludedByRejectListCount) ?? excludedByRejectListTitles.length;
-  const seedTitle = String(raw.seedTitle ?? '').trim();
-  const plexUserId = String(raw.plexUserId ?? '').trim();
-  const plexUserTitle = String(raw.plexUserTitle ?? '').trim();
+  const seedTitle = asTrimmedString(raw.seedTitle);
+  const plexUserId = asTrimmedString(raw.plexUserId);
+  const plexUserTitle = asTrimmedString(raw.plexUserTitle);
   const seedGenres = sortTitles(uniqueStrings(asStringArray(raw.seedGenres)));
   const seedAudioLanguages = sortTitles(
     uniqueStrings(asStringArray(raw.seedAudioLanguages)),
@@ -4127,9 +4233,9 @@ function buildImmaculateTastePointsReport(params: {
       ? recommendationDebug.used
       : null;
 
-  const recommendationStrategyRaw = String(raw.recommendationStrategy ?? '')
-    .trim()
-    .toLowerCase();
+  const recommendationStrategyRaw = asTrimmedString(
+    raw.recommendationStrategy,
+  ).toLowerCase();
   const recommendationStrategy =
     recommendationStrategyRaw ||
     (recommendationUsed?.openai ? 'openai' : 'tmdb');
@@ -4205,7 +4311,7 @@ function buildImmaculateTastePointsReport(params: {
         items: generatedTitles,
       },
     },
-    { label: 'Strategy', value: String(raw.recommendationStrategy ?? '') },
+    { label: 'Strategy', value: asTrimmedString(raw.recommendationStrategy) },
   );
 
   const finalCollectionTitles = uniqueStrings(
@@ -4322,7 +4428,7 @@ function buildImmaculateTastePointsReport(params: {
       ],
       tasks: skipTasks,
       issues: [...issues, issue('warn', noMatchingProfileMessage)],
-      raw: rawWithMediaType,
+      raw: rawWithCollectionAdditions,
     };
   }
 
@@ -4666,6 +4772,28 @@ function buildImmaculateTastePointsReport(params: {
       ],
       issues: refresherError ? [issue('error', refresherError)] : undefined,
     },
+    {
+      id: 'collection_additions',
+      title: 'Newly added to collection',
+      status: collectionAdditionFacts.length
+        ? 'success'
+        : refresherError
+          ? 'failed'
+          : 'skipped',
+      facts: collectionAdditionFacts.length
+        ? collectionAdditionFacts
+        : [
+            {
+              label: 'Reason',
+              value:
+                refresherError || refresherReason || 'no_new_collection_items',
+            },
+          ],
+      issues:
+        !collectionAdditionFacts.length && refresherError
+          ? [issue('error', refresherError)]
+          : undefined,
+    },
   ];
 
   tasks.unshift(profileMatchingTask);
@@ -4784,6 +4912,6 @@ function buildImmaculateTastePointsReport(params: {
     ],
     tasks,
     issues,
-    raw: rawWithMediaType,
+    raw: rawWithCollectionAdditions,
   };
 }

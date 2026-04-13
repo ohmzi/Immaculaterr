@@ -55,10 +55,20 @@ Major Features Include
   - Cross-source dedup ensures titles already processed by Netflix import are not duplicated.
 - **Job reports & logs**:
   - Step-by-step breakdowns, metrics tables, run history, and live queue visibility in Rewind.
+  - Immaculate Taste reports also show the generated titles, Plex matches, and exactly which titles were newly added to each managed collection, including profile-specific collections.
 - **More features on the way:**
   - Discovering Media from film industries around the world
   - Email reports on media server health
   - Windows and macOS support
+
+How Recommendations Are Built
+---
+
+1. A watch event, manual run, or history import supplies a seed title.
+2. TMDB resolves the seed metadata and builds released, upcoming, and fallback candidate pools.
+3. Optional Google search can widen discovery, and optional OpenAI can curate the final list from TMDB-validated candidates.
+4. The final titles are deduplicated, capped to the run limit, matched against Plex, and tracked as active or pending. For Immaculate Taste, profile genre and language rules are applied before points are updated.
+5. Refreshers rebuild each managed collection and now report exactly which titles were newly added to that specific collection, including separate profile lanes such as Animation.
 
 Screenshots
 ---

@@ -37,6 +37,40 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.7-beta-3',
+    popupHighlights: [
+      'Immaculate Taste reports now show the exact titles newly added to each rebuilt collection, including profile-specific lanes like Animation.',
+      'Raw job reports now include per-library collection-addition lists so you can audit what changed in default and profile-specific collections separately.',
+      'README and FAQ now explain the recommendation pipeline from seed title through TMDB, optional Google/OpenAI curation, Plex matching, and final collection rebuilds.',
+    ],
+    sections: [
+      {
+        title: 'Collection-addition reporting',
+        bullets: [
+          'Immaculate Taste refresher and chained collection reports now include a dedicated "Newly added to collection" card.',
+          'That card lists the exact titles that were not in the previous managed collection snapshot but are present after the rebuild.',
+          'Additions are reported per library and per collection lane, so the default Immaculate Taste collection and profile-specific collections such as Animation stay separate.',
+          'Raw report payloads now expose collectionAdditionsByLibrary and collectionAdditionsTotal for debugging, exports, and automation.',
+        ],
+      },
+      {
+        title: 'Recommendation transparency',
+        bullets: [
+          'Reports still show the recommendation-source breakdown for TMDB, optional Google, optional OpenAI, the final Generated list, and Plex resolution results.',
+          'The new additions card makes it easier to tell which resolved titles actually changed the final collection versus titles that were already present.',
+          'Collection rebuilds now compare against the prior managed collection contents, so "newly added" means new to that specific collection rather than simply new to Plex.',
+        ],
+      },
+      {
+        title: 'Docs and release notes',
+        bullets: [
+          'README and FAQ now explain how seed titles become candidate pools, how optional services refine the list, and how pending titles move into refreshed collections.',
+          'Version History and What\'s New now call out the new reporting so it is easier to spot when upgrading.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.7-beta-2',
     popupHighlights: [
       'Netflix CSV imports now batch database writes before queueing follow-up processing, which reduces SQLite contention on larger uploads.',

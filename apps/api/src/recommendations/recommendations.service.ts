@@ -1,13 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { GoogleService } from '../google/google.service';
 import { OpenAiService } from '../openai/openai.service';
-import { TmdbService } from '../tmdb/tmdb.service';
+import {
+  TmdbService,
+  type TmdbRecommendationMetadata,
+} from '../tmdb/tmdb.service';
 import type { JobContext, JsonObject } from '../jobs/jobs.types';
 
 const RECS_MIN_COUNT = 5;
 const RECS_MAX_COUNT = 100;
 const RECS_MIN_RELEASED_PERCENT = 25;
 const SERVICE_COOLDOWN_MS = 10 * 60 * 1000;
+const GLOBAL_LANGUAGE_SHORTLIST = [
+  'ja',
+  'ko',
+  'hi',
+  'ta',
+  'es',
+  'fr',
+  'de',
+  'it',
+  'pt',
+  'zh',
+] as const;
+const LATEST_WATCHED_LEAD_STANDARD_COUNT = 4;
+const LATEST_WATCHED_REPEAT_STANDARD_COUNT = 4;
+const CHANGE_OF_TASTE_LEAD_STANDARD_COUNT = 3;
+const CHANGE_OF_TASTE_REPEAT_STANDARD_COUNT = 3;
+const MOVIE_WILDCARD_MIN_VOTE_AVERAGE = 6.7;
+const MOVIE_WILDCARD_MIN_VOTE_COUNT = 80;
+const TV_WILDCARD_MIN_VOTE_AVERAGE = 6.8;
+const TV_WILDCARD_MIN_VOTE_COUNT = 40;
 
 type RecCandidate = {
   tmdbId: number;
@@ -16,7 +39,35 @@ type RecCandidate = {
   voteAverage: number | null;
   voteCount: number | null;
   popularity: number | null;
+  originalLanguage?: string | null;
   sources: string[];
+};
+
+type RecommendationMediaType = 'movie' | 'tv';
+type RecommendationIntent = 'latest_watched' | 'change_of_taste';
+type RecommendationBucket = 'released' | 'upcoming';
+type RecommendationLane = 'standard' | 'wildcard';
+
+type SeedProfile = {
+  seedTitle: string;
+  title: string;
+  overview: string;
+  genreNames: string[];
+  genreIds: number[];
+  originalLanguage: string | null;
+  originCountryCodes: string[];
+  mediaType: RecommendationMediaType;
+};
+
+type RankedRecCandidate = RecCandidate & {
+  metadata: TmdbRecommendationMetadata | null;
+  score: number;
+  baseScore: number;
+  contentSimilarity: number;
+  qualityScore: number;
+  noveltyScore: number;
+  indieScore: number;
+  popularityPenalty: number;
 };
 
 function clamp01(n: number) {
@@ -166,6 +217,21 @@ export class RecommendationsService {
       unknownCandidates: unknownPool.length,
     });
 
+    const seedProfile = buildSeedProfile({
+      seedTitle,
+      seedMeta,
+      mediaType: 'movie',
+      genreIds: Array.isArray(pools.seed?.genreIds) ? pools.seed.genreIds : [],
+    });
+    const metadataCache = new Map<
+      string,
+      Promise<TmdbRecommendationMetadata | null>
+    >();
+    const wildcardQuota = computeWildcardQuota({
+      intent: 'latest_watched',
+      count,
+    });
+
     let fallbackUsed: 'none' | 'tmdb_discover' | 'openai_freeform' = 'none';
     let fallbackCandidatesCount = 0;
     let fallbackTitles: string[] = [];
@@ -296,25 +362,66 @@ export class RecommendationsService {
       }
     }
 
+    const rankedWildcard = await this.buildWildcardCandidates({
+      apiKey: params.tmdbApiKey,
+      seed: seedProfile,
+      mediaType: 'movie',
+      intent: 'latest_watched',
+      count: wildcardQuota,
+      cache: metadataCache,
+    });
+    const wildcardTitles = rankedWildcard
+      .slice(0, Math.max(wildcardQuota * 6, wildcardQuota))
+      .map((candidate) => candidate.title);
+
     // --- Phase A: deterministic pre-score + split selection (always available) ---
-    const scoredReleased = scoreAndSortCandidates(releasedPool, {
+    const scoredReleased = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: releasedPool,
+      seed: seedProfile,
+      mediaType: 'movie',
       kind: 'released',
+      intent: 'latest_watched',
+      lane: 'standard',
+      cache: metadataCache,
     });
-    const scoredUpcoming = scoreAndSortCandidates(upcomingPool, {
+    const scoredUpcoming = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: upcomingPool,
+      seed: seedProfile,
+      mediaType: 'movie',
       kind: 'upcoming',
+      intent: 'latest_watched',
+      lane: 'standard',
+      cache: metadataCache,
     });
-    const scoredUnknown = scoreAndSortCandidates(unknownPool, {
+    const scoredUnknown = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: unknownPool,
+      seed: seedProfile,
+      mediaType: 'movie',
       kind: 'released',
+      intent: 'latest_watched',
+      lane: 'standard',
+      cache: metadataCache,
     });
 
-    const deterministic = selectWithSplit({
+    const deterministicStandard = selectWithSplit({
       count,
       upcomingTarget,
       releasedPool: scoredReleased,
       upcomingPool: scoredUpcoming,
       unknownPool: scoredUnknown,
     });
-    const tmdbSuggestedTitles = deterministic.titles.slice();
+    const deterministicTitles = mixLaneTitles({
+      count,
+      standardTitles: deterministicStandard.titles,
+      wildcardTitles,
+      quota: wildcardQuota,
+      leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+      repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+    });
+    const tmdbSuggestedTitles = deterministicTitles.slice();
 
     // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
     void ctx
@@ -409,16 +516,24 @@ export class RecommendationsService {
               }
 
               const cleaned = cleanTitles(titles, count);
-              openAiSuggestedTitles = cleaned.slice();
+              const mixedTitles = mixLaneTitles({
+                count,
+                standardTitles: cleaned,
+                wildcardTitles,
+                quota: wildcardQuota,
+                leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+                repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+              });
+              openAiSuggestedTitles = mixedTitles.slice();
               await ctx.info('recs: openai select done', {
-                returned: cleaned.length,
+                returned: mixedTitles.length,
                 released: releasedTarget,
                 upcoming: upcomingTarget,
                 mode: 'split',
               });
               this.openAiDownUntilMs = null;
               return {
-                titles: cleaned,
+                titles: mixedTitles,
                 strategy: 'openai',
                 debug: {
                   upcomingPercent,
@@ -437,6 +552,16 @@ export class RecommendationsService {
                   fallbackUsed,
                   fallbackCandidatesCount,
                   fallbackTitles,
+                  wildcardQuota,
+                  wildcardInjected: countInjectedWildcardTitles({
+                    mixedTitles,
+                    standardTitles: cleaned,
+                    wildcardTitles,
+                  }),
+                  wildcardTitles: wildcardTitles.slice(
+                    0,
+                    Math.max(wildcardQuota * 3, wildcardQuota),
+                  ),
                   openAiSuggestedTitles,
                   tmdbSuggestedTitles,
                   used: {
@@ -478,14 +603,22 @@ export class RecommendationsService {
               const byId = new Map(candidates.map((c) => [c.tmdbId, c.title]));
               const ordered = ids.map((id) => byId.get(id) ?? String(id));
               const cleaned = cleanTitles(ordered, count);
-              openAiSuggestedTitles = cleaned.slice();
+              const mixedTitles = mixLaneTitles({
+                count,
+                standardTitles: cleaned,
+                wildcardTitles,
+                quota: wildcardQuota,
+                leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+                repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+              });
+              openAiSuggestedTitles = mixedTitles.slice();
               await ctx.info('recs: openai select done', {
-                returned: cleaned.length,
+                returned: mixedTitles.length,
                 mode: 'no_split',
               });
               this.openAiDownUntilMs = null;
               return {
-                titles: cleaned,
+                titles: mixedTitles,
                 strategy: 'openai',
                 debug: {
                   upcomingPercent,
@@ -504,6 +637,16 @@ export class RecommendationsService {
                   fallbackUsed,
                   fallbackCandidatesCount,
                   fallbackTitles,
+                  wildcardQuota,
+                  wildcardInjected: countInjectedWildcardTitles({
+                    mixedTitles,
+                    standardTitles: cleaned,
+                    wildcardTitles,
+                  }),
+                  wildcardTitles: wildcardTitles.slice(
+                    0,
+                    Math.max(wildcardQuota * 3, wildcardQuota),
+                  ),
                   openAiSuggestedTitles,
                   tmdbSuggestedTitles,
                   used: {
@@ -530,7 +673,7 @@ export class RecommendationsService {
     }
 
     // --- Tier 3 (ultimate): OpenAI freeform fallback when we have no candidates at all ---
-    if (!deterministic.titles.length) {
+    if (!deterministicTitles.length) {
       const openAiApiKey = params.openai?.apiKey?.trim();
       const canUseFreeform =
         openAiEnabled && this.canUseOpenAi() && Boolean(openAiApiKey);
@@ -568,20 +711,28 @@ export class RecommendationsService {
           });
           const picked = scored.slice(0, count).map((c) => c.title);
           const cleaned = cleanTitles(picked.length ? picked : titles, count);
+          const mixedTitles = mixLaneTitles({
+            count,
+            standardTitles: cleaned,
+            wildcardTitles,
+            quota: wildcardQuota,
+            leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+            repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+          });
 
           fallbackUsed = 'openai_freeform';
           fallbackCandidatesCount = resolved.added;
-          fallbackTitles = cleaned.slice(0, 30);
-          openAiSuggestedTitles = cleaned.slice();
+          fallbackTitles = mixedTitles.slice(0, 30);
+          openAiSuggestedTitles = mixedTitles.slice();
           this.openAiDownUntilMs = null;
 
           await ctx.info('recs: openai freeform fallback used', {
-            returned: cleaned.length,
+            returned: mixedTitles.length,
             tmdbValidated: resolved.added,
           });
 
           return {
-            titles: cleaned,
+            titles: mixedTitles,
             strategy: 'openai',
             debug: {
               upcomingPercent,
@@ -600,6 +751,16 @@ export class RecommendationsService {
               fallbackUsed,
               fallbackCandidatesCount,
               fallbackTitles,
+              wildcardQuota,
+              wildcardInjected: countInjectedWildcardTitles({
+                mixedTitles,
+                standardTitles: cleaned,
+                wildcardTitles,
+              }),
+              wildcardTitles: wildcardTitles.slice(
+                0,
+                Math.max(wildcardQuota * 3, wildcardQuota),
+              ),
               openAiSuggestedTitles,
               tmdbSuggestedTitles,
               used: {
@@ -620,15 +781,15 @@ export class RecommendationsService {
     }
 
     await ctx.info('recs: deterministic select done', {
-      returned: deterministic.titles.length,
-      released: deterministic.releasedCount,
-      upcoming: deterministic.upcomingCount,
+      returned: deterministicTitles.length,
+      released: deterministicStandard.releasedCount,
+      upcoming: deterministicStandard.upcomingCount,
       googleTitlesExtracted,
       googleTmdbAdded,
     });
 
     return {
-      titles: deterministic.titles,
+      titles: deterministicTitles,
       strategy: 'tmdb',
       debug: {
         upcomingPercent,
@@ -645,6 +806,16 @@ export class RecommendationsService {
         fallbackUsed,
         fallbackCandidatesCount,
         fallbackTitles,
+        wildcardQuota,
+        wildcardInjected: countInjectedWildcardTitles({
+          mixedTitles: deterministicTitles,
+          standardTitles: deterministicStandard.titles,
+          wildcardTitles,
+        }),
+        wildcardTitles: wildcardTitles.slice(
+          0,
+          Math.max(wildcardQuota * 3, wildcardQuota),
+        ),
         googleSuggestedTitles,
         openAiSuggestedTitles,
         tmdbSuggestedTitles,
@@ -751,6 +922,21 @@ export class RecommendationsService {
       releasedCandidates: releasedPool.length,
       upcomingCandidates: upcomingPool.length,
       unknownCandidates: unknownPool.length,
+    });
+
+    const seedProfile = buildSeedProfile({
+      seedTitle,
+      seedMeta,
+      mediaType: 'tv',
+      genreIds: Array.isArray(pools.seed?.genreIds) ? pools.seed.genreIds : [],
+    });
+    const metadataCache = new Map<
+      string,
+      Promise<TmdbRecommendationMetadata | null>
+    >();
+    const wildcardQuota = computeWildcardQuota({
+      intent: 'latest_watched',
+      count,
     });
 
     let fallbackUsed: 'none' | 'tmdb_discover' | 'openai_freeform' = 'none';
@@ -882,25 +1068,66 @@ export class RecommendationsService {
       }
     }
 
+    const rankedWildcard = await this.buildWildcardCandidates({
+      apiKey: params.tmdbApiKey,
+      seed: seedProfile,
+      mediaType: 'tv',
+      intent: 'latest_watched',
+      count: wildcardQuota,
+      cache: metadataCache,
+    });
+    const wildcardTitles = rankedWildcard
+      .slice(0, Math.max(wildcardQuota * 6, wildcardQuota))
+      .map((candidate) => candidate.title);
+
     // --- Phase A: deterministic pre-score + split selection (always available) ---
-    const scoredReleased = scoreAndSortCandidates(releasedPool, {
+    const scoredReleased = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: releasedPool,
+      seed: seedProfile,
+      mediaType: 'tv',
       kind: 'released',
+      intent: 'latest_watched',
+      lane: 'standard',
+      cache: metadataCache,
     });
-    const scoredUpcoming = scoreAndSortCandidates(upcomingPool, {
+    const scoredUpcoming = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: upcomingPool,
+      seed: seedProfile,
+      mediaType: 'tv',
       kind: 'upcoming',
+      intent: 'latest_watched',
+      lane: 'standard',
+      cache: metadataCache,
     });
-    const scoredUnknown = scoreAndSortCandidates(unknownPool, {
+    const scoredUnknown = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: unknownPool,
+      seed: seedProfile,
+      mediaType: 'tv',
       kind: 'released',
+      intent: 'latest_watched',
+      lane: 'standard',
+      cache: metadataCache,
     });
 
-    const deterministic = selectWithSplit({
+    const deterministicStandard = selectWithSplit({
       count,
       upcomingTarget,
       releasedPool: scoredReleased,
       upcomingPool: scoredUpcoming,
       unknownPool: scoredUnknown,
     });
-    const tmdbSuggestedTitles = deterministic.titles.slice();
+    const deterministicTitles = mixLaneTitles({
+      count,
+      standardTitles: deterministicStandard.titles,
+      wildcardTitles,
+      quota: wildcardQuota,
+      leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+      repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+    });
+    const tmdbSuggestedTitles = deterministicTitles.slice();
 
     // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
     void ctx
@@ -980,10 +1207,18 @@ export class RecommendationsService {
                 (id) => idToTitle.get(id) ?? String(id),
               );
               const cleaned = cleanTitles(ordered, count);
-              openAiSuggestedTitles = cleaned.slice();
+              const mixedTitles = mixLaneTitles({
+                count,
+                standardTitles: cleaned,
+                wildcardTitles,
+                quota: wildcardQuota,
+                leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+                repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+              });
+              openAiSuggestedTitles = mixedTitles.slice();
 
               await ctx.info('recs(tv): openai select done', {
-                returned: cleaned.length,
+                returned: mixedTitles.length,
                 released: selected.released.length,
                 upcoming: selected.upcoming.length,
                 mode: 'split',
@@ -991,7 +1226,7 @@ export class RecommendationsService {
 
               this.openAiDownUntilMs = null;
               return {
-                titles: cleaned,
+                titles: mixedTitles,
                 strategy: 'openai',
                 debug: {
                   upcomingPercent,
@@ -1009,6 +1244,16 @@ export class RecommendationsService {
                   fallbackUsed,
                   fallbackCandidatesCount,
                   fallbackTitles,
+                  wildcardQuota,
+                  wildcardInjected: countInjectedWildcardTitles({
+                    mixedTitles,
+                    standardTitles: cleaned,
+                    wildcardTitles,
+                  }),
+                  wildcardTitles: wildcardTitles.slice(
+                    0,
+                    Math.max(wildcardQuota * 3, wildcardQuota),
+                  ),
                   googleSuggestedTitles,
                   openAiSuggestedTitles,
                   tmdbSuggestedTitles,
@@ -1055,16 +1300,24 @@ export class RecommendationsService {
               const byId = new Map(candidates.map((c) => [c.tmdbId, c.title]));
               const ordered = ids.map((id) => byId.get(id) ?? String(id));
               const cleaned = cleanTitles(ordered, count);
-              openAiSuggestedTitles = cleaned.slice();
+              const mixedTitles = mixLaneTitles({
+                count,
+                standardTitles: cleaned,
+                wildcardTitles,
+                quota: wildcardQuota,
+                leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+                repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+              });
+              openAiSuggestedTitles = mixedTitles.slice();
 
               await ctx.info('recs(tv): openai select done', {
-                returned: cleaned.length,
+                returned: mixedTitles.length,
                 mode: 'no_split',
               });
 
               this.openAiDownUntilMs = null;
               return {
-                titles: cleaned,
+                titles: mixedTitles,
                 strategy: 'openai',
                 debug: {
                   upcomingPercent,
@@ -1082,6 +1335,16 @@ export class RecommendationsService {
                   fallbackUsed,
                   fallbackCandidatesCount,
                   fallbackTitles,
+                  wildcardQuota,
+                  wildcardInjected: countInjectedWildcardTitles({
+                    mixedTitles,
+                    standardTitles: cleaned,
+                    wildcardTitles,
+                  }),
+                  wildcardTitles: wildcardTitles.slice(
+                    0,
+                    Math.max(wildcardQuota * 3, wildcardQuota),
+                  ),
                   googleSuggestedTitles,
                   openAiSuggestedTitles,
                   tmdbSuggestedTitles,
@@ -1109,7 +1372,7 @@ export class RecommendationsService {
     }
 
     // --- Tier 3 (ultimate): OpenAI freeform fallback when we have no candidates at all ---
-    if (!deterministic.titles.length) {
+    if (!deterministicTitles.length) {
       const openAiApiKey = params.openai?.apiKey?.trim();
       const canUseFreeform =
         openAiEnabled && this.canUseOpenAi() && Boolean(openAiApiKey);
@@ -1146,20 +1409,28 @@ export class RecommendationsService {
           });
           const picked = scored.slice(0, count).map((c) => c.title);
           const cleaned = cleanTitles(picked.length ? picked : titles, count);
+          const mixedTitles = mixLaneTitles({
+            count,
+            standardTitles: cleaned,
+            wildcardTitles,
+            quota: wildcardQuota,
+            leadStandardCount: LATEST_WATCHED_LEAD_STANDARD_COUNT,
+            repeatStandardChunk: LATEST_WATCHED_REPEAT_STANDARD_COUNT,
+          });
 
           fallbackUsed = 'openai_freeform';
           fallbackCandidatesCount = resolved.added;
-          fallbackTitles = cleaned.slice(0, 30);
-          openAiSuggestedTitles = cleaned.slice();
+          fallbackTitles = mixedTitles.slice(0, 30);
+          openAiSuggestedTitles = mixedTitles.slice();
           this.openAiDownUntilMs = null;
 
           await ctx.info('recs(tv): openai freeform fallback used', {
-            returned: cleaned.length,
+            returned: mixedTitles.length,
             tmdbValidated: resolved.added,
           });
 
           return {
-            titles: cleaned,
+            titles: mixedTitles,
             strategy: 'openai',
             debug: {
               upcomingPercent,
@@ -1177,6 +1448,16 @@ export class RecommendationsService {
               fallbackUsed,
               fallbackCandidatesCount,
               fallbackTitles,
+              wildcardQuota,
+              wildcardInjected: countInjectedWildcardTitles({
+                mixedTitles,
+                standardTitles: cleaned,
+                wildcardTitles,
+              }),
+              wildcardTitles: wildcardTitles.slice(
+                0,
+                Math.max(wildcardQuota * 3, wildcardQuota),
+              ),
               googleSuggestedTitles,
               openAiSuggestedTitles,
               tmdbSuggestedTitles,
@@ -1198,15 +1479,15 @@ export class RecommendationsService {
     }
 
     await ctx.info('recs(tv): deterministic select done', {
-      returned: deterministic.titles.length,
-      released: deterministic.releasedCount,
-      upcoming: deterministic.upcomingCount,
+      returned: deterministicTitles.length,
+      released: deterministicStandard.releasedCount,
+      upcoming: deterministicStandard.upcomingCount,
       googleTitlesExtracted,
       googleTmdbAdded,
     });
 
     return {
-      titles: deterministic.titles,
+      titles: deterministicTitles,
       strategy: 'tmdb',
       debug: {
         upcomingPercent,
@@ -1223,6 +1504,16 @@ export class RecommendationsService {
         fallbackUsed,
         fallbackCandidatesCount,
         fallbackTitles,
+        wildcardQuota,
+        wildcardInjected: countInjectedWildcardTitles({
+          mixedTitles: deterministicTitles,
+          standardTitles: deterministicStandard.titles,
+          wildcardTitles,
+        }),
+        wildcardTitles: wildcardTitles.slice(
+          0,
+          Math.max(wildcardQuota * 3, wildcardQuota),
+        ),
         googleSuggestedTitles,
         openAiSuggestedTitles,
         tmdbSuggestedTitles,
@@ -1248,6 +1539,11 @@ export class RecommendationsService {
       RECS_MAX_COUNT,
       50,
     );
+    const seedMeta = await this.tmdb.getSeedMetadata({
+      apiKey: params.tmdbApiKey,
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+    });
 
     const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
 
@@ -1301,23 +1597,78 @@ export class RecommendationsService {
       unknownCandidates: unknownPool.length,
     });
 
+    const seedProfile = buildSeedProfile({
+      seedTitle,
+      seedMeta,
+      mediaType: 'movie',
+      genreIds: Array.isArray(pools.seed?.genreIds) ? pools.seed.genreIds : [],
+    });
+    const metadataCache = new Map<
+      string,
+      Promise<TmdbRecommendationMetadata | null>
+    >();
+    const wildcardQuota = computeWildcardQuota({
+      intent: 'change_of_taste',
+      count,
+    });
+    const rankedWildcard = await this.buildWildcardCandidates({
+      apiKey: params.tmdbApiKey,
+      seed: seedProfile,
+      mediaType: 'movie',
+      intent: 'change_of_taste',
+      count: wildcardQuota,
+      cache: metadataCache,
+    });
+    const wildcardTitles = rankedWildcard
+      .slice(0, Math.max(wildcardQuota * 6, wildcardQuota))
+      .map((candidate) => candidate.title);
+
     // --- Phase A: deterministic pre-score + split selection (always available) ---
-    const scoredReleased = scoreAndSortCandidates(releasedPool, {
+    const scoredReleased = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: releasedPool,
+      seed: seedProfile,
+      mediaType: 'movie',
       kind: 'released',
+      intent: 'change_of_taste',
+      lane: 'standard',
+      cache: metadataCache,
     });
-    const scoredUpcoming = scoreAndSortCandidates(upcomingPool, {
+    const scoredUpcoming = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: upcomingPool,
+      seed: seedProfile,
+      mediaType: 'movie',
       kind: 'upcoming',
+      intent: 'change_of_taste',
+      lane: 'standard',
+      cache: metadataCache,
     });
-    const scoredUnknown = scoreAndSortCandidates(unknownPool, {
+    const scoredUnknown = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: unknownPool,
+      seed: seedProfile,
+      mediaType: 'movie',
       kind: 'released',
+      intent: 'change_of_taste',
+      lane: 'standard',
+      cache: metadataCache,
     });
 
-    const deterministic = selectWithSplit({
+    const deterministicStandard = selectWithSplit({
       count,
       upcomingTarget,
       releasedPool: scoredReleased,
       upcomingPool: scoredUpcoming,
       unknownPool: scoredUnknown,
+    });
+    const deterministicTitles = mixLaneTitles({
+      count,
+      standardTitles: deterministicStandard.titles,
+      wildcardTitles,
+      quota: wildcardQuota,
+      leadStandardCount: CHANGE_OF_TASTE_LEAD_STANDARD_COUNT,
+      repeatStandardChunk: CHANGE_OF_TASTE_REPEAT_STANDARD_COUNT,
     });
 
     // --- Tier 2 (optional): OpenAI final selector from downselected candidates ---
@@ -1354,7 +1705,11 @@ export class RecommendationsService {
             apiKey: params.openai.apiKey,
             model,
             seedTitle,
-            tmdbSeedMetadata: { intent: 'change_of_taste', seed: pools.seed },
+            tmdbSeedMetadata: {
+              ...seedMeta,
+              intent: 'change_of_taste',
+              seed: pools.seed,
+            },
             releasedTarget,
             upcomingTarget,
             releasedCandidates: topReleased,
@@ -1378,19 +1733,30 @@ export class RecommendationsService {
               if (t.trim()) titles.push(t.trim());
             }
 
-            const cleaned = titles.slice(0, releasedTarget + upcomingTarget);
+            const cleaned = cleanTitles(
+              titles,
+              releasedTarget + upcomingTarget,
+            );
             if (cleaned.length !== releasedTarget + upcomingTarget) {
               throw new Error(
                 `OpenAI selection underfilled: expected ${releasedTarget + upcomingTarget}, got ${cleaned.length}`,
               );
             }
+            const mixedTitles = mixLaneTitles({
+              count,
+              standardTitles: cleaned,
+              wildcardTitles,
+              quota: wildcardQuota,
+              leadStandardCount: CHANGE_OF_TASTE_LEAD_STANDARD_COUNT,
+              repeatStandardChunk: CHANGE_OF_TASTE_REPEAT_STANDARD_COUNT,
+            });
             await ctx.info('change_of_taste: openai select done', {
-              returned: cleaned.length,
+              returned: mixedTitles.length,
               released: releasedTarget,
               upcoming: upcomingTarget,
             });
             this.openAiDownUntilMs = null;
-            return { titles: cleaned, strategy: 'openai' };
+            return { titles: mixedTitles, strategy: 'openai' };
           }
 
           await ctx.warn(
@@ -1415,12 +1781,12 @@ export class RecommendationsService {
     }
 
     await ctx.info('change_of_taste: deterministic select done', {
-      returned: deterministic.titles.length,
-      released: deterministic.releasedCount,
-      upcoming: deterministic.upcomingCount,
+      returned: deterministicTitles.length,
+      released: deterministicStandard.releasedCount,
+      upcoming: deterministicStandard.upcomingCount,
     });
 
-    return { titles: deterministic.titles, strategy: 'tmdb' };
+    return { titles: deterministicTitles, strategy: 'tmdb' };
   }
 
   async buildChangeOfTasteTvTitles(params: {
@@ -1440,6 +1806,11 @@ export class RecommendationsService {
       RECS_MAX_COUNT,
       50,
     );
+    const seedMeta = await this.tmdb.getTvSeedMetadata({
+      apiKey: params.tmdbApiKey,
+      seedTitle,
+      seedYear: params.seedYear ?? null,
+    });
 
     const openAiEnabled = Boolean(params.openai?.apiKey?.trim());
 
@@ -1494,22 +1865,77 @@ export class RecommendationsService {
       unknownCandidates: unknownPool.length,
     });
 
-    const scoredReleased = scoreAndSortCandidates(releasedPool, {
-      kind: 'released',
+    const seedProfile = buildSeedProfile({
+      seedTitle,
+      seedMeta,
+      mediaType: 'tv',
+      genreIds: Array.isArray(pools.seed?.genreIds) ? pools.seed.genreIds : [],
     });
-    const scoredUpcoming = scoreAndSortCandidates(upcomingPool, {
+    const metadataCache = new Map<
+      string,
+      Promise<TmdbRecommendationMetadata | null>
+    >();
+    const wildcardQuota = computeWildcardQuota({
+      intent: 'change_of_taste',
+      count,
+    });
+    const rankedWildcard = await this.buildWildcardCandidates({
+      apiKey: params.tmdbApiKey,
+      seed: seedProfile,
+      mediaType: 'tv',
+      intent: 'change_of_taste',
+      count: wildcardQuota,
+      cache: metadataCache,
+    });
+    const wildcardTitles = rankedWildcard
+      .slice(0, Math.max(wildcardQuota * 6, wildcardQuota))
+      .map((candidate) => candidate.title);
+
+    const scoredReleased = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: releasedPool,
+      seed: seedProfile,
+      mediaType: 'tv',
+      kind: 'released',
+      intent: 'change_of_taste',
+      lane: 'standard',
+      cache: metadataCache,
+    });
+    const scoredUpcoming = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: upcomingPool,
+      seed: seedProfile,
+      mediaType: 'tv',
       kind: 'upcoming',
+      intent: 'change_of_taste',
+      lane: 'standard',
+      cache: metadataCache,
     });
-    const scoredUnknown = scoreAndSortCandidates(unknownPool, {
+    const scoredUnknown = await this.rankCandidates({
+      apiKey: params.tmdbApiKey,
+      candidates: unknownPool,
+      seed: seedProfile,
+      mediaType: 'tv',
       kind: 'released',
+      intent: 'change_of_taste',
+      lane: 'standard',
+      cache: metadataCache,
     });
 
-    const deterministic = selectWithSplit({
+    const deterministicStandard = selectWithSplit({
       count,
       upcomingTarget,
       releasedPool: scoredReleased,
       upcomingPool: scoredUpcoming,
       unknownPool: scoredUnknown,
+    });
+    const deterministicTitles = mixLaneTitles({
+      count,
+      standardTitles: deterministicStandard.titles,
+      wildcardTitles,
+      quota: wildcardQuota,
+      leadStandardCount: CHANGE_OF_TASTE_LEAD_STANDARD_COUNT,
+      repeatStandardChunk: CHANGE_OF_TASTE_REPEAT_STANDARD_COUNT,
     });
 
     if (openAiEnabled && this.canUseOpenAi() && params.openai) {
@@ -1543,7 +1969,11 @@ export class RecommendationsService {
             model,
             seedTitle,
             mediaType: 'tv',
-            tmdbSeedMetadata: { intent: 'change_of_taste', seed: pools.seed },
+            tmdbSeedMetadata: {
+              ...seedMeta,
+              intent: 'change_of_taste',
+              seed: pools.seed,
+            },
             releasedTarget,
             upcomingTarget,
             releasedCandidates: topReleased,
@@ -1566,15 +1996,23 @@ export class RecommendationsService {
               .filter((id) => selectedIds.has(id))
               .map((id) => idToTitle.get(id) ?? String(id));
             const cleaned = cleanTitles(ordered, count);
+            const mixedTitles = mixLaneTitles({
+              count,
+              standardTitles: cleaned,
+              wildcardTitles,
+              quota: wildcardQuota,
+              leadStandardCount: CHANGE_OF_TASTE_LEAD_STANDARD_COUNT,
+              repeatStandardChunk: CHANGE_OF_TASTE_REPEAT_STANDARD_COUNT,
+            });
 
             await ctx.info('change_of_taste(tv): openai select done', {
-              returned: cleaned.length,
+              returned: mixedTitles.length,
               released: selected.released.length,
               upcoming: selected.upcoming.length,
             });
 
             this.openAiDownUntilMs = null;
-            return { titles: cleaned, strategy: 'openai' };
+            return { titles: mixedTitles, strategy: 'openai' };
           }
 
           await ctx.warn(
@@ -1599,12 +2037,12 @@ export class RecommendationsService {
     }
 
     await ctx.info('change_of_taste(tv): deterministic select done', {
-      returned: deterministic.titles.length,
-      released: deterministic.releasedCount,
-      upcoming: deterministic.upcomingCount,
+      returned: deterministicTitles.length,
+      released: deterministicStandard.releasedCount,
+      upcoming: deterministicStandard.upcomingCount,
     });
 
-    return { titles: deterministic.titles, strategy: 'tmdb' };
+    return { titles: deterministicTitles, strategy: 'tmdb' };
   }
 
   private canUseGoogle() {
@@ -1613,6 +2051,254 @@ export class RecommendationsService {
 
   private canUseOpenAi() {
     return !this.openAiDownUntilMs || Date.now() >= this.openAiDownUntilMs;
+  }
+
+  private async getRecommendationMetadata(params: {
+    apiKey: string;
+    mediaType: RecommendationMediaType;
+    tmdbId: number;
+    cache: Map<string, Promise<TmdbRecommendationMetadata | null>>;
+  }): Promise<TmdbRecommendationMetadata | null> {
+    const key = `${params.mediaType}:${params.tmdbId}`;
+    const existing = params.cache.get(key);
+    if (existing) return existing;
+
+    const request =
+      params.mediaType === 'movie'
+        ? this.tmdb
+            .getMovieRecommendationMetadata({
+              apiKey: params.apiKey,
+              tmdbId: params.tmdbId,
+            })
+            .catch(() => null)
+        : this.tmdb
+            .getTvRecommendationMetadata({
+              apiKey: params.apiKey,
+              tmdbId: params.tmdbId,
+            })
+            .catch(() => null);
+
+    params.cache.set(key, request);
+    return request;
+  }
+
+  private async rankCandidates(params: {
+    apiKey: string;
+    candidates: RecCandidate[];
+    seed: SeedProfile;
+    mediaType: RecommendationMediaType;
+    kind: RecommendationBucket;
+    intent: RecommendationIntent;
+    lane: RecommendationLane;
+    cache: Map<string, Promise<TmdbRecommendationMetadata | null>>;
+  }): Promise<RankedRecCandidate[]> {
+    const uniqueCandidates = uniqueByTmdbId(params.candidates);
+    const hydrated = await Promise.all(
+      uniqueCandidates.map(async (candidate) => ({
+        candidate,
+        metadata: await this.getRecommendationMetadata({
+          apiKey: params.apiKey,
+          mediaType: params.mediaType,
+          tmdbId: candidate.tmdbId,
+          cache: params.cache,
+        }),
+      })),
+    );
+
+    const seedTokenBag = buildTokenBag({
+      title: params.seed.title || params.seed.seedTitle,
+      overview: params.seed.overview,
+      genreNames: params.seed.genreNames,
+    });
+    const candidateTokenBags = hydrated.map(({ candidate, metadata }) =>
+      buildTokenBag({
+        title: candidate.title,
+        overview: metadata?.overview ?? '',
+        genreNames: metadata?.genreNames ?? [],
+      }),
+    );
+    const similarityScores = computeContentSimilarityScores(
+      seedTokenBag,
+      candidateTokenBags,
+    );
+
+    const baseRaw = hydrated.map(({ candidate }) =>
+      calculateBaseHeuristicScore(candidate, params.kind),
+    );
+    const qualityRaw = hydrated.map(({ candidate }) =>
+      calculateQualityRawScore(candidate),
+    );
+    const noveltyRaw = hydrated.map(({ candidate, metadata }) =>
+      calculateNoveltyRawScore({
+        seed: params.seed,
+        candidate,
+        metadata,
+        lane: params.lane,
+      }),
+    );
+    const indieRaw =
+      params.lane === 'wildcard'
+        ? hydrated.map(({ candidate, metadata }) =>
+            calculateIndieRawScore({
+              seed: params.seed,
+              candidate,
+              metadata,
+            }),
+          )
+        : hydrated.map(() => 0);
+    const popularityPenaltyRaw =
+      params.lane === 'wildcard'
+        ? hydrated.map(({ candidate }) =>
+            Math.max(0, candidate.popularity ?? 0),
+          )
+        : hydrated.map(() => 0);
+
+    const normalizedBase = normalizeScoreArray(baseRaw);
+    const normalizedQuality = normalizeScoreArray(qualityRaw);
+    const normalizedNovelty = normalizeScoreArray(noveltyRaw);
+    const normalizedIndie = normalizeScoreArray(indieRaw);
+    const normalizedPopularityPenalty =
+      normalizeScoreArray(popularityPenaltyRaw);
+    const weights = getRankingWeights({
+      intent: params.intent,
+      kind: params.kind,
+      lane: params.lane,
+    });
+
+    const ranked = hydrated.map(({ candidate, metadata }, index) => {
+      const baseScore = normalizedBase[index] ?? 0;
+      const contentSimilarity = similarityScores[index] ?? 0;
+      const qualityScore = normalizedQuality[index] ?? 0;
+      const noveltyScore = normalizedNovelty[index] ?? 0;
+      const indieScore = normalizedIndie[index] ?? 0;
+      const popularityPenalty = normalizedPopularityPenalty[index] ?? 0;
+
+      const score =
+        baseScore * weights.base +
+        contentSimilarity * weights.content +
+        qualityScore * weights.quality +
+        noveltyScore * weights.novelty +
+        indieScore * weights.indie -
+        popularityPenalty * weights.popularityPenalty;
+
+      return {
+        ...candidate,
+        metadata,
+        score,
+        baseScore,
+        contentSimilarity,
+        qualityScore,
+        noveltyScore,
+        indieScore,
+        popularityPenalty,
+      };
+    });
+
+    ranked.sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      const rightVoteAverage = right.voteAverage ?? 0;
+      const leftVoteAverage = left.voteAverage ?? 0;
+      if (rightVoteAverage !== leftVoteAverage) {
+        return rightVoteAverage - leftVoteAverage;
+      }
+      const rightVoteCount = right.voteCount ?? 0;
+      const leftVoteCount = left.voteCount ?? 0;
+      if (rightVoteCount !== leftVoteCount) {
+        return rightVoteCount - leftVoteCount;
+      }
+      return (right.popularity ?? 0) - (left.popularity ?? 0);
+    });
+
+    return ranked;
+  }
+
+  private async buildWildcardCandidates(params: {
+    apiKey: string;
+    seed: SeedProfile;
+    mediaType: RecommendationMediaType;
+    intent: RecommendationIntent;
+    count: number;
+    cache: Map<string, Promise<TmdbRecommendationMetadata | null>>;
+  }): Promise<RankedRecCandidate[]> {
+    if (params.count <= 0) return [];
+
+    const matchMode =
+      params.intent === 'change_of_taste' ? 'exclude' : 'include';
+    const discoveryLimit = Math.max(8, Math.min(30, params.count * 6));
+    const languageQueue = buildGlobalLanguageQueue(
+      params.seed.originalLanguage,
+    );
+
+    const [globalCandidates, hiddenGemCandidates] =
+      params.mediaType === 'movie'
+        ? await Promise.all([
+            this.tmdb
+              .discoverGlobalLanguageMovieCandidates({
+                apiKey: params.apiKey,
+                limit: discoveryLimit,
+                genreIds: params.seed.genreIds,
+                matchMode,
+                languages: languageQueue,
+                excludeLanguage: params.seed.originalLanguage,
+                timezone: null,
+              })
+              .catch(() => []),
+            this.tmdb
+              .discoverHiddenGemMovieCandidates({
+                apiKey: params.apiKey,
+                limit: discoveryLimit,
+                genreIds: params.seed.genreIds,
+                matchMode,
+                timezone: null,
+              })
+              .catch(() => []),
+          ])
+        : await Promise.all([
+            this.tmdb
+              .discoverGlobalLanguageTvCandidates({
+                apiKey: params.apiKey,
+                limit: discoveryLimit,
+                genreIds: params.seed.genreIds,
+                matchMode,
+                languages: languageQueue,
+                excludeLanguage: params.seed.originalLanguage,
+                timezone: null,
+              })
+              .catch(() => []),
+            this.tmdb
+              .discoverHiddenGemTvCandidates({
+                apiKey: params.apiKey,
+                limit: discoveryLimit,
+                genreIds: params.seed.genreIds,
+                matchMode,
+                timezone: null,
+              })
+              .catch(() => []),
+          ]);
+
+    const combined = uniqueByTmdbId([
+      ...globalCandidates,
+      ...hiddenGemCandidates,
+    ]).filter(
+      (candidate) =>
+        normalizeTitleKey(candidate.title) !==
+        normalizeTitleKey(params.seed.title || params.seed.seedTitle),
+    );
+
+    const ranked = await this.rankCandidates({
+      apiKey: params.apiKey,
+      candidates: combined,
+      seed: params.seed,
+      mediaType: params.mediaType,
+      kind: 'released',
+      intent: params.intent,
+      lane: 'wildcard',
+      cache: params.cache,
+    });
+
+    return ranked.filter((candidate) =>
+      passesWildcardQualityFloor(candidate, params.mediaType),
+    );
   }
 
   private async resolveGoogleTitlesToTmdbCandidates(params: {
@@ -1832,6 +2518,466 @@ function normalizeTitleKey(title: string): string {
     .trim();
 }
 
+function buildSeedProfile(params: {
+  seedTitle: string;
+  seedMeta: Record<string, unknown>;
+  mediaType: RecommendationMediaType;
+  genreIds: number[];
+}): SeedProfile {
+  const title =
+    typeof params.seedMeta['title'] === 'string'
+      ? params.seedMeta['title'].trim()
+      : params.seedTitle;
+  const overview =
+    typeof params.seedMeta['overview'] === 'string'
+      ? params.seedMeta['overview'].trim()
+      : '';
+  const genreNames = Array.isArray(params.seedMeta['genres'])
+    ? params.seedMeta['genres']
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter(Boolean)
+    : [];
+  const originalLanguage =
+    typeof params.seedMeta['original_language'] === 'string' &&
+    params.seedMeta['original_language'].trim()
+      ? params.seedMeta['original_language'].trim().toLowerCase()
+      : null;
+  const originCountryCodes = Array.isArray(
+    params.seedMeta['origin_country_codes'],
+  )
+    ? params.seedMeta['origin_country_codes']
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter(Boolean)
+        .map((value) => value.toUpperCase())
+    : [];
+
+  return {
+    seedTitle: params.seedTitle,
+    title: title || params.seedTitle,
+    overview,
+    genreNames,
+    genreIds: params.genreIds
+      .map((value) => (Number.isFinite(value) ? Math.trunc(value) : NaN))
+      .filter((value) => Number.isFinite(value) && value > 0),
+    originalLanguage,
+    originCountryCodes,
+    mediaType: params.mediaType,
+  };
+}
+
+function buildTokenBag(input: {
+  title: string;
+  overview: string;
+  genreNames: string[];
+}): Map<string, number> {
+  const bag = new Map<string, number>();
+  const addText = (text: string, weight: number) => {
+    for (const token of text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]+/g, ' ')
+      .split(/\s+/)) {
+      if (!token || token.length < 3) continue;
+      if (/^\d+$/.test(token)) continue;
+      bag.set(token, (bag.get(token) ?? 0) + weight);
+    }
+  };
+
+  addText(input.title, 3);
+  for (const genre of input.genreNames) addText(genre, 2);
+  addText(input.overview, 1);
+
+  return bag;
+}
+
+function computeContentSimilarityScores(
+  seedBag: Map<string, number>,
+  candidateBags: Map<string, number>[],
+): number[] {
+  if (!candidateBags.length) return [];
+
+  const documentFrequency = new Map<string, number>();
+  const allDocs = [seedBag, ...candidateBags];
+  for (const bag of allDocs) {
+    for (const token of bag.keys()) {
+      documentFrequency.set(token, (documentFrequency.get(token) ?? 0) + 1);
+    }
+  }
+
+  const totalDocs = allDocs.length;
+  const tfidf = (bag: Map<string, number>) => {
+    const weighted = new Map<string, number>();
+    let normSquared = 0;
+    for (const [token, termFrequency] of bag.entries()) {
+      const docFreq = documentFrequency.get(token) ?? 1;
+      const idf = Math.log((1 + totalDocs) / (1 + docFreq)) + 1;
+      const value = termFrequency * idf;
+      weighted.set(token, value);
+      normSquared += value * value;
+    }
+    return {
+      weighted,
+      norm: Math.sqrt(normSquared),
+    };
+  };
+
+  const seedVector = tfidf(seedBag);
+  if (!seedVector.norm) return candidateBags.map(() => 0);
+
+  return candidateBags.map((candidateBag) => {
+    const candidateVector = tfidf(candidateBag);
+    if (!candidateVector.norm) return 0;
+    let dot = 0;
+    for (const [token, seedValue] of seedVector.weighted.entries()) {
+      dot += seedValue * (candidateVector.weighted.get(token) ?? 0);
+    }
+    return clamp01(dot / (seedVector.norm * candidateVector.norm));
+  });
+}
+
+function normalizeScoreArray(values: number[]): number[] {
+  const finiteValues = values.filter((value) => Number.isFinite(value));
+  if (!finiteValues.length) return values.map(() => 0);
+  const min = Math.min(...finiteValues);
+  const max = Math.max(...finiteValues);
+  if (max === min) {
+    return values.map((value) => (Number.isFinite(value) && value > 0 ? 1 : 0));
+  }
+  return values.map((value) =>
+    Number.isFinite(value) ? clamp01((value - min) / (max - min)) : 0,
+  );
+}
+
+function calculateBaseHeuristicScore(
+  candidate: RecCandidate,
+  kind: RecommendationBucket,
+): number {
+  const voteAverage = candidate.voteAverage ?? 0;
+  const voteCount = candidate.voteCount ?? 0;
+  const popularity = candidate.popularity ?? 0;
+  const votes = Math.log10(Math.max(1, voteCount + 1));
+  const sources = new Set(candidate.sources ?? []);
+  let boost = 0;
+  if (sources.has('recommendations')) boost += 1.0;
+  if (sources.has('similar')) boost += 0.6;
+  if (sources.has('discover_released')) boost += 0.25;
+  if (sources.has('discover_upcoming')) boost += 0.25;
+  if (sources.has('discover_fallback')) boost += 0.15;
+  if (sources.has('google')) boost += 0.3;
+  if (sources.has('global_language')) boost += 0.45;
+  if (sources.has('hidden_gem')) boost += 0.4;
+
+  return kind === 'released'
+    ? voteAverage * 2 + votes + popularity * 0.02 + boost
+    : popularity * 0.05 + voteAverage + votes * 0.25 + boost;
+}
+
+function calculateQualityRawScore(candidate: RecCandidate): number {
+  const voteAverage = candidate.voteAverage ?? 0;
+  const voteCount = candidate.voteCount ?? 0;
+  return voteAverage * 0.8 + Math.log10(Math.max(1, voteCount + 1)) * 1.4;
+}
+
+function calculateNoveltyRawScore(params: {
+  seed: SeedProfile;
+  candidate: RecCandidate;
+  metadata: TmdbRecommendationMetadata | null;
+  lane: RecommendationLane;
+}): number {
+  const seedGenreSet = new Set(
+    params.seed.genreNames.map((genre) => normalizeTitleKey(genre)),
+  );
+  const candidateGenreSet = new Set(
+    (params.metadata?.genreNames ?? [])
+      .map((genre) => normalizeTitleKey(genre))
+      .filter(Boolean),
+  );
+
+  let overlap = 0;
+  for (const genre of candidateGenreSet) {
+    if (seedGenreSet.has(genre)) overlap += 1;
+  }
+  const union = new Set([...seedGenreSet, ...candidateGenreSet]).size;
+  const genreDistance = union
+    ? 1 - overlap / union
+    : seedGenreSet.size || candidateGenreSet.size
+      ? 0.45
+      : 0.2;
+
+  const candidateLanguage =
+    params.metadata?.originalLanguage ??
+    (typeof params.candidate.originalLanguage === 'string'
+      ? params.candidate.originalLanguage.trim().toLowerCase()
+      : null);
+  const languageDistance =
+    candidateLanguage && params.seed.originalLanguage
+      ? candidateLanguage !== params.seed.originalLanguage
+        ? 1
+        : 0
+      : candidateLanguage
+        ? 0.65
+        : 0.15;
+
+  const seedCountries = new Set(params.seed.originCountryCodes);
+  const candidateCountries = new Set(
+    (params.metadata?.originCountryCodes ?? [])
+      .map((code) => code.trim().toUpperCase())
+      .filter(Boolean),
+  );
+  let sharedCountry = false;
+  for (const country of candidateCountries) {
+    if (seedCountries.has(country)) {
+      sharedCountry = true;
+      break;
+    }
+  }
+  const countryDistance =
+    candidateCountries.size && seedCountries.size
+      ? sharedCountry
+        ? 0
+        : 1
+      : candidateCountries.size || seedCountries.size
+        ? 0.4
+        : 0.15;
+
+  return (
+    genreDistance * 0.55 +
+    languageDistance * 0.3 +
+    countryDistance * 0.15 +
+    (params.lane === 'wildcard' ? 0.1 : 0)
+  );
+}
+
+function calculateIndieRawScore(params: {
+  seed: SeedProfile;
+  candidate: RecCandidate;
+  metadata: TmdbRecommendationMetadata | null;
+}): number {
+  const popularity = Math.max(0, params.candidate.popularity ?? 0);
+  const voteAverage = Math.max(0, params.candidate.voteAverage ?? 0);
+  const candidateLanguage =
+    params.metadata?.originalLanguage ??
+    (typeof params.candidate.originalLanguage === 'string'
+      ? params.candidate.originalLanguage.trim().toLowerCase()
+      : null);
+  const sources = new Set(params.candidate.sources ?? []);
+
+  let sourceBoost = 0;
+  if (sources.has('hidden_gem')) sourceBoost += 0.3;
+  if (sources.has('global_language')) sourceBoost += 0.25;
+
+  const languageBonus =
+    candidateLanguage && params.seed.originalLanguage
+      ? candidateLanguage !== params.seed.originalLanguage
+        ? 0.3
+        : 0
+      : candidateLanguage
+        ? 0.2
+        : 0;
+
+  const lowPopularityBonus = 1 / (1 + Math.log10(popularity + 10));
+
+  return lowPopularityBonus + voteAverage / 20 + sourceBoost + languageBonus;
+}
+
+function getRankingWeights(params: {
+  intent: RecommendationIntent;
+  kind: RecommendationBucket;
+  lane: RecommendationLane;
+}): {
+  base: number;
+  content: number;
+  quality: number;
+  novelty: number;
+  indie: number;
+  popularityPenalty: number;
+} {
+  if (params.lane === 'wildcard') {
+    return {
+      base: 0.08,
+      content: 0.08,
+      quality: 0.38,
+      novelty: 0.25,
+      indie: 0.31,
+      popularityPenalty: 0.18,
+    };
+  }
+  if (params.intent === 'change_of_taste') {
+    return params.kind === 'upcoming'
+      ? {
+          base: 0.18,
+          content: 0.08,
+          quality: 0.24,
+          novelty: 0.5,
+          indie: 0,
+          popularityPenalty: 0,
+        }
+      : {
+          base: 0.18,
+          content: 0.12,
+          quality: 0.28,
+          novelty: 0.42,
+          indie: 0,
+          popularityPenalty: 0,
+        };
+  }
+  return params.kind === 'upcoming'
+    ? {
+        base: 0.44,
+        content: 0.2,
+        quality: 0.14,
+        novelty: 0.22,
+        indie: 0,
+        popularityPenalty: 0,
+      }
+    : {
+        base: 0.38,
+        content: 0.3,
+        quality: 0.2,
+        novelty: 0.12,
+        indie: 0,
+        popularityPenalty: 0,
+      };
+}
+
+function computeWildcardQuota(params: {
+  intent: RecommendationIntent;
+  count: number;
+}): number {
+  if (params.intent === 'latest_watched') {
+    if (params.count < 10) return 0;
+    return Math.min(2, Math.max(0, Math.floor(params.count * 0.1)));
+  }
+  if (params.count < 6) return 0;
+  return Math.max(1, Math.min(5, Math.floor(params.count * 0.25)));
+}
+
+function buildGlobalLanguageQueue(seedLanguage: string | null): string[] {
+  const normalizedSeed =
+    typeof seedLanguage === 'string' && seedLanguage.trim()
+      ? seedLanguage.trim().toLowerCase()
+      : null;
+  return GLOBAL_LANGUAGE_SHORTLIST.filter(
+    (language) => language !== normalizedSeed,
+  );
+}
+
+function passesWildcardQualityFloor(
+  candidate: RecCandidate,
+  mediaType: RecommendationMediaType,
+): boolean {
+  const voteAverage = candidate.voteAverage ?? 0;
+  const voteCount = candidate.voteCount ?? 0;
+
+  if (mediaType === 'movie') {
+    return (
+      voteAverage >= MOVIE_WILDCARD_MIN_VOTE_AVERAGE &&
+      voteCount >= MOVIE_WILDCARD_MIN_VOTE_COUNT
+    );
+  }
+
+  return (
+    voteAverage >= TV_WILDCARD_MIN_VOTE_AVERAGE &&
+    voteCount >= TV_WILDCARD_MIN_VOTE_COUNT
+  );
+}
+
+function mixLaneTitles(params: {
+  count: number;
+  standardTitles: string[];
+  wildcardTitles: string[];
+  quota: number;
+  leadStandardCount: number;
+  repeatStandardChunk: number;
+}): string[] {
+  const out: string[] = [];
+  const used = new Set<string>();
+  let standardIndex = 0;
+  let wildcardIndex = 0;
+  let wildcardUsed = 0;
+
+  const addTitle = (raw: string) => {
+    const title = raw.trim();
+    if (!title) return false;
+    const key = normalizeTitleKey(title);
+    if (!key || used.has(key)) return false;
+    used.add(key);
+    out.push(title);
+    return true;
+  };
+
+  const takeStandard = (limit: number) => {
+    let taken = 0;
+    while (
+      taken < limit &&
+      standardIndex < params.standardTitles.length &&
+      out.length < params.count
+    ) {
+      if (addTitle(params.standardTitles[standardIndex] ?? '')) taken += 1;
+      standardIndex += 1;
+    }
+  };
+
+  const takeWildcard = () => {
+    while (
+      wildcardUsed < params.quota &&
+      wildcardIndex < params.wildcardTitles.length &&
+      out.length < params.count
+    ) {
+      const title = params.wildcardTitles[wildcardIndex] ?? '';
+      wildcardIndex += 1;
+      if (!addTitle(title)) continue;
+      wildcardUsed += 1;
+      return true;
+    }
+    return false;
+  };
+
+  takeStandard(params.leadStandardCount);
+  takeWildcard();
+
+  while (
+    out.length < params.count &&
+    standardIndex < params.standardTitles.length
+  ) {
+    takeStandard(params.repeatStandardChunk);
+    takeWildcard();
+  }
+
+  while (
+    out.length < params.count &&
+    standardIndex < params.standardTitles.length
+  ) {
+    addTitle(params.standardTitles[standardIndex] ?? '');
+    standardIndex += 1;
+  }
+
+  while (out.length < params.count && wildcardUsed < params.quota) {
+    if (!takeWildcard()) break;
+  }
+
+  return out.slice(0, params.count);
+}
+
+function countInjectedWildcardTitles(params: {
+  mixedTitles: string[];
+  standardTitles: string[];
+  wildcardTitles: string[];
+}): number {
+  const standardSet = new Set(
+    params.standardTitles.map((title) => normalizeTitleKey(title)),
+  );
+  const wildcardSet = new Set(
+    params.wildcardTitles.map((title) => normalizeTitleKey(title)),
+  );
+  let count = 0;
+  for (const title of params.mixedTitles) {
+    const key = normalizeTitleKey(title);
+    if (!key) continue;
+    if (wildcardSet.has(key) && !standardSet.has(key)) count += 1;
+  }
+  return count;
+}
+
 function scoreAndSortCandidates(
   candidates: Array<{
     tmdbId: number;
@@ -1840,6 +2986,7 @@ function scoreAndSortCandidates(
     voteAverage: number | null;
     voteCount: number | null;
     popularity: number | null;
+    originalLanguage?: string | null;
     sources: string[];
   }>,
   params: { kind: 'released' | 'upcoming' },
@@ -1850,33 +2997,15 @@ function scoreAndSortCandidates(
   voteAverage: number | null;
   voteCount: number | null;
   popularity: number | null;
+  originalLanguage?: string | null;
   sources: string[];
   score: number;
 }> {
-  const sourceBoost = (sources: string[]) => {
-    const s = new Set(sources);
-    let boost = 0;
-    if (s.has('recommendations')) boost += 1.0;
-    if (s.has('similar')) boost += 0.6;
-    if (s.has('discover_released')) boost += 0.25;
-    if (s.has('discover_upcoming')) boost += 0.25;
-    if (s.has('google')) boost += 0.3;
-    return boost;
-  };
-
   const scored = candidates.map((c) => {
-    const voteAvg = c.voteAverage ?? 0;
-    const voteCount = c.voteCount ?? 0;
-    const pop = c.popularity ?? 0;
-    const votes = Math.log10(Math.max(1, voteCount + 1));
-    const boost = sourceBoost(c.sources ?? []);
-
-    const score =
-      params.kind === 'released'
-        ? voteAvg * 2 + votes + pop * 0.02 + boost
-        : pop * 0.05 + voteAvg + votes * 0.25 + boost;
-
-    return { ...c, score };
+    return {
+      ...c,
+      score: calculateBaseHeuristicScore(c, params.kind),
+    };
   });
 
   scored.sort((a, b) => b.score - a.score);

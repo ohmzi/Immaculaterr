@@ -171,4 +171,123 @@ describe('TmdbService', () => {
     ).rejects.toBeInstanceOf(BadGatewayException);
     expect(ipv4FallbackSpy).not.toHaveBeenCalled();
   });
+
+  it('includes original language and origin countries in movie seed metadata', async () => {
+    jest.spyOn(service, 'searchMovie').mockResolvedValueOnce([
+      {
+        id: 321,
+        title: 'Seed Movie',
+        release_date: '2024-05-01',
+        vote_average: 7.8,
+        vote_count: 400,
+        popularity: 30,
+      },
+    ] as never);
+    jest.spyOn(service, 'getMovie').mockResolvedValueOnce({
+      id: 321,
+      title: 'Seed Movie',
+      release_date: '2024-05-01',
+      overview: 'A science fiction mystery.',
+      original_language: 'ja',
+      genres: [
+        { id: 878, name: 'Science Fiction' },
+        { id: 9648, name: 'Mystery' },
+      ],
+      production_countries: [
+        { iso_3166_1: 'JP', name: 'Japan' },
+        { iso_3166_1: 'FR', name: 'France' },
+      ],
+    } as never);
+
+    await expect(
+      service.getSeedMetadata({
+        apiKey: 'key-123',
+        seedTitle: 'Seed Movie',
+        seedYear: 2024,
+      }),
+    ).resolves.toEqual({
+      seed_title: 'Seed Movie',
+      tmdb_id: 321,
+      title: 'Seed Movie',
+      year: '2024',
+      genres: ['Science Fiction', 'Mystery'],
+      overview: 'A science fiction mystery.',
+      original_language: 'ja',
+      origin_country_codes: ['JP', 'FR'],
+    });
+  });
+
+  it('builds language-scoped global movie discovery queries and excludes the seed language', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        status: 200,
+        json: {
+          page: 1,
+          total_pages: 1,
+          results: [
+            {
+              id: 10,
+              title: 'Japanese Gem',
+              release_date: '2021-01-01',
+              vote_average: 8.1,
+              vote_count: 250,
+              popularity: 15,
+            },
+          ],
+        },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        status: 200,
+        json: {
+          page: 1,
+          total_pages: 1,
+          results: [
+            {
+              id: 11,
+              title: 'Spanish Gem',
+              release_date: '2020-05-05',
+              vote_average: 7.9,
+              vote_count: 190,
+              popularity: 12,
+            },
+          ],
+        },
+      }),
+    );
+
+    const discovered = await service.discoverGlobalLanguageMovieCandidates({
+      apiKey: 'key-123',
+      limit: 2,
+      genreIds: [18, 53],
+      matchMode: 'exclude',
+      languages: ['en', 'ja', 'es'],
+      excludeLanguage: 'en',
+      timezone: 'America/Toronto',
+    });
+
+    expect(discovered).toEqual([
+      expect.objectContaining({
+        title: 'Japanese Gem',
+        originalLanguage: 'ja',
+        sources: ['global_language'],
+      }),
+      expect.objectContaining({
+        title: 'Spanish Gem',
+        originalLanguage: 'es',
+        sources: ['global_language'],
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const calls = fetchMock.mock.calls as Array<[URL, RequestInit | undefined]>;
+    const firstUrl = calls[0]?.[0];
+    const secondUrl = calls[1]?.[0];
+
+    expect(firstUrl.searchParams.get('with_original_language')).toBe('ja');
+    expect(secondUrl.searchParams.get('with_original_language')).toBe('es');
+    expect(firstUrl.searchParams.get('without_genres')).toBe('18,53');
+    expect(secondUrl.searchParams.get('without_genres')).toBe('18,53');
+  });
 });

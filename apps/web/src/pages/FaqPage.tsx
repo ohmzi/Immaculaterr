@@ -1632,15 +1632,55 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Recommendation generation always starts with TMDB. The final list then depends on
-                which optional services you enabled in Vault.
+                Recommendation generation always starts with TMDB, then follows the same broad
+                pipeline no matter which task triggered it.
+              </p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Seed resolution:</span> the watched
+                  title, manual seed, or imported history title is resolved to TMDB metadata.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Candidate pools:</span> TMDB builds
+                  released, upcoming, and fallback candidate pools. The released-vs-upcoming dial
+                  shapes the target mix while the system keeps at least 25% of the final list in
+                  already released titles.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Optional widening / curation:</span>{' '}
+                  Google can widen discovery by surfacing extra titles from the web, and those titles
+                  are resolved back through TMDB before they are trusted. OpenAI can then curate the
+                  final list from the TMDB-validated candidates.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Finalization:</span> the list is
+                  deduplicated, capped to the configured run size, and stored as the report&apos;s{' '}
+                  <span className="font-semibold text-white/85">Generated</span> list.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Plex resolution:</span> generated
+                  titles are matched against Plex. Found titles can become active items, missing
+                  titles stay pending, and fetch-enabled tasks can route those missing titles to
+                  Radarr, Sonarr, or Seerr.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Collection rebuild:</span>{' '}
+                  refresher-style runs rebuild the managed Plex collections from the saved dataset.
+                  Immaculate Taste reports now show exactly which titles were newly added to each
+                  specific collection during that rebuild.
+                </li>
+              </ol>
+              <p className="mt-3">
+                For Immaculate Taste profiles, profile genre and audio-language rules are applied
+                before points are updated, so each profile only keeps recommendations that fit its
+                own rules.
               </p>
               <div className="space-y-3">
                 <div>
                   <div className="font-semibold text-white/85">Variant 1: TMDB only</div>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>TMDB builds the candidate pools.</li>
-                    <li>The final list comes from TMDB&apos;s own selection.</li>
+                    <li>The final list comes from deterministic TMDB-based selection.</li>
                     <li>The released-vs-upcoming dial still shapes the mix.</li>
                   </ul>
                 </div>
@@ -1650,7 +1690,7 @@ export const FaqPage = () => {
                   <ul className="list-disc pl-5 space-y-1">
                     <li>TMDB builds candidate pools first.</li>
                     <li>OpenAI curates the final list from those TMDB candidates.</li>
-                    <li>The released-vs-upcoming dial still shapes the mix.</li>
+                    <li>If OpenAI is unavailable or skipped, the run falls back to the TMDB-based selection.</li>
                   </ul>
                 </div>
 
@@ -1658,14 +1698,14 @@ export const FaqPage = () => {
                   <div className="font-semibold text-white/85">Variant 3: TMDB + Google + OpenAI</div>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>TMDB builds the candidate pools.</li>
-                    <li>Google widens discovery with extra web context.</li>
-                    <li>OpenAI uses the TMDB candidates plus that context to curate the final list.</li>
+                    <li>Google widens discovery with extra web context, but titles still have to resolve back through TMDB before they are used.</li>
+                    <li>OpenAI uses the TMDB-validated candidates plus that extra context to curate the final list.</li>
                   </ul>
                 </div>
               </div>
               <p className="mt-3">
-                In every variant, Rewind shows the per-service breakdown plus the final "Generated"
-                list.
+                In every variant, Rewind shows the per-service breakdown plus the final{' '}
+                <span className="font-semibold text-white/85">Generated</span> list.
               </p>
             </>
           ),
@@ -1722,6 +1762,34 @@ export const FaqPage = () => {
               On refresh, Immaculaterr checks pending titles against Plex. If a title is now found in
               Plex, it is marked active and becomes eligible for the collection rebuild.
             </p>
+          ),
+        },
+        {
+          id: 'collections-newly-added-report',
+          question: 'What does "Newly added to collection" mean in the report?',
+          answer: (
+            <>
+              <p>
+                It lists the exact titles that were not in the previous snapshot of that specific
+                managed collection but are present after the rebuild.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  It is grouped per collection/library, so the default Immaculate Taste collection
+                  and profile-specific collections like Animation are reported separately.
+                </li>
+                <li>
+                  A title can appear in <span className="font-semibold text-white/85">Generated</span>{' '}
+                  or <span className="font-semibold text-white/85">Resolved in Plex</span> without
+                  appearing here if it was already part of that collection before the run.
+                </li>
+                <li>
+                  In <span className="font-semibold text-white/85">See raw response</span>, look for{' '}
+                  <code className="font-mono">collectionAdditionsByLibrary</code> and{' '}
+                  <code className="font-mono">collectionAdditionsTotal</code>.
+                </li>
+              </ul>
+            </>
           ),
         },
         {

@@ -676,27 +676,36 @@ When multiple Plex users are monitored, Immaculaterr appends the viewer name so 
 
 ### How are recommendation titles generated?
 
-Recommendation generation always starts with TMDB. The final list then depends on which optional services you enabled in Vault.
+Recommendation generation always starts with TMDB, then follows the same broad pipeline no matter which task triggered it:
+
+1. **Seed resolution** — the watched title, manual seed, or imported history title is resolved to TMDB metadata.
+2. **Candidate pools** — TMDB builds released, upcoming, and fallback candidate pools. The released-vs-upcoming dial shapes the target mix, while the system keeps at least 25% of the final list in already released titles.
+3. **Optional widening / curation** — Google can widen discovery by surfacing extra titles from the web, and those titles are resolved back through TMDB before they are trusted. OpenAI can then curate the final list from the TMDB-validated candidates.
+4. **Finalization** — the list is deduplicated, capped to the configured run size, and stored as the report's **Generated** list.
+5. **Plex resolution** — generated titles are matched against Plex. Found titles can become active items, missing titles stay pending, and fetch-enabled tasks can route those missing titles to Radarr, Sonarr, or Seerr.
+6. **Collection rebuild** — refresher-style runs rebuild the managed Plex collections from the saved dataset. Immaculate Taste reports now show exactly which titles were newly added to each specific collection during that rebuild.
+
+For Immaculate Taste profiles, profile genre and audio-language rules are applied before points are updated, so each profile only keeps recommendations that fit its own rules.
 
 #### Variant 1: TMDB only
 
 - TMDB builds the candidate pools.
-- The final list comes from TMDB's own selection.
+- The final list comes from deterministic TMDB-based selection.
 - The released-vs-upcoming dial still shapes the mix.
 
 #### Variant 2: TMDB + OpenAI
 
 - TMDB builds candidate pools first.
 - OpenAI curates the final list from those TMDB candidates.
-- The released-vs-upcoming dial still shapes the mix.
+- If OpenAI is unavailable or skipped, the run falls back to the TMDB-based selection.
 
 #### Variant 3: TMDB + Google + OpenAI
 
 - TMDB builds the candidate pools.
-- Google widens discovery with extra web context.
-- OpenAI uses the TMDB candidates plus that context to curate the final list.
+- Google widens discovery with extra web context, but titles still have to resolve back through TMDB before they are used.
+- OpenAI uses the TMDB-validated candidates plus that extra context to curate the final list.
 
-In every variant, Rewind shows the per-service breakdown plus the final "Generated" list.
+In every variant, Rewind shows the per-service breakdown plus the final **Generated** list.
 
 ### What does the ratio of future releases vs current releases do?
 
@@ -716,6 +725,14 @@ If the job is allowed to fetch missing items, Immaculaterr can send those missin
 ### How does the refresher move items from pending to active?
 
 On refresh, Immaculaterr checks pending titles against Plex. If a title is now found in Plex, it is marked active and becomes eligible for the collection rebuild.
+
+### What does "Newly added to collection" mean in the report?
+
+It lists the exact titles that were not in the previous snapshot of that specific managed collection but are present after the rebuild.
+
+- It is grouped per collection/library, so the default Immaculate Taste collection and profile-specific collections like Animation are reported separately.
+- A title can appear in **Generated** or **Resolved in Plex** without appearing here if it was already part of that collection before the run.
+- In **See raw response**, look for `collectionAdditionsByLibrary` and `collectionAdditionsTotal`.
 
 ### Why do I see "not enabled" or "skipped"?
 

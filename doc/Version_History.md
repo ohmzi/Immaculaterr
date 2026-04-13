@@ -3,6 +3,23 @@ Version History
 
 This file tracks notable changes by version.
 
+1.7.7-beta-3
+---
+
+- What's new since 1.7.7-beta-2:
+- Collection-addition reporting:
+  - Immaculate Taste refresher and chained collection reports now include a dedicated "Newly added to collection" card.
+  - That card lists the exact titles that were not in the previous managed collection snapshot but are present after the rebuild.
+  - Additions are reported per library and per collection lane, so the default Immaculate Taste collection and profile-specific collections such as Animation stay separate.
+  - Raw report payloads now expose `collectionAdditionsByLibrary` and `collectionAdditionsTotal` for debugging, exports, and automation.
+- Recommendation transparency:
+  - Reports still show the recommendation-source breakdown for TMDB, optional Google, optional OpenAI, the final generated list, and Plex resolution results.
+  - The new additions card makes it easier to tell which resolved titles actually changed the final collection versus titles that were already present.
+  - Collection rebuilds now compare against the prior managed collection contents, so "newly added" means new to that specific collection rather than simply new to Plex.
+- Docs and release notes:
+  - README and FAQ now explain how seed titles become candidate pools, how optional services refine the list, and how pending titles move into refreshed collections.
+  - Version History and What's New now call out the new reporting so it is easier to spot when upgrading.
+
 1.7.7-beta-2
 ---
 
