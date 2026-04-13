@@ -39,46 +39,20 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.7-beta-3',
     popupHighlights: [
-      'Recommendations now use a multi-factor ranking engine that blends similarity, quality, novelty, and indie/popularity signals.',
-      'A new wildcard lane injects global-language standouts and hidden gems into recommendation sets.',
-      'TMDB metadata, seed profiling, and interleaving were expanded so latest-watched and change-of-taste runs rank titles differently.',
+      'This beta combines the earlier beta-2 work into one beta-3 release.',
+      'Recommendations now use a smarter ranking engine with wildcard picks for global-language standouts and hidden gems.',
+      'Netflix CSV imports are more reliable on larger uploads and now show friendlier timeout errors.',
+      'Rotten Tomatoes Upcoming Movies and repeat-watch dedupe for Plex auto-runs are both included in this beta.',
     ],
     sections: [
       {
-        title: 'Enhanced ranking system',
+        title: 'Smarter recommendations',
         bullets: [
-          'Replaced the older heuristic scoring with a multi-factor ranking engine.',
-          'Candidates are now scored across quality, content similarity, novelty, and indie/popularity value.',
-          'Similarity uses richer text and genre signals instead of simpler title-only matching.',
+          'Replaced the older heuristic scoring with a multi-factor ranking engine that balances similarity, quality, novelty, and indie or popularity signals.',
+          'Added a wildcard lane for global-language standouts and hidden gems, then mixed those picks into the main set without overwhelming the core recommendations.',
+          'Expanded TMDB metadata, seed profiling, contextual weights, and interleaving so latest-watched and change-of-taste runs can rank titles differently.',
         ],
       },
-      {
-        title: 'Wildcard discovery lane',
-        bullets: [
-          'Added a wildcard lane that can inject global-language titles into the final mix.',
-          'The same lane can surface hidden gems by favoring strong ratings with lower popularity.',
-          'Wildcard picks are mixed into the main set without overwhelming the primary recommendations.',
-        ],
-      },
-      {
-        title: 'Context-aware ranking',
-        bullets: [
-          'Seed profiling now captures language and origin details for better diversity decisions.',
-          'Ranking weights now change by mode, so latest-watched and change-of-taste runs emphasize different signals.',
-          'TMDB discovery and interleaving logic were expanded to support released, upcoming, and wildcard balancing.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.7.7-beta-2',
-    popupHighlights: [
-      'Netflix CSV imports now batch database writes before queueing follow-up processing, which reduces SQLite contention on larger uploads.',
-      'Netflix import errors now fall back to a friendly message instead of surfacing raw proxy HTML when an upstream timeout page is returned.',
-      'Rotten Tomatoes Upcoming Movies adds a fixed-source movie discovery task that routes safe matches to Radarr or Seerr.',
-      'Plex watched auto-runs now skip repeat watches of the same exact movie or episode after a successful run, while manual and scheduled runs stay available.',
-    ],
-    sections: [
       {
         title: 'Netflix import reliability',
         bullets: [

@@ -6,29 +6,15 @@ This file tracks notable changes by version.
 1.7.7-beta-3
 ---
 
-- What's new since 1.7.7-beta-2:
-- Enhanced ranking system:
-  - Replaced the older heuristic scoring with a multi-factor ranking engine.
-  - Candidates are now scored across quality, content similarity, novelty, and indie/popularity value.
-  - Similarity uses richer text and genre signals instead of simpler title-only matching.
-- Wildcard lane:
-  - Added a wildcard lane that can inject global-language titles into the final mix.
-  - The same lane can surface hidden gems by favoring strong ratings with lower popularity.
-  - Wildcard picks are mixed into the main set without overwhelming the primary recommendations.
-- Context-aware ranking:
-  - Seed profiling now captures language and origin details for better diversity decisions.
-  - Ranking weights now change by mode, so latest-watched and change-of-taste runs emphasize different signals.
-  - TMDB discovery and interleaving logic were expanded to support released, upcoming, and wildcard balancing.
-
-1.7.7-beta-2
----
-
-- What's new since 1.7.7-beta-1:
+- What's new in this combined beta 3 release:
+- Smarter recommendations:
+  - Replaced the older heuristic scoring with a multi-factor ranking engine that balances similarity, quality, novelty, and indie or popularity signals.
+  - Added a wildcard lane for global-language standouts and hidden gems, then mixed those picks into the main set without overwhelming the core recommendations.
+  - Expanded TMDB metadata, seed profiling, contextual weights, and interleaving so latest-watched and change-of-taste runs can rank titles differently.
 - Netflix import reliability:
   - Batches Netflix CSV persistence before queueing follow-up processing so larger imports stop hammering SQLite one row at a time.
   - Preserves duplicate detection while falling back safely if a concurrent insert races the batch write.
   - Returns a friendlier import error in the UI instead of surfacing raw proxy HTML when an upstream timeout page is encountered.
-- Existing beta 1 changes:
 - Rotten Tomatoes Upcoming Movies:
   - Adds a new Task Manager job that scrapes fixed Rotten Tomatoes upcoming and newest movie pages.
   - Deduplicates discovered titles, applies conservative title-and-year matching, and only routes safe matches onward.
