@@ -62,8 +62,8 @@
   - Pending work survives restarts, duplicate auto-runs are skipped cleanly, and Rewind shows queued/running status with ETA context.
 
 - **Builds a Fresh Out Of The Oven row**
-  - Creates a recent-release movie row on homescreen of the movies that have been released last 3 months
-  - Only shows movies that specific user has not watched yet
+  - Creates Fresh Out movie and TV rows on the homescreen from titles first released in the last 3 months
+  - Only shows movies and shows that specific user has not watched yet
 
 - **Builds a TMDB Upcoming Movie row**
   - Pulls upcoming movie picks from TMDB. So your collection is always upto date with the latest movies and shows being released. 

@@ -1367,6 +1367,7 @@ export class PlexServerService {
       ratingKey: string;
       title: string;
       tvdbId: number | null;
+      tmdbId: number | null;
       addedAt: number | null;
       year: number | null;
     }>
@@ -1684,6 +1685,7 @@ export class PlexServerService {
       ratingKey: string;
       title: string;
       tvdbId: number | null;
+      tmdbId: number | null;
       addedAt: number | null;
       year: number | null;
     }>
@@ -1704,6 +1706,7 @@ export class PlexServerService {
       ratingKey: string;
       title: string;
       tvdbId: number | null;
+      tmdbId: number | null;
       addedAt: number | null;
       year: number | null;
     }> = [];
@@ -1714,6 +1717,9 @@ export class PlexServerService {
       const title = typeof it.title === 'string' ? it.title : rk;
       const tvdbId = it.Guid
         ? (extractIdsFromGuids(it.Guid, 'tvdb')[0] ?? null)
+        : null;
+      const tmdbId = it.Guid
+        ? (extractIdsFromGuids(it.Guid, 'tmdb')[0] ?? null)
         : null;
       const addedAt =
         typeof it.addedAt === 'number'
@@ -1738,7 +1744,7 @@ export class PlexServerService {
               })()
             : null;
 
-      out.push({ ratingKey: rk, title, tvdbId, addedAt, year });
+      out.push({ ratingKey: rk, title, tvdbId, tmdbId, addedAt, year });
     }
 
     if (params.sectionTitle) {

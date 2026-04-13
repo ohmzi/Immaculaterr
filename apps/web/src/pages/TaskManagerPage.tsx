@@ -185,7 +185,7 @@ const JOB_CONFIG: Record<
     icon: <Clapperboard className="w-8 h-8" />,
     color: 'text-orange-300',
     description:
-      'Builds a last-3-months recent-release movie baseline and refreshes each user’s unseen collection.',
+      'Builds last-3-months recent movie releases and TV premieres, then refreshes each user’s unseen Fresh Out collections.',
   },
   immaculateTastePoints: {
     icon: <Sparkles className="w-8 h-8" />,
@@ -662,6 +662,7 @@ function normalizeRottenTomatoesUpcomingSettings(
 }
 
 const TASK_MANAGER_AUTO_EXPAND_SEEN_KEY = 'immaculaterr.taskManager.autoExpandSeen.v1';
+const FRESH_OUT_CATEGORY_LOCK_REASON = 'At least one category must stay enabled.';
 
 export function TaskManagerPage() {
   const location = useLocation();
@@ -767,6 +768,8 @@ export function TaskManagerPage() {
   const faqLinkButtonClass =
     'inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs';
   const [webhookAutoRun, setWebhookAutoRun] = useState<Record<string, boolean>>({});
+  const [freshOutIncludeMovies, setFreshOutIncludeMovies] = useState(true);
+  const [freshOutIncludeShows, setFreshOutIncludeShows] = useState(true);
   const [arrMonitoredIncludeRadarr, setArrMonitoredIncludeRadarr] = useState(true);
   const [arrMonitoredIncludeSonarr, setArrMonitoredIncludeSonarr] = useState(true);
   const [mediaAddedCleanupDeleteDuplicates, setMediaAddedCleanupDeleteDuplicates] =
@@ -1197,6 +1200,15 @@ export function TaskManagerPage() {
       queryClient.setQueryData(['publicSettings'], data);
     },
   });
+  const freshOutOptionsMutation = useMutation({
+    mutationFn: async (patch: { includeMovies?: boolean; includeShows?: boolean }) =>
+      putSettings({
+        settings: { jobs: { freshOutOfTheOven: patch } },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['publicSettings'], data);
+    },
+  });
 
   useEffect(() => {
     if (arrMonitoredSearchOptionsMutation.isPending) return;
@@ -1210,6 +1222,19 @@ export function TaskManagerPage() {
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [settingsQuery.data?.settings, arrMonitoredSearchOptionsMutation.isPending]);
+
+  useEffect(() => {
+    if (freshOutOptionsMutation.isPending) return;
+    const settings = settingsQuery.data?.settings;
+    if (!settings) return;
+    const includeMovies = readBool(settings, 'jobs.freshOutOfTheOven.includeMovies');
+    const includeShows = readBool(settings, 'jobs.freshOutOfTheOven.includeShows');
+    const timeout = window.setTimeout(() => {
+      setFreshOutIncludeMovies(includeMovies ?? true);
+      setFreshOutIncludeShows(includeShows ?? true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [settingsQuery.data?.settings, freshOutOptionsMutation.isPending]);
 
   const mediaAddedCleanupFeaturesMutation = useMutation({
     mutationFn: async (patch: {
@@ -2625,6 +2650,50 @@ export function TaskManagerPage() {
       openIntegrationSetupDialog,
     ],
   );
+  const handleToggleFreshOutIncludeMovies = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      if (freshOutIncludeMovies && !freshOutIncludeShows) return;
+      const prevMovies = freshOutIncludeMovies;
+      const nextMovies = !prevMovies;
+      setFreshOutIncludeMovies(nextMovies);
+      freshOutOptionsMutation.mutate(
+        { includeMovies: nextMovies },
+        {
+          onError: () => {
+            setFreshOutIncludeMovies(prevMovies);
+          },
+        },
+      );
+    },
+    [
+      freshOutIncludeMovies,
+      freshOutIncludeShows,
+      freshOutOptionsMutation,
+    ],
+  );
+  const handleToggleFreshOutIncludeShows = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      if (freshOutIncludeShows && !freshOutIncludeMovies) return;
+      const prevShows = freshOutIncludeShows;
+      const nextShows = !prevShows;
+      setFreshOutIncludeShows(nextShows);
+      freshOutOptionsMutation.mutate(
+        { includeShows: nextShows },
+        {
+          onError: () => {
+            setFreshOutIncludeShows(prevShows);
+          },
+        },
+      );
+    },
+    [
+      freshOutIncludeMovies,
+      freshOutIncludeShows,
+      freshOutOptionsMutation,
+    ],
+  );
   const updateTmdbUpcomingSettings = useCallback(
     (
       updater: (prev: TmdbUpcomingSettingsDraft) => TmdbUpcomingSettingsDraft,
@@ -3615,7 +3684,8 @@ export function TaskManagerPage() {
               const supportsSchedule = !UNSCHEDULABLE_JOB_IDS.has(job.id);
               const showsAdvancedTaskSettingsWhenDisabled =
                 job.id === 'tmdbUpcomingMovies' ||
-                job.id === 'rottenTomatoesUpcomingMovies';
+                job.id === 'rottenTomatoesUpcomingMovies' ||
+                job.id === 'freshOutOfTheOven';
               const webhookEnabled =
                 webhookAutoRun[job.id] ??
                 (readBool(settingsQuery.data?.settings, `jobs.webhookEnabled.${job.id}`) ??
@@ -3630,6 +3700,16 @@ export function TaskManagerPage() {
                 !mediaAddedCleanupDeleteDuplicates &&
                 !mediaAddedCleanupUnmonitorInArr &&
                 !mediaAddedCleanupRemoveFromWatchlist;
+              const freshOutEnabledCount =
+                Number(freshOutIncludeMovies) + Number(freshOutIncludeShows);
+              const freshOutMoviesLocked =
+                job.id === 'freshOutOfTheOven' &&
+                freshOutIncludeMovies &&
+                freshOutEnabledCount === 1;
+              const freshOutShowsLocked =
+                job.id === 'freshOutOfTheOven' &&
+                freshOutIncludeShows &&
+                freshOutEnabledCount === 1;
               const canExpand =
                 (supportsSchedule && Boolean(job.schedule || job.defaultScheduleCron)) ||
                 job.id === 'mediaAddedCleanup' ||
@@ -3745,6 +3825,8 @@ export function TaskManagerPage() {
                                 webhookAutoRunMutation.variables?.jobId === job.id) ||
                               (job.id === 'mediaAddedCleanup' &&
                                 mediaAddedCleanupFeaturesMutation.isPending) ||
+                              (job.id === 'freshOutOfTheOven' &&
+                                freshOutOptionsMutation.isPending) ||
                               (job.id === 'immaculateTastePoints' &&
                                 immaculateIncludeRefresherMutation.isPending) ||
                               (job.id === 'tmdbUpcomingMovies' &&
@@ -5743,6 +5825,130 @@ export function TaskManagerPage() {
                                     <div className="flex items-center gap-2 text-sm text-red-300">
                                       <CircleAlert className="w-4 h-4" />
                                       {(arrMonitoredSearchOptionsMutation.error as Error).message}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {job.id === 'freshOutOfTheOven' && (
+                              <div className="rounded-2xl bg-[#0F0B15]/40 border border-white/5 p-4">
+                                <div className="flex flex-col gap-3">
+                                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                    Fresh Out Categories
+                                  </div>
+
+                                  <div className="flex flex-col sm:flex-row gap-3">
+                                    <div
+                                      className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3"
+                                      title={
+                                        freshOutMoviesLocked
+                                          ? FRESH_OUT_CATEGORY_LOCK_REASON
+                                          : undefined
+                                      }
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Movies
+                                        </div>
+                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                          Keep recent-release movie picks in Fresh Out.
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={freshOutIncludeMovies}
+                                        onClick={handleToggleFreshOutIncludeMovies}
+                                        onPointerDown={handleStopPropagationPointer}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          freshOutOptionsMutation.isPending ||
+                                          freshOutMoviesLocked
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95 disabled:cursor-not-allowed disabled:opacity-70',
+                                          freshOutIncludeMovies
+                                            ? 'bg-[#facc15]'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle Movies for Fresh Out Of The Oven"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            freshOutIncludeMovies
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {freshOutOptionsMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+
+                                    <div
+                                      className="flex items-center justify-between gap-4 rounded-xl bg-[#1a1625]/60 border border-white/10 px-4 py-3"
+                                      title={
+                                        freshOutShowsLocked
+                                          ? FRESH_OUT_CATEGORY_LOCK_REASON
+                                          : undefined
+                                      }
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-white">
+                                          Shows
+                                        </div>
+                                        <div className="mt-1 text-xs text-white/55 leading-relaxed">
+                                          Keep recent TV premieres in Fresh Out.
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={freshOutIncludeShows}
+                                        onClick={handleToggleFreshOutIncludeShows}
+                                        onPointerDown={handleStopPropagationPointer}
+                                        disabled={
+                                          settingsQuery.isLoading ||
+                                          freshOutOptionsMutation.isPending ||
+                                          freshOutShowsLocked
+                                        }
+                                        className={cn(
+                                          'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95 disabled:cursor-not-allowed disabled:opacity-70',
+                                          freshOutIncludeShows
+                                            ? 'bg-[#facc15]'
+                                            : 'bg-[#2a2438] border-2 border-white/10',
+                                        )}
+                                        aria-label="Toggle Shows for Fresh Out Of The Oven"
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                            freshOutIncludeShows
+                                              ? 'translate-x-6'
+                                              : 'translate-x-1',
+                                          )}
+                                        >
+                                          {freshOutOptionsMutation.isPending && (
+                                            <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                          )}
+                                        </span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {freshOutEnabledCount === 1 && (
+                                    <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                                      {FRESH_OUT_CATEGORY_LOCK_REASON}
+                                    </div>
+                                  )}
+
+                                  {freshOutOptionsMutation.isError && (
+                                    <div className="flex items-center gap-2 text-sm text-red-300">
+                                      <CircleAlert className="w-4 h-4" />
+                                      {(freshOutOptionsMutation.error as Error).message}
                                     </div>
                                   )}
                                 </div>

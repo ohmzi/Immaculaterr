@@ -130,6 +130,8 @@ const DEFAULT_COLLECTION_ARTWORK_MAP: Record<string, string> = {
     'change_of_taste_collection',
   [normalizeCollectionTitle('Fresh Out Of The Oven')]:
     'recently_watched_collection',
+  [normalizeCollectionTitle('Fresh Out Of The Oven Show')]:
+    'recently_watched_collection',
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -24,6 +24,8 @@ export const RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME =
 export const CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME = 'Change of Show Taste';
 export const IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME =
   'Inspired by your Immaculate Taste in Shows';
+export const FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME =
+  'Fresh Out Of The Oven Show';
 
 export const CURATED_MOVIE_COLLECTION_HUB_ORDER = [
   RECENTLY_WATCHED_MOVIE_COLLECTION_BASE_NAME,
@@ -40,6 +42,11 @@ export const CURATED_TV_COLLECTION_HUB_ORDER = [
   RECENTLY_WATCHED_SHOW_COLLECTION_BASE_NAME,
   CHANGE_OF_SHOW_TASTE_COLLECTION_BASE_NAME,
   IMMACULATE_TASTE_SHOWS_COLLECTION_BASE_NAME,
+] as const;
+
+export const FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_HUB_ORDER = [
+  ...CURATED_TV_COLLECTION_HUB_ORDER,
+  FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
 ] as const;
 
 const IMMACULATE_TASTE_DEFAULT_BASE_NAME_SET = new Set(
@@ -63,6 +70,7 @@ const CURATED_BASE_HINTS = {
   immaculateTasteMovies: 'inspired by your immaculate taste in movies',
   immaculateTasteShows: 'inspired by your immaculate taste in shows',
   immaculateTasteLegacy: 'inspired by your immaculate taste',
+  freshOutOfTheOvenShow: 'fresh out of the oven show',
   freshOutOfTheOven: 'fresh out of the oven',
 } as const;
 
@@ -184,6 +192,12 @@ function normalizeCuratedBaseName(params: {
         : IMMACULATE_TASTE_MOVIES_COLLECTION_BASE_NAME;
     }
     if (
+      params.mediaType === 'tv' &&
+      value.includes(CURATED_BASE_HINTS.freshOutOfTheOvenShow)
+    ) {
+      return FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME;
+    }
+    if (
       params.mediaType === 'movie' &&
       value.includes(CURATED_BASE_HINTS.freshOutOfTheOven)
     ) {
@@ -285,6 +299,15 @@ export function buildFreshOutMovieCollectionHubOrder(
   );
 }
 
+export function buildFreshOutShowCollectionHubOrder(
+  plexUserTitle?: string | null,
+): string[] {
+  return buildUserCollectionHubOrder(
+    FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_HUB_ORDER,
+    plexUserTitle,
+  );
+}
+
 export type PinVisibilityProfile = 'default' | 'home_only' | 'shared_home_only';
 
 export function resolveCuratedCollectionPinVisibility(params: {
@@ -296,7 +319,10 @@ export function resolveCuratedCollectionPinVisibility(params: {
     collectionName: params.collectionName,
     mediaType: params.mediaType,
   });
-  if (baseName === FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME) {
+  if (
+    baseName === FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME ||
+    baseName === FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME
+  ) {
     return params.pinTarget === 'friends' ? 'shared_home_only' : 'home_only';
   }
   return null;

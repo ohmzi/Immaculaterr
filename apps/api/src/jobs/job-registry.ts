@@ -326,7 +326,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'freshOutOfTheOven',
     name: 'Fresh Out Of The Oven',
     description:
-      'Builds a recent-release movie baseline for the last 3 months and refreshes per-user unseen Plex collections across shared and admin homes.',
+      'Builds recent movie releases and TV premieres from the last 3 months, then refreshes per-user unseen Fresh Out Plex collections across shared and admin homes.',
     defaultScheduleCron: '30 2 * * *',
     defaultEstimatedRuntimeMs: 18 * 60_000,
     dedupePolicy: 'schedule_singleton',
