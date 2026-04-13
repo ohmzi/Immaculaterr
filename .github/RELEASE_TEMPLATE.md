@@ -4,6 +4,10 @@
 
 Full Changelog: https://github.com/ohmzi/Immaculaterr/compare/<previous-tag>..<new-tag>
 
+## Licensing
+
+Official Docker images and release artifacts are provided for personal, noncommercial self-hosting only. The public source repository remains visible for transparency and reference, but the source code is not licensed for reuse. See [LICENSE](https://github.com/ohmzi/Immaculaterr/blob/master/LICENSE).
+
 If you are running NAS or Unraid please check their specific documentation for update
 [NAS](https://github.com/ohmzi/Immaculaterr/blob/master/doc/setup-truenas.md)
 [Unraid](https://github.com/ohmzi/Immaculaterr/blob/master/doc/setup-unraid.md)

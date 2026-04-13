@@ -3,12 +3,14 @@ Immaculaterr
 
 [![Publish containers (GHCR + Docker Hub)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml/badge.svg?branch=master)](https://github.com/ohmzi/Immaculaterr/actions/workflows/publish-containers.yml)
 [![Latest Release](https://img.shields.io/github/v/release/ohmzi/Immaculaterr)](https://github.com/ohmzi/Immaculaterr/releases)
-[![License](https://img.shields.io/badge/license-MIT-brightgreen)](../LICENSE)
+[![License](https://img.shields.io/badge/license-custom%20terms-red)](../LICENSE)
 [![GHCR Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ohmzi/Immaculaterr/develop/doc/assets/badges/ghcr-package-downloads.json&cacheSeconds=300)](https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr)
 [![Docker Pulls](https://img.shields.io/docker/pulls/ohmzii/immaculaterr)](https://hub.docker.com/r/ohmzii/immaculaterr)
 
 Immaculaterr is a **Plex “autopilot”** that watches what you’re watching, generates recommendations, and keeps your library tidy.
 It builds curated Plex collections (with proper artwork), can optionally send missing titles to Radarr/Sonarr or Seerr, and gives you detailed run reports so you always know what happened.
+
+Official Docker images and release artifacts are the supported public distribution channel. The public source repository remains visible for transparency and reference, but the source code is not licensed for general reuse.
 
 Major Features Include
 ---
@@ -141,6 +143,8 @@ Immaculaterr is a monorepo:
 - **API**: NestJS (`apps/api`) — serves the REST API under `/api`
 - **Web UI**: React + Vite (`apps/web`)
 
+The development commands below are for the project owner and separately authorized developers. Public visibility of the repository does not grant permission to use, modify, or redistribute the source code.
+
 ```bash
 npm install
 npm -w apps/api run db:generate
@@ -166,7 +170,11 @@ Support
 License
 ---
 
-Immaculaterr is licensed under the **MIT License** — see [LICENSE](../LICENSE).
+Immaculaterr is distributed under custom terms — see [LICENSE](../LICENSE).
+
+Source code: the public repository does not grant permission to use, copy, modify, redistribute, sublicense, or sell the source code without separate written permission from the copyright holder.
+
+Official Docker images and release artifacts: you may download and run the unmodified official artifacts published by the project owner for personal, noncommercial self-hosting only. Redistribution, resale, derivative images, repackaging, and commercial use are not allowed without separate written permission.
 
 This project uses publicly available APIs and integrates with third‑party services (Plex, Radarr, Sonarr, TMDB, OpenAI, Google).
 You are responsible for complying with their respective terms of service. Immaculaterr is not affiliated with or endorsed by those services.
