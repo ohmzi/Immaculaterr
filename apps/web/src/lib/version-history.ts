@@ -39,33 +39,33 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.7-beta-3',
     popupHighlights: [
-      'Immaculate Taste reports now show the exact titles newly added to each rebuilt collection, including profile-specific lanes like Animation.',
-      'Raw job reports now include per-library collection-addition lists so you can audit what changed in default and profile-specific collections separately.',
-      'README and FAQ now explain the recommendation pipeline from seed title through TMDB, optional Google/OpenAI curation, Plex matching, and final collection rebuilds.',
+      'Recommendations now use a multi-factor ranking engine that blends similarity, quality, novelty, and indie/popularity signals.',
+      'A new wildcard lane injects global-language standouts and hidden gems into recommendation sets.',
+      'TMDB metadata, seed profiling, and interleaving were expanded so latest-watched and change-of-taste runs rank titles differently.',
     ],
     sections: [
       {
-        title: 'Collection-addition reporting',
+        title: 'Enhanced ranking system',
         bullets: [
-          'Immaculate Taste refresher and chained collection reports now include a dedicated "Newly added to collection" card.',
-          'That card lists the exact titles that were not in the previous managed collection snapshot but are present after the rebuild.',
-          'Additions are reported per library and per collection lane, so the default Immaculate Taste collection and profile-specific collections such as Animation stay separate.',
-          'Raw report payloads now expose collectionAdditionsByLibrary and collectionAdditionsTotal for debugging, exports, and automation.',
+          'Replaced the older heuristic scoring with a multi-factor ranking engine.',
+          'Candidates are now scored across quality, content similarity, novelty, and indie/popularity value.',
+          'Similarity uses richer text and genre signals instead of simpler title-only matching.',
         ],
       },
       {
-        title: 'Recommendation transparency',
+        title: 'Wildcard discovery lane',
         bullets: [
-          'Reports still show the recommendation-source breakdown for TMDB, optional Google, optional OpenAI, the final Generated list, and Plex resolution results.',
-          'The new additions card makes it easier to tell which resolved titles actually changed the final collection versus titles that were already present.',
-          'Collection rebuilds now compare against the prior managed collection contents, so "newly added" means new to that specific collection rather than simply new to Plex.',
+          'Added a wildcard lane that can inject global-language titles into the final mix.',
+          'The same lane can surface hidden gems by favoring strong ratings with lower popularity.',
+          'Wildcard picks are mixed into the main set without overwhelming the primary recommendations.',
         ],
       },
       {
-        title: 'Docs and release notes',
+        title: 'Context-aware ranking',
         bullets: [
-          'README and FAQ now explain how seed titles become candidate pools, how optional services refine the list, and how pending titles move into refreshed collections.',
-          'Version History and What\'s New now call out the new reporting so it is easier to spot when upgrading.',
+          'Seed profiling now captures language and origin details for better diversity decisions.',
+          'Ranking weights now change by mode, so latest-watched and change-of-taste runs emphasize different signals.',
+          'TMDB discovery and interleaving logic were expanded to support released, upcoming, and wildcard balancing.',
         ],
       },
     ],
