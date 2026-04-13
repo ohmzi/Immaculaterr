@@ -32,6 +32,12 @@ describe('plex-collections utils', () => {
         mediaType: 'movie',
       }),
     ).toBe('Fresh Out Of The Oven');
+    expect(
+      resolveCuratedCollectionBaseName({
+        collectionName: 'Fresh Out Of The Oven Show (Dana)',
+        mediaType: 'tv',
+      }),
+    ).toBe('Fresh Out Of The Oven Show');
   });
 
   it('ranks movie and tv curated collection order as recently watched -> change -> immaculate', () => {
@@ -144,6 +150,26 @@ describe('plex-collections utils', () => {
       ).toBe('shared_home_only');
     });
 
+    it('returns home_only for Fresh Out Show when pinTarget is admin', () => {
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Fresh Out Of The Oven Show (Alice)',
+          mediaType: 'tv',
+          pinTarget: 'admin',
+        }),
+      ).toBe('home_only');
+    });
+
+    it('returns shared_home_only for Fresh Out Show when pinTarget is friends', () => {
+      expect(
+        resolveCuratedCollectionPinVisibility({
+          collectionName: 'Fresh Out Of The Oven Show (Bob)',
+          mediaType: 'tv',
+          pinTarget: 'friends',
+        }),
+      ).toBe('shared_home_only');
+    });
+
     it('returns null for non-Fresh-Out curated collections', () => {
       expect(
         resolveCuratedCollectionPinVisibility({
@@ -171,7 +197,7 @@ describe('plex-collections utils', () => {
       ).toBeNull();
     });
 
-    it('returns null for Fresh Out base name with tv mediaType', () => {
+    it('returns null for movie Fresh Out base name with tv mediaType', () => {
       expect(
         resolveCuratedCollectionPinVisibility({
           collectionName: 'Fresh Out Of The Oven (Alice)',
@@ -197,6 +223,24 @@ describe('plex-collections utils', () => {
       'Change of Movie Taste (Alice)',
       'Inspired by your Immaculate Taste in Movies (Alice)',
       'Fresh Out Of The Oven (Alice)',
+    ]);
+  });
+
+  it('places Fresh Out Show after the default TV rows when explicitly included', () => {
+    const sorted = sortCollectionNamesByCuratedBaseOrder({
+      mediaType: 'tv',
+      collectionNames: [
+        'Fresh Out Of The Oven Show (Alice)',
+        'Inspired by your Immaculate Taste in Shows (Alice)',
+        'Based on your recently watched Show (Alice)',
+        'Change of Show Taste (Alice)',
+      ],
+    });
+    expect(sorted).toEqual([
+      'Based on your recently watched Show (Alice)',
+      'Change of Show Taste (Alice)',
+      'Inspired by your Immaculate Taste in Shows (Alice)',
+      'Fresh Out Of The Oven Show (Alice)',
     ]);
   });
 });

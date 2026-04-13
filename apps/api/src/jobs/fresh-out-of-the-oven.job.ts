@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { SWEEP_ORDER, sortSweepUsers } from './refresher-sweep.utils';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import {
   buildFreshOutMovieCollectionHubOrder,
+  buildFreshOutShowCollectionHubOrder,
   FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+  FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
 } from '../plex/plex-collections.utils';
 import { resolvePlexUserMonitoringSelection } from '../plex/plex-user-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
@@ -17,6 +20,8 @@ import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 
 const BASELINE_STALE_MS = 24 * 60 * 60_000;
 const RECENT_RELEASE_MONTHS = 3;
+const INCLUDE_MOVIES_SETTING_PATH = 'jobs.freshOutOfTheOven.includeMovies';
+const INCLUDE_SHOWS_SETTING_PATH = 'jobs.freshOutOfTheOven.includeShows';
 
 type PlexLibrarySection = { key: string; title: string; type?: string };
 type PlexSweepUser = {
@@ -26,7 +31,7 @@ type PlexSweepUser = {
   isAdmin: boolean;
   lastSeenAt: Date | string | null;
 };
-type FreshReleaseBaselineRow = {
+type FreshReleaseMovieBaselineRow = {
   tmdbId: number;
   title: string | null;
   releaseDate: string | null;
@@ -35,8 +40,29 @@ type FreshReleaseBaselineRow = {
   tmdbVoteCount: number | null;
   lastCheckedAt: Date;
 };
+type FreshReleaseShowBaselineRow = {
+  tvdbId: number;
+  tmdbId: number;
+  title: string | null;
+  firstAirDate: string | null;
+  tmdbPosterPath: string | null;
+  tmdbVoteAvg: number | null;
+  tmdbVoteCount: number | null;
+  lastCheckedAt: Date;
+};
+type FreshOutCategorySettings = {
+  includeMovies: boolean;
+  includeShows: boolean;
+};
+type BaselineSyncResult<Row> = {
+  rows: Row[];
+  plexMatches: number;
+  refreshed: number;
+  cacheHitsKept: number;
+  removed: number;
+};
 
-function isPositiveTmdbId(value: number | null | undefined): value is number {
+function isPositiveId(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
@@ -77,8 +103,9 @@ function parseDateOnly(value: string | null | undefined): Date | null {
 }
 
 function formatDateOnly(value: Date | null): string | null {
-  if (!(value instanceof Date) || !Number.isFinite(value.getTime()))
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
     return null;
+  }
   return value.toISOString().slice(0, 10);
 }
 
@@ -93,16 +120,47 @@ function isDateWithinWindow(params: {
   minDate: Date;
   maxDate: Date;
 }): boolean {
-  if (!(params.date instanceof Date) || !Number.isFinite(params.date.getTime()))
+  if (
+    !(params.date instanceof Date) ||
+    !Number.isFinite(params.date.getTime())
+  ) {
     return false;
+  }
   return (
     params.date.getTime() >= params.minDate.getTime() &&
     params.date.getTime() <= params.maxDate.getTime()
   );
 }
 
-function buildBaselineSortKey(row: FreshReleaseBaselineRow): string {
-  return `${row.releaseDate ?? '0000-00-00'}|${row.title ?? ''}|${row.tmdbId}`;
+function buildBaselineSortKey(params: {
+  releaseDate: string | null;
+  title: string | null;
+  id: number;
+}): string {
+  return `${params.releaseDate ?? '0000-00-00'}|${params.title ?? ''}|${params.id}`;
+}
+
+function readFreshOutCategorySettings(
+  settings: Record<string, unknown>,
+): FreshOutCategorySettings {
+  const includeMovies = pick(settings, INCLUDE_MOVIES_SETTING_PATH);
+  const includeShows = pick(settings, INCLUDE_SHOWS_SETTING_PATH);
+  return {
+    includeMovies: typeof includeMovies === 'boolean' ? includeMovies : true,
+    includeShows: typeof includeShows === 'boolean' ? includeShows : true,
+  };
+}
+
+function resolveNoSelectedLibrariesReason(params: {
+  includeMovies: boolean;
+  includeShows: boolean;
+}): string {
+  if (params.includeMovies && params.includeShows) {
+    return 'no_selected_libraries';
+  }
+  return params.includeMovies
+    ? 'no_selected_movie_libraries'
+    : 'no_selected_tv_libraries';
 }
 
 @Injectable()
@@ -132,14 +190,35 @@ export class FreshOutOfTheOvenJob {
     if (!plexToken) throw new Error('Plex token is not set');
     if (!tmdbApiKey) throw new Error('TMDB apiKey is not set');
 
+    const { includeMovies, includeShows } =
+      readFreshOutCategorySettings(settings);
+    if (!includeMovies && !includeShows) {
+      await ctx.warn(
+        'freshOutOfTheOven: skipping run because all categories are disabled',
+        { includeMovies, includeShows },
+      );
+      return {
+        summary: {
+          skipped: true,
+          reason: 'all_categories_disabled',
+          sweepOrder: SWEEP_ORDER,
+          settings: { includeMovies, includeShows },
+          collectionNames: {
+            movie: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+            tv: FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
+          },
+        },
+      };
+    }
+
     const plexBaseUrl = normalizeHttpUrl(plexBaseUrlRaw);
 
     void ctx
       .patchSummary({
         progress: {
           step: 'plex_libraries',
-          message: 'Scanning selected Plex movie libraries…',
-          mediaType: 'movie',
+          message: 'Scanning selected Plex libraries…',
+          mediaType: includeMovies ? 'movie' : 'tv',
           updatedAt: new Date().toISOString(),
         },
       })
@@ -161,14 +240,37 @@ export class FreshOutOfTheOvenJob {
           selectedSectionKeySet.has(section.key),
       )
       .sort((a, b) => a.title.localeCompare(b.title));
+    const tvSections = sections
+      .filter(
+        (section) =>
+          ['show', 'tv'].includes((section.type ?? '').toLowerCase()) &&
+          selectedSectionKeySet.has(section.key),
+      )
+      .sort((a, b) => a.title.localeCompare(b.title));
 
-    if (!movieSections.length) {
+    const hasAnyEnabledLibrary =
+      (includeMovies && movieSections.length > 0) ||
+      (includeShows && tvSections.length > 0);
+    const hasAnyDisabledCleanupLibrary =
+      (!includeMovies && movieSections.length > 0) ||
+      (!includeShows && tvSections.length > 0);
+
+    if (!hasAnyEnabledLibrary && !hasAnyDisabledCleanupLibrary) {
       return {
         summary: {
           skipped: true,
-          reason: 'no_selected_movie_libraries',
+          reason: resolveNoSelectedLibrariesReason({
+            includeMovies,
+            includeShows,
+          }),
           sweepOrder: SWEEP_ORDER,
-          collectionName: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+          settings: { includeMovies, includeShows },
+          collectionNames: {
+            movie: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+            tv: FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
+          },
+          movieLibraries: movieSections.map((section) => section.title),
+          tvLibraries: tvSections.map((section) => section.title),
         },
       };
     }
@@ -185,6 +287,22 @@ export class FreshOutOfTheOvenJob {
         machineIdentifier,
       });
 
+    let movieCleanup = {
+      baselineRowsDeleted: 0,
+      recommendationRowsDeleted: 0,
+    };
+    let showCleanup = {
+      baselineRowsDeleted: 0,
+      recommendationRowsDeleted: 0,
+    };
+
+    if (!ctx.dryRun && !includeMovies) {
+      movieCleanup = await this.clearMovieFreshOutRows();
+    }
+    if (!ctx.dryRun && !includeShows) {
+      showCleanup = await this.clearShowFreshOutRows();
+    }
+
     const today = new Date();
     today.setUTCHours(23, 59, 59, 999);
     const recentReleaseMinDate = subtractMonths(
@@ -193,39 +311,85 @@ export class FreshOutOfTheOvenJob {
     );
     recentReleaseMinDate.setUTCHours(0, 0, 0, 0);
 
-    void ctx
-      .patchSummary({
-        progress: {
-          step: 'dataset',
-          message: 'Refreshing recent-release movie baseline…',
-          mediaType: 'movie',
-          updatedAt: new Date().toISOString(),
-        },
-      })
-      .catch(() => undefined);
+    const movieBaselineBySection = new Map<
+      string,
+      FreshReleaseMovieBaselineRow[]
+    >();
+    const showBaselineBySection = new Map<
+      string,
+      FreshReleaseShowBaselineRow[]
+    >();
+    const movieBaselineSummary: JsonObject[] = [];
+    const showBaselineSummary: JsonObject[] = [];
 
-    const baselineBySection = new Map<string, FreshReleaseBaselineRow[]>();
-    const baselineSummary: JsonObject[] = [];
-    for (const section of movieSections) {
-      const baseline = await this.syncBaselineForSection({
-        ctx,
-        plexBaseUrl,
-        plexToken,
-        tmdbApiKey,
-        section,
-        recentReleaseMinDate,
-        recentReleaseMaxDate: today,
-      });
-      baselineBySection.set(section.key, baseline.rows);
-      baselineSummary.push({
-        librarySectionKey: section.key,
-        library: section.title,
-        plexMatches: baseline.plexMatches,
-        refreshed: baseline.refreshed,
-        cacheHitsKept: baseline.cacheHitsKept,
-        recentReleases: baseline.rows.length,
-        removed: baseline.removed,
-      });
+    if (includeMovies && movieSections.length > 0) {
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'dataset',
+            message: 'Refreshing recent-release movie baseline…',
+            mediaType: 'movie',
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
+
+      for (const section of movieSections) {
+        const baseline = await this.syncMovieBaselineForSection({
+          ctx,
+          plexBaseUrl,
+          plexToken,
+          tmdbApiKey,
+          section,
+          recentReleaseMinDate,
+          recentReleaseMaxDate: today,
+        });
+        movieBaselineBySection.set(section.key, baseline.rows);
+        movieBaselineSummary.push({
+          librarySectionKey: section.key,
+          library: section.title,
+          plexMatches: baseline.plexMatches,
+          refreshed: baseline.refreshed,
+          cacheHitsKept: baseline.cacheHitsKept,
+          recentReleases: baseline.rows.length,
+          removed: baseline.removed,
+        });
+      }
+    }
+
+    if (includeShows && tvSections.length > 0) {
+      void ctx
+        .patchSummary({
+          progress: {
+            step: 'dataset',
+            message: 'Refreshing recent TV premiere baseline…',
+            mediaType: 'tv',
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => undefined);
+
+      for (const section of tvSections) {
+        const baseline = await this.syncShowBaselineForSection({
+          ctx,
+          plexBaseUrl,
+          plexToken,
+          tmdbApiKey,
+          section,
+          recentReleaseMinDate,
+          recentReleaseMaxDate: today,
+        });
+        showBaselineBySection.set(section.key, baseline.rows);
+        showBaselineSummary.push({
+          librarySectionKey: section.key,
+          library: section.title,
+          plexMatches: baseline.plexMatches,
+          refreshed: baseline.refreshed,
+          cacheHitsKept: baseline.cacheHitsKept,
+          recentPremieres: baseline.rows.length,
+          removed: baseline.removed,
+        });
+      }
     }
 
     const userSummaries: JsonObject[] = [];
@@ -266,6 +430,7 @@ export class FreshOutOfTheOvenJob {
       }
 
       let accessibleMovieSections = movieSections;
+      let accessibleTvSections = tvSections;
       if (!userIsAdmin) {
         try {
           const userSections = await this.plexServer.getSections({
@@ -276,6 +441,9 @@ export class FreshOutOfTheOvenJob {
             userSections.map((section) => section.key),
           );
           accessibleMovieSections = movieSections.filter((section) =>
+            accessibleSectionKeySet.has(section.key),
+          );
+          accessibleTvSections = tvSections.filter((section) =>
             accessibleSectionKeySet.has(section.key),
           );
         } catch (err) {
@@ -306,27 +474,47 @@ export class FreshOutOfTheOvenJob {
           progress: {
             step: 'user_watch_state',
             message: `Checking watched state for ${user.plexAccountTitle}…`,
-            mediaType: 'movie',
+            mediaType: includeMovies ? 'movie' : 'tv',
             updatedAt: new Date().toISOString(),
           },
         })
         .catch(() => undefined);
 
       const watchedTmdbIdsBySection = new Map<string, Set<number>>();
+      const watchedTvdbIdsBySection = new Map<string, Set<number>>();
       try {
-        for (const section of accessibleMovieSections) {
-          const baselineRows = baselineBySection.get(section.key) ?? [];
-          if (!baselineRows.length) {
-            watchedTmdbIdsBySection.set(section.key, new Set<number>());
-            continue;
+        if (includeMovies && movieSections.length > 0) {
+          for (const section of accessibleMovieSections) {
+            const baselineRows = movieBaselineBySection.get(section.key) ?? [];
+            if (!baselineRows.length) {
+              watchedTmdbIdsBySection.set(section.key, new Set<number>());
+              continue;
+            }
+            const watchedTmdbIds =
+              await this.plexServer.listWatchedMovieTmdbIdsForSectionKey({
+                baseUrl: plexBaseUrl,
+                token: accessToken,
+                librarySectionKey: section.key,
+              });
+            watchedTmdbIdsBySection.set(section.key, new Set(watchedTmdbIds));
           }
-          const watchedTmdbIds =
-            await this.plexServer.listWatchedMovieTmdbIdsForSectionKey({
-              baseUrl: plexBaseUrl,
-              token: accessToken,
-              librarySectionKey: section.key,
-            });
-          watchedTmdbIdsBySection.set(section.key, new Set(watchedTmdbIds));
+        }
+
+        if (includeShows && tvSections.length > 0) {
+          for (const section of accessibleTvSections) {
+            const baselineRows = showBaselineBySection.get(section.key) ?? [];
+            if (!baselineRows.length) {
+              watchedTvdbIdsBySection.set(section.key, new Set<number>());
+              continue;
+            }
+            const watchedTvdbIds =
+              await this.plexServer.listWatchedShowTvdbIdsForSectionKey({
+                baseUrl: plexBaseUrl,
+                token: accessToken,
+                librarySectionKey: section.key,
+              });
+            watchedTvdbIdsBySection.set(section.key, new Set(watchedTvdbIds));
+          }
         }
       } catch (err) {
         usersSkipped += 1;
@@ -352,52 +540,105 @@ export class FreshOutOfTheOvenJob {
 
       try {
         if (!ctx.dryRun) {
-          const operations = [];
-          const accessibleSectionKeySet = new Set(
-            accessibleMovieSections.map((section) => section.key),
-          );
-          for (const section of movieSections) {
-            const baselineRows = baselineBySection.get(section.key) ?? [];
-            const watchedTmdbIds =
-              watchedTmdbIdsBySection.get(section.key) ?? new Set<number>();
-            const unseenRows = accessibleSectionKeySet.has(section.key)
-              ? baselineRows.filter((row) => !watchedTmdbIds.has(row.tmdbId))
-              : [];
+          const operations: Prisma.PrismaPromise<unknown>[] = [];
 
-            operations.push(
-              this.prisma.watchedMovieRecommendationLibrary.deleteMany({
-                where: {
-                  plexUserId: user.id,
-                  collectionName:
-                    FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
-                  librarySectionKey: section.key,
-                },
-              }),
+          if (includeMovies) {
+            const accessibleMovieSectionKeySet = new Set(
+              accessibleMovieSections.map((section) => section.key),
             );
-            if (unseenRows.length) {
+            for (const section of movieSections) {
+              const baselineRows =
+                movieBaselineBySection.get(section.key) ?? [];
+              const watchedTmdbIds =
+                watchedTmdbIdsBySection.get(section.key) ?? new Set<number>();
+              const unseenRows = accessibleMovieSectionKeySet.has(section.key)
+                ? baselineRows.filter((row) => !watchedTmdbIds.has(row.tmdbId))
+                : [];
+
               operations.push(
-                this.prisma.watchedMovieRecommendationLibrary.createMany({
-                  data: unseenRows.map((row) => ({
+                this.prisma.watchedMovieRecommendationLibrary.deleteMany({
+                  where: {
                     plexUserId: user.id,
                     collectionName:
                       FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
                     librarySectionKey: section.key,
-                    tmdbId: row.tmdbId,
-                    title: row.title ?? undefined,
-                    releaseDate: row.releaseDate
-                      ? new Date(`${row.releaseDate}T00:00:00.000Z`)
-                      : undefined,
-                    status: 'active',
-                    tmdbVoteAvg: row.tmdbVoteAvg ?? undefined,
-                    tmdbVoteCount: row.tmdbVoteCount ?? undefined,
-                    tmdbPosterPath: row.tmdbPosterPath ?? undefined,
-                    downloadApproval: 'none',
-                  })),
+                  },
                 }),
               );
+              if (unseenRows.length > 0) {
+                operations.push(
+                  this.prisma.watchedMovieRecommendationLibrary.createMany({
+                    data: unseenRows.map((row) => ({
+                      plexUserId: user.id,
+                      collectionName:
+                        FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+                      librarySectionKey: section.key,
+                      tmdbId: row.tmdbId,
+                      title: row.title ?? undefined,
+                      releaseDate: row.releaseDate
+                        ? new Date(`${row.releaseDate}T00:00:00.000Z`)
+                        : undefined,
+                      status: 'active',
+                      tmdbVoteAvg: row.tmdbVoteAvg ?? undefined,
+                      tmdbVoteCount: row.tmdbVoteCount ?? undefined,
+                      tmdbPosterPath: row.tmdbPosterPath ?? undefined,
+                      downloadApproval: 'none',
+                    })),
+                  }),
+                );
+              }
             }
           }
-          if (operations.length) {
+
+          if (includeShows) {
+            const accessibleTvSectionKeySet = new Set(
+              accessibleTvSections.map((section) => section.key),
+            );
+            for (const section of tvSections) {
+              const baselineRows = showBaselineBySection.get(section.key) ?? [];
+              const watchedTvdbIds =
+                watchedTvdbIdsBySection.get(section.key) ?? new Set<number>();
+              const unseenRows = accessibleTvSectionKeySet.has(section.key)
+                ? baselineRows.filter((row) => !watchedTvdbIds.has(row.tvdbId))
+                : [];
+
+              operations.push(
+                this.prisma.watchedShowRecommendationLibrary.deleteMany({
+                  where: {
+                    plexUserId: user.id,
+                    collectionName:
+                      FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
+                    librarySectionKey: section.key,
+                  },
+                }),
+              );
+              if (unseenRows.length > 0) {
+                operations.push(
+                  this.prisma.watchedShowRecommendationLibrary.createMany({
+                    data: unseenRows.map((row) => ({
+                      plexUserId: user.id,
+                      collectionName:
+                        FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
+                      librarySectionKey: section.key,
+                      tvdbId: row.tvdbId,
+                      tmdbId: row.tmdbId,
+                      title: row.title ?? undefined,
+                      firstAirDate: row.firstAirDate
+                        ? new Date(`${row.firstAirDate}T00:00:00.000Z`)
+                        : undefined,
+                      status: 'active',
+                      tmdbVoteAvg: row.tmdbVoteAvg ?? undefined,
+                      tmdbVoteCount: row.tmdbVoteCount ?? undefined,
+                      tmdbPosterPath: row.tmdbPosterPath ?? undefined,
+                      downloadApproval: 'none',
+                    })),
+                  }),
+                );
+              }
+            }
+          }
+
+          if (operations.length > 0) {
             await this.prisma.$transaction(operations);
           }
         }
@@ -413,13 +654,18 @@ export class FreshOutOfTheOvenJob {
           pinTarget,
           pinVisibilityProfile,
           movieSections,
-          tvSections: [],
+          tvSections,
           limit: null,
-          movieCollectionBaseNames: [
-            FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
-          ],
-          tvCollectionBaseNames: [],
+          movieCollectionBaseNames: movieSections.length
+            ? [FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME]
+            : [],
+          tvCollectionBaseNames: tvSections.length
+            ? [FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME]
+            : [],
           movieCollectionHubOrder: buildFreshOutMovieCollectionHubOrder(
+            user.plexAccountTitle,
+          ),
+          tvCollectionHubOrder: buildFreshOutShowCollectionHubOrder(
             user.plexAccountTitle,
           ),
           scope: null,
@@ -432,6 +678,10 @@ export class FreshOutOfTheOvenJob {
           pinTarget,
           accessibleMovieLibraryCount: accessibleMovieSections.length,
           accessibleMovieLibraries: accessibleMovieSections.map(
+            (section) => section.title,
+          ),
+          accessibleTvLibraryCount: accessibleTvSections.length,
+          accessibleTvLibraries: accessibleTvSections.map(
             (section) => section.title,
           ),
           refresh,
@@ -457,10 +707,29 @@ export class FreshOutOfTheOvenJob {
 
     const summary: JsonObject = {
       collectionName: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+      collectionNames: {
+        movie: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+        tv: FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
+      },
       sweepOrder: SWEEP_ORDER,
       dryRun: ctx.dryRun,
+      settings: { includeMovies, includeShows },
       movieLibraries: movieSections.map((section) => section.title),
-      baseline: baselineSummary,
+      tvLibraries: tvSections.map((section) => section.title),
+      movie: {
+        enabled: includeMovies,
+        cleanupRequested: !includeMovies,
+        ...movieCleanup,
+        libraries: movieSections.map((section) => section.title),
+        baseline: movieBaselineSummary,
+      },
+      tv: {
+        enabled: includeShows,
+        cleanupRequested: !includeShows,
+        ...showCleanup,
+        libraries: tvSections.map((section) => section.title),
+        baseline: showBaselineSummary,
+      },
       usersProcessed: orderedUsers.length,
       usersSucceeded,
       usersSkipped,
@@ -470,6 +739,44 @@ export class FreshOutOfTheOvenJob {
 
     await ctx.info('freshOutOfTheOven: done', summary);
     return { summary };
+  }
+
+  private async clearMovieFreshOutRows(): Promise<{
+    baselineRowsDeleted: number;
+    recommendationRowsDeleted: number;
+  }> {
+    const [baselineDeletedRes, recommendationDeletedRes] =
+      await this.prisma.$transaction([
+        this.prisma.freshReleaseMovieLibrary.deleteMany(),
+        this.prisma.watchedMovieRecommendationLibrary.deleteMany({
+          where: {
+            collectionName: FRESH_OUT_OF_THE_OVEN_MOVIE_COLLECTION_BASE_NAME,
+          },
+        }),
+      ]);
+    return {
+      baselineRowsDeleted: baselineDeletedRes.count,
+      recommendationRowsDeleted: recommendationDeletedRes.count,
+    };
+  }
+
+  private async clearShowFreshOutRows(): Promise<{
+    baselineRowsDeleted: number;
+    recommendationRowsDeleted: number;
+  }> {
+    const [baselineDeletedRes, recommendationDeletedRes] =
+      await this.prisma.$transaction([
+        this.prisma.freshReleaseShowLibrary.deleteMany(),
+        this.prisma.watchedShowRecommendationLibrary.deleteMany({
+          where: {
+            collectionName: FRESH_OUT_OF_THE_OVEN_SHOW_COLLECTION_BASE_NAME,
+          },
+        }),
+      ]);
+    return {
+      baselineRowsDeleted: baselineDeletedRes.count,
+      recommendationRowsDeleted: recommendationDeletedRes.count,
+    };
   }
 
   private async resolveMonitoredUsers(params: {
@@ -561,7 +868,7 @@ export class FreshOutOfTheOvenJob {
     };
   }
 
-  private async syncBaselineForSection(params: {
+  private async syncMovieBaselineForSection(params: {
     ctx: JobContext;
     plexBaseUrl: string;
     plexToken: string;
@@ -569,13 +876,7 @@ export class FreshOutOfTheOvenJob {
     section: PlexLibrarySection;
     recentReleaseMinDate: Date;
     recentReleaseMaxDate: Date;
-  }): Promise<{
-    rows: FreshReleaseBaselineRow[];
-    plexMatches: number;
-    refreshed: number;
-    cacheHitsKept: number;
-    removed: number;
-  }> {
+  }): Promise<BaselineSyncResult<FreshReleaseMovieBaselineRow>> {
     const { ctx, plexBaseUrl, plexToken, tmdbApiKey, section } = params;
 
     const plexRows = await this.plexServer.listMoviesWithTmdbIdsForSectionKey({
@@ -586,7 +887,7 @@ export class FreshOutOfTheOvenJob {
     });
     const plexTitleByTmdbId = new Map<number, string>();
     for (const row of plexRows) {
-      if (!row.tmdbId) continue;
+      if (!isPositiveId(row.tmdbId)) continue;
       if (!plexTitleByTmdbId.has(row.tmdbId)) {
         plexTitleByTmdbId.set(row.tmdbId, row.title);
       }
@@ -595,13 +896,15 @@ export class FreshOutOfTheOvenJob {
     const maxReleaseYear = params.recentReleaseMaxDate.getUTCFullYear();
     const currentTmdbIds = Array.from(
       new Set(
-        plexRows
-          .filter((row) => {
-            if (row.year === null) return true;
-            return row.year >= minReleaseYear && row.year <= maxReleaseYear;
-          })
-          .map((row) => row.tmdbId)
-          .filter(isPositiveTmdbId),
+        plexRows.flatMap((row) => {
+          if (!isPositiveId(row.tmdbId)) return [];
+          if (row.year !== null) {
+            const inRecentYearWindow =
+              row.year >= minReleaseYear && row.year <= maxReleaseYear;
+            if (!inRecentYearWindow) return [];
+          }
+          return [row.tmdbId];
+        }),
       ),
     );
 
@@ -613,7 +916,7 @@ export class FreshOutOfTheOvenJob {
       existingRows.map((row) => [row.tmdbId, row]),
     );
     const staleBefore = Date.now() - BASELINE_STALE_MS;
-    const recentRowsByTmdbId = new Map<number, FreshReleaseBaselineRow>();
+    const recentRowsByTmdbId = new Map<number, FreshReleaseMovieBaselineRow>();
     let refreshed = 0;
     let cacheHitsKept = 0;
 
@@ -631,7 +934,7 @@ export class FreshOutOfTheOvenJob {
         !existing.lastCheckedAt ||
         existing.lastCheckedAt.getTime() < staleBefore;
 
-      const existingCacheRow: FreshReleaseBaselineRow | null = existing
+      const existingCacheRow: FreshReleaseMovieBaselineRow | null = existing
         ? {
             tmdbId,
             title: existing.title ?? null,
@@ -644,11 +947,9 @@ export class FreshOutOfTheOvenJob {
         : null;
 
       if (!isStale) {
-        if (existingRowIsRecent) {
+        if (existingRowIsRecent && existingCacheRow) {
           cacheHitsKept += 1;
-          if (existingCacheRow) {
-            recentRowsByTmdbId.set(tmdbId, existingCacheRow);
-          }
+          recentRowsByTmdbId.set(tmdbId, existingCacheRow);
         }
         continue;
       }
@@ -661,7 +962,7 @@ export class FreshOutOfTheOvenJob {
         refreshed += 1;
 
         const releaseDateValue = parseDateOnly(details?.release_date ?? null);
-        const refreshedRow: FreshReleaseBaselineRow = {
+        const refreshedRow: FreshReleaseMovieBaselineRow = {
           tmdbId,
           title:
             (details?.title ?? '').trim() ||
@@ -707,7 +1008,17 @@ export class FreshOutOfTheOvenJob {
     }
 
     const rows = Array.from(recentRowsByTmdbId.values()).sort((a, b) =>
-      buildBaselineSortKey(b).localeCompare(buildBaselineSortKey(a)),
+      buildBaselineSortKey({
+        releaseDate: b.releaseDate,
+        title: b.title,
+        id: b.tmdbId,
+      }).localeCompare(
+        buildBaselineSortKey({
+          releaseDate: a.releaseDate,
+          title: a.title,
+          id: a.tmdbId,
+        }),
+      ),
     );
     const finalTmdbIds = rows.map((row) => row.tmdbId);
     const removed = existingRows.filter(
@@ -759,6 +1070,236 @@ export class FreshOutOfTheOvenJob {
     return {
       rows,
       plexMatches: currentTmdbIds.length,
+      refreshed,
+      cacheHitsKept,
+      removed,
+    };
+  }
+
+  private async syncShowBaselineForSection(params: {
+    ctx: JobContext;
+    plexBaseUrl: string;
+    plexToken: string;
+    tmdbApiKey: string;
+    section: PlexLibrarySection;
+    recentReleaseMinDate: Date;
+    recentReleaseMaxDate: Date;
+  }): Promise<BaselineSyncResult<FreshReleaseShowBaselineRow>> {
+    const { ctx, plexBaseUrl, plexToken, tmdbApiKey, section } = params;
+
+    const plexRows = await this.plexServer.listShowsWithTvdbIdsForSectionKey({
+      baseUrl: plexBaseUrl,
+      token: plexToken,
+      librarySectionKey: section.key,
+      sectionTitle: section.title,
+    });
+    const plexShowByTvdbId = new Map<
+      number,
+      { tmdbId: number; title: string }
+    >();
+    for (const row of plexRows) {
+      if (!isPositiveId(row.tvdbId) || !isPositiveId(row.tmdbId)) continue;
+      if (!plexShowByTvdbId.has(row.tvdbId)) {
+        plexShowByTvdbId.set(row.tvdbId, {
+          tmdbId: row.tmdbId,
+          title: row.title,
+        });
+      }
+    }
+    const minReleaseYear = params.recentReleaseMinDate.getUTCFullYear();
+    const maxReleaseYear = params.recentReleaseMaxDate.getUTCFullYear();
+    const currentTvdbIds = Array.from(
+      new Set(
+        plexRows.flatMap((row) => {
+          if (!isPositiveId(row.tvdbId) || !isPositiveId(row.tmdbId)) {
+            return [];
+          }
+          if (row.year !== null) {
+            const inRecentYearWindow =
+              row.year >= minReleaseYear && row.year <= maxReleaseYear;
+            if (!inRecentYearWindow) return [];
+          }
+          return [row.tvdbId];
+        }),
+      ),
+    );
+
+    const existingRows = await this.prisma.freshReleaseShowLibrary.findMany({
+      where: { librarySectionKey: section.key },
+      orderBy: [{ firstAirDate: 'desc' }, { title: 'asc' }],
+    });
+    const existingByTvdbId = new Map(
+      existingRows.map((row) => [row.tvdbId, row]),
+    );
+    const staleBefore = Date.now() - BASELINE_STALE_MS;
+    const recentRowsByTvdbId = new Map<number, FreshReleaseShowBaselineRow>();
+    let refreshed = 0;
+    let cacheHitsKept = 0;
+
+    for (const tvdbId of currentTvdbIds) {
+      const plexShow = plexShowByTvdbId.get(tvdbId);
+      if (!plexShow) continue;
+      const tmdbId = plexShow.tmdbId;
+
+      const existing = existingByTvdbId.get(tvdbId) ?? null;
+      const existingFirstAirDate = formatDateOnly(
+        existing?.firstAirDate ?? null,
+      );
+      const existingFirstAirDateValue = parseDateOnly(existingFirstAirDate);
+      const existingRowIsRecent = isDateWithinWindow({
+        date: existingFirstAirDateValue,
+        minDate: params.recentReleaseMinDate,
+        maxDate: params.recentReleaseMaxDate,
+      });
+      const isStale =
+        !existing ||
+        !existing.lastCheckedAt ||
+        existing.lastCheckedAt.getTime() < staleBefore ||
+        existing.tmdbId !== tmdbId;
+
+      const existingCacheRow: FreshReleaseShowBaselineRow | null = existing
+        ? {
+            tvdbId,
+            tmdbId: existing.tmdbId,
+            title: existing.title ?? null,
+            firstAirDate: existingFirstAirDate,
+            tmdbPosterPath: existing.tmdbPosterPath ?? null,
+            tmdbVoteAvg: existing.tmdbVoteAvg ?? null,
+            tmdbVoteCount: existing.tmdbVoteCount ?? null,
+            lastCheckedAt: existing.lastCheckedAt,
+          }
+        : null;
+
+      if (!isStale) {
+        if (existingRowIsRecent && existingCacheRow) {
+          cacheHitsKept += 1;
+          recentRowsByTvdbId.set(tvdbId, existingCacheRow);
+        }
+        continue;
+      }
+
+      try {
+        const details = await this.tmdb.getTv({
+          apiKey: tmdbApiKey,
+          tmdbId,
+        });
+        refreshed += 1;
+
+        const firstAirDateValue = parseDateOnly(
+          details?.first_air_date ?? null,
+        );
+        const refreshedRow: FreshReleaseShowBaselineRow = {
+          tvdbId,
+          tmdbId,
+          title:
+            (details?.name ?? '').trim() ||
+            plexShow?.title ||
+            existing?.title ||
+            null,
+          firstAirDate: formatDateOnly(firstAirDateValue),
+          tmdbPosterPath:
+            details?.poster_path ?? existing?.tmdbPosterPath ?? null,
+          tmdbVoteAvg:
+            typeof details?.vote_average === 'number'
+              ? details.vote_average
+              : (existing?.tmdbVoteAvg ?? null),
+          tmdbVoteCount:
+            typeof details?.vote_count === 'number'
+              ? Math.max(0, Math.trunc(details.vote_count))
+              : (existing?.tmdbVoteCount ?? null),
+          lastCheckedAt: new Date(),
+        };
+        if (
+          isDateWithinWindow({
+            date: firstAirDateValue,
+            minDate: params.recentReleaseMinDate,
+            maxDate: params.recentReleaseMaxDate,
+          })
+        ) {
+          recentRowsByTvdbId.set(tvdbId, refreshedRow);
+        }
+      } catch (err) {
+        await ctx.warn(
+          'freshOutOfTheOven: TMDB refresh failed for cached show (keeping prior row when possible)',
+          {
+            librarySectionKey: section.key,
+            library: section.title,
+            tvdbId,
+            tmdbId,
+            error: (err as Error)?.message ?? String(err),
+          },
+        );
+        if (existingCacheRow && existingRowIsRecent) {
+          recentRowsByTvdbId.set(tvdbId, existingCacheRow);
+        }
+      }
+    }
+
+    const rows = Array.from(recentRowsByTvdbId.values()).sort((a, b) =>
+      buildBaselineSortKey({
+        releaseDate: b.firstAirDate,
+        title: b.title,
+        id: b.tvdbId,
+      }).localeCompare(
+        buildBaselineSortKey({
+          releaseDate: a.firstAirDate,
+          title: a.title,
+          id: a.tvdbId,
+        }),
+      ),
+    );
+    const finalTvdbIds = rows.map((row) => row.tvdbId);
+    const removed = existingRows.filter(
+      (row) => !recentRowsByTvdbId.has(row.tvdbId),
+    ).length;
+
+    if (!ctx.dryRun) {
+      await this.prisma.freshReleaseShowLibrary.deleteMany({
+        where: {
+          librarySectionKey: section.key,
+          ...(finalTvdbIds.length ? { tvdbId: { notIn: finalTvdbIds } } : {}),
+        },
+      });
+
+      for (const row of rows) {
+        await this.prisma.freshReleaseShowLibrary.upsert({
+          where: {
+            librarySectionKey_tvdbId: {
+              librarySectionKey: section.key,
+              tvdbId: row.tvdbId,
+            },
+          },
+          update: {
+            tmdbId: row.tmdbId,
+            title: row.title ?? undefined,
+            firstAirDate: row.firstAirDate
+              ? new Date(`${row.firstAirDate}T00:00:00.000Z`)
+              : null,
+            tmdbPosterPath: row.tmdbPosterPath ?? undefined,
+            tmdbVoteAvg: row.tmdbVoteAvg ?? undefined,
+            tmdbVoteCount: row.tmdbVoteCount ?? undefined,
+            lastCheckedAt: row.lastCheckedAt,
+          },
+          create: {
+            librarySectionKey: section.key,
+            tvdbId: row.tvdbId,
+            tmdbId: row.tmdbId,
+            title: row.title ?? undefined,
+            firstAirDate: row.firstAirDate
+              ? new Date(`${row.firstAirDate}T00:00:00.000Z`)
+              : null,
+            tmdbPosterPath: row.tmdbPosterPath ?? undefined,
+            tmdbVoteAvg: row.tmdbVoteAvg ?? undefined,
+            tmdbVoteCount: row.tmdbVoteCount ?? undefined,
+            lastCheckedAt: row.lastCheckedAt,
+          },
+        });
+      }
+    }
+
+    return {
+      rows,
+      plexMatches: currentTvdbIds.length,
       refreshed,
       cacheHitsKept,
       removed,

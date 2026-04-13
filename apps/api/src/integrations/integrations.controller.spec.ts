@@ -40,6 +40,7 @@ describe('IntegrationsController plex libraries', () => {
     const prisma = {
       $transaction: jest.fn(),
       freshReleaseMovieLibrary: { deleteMany: jest.fn() },
+      freshReleaseShowLibrary: { deleteMany: jest.fn() },
       immaculateTasteMovieLibrary: { deleteMany: jest.fn() },
       immaculateTasteShowLibrary: { deleteMany: jest.fn() },
       watchedMovieRecommendationLibrary: { deleteMany: jest.fn() },
@@ -226,6 +227,7 @@ describe('IntegrationsController plex libraries', () => {
     });
     const mockedTx = [
       { count: 13 },
+      { count: 12 },
       { count: 11 },
       { count: 7 },
       { count: 5 },
@@ -244,6 +246,9 @@ describe('IntegrationsController plex libraries', () => {
     );
 
     expect(prisma.freshReleaseMovieLibrary.deleteMany).toHaveBeenCalledWith({
+      where: { librarySectionKey: { in: ['2'] } },
+    });
+    expect(prisma.freshReleaseShowLibrary.deleteMany).toHaveBeenCalledWith({
       where: { librarySectionKey: { in: ['2'] } },
     });
     expect(prisma.immaculateTasteMovieLibrary.deleteMany).toHaveBeenCalledWith({

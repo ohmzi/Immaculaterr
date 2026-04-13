@@ -1148,13 +1148,13 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                It builds a shared movie baseline from your selected Plex movie libraries using TMDB
-                release dates for the last 3 months, then filters that baseline per Plex user so each
-                viewer only gets movies they have not already watched.
+                It builds shared Fresh Out baselines from your selected Plex movie and TV libraries
+                using TMDB release dates for the last 3 months, then filters those baselines per Plex
+                user so each viewer only gets movies and shows they have not already watched.
               </p>
               <p>
-                Each user gets their own Plex collection, and the task refreshes that unseen list every
-                run before rebuilding and reshuffling the row.
+                Movies and shows can be toggled independently inside the task card, and each user gets
+                their own Fresh Out collections refreshed on every run.
               </p>
             </>
           ),
@@ -1168,8 +1168,9 @@ export const FaqPage = () => {
                 Admin gets this row on Plex Home only. Shared users get it on Shared Home only.
               </p>
               <p>
-                It does not pin to Library Recommended, and within Immaculaterr-managed movie rows it
-                is kept after Recently Watched, Change of Taste, and Immaculate Taste.
+                Fresh Out never pins to Library Recommended. The movie row stays after the other
+                Immaculaterr-managed movie rows, and the TV row stays after the other
+                Immaculaterr-managed TV rows.
               </p>
             </>
           ),
@@ -1179,10 +1180,10 @@ export const FaqPage = () => {
           question: 'What is a good default setup for Fresh Out Of The Oven?',
           answer: (
             <p>
-              Daily off-peak is a good default because it keeps new releases flowing in while removing
-              anything a user has already watched. If you prefer manual control, leave the schedule off
-              and use <span className="font-semibold text-white/85">Run now</span> after big library
-              updates.
+              Daily off-peak with both Movies and Shows enabled is a good default because it keeps new
+              releases and premieres flowing in while removing anything a user has already watched. If
+              you prefer manual control, leave the schedule off and use{' '}
+              <span className="font-semibold text-white/85">Run now</span> after big library updates.
             </p>
           ),
         },

@@ -32,7 +32,7 @@ Major Features Include
   - Based on your recently watched (auto-refreshes for newly completed movies/episodes)
   - Change of Taste (auto-refreshes for newly completed movies/episodes)
   - Fresh Out Of The Oven (recent-release movies you have not watched yet, per Plex user)
-  - Fresh Out Of The Oven (last 3 months, unseen per Plex user)
+  - Fresh Out Of The Oven Show (recent TV premieres you have not watched yet, per Plex user)
 - **Recommendation engine**:
   - TMDB-powered suggestions
   - Optional - Google + OpenAI 

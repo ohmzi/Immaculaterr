@@ -61,6 +61,13 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
         mockState.tables.add('ImportedWatchEntry');
         mockState.columns.ImportedWatchEntry = ['id'];
       }
+      if (sql.includes('CREATE TABLE "FreshReleaseShowLibrary"')) {
+        mockState.tables.add('FreshReleaseShowLibrary');
+        mockState.columns.FreshReleaseShowLibrary = [
+          'librarySectionKey',
+          'tvdbId',
+        ];
+      }
       if (sql.includes('CREATE TABLE "AutoRunMediaHistory"')) {
         mockState.tables.add('AutoRunMediaHistory');
         mockState.columns.AutoRunMediaHistory = ['id'];
@@ -397,6 +404,49 @@ describe('scripts/migrate-with-repair', () => {
         'resolve',
         '--applied',
         '20260411120000_add_auto_run_media_history',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('resolves the fresh release show migration as applied when the table pre-exists', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(['User', 'FreshReleaseShowLibrary']),
+    });
+
+    await repairApril2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--applied',
+        '20260413120000_add_fresh_release_show_library',
+      ]),
+      expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('resolves the fresh release show migration as rolled back when the table is missing but the row is failed', async () => {
+    const prisma = createPrismaMock({
+      migrationRows: {
+        '20260413120000_add_fresh_release_show_library': [
+          { finished_at: null, rolled_back_at: null },
+        ],
+      },
+      tables: new Set(['User']),
+    });
+
+    await repairApril2026MigrationEdgeCases(prisma as never);
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'resolve',
+        '--rolled-back',
+        '20260413120000_add_fresh_release_show_library',
       ]),
       expect.objectContaining({ env: process.env, stdio: 'inherit' }),
     );

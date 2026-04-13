@@ -92,6 +92,8 @@ const scenarios: Scenario[] = [
 function makeController() {
   const prisma = {
     $transaction: jest.fn(),
+    freshReleaseMovieLibrary: { deleteMany: jest.fn() },
+    freshReleaseShowLibrary: { deleteMany: jest.fn() },
     immaculateTasteMovieLibrary: { deleteMany: jest.fn() },
     immaculateTasteShowLibrary: { deleteMany: jest.fn() },
     watchedMovieRecommendationLibrary: { deleteMany: jest.fn() },

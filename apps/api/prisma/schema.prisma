@@ -494,6 +494,24 @@ model FreshReleaseMovieLibrary {
   @@index([librarySectionKey, lastCheckedAt])
 }
 
+model FreshReleaseShowLibrary {
+  librarySectionKey String
+  tvdbId            Int
+  tmdbId            Int
+  title             String?
+  firstAirDate      DateTime?
+  tmdbPosterPath    String?
+  tmdbVoteAvg       Float?
+  tmdbVoteCount     Int?
+  lastCheckedAt     DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@id([librarySectionKey, tvdbId])
+  @@index([librarySectionKey, firstAirDate])
+  @@index([librarySectionKey, lastCheckedAt])
+}
+
 model ImmaculateTasteShow {
   // TV collections are keyed by tvdbId because Plex/Sonarr mapping is TVDB-first.
   tvdbId Int     @id

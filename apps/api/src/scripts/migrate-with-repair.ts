@@ -13,6 +13,8 @@ const IMPORTED_WATCH_ENTRY_MIGRATION =
   '20260405092958_add_imported_watch_entry';
 const AUTO_RUN_MEDIA_HISTORY_MIGRATION =
   '20260411120000_add_auto_run_media_history';
+const FRESH_RELEASE_SHOW_LIBRARY_MIGRATION =
+  '20260413120000_add_fresh_release_show_library';
 const PRISMA_BIN_CANDIDATES = [
   './apps/api/node_modules/.bin/prisma',
   './node_modules/.bin/prisma',
@@ -343,6 +345,26 @@ const CREATE_FRESH_RELEASE_MOVIE_LIBRARY_RELEASE_DATE_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "FreshReleaseMovieLibrary_librarySectionKey_releaseDate_idx" ON "FreshReleaseMovieLibrary"("librarySectionKey", "releaseDate")';
 const CREATE_FRESH_RELEASE_MOVIE_LIBRARY_LAST_CHECKED_AT_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "FreshReleaseMovieLibrary_librarySectionKey_lastCheckedAt_idx" ON "FreshReleaseMovieLibrary"("librarySectionKey", "lastCheckedAt")';
+const CREATE_FRESH_RELEASE_SHOW_LIBRARY_FIRST_AIR_DATE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "FreshReleaseShowLibrary_librarySectionKey_firstAirDate_idx" ON "FreshReleaseShowLibrary"("librarySectionKey", "firstAirDate")';
+const CREATE_FRESH_RELEASE_SHOW_LIBRARY_LAST_CHECKED_AT_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "FreshReleaseShowLibrary_librarySectionKey_lastCheckedAt_idx" ON "FreshReleaseShowLibrary"("librarySectionKey", "lastCheckedAt")';
+const CREATE_FRESH_RELEASE_SHOW_LIBRARY_TABLE_SQL = [
+  'CREATE TABLE "FreshReleaseShowLibrary" (',
+  '  "librarySectionKey" TEXT NOT NULL,',
+  '  "tvdbId" INTEGER NOT NULL,',
+  '  "tmdbId" INTEGER NOT NULL,',
+  '  "title" TEXT,',
+  '  "firstAirDate" DATETIME,',
+  '  "tmdbPosterPath" TEXT,',
+  '  "tmdbVoteAvg" REAL,',
+  '  "tmdbVoteCount" INTEGER,',
+  '  "lastCheckedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "updatedAt" DATETIME NOT NULL,',
+  '  PRIMARY KEY ("librarySectionKey", "tvdbId")',
+  ')',
+].join('\n');
 const ADD_WATCHED_MOVIE_RECOMMENDATION_LIBRARY_RELEASE_DATE_COLUMN_SQL =
   'ALTER TABLE "WatchedMovieRecommendationLibrary" ADD COLUMN "releaseDate" DATETIME';
 const CREATE_WATCHED_MOVIE_RECOMMENDATION_LIBRARY_RELEASE_DATE_INDEX_SQL =
@@ -729,6 +751,10 @@ export async function repairApril2026MigrationEdgeCases(
     prisma,
     'AutoRunMediaHistory',
   );
+  const freshReleaseShowLibraryExists = await tableExists(
+    prisma,
+    'FreshReleaseShowLibrary',
+  );
 
   if (arrInstanceExists || importedWatchEntryExists) {
     await ensureImportedWatchEntrySchema(prisma);
@@ -766,6 +792,31 @@ export async function repairApril2026MigrationEdgeCases(
         'AutoRunMediaHistory already exists',
       );
     }
+  }
+
+  const freshReleaseShowLibraryMigrationState = await migrationRecordState(
+    prisma,
+    FRESH_RELEASE_SHOW_LIBRARY_MIGRATION,
+  );
+  if (freshReleaseShowLibraryExists) {
+    await ensureFreshReleaseShowLibrarySchema(prisma);
+    if (
+      freshReleaseShowLibraryMigrationState !== 'applied' &&
+      freshReleaseShowLibraryMigrationState !== 'migrations_table_missing'
+    ) {
+      resolveMigrationAsApplied(
+        FRESH_RELEASE_SHOW_LIBRARY_MIGRATION,
+        'FreshReleaseShowLibrary already exists',
+      );
+    }
+  } else if (
+    freshReleaseShowLibraryMigrationState === 'failed' ||
+    freshReleaseShowLibraryMigrationState === 'applied'
+  ) {
+    resolveMigrationAsRolledBack(
+      FRESH_RELEASE_SHOW_LIBRARY_MIGRATION,
+      'FreshReleaseShowLibrary is still missing',
+    );
   }
 }
 
@@ -945,6 +996,22 @@ async function ensureFreshReleaseMovieLibrarySchema(
   );
 }
 
+async function ensureFreshReleaseShowLibrarySchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const tableName = 'FreshReleaseShowLibrary';
+  if (!(await tableExists(prisma, tableName))) {
+    await prisma.$executeRawUnsafe(CREATE_FRESH_RELEASE_SHOW_LIBRARY_TABLE_SQL);
+  }
+
+  await prisma.$executeRawUnsafe(
+    CREATE_FRESH_RELEASE_SHOW_LIBRARY_FIRST_AIR_DATE_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_FRESH_RELEASE_SHOW_LIBRARY_LAST_CHECKED_AT_INDEX_SQL,
+  );
+}
+
 async function ensureImmaculateTasteProfileSchema(
   prisma: PrismaClient,
 ): Promise<void> {
@@ -1087,6 +1154,7 @@ export async function main() {
     await ensureImmaculateTasteProfileSchema(prisma);
     await ensureImmaculateTasteLibrarySchema(prisma);
     await ensureFreshReleaseMovieLibrarySchema(prisma);
+    await ensureFreshReleaseShowLibrarySchema(prisma);
     await ensureWatchedRecommendationReleaseDateColumns(prisma);
   } finally {
     await prisma.$disconnect();

@@ -48,6 +48,9 @@ function createPrismaMock() {
     freshReleaseMovieLibrary: {
       deleteMany: deleteMany(),
     },
+    freshReleaseShowLibrary: {
+      deleteMany: deleteMany(),
+    },
     immaculateTasteMovieLibrary: {
       deleteMany: deleteMany(),
     },

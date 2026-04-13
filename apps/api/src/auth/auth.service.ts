@@ -840,6 +840,9 @@ export class AuthService {
     await this.runResetDeleteStep('freshReleaseMovieLibrary', () =>
       this.prisma.freshReleaseMovieLibrary.deleteMany(),
     );
+    await this.runResetDeleteStep('freshReleaseShowLibrary', () =>
+      this.prisma.freshReleaseShowLibrary.deleteMany(),
+    );
     await this.runResetDeleteStep('immaculateTasteMovieLibrary', () =>
       this.prisma.immaculateTasteMovieLibrary.deleteMany(),
     );
